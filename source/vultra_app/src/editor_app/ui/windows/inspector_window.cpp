@@ -492,6 +492,127 @@ namespace vultra_app
             return changed;
         }
 
+        bool drawVec2Control(const char* label, glm::vec2& value, const glm::vec2& resetValue, const float speed = 0.05f)
+        {
+            bool changed = false;
+            if (std::abs(value.x) < 0.0005f)
+                value.x = 0.0f;
+            if (std::abs(value.y) < 0.0005f)
+                value.y = 0.0f;
+
+            ImGui::PushID(label);
+            ImGui::Columns(2, nullptr, false);
+            ImGui::SetColumnWidth(0, 92.0f);
+            ImGui::TextUnformatted(label);
+            ImGui::NextColumn();
+
+            const float  lineHeight = ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2.0f;
+            const ImVec2 buttonSize {lineHeight + 3.0f, lineHeight};
+            const float  itemWidth = std::max(
+                48.0f,
+                (ImGui::GetContentRegionAvail().x - buttonSize.x * 2.0f - ImGui::GetStyle().ItemSpacing.x * 4.0f) /
+                    2.0f);
+
+            auto axis = [&](const char* axisLabel, float& axisValue, float reset, ImVec4 color) {
+                ImGui::PushStyleColor(ImGuiCol_Button, color);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {color.x + 0.12f, color.y + 0.12f, color.z + 0.12f, 1.0f});
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4 {color.x + 0.20f, color.y + 0.20f, color.z + 0.20f, 1.0f});
+                if (ImGui::Button(axisLabel, buttonSize))
+                {
+                    axisValue = reset;
+                    changed   = true;
+                }
+                ImGui::PopStyleColor(3);
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(itemWidth);
+                changed |= ImGui::DragFloat((std::string("##") + axisLabel).c_str(), &axisValue, speed, 0.0f, 0.0f, "%.3f");
+                ImGui::SameLine();
+            };
+
+            axis("X", value.x, resetValue.x, {0.55f, 0.16f, 0.18f, 1.0f});
+            axis("Y", value.y, resetValue.y, {0.20f, 0.46f, 0.20f, 1.0f});
+            ImGui::NewLine();
+
+            ImGui::Columns(1);
+            ImGui::PopID();
+            return changed;
+        }
+
+        bool drawAnchorPresetPreview(vultra::RectTransformComponent& rect)
+        {
+            bool changed = false;
+            ImGui::PushID("AnchorPresetPreview");
+            const ImVec2 origin = ImGui::GetCursorScreenPos();
+            const float  cell   = 18.0f;
+            const float  gap    = 3.0f;
+            auto*        dl     = ImGui::GetWindowDrawList();
+            const ImVec2 boxMin = origin;
+            const ImVec2 boxMax {origin.x + cell * 3.0f + gap * 2.0f, origin.y + cell * 3.0f + gap * 2.0f};
+            dl->AddRectFilled(boxMin, boxMax, IM_COL32(18, 22, 28, 255), 4.0f);
+            dl->AddRect(boxMin, boxMax, IM_COL32(255, 255, 255, 32), 4.0f);
+
+            const glm::vec2 anchorCenter = (rect.anchorMin + rect.anchorMax) * 0.5f;
+            const int selectedX = std::clamp(static_cast<int>(std::round(anchorCenter.x * 2.0f)), 0, 2);
+            const int selectedY = std::clamp(static_cast<int>(std::round(anchorCenter.y * 2.0f)), 0, 2);
+
+            for (int y = 0; y < 3; ++y)
+            {
+                for (int x = 0; x < 3; ++x)
+                {
+                    const ImVec2 p {origin.x + static_cast<float>(x) * (cell + gap),
+                                    origin.y + static_cast<float>(2 - y) * (cell + gap)};
+                    ImGui::SetCursorScreenPos(p);
+                    const bool selected = x == selectedX && y == selectedY;
+                    if (selected)
+                    {
+                        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.95f, 0.58f, 0.16f, 1.0f});
+                        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {1.0f, 0.68f, 0.22f, 1.0f});
+                    }
+                    if (ImGui::Button(("##preset" + std::to_string(x) + std::to_string(y)).c_str(), ImVec2 {cell, cell}))
+                    {
+                        const glm::vec2 anchor {static_cast<float>(x) * 0.5f, static_cast<float>(y) * 0.5f};
+                        rect.anchorMin = anchor;
+                        rect.anchorMax = anchor;
+                        rect.pivot     = anchor;
+                        changed        = true;
+                    }
+                    if (selected)
+                        ImGui::PopStyleColor(2);
+                }
+            }
+            ImGui::SetCursorScreenPos(ImVec2 {origin.x, boxMax.y + ImGui::GetStyle().ItemSpacing.y});
+            ImGui::PopID();
+            return changed;
+        }
+
+        bool drawRectTransformComponentFields(vultra::RectTransformComponent& rect)
+        {
+            bool changed = false;
+            ImGui::Indent();
+            ImGui::PushID("RectTransformCustom");
+
+            ImGui::TextDisabled("Anchors");
+            ImGui::SameLine(92.0f);
+            changed |= drawAnchorPresetPreview(rect);
+
+            changed |= drawVec2Control("Position", rect.anchoredPositionPx, glm::vec2 {0.0f}, 0.5f);
+            changed |= drawVec2Control("Size", rect.sizeDeltaPx, glm::vec2 {0.0f}, 0.5f);
+            changed |= drawVec2Control("Anchor Min", rect.anchorMin, glm::vec2 {0.5f}, 0.01f);
+            changed |= drawVec2Control("Anchor Max", rect.anchorMax, glm::vec2 {0.5f}, 0.01f);
+            changed |= drawVec2Control("Pivot", rect.pivot, glm::vec2 {0.5f}, 0.01f);
+            changed |= ImGui::DragFloat("Rotation", &rect.rotationDegrees, 0.5f, 0.0f, 0.0f, "%.2f deg");
+            changed |= drawVec2Control("Scale", rect.scale, glm::vec2 {1.0f}, 0.01f);
+
+            rect.anchorMin = glm::clamp(rect.anchorMin, glm::vec2 {0.0f}, glm::vec2 {1.0f});
+            rect.anchorMax = glm::clamp(rect.anchorMax, glm::vec2 {0.0f}, glm::vec2 {1.0f});
+            rect.pivot     = glm::clamp(rect.pivot, glm::vec2 {0.0f}, glm::vec2 {1.0f});
+            rect.scale     = glm::max(rect.scale, glm::vec2 {0.05f});
+
+            ImGui::PopID();
+            ImGui::Unindent();
+            return changed;
+        }
+
         glm::quat rotationFromDirection(const glm::vec3& direction);
         glm::vec3 directionFromTransform(const vultra::TransformComponent& transform);
 
@@ -3624,7 +3745,7 @@ namespace vultra_app
             if (key == "RectTransform")
             {
                 if (auto* rect = reg.try_get<vultra::RectTransformComponent>(e))
-                    if (drawMetaFields(&ctx, &m_TextureSelector, *rect))
+                    if (drawRectTransformComponentFields(*rect))
                     {
                         ctx.state.sceneDirty = true;
                         if (ctx.history)

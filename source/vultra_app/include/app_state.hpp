@@ -129,6 +129,8 @@ namespace vultra_app
         bool                  editorShutdownRequested {false};
         bool                  sceneViewVisible {false};
         bool                  sceneViewVisibleLastFrame {false};
+        std::string           sceneViewModeRequest;
+        std::string           sceneViewToolRequest;
         bool                  gameViewVisible {false};
         bool                  gameViewVisibleLastFrame {false};
         bool                  gameViewRenderTargetAvailable {false};

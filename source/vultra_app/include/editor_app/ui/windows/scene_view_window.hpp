@@ -2,6 +2,9 @@
 
 #include "editor_app/ui/editor_window.hpp"
 
+#include "editor_app/selection.hpp"
+
+#include <vultra/core/base/uuid.hpp>
 #include <vultra/core/rhi/structs/extent2d.hpp>
 #include <vultra/core/rhi/texture.hpp>
 #include <vultra/function/services/imgui_service.hpp>
@@ -33,12 +36,40 @@ namespace vultra_app
             Move,
             Rotate,
             Scale,
+            Rect,
+            Transform,
         };
 
         enum class ViewMode
         {
             View3D,
             Ui2D,
+        };
+
+        enum class CoordinateMode
+        {
+            Local,
+            Global,
+        };
+
+        enum class Ui2DDragOperation
+        {
+            None,
+            Move,
+            Rotate,
+            Scale,
+        };
+
+        struct Ui2DDragState
+        {
+            Ui2DDragOperation operation {Ui2DDragOperation::None};
+            vultra::CoreUUID  entityId {};
+            glm::vec2         startMouseUi {0.0f};
+            glm::vec2         startAnchoredPositionPx {0.0f};
+            glm::vec2         startScale {1.0f};
+            float             startRotationDegrees {0.0f};
+            float             startAngleDegrees {0.0f};
+            glm::vec2         scaleAxis {1.0f};
         };
 
     private:
@@ -57,7 +88,7 @@ namespace vultra_app
             uint64_t              firstSeenFrame {0};
         };
 
-        void drawToolbar(const ImVec2& viewportMin);
+        void drawToolbar(EditorContext& ctx);
         bool drawViewManipulator(const ImVec2& viewportMin,
                                  const ImVec2& viewportMax,
                                  glm::mat4&    view,
@@ -84,6 +115,7 @@ namespace vultra_app
 
         Tool m_Tool {Tool::Select};
         ViewMode m_ViewMode {ViewMode::View3D};
+        CoordinateMode m_CoordinateMode {CoordinateMode::Local};
         bool m_ShowGrid {false};
 
         RenderTargetSlot              m_ActiveRenderTarget;
@@ -111,6 +143,9 @@ namespace vultra_app
         uint64_t  m_ProjectGeneration {0};
         bool      m_CameraInitializedFromScene {false};
         bool      m_FocusActive {false};
+        SelectionCategory m_LastAutoModeSelectionCategory {SelectionCategory::None};
+        vultra::CoreUUID  m_LastAutoModeSelectionId {};
+        Ui2DDragState     m_Ui2DDrag;
         bool      m_ViewManipulatorDragActive {false};
         glm::vec3 m_ViewManipulatorArcballVector {0.0f, 0.0f, 1.0f};
     };

@@ -339,6 +339,28 @@ namespace vultra_app
             return toolJson({{"ok", true}, {"action", action}, {"target", "imgui"}});
         }
 
+        if (name == "vultra.editor.scene_view")
+        {
+            const auto mode = lowerAscii(args.value("mode", std::string {}));
+            const auto tool = lowerAscii(args.value("tool", std::string {}));
+            if (!mode.empty())
+            {
+                if (mode != "2d" && mode != "3d" && mode != "ui2d" && mode != "view3d")
+                    return toolError("unsupported Scene View mode: " + mode);
+                ctx.state.sceneViewModeRequest = mode;
+            }
+            if (!tool.empty())
+            {
+                if (tool != "select" && tool != "move" && tool != "rotate" && tool != "scale" && tool != "rect" &&
+                    tool != "transform")
+                    return toolError("unsupported Scene View tool: " + tool);
+                ctx.state.sceneViewToolRequest = tool;
+            }
+            return toolJson({{"ok", true},
+                             {"requestedMode", ctx.state.sceneViewModeRequest.empty() ? mode : ctx.state.sceneViewModeRequest},
+                             {"requestedTool", ctx.state.sceneViewToolRequest.empty() ? tool : ctx.state.sceneViewToolRequest}});
+        }
+
         if (name == "vultra.editor.quit")
         {
             auto* windowService = ctx.services ? ctx.services->tryGet<IWindowService>() : nullptr;

@@ -803,13 +803,20 @@ namespace vultra_app
             return false;
         }
 
-        entt::entity createSceneEntityFromKind(vultra::World& world, const std::string& kind, entt::entity parent)
+        struct CreateEntityResult
+        {
+            entt::entity entity {entt::null};
+            entt::entity createdCanvas {entt::null};
+        };
+
+        CreateEntityResult createSceneEntityFromKind(vultra::World& world, const std::string& kind, entt::entity parent)
         {
             auto& reg    = world.registry();
             const auto normalized = lowerString(kind);
             const auto isUiElement = normalized == "ui_panel" || normalized == "uipanel" || normalized == "ui_text" ||
                                      normalized == "uitext" || normalized == "ui_image" || normalized == "uiimage" ||
                                      normalized == "ui_button" || normalized == "uibutton";
+            CreateEntityResult result {};
             if (isUiElement && parent == entt::null)
             {
                 auto canvasView = reg.view<vultra::CanvasComponent>();
@@ -817,6 +824,22 @@ namespace vultra_app
                 {
                     parent = canvasEntity;
                     break;
+                }
+                if (parent == entt::null)
+                {
+                    parent = world.createEntity();
+                    addCommonEntityComponents(world, parent, "Canvas");
+                    (void)reg.get_or_emplace<vultra::TransformComponent>(parent);
+                    auto& rect       = reg.emplace_or_replace<vultra::RectTransformComponent>(parent);
+                    rect.anchorMin   = {0.0f, 0.0f};
+                    rect.anchorMax   = {1.0f, 1.0f};
+                    rect.pivot       = {0.5f, 0.5f};
+                    rect.sizeDeltaPx = {0.0f, 0.0f};
+                    rect.scale       = {1.0f, 1.0f};
+                    auto& canvas     = reg.emplace_or_replace<vultra::CanvasComponent>(parent);
+                    canvas.referenceResolutionPx = {1920.0f, 1080.0f};
+                    canvas.scaleMode             = 1u;
+                    result.createdCanvas          = parent;
                 }
             }
             auto  entity = parent == entt::null ? world.createEntity() : world.createChild(parent);
@@ -955,9 +978,12 @@ namespace vultra_app
             else
             {
                 world.destroyRecursive(entity);
-                return entt::null;
+                if (result.createdCanvas != entt::null)
+                    world.destroyRecursive(result.createdCanvas);
+                return {};
             }
-            return entity;
+            result.entity = entity;
+            return result;
         }
 
     } // namespace
@@ -1214,6 +1240,7 @@ namespace vultra_app
                 return error("parent entity was not found");
 
             entt::entity entity = entt::null;
+            entt::entity createdCanvas = entt::null;
             if (kind == "primitive")
             {
                 entity = parent == entt::null ? world.createEntity() : world.createChild(parent);
@@ -1234,11 +1261,14 @@ namespace vultra_app
                     templateKind = "spot_light";
                 else if (lightKind == "area")
                     templateKind = "area_light";
-                entity = createSceneEntityFromKind(world, templateKind, parent);
+                auto result = createSceneEntityFromKind(world, templateKind, parent);
+                entity = result.entity;
             }
             else
             {
-                entity = createSceneEntityFromKind(world, kind, parent);
+                auto result = createSceneEntityFromKind(world, kind, parent);
+                entity = result.entity;
+                createdCanvas = result.createdCanvas;
             }
             if (entity == entt::null)
                 return error("unsupported scene entity kind: " + kind);
@@ -1260,10 +1290,20 @@ namespace vultra_app
             m_History.setNextLabel(ctx.state.statusMessage);
             ++ctx.state.sceneContentGeneration;
             m_History.observeScene(ctx);
-            return ok({{"entity", static_cast<uint32_t>(entity)},
-                       {"uuid", id.uuid.toString()},
-                       {"name", reg.get<vultra::NameComponent>(entity).name},
-                       {"kind", kind}});
+            nlohmann::json payload {{"entity", static_cast<uint32_t>(entity)},
+                                    {"uuid", id.uuid.toString()},
+                                    {"name", reg.get<vultra::NameComponent>(entity).name},
+                                    {"kind", kind}};
+            const auto actualParent = world.parent(entity);
+            if (actualParent != entt::null)
+                payload["parent"] = static_cast<uint32_t>(actualParent);
+            if (createdCanvas != entt::null)
+            {
+                const auto& canvasId = reg.get<vultra::IDComponent>(createdCanvas);
+                payload["createdCanvas"] = static_cast<uint32_t>(createdCanvas);
+                payload["createdCanvasUuid"] = canvasId.uuid.toString();
+            }
+            return ok(std::move(payload));
         }
 
         if (name == "scene.remove_entity")
