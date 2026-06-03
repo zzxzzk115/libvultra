@@ -10,3 +10,16 @@ file="models/Sponza/13196865903111448057.jpg"
 file="imported/texture/13196865903111448057"
 
 [params]
+texture.subtype=default
+texture.generate_mipmaps=true
+texture.compression_level=0
+texture.flip_y=false
+texture.target_format=ktx2
+texture.uastc=true
+texture.quality_level=128
+texture.compress_only_large=true
+texture.downscale_large=true
+texture.downscale_min_dimension=4096
+texture.downscale_target_dimension=2048
+texture.bake_normal_map=false
+texture.directx_normal_map=false
