@@ -155,6 +155,8 @@ namespace vultra_app
 
             if (rendererKey == "universal" || rendererKey == "universal_rt" || rendererKey == "universal_compat")
                 return "builtin://render/" + rendererKey + ".vrg.json";
+            if (rendererKey == "editor-ui2d")
+                return "builtin://render/ui_editor.vrg.json";
             if (!ctx.state.currentEditingRenderGraph.empty() &&
                 rendererKeyFromRenderGraphUri(ctx.state.currentEditingRenderGraph) == rendererKey)
                 return ctx.state.currentEditingRenderGraph;
