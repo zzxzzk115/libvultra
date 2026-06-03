@@ -14,7 +14,7 @@ namespace vultra
             if (supportEyetracking)
             {
                 // Create the eye tracker if supported
-                m_EyeTracker = new ext::XREyeTracker(instance, session);
+                m_EyeTracker = std::make_unique<ext::XREyeTracker>(instance, session);
             }
 
             // Attach action sets
@@ -32,7 +32,7 @@ namespace vultra
             OPENXR_CHECK(xrAttachSessionActionSets(session, &attachInfo), "Failed to attach session action sets");
         }
 
-        XRCommonAction::~XRCommonAction() { delete m_EyeTracker; }
+        XRCommonAction::~XRCommonAction() = default;
 
         bool XRCommonAction::sync(XrSpace space, XrTime time)
         {

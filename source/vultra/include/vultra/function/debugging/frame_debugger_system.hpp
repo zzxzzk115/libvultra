@@ -3,6 +3,8 @@
 #include "vultra/core/engine/engine_subsystem.hpp"
 #include "vultra/function/services/frame_debugger_service.hpp"
 
+#include <memory>
+
 namespace vultra
 {
     class RenderDocAPI;
@@ -11,6 +13,13 @@ namespace vultra
     {
     public:
         ENGINE_SUBSYSTEM(FrameDebuggerSystem)
+
+        // Out-of-line so unique_ptr<RenderDocAPI>'s deleter is instantiated in the .cpp,
+        // where RenderDocAPI is a complete type. Both the constructor and destructor must be
+        // out-of-line: the implicitly-generated default constructor would otherwise instantiate
+        // the member's destructor against the incomplete type at each construction site.
+        FrameDebuggerSystem();
+        ~FrameDebuggerSystem() override;
 
         bool onInit() override;
         void onShutdown() override;
@@ -28,7 +37,7 @@ namespace vultra
         void captureEnd() override;
 
     private:
-        RenderDocAPI* m_RenderDocAPI {nullptr};
+        std::unique_ptr<RenderDocAPI> m_RenderDocAPI;
 
         bool m_CaptureRequested {false};
         bool m_ShowCaptureUIRequested {false};

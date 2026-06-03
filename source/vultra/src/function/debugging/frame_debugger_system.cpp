@@ -2,15 +2,20 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/profiling/renderdoc_api.hpp"
 
+#include <memory>
+
 namespace vultra
 {
+    FrameDebuggerSystem::FrameDebuggerSystem()  = default;
+    FrameDebuggerSystem::~FrameDebuggerSystem() = default;
+
     bool FrameDebuggerSystem::onInit()
     {
         VULTRA_CORE_INFO("[FrameDebuggerSystem] Initializing...");
 
         m_RenderDocEnabled = ctx().config.render.enableRenderDoc;
         VULTRA_CORE_TRACE("[FrameDebuggerSystem] Creating RenderDoc API instance");
-        m_RenderDocAPI = new RenderDocAPI(m_RenderDocEnabled, ctx().config.render.enableValidation);
+        m_RenderDocAPI = std::make_unique<RenderDocAPI>(m_RenderDocEnabled, ctx().config.render.enableValidation);
 
         VULTRA_CORE_TRACE("[FrameDebuggerSystem] Providing IFrameDebuggerService");
         ctx().services.provide<IFrameDebuggerService>(this);
@@ -22,8 +27,7 @@ namespace vultra
     {
         VULTRA_CORE_INFO("[FrameDebuggerSystem] Shutting down");
 
-        delete m_RenderDocAPI;
-        m_RenderDocAPI     = nullptr;
+        m_RenderDocAPI.reset();
         m_RenderDocEnabled = false;
     }
 

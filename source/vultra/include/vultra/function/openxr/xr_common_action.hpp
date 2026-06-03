@@ -24,14 +24,14 @@ namespace vultra
             bool sync(XrSpace space, XrTime time);
 
             XRInput*                 getInput() { return m_Input.get(); }
-            const ext::XREyeTracker* getEyeTracker() const { return m_EyeTracker; }
+            const ext::XREyeTracker* getEyeTracker() const { return m_EyeTracker.get(); }
 
         private:
             XrInstance m_XrInstance = XR_NULL_HANDLE;
             XrSession  m_Session    = XR_NULL_HANDLE;
 
-            std::unique_ptr<XRInput> m_Input {nullptr};
-            ext::XREyeTracker*       m_EyeTracker = nullptr;
+            std::unique_ptr<XRInput>           m_Input {nullptr};
+            std::unique_ptr<ext::XREyeTracker> m_EyeTracker;
         };
     } // namespace openxr
 } // namespace vultra

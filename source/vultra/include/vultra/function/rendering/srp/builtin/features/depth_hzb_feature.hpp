@@ -2,6 +2,8 @@
 
 #include "vultra/function/rendering/srp/render_feature.hpp"
 
+#include <memory>
+
 namespace vultra
 {
     class DepthPrePass;
@@ -18,7 +20,7 @@ namespace vultra
         void addPasses(FrameGraphBuildContext& ctx) override;
 
     private:
-        DepthPrePass*    m_DepthPrePass {nullptr};
-        HzbGeneratePass* m_HzbGeneratePass {nullptr};
+        std::unique_ptr<DepthPrePass>    m_DepthPrePass;
+        std::unique_ptr<HzbGeneratePass> m_HzbGeneratePass;
     };
 } // namespace vultra

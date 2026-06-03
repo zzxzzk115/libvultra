@@ -4,19 +4,17 @@
 #include "vultra/function/rendering/srp/builtin/passes/hzb_generate_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
+#include <memory>
+
 namespace vultra
 {
     DepthHzbFeature::DepthHzbFeature()
     {
-        m_DepthPrePass    = new DepthPrePass();
-        m_HzbGeneratePass = new HzbGeneratePass();
+        m_DepthPrePass    = std::make_unique<DepthPrePass>();
+        m_HzbGeneratePass = std::make_unique<HzbGeneratePass>();
     }
 
-    DepthHzbFeature::~DepthHzbFeature()
-    {
-        delete m_DepthPrePass;
-        delete m_HzbGeneratePass;
-    }
+    DepthHzbFeature::~DepthHzbFeature() = default;
 
     void DepthHzbFeature::addPasses(FrameGraphBuildContext& ctx)
     {
