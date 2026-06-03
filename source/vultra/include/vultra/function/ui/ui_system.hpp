@@ -23,16 +23,27 @@ namespace vultra
         entt::entity pressedEntity() const override { return m_PressedEntity; }
         bool buttonClicked(entt::entity entity) const override;
         std::optional<UiResolvedRect> resolvedRect(entt::entity entity) const override;
+        std::optional<UiRaycastHit> raycast(glm::vec2 screenPx) const override;
+        std::optional<UiRaycastHit> raycastCanvas(entt::entity canvasEntity, glm::vec2 canvasPx) const override;
+        const std::vector<UiPointerEvent>& eventsThisFrame() const override { return m_Events; }
 
         const std::vector<UiResolvedRect>& resolvedRects() const { return m_Rects; }
 
     private:
         void rebuild();
         void updateInput();
+        void pushEvent(UiEventType type,
+                       entt::entity target,
+                       glm::vec2 screenPx,
+                       uint32_t button = 0u,
+                       uint32_t clickCount = 0u);
 
         std::vector<UiResolvedRect> m_Rects;
+        std::vector<UiPointerEvent> m_Events;
         std::unordered_map<entt::entity, std::size_t> m_RectByEntity;
         entt::entity m_HoveredEntity {entt::null};
+        entt::entity m_PreviousHoveredEntity {entt::null};
         entt::entity m_PressedEntity {entt::null};
+        uint64_t     m_NextEventSequence {1};
     };
 } // namespace vultra

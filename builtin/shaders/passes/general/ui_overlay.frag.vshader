@@ -30,6 +30,7 @@ layout(push_constant) uniform PushConstants
     vec2 targetResolutionPx;
     uint itemCount;
     uint itemIndex;
+    vec4 previewTransform;
 };
 
 void main()
@@ -38,7 +39,7 @@ void main()
     vec4 color = item.color;
 
     vec4 sampleColor = texture(u_Texture, v_Uv);
-    float textureWeight = (item.texture.y != 0u && item.texture.x != 0u) ? 1.0 : 0.0;
+    float textureWeight = item.texture.y != 0u ? 1.0 : 0.0;
     color *= mix(vec4(1.0), sampleColor, textureWeight);
 
     if (color.a <= 0.001)

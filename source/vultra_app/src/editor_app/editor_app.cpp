@@ -141,12 +141,18 @@ namespace vultra_app
             return ext == ".vmatgraph" || hasSuffix(name, ".vmatgraph.json");
         }
 
+        bool isMaterialSource(const std::filesystem::path& path)
+        {
+            return hasSuffix(lowerString(path.filename().generic_string()), ".vmat.json");
+        }
+
         bool isRenderPipelineSource(const std::filesystem::path& path)
         {
             const auto name = lowerString(path.filename().generic_string());
             const auto ext  = lowerString(path.extension().generic_string());
             return isShaderSource(path) || ext == ".json" || hasSuffix(name, ".vfeature.lua") ||
-                   hasSuffix(name, ".vsrp.lua") || hasSuffix(name, ".vshaderlib.lua") || isMaterialGraphSource(path);
+                   hasSuffix(name, ".vsrp.lua") || hasSuffix(name, ".vshaderlib.lua") || isMaterialGraphSource(path) ||
+                   isMaterialSource(path);
         }
 
         std::filesystem::path assetRootPath(const EditorContext& ctx)
@@ -1024,7 +1030,8 @@ namespace vultra_app
 
     void EditorApp::startAssetImportTask(const std::filesystem::path&        projectRoot,
                                          const std::string&                 assetRoot,
-                                         std::vector<std::filesystem::path> importPaths)
+                                         std::vector<std::filesystem::path> importPaths,
+                                         const bool                         forceReimport)
     {
         auto progress      = std::make_shared<ImportTaskProgress>();
         progress->message  = "Scanning project assets...";
@@ -1048,7 +1055,13 @@ namespace vultra_app
         for (auto& path : importPaths)
             path = path.lexically_normal();
         m_ImportTask     = std::make_unique<vtask::TaskSet>(
-            1, 1, [this, progress, assetRootPath, importedFolder, registryFile, importPaths = std::move(importPaths)](vtask::Range) {
+            1, 1, [this,
+                   progress,
+                   assetRootPath,
+                   importedFolder,
+                   registryFile,
+                   importPaths = std::move(importPaths),
+                   forceReimport](vtask::Range) {
                 ImportTaskResult result;
                 result.assetRoot    = assetRootPath.generic_string();
                 result.registryPath = (assetRootPath / importedFolder / registryFile).generic_string();
@@ -1104,7 +1117,7 @@ namespace vultra_app
                     vbase::Result<void, vasset::AssetError>::ok();
                 if (importPaths.empty())
                 {
-                    importResult = importer.importOrReimportAssetFolder(result.assetRoot, false);
+                    importResult = importer.importOrReimportAssetFolder(result.assetRoot, forceReimport);
                 }
                 else
                 {
@@ -1144,9 +1157,9 @@ namespace vultra_app
                         }
 
                         if (std::filesystem::is_directory(importPath, ec))
-                            importResult = importer.importOrReimportAssetFolder(importPath.generic_string(), false);
+                            importResult = importer.importOrReimportAssetFolder(importPath.generic_string(), forceReimport);
                         else
-                            importResult = importer.importOrReimportAsset(importPath.generic_string(), false);
+                            importResult = importer.importOrReimportAsset(importPath.generic_string(), forceReimport);
 
                         if (!importResult && importResult.error() != vasset::AssetError::eNotSupported)
                             break;
@@ -1244,10 +1257,12 @@ namespace vultra_app
             !ctx.state.currentProject.empty())
         {
             auto importPaths = std::move(ctx.state.pendingAssetImportPaths);
+            const bool forceReimport = ctx.state.pendingAssetImportForceReimport;
             ctx.state.pendingAssetImportPaths.clear();
             ctx.state.pendingAssetImportRefresh = false;
+            ctx.state.pendingAssetImportForceReimport = false;
             m_BackgroundAssetImportPaths = importPaths;
-            startAssetImportTask(ctx.state.currentProject, ctx.state.currentAssetRoot, std::move(importPaths));
+            startAssetImportTask(ctx.state.currentProject, ctx.state.currentAssetRoot, std::move(importPaths), forceReimport);
             m_BackgroundAssetImport = true;
             m_ImportProgressPopupPendingOpen = true;
             ctx.state.statusMessage = "Importing project assets...";

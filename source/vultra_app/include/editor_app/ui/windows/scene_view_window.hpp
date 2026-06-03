@@ -12,6 +12,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 #include <optional>
 #include <vector>
@@ -58,6 +59,7 @@ namespace vultra_app
             Move,
             Rotate,
             Scale,
+            Rect,
         };
 
         struct Ui2DDragState
@@ -66,10 +68,12 @@ namespace vultra_app
             vultra::CoreUUID  entityId {};
             glm::vec2         startMouseUi {0.0f};
             glm::vec2         startAnchoredPositionPx {0.0f};
+            glm::vec2         startSizeDeltaPx {0.0f};
             glm::vec2         startScale {1.0f};
             float             startRotationDegrees {0.0f};
             float             startAngleDegrees {0.0f};
             glm::vec2         scaleAxis {1.0f};
+            glm::vec2         moveAxis {1.0f, 1.0f};
         };
 
     private:
@@ -117,6 +121,8 @@ namespace vultra_app
         ViewMode m_ViewMode {ViewMode::View3D};
         CoordinateMode m_CoordinateMode {CoordinateMode::Local};
         bool m_ShowGrid {false};
+        bool m_UiSnapEnabled {true};
+        glm::vec4 m_Ui2DClearColor {0.0f, 0.0f, 0.0f, 1.0f};
 
         RenderTargetSlot              m_ActiveRenderTarget;
         RenderTargetSlot              m_PendingRenderTarget;
@@ -146,6 +152,8 @@ namespace vultra_app
         SelectionCategory m_LastAutoModeSelectionCategory {SelectionCategory::None};
         vultra::CoreUUID  m_LastAutoModeSelectionId {};
         Ui2DDragState     m_Ui2DDrag;
+        glm::vec2         m_Ui2DViewPanPx {0.0f};
+        float             m_Ui2DViewZoom {1.0f};
         bool      m_ViewManipulatorDragActive {false};
         glm::vec3 m_ViewManipulatorArcballVector {0.0f, 0.0f, 1.0f};
     };

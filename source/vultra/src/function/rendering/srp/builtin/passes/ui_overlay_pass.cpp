@@ -37,6 +37,7 @@ namespace vultra
             glm::vec2 targetResolutionPx {1.0f};
             uint32_t  itemCount {0u};
             uint32_t  itemIndex {0u};
+            glm::vec4 previewTransform {0.0f, 0.0f, 1.0f, 0.0f};
         };
 
         [[nodiscard]] bool sanitizeBindlessTextures(std::vector<const rhi::Texture*>& textures)
@@ -71,6 +72,8 @@ namespace vultra
         itemFlags.reserve(renderWorld->uiDrawItems.size());
         for (const auto& item : renderWorld->uiDrawItems)
         {
+            if (!renderLayerVisible(ctx.view().camera, item.layerMask))
+                continue;
             gpuItems.push_back(GpuUiDrawItem {
                 .rectPx = {item.rectMinPx.x, item.rectMinPx.y, item.rectMaxPx.x, item.rectMaxPx.y},
                 .color  = item.color,
@@ -83,6 +86,8 @@ namespace vultra
             itemTextureIndices.push_back(item.textureIndex);
             itemFlags.push_back(item.flags);
         }
+        if (gpuItems.empty())
+            return source;
 
         auto* drawBuffer = ctx.frameResources ?
             ctx.frameResources->uploadStorage(ctx.rd, gpuItems.data(), gpuItems.size()) :
@@ -154,6 +159,12 @@ namespace vultra
                     .targetResolutionPx = {static_cast<float>(extent.width), static_cast<float>(extent.height)},
                     .itemCount          = itemCount,
                     .itemIndex          = 0u,
+                    .previewTransform   = rc.view().camera && rc.view().camera->uiOverlayTransformOverride ?
+                                            glm::vec4 {rc.view().camera->uiOverlayOffsetPx.x,
+                                                       rc.view().camera->uiOverlayOffsetPx.y,
+                                                       rc.view().camera->uiOverlayScale,
+                                                       1.0f} :
+                                            glm::vec4 {0.0f, 0.0f, 1.0f, 0.0f},
                 };
 
                 const auto scopeName = std::format("{} {} items", PASS_NAME, itemCount);

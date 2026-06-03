@@ -1,0 +1,53 @@
+{
+  "meta": {
+    "editor": {
+      "nodes": {
+        "CameraClear": {
+          "pos": [
+            220.0,
+            80.0
+          ]
+        },
+        "UiOverlay": {
+          "pos": [
+            430.0,
+            80.0
+          ]
+        },
+        "FinalComposition": {
+          "pos": [
+            620.0,
+            80.0
+          ]
+        }
+      }
+    }
+  },
+  "passes": [
+    {
+      "enabled": true,
+      "id": "CameraClear",
+      "type": "CameraClear"
+    },
+    {
+      "enabled": true,
+      "id": "UiOverlay",
+      "inputs": {
+        "source": "CameraClear.color"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "UiOverlay"
+    },
+    {
+      "enabled": true,
+      "id": "FinalComposition",
+      "inputs": {
+        "source": "UiOverlay.color"
+      },
+      "type": "FinalComposition"
+    }
+  ],
+  "version": 3
+}

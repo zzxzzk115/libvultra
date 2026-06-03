@@ -113,6 +113,9 @@ namespace vultra_app
             UiText,
             UiImage,
             UiButton,
+            UiToggle,
+            UiSlider,
+            UiProgressBar,
             StaticBox,
             DynamicSphere,
             CapsuleRigidBody,
@@ -156,6 +159,12 @@ namespace vultra_app
                     return "ui_image";
                 case SceneCreateKind::UiButton:
                     return "ui_button";
+                case SceneCreateKind::UiToggle:
+                    return "ui_toggle";
+                case SceneCreateKind::UiSlider:
+                    return "ui_slider";
+                case SceneCreateKind::UiProgressBar:
+                    return "ui_progress_bar";
                 case SceneCreateKind::StaticBox:
                     return "static_box";
                 case SceneCreateKind::DynamicSphere:
@@ -288,6 +297,12 @@ namespace vultra_app
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::UiImage);
                 if (ImGui::MenuItem(ICON_MDI_GESTURE_TAP_BUTTON " Button"))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::UiButton);
+                if (ImGui::MenuItem(ICON_MDI_CHECKBOX_MARKED_OUTLINE " Toggle"))
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::UiToggle);
+                if (ImGui::MenuItem(ICON_MDI_TUNE " Slider"))
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::UiSlider);
+                if (ImGui::MenuItem(ICON_MDI_PROGRESS_CHECK " Progress Bar"))
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::UiProgressBar);
                 ImGui::EndMenu();
             }
 

@@ -3,6 +3,7 @@
 #include "vultra/core/services/input_service.hpp"
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/services/camera_service.hpp"
+#include "vultra/function/services/script_service.hpp"
 #include "vultra/function/services/world_service.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/hierarchy_component.hpp"
@@ -48,6 +49,50 @@ namespace vultra
             }
             return {1.0f, 1.0f};
         }
+
+        [[nodiscard]] glm::vec2 canvasOffset(const CanvasComponent& canvas, glm::vec2 windowPx, glm::vec2 scale)
+        {
+            const auto canvasSize = glm::max(canvas.referenceResolutionPx, glm::vec2 {1.0f}) * scale;
+            return (windowPx - canvasSize) * 0.5f;
+        }
+
+        [[nodiscard]] bool uiInteractable(const entt::registry& reg, const entt::entity entity)
+        {
+            if (const auto* button = reg.try_get<UiButtonComponent>(entity))
+                return button->enabled && button->interactable;
+            if (const auto* toggle = reg.try_get<UiToggleComponent>(entity))
+                return toggle->enabled && toggle->interactable;
+            if (const auto* slider = reg.try_get<UiSliderComponent>(entity))
+                return slider->enabled && slider->interactable;
+            return false;
+        }
+
+        void setSliderFromPointer(UiSliderComponent& slider, const UiResolvedRect& rect, const glm::vec2 screenPx)
+        {
+            const float width = std::max(rect.maxPx.x - rect.minPx.x, 1.0f);
+            const float t = std::clamp((screenPx.x - rect.minPx.x) / width, 0.0f, 1.0f);
+            slider.value = slider.minValue + (slider.maxValue - slider.minValue) * t;
+        }
+
+        [[nodiscard]] bool runtimeUiInputEnabled(vbase::ServiceRegistry& services)
+        {
+            if (const auto* scripts = services.tryGet<IScriptService>())
+                return scripts->isPlaybackPlaying() && !scripts->isPlaybackPaused();
+            return true;
+        }
+
+        void resolveRectTopLeft(const RectTransformComponent& rect,
+                                const glm::vec2&             parentMin,
+                                const glm::vec2&             parentSize,
+                                const glm::vec2&             canvasScale,
+                                glm::vec2&                   outMinPx,
+                                glm::vec2&                   outSizePx)
+        {
+            const glm::vec2 anchorMin = parentMin + parentSize * rect.anchorMin;
+            const glm::vec2 anchorMax = parentMin + parentSize * rect.anchorMax;
+            outSizePx                 = (anchorMax - anchorMin) + rect.sizeDeltaPx * canvasScale;
+            outMinPx                  = anchorMin + rect.anchoredPositionPx * canvasScale - outSizePx * rect.pivot;
+        }
     } // namespace
 
     bool UiSystem::onInit()
@@ -59,8 +104,10 @@ namespace vultra
     void UiSystem::onShutdown()
     {
         m_Rects.clear();
+        m_Events.clear();
         m_RectByEntity.clear();
         m_HoveredEntity = entt::null;
+        m_PreviousHoveredEntity = entt::null;
         m_PressedEntity = entt::null;
     }
 
@@ -97,6 +144,76 @@ namespace vultra
         return std::nullopt;
     }
 
+    std::optional<UiRaycastHit> UiSystem::raycast(glm::vec2 screenPx) const
+    {
+        for (auto it = m_Rects.rbegin(); it != m_Rects.rend(); ++it)
+        {
+            if (!contains(*it, screenPx))
+                continue;
+
+            const auto canvasRect = resolvedRect(it->canvas);
+            UiRaycastHit hit {};
+            hit.entity    = it->entity;
+            hit.canvas    = it->canvas;
+            hit.screenPx  = screenPx;
+            hit.canvasPx  = canvasRect ? screenPx - canvasRect->minPx : screenPx;
+            hit.localPx   = screenPx - it->minPx;
+            hit.sortOrder = it->sortOrder;
+            hit.depth     = it->depth;
+            return hit;
+        }
+        return std::nullopt;
+    }
+
+    std::optional<UiRaycastHit> UiSystem::raycastCanvas(entt::entity canvasEntity, glm::vec2 canvasPx) const
+    {
+        const auto canvasRect = resolvedRect(canvasEntity);
+        if (!canvasRect)
+            return std::nullopt;
+        auto hit = raycast(canvasRect->minPx + canvasPx);
+        if (!hit || hit->canvas != canvasEntity)
+            return std::nullopt;
+        hit->canvasPx = canvasPx;
+        return hit;
+    }
+
+    void UiSystem::pushEvent(UiEventType type,
+                             entt::entity target,
+                             glm::vec2 screenPx,
+                             uint32_t button,
+                             uint32_t clickCount)
+    {
+        auto* worldService = ctx().services.tryGet<IWorldService>();
+        if (!worldService || target == entt::null)
+            return;
+
+        auto& world = worldService->world();
+        const auto targetRect = resolvedRect(target);
+        const entt::entity canvas = targetRect ? targetRect->canvas : entt::null;
+        const auto canvasRect = canvas != entt::null ? resolvedRect(canvas) : std::optional<UiResolvedRect> {};
+        const glm::vec2 canvasPx = canvasRect ? screenPx - canvasRect->minPx : screenPx;
+        const uint64_t sequence = m_NextEventSequence++;
+
+        for (auto current = target; current != entt::null && world.registry().valid(current); current = world.parent(current))
+        {
+            const auto currentRect = resolvedRect(current);
+            UiPointerEvent event {};
+            event.type            = type;
+            event.target          = target;
+            event.currentTarget   = current;
+            event.canvas          = canvas;
+            event.screenPosition  = screenPx;
+            event.canvasPosition  = canvasPx;
+            event.localPosition   = currentRect ? screenPx - currentRect->minPx : glm::vec2 {0.0f};
+            event.button          = button;
+            event.clickCount      = clickCount;
+            event.sequence        = sequence;
+            m_Events.push_back(event);
+            if (current == canvas)
+                break;
+        }
+    }
+
     void UiSystem::rebuild()
     {
         m_Rects.clear();
@@ -122,12 +239,9 @@ namespace vultra
             if (!rect || !visible(reg, entity))
                 return;
 
-            glm::vec2 minPx = parentMin;
-            glm::vec2 sizePx = parentSize;
-            const glm::vec2 anchorMin = parentMin + parentSize * rect->anchorMin;
-            const glm::vec2 anchorMax = parentMin + parentSize * rect->anchorMax;
-            sizePx = (anchorMax - anchorMin) + rect->sizeDeltaPx * scale;
-            minPx  = anchorMin + rect->anchoredPositionPx * scale - sizePx * rect->pivot;
+            glm::vec2 minPx {};
+            glm::vec2 sizePx {};
+            resolveRectTopLeft(*rect, parentMin, parentSize, scale, minPx, sizePx);
 
             UiResolvedRect resolved {};
             resolved.entity       = entity;
@@ -136,7 +250,7 @@ namespace vultra
             resolved.maxPx        = minPx + sizePx * rect->scale;
             resolved.sortOrder    = sortOrder;
             resolved.depth        = depth;
-            resolved.interactable = reg.all_of<UiButtonComponent>(entity);
+            resolved.interactable = uiInteractable(reg, entity);
             m_RectByEntity[entity] = m_Rects.size();
             m_Rects.push_back(resolved);
 
@@ -189,12 +303,13 @@ namespace vultra
             if (!canvas.enabled || !visible(reg, canvasEntity))
                 continue;
             const glm::vec2 scale = canvasScale(canvas, windowPx);
+            const glm::vec2 offset = canvasOffset(canvas, windowPx, scale);
             const glm::vec2 canvasSize = glm::max(canvas.referenceResolutionPx * scale, glm::vec2 {1.0f});
             UiResolvedRect root {};
             root.entity    = canvasEntity;
             root.canvas    = canvasEntity;
-            root.minPx     = {0.0f, 0.0f};
-            root.maxPx     = canvasSize;
+            root.minPx     = offset;
+            root.maxPx     = offset + canvasSize;
             root.sortOrder = canvas.sortOrder;
             root.depth     = 0;
             m_RectByEntity[canvasEntity] = m_Rects.size();
@@ -222,6 +337,7 @@ namespace vultra
             return;
 
         auto& reg = worldService->world().registry();
+        m_Events.clear();
         for (auto entity : reg.view<UiButtonComponent>())
         {
             auto& button = reg.get<UiButtonComponent>(entity);
@@ -229,32 +345,65 @@ namespace vultra
             button.pressed = false;
         }
 
-        const glm::vec2 mouse = input->getMousePosition();
-        m_HoveredEntity = entt::null;
-        for (auto it = m_Rects.rbegin(); it != m_Rects.rend(); ++it)
+        if (!runtimeUiInputEnabled(ctx().services))
         {
-            if (!it->interactable || !contains(*it, mouse))
-                continue;
-            if (auto* button = reg.try_get<UiButtonComponent>(it->entity); button && button->enabled && button->interactable)
-            {
-                m_HoveredEntity = it->entity;
-                button->hovered = true;
-                break;
-            }
+            m_PreviousHoveredEntity = entt::null;
+            m_HoveredEntity = entt::null;
+            m_PressedEntity = entt::null;
+            if (auto* cameraService = ctx().services.tryGet<ICameraService>())
+                cameraService->setCameraControlInputSuppressed(false);
+            return;
         }
 
+        const glm::vec2 mouse = input->getMousePosition();
+        m_PreviousHoveredEntity = m_HoveredEntity;
+        m_HoveredEntity = entt::null;
+        if (auto hit = raycast(mouse))
+            m_HoveredEntity = hit->entity;
+
+        if (m_PreviousHoveredEntity != m_HoveredEntity)
+        {
+            if (m_PreviousHoveredEntity != entt::null)
+                pushEvent(UiEventType::PointerExit, m_PreviousHoveredEntity, mouse);
+            if (m_HoveredEntity != entt::null)
+                pushEvent(UiEventType::PointerEnter, m_HoveredEntity, mouse);
+        }
+        if (m_HoveredEntity != entt::null)
+            pushEvent(UiEventType::PointerMove, m_HoveredEntity, mouse);
+
+        if (auto* button = reg.try_get<UiButtonComponent>(m_HoveredEntity); button && button->enabled)
+            button->hovered = true;
+
         if (m_HoveredEntity != entt::null && input->getMouseButtonDown(MouseCode::eLeft))
+        {
             m_PressedEntity = m_HoveredEntity;
+            pushEvent(UiEventType::PointerDown, m_PressedEntity, mouse, 0u);
+            if (auto* slider = reg.try_get<UiSliderComponent>(m_PressedEntity); slider && slider->enabled && slider->interactable)
+                if (auto rect = resolvedRect(m_PressedEntity))
+                    setSliderFromPointer(*slider, *rect, mouse);
+        }
 
         if (m_PressedEntity != entt::null)
         {
             if (auto* button = reg.try_get<UiButtonComponent>(m_PressedEntity))
                 button->pressed = input->getMouseButton(MouseCode::eLeft);
+            if (auto* slider = reg.try_get<UiSliderComponent>(m_PressedEntity); slider && slider->enabled && slider->interactable)
+                if (input->getMouseButton(MouseCode::eLeft))
+                    if (auto rect = resolvedRect(m_PressedEntity))
+                        setSliderFromPointer(*slider, *rect, mouse);
             if (input->getMouseButtonUp(MouseCode::eLeft))
             {
+                pushEvent(UiEventType::PointerUp, m_PressedEntity, mouse, 0u);
                 if (m_HoveredEntity == m_PressedEntity)
+                {
+                    pushEvent(UiEventType::Click, m_PressedEntity, mouse, 0u, 1u);
                     if (auto* button = reg.try_get<UiButtonComponent>(m_PressedEntity))
-                        button->clicked = true;
+                        if (button->enabled && button->interactable)
+                            button->clicked = true;
+                    if (auto* toggle = reg.try_get<UiToggleComponent>(m_PressedEntity))
+                        if (toggle->enabled && toggle->interactable)
+                            toggle->checked = !toggle->checked;
+                }
                 m_PressedEntity = entt::null;
             }
         }

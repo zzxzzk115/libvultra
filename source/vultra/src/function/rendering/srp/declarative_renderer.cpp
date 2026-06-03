@@ -5,6 +5,7 @@
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/structs/framebuffer_info.hpp"
 #include "vultra/core/rhi/structs/render_backend_api.hpp"
+#include "vultra/core/rhi/texture.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
 #include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
@@ -732,6 +733,7 @@ namespace vultra
             });
         };
 
+        pass("CameraClear", {}, {"color"});
         pass("CompatibilityBaseColor", {}, {"color"});
         pass("DirectGBuffer", {"depth"}, {"color", "depth", "normal", "material", "entityId"});
         pass("DirectDepthPre", {}, {"depth"});
@@ -1719,6 +1721,53 @@ namespace vultra
                     .outputs = std::move(outputs),
                 });
             };
+
+            registerBuiltin("CameraClear",
+                            {},
+                            {"color"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx || !ctx->view().target)
+                                    return;
+
+                                struct PassData
+                                {
+                                    FrameGraphResource color;
+                                };
+
+                                const auto desc =
+                                    makeRenderViewTextureDesc(ctx->view(), ctx->view().target->getPixelFormat());
+                                const auto data = ctx->fg.addCallbackPass<PassData>(
+                                    "CameraClearPass",
+                                    [desc](FrameGraph::Builder& builder, PassData& pd) {
+                                        PASS_SETUP_ZONE;
+                                        pd.color = builder.create<framegraph::FrameGraphTexture>("CameraClear", desc);
+                                        pd.color = builder.write(pd.color,
+                                                                 framegraph::Attachment {
+                                                                     .index       = 0,
+                                                                     .imageAspect = rhi::ImageAspect::eColor,
+                                                                     .clearValue  = framegraph::ClearValue::eOpaqueBlack,
+                                                                 });
+                                    },
+                                    [](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
+                                        VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
+                                        auto framebufferInfo = rc.framebufferInfo();
+                                        if (!framebufferInfo || framebufferInfo->colorAttachments.empty())
+                                            return;
+
+                                        auto& attachment = framebufferInfo->colorAttachments[0];
+                                        attachment.clearValue =
+                                            rc.view().camera ? rc.view().camera->clearValue : rc.view().clearValue;
+                                        attachment.loadOp = rhi::AttachmentLoadOp::eClear;
+                                        rc.cb.beginRendering(*framebufferInfo).endRendering();
+                                    });
+
+                                ctx->data.set(kResKey_FinalCompositionSource, data.color);
+                                passCtx.setOutput("color", data.color);
+                            });
 
             registerBuiltin("CompatibilityBaseColor",
                             {},

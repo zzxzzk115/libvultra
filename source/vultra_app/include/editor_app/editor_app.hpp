@@ -111,7 +111,8 @@ namespace vultra_app
         void startProjectLoading(const std::filesystem::path& projectRoot);
         void startAssetImportTask(const std::filesystem::path&              projectRoot,
                                   const std::string&                       assetRoot,
-                                  std::vector<std::filesystem::path>       importPaths = {});
+                                  std::vector<std::filesystem::path>       importPaths = {},
+                                  bool                                     forceReimport = false);
         void waitForAssetImportTask();
         void updateBackgroundAssetImport(EditorContext& ctx);
         void updateBackgroundThumbnails(EditorContext& ctx);

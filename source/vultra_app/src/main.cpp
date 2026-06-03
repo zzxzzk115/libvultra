@@ -26,6 +26,7 @@
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/rendering/srp/builtin/universal_renderer.hpp>
 #include <vultra/function/rendering/srp/builtin/universal_rt_renderer.hpp>
+#include <vultra/function/rendering/srp/declarative_renderer.hpp>
 #include <vultra/function/rendering/srp/renderer.hpp>
 #include <vultra/function/scene/scene_system.hpp>
 #include <vultra/function/scripting/script_system.hpp>
@@ -249,6 +250,8 @@ namespace
 
         renderService->registerRenderer(vultra::createRef<vultra::UniversalRenderer>());
         renderService->registerRenderer(vultra::createRef<vultra::UniversalRtRenderer>());
+        renderService->registerRenderer(
+            vultra::createRef<vultra::DeclarativeRenderer>("builtin://render/ui_editor.vrg.json", "editor-ui2d"));
     }
 
     void applyMcpLaunchOptions(vultra_app::AppState& state, const vultra_app::LaunchOptions& options)

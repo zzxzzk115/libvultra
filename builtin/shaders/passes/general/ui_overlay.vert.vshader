@@ -24,6 +24,7 @@ layout(push_constant) uniform PushConstants
     vec2 targetResolutionPx;
     uint itemCount;
     uint itemIndex;
+    vec4 previewTransform;
 };
 
 vec2 cornerForVertex(uint vertexIndex)
@@ -44,21 +45,29 @@ void main()
     v_ItemIndex = itemIndex;
     UiDrawItem item = u_Ui.items[v_ItemIndex];
 
-    vec2 reference = max(item.canvas.xy, vec2(1.0));
-    float scaleMode = item.canvas.z;
-    vec2 scale = vec2(1.0);
-    if (scaleMode > 0.5)
+    vec2 scale = vec2(previewTransform.z);
+    vec2 offsetPx = previewTransform.xy;
+    if (previewTransform.w < 0.5)
     {
-        float uniformScale = min(targetResolutionPx.x / reference.x, targetResolutionPx.y / reference.y);
-        scale = vec2(uniformScale);
+        vec2 reference = max(item.canvas.xy, vec2(1.0));
+        float scaleMode = item.canvas.z;
+        scale = vec2(1.0);
+        if (scaleMode > 0.5)
+        {
+            float uniformScale = min(targetResolutionPx.x / reference.x, targetResolutionPx.y / reference.y);
+            scale = vec2(uniformScale);
+        }
+
+        vec2 canvasPx = reference * scale;
+        offsetPx = (targetResolutionPx - canvasPx) * 0.5;
     }
 
-    vec4 rect = vec4(item.rectPx.xy * scale, item.rectPx.zw * scale);
+    vec4 rect = vec4(item.rectPx.xy * scale + offsetPx, item.rectPx.zw * scale + offsetPx);
     vec2 corner = cornerForVertex(uint(gl_VertexIndex));
     vec2 px = mix(rect.xy, rect.zw, corner);
     v_Uv = corner;
 
     vec2 ndc = vec2((px.x / max(targetResolutionPx.x, 1.0)) * 2.0 - 1.0,
-                    1.0 - (px.y / max(targetResolutionPx.y, 1.0)) * 2.0);
+                    (px.y / max(targetResolutionPx.y, 1.0)) * 2.0 - 1.0);
     gl_Position = vec4(ndc, 0.0, 1.0);
 }

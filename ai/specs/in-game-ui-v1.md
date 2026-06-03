@@ -11,8 +11,10 @@ resolution.
   anchored position, size delta, rotation, and scale are pixel-space layout
   data except `scale`, which is a multiplier.
 - `UiPanelComponent`, `UiImageComponent`, `UiTextComponent`,
-  `UiButtonComponent`, and `UiLayoutComponent`: common authoring components for
-  MVP panels, images, text, buttons, and simple horizontal/vertical/grid layout.
+  `UiButtonComponent`, `UiToggleComponent`, `UiSliderComponent`,
+  `UiProgressBarComponent`, and `UiLayoutComponent`: common authoring
+  components for MVP panels, images, text, buttons, toggles, sliders, progress
+  bars, and simple horizontal/vertical/grid layout.
 
 ## Pixel Semantics
 
@@ -45,6 +47,9 @@ Shared editor commands and Runtime MCP component kinds include:
 - `ui_image`
 - `ui_text`
 - `ui_button`
+- `ui_toggle`
+- `ui_slider`
+- `ui_progress_bar`
 - `ui_layout`
 
 Entity templates include:
@@ -54,9 +59,20 @@ Entity templates include:
 - `ui_text`
 - `ui_image`
 - `ui_button`
+- `ui_toggle`
+- `ui_slider`
+- `ui_progress_bar`
 
 When `scene.update_component` targets `transform` on a UI entity, the command
 maps position, rotation, scale, size, anchors, and pivot onto RectTransform.
+
+`UiButtonComponent` follows Unity-style target graphic semantics. Its
+`targetGraphic` field points at the UI entity whose visual component should be
+tinted by `normalColor`, `hoveredColor`, and `pressedColor`. If `targetGraphic`
+is empty, the button falls back to graphics on its own entity. The `ui_button`
+template adds `UiButtonComponent` and `UiImageComponent` to one entity and sets
+`targetGraphic` to itself. A button with a target graphic does not draw an
+additional full-rect overlay.
 
 ## Lua
 
@@ -64,6 +80,9 @@ Lua exposes:
 
 - `entity.rectTransform`
 - `entity.uiButton`
+- `entity.uiToggle`
+- `entity.uiSlider`
+- `entity.uiProgressBar`
 - `UI.isPointerOverUI()`
 - `UI.hoveredEntity()`
 - `UI.pressedEntity()`
@@ -73,12 +92,13 @@ UI Lua APIs use the same Canvas reference pixel units as editor/MCP authoring.
 ## Rendering
 
 Runtime rendering submits UI draw items from `RenderWorldCooker` into the
-render graph. `UiOverlayPass` composites panels, images, and buttons over the
-final scene color using WebGPU-compatible bindings. `UiTextComponent` is
-authorable and script-visible in V1, but text glyph rendering is deferred.
+render graph. `UiOverlayPass` composites panels, images, buttons, toggles,
+sliders, and progress bars over the final scene color using WebGPU-compatible
+bindings. `UiTextComponent` is authorable and script-visible in V1, but text
+glyph rendering is deferred.
 
 ## Deferred
 
-Slider, Checkbox, RadioButton, InputText, IME, world-space UI, XR UI,
-nine-slice, text glyph rendering, full font asset import, and full retained-mode
-UI rendering polish are deferred beyond V1.
+RadioButton, InputText, IME, world-space UI, XR UI, nine-slice, text glyph
+rendering, full font asset import, and full retained-mode UI rendering polish
+are deferred beyond V1.

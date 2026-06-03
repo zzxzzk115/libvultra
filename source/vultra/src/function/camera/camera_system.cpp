@@ -288,6 +288,7 @@ namespace vultra
                     cam.clearValue  = camera.clearColor;
                     cam.clearMode   = camera.clearMode;
                     cam.renderImGui = false;
+                    cam.cullingMask = camera.cullingMask;
                     cam.rendererKey = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
 
                     const auto* xrView      = reg.try_get<XRViewComponent>(e);

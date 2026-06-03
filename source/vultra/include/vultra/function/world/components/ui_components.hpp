@@ -56,12 +56,45 @@ namespace vultra
     {
         bool      enabled {true};
         bool      interactable {true};
+        CoreUUID  targetGraphic;
         glm::vec4 normalColor {0.18f, 0.22f, 0.28f, 1.0f};
         glm::vec4 hoveredColor {0.24f, 0.30f, 0.38f, 1.0f};
         glm::vec4 pressedColor {0.12f, 0.16f, 0.22f, 1.0f};
         bool      hovered {false};
         bool      pressed {false};
         bool      clicked {false};
+    };
+
+    struct UiToggleComponent
+    {
+        bool      enabled {true};
+        bool      interactable {true};
+        bool      checked {false};
+        glm::vec4 offColor {0.18f, 0.22f, 0.28f, 1.0f};
+        glm::vec4 onColor {0.16f, 0.48f, 0.84f, 1.0f};
+        glm::vec4 checkColor {1.0f};
+    };
+
+    struct UiSliderComponent
+    {
+        bool      enabled {true};
+        bool      interactable {true};
+        float     value {0.5f};
+        float     minValue {0.0f};
+        float     maxValue {1.0f};
+        glm::vec4 trackColor {0.16f, 0.18f, 0.22f, 1.0f};
+        glm::vec4 fillColor {0.18f, 0.50f, 0.88f, 1.0f};
+        glm::vec4 handleColor {0.95f, 0.97f, 1.0f, 1.0f};
+    };
+
+    struct UiProgressBarComponent
+    {
+        bool      enabled {true};
+        float     value {0.5f};
+        float     minValue {0.0f};
+        float     maxValue {1.0f};
+        glm::vec4 trackColor {0.14f, 0.16f, 0.20f, 1.0f};
+        glm::vec4 fillColor {0.20f, 0.62f, 0.34f, 1.0f};
     };
 
     struct UiLayoutComponent

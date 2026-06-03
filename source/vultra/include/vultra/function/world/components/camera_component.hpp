@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vultra/function/world/components/layer_component.hpp"
+
 #include <glm/vec4.hpp>
 
 #include <cstdint>
@@ -23,6 +25,7 @@ namespace vultra
         uint32_t clearMode {0};
         glm::vec4 clearColor {0.02f, 0.025f, 0.035f, 1.0f};
         int       priority {0};
+        uint32_t  cullingMask {kRenderLayerAllMask};
 
         std::string rendererKey {"universal"};
     };

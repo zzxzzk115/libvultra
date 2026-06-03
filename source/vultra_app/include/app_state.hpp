@@ -153,6 +153,7 @@ namespace vultra_app
         uint64_t              assetFileGeneration {0};
         uint64_t              sceneContentGeneration {0};
         bool                  pendingAssetImportRefresh {false};
+        bool                  pendingAssetImportForceReimport {false};
         std::vector<std::filesystem::path> pendingAssetImportPaths;
         std::vector<std::filesystem::path> pendingExternalAssetDrops;
         std::vector<EditorCommand> pendingEditorCommands;
