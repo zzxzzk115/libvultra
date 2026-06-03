@@ -569,7 +569,7 @@ namespace
                 engine.ctx().config.window.width                        = 1280;
                 engine.ctx().config.window.height                       = 720;
                 engine.ctx().config.window.resizable                    = true;
-                engine.ctx().config.window.visible                      = true;
+                engine.ctx().config.window.visible                      = !m_Options.editorMode;
                 engine.ctx().config.window.decorated =
                     !m_Options.editorMode &&
                     engine.ctx().config.render.backendApi == vultra::rhi::RenderBackendApi::eWebGPU;

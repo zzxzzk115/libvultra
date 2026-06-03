@@ -439,6 +439,7 @@ namespace vultra_app
             engine.ctx().config.asset.loadFromVPK = false;
             engine.ctx().config.asset.assetRoot =
                 (project->projectDir / project->assetRoot).lexically_normal().generic_string();
+            engine.ctx().config.asset.enableImportScan = false;
             engine.ctx().config.render.renderPipelineAsset = project->editingRenderGraph;
             engine.ctx().config.render.renderPipelineRendererKey.clear();
             return;
@@ -446,6 +447,7 @@ namespace vultra_app
 
         engine.ctx().config.asset.loadFromVPK = false;
         engine.ctx().config.asset.assetRoot   = (projectPath / "resources").lexically_normal().generic_string();
+        engine.ctx().config.asset.enableImportScan = false;
     }
 
     void EditorApp::logStartup(const LaunchOptions& options)
@@ -962,6 +964,8 @@ namespace vultra_app
             }
             if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
                 worldService->world().clear();
+            if (auto* windowService = ctx.services->tryGet<IWindowService>())
+                (void)windowService->window().setVisible(false);
         }
 
         m_WindowManager.destroy(ctx);
@@ -1426,9 +1430,6 @@ namespace vultra_app
         if (projectReloadRequested && m_Loading.phase == LoadingPhase::Idle)
         {
             startProjectLoading(projectRoot);
-            releaseEditorStateForProjectLoad(ctx);
-            applySplashWindow(ctx);
-            return true;
         }
 
         if (m_Loading.phase == LoadingPhase::Idle)
@@ -1437,14 +1438,12 @@ namespace vultra_app
         if (projectRoot != m_Loading.projectRoot)
         {
             startProjectLoading(projectRoot);
-            releaseEditorStateForProjectLoad(ctx);
-            applySplashWindow(ctx);
-            return true;
         }
 
         switch (m_Loading.phase)
         {
             case LoadingPhase::Pending:
+                releaseEditorStateForProjectLoad(ctx);
                 applySplashWindow(ctx);
                 m_Loading.phase    = LoadingPhase::ShowSplash;
                 m_Loading.progress = 0.06f;
@@ -1452,8 +1451,6 @@ namespace vultra_app
                 return true;
 
             case LoadingPhase::ShowSplash:
-                applySplashWindow(ctx);
-                releaseEditorStateForProjectLoad(ctx);
                 startAssetImportTask(projectRoot, ctx.state.currentAssetRoot);
                 m_Loading.phase    = LoadingPhase::ImportAssets;
                 m_Loading.progress = 0.08f;
