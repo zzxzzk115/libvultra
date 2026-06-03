@@ -123,7 +123,7 @@ namespace vultra
                 vertices.push_back({faces[face][1], normals[face], {1.0f, 0.0f}});
                 vertices.push_back({faces[face][2], normals[face], {1.0f, 1.0f}});
                 vertices.push_back({faces[face][3], normals[face], {0.0f, 1.0f}});
-                indices.insert(indices.end(), {base, base + 1u, base + 2u, base, base + 2u, base + 3u});
+                indices.insert(indices.end(), {base, base + 2u, base + 1u, base, base + 3u, base + 2u});
             }
             return createMesh(gpuResources, rd, vertices, indices, materialIndex);
         }
