@@ -342,6 +342,8 @@ namespace vultra
 
             for (const auto& instance : renderWorld.instances)
             {
+                if (!renderLayerVisible(camera, instance.layerMask))
+                    continue;
                 if (instance.meshIndex >= resources.meshes.size())
                     continue;
                 const auto& mesh = resources.meshes[instance.meshIndex];

@@ -14,6 +14,7 @@
 #include <vultra/function/world/components/entity_status_component.hpp>
 #include <vultra/function/world/components/environment_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
+#include <vultra/function/world/components/layer_component.hpp>
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
@@ -132,6 +133,84 @@ namespace vultra_app
                         value.value("w", fallback.w)};
             }
             return fallback;
+        }
+
+        vultra::MaterialPropertyBlockValueType materialPropertyBlockTypeArg(const nlohmann::json& value)
+        {
+            if (!value.is_string())
+                return vultra::MaterialPropertyBlockValueType::eFloat;
+            const auto type = lowerString(value.get<std::string>());
+            if (type == "color" || type == "vec4")
+                return vultra::MaterialPropertyBlockValueType::eColor;
+            if (type == "texture" || type == "texture2d" || type == "texture_uri")
+                return vultra::MaterialPropertyBlockValueType::eTexture2D;
+            return vultra::MaterialPropertyBlockValueType::eFloat;
+        }
+
+        std::vector<vultra::MaterialPropertyBlockEntry>
+        materialPropertyBlockEntriesArg(const nlohmann::json& values)
+        {
+            std::vector<vultra::MaterialPropertyBlockEntry> out;
+            if (!values.is_array())
+                return out;
+
+            for (const auto& value : values)
+            {
+                if (!value.is_object())
+                    continue;
+
+                vultra::MaterialPropertyBlockEntry entry;
+                entry.name = value.value("name", std::string {});
+                if (entry.name.empty())
+                    continue;
+
+                entry.type = materialPropertyBlockTypeArg(value.value("type", nlohmann::json {}));
+                switch (entry.type)
+                {
+                    case vultra::MaterialPropertyBlockValueType::eColor:
+                        entry.colorValue = vec4Arg(value, "value", vec4Arg(value, "color", entry.colorValue));
+                        break;
+                    case vultra::MaterialPropertyBlockValueType::eTexture2D:
+                        entry.textureUri = value.value("value", value.value("textureUri", value.value("texture", entry.textureUri)));
+                        break;
+                    case vultra::MaterialPropertyBlockValueType::eFloat:
+                    default:
+                        entry.floatValue = value.value("value", value.value("floatValue", entry.floatValue));
+                        break;
+                }
+                out.push_back(std::move(entry));
+            }
+            return out;
+        }
+
+        std::vector<vultra::MaterialSlotOverride>
+        materialSlotOverridesArg(const nlohmann::json& args,
+                                 const std::vector<vultra::MaterialSlotOverride>& fallback)
+        {
+            if (!args.contains("materialOverrides"))
+                return fallback;
+
+            const auto& values = args["materialOverrides"];
+            if (!values.is_array())
+                return fallback;
+
+            std::vector<vultra::MaterialSlotOverride> out;
+            for (const auto& value : values)
+            {
+                if (!value.is_object())
+                    continue;
+
+                vultra::MaterialSlotOverride entry;
+                entry.slot          = value.value("slot", 0u);
+                entry.material      = value.value("material", std::string {});
+                entry.materialGraph = value.value("materialGraph", value.value("graph", std::string {}));
+                if (entry.material.empty() && entry.materialGraph.empty())
+                    entry.material = value.value("uri", std::string {});
+                if (value.contains("properties"))
+                    entry.properties = materialPropertyBlockEntriesArg(value["properties"]);
+                out.push_back(std::move(entry));
+            }
+            return out;
         }
 
         glm::quat quatArg(const nlohmann::json& args, const char* key, const glm::quat fallback)
@@ -368,8 +447,16 @@ namespace vultra_app
                 return "ui_image";
             if (kind == "uitext" || kind == "uitextcomponent")
                 return "ui_text";
+            if (kind == "uiimagebutton" || kind == "imagebutton")
+                return "ui_button";
             if (kind == "uibutton" || kind == "uibuttoncomponent")
                 return "ui_button";
+            if (kind == "uitoggle" || kind == "uitogglecomponent" || kind == "ui_checkbox" || kind == "uicheckbox")
+                return "ui_toggle";
+            if (kind == "uislider" || kind == "uislidercomponent")
+                return "ui_slider";
+            if (kind == "uiprogressbar" || kind == "uiprogressbarcomponent" || kind == "ui_progress")
+                return "ui_progress_bar";
             if (kind == "uilayout" || kind == "uilayoutcomponent")
                 return "ui_layout";
             return kind;
@@ -404,6 +491,659 @@ namespace vultra_app
             if (const auto* name = reg.try_get<vultra::NameComponent>(entity))
                 out["name"] = name->name;
             return out;
+        }
+
+        nlohmann::json vec2Json(const glm::vec2& value)
+        {
+            return nlohmann::json::array({value.x, value.y});
+        }
+
+        nlohmann::json vec3Json(const glm::vec3& value)
+        {
+            return nlohmann::json::array({value.x, value.y, value.z});
+        }
+
+        nlohmann::json vec4Json(const glm::vec4& value)
+        {
+            return nlohmann::json::array({value.x, value.y, value.z, value.w});
+        }
+
+        nlohmann::json quatJson(const glm::quat& value)
+        {
+            return nlohmann::json::array({value.w, value.x, value.y, value.z});
+        }
+
+        nlohmann::json uuidJson(const vultra::CoreUUID& value)
+        {
+            return value.toString();
+        }
+
+        nlohmann::json fieldJson(const char* name,
+                                 const char* type,
+                                 std::initializer_list<const char*> aliases = {},
+                                 nlohmann::json extra = nlohmann::json::object())
+        {
+            nlohmann::json out = std::move(extra);
+            out["name"]       = name;
+            out["type"]       = type;
+            if (aliases.size() > 0)
+            {
+                auto aliasJson = nlohmann::json::array();
+                for (const char* alias : aliases)
+                    aliasJson.push_back(alias);
+                out["aliases"] = std::move(aliasJson);
+            }
+            return out;
+        }
+
+        nlohmann::json componentKindListJson()
+        {
+            return nlohmann::json::array({
+                "transform",
+                "name",
+                "entity_status",
+                "mesh",
+                "rigid_body",
+                "sphere_shape",
+                "box_shape",
+                "capsule_shape",
+                "camera",
+                "light",
+                "environment",
+                "xr_view",
+                "script",
+                "canvas",
+                "rect_transform",
+                "ui_panel",
+                "ui_image",
+                "ui_text",
+                "ui_button",
+                "ui_toggle",
+                "ui_slider",
+                "ui_progress_bar",
+                "ui_layout",
+            });
+        }
+
+        nlohmann::json materialPropertyBlockEntryJson(const vultra::MaterialPropertyBlockEntry& entry)
+        {
+            nlohmann::json out {{"name", entry.name}};
+            switch (entry.type)
+            {
+                case vultra::MaterialPropertyBlockValueType::eColor:
+                    out["type"]  = "color";
+                    out["value"] = vec4Json(entry.colorValue);
+                    break;
+                case vultra::MaterialPropertyBlockValueType::eTexture2D:
+                    out["type"]  = "texture2D";
+                    out["value"] = entry.textureUri;
+                    break;
+                case vultra::MaterialPropertyBlockValueType::eFloat:
+                default:
+                    out["type"]  = "float";
+                    out["value"] = entry.floatValue;
+                    break;
+            }
+            return out;
+        }
+
+        nlohmann::json materialSlotOverrideJson(const vultra::MaterialSlotOverride& value)
+        {
+            nlohmann::json out {{"slot", value.slot}, {"material", value.material}};
+            if (!value.materialGraph.empty())
+                out["materialGraph"] = value.materialGraph;
+            auto properties = nlohmann::json::array();
+            for (const auto& entry : value.properties)
+                properties.push_back(materialPropertyBlockEntryJson(entry));
+            out["properties"] = std::move(properties);
+            return out;
+        }
+
+        nlohmann::json componentMetadataJson(const std::string& kind)
+        {
+            const auto k = componentKindArg({{"kind", kind}});
+            nlohmann::json out {{"kind", k}, {"updateCommand", "vultra.scene.update_component"}};
+            auto fields = nlohmann::json::array();
+
+            if (k == "transform")
+            {
+                out["cxxComponent"] = "TransformComponent";
+                fields.push_back(fieldJson("position", "vec3"));
+                fields.push_back(fieldJson("rotation", "quat", {},
+                                           {{"format", "array [w, x, y, z] or object {w,x,y,z}"}}));
+                fields.push_back(fieldJson("scale", "vec3"));
+            }
+            else if (k == "name")
+            {
+                out["cxxComponent"] = "NameComponent";
+                fields.push_back(fieldJson("name", "string"));
+            }
+            else if (k == "entity_status")
+            {
+                out["cxxComponent"] = "EntityStatusComponent";
+                fields.push_back(fieldJson("active", "bool"));
+                fields.push_back(fieldJson("visible", "bool"));
+                fields.push_back(fieldJson("locked", "bool"));
+                fields.push_back(fieldJson("selectable", "bool"));
+            }
+            else if (k == "mesh")
+            {
+                out["cxxComponent"] = "MeshComponent";
+                fields.push_back(fieldJson("mesh", "uuid", {}, {{"readOnly", true}}));
+                fields.push_back(fieldJson("builtinGeometry", "uint32", {"builtin_geometry", "primitive", "primitiveKind"},
+                                           {{"enum",
+                                             nlohmann::json::array({{{"value", 0}, {"name", "quad"}},
+                                                                   {{"value", 1}, {"name", "cube"}},
+                                                                   {{"value", 2}, {"name", "sphere"}},
+                                                                   {{"value", 3}, {"name", "capsule"}},
+                                                                   {{"value", 4294967295u}, {"name", "external_mesh"}}})}}));
+                fields.push_back(fieldJson("materialColor", "vec4/color", {"color"}));
+                nlohmann::json propertyEntry {
+                    {"type", "object"},
+                    {"fields",
+                     nlohmann::json::array({fieldJson("name", "string"),
+                                            fieldJson("type",
+                                                      "enum",
+                                                      {},
+                                                      {{"enum",
+                                                        nlohmann::json::array({"float", "color", "texture2D"})}}),
+                                            fieldJson("value",
+                                                      "number|vec4|uri",
+                                                      {"floatValue", "color", "textureUri"})})}};
+                nlohmann::json slotEntry {
+                    {"type", "object"},
+                    {"fields",
+                     nlohmann::json::array({fieldJson("slot", "uint32"),
+                                            fieldJson("material", "uri", {}, {{"asset", ".vmat.json"}}),
+                                            fieldJson("materialGraph",
+                                                      "uri",
+                                                      {"graph"},
+                                                      {{"asset", ".vmatgraph.json"}, {"legacy", true}}),
+                                            fieldJson("properties", "array", {}, {{"items", propertyEntry}})})}};
+                fields.push_back(fieldJson("materialOverrides", "array", {}, {{"items", slotEntry}}));
+            }
+            else if (k == "rigid_body")
+            {
+                out["cxxComponent"] = "RigidBodyComponent";
+                fields.push_back(fieldJson("motionType", "uint32|string", {},
+                                           {{"enum", {"static", "kinematic", "dynamic"}}}));
+                fields.push_back(fieldJson("objectLayer", "uint32"));
+                fields.push_back(fieldJson("isSensor", "bool"));
+                fields.push_back(fieldJson("motionQuality", "uint32"));
+                fields.push_back(fieldJson("allowSleeping", "bool"));
+                fields.push_back(fieldJson("friction", "float"));
+                fields.push_back(fieldJson("restitution", "float"));
+                fields.push_back(fieldJson("linearDamping", "float"));
+                fields.push_back(fieldJson("angularDamping", "float"));
+                fields.push_back(fieldJson("gravityFactor", "float"));
+                fields.push_back(fieldJson("linearVelocity", "vec3"));
+                fields.push_back(fieldJson("angularVelocity", "vec3"));
+                fields.push_back(fieldJson("mass", "float"));
+                fields.push_back(fieldJson("overrideMass", "bool"));
+                fields.push_back(fieldJson("maxLinearVelocity", "float"));
+                fields.push_back(fieldJson("maxAngularVelocity", "float"));
+            }
+            else if (k == "sphere_shape")
+            {
+                out["cxxComponent"] = "SphereShapeComponent";
+                fields.push_back(fieldJson("radius", "float"));
+            }
+            else if (k == "box_shape")
+            {
+                out["cxxComponent"] = "BoxShapeComponent";
+                fields.push_back(fieldJson("halfExtents", "vec3"));
+            }
+            else if (k == "capsule_shape")
+            {
+                out["cxxComponent"] = "CapsuleShapeComponent";
+                fields.push_back(fieldJson("halfHeightOfCylinder", "float"));
+                fields.push_back(fieldJson("radius", "float"));
+            }
+            else if (k == "camera")
+            {
+                out["cxxComponent"] = "CameraComponent";
+                fields.push_back(fieldJson("primary", "bool"));
+                fields.push_back(fieldJson("projection", "uint32", {},
+                                           {{"enum",
+                                             nlohmann::json::array({{{"value", 0}, {"name", "perspective"}},
+                                                                   {{"value", 1}, {"name", "orthographic"}}})}}));
+                fields.push_back(fieldJson("fovYDegrees", "float"));
+                fields.push_back(fieldJson("orthographicHeight", "float"));
+                fields.push_back(fieldJson("zNear", "float"));
+                fields.push_back(fieldJson("zFar", "float"));
+                fields.push_back(fieldJson("clearMode", "uint32", {},
+                                           {{"enum",
+                                             nlohmann::json::array({{{"value", 0}, {"name", "solid_color"}},
+                                                                   {{"value", 1}, {"name", "environment_skybox"}}})}}));
+                fields.push_back(fieldJson("clearColor", "vec4/color"));
+                fields.push_back(fieldJson("priority", "int"));
+                fields.push_back(fieldJson("cullingMask", "uint32"));
+                fields.push_back(fieldJson("rendererKey", "string"));
+            }
+            else if (k == "light")
+            {
+                out["cxxComponent"] = "LightComponent";
+                fields.push_back(fieldJson("kind", "uint32", {"lightKind", "kindValue"},
+                                           {{"enum",
+                                             nlohmann::json::array({{{"value", 0}, {"name", "directional"}},
+                                                                   {{"value", 1}, {"name", "point"}},
+                                                                   {{"value", 2}, {"name", "spot"}},
+                                                                   {{"value", 3}, {"name", "area"}}})}}));
+                fields.push_back(fieldJson("color", "vec3/color"));
+                fields.push_back(fieldJson("intensity", "float"));
+                fields.push_back(fieldJson("range", "float"));
+                fields.push_back(fieldJson("radius", "float"));
+                fields.push_back(fieldJson("width", "float"));
+                fields.push_back(fieldJson("height", "float"));
+                fields.push_back(fieldJson("innerConeDegrees", "float"));
+                fields.push_back(fieldJson("outerConeDegrees", "float"));
+                fields.push_back(fieldJson("castsShadow", "bool"));
+                fields.push_back(fieldJson("twoSided", "bool"));
+            }
+            else if (k == "environment")
+            {
+                out["cxxComponent"] = "EnvironmentComponent";
+            }
+            else if (k == "xr_view")
+            {
+                out["cxxComponent"] = "XRViewComponent";
+            }
+            else if (k == "script")
+            {
+                out["cxxComponent"] = "ScriptComponent";
+                fields.push_back(fieldJson("scriptUri", "uri", {"uri"}));
+                fields.push_back(fieldJson("enabled", "bool"));
+            }
+            else if (k == "canvas")
+            {
+                out["cxxComponent"] = "CanvasComponent";
+                fields.push_back(fieldJson("enabled", "bool"));
+                fields.push_back(fieldJson("sortOrder", "int", {"sort_order"}));
+                fields.push_back(fieldJson("referenceResolutionPx", "vec2", {"reference_resolution_px"}));
+                fields.push_back(fieldJson("scaleMode", "uint32", {"scale_mode"}));
+            }
+            else if (k == "rect_transform")
+            {
+                out["cxxComponent"] = "RectTransformComponent";
+                fields.push_back(fieldJson("anchorMin", "vec2", {"anchor_min"}));
+                fields.push_back(fieldJson("anchorMax", "vec2", {"anchor_max"}));
+                fields.push_back(fieldJson("pivot", "vec2"));
+                fields.push_back(fieldJson("anchoredPositionPx", "vec2",
+                                           {"anchored_position_px", "anchoredPosition", "position"}));
+                fields.push_back(fieldJson("sizeDeltaPx", "vec2", {"size_delta_px", "sizeDelta", "size"}));
+                fields.push_back(fieldJson("rotationDegrees", "float", {"rotation_degrees", "rotation"}));
+                fields.push_back(fieldJson("scale", "vec2"));
+            }
+            else if (k == "ui_panel")
+            {
+                out["cxxComponent"] = "UiPanelComponent";
+                fields.push_back(fieldJson("enabled", "bool"));
+                fields.push_back(fieldJson("color", "vec4/color"));
+                fields.push_back(fieldJson("borderRadiusPx", "float", {"border_radius_px"}));
+            }
+            else if (k == "ui_image")
+            {
+                out["cxxComponent"] = "UiImageComponent";
+                fields.push_back(fieldJson("enabled", "bool"));
+                fields.push_back(fieldJson("texture", "uuid", {"textureUuid"}));
+                fields.push_back(fieldJson("tint", "vec4/color"));
+                fields.push_back(fieldJson("fitMode", "uint32", {"fit_mode"}));
+            }
+            else if (k == "ui_text")
+            {
+                out["cxxComponent"] = "UiTextComponent";
+                fields.push_back(fieldJson("enabled", "bool"));
+                fields.push_back(fieldJson("text", "string"));
+                fields.push_back(fieldJson("color", "vec4/color"));
+                fields.push_back(fieldJson("fontSizePx", "float", {"font_size_px"}));
+                fields.push_back(fieldJson("horizontalAlign", "uint32", {"horizontal_align"}));
+                fields.push_back(fieldJson("verticalAlign", "uint32", {"vertical_align"}));
+            }
+            else if (k == "ui_button")
+            {
+                out["cxxComponent"] = "UiButtonComponent";
+                fields.push_back(fieldJson("enabled", "bool"));
+                fields.push_back(fieldJson("interactable", "bool"));
+                fields.push_back(fieldJson("targetGraphic", "uuid", {"target_graphic"}));
+                fields.push_back(fieldJson("normalColor", "vec4/color"));
+                fields.push_back(fieldJson("hoveredColor", "vec4/color"));
+                fields.push_back(fieldJson("pressedColor", "vec4/color"));
+            }
+            else if (k == "ui_toggle")
+            {
+                out["cxxComponent"] = "UiToggleComponent";
+                fields.push_back(fieldJson("enabled", "bool"));
+                fields.push_back(fieldJson("interactable", "bool"));
+                fields.push_back(fieldJson("checked", "bool"));
+                fields.push_back(fieldJson("offColor", "vec4/color", {"off_color"}));
+                fields.push_back(fieldJson("onColor", "vec4/color", {"on_color"}));
+                fields.push_back(fieldJson("checkColor", "vec4/color", {"check_color"}));
+            }
+            else if (k == "ui_slider")
+            {
+                out["cxxComponent"] = "UiSliderComponent";
+                fields.push_back(fieldJson("enabled", "bool"));
+                fields.push_back(fieldJson("interactable", "bool"));
+                fields.push_back(fieldJson("value", "float"));
+                fields.push_back(fieldJson("minValue", "float", {"min_value"}));
+                fields.push_back(fieldJson("maxValue", "float", {"max_value"}));
+                fields.push_back(fieldJson("trackColor", "vec4/color", {"track_color"}));
+                fields.push_back(fieldJson("fillColor", "vec4/color", {"fill_color"}));
+                fields.push_back(fieldJson("handleColor", "vec4/color"));
+            }
+            else if (k == "ui_progress_bar")
+            {
+                out["cxxComponent"] = "UiProgressBarComponent";
+                fields.push_back(fieldJson("enabled", "bool"));
+                fields.push_back(fieldJson("value", "float"));
+                fields.push_back(fieldJson("minValue", "float", {"min_value"}));
+                fields.push_back(fieldJson("maxValue", "float", {"max_value"}));
+                fields.push_back(fieldJson("trackColor", "vec4/color", {"track_color"}));
+                fields.push_back(fieldJson("fillColor", "vec4/color", {"fill_color"}));
+            }
+            else if (k == "ui_layout")
+            {
+                out["cxxComponent"] = "UiLayoutComponent";
+                fields.push_back(fieldJson("enabled", "bool"));
+                fields.push_back(fieldJson("kind", "uint32"));
+                fields.push_back(fieldJson("paddingPx", "vec4", {"padding_px"}));
+                fields.push_back(fieldJson("marginPx", "vec4", {"margin_px"}));
+                fields.push_back(fieldJson("spacingPx", "float", {"spacing_px"}));
+                fields.push_back(fieldJson("cellSizePx", "vec2", {"cell_size_px"}));
+            }
+            else
+            {
+                return {};
+            }
+
+            out["fields"] = std::move(fields);
+            return out;
+        }
+
+        nlohmann::json componentValueJson(vultra::World& world,
+                                          const entt::entity entity,
+                                          const std::string& kind,
+                                          std::string& errorMessage)
+        {
+            auto& reg = world.registry();
+            const auto k = componentKindArg({{"kind", kind}});
+            if (k == "transform")
+            {
+                const auto* c = reg.try_get<vultra::TransformComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have TransformComponent";
+                else
+                    return {{"position", vec3Json(c->position)}, {"rotation", quatJson(c->rotation)}, {"scale", vec3Json(c->scale)}};
+            }
+            else if (k == "name")
+            {
+                const auto* c = reg.try_get<vultra::NameComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have NameComponent";
+                else
+                    return {{"name", c->name}};
+            }
+            else if (k == "entity_status")
+            {
+                const auto* c = reg.try_get<vultra::EntityStatusComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have EntityStatusComponent";
+                else
+                    return {{"active", c->active}, {"visible", c->visible}, {"locked", c->locked}, {"selectable", c->selectable}};
+            }
+            else if (k == "mesh")
+            {
+                const auto* c = reg.try_get<vultra::MeshComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have MeshComponent";
+                else
+                {
+                    auto overrides = nlohmann::json::array();
+                    for (const auto& entry : c->materialOverrides)
+                        overrides.push_back(materialSlotOverrideJson(entry));
+                    return {{"mesh", uuidJson(c->mesh)},
+                            {"builtinGeometry", c->builtinGeometry},
+                            {"materialColor", vec4Json(c->materialColor)},
+                            {"materialOverrides", std::move(overrides)}};
+                }
+            }
+            else if (k == "rigid_body")
+            {
+                const auto* c = reg.try_get<vultra::RigidBodyComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have RigidBodyComponent";
+                else
+                    return {{"motionType", c->motionType},
+                            {"objectLayer", c->objectLayer},
+                            {"isSensor", c->isSensor},
+                            {"motionQuality", c->motionQuality},
+                            {"allowSleeping", c->allowSleeping},
+                            {"friction", c->friction},
+                            {"restitution", c->restitution},
+                            {"linearDamping", c->linearDamping},
+                            {"angularDamping", c->angularDamping},
+                            {"gravityFactor", c->gravityFactor},
+                            {"linearVelocity", vec3Json(c->linearVelocity)},
+                            {"angularVelocity", vec3Json(c->angularVelocity)},
+                            {"mass", c->mass},
+                            {"overrideMass", c->overrideMass},
+                            {"maxLinearVelocity", c->maxLinearVelocity},
+                            {"maxAngularVelocity", c->maxAngularVelocity}};
+            }
+            else if (k == "sphere_shape")
+            {
+                const auto* c = reg.try_get<vultra::SphereShapeComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have SphereShapeComponent";
+                else
+                    return {{"radius", c->radius}};
+            }
+            else if (k == "box_shape")
+            {
+                const auto* c = reg.try_get<vultra::BoxShapeComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have BoxShapeComponent";
+                else
+                    return {{"halfExtents", vec3Json(c->halfExtents)}};
+            }
+            else if (k == "capsule_shape")
+            {
+                const auto* c = reg.try_get<vultra::CapsuleShapeComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have CapsuleShapeComponent";
+                else
+                    return {{"halfHeightOfCylinder", c->halfHeightOfCylinder}, {"radius", c->radius}};
+            }
+            else if (k == "camera")
+            {
+                const auto* c = reg.try_get<vultra::CameraComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have CameraComponent";
+                else
+                    return {{"primary", c->primary},
+                            {"projection", c->projection},
+                            {"fovYDegrees", c->fovYDegrees},
+                            {"orthographicHeight", c->orthographicHeight},
+                            {"zNear", c->zNear},
+                            {"zFar", c->zFar},
+                            {"clearMode", c->clearMode},
+                            {"clearColor", vec4Json(c->clearColor)},
+                            {"priority", c->priority},
+                            {"cullingMask", c->cullingMask},
+                            {"rendererKey", c->rendererKey}};
+            }
+            else if (k == "light")
+            {
+                const auto* c = reg.try_get<vultra::LightComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have LightComponent";
+                else
+                    return {{"kind", c->kind},
+                            {"color", vec3Json(c->color)},
+                            {"intensity", c->intensity},
+                            {"range", c->range},
+                            {"radius", c->radius},
+                            {"width", c->width},
+                            {"height", c->height},
+                            {"innerConeDegrees", c->innerConeDegrees},
+                            {"outerConeDegrees", c->outerConeDegrees},
+                            {"castsShadow", c->castsShadow},
+                            {"twoSided", c->twoSided}};
+            }
+            else if (k == "environment")
+            {
+                if (!reg.all_of<vultra::EnvironmentComponent>(entity))
+                    errorMessage = "entity does not have EnvironmentComponent";
+                else
+                    return nlohmann::json::object();
+            }
+            else if (k == "xr_view")
+            {
+                if (!reg.all_of<vultra::XRViewComponent>(entity))
+                    errorMessage = "entity does not have XRViewComponent";
+                else
+                    return nlohmann::json::object();
+            }
+            else if (k == "script")
+            {
+                const auto* c = reg.try_get<vultra::ScriptComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have ScriptComponent";
+                else
+                    return {{"scriptUri", c->scriptUri}, {"enabled", c->enabled}};
+            }
+            else if (k == "canvas")
+            {
+                const auto* c = reg.try_get<vultra::CanvasComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have CanvasComponent";
+                else
+                    return {{"enabled", c->enabled},
+                            {"sortOrder", c->sortOrder},
+                            {"referenceResolutionPx", vec2Json(c->referenceResolutionPx)},
+                            {"scaleMode", c->scaleMode}};
+            }
+            else if (k == "rect_transform")
+            {
+                const auto* c = reg.try_get<vultra::RectTransformComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have RectTransformComponent";
+                else
+                    return {{"anchorMin", vec2Json(c->anchorMin)},
+                            {"anchorMax", vec2Json(c->anchorMax)},
+                            {"pivot", vec2Json(c->pivot)},
+                            {"anchoredPositionPx", vec2Json(c->anchoredPositionPx)},
+                            {"sizeDeltaPx", vec2Json(c->sizeDeltaPx)},
+                            {"rotationDegrees", c->rotationDegrees},
+                            {"scale", vec2Json(c->scale)}};
+            }
+            else if (k == "ui_panel")
+            {
+                const auto* c = reg.try_get<vultra::UiPanelComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have UiPanelComponent";
+                else
+                    return {{"enabled", c->enabled}, {"color", vec4Json(c->color)}, {"borderRadiusPx", c->borderRadiusPx}};
+            }
+            else if (k == "ui_image")
+            {
+                const auto* c = reg.try_get<vultra::UiImageComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have UiImageComponent";
+                else
+                    return {{"enabled", c->enabled},
+                            {"texture", uuidJson(c->texture)},
+                            {"tint", vec4Json(c->tint)},
+                            {"fitMode", c->fitMode}};
+            }
+            else if (k == "ui_text")
+            {
+                const auto* c = reg.try_get<vultra::UiTextComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have UiTextComponent";
+                else
+                    return {{"enabled", c->enabled},
+                            {"text", c->text},
+                            {"color", vec4Json(c->color)},
+                            {"fontSizePx", c->fontSizePx},
+                            {"horizontalAlign", c->horizontalAlign},
+                            {"verticalAlign", c->verticalAlign}};
+            }
+            else if (k == "ui_button")
+            {
+                const auto* c = reg.try_get<vultra::UiButtonComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have UiButtonComponent";
+                else
+                    return {{"enabled", c->enabled},
+                            {"interactable", c->interactable},
+                            {"targetGraphic", uuidJson(c->targetGraphic)},
+                            {"normalColor", vec4Json(c->normalColor)},
+                            {"hoveredColor", vec4Json(c->hoveredColor)},
+                            {"pressedColor", vec4Json(c->pressedColor)},
+                            {"hovered", c->hovered},
+                            {"pressed", c->pressed},
+                            {"clicked", c->clicked}};
+            }
+            else if (k == "ui_toggle")
+            {
+                const auto* c = reg.try_get<vultra::UiToggleComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have UiToggleComponent";
+                else
+                    return {{"enabled", c->enabled},
+                            {"interactable", c->interactable},
+                            {"checked", c->checked},
+                            {"offColor", vec4Json(c->offColor)},
+                            {"onColor", vec4Json(c->onColor)},
+                            {"checkColor", vec4Json(c->checkColor)}};
+            }
+            else if (k == "ui_slider")
+            {
+                const auto* c = reg.try_get<vultra::UiSliderComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have UiSliderComponent";
+                else
+                    return {{"enabled", c->enabled},
+                            {"interactable", c->interactable},
+                            {"value", c->value},
+                            {"minValue", c->minValue},
+                            {"maxValue", c->maxValue},
+                            {"trackColor", vec4Json(c->trackColor)},
+                            {"fillColor", vec4Json(c->fillColor)},
+                            {"handleColor", vec4Json(c->handleColor)}};
+            }
+            else if (k == "ui_progress_bar")
+            {
+                const auto* c = reg.try_get<vultra::UiProgressBarComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have UiProgressBarComponent";
+                else
+                    return {{"enabled", c->enabled},
+                            {"value", c->value},
+                            {"minValue", c->minValue},
+                            {"maxValue", c->maxValue},
+                            {"trackColor", vec4Json(c->trackColor)},
+                            {"fillColor", vec4Json(c->fillColor)}};
+            }
+            else if (k == "ui_layout")
+            {
+                const auto* c = reg.try_get<vultra::UiLayoutComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have UiLayoutComponent";
+                else
+                    return {{"enabled", c->enabled},
+                            {"kind", c->kind},
+                            {"paddingPx", vec4Json(c->paddingPx)},
+                            {"marginPx", vec4Json(c->marginPx)},
+                            {"spacingPx", c->spacingPx},
+                            {"cellSizePx", vec2Json(c->cellSizePx)}};
+            }
+            else
+            {
+                errorMessage = "unsupported component kind: " + k;
+            }
+            return {};
         }
 
         void applyTransformArgs(vultra::TransformComponent& transform, const nlohmann::json& args)
@@ -549,9 +1289,64 @@ namespace vultra_app
                 auto& button        = reg.get_or_emplace<vultra::UiButtonComponent>(entity);
                 button.enabled      = args.value("enabled", button.enabled);
                 button.interactable = args.value("interactable", button.interactable);
+                uuidArg(args, "targetGraphic", button.targetGraphic);
+                uuidArg(args, "target_graphic", button.targetGraphic);
                 button.normalColor  = vec4Arg(args, "normalColor", button.normalColor);
                 button.hoveredColor = vec4Arg(args, "hoveredColor", button.hoveredColor);
                 button.pressedColor = vec4Arg(args, "pressedColor", button.pressedColor);
+                (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
+                return true;
+            }
+            if (kind == "ui_toggle")
+            {
+                if (requireExisting && !reg.all_of<vultra::UiToggleComponent>(entity))
+                {
+                    errorMessage = "entity does not have UiToggleComponent";
+                    return false;
+                }
+                auto& toggle        = reg.get_or_emplace<vultra::UiToggleComponent>(entity);
+                toggle.enabled      = args.value("enabled", toggle.enabled);
+                toggle.interactable = args.value("interactable", toggle.interactable);
+                toggle.checked      = args.value("checked", toggle.checked);
+                toggle.offColor     = vec4Arg(args, "offColor", vec4Arg(args, "off_color", toggle.offColor));
+                toggle.onColor      = vec4Arg(args, "onColor", vec4Arg(args, "on_color", toggle.onColor));
+                toggle.checkColor   = vec4Arg(args, "checkColor", vec4Arg(args, "check_color", toggle.checkColor));
+                (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
+                return true;
+            }
+            if (kind == "ui_slider")
+            {
+                if (requireExisting && !reg.all_of<vultra::UiSliderComponent>(entity))
+                {
+                    errorMessage = "entity does not have UiSliderComponent";
+                    return false;
+                }
+                auto& slider        = reg.get_or_emplace<vultra::UiSliderComponent>(entity);
+                slider.enabled      = args.value("enabled", slider.enabled);
+                slider.interactable = args.value("interactable", slider.interactable);
+                slider.value        = args.value("value", slider.value);
+                slider.minValue     = args.value("minValue", args.value("min_value", slider.minValue));
+                slider.maxValue     = args.value("maxValue", args.value("max_value", slider.maxValue));
+                slider.trackColor   = vec4Arg(args, "trackColor", vec4Arg(args, "track_color", slider.trackColor));
+                slider.fillColor    = vec4Arg(args, "fillColor", vec4Arg(args, "fill_color", slider.fillColor));
+                slider.handleColor  = vec4Arg(args, "handleColor", vec4Arg(args, "handle_color", slider.handleColor));
+                (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
+                return true;
+            }
+            if (kind == "ui_progress_bar")
+            {
+                if (requireExisting && !reg.all_of<vultra::UiProgressBarComponent>(entity))
+                {
+                    errorMessage = "entity does not have UiProgressBarComponent";
+                    return false;
+                }
+                auto& progress      = reg.get_or_emplace<vultra::UiProgressBarComponent>(entity);
+                progress.enabled    = args.value("enabled", progress.enabled);
+                progress.value      = args.value("value", progress.value);
+                progress.minValue   = args.value("minValue", args.value("min_value", progress.minValue));
+                progress.maxValue   = args.value("maxValue", args.value("max_value", progress.maxValue));
+                progress.trackColor = vec4Arg(args, "trackColor", vec4Arg(args, "track_color", progress.trackColor));
+                progress.fillColor  = vec4Arg(args, "fillColor", vec4Arg(args, "fill_color", progress.fillColor));
                 (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
                 return true;
             }
@@ -610,6 +1405,7 @@ namespace vultra_app
                 auto& mesh = reg.get_or_emplace<vultra::MeshComponent>(entity);
                 mesh.builtinGeometry = builtinGeometryArg(args, mesh.builtinGeometry);
                 mesh.materialColor   = vec4Arg(args, "materialColor", vec4Arg(args, "color", mesh.materialColor));
+                mesh.materialOverrides = materialSlotOverridesArg(args, mesh.materialOverrides);
                 return true;
             }
             if (kind == "rigid_body")
@@ -689,6 +1485,7 @@ namespace vultra_app
                 camera.clearMode          = args.value("clearMode", camera.clearMode);
                 camera.clearColor         = vec4Arg(args, "clearColor", camera.clearColor);
                 camera.priority           = args.value("priority", camera.priority);
+                camera.cullingMask        = args.value("cullingMask", camera.cullingMask);
                 camera.rendererKey        = args.value("rendererKey", camera.rendererKey);
                 return true;
             }
@@ -797,6 +1594,12 @@ namespace vultra_app
                 return reg.remove<vultra::UiTextComponent>(entity) > 0u;
             if (kind == "ui_button")
                 return reg.remove<vultra::UiButtonComponent>(entity) > 0u;
+            if (kind == "ui_toggle")
+                return reg.remove<vultra::UiToggleComponent>(entity) > 0u;
+            if (kind == "ui_slider")
+                return reg.remove<vultra::UiSliderComponent>(entity) > 0u;
+            if (kind == "ui_progress_bar")
+                return reg.remove<vultra::UiProgressBarComponent>(entity) > 0u;
             if (kind == "ui_layout")
                 return reg.remove<vultra::UiLayoutComponent>(entity) > 0u;
             errorMessage = "unsupported component kind: " + kind;
@@ -815,7 +1618,12 @@ namespace vultra_app
             const auto normalized = lowerString(kind);
             const auto isUiElement = normalized == "ui_panel" || normalized == "uipanel" || normalized == "ui_text" ||
                                      normalized == "uitext" || normalized == "ui_image" || normalized == "uiimage" ||
-                                     normalized == "ui_button" || normalized == "uibutton";
+                                     normalized == "ui_button" || normalized == "uibutton" ||
+                                     normalized == "ui_toggle" || normalized == "uitoggle" ||
+                                     normalized == "ui_checkbox" || normalized == "uicheckbox" ||
+                                     normalized == "ui_slider" || normalized == "uislider" ||
+                                     normalized == "ui_progress_bar" || normalized == "uiprogressbar" ||
+                                     normalized == "ui_progress";
             CreateEntityResult result {};
             if (isUiElement && parent == entt::null)
             {
@@ -839,6 +1647,7 @@ namespace vultra_app
                     auto& canvas     = reg.emplace_or_replace<vultra::CanvasComponent>(parent);
                     canvas.referenceResolutionPx = {1920.0f, 1080.0f};
                     canvas.scaleMode             = 1u;
+                    reg.emplace_or_replace<vultra::LayerComponent>(parent).mask = vultra::kRenderLayerUiMask;
                     result.createdCanvas          = parent;
                 }
             }
@@ -893,6 +1702,7 @@ namespace vultra_app
                 auto& rect        = reg.emplace_or_replace<vultra::RectTransformComponent>(entity);
                 rect.sizeDeltaPx  = size;
                 rect.scale        = glm::vec2 {1.0f, 1.0f};
+                reg.emplace_or_replace<vultra::LayerComponent>(entity).mask = vultra::kRenderLayerUiMask;
                 return rect;
             };
 
@@ -925,8 +1735,28 @@ namespace vultra_app
             else if (normalized == "ui_button" || normalized == "uibutton")
             {
                 addUiBase("Button", {180.0f, 48.0f});
-                reg.emplace_or_replace<vultra::UiPanelComponent>(entity);
-                reg.emplace_or_replace<vultra::UiButtonComponent>(entity);
+                reg.emplace_or_replace<vultra::UiImageComponent>(entity);
+                auto& button       = reg.emplace_or_replace<vultra::UiButtonComponent>(entity);
+                button.targetGraphic = reg.get<vultra::IDComponent>(entity).uuid;
+                button.normalColor = {1.0f, 1.0f, 1.0f, 1.0f};
+                button.hoveredColor = {0.90f, 0.94f, 1.0f, 1.0f};
+                button.pressedColor = {0.72f, 0.80f, 0.92f, 1.0f};
+            }
+            else if (normalized == "ui_toggle" || normalized == "uitoggle" ||
+                     normalized == "ui_checkbox" || normalized == "uicheckbox")
+            {
+                addUiBase("Toggle", {36.0f, 36.0f});
+                reg.emplace_or_replace<vultra::UiToggleComponent>(entity);
+            }
+            else if (normalized == "ui_slider" || normalized == "uislider")
+            {
+                addUiBase("Slider", {240.0f, 32.0f});
+                reg.emplace_or_replace<vultra::UiSliderComponent>(entity);
+            }
+            else if (normalized == "ui_progress_bar" || normalized == "uiprogressbar" || normalized == "ui_progress")
+            {
+                addUiBase("Progress Bar", {240.0f, 24.0f});
+                reg.emplace_or_replace<vultra::UiProgressBarComponent>(entity);
             }
             else if (normalized == "quad")
                 addBuiltinMesh("Quad", 0u);
@@ -1196,35 +2026,38 @@ namespace vultra_app
                             {{"kind", "ui_panel"}, {"description", "UI panel with RectTransform pixel layout."}},
                             {{"kind", "ui_text"}, {"description", "UI text with RectTransform pixel layout."}},
                             {{"kind", "ui_image"}, {"description", "UI image with texture picker support."}},
-                            {{"kind", "ui_button"}, {"description", "UI button with panel and input state."}},
+                            {{"kind", "ui_button"},
+                             {"description", "UI button with Image target graphic and click state."}},
+                            {{"kind", "ui_toggle"}, {"description", "UI toggle/checkbox with click state."}},
+                            {{"kind", "ui_slider"}, {"description", "UI slider with draggable value."}},
+                            {{"kind", "ui_progress_bar"}, {"description", "UI progress bar display."}},
                         })}});
         }
 
         if (name == "scene.list_component_kinds")
         {
-            return ok({{"componentKinds",
-                        nlohmann::json::array({
-                            "transform",
-                            "name",
-                            "entity_status",
-                            "mesh",
-                            "rigid_body",
-                            "sphere_shape",
-                            "box_shape",
-                            "capsule_shape",
-                            "camera",
-                            "light",
-                            "environment",
-                            "xr_view",
-                            "script",
-                            "canvas",
-                            "rect_transform",
-                            "ui_panel",
-                            "ui_image",
-                            "ui_text",
-                            "ui_button",
-                            "ui_layout",
-                        })}});
+            return ok({{"componentKinds", componentKindListJson()}});
+        }
+
+        if (name == "scene.component_metadata")
+        {
+            const auto componentKind = componentKindArg(args);
+            if (!componentKind.empty())
+            {
+                auto metadata = componentMetadataJson(componentKind);
+                if (metadata.empty())
+                    return error("unsupported component kind: " + componentKind);
+                return ok({{"component", std::move(metadata)}});
+            }
+
+            auto components = nlohmann::json::array();
+            for (const auto& kindValue : componentKindListJson())
+            {
+                const auto metadata = componentMetadataJson(kindValue.get<std::string>());
+                if (!metadata.empty())
+                    components.push_back(metadata);
+            }
+            return ok({{"components", std::move(components)}});
         }
 
         if (name == "scene.add_entity")
@@ -1304,6 +2137,29 @@ namespace vultra_app
                 payload["createdCanvasUuid"] = canvasId.uuid.toString();
             }
             return ok(std::move(payload));
+        }
+
+        if (name == "scene.get_component")
+        {
+            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+            if (!worldService)
+                return error("world service is unavailable");
+            auto& world = worldService->world();
+            const auto entity = entityArg(world, args, "entity");
+            if (entity == entt::null)
+                return error("entity was not found");
+            const auto componentKind = componentKindArg(args);
+            if (componentKind.empty())
+                return error("scene.get_component requires component_kind");
+
+            std::string message;
+            auto        component = componentValueJson(world, entity, componentKind, message);
+            if (!message.empty())
+                return error(message);
+            auto result = entityReferenceJson(world, entity);
+            result["component_kind"] = componentKind;
+            result["properties"]     = std::move(component);
+            return ok(std::move(result));
         }
 
         if (name == "scene.remove_entity")

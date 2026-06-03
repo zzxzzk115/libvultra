@@ -1,6 +1,7 @@
 #include "vultra/function/material_graph/material_node_registry.hpp"
 
 #include <algorithm>
+#include <optional>
 #include <unordered_set>
 
 namespace vultra::material_graph
@@ -59,6 +60,63 @@ namespace vultra::material_graph
         bool hasPin(const std::vector<Pin>& pins, const std::string& name)
         {
             return std::ranges::find_if(pins, [&](const Pin& pin) { return pin.name == name; }) != pins.end();
+        }
+
+        std::optional<Pin> pinFromJson(const nlohmann::json& json, std::vector<std::string>& diagnostics)
+        {
+            if (!json.is_object())
+            {
+                diagnostics.push_back("Material graph node pin must be an object.");
+                return std::nullopt;
+            }
+
+            Pin pin;
+            pin.name = json.value("name", std::string {});
+            if (pin.name.empty())
+                diagnostics.push_back("Material graph node pin requires name.");
+
+            const auto typeText = json.value("type", std::string {});
+            pin.type            = valueTypeFromString(typeText);
+            if (typeText.empty())
+                diagnostics.push_back("Material graph node pin '" + pin.name + "' requires type.");
+            else if (pin.type == ValueType::eUnknown)
+                diagnostics.push_back("Unknown material graph node pin type '" + typeText + "' for pin '" + pin.name + "'.");
+
+            if (json.contains("defaultValue"))
+                pin.defaultValue = json["defaultValue"];
+            else if (json.contains("default"))
+                pin.defaultValue = json["default"];
+
+            if (pin.name.empty() || pin.type == ValueType::eUnknown)
+                return std::nullopt;
+            return pin;
+        }
+
+        std::vector<Pin> pinsFromJson(const nlohmann::json& json,
+                                      const char*           fieldName,
+                                      std::vector<std::string>& diagnostics)
+        {
+            std::vector<Pin> pins;
+            if (!json.is_array())
+            {
+                diagnostics.push_back(std::string {"Material graph node "} + fieldName + " must be an array.");
+                return pins;
+            }
+            std::unordered_set<std::string> names;
+            for (const auto& item : json)
+            {
+                auto pin = pinFromJson(item, diagnostics);
+                if (!pin)
+                    continue;
+                if (!names.insert(pin->name).second)
+                {
+                    diagnostics.push_back(std::string {"Duplicate material graph node pin name in "} + fieldName +
+                                          ": " + pin->name + ".");
+                    continue;
+                }
+                pins.push_back(std::move(*pin));
+            }
+            return pins;
         }
     } // namespace
 
@@ -185,6 +243,110 @@ namespace vultra::material_graph
                  }));
 
         return registry;
+    }
+
+    NodeDescriptorParseResult nodeDescriptorFromJson(const nlohmann::json& root)
+    {
+        NodeDescriptorParseResult result;
+        auto&                     desc = result.descriptor;
+
+        if (!root.is_object())
+        {
+            result.diagnostics.push_back("Material graph node descriptor root must be an object.");
+            return result;
+        }
+
+        const auto type = root.value("type", std::string {"MaterialGraphNode"});
+        if (type != "MaterialGraphNode")
+            result.diagnostics.push_back("Material graph node descriptor type must be \"MaterialGraphNode\".");
+
+        if (root.contains("version") && !root["version"].is_number_integer() && !root["version"].is_number_unsigned())
+            result.diagnostics.push_back("Material graph node descriptor version must be an integer.");
+
+        desc.typeId = root.value("typeId", root.value("id", std::string {}));
+        if (desc.typeId.empty())
+            result.diagnostics.push_back("Material graph node descriptor requires typeId.");
+        if (desc.typeId.starts_with("vultra."))
+            result.diagnostics.push_back("Custom material graph node typeId must not use the reserved vultra.* namespace.");
+
+        desc.displayName = root.value("displayName", root.value("name", std::string {}));
+        if (desc.displayName.empty())
+            desc.displayName = desc.typeId;
+
+        if (root.contains("inputs"))
+            desc.inputs = pinsFromJson(root["inputs"], "inputs", result.diagnostics);
+        if (root.contains("outputs"))
+            desc.outputs = pinsFromJson(root["outputs"], "outputs", result.diagnostics);
+        if (desc.outputs.empty())
+            result.diagnostics.push_back("Material graph node descriptor requires at least one output pin.");
+
+        if (root.contains("defaultParams"))
+        {
+            if (!root["defaultParams"].is_object())
+                result.diagnostics.push_back("Material graph node descriptor defaultParams must be an object.");
+            else
+                desc.defaultParams = root["defaultParams"];
+        }
+        else if (root.contains("params"))
+        {
+            if (!root["params"].is_object())
+                result.diagnostics.push_back("Material graph node descriptor params must be an object.");
+            else
+                desc.defaultParams = root["params"];
+        }
+
+        if (root.contains("implementation"))
+        {
+            if (!root["implementation"].is_object())
+            {
+                result.diagnostics.push_back("Material graph node descriptor implementation must be an object.");
+            }
+            else
+            {
+                desc.implementation = root["implementation"];
+                const auto language = desc.implementation.value("language", std::string {"glsl"});
+                if (language != "glsl")
+                    result.diagnostics.push_back("Material graph node descriptor implementation.language must be \"glsl\".");
+                if (desc.implementation.contains("outputs"))
+                {
+                    if (!desc.implementation["outputs"].is_object())
+                    {
+                        result.diagnostics.push_back(
+                            "Material graph node descriptor implementation.outputs must be an object.");
+                    }
+                    else
+                    {
+                        for (const auto& [name, value] : desc.implementation["outputs"].items())
+                        {
+                            if (!hasPin(desc.outputs, name))
+                                result.diagnostics.push_back(
+                                    "Material graph node descriptor implementation output '" + name +
+                                    "' does not match any declared output pin.");
+                            if (!value.is_string())
+                                result.diagnostics.push_back(
+                                    "Material graph node descriptor implementation output '" + name +
+                                    "' must be a string expression.");
+                        }
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    NodeDescriptorParseResult loadNodeDescriptorFromText(const std::string_view text)
+    {
+        try
+        {
+            return nodeDescriptorFromJson(nlohmann::json::parse(text));
+        }
+        catch (const nlohmann::json::exception& e)
+        {
+            NodeDescriptorParseResult result;
+            result.diagnostics.push_back(std::string {"Failed to parse material graph node descriptor JSON: "} + e.what());
+            return result;
+        }
     }
 
     std::vector<Diagnostic> validateGraph(const Graph& graph, const NodeRegistry& registry)

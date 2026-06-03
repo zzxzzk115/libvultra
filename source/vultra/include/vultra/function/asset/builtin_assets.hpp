@@ -8,6 +8,8 @@
 namespace vultra
 {
     inline constexpr std::string_view kBuiltinTextureUriPrefix = "builtin://textures/";
+    inline constexpr std::string_view kBuiltinMaterialUriPrefix = "builtin://materials/";
+    inline constexpr std::string_view kBuiltinDefaultMaterialUri = "builtin://materials/default.vmat.json";
 
     inline constexpr std::string_view kBuiltinCitrusOrchardSkyTextureUri =
         "builtin://textures/environment_maps/citrus_orchard_puresky_1k.vtexture";

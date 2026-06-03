@@ -1,0 +1,14 @@
+{
+  "type": "Material",
+  "version": 1,
+  "name": "Default",
+  "source": {
+    "kind": "builtin",
+    "id": "builtin/pbr"
+  },
+  "properties": {
+    "baseColor": [0.8, 0.82, 0.86, 1.0],
+    "metallic": 0.0,
+    "roughness": 0.55
+  }
+}

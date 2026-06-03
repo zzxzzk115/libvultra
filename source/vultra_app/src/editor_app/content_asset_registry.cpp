@@ -182,6 +182,51 @@ void main()
 }
 )";
         }
+
+        std::string makeBuiltinPbrMaterialText(std::string_view)
+        {
+            return R"({
+  "type": "Material",
+  "version": 1,
+  "name": "New Material",
+  "source": {
+    "kind": "builtin",
+    "id": "builtin/pbr"
+  },
+  "properties": {
+    "baseColor": [1.0, 1.0, 1.0, 1.0],
+    "metallic": 0.0,
+    "roughness": 0.5
+  }
+}
+)";
+        }
+
+        std::string makeMaterialGraphNodeText(std::string_view)
+        {
+            return R"({
+  "type": "MaterialGraphNode",
+  "version": 1,
+  "typeId": "project.custom_node",
+  "displayName": "Custom Node",
+  "inputs": [
+    { "name": "value", "type": "float", "defaultValue": 0.0 }
+  ],
+  "outputs": [
+    { "name": "out", "type": "float" }
+  ],
+  "defaultParams": {
+    "value": 0.0
+  },
+  "implementation": {
+    "language": "glsl",
+    "outputs": {
+      "out": "{{input:value}}"
+    }
+  }
+}
+)";
+        }
     } // namespace
 
     ContentAssetRegistry& ContentAssetRegistry::instance()
@@ -247,6 +292,26 @@ void main()
             .assetType       = vasset::VAssetType::eScriptLua,
             .openInCodeEditor = true,
             .makeText        = makeLuaScriptText,
+        });
+        registry.registerCreator(ContentAssetCreator {
+            .id              = "vultra.builtin_pbr_material",
+            .menuPath        = "Material/Builtin PBR",
+            .displayName     = "Builtin PBR Material",
+            .defaultFileName = "NewMaterial.vmat.json",
+            .extension       = ".vmat.json",
+            .assetType       = vasset::VAssetType::eUnknown,
+            .openInCodeEditor = true,
+            .makeText        = makeBuiltinPbrMaterialText,
+        });
+        registry.registerCreator(ContentAssetCreator {
+            .id              = "vultra.material_graph_node",
+            .menuPath        = "Material Graph/Custom Node",
+            .displayName     = "Material Graph Custom Node",
+            .defaultFileName = "NewMaterialNode.vmatnode.json",
+            .extension       = ".vmatnode.json",
+            .assetType       = vasset::VAssetType::eUnknown,
+            .openInCodeEditor = true,
+            .makeText        = makeMaterialGraphNodeText,
         });
         registry.registerCreator(ContentAssetCreator {
             .id              = "vultra.render_pass",

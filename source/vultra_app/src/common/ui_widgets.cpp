@@ -56,6 +56,10 @@ namespace vultra_app::ui
         const auto name = lowerFileName(path);
         if (hasSuffix(name, ".vrg.json"))
             return ICON_MDI_GRAPH;
+        if (hasSuffix(name, ".vmat.json"))
+            return ICON_MDI_PALETTE_SWATCH;
+        if (hasSuffix(name, ".vmatnode.json"))
+            return ICON_MDI_PUZZLE;
         if (hasSuffix(name, ".vmatgraph.json") || hasExtension(path, {".vmatgraph"}))
             return ICON_MDI_PALETTE;
         if (hasExtension(path, {".gltf", ".glb", ".obj", ".fbx", ".dae", ".ply", ".spz"}))

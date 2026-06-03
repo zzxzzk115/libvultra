@@ -3,151 +3,151 @@
     "links": [
         {
             "from": {
-                "node": "ColdPulseColor",
+                "nodeId": "ColdPulseColor",
                 "pin": "value"
             },
             "to": {
-                "node": "BaseMix",
+                "nodeId": "BaseMix",
                 "pin": "a"
             }
         },
         {
             "from": {
-                "node": "HotPulseColor",
+                "nodeId": "HotPulseColor",
                 "pin": "value"
             },
             "to": {
-                "node": "BaseMix",
+                "nodeId": "BaseMix",
                 "pin": "b"
             }
         },
         {
             "from": {
-                "node": "BaseMix",
+                "nodeId": "BaseMix",
                 "pin": "out"
             },
             "to": {
-                "node": "Surface",
+                "nodeId": "Surface",
                 "pin": "baseColor"
             }
         },
         {
             "from": {
-                "node": "Roughness",
+                "nodeId": "Roughness",
                 "pin": "value"
             },
             "to": {
-                "node": "Surface",
+                "nodeId": "Surface",
                 "pin": "roughness"
             }
         },
         {
             "from": {
-                "node": "Metallic",
+                "nodeId": "Metallic",
                 "pin": "value"
             },
             "to": {
-                "node": "Surface",
+                "nodeId": "Surface",
                 "pin": "metallic"
             }
         },
         {
             "from": {
-                "node": "AO",
+                "nodeId": "AO",
                 "pin": "value"
             },
             "to": {
-                "node": "Surface",
+                "nodeId": "Surface",
                 "pin": "ao"
             }
         },
         {
             "from": {
-                "node": "RimEmissive",
+                "nodeId": "RimEmissive",
                 "pin": "value"
             },
             "to": {
-                "node": "Surface",
+                "nodeId": "Surface",
                 "pin": "emissive"
             }
         },
         {
             "from": {
-                "node": "Time",
+                "nodeId": "Time",
                 "pin": "seconds"
             },
             "to": {
-                "node": "PulseTime",
+                "nodeId": "PulseTime",
                 "pin": "a"
             }
         },
         {
             "from": {
-                "node": "PulseSpeed",
+                "nodeId": "PulseSpeed",
                 "pin": "value"
             },
             "to": {
-                "node": "PulseTime",
+                "nodeId": "PulseTime",
                 "pin": "b"
             }
         },
         {
             "from": {
-                "node": "PulseTime",
+                "nodeId": "PulseTime",
                 "pin": "out"
             },
             "to": {
-                "node": "PulseSine",
+                "nodeId": "PulseSine",
                 "pin": "v"
             }
         },
         {
             "from": {
-                "node": "PulseSine",
+                "nodeId": "PulseSine",
                 "pin": "out"
             },
             "to": {
-                "node": "PulseScale",
+                "nodeId": "PulseScale",
                 "pin": "a"
             }
         },
         {
             "from": {
-                "node": "PulseAmplitude",
+                "nodeId": "PulseAmplitude",
                 "pin": "value"
             },
             "to": {
-                "node": "PulseScale",
+                "nodeId": "PulseScale",
                 "pin": "b"
             }
         },
         {
             "from": {
-                "node": "PulseScale",
+                "nodeId": "PulseScale",
                 "pin": "out"
             },
             "to": {
-                "node": "Pulse01",
+                "nodeId": "Pulse01",
                 "pin": "a"
             }
         },
         {
             "from": {
-                "node": "PulseBias",
+                "nodeId": "PulseBias",
                 "pin": "value"
             },
             "to": {
-                "node": "Pulse01",
+                "nodeId": "Pulse01",
                 "pin": "b"
             }
         },
         {
             "from": {
-                "node": "Pulse01",
+                "nodeId": "Pulse01",
                 "pin": "out"
             },
             "to": {
-                "node": "BaseMix",
+                "nodeId": "BaseMix",
                 "pin": "t"
             }
         }
@@ -181,7 +181,7 @@
                     1.0
                 ]
             },
-            "type": "vultra.param.color"
+            "typeId": "vultra.param.color"
         },
         {
             "displayName": "Hot Pulse Color",
@@ -207,7 +207,7 @@
                     1.0
                 ]
             },
-            "type": "vultra.param.color"
+            "typeId": "vultra.param.color"
         },
         {
             "displayName": "Mix",
@@ -266,7 +266,7 @@
                 ],
                 "t": 0.5
             },
-            "type": "vultra.math.mix"
+            "typeId": "vultra.math.mix"
         },
         {
             "displayName": "Roughness",
@@ -287,7 +287,7 @@
             "params": {
                 "value": 0.42
             },
-            "type": "vultra.param.float"
+            "typeId": "vultra.param.float"
         },
         {
             "displayName": "Metallic",
@@ -308,7 +308,7 @@
             "params": {
                 "value": 0.08
             },
-            "type": "vultra.param.float"
+            "typeId": "vultra.param.float"
         },
         {
             "displayName": "AO",
@@ -329,7 +329,7 @@
             "params": {
                 "value": 1.0
             },
-            "type": "vultra.param.float"
+            "typeId": "vultra.param.float"
         },
         {
             "displayName": "Rim Emissive",
@@ -354,7 +354,7 @@
                     0.004
                 ]
             },
-            "type": "vultra.param.vec3"
+            "typeId": "vultra.param.vec3"
         },
         {
             "displayName": "Time",
@@ -373,7 +373,7 @@
                 }
             ],
             "params": {},
-            "type": "vultra.input.time"
+            "typeId": "vultra.input.time"
         },
         {
             "displayName": "Pulse Speed",
@@ -394,7 +394,7 @@
             "params": {
                 "value": 1.2
             },
-            "type": "vultra.param.float"
+            "typeId": "vultra.param.float"
         },
         {
             "displayName": "Multiply",
@@ -427,7 +427,7 @@
                 "a": 0.0,
                 "b": 0.0
             },
-            "type": "vultra.math.multiply"
+            "typeId": "vultra.math.multiply"
         },
         {
             "displayName": "Sine",
@@ -454,7 +454,7 @@
             "params": {
                 "v": 0.0
             },
-            "type": "vultra.math.sine"
+            "typeId": "vultra.math.sine"
         },
         {
             "displayName": "Pulse Amplitude",
@@ -475,7 +475,7 @@
             "params": {
                 "value": 0.5
             },
-            "type": "vultra.param.float"
+            "typeId": "vultra.param.float"
         },
         {
             "displayName": "Pulse Bias",
@@ -496,7 +496,7 @@
             "params": {
                 "value": 0.5
             },
-            "type": "vultra.param.float"
+            "typeId": "vultra.param.float"
         },
         {
             "displayName": "Multiply",
@@ -529,7 +529,7 @@
                 "a": 0.0,
                 "b": 0.0
             },
-            "type": "vultra.math.multiply"
+            "typeId": "vultra.math.multiply"
         },
         {
             "displayName": "Add",
@@ -562,7 +562,7 @@
                 "a": 0.0,
                 "b": 0.0
             },
-            "type": "vultra.math.add"
+            "typeId": "vultra.math.add"
         },
         {
             "displayName": "Surface Output",
@@ -644,7 +644,7 @@
                 "roughness": 1.0,
                 "shadingModel": "ToonLike"
             },
-            "type": "vultra.output.surface"
+            "typeId": "vultra.output.surface"
         }
     ],
     "version": 1

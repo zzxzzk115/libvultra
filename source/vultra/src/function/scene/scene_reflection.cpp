@@ -9,6 +9,7 @@
 #include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
+#include "vultra/function/world/components/layer_component.hpp"
 #include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
@@ -37,10 +38,20 @@ namespace vultra
         entt::meta_factory<glm::vec3>().type("glm::vec3"_hs);
         entt::meta_factory<glm::vec4>().type("glm::vec4"_hs);
         entt::meta_factory<glm::quat>().type("glm::quat"_hs);
+        entt::meta_factory<MaterialPropertyBlockEntry>()
+            .type("MaterialPropertyBlockEntry"_hs)
+            .data<&MaterialPropertyBlockEntry::name>("name"_hs)
+            .data<&MaterialPropertyBlockEntry::type>("type"_hs)
+            .data<&MaterialPropertyBlockEntry::floatValue>("floatValue"_hs)
+            .data<&MaterialPropertyBlockEntry::colorValue>("colorValue"_hs)
+            .data<&MaterialPropertyBlockEntry::textureUri>("textureUri"_hs);
+        entt::meta_factory<std::vector<MaterialPropertyBlockEntry>>().type("MaterialPropertyBlockEntryVector"_hs);
         entt::meta_factory<MaterialSlotOverride>()
             .type("MaterialSlotOverride"_hs)
             .data<&MaterialSlotOverride::slot>("slot"_hs)
-            .data<&MaterialSlotOverride::materialGraph>("materialGraph"_hs);
+            .data<&MaterialSlotOverride::material>("material"_hs)
+            .data<&MaterialSlotOverride::materialGraph>("materialGraph"_hs)
+            .data<&MaterialSlotOverride::properties>("properties"_hs);
         entt::meta_factory<std::vector<MaterialSlotOverride>>().type("MaterialSlotOverrideVector"_hs);
 
         entt::meta_factory<IDComponent>().type("IDComponent"_hs).data<&IDComponent::uuid>("uuid"_hs);
@@ -53,6 +64,8 @@ namespace vultra
             .data<&EntityStatusComponent::visible>("visible"_hs)
             .data<&EntityStatusComponent::locked>("locked"_hs)
             .data<&EntityStatusComponent::selectable>("selectable"_hs);
+
+        entt::meta_factory<LayerComponent>().type("LayerComponent"_hs).data<&LayerComponent::mask>("mask"_hs);
 
         entt::meta_factory<TransformComponent>()
             .type("TransformComponent"_hs)
@@ -118,6 +131,7 @@ namespace vultra
             .data<&CameraComponent::clearMode>("clearMode"_hs)
             .data<&CameraComponent::clearColor>("clearColor"_hs)
             .data<&CameraComponent::priority>("priority"_hs)
+            .data<&CameraComponent::cullingMask>("cullingMask"_hs)
             .data<&CameraComponent::rendererKey>("rendererKey"_hs);
 
         entt::meta_factory<XRViewComponent>()
@@ -212,9 +226,39 @@ namespace vultra
             .type("UiButtonComponent"_hs)
             .data<&UiButtonComponent::enabled>("enabled"_hs)
             .data<&UiButtonComponent::interactable>("interactable"_hs)
+            .data<&UiButtonComponent::targetGraphic>("targetGraphic"_hs)
             .data<&UiButtonComponent::normalColor>("normalColor"_hs)
             .data<&UiButtonComponent::hoveredColor>("hoveredColor"_hs)
             .data<&UiButtonComponent::pressedColor>("pressedColor"_hs);
+
+        entt::meta_factory<UiToggleComponent>()
+            .type("UiToggleComponent"_hs)
+            .data<&UiToggleComponent::enabled>("enabled"_hs)
+            .data<&UiToggleComponent::interactable>("interactable"_hs)
+            .data<&UiToggleComponent::checked>("checked"_hs)
+            .data<&UiToggleComponent::offColor>("offColor"_hs)
+            .data<&UiToggleComponent::onColor>("onColor"_hs)
+            .data<&UiToggleComponent::checkColor>("checkColor"_hs);
+
+        entt::meta_factory<UiSliderComponent>()
+            .type("UiSliderComponent"_hs)
+            .data<&UiSliderComponent::enabled>("enabled"_hs)
+            .data<&UiSliderComponent::interactable>("interactable"_hs)
+            .data<&UiSliderComponent::value>("value"_hs)
+            .data<&UiSliderComponent::minValue>("minValue"_hs)
+            .data<&UiSliderComponent::maxValue>("maxValue"_hs)
+            .data<&UiSliderComponent::trackColor>("trackColor"_hs)
+            .data<&UiSliderComponent::fillColor>("fillColor"_hs)
+            .data<&UiSliderComponent::handleColor>("handleColor"_hs);
+
+        entt::meta_factory<UiProgressBarComponent>()
+            .type("UiProgressBarComponent"_hs)
+            .data<&UiProgressBarComponent::enabled>("enabled"_hs)
+            .data<&UiProgressBarComponent::value>("value"_hs)
+            .data<&UiProgressBarComponent::minValue>("minValue"_hs)
+            .data<&UiProgressBarComponent::maxValue>("maxValue"_hs)
+            .data<&UiProgressBarComponent::trackColor>("trackColor"_hs)
+            .data<&UiProgressBarComponent::fillColor>("fillColor"_hs);
 
         entt::meta_factory<UiLayoutComponent>()
             .type("UiLayoutComponent"_hs)

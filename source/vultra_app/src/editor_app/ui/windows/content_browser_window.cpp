@@ -106,7 +106,8 @@ namespace vultra_app
                    ext == ".comp" || ext == ".json" || ext == ".vproject" || ext == ".txt" || ext == ".mtl" ||
                    ext == ".md" || hasSuffix(name, ".vfeature.lua") || hasSuffix(name, ".vsrp.lua") ||
                    hasSuffix(name, ".vshaderlib.lua") || hasSuffix(name, ".vso.lua") || ext == ".vmatgraph" ||
-                   hasSuffix(name, ".vmatgraph.json");
+                   hasSuffix(name, ".vmatgraph.json") || hasSuffix(name, ".vmat.json") ||
+                   hasSuffix(name, ".vmatnode.json");
         }
 
         bool isSceneSourceAsset(const std::filesystem::path& path)
@@ -119,6 +120,11 @@ namespace vultra_app
             const auto name = lowerString(path.filename().generic_string());
             const auto ext  = lowerString(path.extension().generic_string());
             return ext == ".vmatgraph" || hasSuffix(name, ".vmatgraph.json");
+        }
+
+        bool isMaterialSourceAsset(const std::filesystem::path& path)
+        {
+            return hasSuffix(lowerString(path.filename().generic_string()), ".vmat.json");
         }
 
         bool isRenderGraphSourceAsset(const std::filesystem::path& path)
@@ -1974,12 +1980,9 @@ namespace vultra_app
 
         if (!creator->extension.empty())
         {
-            auto ext = std::filesystem::path(fileName).extension().generic_string();
-            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
-                return static_cast<char>(std::tolower(ch));
-            });
+            auto lowerFileName = lowerString(fileName);
             auto expected = lowerString(creator->extension);
-            if (ext != expected)
+            if (!hasSuffix(lowerFileName, expected))
                 fileName += creator->extension;
         }
 

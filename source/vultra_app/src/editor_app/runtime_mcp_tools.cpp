@@ -221,6 +221,26 @@ namespace vultra_app
             return toolJson(std::move(result));
         }
 
+        if (name == "vultra.scene.component_metadata")
+        {
+            if (!ctx.editor)
+                return toolError("editor command executor is unavailable");
+            auto result = ctx.editor->executeCommand(ctx, "scene.component_metadata", args);
+            if (!result.value("ok", false))
+                return toolError(result.value("error", "scene.component_metadata failed"));
+            return toolJson(std::move(result));
+        }
+
+        if (name == "vultra.scene.get_component")
+        {
+            if (!ctx.editor)
+                return toolError("editor command executor is unavailable");
+            auto result = ctx.editor->executeCommand(ctx, "scene.get_component", args);
+            if (!result.value("ok", false))
+                return toolError(result.value("error", "scene.get_component failed"));
+            return toolJson(std::move(result));
+        }
+
         if (name == "vultra.scene.add_entity")
         {
             if (!ctx.editor)

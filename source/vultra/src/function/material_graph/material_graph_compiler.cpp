@@ -100,6 +100,19 @@ namespace vultra::material_graph
             return it == desc->inputs.end() ? std::nullopt : std::optional<Pin>(*it);
         }
 
+        std::string replaceAll(std::string text, std::string_view from, std::string_view to)
+        {
+            if (from.empty())
+                return text;
+            size_t pos = 0;
+            while ((pos = text.find(from, pos)) != std::string::npos)
+            {
+                text.replace(pos, from.size(), to);
+                pos += to.size();
+            }
+            return text;
+        }
+
         class GlslEmitter
         {
         public:
@@ -147,6 +160,42 @@ namespace vultra::material_graph
                 if (node.params.contains(std::string(key)))
                     return defaultFor(type, node.params.at(std::string(key)));
                 return defaultFor(type, fallback);
+            }
+
+            std::string customSnippetExpr(const Node& node,
+                                          const NodeDescriptor& desc,
+                                          std::string_view pinName)
+            {
+                if (!desc.implementation.is_object() ||
+                    desc.implementation.value("language", std::string {"glsl"}) != "glsl")
+                {
+                    return {};
+                }
+                const auto* outputs =
+                    desc.implementation.contains("outputs") && desc.implementation["outputs"].is_object() ?
+                        &desc.implementation["outputs"] :
+                        nullptr;
+                if (!outputs)
+                    return {};
+
+                const auto it = outputs->find(std::string(pinName));
+                if (it == outputs->end() || !it->is_string())
+                    return {};
+
+                std::string expr = it->get<std::string>();
+                for (const auto& input : desc.inputs)
+                    expr = replaceAll(expr, "{{input:" + input.name + "}}", inputExpr(node, input.name));
+
+                for (const auto& [key, value] : desc.defaultParams.items())
+                {
+                    const auto pin  = descriptorInputPin(m_Registry, node, key);
+                    const auto type = pin ? pin->type : ValueType::eFloat;
+                    expr = replaceAll(expr,
+                                      "{{param:" + key + "}}",
+                                      node.params.contains(key) ? defaultFor(type, node.params.at(key)) :
+                                                                  defaultFor(type, value));
+                }
+                return "(" + expr + ")";
             }
 
             std::string emitNode(const Node& node, std::string_view pinName)
@@ -243,6 +292,10 @@ namespace vultra::material_graph
                 if (type == "vultra.utility.fresnel")
                     return "pow(1.0 - clamp(dot(normalize(" + inputExpr(node, "normalWS") + "), normalize(" +
                            inputExpr(node, "viewDirWS") + ")), 0.0, 1.0), " + inputExpr(node, "power") + ")";
+
+                if (const auto* desc = m_Registry.find(type))
+                    if (auto expr = customSnippetExpr(node, *desc, pinName); !expr.empty())
+                        return expr;
 
                 return pinName == "rgb" ? "vec3(0.0)" : pinName == "rgba" ? "vec4(1.0)" : "0.0";
             }

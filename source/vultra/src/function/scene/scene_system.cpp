@@ -17,6 +17,7 @@
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/hierarchy_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
+#include "vultra/function/world/components/layer_component.hpp"
 #include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
@@ -31,6 +32,7 @@
 #include "vultra/function/world/components/xr_view_component.hpp"
 
 #include <entt/entt.hpp>
+#include <nlohmann/json.hpp>
 #include <vfilesystem/core/uri.hpp>
 
 #include <algorithm>
@@ -159,10 +161,113 @@ namespace vultra
         return out;
     }
 
+    static bool is_material_graph_uri(std::string_view uri)
+    {
+        const auto text = trim_copy(uri);
+        return text.ends_with(".vmatgraph") || text.ends_with(".vmatgraph.json");
+    }
+
+    static MaterialPropertyBlockValueType material_property_block_type_from_string(std::string_view text)
+    {
+        if (text == "color" || text == "vec4")
+            return MaterialPropertyBlockValueType::eColor;
+        if (text == "texture" || text == "texture2D")
+            return MaterialPropertyBlockValueType::eTexture2D;
+        return MaterialPropertyBlockValueType::eFloat;
+    }
+
+    static const char* material_property_block_type_to_string(MaterialPropertyBlockValueType type)
+    {
+        switch (type)
+        {
+            case MaterialPropertyBlockValueType::eColor:
+                return "color";
+            case MaterialPropertyBlockValueType::eTexture2D:
+                return "texture2D";
+            case MaterialPropertyBlockValueType::eFloat:
+            default:
+                return "float";
+        }
+    }
+
+    static std::vector<MaterialSlotOverride> parse_material_overrides_json(std::string_view text)
+    {
+        std::vector<MaterialSlotOverride> out;
+        nlohmann::json                    root;
+        try
+        {
+            root = nlohmann::json::parse(text);
+        }
+        catch (const nlohmann::json::exception&)
+        {
+            return out;
+        }
+        if (!root.is_array())
+            return out;
+
+        for (const auto& item : root)
+        {
+            if (!item.is_object())
+                continue;
+            MaterialSlotOverride override;
+            override.slot          = item.value("slot", 0u);
+            override.material      = item.value("material", std::string {});
+            override.materialGraph = item.value("materialGraph", std::string {});
+            if (override.material.empty() && override.materialGraph.empty())
+            {
+                const auto uri = item.value("uri", std::string {});
+                if (is_material_graph_uri(uri))
+                    override.materialGraph = uri;
+                else
+                    override.material = uri;
+            }
+
+            if (const auto properties = item.value("properties", nlohmann::json::array()); properties.is_array())
+            {
+                for (const auto& property : properties)
+                {
+                    if (!property.is_object())
+                        continue;
+                    MaterialPropertyBlockEntry entry;
+                    entry.name = property.value("name", std::string {});
+                    if (entry.name.empty())
+                        continue;
+                    entry.type =
+                        material_property_block_type_from_string(property.value("type", std::string {"float"}));
+                    switch (entry.type)
+                    {
+                        case MaterialPropertyBlockValueType::eColor: {
+                            const auto value = property.value("value", nlohmann::json::array());
+                            if (value.is_array())
+                            {
+                                for (int i = 0; i < 4 && i < static_cast<int>(value.size()); ++i)
+                                    if (value[i].is_number())
+                                        entry.colorValue[i] = value[i].get<float>();
+                            }
+                            break;
+                        }
+                        case MaterialPropertyBlockValueType::eTexture2D:
+                            entry.textureUri = property.value("value", std::string {});
+                            break;
+                        case MaterialPropertyBlockValueType::eFloat:
+                        default:
+                            entry.floatValue = property.value("value", 0.0f);
+                            break;
+                    }
+                    override.properties.push_back(std::move(entry));
+                }
+            }
+            out.push_back(std::move(override));
+        }
+        return out;
+    }
+
     static std::vector<MaterialSlotOverride> parse_material_overrides(std::string_view raw)
     {
         std::string t = strip_quotes_copy(std::string(raw));
         t             = unescape_scene_string(t);
+        if (!t.empty() && t.front() == '[')
+            return parse_material_overrides_json(t);
 
         std::vector<MaterialSlotOverride> out;
         std::stringstream                 ss(t);
@@ -183,23 +288,82 @@ namespace vultra
             const auto [ptr, ec] = std::from_chars(slotText.data(), slotText.data() + slotText.size(), slot);
             if (ec != std::errc {} || ptr != slotText.data() + slotText.size() || uri.empty())
                 continue;
-            out.push_back(MaterialSlotOverride {.slot = slot, .materialGraph = uri});
+            MaterialSlotOverride override {.slot = slot};
+            if (is_material_graph_uri(uri))
+                override.materialGraph = uri;
+            else
+                override.material = uri;
+            out.push_back(std::move(override));
         }
         return out;
     }
 
+    static nlohmann::json material_property_block_to_json(const MaterialPropertyBlockEntry& entry)
+    {
+        nlohmann::json json {
+            {"name", entry.name},
+            {"type", material_property_block_type_to_string(entry.type)},
+        };
+        switch (entry.type)
+        {
+            case MaterialPropertyBlockValueType::eColor:
+                json["value"] =
+                    nlohmann::json::array({entry.colorValue.x, entry.colorValue.y, entry.colorValue.z, entry.colorValue.w});
+                break;
+            case MaterialPropertyBlockValueType::eTexture2D:
+                json["value"] = entry.textureUri;
+                break;
+            case MaterialPropertyBlockValueType::eFloat:
+            default:
+                json["value"] = entry.floatValue;
+                break;
+        }
+        return json;
+    }
+
+    static bool material_overrides_need_json(const std::vector<MaterialSlotOverride>& overrides)
+    {
+        return std::any_of(overrides.begin(), overrides.end(), [](const auto& override) {
+            return !override.properties.empty();
+        });
+    }
+
     static std::string material_overrides_to_text(const std::vector<MaterialSlotOverride>& overrides)
     {
+        if (material_overrides_need_json(overrides))
+        {
+            auto root = nlohmann::json::array();
+            for (const auto& override : overrides)
+            {
+                nlohmann::json item {
+                    {"slot", override.slot},
+                };
+                if (!override.material.empty())
+                    item["material"] = override.material;
+                if (!override.materialGraph.empty())
+                    item["materialGraph"] = override.materialGraph;
+                if (!override.properties.empty())
+                {
+                    item["properties"] = nlohmann::json::array();
+                    for (const auto& property : override.properties)
+                        item["properties"].push_back(material_property_block_to_json(property));
+                }
+                root.push_back(std::move(item));
+            }
+            return escape_scene_string(root.dump());
+        }
+
         std::ostringstream oss;
         bool               first = true;
         for (const auto& override : overrides)
         {
-            if (override.materialGraph.empty())
+            const auto& uri = !override.material.empty() ? override.material : override.materialGraph;
+            if (uri.empty())
                 continue;
             if (!first)
                 oss << ";";
             first = false;
-            oss << override.slot << "=" << override.materialGraph;
+            oss << override.slot << "=" << uri;
         }
         return std::string("\"") + escape_scene_string(oss.str()) + "\"";
     }
@@ -469,6 +633,7 @@ namespace vultra
         m_ComponentRegistry.registerComponent<NameComponent>("NameComponent", {"name"});
         m_ComponentRegistry.registerComponent<EntityStatusComponent>("EntityStatusComponent",
                                                                      {"active", "visible", "locked", "selectable"});
+        m_ComponentRegistry.registerComponent<LayerComponent>("LayerComponent", {"mask"});
         m_ComponentRegistry.registerComponent<TransformComponent>("TransformComponent",
                                                                   {"position", "rotation", "scale"});
         m_ComponentRegistry.registerComponent<RigidBodyComponent>("RigidBodyComponent",
@@ -507,6 +672,7 @@ namespace vultra
                                                                 "clearMode",
                                                                 "clearColor",
                                                                 "priority",
+                                                                "cullingMask",
                                                                 "rendererKey"});
         m_ComponentRegistry.registerComponent<XRViewComponent>(
             "XRViewComponent", {"enabled", "trackingOrigin", "stereoGraphMode", "fallbackMono"});
@@ -554,7 +720,15 @@ namespace vultra
         m_ComponentRegistry.registerComponent<UiTextComponent>(
             "UiTextComponent", {"enabled", "text", "color", "fontSizePx", "horizontalAlign", "verticalAlign"});
         m_ComponentRegistry.registerComponent<UiButtonComponent>(
-            "UiButtonComponent", {"enabled", "interactable", "normalColor", "hoveredColor", "pressedColor"});
+            "UiButtonComponent",
+            {"enabled", "interactable", "targetGraphic", "normalColor", "hoveredColor", "pressedColor"});
+        m_ComponentRegistry.registerComponent<UiToggleComponent>(
+            "UiToggleComponent", {"enabled", "interactable", "checked", "offColor", "onColor", "checkColor"});
+        m_ComponentRegistry.registerComponent<UiSliderComponent>(
+            "UiSliderComponent",
+            {"enabled", "interactable", "value", "minValue", "maxValue", "trackColor", "fillColor", "handleColor"});
+        m_ComponentRegistry.registerComponent<UiProgressBarComponent>(
+            "UiProgressBarComponent", {"enabled", "value", "minValue", "maxValue", "trackColor", "fillColor"});
         m_ComponentRegistry.registerComponent<UiLayoutComponent>(
             "UiLayoutComponent", {"enabled", "kind", "paddingPx", "marginPx", "spacingPx", "cellSizePx"});
 

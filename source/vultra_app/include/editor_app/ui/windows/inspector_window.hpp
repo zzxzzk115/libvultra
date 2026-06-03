@@ -12,6 +12,7 @@
 #include <vultra/function/world/world.hpp>
 
 #include <vasset/vasset_registry.hpp>
+#include <vasset/texture_import_params.hpp>
 
 #include <array>
 #include <entt/entity/fwd.hpp>
@@ -48,6 +49,8 @@ namespace vultra_app
         void drawSkeletonAssetInspector(EditorContext& ctx, const vasset::VAssetRegistry::AssetEntry& entry);
         void drawAnimationAssetInspector(EditorContext& ctx, const vasset::VAssetRegistry::AssetEntry& entry);
         bool drawRenderGraphPassSourceInspector(EditorContext& ctx, const std::filesystem::path& path);
+        bool drawMaterialAssetSourceInspector(EditorContext& ctx, const std::filesystem::path& path);
+        void drawSourceTextureImportInspector(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceTexturePreview(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceModelPreview(EditorContext& ctx, const std::filesystem::path& path);
         void drawMeshAssetPreview(EditorContext& ctx,
@@ -72,6 +75,17 @@ namespace vultra_app
         ui::AssetPreviewCache m_PreviewCache;
         ui::TextureSelectorState m_TextureSelector;
         ui::MeshSelectorState m_MeshSelector;
+
+        struct TextureImportEditState
+        {
+            std::filesystem::path path;
+            std::unordered_map<std::string, std::string> originalParams;
+            vasset::TextureImportParams saved;
+            vasset::TextureImportParams edit;
+            bool                        valid {false};
+        };
+
+        TextureImportEditState m_TextureImportEdit;
 
         struct RenderTargetSlot
         {

@@ -607,7 +607,7 @@ void main()
   "nodes": [
     {
       "id": "BaseColor",
-      "type": "vultra.param.color",
+      "typeId": "vultra.param.color",
       "displayName": "Base Color",
       "params": {
         "value": [0.8, 0.82, 0.86, 1.0]
@@ -620,7 +620,7 @@ void main()
     },
     {
       "id": "Roughness",
-      "type": "vultra.param.float",
+      "typeId": "vultra.param.float",
       "displayName": "Roughness",
       "params": {
         "value": 0.55
@@ -633,7 +633,7 @@ void main()
     },
     {
       "id": "Surface",
-      "type": "vultra.output.surface",
+      "typeId": "vultra.output.surface",
       "displayName": "Surface Output",
       "params": {
         "baseColor": [1.0, 1.0, 1.0, 1.0],
@@ -662,12 +662,12 @@ void main()
   ],
   "links": [
     {
-      "from": { "node": "BaseColor", "pin": "value" },
-      "to": { "node": "Surface", "pin": "baseColor" }
+      "from": { "nodeId": "BaseColor", "pin": "value" },
+      "to": { "nodeId": "Surface", "pin": "baseColor" }
     },
     {
-      "from": { "node": "Roughness", "pin": "value" },
-      "to": { "node": "Surface", "pin": "roughness" }
+      "from": { "nodeId": "Roughness", "pin": "value" },
+      "to": { "nodeId": "Surface", "pin": "roughness" }
     }
   ]
 }

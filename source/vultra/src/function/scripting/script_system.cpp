@@ -3,6 +3,7 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/services/input_service.hpp"
 #include "vultra/core/services/timing_service.hpp"
+#include "vultra/function/scripting/bindings/script_ui_binding.hpp"
 #include "vultra/function/scripting/script_binding.hpp"
 #include "vultra/function/scripting/script_types.hpp"
 #include "vultra/function/services/asset_service.hpp"
@@ -63,6 +64,7 @@ namespace vultra
     {
         VULTRA_CORE_INFO("[ScriptSystem] Shutting down");
         destroyAllInstances();
+        clearScriptUiSignalConnections();
         m_Engine.shutdown();
     }
 
@@ -92,6 +94,7 @@ namespace vultra
             const entt::entity e = it->first;
             if (!reg.valid(e) || !reg.all_of<ScriptComponent>(e))
             {
+                clearScriptUiSignalConnections(e);
                 it = m_Instances.erase(it);
                 continue;
             }
@@ -105,6 +108,8 @@ namespace vultra
 
             ++it;
         }
+
+        dispatchScriptUiSignals(m_Engine.lua(), m_ScriptContext);
     }
 
     void ScriptSystem::onPhysics(fsec /*dt*/)
@@ -323,6 +328,7 @@ namespace vultra
         }
 
         m_Instances.erase(it);
+        clearScriptUiSignalConnections(e);
     }
 
     void ScriptSystem::setPlaybackState(bool playing, bool paused)
@@ -341,6 +347,7 @@ namespace vultra
             m_SingleStepActive   = false;
             m_SingleStepRequests = 0u;
             destroyAllInstances();
+            clearScriptUiSignalConnections();
         }
     }
 
@@ -367,6 +374,7 @@ namespace vultra
             }
         }
         m_Instances.clear();
+        clearScriptUiSignalConnections();
     }
 
     bool ScriptSystem::runString(std::string_view code)

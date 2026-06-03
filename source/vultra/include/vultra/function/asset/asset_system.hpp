@@ -113,6 +113,7 @@ namespace vultra
         AssetMemoryStats memoryStats() const override;
 
         std::string resolveUri(const std::string_view uri) const override;
+        bool        resolveAssetUri(const CoreUUID& uuid, std::string& outUri) const override;
         bool        reimportAsset(std::string_view uri, bool forceReimport = true) override;
         std::vector<AssetDiagnostic> lastImportDiagnostics() const override { return m_LastImportDiagnostics; }
         bool        reloadRegistry() override;
@@ -144,6 +145,8 @@ namespace vultra
         // Creates a GpuMaterial entry and appends into the global material table.
         // Returns index.
         uint32_t createAndAppendGpuMaterial(const vasset::VMaterial& m);
+        uint32_t createAndAppendGpuMaterialFromAsset(std::string_view uri, const vasset::VMaterial& fallback);
+        void     emitImportedMaterialAssets(std::string_view sourceRelativePath);
 
         bool resolveUUIDToUri(const CoreUUID& uuid, std::string& outUri) const;
         bool resolveUriToUUID(std::string_view uri, CoreUUID& outUUID) const;

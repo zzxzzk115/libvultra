@@ -7,6 +7,9 @@
 
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiFileDialog/ImGuiFileDialog.h>
+#include <vultra/function/asset/builtin_assets.hpp>
+#include <vultra/function/material/material_asset.hpp>
+#include <vultra/function/material_graph/material_graph.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/services/animation_service.hpp>
 #include <vultra/function/services/asset_service.hpp>
@@ -25,6 +28,7 @@
 #include <vultra/function/world/components/gaussian_splat_component.hpp>
 #include <vultra/function/world/components/hierarchy_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
+#include <vultra/function/world/components/layer_component.hpp>
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
@@ -39,6 +43,7 @@
 #include <vultra/function/world/world.hpp>
 
 #include <vasset/vanimation.hpp>
+#include <vasset/vimport.hpp>
 
 #include <entt/meta/meta.hpp>
 #include <glm/common.hpp>
@@ -48,15 +53,18 @@
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <imgui.h>
+#include <nlohmann/json.hpp>
 #include <sol/sol.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <limits>
 #include <sstream>
@@ -165,6 +173,230 @@ namespace vultra_app
                    endsWith(".vso.lua");
         }
 
+        bool isMaterialAssetSource(const std::filesystem::path& path)
+        {
+            auto name = path.filename().generic_string();
+            std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            return name.ends_with(".vmat.json");
+        }
+
+        bool readJsonFile(const std::filesystem::path& path, nlohmann::json& out, std::string& error)
+        {
+            std::ifstream file(path, std::ios::binary);
+            if (!file)
+            {
+                error = "Failed to open file.";
+                return false;
+            }
+
+            try
+            {
+                file >> out;
+            }
+            catch (const std::exception& e)
+            {
+                error = e.what();
+                return false;
+            }
+            return true;
+        }
+
+        bool writeJsonFile(const std::filesystem::path& path, const nlohmann::json& doc, std::string& error)
+        {
+            std::ofstream file(path, std::ios::binary | std::ios::trunc);
+            if (!file)
+            {
+                error = "Failed to open file for writing.";
+                return false;
+            }
+
+            file << doc.dump(2) << '\n';
+            if (!file)
+            {
+                error = "Failed to write file.";
+                return false;
+            }
+            return true;
+        }
+
+        vultra::material::MaterialSourceRef materialSourceFromJson(const nlohmann::json& doc)
+        {
+            auto parsed = vultra::material::materialAssetFromJson(doc);
+            return parsed.asset.source;
+        }
+
+        void materialSourceToJson(const vultra::material::MaterialSourceRef& source, nlohmann::json& doc)
+        {
+            auto sourceJson = nlohmann::json::object();
+            sourceJson["kind"] = vultra::material::materialSourceKindToString(source.kind);
+            if (!source.id.empty())
+                sourceJson["id"] = source.id;
+            if (!source.uri.empty())
+                sourceJson["uri"] = source.uri;
+            if (!source.shaderLibrary.empty())
+                sourceJson["shaderLibrary"] = source.shaderLibrary;
+            doc["source"] = std::move(sourceJson);
+        }
+
+        std::string stringFromJsonProperty(const nlohmann::json& properties, const std::string& name)
+        {
+            if (!properties.contains(name) || !properties[name].is_string())
+                return {};
+            return properties[name].get<std::string>();
+        }
+
+        glm::vec4 vec4FromJsonProperty(const nlohmann::json& properties,
+                                       const vultra::material::MaterialPropertySchema& param)
+        {
+            glm::vec4 fallback {1.0f};
+            if (const auto* value = std::get_if<glm::vec4>(&param.defaultValue))
+                fallback = *value;
+
+            if (!properties.contains(param.name) || !properties[param.name].is_array() ||
+                properties[param.name].size() != 4)
+            {
+                return fallback;
+            }
+
+            glm::vec4 out = fallback;
+            for (size_t i = 0; i < 4; ++i)
+            {
+                if (!properties[param.name][i].is_number())
+                    return fallback;
+                out[static_cast<glm::length_t>(i)] = properties[param.name][i].get<float>();
+            }
+            return out;
+        }
+
+        glm::vec3 vec3FromJsonProperty(const nlohmann::json& properties,
+                                       const vultra::material::MaterialPropertySchema& param)
+        {
+            glm::vec3 fallback {0.0f};
+            if (const auto* value = std::get_if<glm::vec3>(&param.defaultValue))
+                fallback = *value;
+
+            if (!properties.contains(param.name) || !properties[param.name].is_array() ||
+                properties[param.name].size() != 3)
+            {
+                return fallback;
+            }
+
+            glm::vec3 out = fallback;
+            for (size_t i = 0; i < 3; ++i)
+            {
+                if (!properties[param.name][i].is_number())
+                    return fallback;
+                out[static_cast<glm::length_t>(i)] = properties[param.name][i].get<float>();
+            }
+            return out;
+        }
+
+        glm::vec2 vec2FromJsonProperty(const nlohmann::json& properties,
+                                       const vultra::material::MaterialPropertySchema& param)
+        {
+            glm::vec2 fallback {0.0f};
+            if (const auto* value = std::get_if<glm::vec2>(&param.defaultValue))
+                fallback = *value;
+
+            if (!properties.contains(param.name) || !properties[param.name].is_array() ||
+                properties[param.name].size() != 2)
+            {
+                return fallback;
+            }
+
+            glm::vec2 out = fallback;
+            for (size_t i = 0; i < 2; ++i)
+            {
+                if (!properties[param.name][i].is_number())
+                    return fallback;
+                out[static_cast<glm::length_t>(i)] = properties[param.name][i].get<float>();
+            }
+            return out;
+        }
+
+        nlohmann::json jsonFromVec4(const glm::vec4& value)
+        {
+            return nlohmann::json::array({value.x, value.y, value.z, value.w});
+        }
+
+        nlohmann::json jsonFromVec3(const glm::vec3& value)
+        {
+            return nlohmann::json::array({value.x, value.y, value.z});
+        }
+
+        nlohmann::json jsonFromVec2(const glm::vec2& value)
+        {
+            return nlohmann::json::array({value.x, value.y});
+        }
+
+        float floatFromJsonProperty(const nlohmann::json& properties,
+                                    const vultra::material::MaterialPropertySchema& param)
+        {
+            const auto fallback = std::get_if<float>(&param.defaultValue) ? std::get<float>(param.defaultValue) : 0.0f;
+            if (!properties.contains(param.name) || !properties[param.name].is_number())
+                return fallback;
+            return properties[param.name].get<float>();
+        }
+
+        bool boolFromJsonProperty(const nlohmann::json& properties,
+                                  const vultra::material::MaterialPropertySchema& param)
+        {
+            const auto fallback = std::get_if<bool>(&param.defaultValue) ? std::get<bool>(param.defaultValue) : false;
+            if (!properties.contains(param.name) || !properties[param.name].is_boolean())
+                return fallback;
+            return properties[param.name].get<bool>();
+        }
+
+        int32_t intFromJsonProperty(const nlohmann::json& properties,
+                                    const vultra::material::MaterialPropertySchema& param)
+        {
+            const auto fallback = std::get_if<int32_t>(&param.defaultValue) ? std::get<int32_t>(param.defaultValue) : 0;
+            if (!properties.contains(param.name) || !properties[param.name].is_number_integer())
+                return fallback;
+            return properties[param.name].get<int32_t>();
+        }
+
+        vultra::material::MaterialSourceSchema resolveMaterialSchemaForEditor(EditorContext& ctx,
+                                                                              const vultra::material::MaterialSourceRef& source)
+        {
+            if (source.kind != vultra::material::MaterialSourceKind::eGraph || source.uri.empty())
+                return vultra::material::resolveMaterialSourceSchema(source);
+
+            auto* assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
+            if (!assets)
+                return {};
+
+            auto text = assets->loadTextAssetSync(source.uri);
+            if (!text)
+                return {};
+
+            auto graph = vultra::material_graph::loadGraphFromText(text.value());
+            if (!graph)
+                return {};
+
+            return vultra::material::materialSourceSchemaFromGraph(*graph);
+        }
+
+        bool drawShaderLibrarySelector(const char* label, std::array<char, 128>& value);
+        bool drawLibraryShaderSelector(EditorContext&          ctx,
+                                       const char*             label,
+                                       const std::string&      stage,
+                                       std::array<char, 128>&  library,
+                                       std::array<char, 128>&  shader,
+                                       bool                    allowEmpty);
+
+        bool drawMaterialStringInput(const char* label, std::string& value)
+        {
+            std::array<char, 512> buffer {};
+            copyName(buffer, value);
+            if (!ImGui::InputText(label, buffer.data(), buffer.size()))
+                return false;
+            value = buffer.data();
+            return true;
+        }
+
         void drawImagePreviewPlaceholder(const std::filesystem::path& path, const char* note)
         {
             ImGui::TextUnformatted("Preview");
@@ -213,6 +445,145 @@ namespace vultra_app
             return buffer;
         }
 
+        std::filesystem::path textureImportSidecarPath(const std::filesystem::path& path)
+        {
+            auto sidecar = path;
+            sidecar.replace_extension(".vimport");
+            return sidecar;
+        }
+
+        std::string relativeTextureSourcePath(const EditorContext& ctx, const std::filesystem::path& path)
+        {
+            const auto      assetRoot = (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
+            std::error_code ec;
+            auto            rel = std::filesystem::relative(path.lexically_normal(), assetRoot, ec);
+            return ec || rel.empty() ? path.filename().generic_string() : rel.generic_string();
+        }
+
+        std::string importedTexturePathForSource(EditorContext& ctx, const std::string& relativeSource)
+        {
+            if (auto* assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
+            {
+                for (const auto& [_, entry] : assets->registry().getRegistry())
+                {
+                    if (entry.type == vasset::VAssetType::eTexture && entry.sourcePath == relativeSource &&
+                        !entry.importedPath.empty())
+                    {
+                        return entry.importedPath;
+                    }
+                }
+            }
+
+            auto stem = std::filesystem::path(relativeSource).stem().generic_string();
+            if (stem.empty())
+                stem = "texture";
+            return (std::filesystem::path("imported") / vasset::toString(vasset::VAssetType::eTexture) / stem)
+                .generic_string();
+        }
+
+        std::filesystem::path importedTexturePhysicalPath(EditorContext& ctx, const std::filesystem::path& sourcePath)
+        {
+            const auto relativeSource = relativeTextureSourcePath(ctx, sourcePath);
+            auto       sidecar        = textureImportSidecarPath(sourcePath);
+            std::string importedPath;
+            if (auto loaded = vasset::loadVImport(sidecar.generic_string()))
+                importedPath = loaded.value().output;
+            if (importedPath.empty())
+                importedPath = importedTexturePathForSource(ctx, relativeSource);
+            return (ctx.state.currentProject / ctx.state.currentAssetRoot / std::filesystem::path(importedPath))
+                .lexically_normal();
+        }
+
+        std::string formatFileSizeIfPresent(const std::filesystem::path& path, const char* missingLabel)
+        {
+            std::error_code ec;
+            if (!std::filesystem::is_regular_file(path, ec) || ec)
+                return missingLabel;
+            const auto size = std::filesystem::file_size(path, ec);
+            return ec ? missingLabel : formatFileSize(size);
+        }
+
+        bool textureImportParamsEqual(const vasset::TextureImportParams& lhs, const vasset::TextureImportParams& rhs)
+        {
+            const auto& a = lhs.options;
+            const auto& b = rhs.options;
+            return lhs.subtype == rhs.subtype && a.generateMipmaps == b.generateMipmaps && a.flipY == b.flipY &&
+                   a.targetTextureFileFormat == b.targetTextureFileFormat && a.uastc == b.uastc &&
+                   a.qualityLevel == b.qualityLevel && a.compressionLevel == b.compressionLevel &&
+                   a.compressOnlyLargeTextures == b.compressOnlyLargeTextures &&
+                   a.downscaleLargeTextures == b.downscaleLargeTextures &&
+                   a.downscaleMinDimension == b.downscaleMinDimension &&
+                   a.downscaleTargetDimension == b.downscaleTargetDimension &&
+                   a.bakeNormalMap == b.bakeNormalMap && a.directXNormalMap == b.directXNormalMap;
+        }
+
+        const char* textureSubtypeLabel(std::string_view subtype)
+        {
+            if (subtype == vasset::kTextureSubtypeUiSprite)
+                return "UI / Sprite";
+            if (subtype == vasset::kTextureSubtypeNormalMap)
+                return "Normal Map";
+            if (subtype == vasset::kTextureSubtypeCursor)
+                return "Cursor";
+            if (subtype == vasset::kTextureSubtypeDefault)
+                return "Default";
+            return subtype.empty() ? "Default" : subtype.data();
+        }
+
+        bool drawTextureFileFormatCombo(vasset::VTextureFileFormat& format)
+        {
+            struct Option
+            {
+                const char* label;
+                vasset::VTextureFileFormat value;
+            };
+            constexpr Option kOptions[] = {
+                {"KTX2", vasset::VTextureFileFormat::eKTX2},
+                {"PNG", vasset::VTextureFileFormat::ePNG},
+                {"JPEG", vasset::VTextureFileFormat::eJPEG},
+                {"TGA", vasset::VTextureFileFormat::eTGA},
+                {"BMP", vasset::VTextureFileFormat::eBMP},
+                {"HDR", vasset::VTextureFileFormat::eHDR},
+                {"EXR", vasset::VTextureFileFormat::eEXR},
+            };
+
+            const char* preview = "KTX2";
+            for (const auto& option : kOptions)
+                if (option.value == format)
+                    preview = option.label;
+
+            bool changed = false;
+            if (ImGui::BeginCombo("Target Format", preview))
+            {
+                for (const auto& option : kOptions)
+                {
+                    const bool selected = option.value == format;
+                    if (ImGui::Selectable(option.label, selected))
+                    {
+                        format  = option.value;
+                        changed = true;
+                    }
+                    if (selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            return changed;
+        }
+
+        void queueTextureImport(EditorContext& ctx, const std::filesystem::path& path, const bool forceReimport)
+        {
+            const auto normalized = path.lexically_normal();
+            if (std::find(ctx.state.pendingAssetImportPaths.begin(),
+                          ctx.state.pendingAssetImportPaths.end(),
+                          normalized) == ctx.state.pendingAssetImportPaths.end())
+            {
+                ctx.state.pendingAssetImportPaths.push_back(normalized);
+            }
+            ctx.state.pendingAssetImportRefresh = true;
+            ctx.state.pendingAssetImportForceReimport |= forceReimport;
+        }
+
         const char* displayComponentName(const char* metaName)
         {
             if (std::strcmp(metaName, "TransformComponent") == 0)
@@ -229,6 +600,12 @@ namespace vultra_app
                 return "UI Text";
             if (std::strcmp(metaName, "UiButtonComponent") == 0)
                 return "UI Button";
+            if (std::strcmp(metaName, "UiToggleComponent") == 0)
+                return "UI Toggle";
+            if (std::strcmp(metaName, "UiSliderComponent") == 0)
+                return "UI Slider";
+            if (std::strcmp(metaName, "UiProgressBarComponent") == 0)
+                return "UI Progress Bar";
             if (std::strcmp(metaName, "UiLayoutComponent") == 0)
                 return "UI Layout";
             if (std::strcmp(metaName, "EntityStatusComponent") == 0)
@@ -308,6 +685,24 @@ namespace vultra_app
         const char* componentDisplayName<vultra::UiButtonComponent>()
         {
             return "UI Button";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::UiToggleComponent>()
+        {
+            return "UI Toggle";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::UiSliderComponent>()
+        {
+            return "UI Slider";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::UiProgressBarComponent>()
+        {
+            return "UI Progress Bar";
         }
 
         template<>
@@ -560,7 +955,7 @@ namespace vultra_app
                 for (int x = 0; x < 3; ++x)
                 {
                     const ImVec2 p {origin.x + static_cast<float>(x) * (cell + gap),
-                                    origin.y + static_cast<float>(2 - y) * (cell + gap)};
+                                    origin.y + static_cast<float>(y) * (cell + gap)};
                     ImGui::SetCursorScreenPos(p);
                     const bool selected = x == selectedX && y == selectedY;
                     if (selected)
@@ -1283,6 +1678,8 @@ namespace vultra_app
                 return "locked";
             if (is("selectable"))
                 return "selectable";
+            if (is("mask"))
+                return "mask";
             if (is("position"))
                 return "position";
             if (is("rotation"))
@@ -1347,6 +1744,8 @@ namespace vultra_app
                 return "clearColor";
             if (is("priority"))
                 return "priority";
+            if (is("cullingMask"))
+                return "cullingMask";
             if (is("rendererKey"))
                 return "rendererKey";
             if (is("skybox"))
@@ -1433,6 +1832,8 @@ namespace vultra_app
                 return "verticalAlign";
             if (is("interactable"))
                 return "interactable";
+            if (is("targetGraphic"))
+                return "targetGraphic";
             if (is("normalColor"))
                 return "normalColor";
             if (is("hoveredColor"))
@@ -2530,6 +2931,82 @@ namespace vultra_app
             return out;
         }
 
+        std::vector<std::string> collectMaterialUris(EditorContext& ctx)
+        {
+            std::vector<std::string> out;
+            out.emplace_back(vultra::kBuiltinDefaultMaterialUri);
+            const auto               root = editorAssetRoot(ctx);
+            std::error_code          ec;
+            if (root.empty() || !std::filesystem::exists(root, ec))
+                return out;
+            for (auto it = std::filesystem::recursive_directory_iterator(
+                     root, std::filesystem::directory_options::skip_permission_denied, ec);
+                 it != std::filesystem::recursive_directory_iterator {};
+                 it.increment(ec))
+            {
+                if (ec)
+                {
+                    ec.clear();
+                    continue;
+                }
+                const auto& entry = *it;
+                if (!entry.is_regular_file(ec))
+                {
+                    ec.clear();
+                    continue;
+                }
+                const auto path = entry.path();
+                const auto name = path.filename().generic_string();
+                if (!name.ends_with(".vmat.json"))
+                    continue;
+                const auto rel = std::filesystem::relative(path, root, ec);
+                if (!ec && !rel.empty() && isImportedAssetPath(rel.generic_string()))
+                    continue;
+                if (auto uri = pathToResUri(ctx, path); !uri.empty())
+                    out.push_back(std::move(uri));
+            }
+            std::sort(out.begin(), out.end());
+            return out;
+        }
+
+        bool drawMaterialUriField(EditorContext* ctx, std::string& uri, const char* label)
+        {
+            bool changed = false;
+            ImGui::TextUnformatted(label);
+            ImGui::PushID(label);
+            const auto preview = uri.empty() ? "<none>" : uri.c_str();
+            ImGui::SetNextItemWidth(std::max(
+                1.0f, ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x));
+            if (ImGui::BeginCombo("##MaterialUri", preview))
+            {
+                if (ImGui::Selectable("<none>", uri.empty()))
+                {
+                    uri.clear();
+                    changed = true;
+                }
+                if (ctx)
+                {
+                    for (const auto& candidate : collectMaterialUris(*ctx))
+                    {
+                        if (ImGui::Selectable(candidate.c_str(), candidate == uri))
+                        {
+                            uri     = candidate;
+                            changed = true;
+                        }
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton(ICON_MDI_CLOSE) && !uri.empty())
+            {
+                uri.clear();
+                changed = true;
+            }
+            ImGui::PopID();
+            return changed;
+        }
+
         bool drawMaterialGraphUriField(EditorContext* ctx, std::string& uri, const char* label)
         {
             bool changed = false;
@@ -2576,6 +3053,7 @@ namespace vultra_app
             auto keys = renderService ? renderService->rendererKeys() : std::vector<std::string> {};
 
             keys.erase(std::remove(keys.begin(), keys.end(), "editor-shell"), keys.end());
+            keys.erase(std::remove(keys.begin(), keys.end(), "editor-ui2d"), keys.end());
 
             if (rendererKey.empty())
                 rendererKey = "universal";
@@ -2618,6 +3096,43 @@ namespace vultra_app
             return changed;
         }
 
+        bool drawRenderLayerMaskField(const char* label, uint32_t& mask)
+        {
+            bool changed = false;
+            ImGui::TextUnformatted(label);
+            ImGui::PushID(label);
+            const auto drawBit = [&](const char* bitLabel, const uint32_t bit) {
+                bool enabled = (mask & bit) != 0u;
+                if (ImGui::Checkbox(bitLabel, &enabled))
+                {
+                    if (enabled)
+                        mask |= bit;
+                    else
+                        mask &= ~bit;
+                    changed = true;
+                }
+            };
+            drawBit("Default", vultra::kRenderLayerDefaultMask);
+            ImGui::SameLine();
+            drawBit("UI", vultra::kRenderLayerUiMask);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("All"))
+            {
+                mask    = vultra::kRenderLayerAllMask;
+                changed = true;
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Clear"))
+            {
+                mask    = 0u;
+                changed = true;
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("0x%08X", mask);
+            ImGui::PopID();
+            return changed;
+        }
+
         bool drawMetaValue(EditorContext*            ctx,
                            ui::TextureSelectorState* textureSelector,
                            ui::MeshSelectorState*    meshSelector,
@@ -2640,6 +3155,9 @@ namespace vultra_app
 
             if (auto* v = value.try_cast<uint32_t>())
             {
+                if (std::strcmp(fieldName, "mask") == 0 || std::strcmp(fieldName, "cullingMask") == 0)
+                    return drawRenderLayerMaskField(label, *v);
+
                 if (std::strcmp(fieldName, "projection") == 0)
                 {
                     const char* projectionLabels[] = {"Perspective", "Orthographic"};
@@ -3060,8 +3578,71 @@ namespace vultra_app
                     ImGui::PushID(i);
                     if (drawMaterialSlotCombo(ctx, mesh, override.slot))
                         changed = true;
+                    if (drawMaterialUriField(ctx, override.material, "Material"))
+                        changed = true;
                     if (drawMaterialGraphUriField(ctx, override.materialGraph, "Graph"))
                         changed = true;
+                    if (ImGui::TreeNode("Property Block"))
+                    {
+                        int removeProperty = -1;
+                        for (int propertyIndex = 0; propertyIndex < static_cast<int>(override.properties.size());
+                             ++propertyIndex)
+                        {
+                            auto& property = override.properties[static_cast<size_t>(propertyIndex)];
+                            ImGui::PushID(propertyIndex);
+                            if (drawMaterialStringInput("Name", property.name))
+                                changed = true;
+
+                            int typeIndex = property.type == vultra::MaterialPropertyBlockValueType::eColor ? 1 :
+                                            property.type == vultra::MaterialPropertyBlockValueType::eTexture2D ? 2 :
+                                                                                                                 0;
+                            const char* typeLabels[] = {"Float", "Color", "Texture2D"};
+                            if (ImGui::Combo("Type", &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels)))
+                            {
+                                property.type = typeIndex == 1 ? vultra::MaterialPropertyBlockValueType::eColor :
+                                                typeIndex == 2 ? vultra::MaterialPropertyBlockValueType::eTexture2D :
+                                                                 vultra::MaterialPropertyBlockValueType::eFloat;
+                                changed = true;
+                            }
+
+                            switch (property.type)
+                            {
+                                case vultra::MaterialPropertyBlockValueType::eColor:
+                                    if (ImGui::ColorEdit4("Value", &property.colorValue.x))
+                                        changed = true;
+                                    break;
+                                case vultra::MaterialPropertyBlockValueType::eTexture2D:
+                                    if (drawMaterialStringInput("Texture URI", property.textureUri))
+                                        changed = true;
+                                    break;
+                                case vultra::MaterialPropertyBlockValueType::eFloat:
+                                default:
+                                    if (ImGui::DragFloat("Value", &property.floatValue, 0.01f))
+                                        changed = true;
+                                    break;
+                            }
+
+                            if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE " Remove Property"))
+                                removeProperty = propertyIndex;
+                            ImGui::Separator();
+                            ImGui::PopID();
+                        }
+                        if (removeProperty >= 0)
+                        {
+                            override.properties.erase(override.properties.begin() + removeProperty);
+                            changed = true;
+                        }
+                        if (ImGui::SmallButton(ICON_MDI_PLUS " Add Property"))
+                        {
+                            override.properties.push_back(vultra::MaterialPropertyBlockEntry {
+                                .name       = "baseColor",
+                                .type       = vultra::MaterialPropertyBlockValueType::eColor,
+                                .colorValue = glm::vec4 {1.0f},
+                            });
+                            changed = true;
+                        }
+                        ImGui::TreePop();
+                    }
                     if (ImGui::SmallButton(ICON_MDI_DELETE " Remove"))
                         removeIndex = i;
                     ImGui::Separator();
@@ -3284,12 +3865,16 @@ namespace vultra_app
         {
             static const std::vector<AddComponentDescriptor> descriptors {
                 addComponentDescriptor<vultra::TransformComponent>("Transform", "Transform", "Core"),
+                addComponentDescriptor<vultra::LayerComponent>("Layer", "Layer", "Core"),
                 addComponentDescriptor<vultra::RectTransformComponent>("RectTransform", "Rect Transform", "UI"),
                 addUiComponentDescriptor<vultra::CanvasComponent>("Canvas", "Canvas"),
                 addUiComponentDescriptor<vultra::UiPanelComponent>("UiPanel", "UI Panel"),
                 addUiComponentDescriptor<vultra::UiImageComponent>("UiImage", "UI Image"),
                 addUiComponentDescriptor<vultra::UiTextComponent>("UiText", "UI Text"),
                 addUiComponentDescriptor<vultra::UiButtonComponent>("UiButton", "UI Button"),
+                addUiComponentDescriptor<vultra::UiToggleComponent>("UiToggle", "UI Toggle"),
+                addUiComponentDescriptor<vultra::UiSliderComponent>("UiSlider", "UI Slider"),
+                addUiComponentDescriptor<vultra::UiProgressBarComponent>("UiProgressBar", "UI Progress Bar"),
                 addUiComponentDescriptor<vultra::UiLayoutComponent>("UiLayout", "UI Layout"),
                 addComponentDescriptor<vultra::MeshComponent>("Mesh", "Mesh", "Rendering"),
                 addAnimatorComponentDescriptor(),
@@ -3318,11 +3903,15 @@ namespace vultra_app
             static const std::vector<const char*> order {
                 "RectTransform",
                 "Transform",
+                "Layer",
                 "Canvas",
                 "UiPanel",
                 "UiImage",
                 "UiText",
                 "UiButton",
+                "UiToggle",
+                "UiSlider",
+                "UiProgressBar",
                 "UiLayout",
                 "Mesh",
                 "Animator",
@@ -3349,6 +3938,8 @@ namespace vultra_app
             if (key == "Transform")
                 return reg.all_of<vultra::TransformComponent>(entity) &&
                        !reg.all_of<vultra::RectTransformComponent>(entity);
+            if (key == "Layer")
+                return reg.all_of<vultra::LayerComponent>(entity);
             if (key == "Canvas")
                 return reg.all_of<vultra::CanvasComponent>(entity);
             if (key == "UiPanel")
@@ -3359,6 +3950,12 @@ namespace vultra_app
                 return reg.all_of<vultra::UiTextComponent>(entity);
             if (key == "UiButton")
                 return reg.all_of<vultra::UiButtonComponent>(entity);
+            if (key == "UiToggle")
+                return reg.all_of<vultra::UiToggleComponent>(entity);
+            if (key == "UiSlider")
+                return reg.all_of<vultra::UiSliderComponent>(entity);
+            if (key == "UiProgressBar")
+                return reg.all_of<vultra::UiProgressBarComponent>(entity);
             if (key == "UiLayout")
                 return reg.all_of<vultra::UiLayoutComponent>(entity);
             if (key == "Mesh")
@@ -3415,6 +4012,8 @@ namespace vultra_app
                 return "Rect Transform";
             if (key == "Transform")
                 return "Transform";
+            if (key == "Layer")
+                return "Layer";
             if (key == "Canvas")
                 return "Canvas";
             if (key == "UiPanel")
@@ -3425,6 +4024,12 @@ namespace vultra_app
                 return "UI Text";
             if (key == "UiButton")
                 return "UI Button";
+            if (key == "UiToggle")
+                return "UI Toggle";
+            if (key == "UiSlider")
+                return "UI Slider";
+            if (key == "UiProgressBar")
+                return "UI Progress Bar";
             if (key == "UiLayout")
                 return "UI Layout";
             if (key == "Mesh")
@@ -3464,6 +4069,8 @@ namespace vultra_app
                 reg.remove<vultra::RectTransformComponent>(entity);
             else if (key == "Transform")
                 reg.remove<vultra::TransformComponent>(entity);
+            else if (key == "Layer")
+                reg.remove<vultra::LayerComponent>(entity);
             else if (key == "Canvas")
                 reg.remove<vultra::CanvasComponent>(entity);
             else if (key == "UiPanel")
@@ -3474,6 +4081,12 @@ namespace vultra_app
                 reg.remove<vultra::UiTextComponent>(entity);
             else if (key == "UiButton")
                 reg.remove<vultra::UiButtonComponent>(entity);
+            else if (key == "UiToggle")
+                reg.remove<vultra::UiToggleComponent>(entity);
+            else if (key == "UiSlider")
+                reg.remove<vultra::UiSliderComponent>(entity);
+            else if (key == "UiProgressBar")
+                reg.remove<vultra::UiProgressBarComponent>(entity);
             else if (key == "UiLayout")
                 reg.remove<vultra::UiLayoutComponent>(entity);
             else if (key == "Mesh")
@@ -3508,9 +4121,26 @@ namespace vultra_app
                 reg.remove<vultra::ScriptComponent>(entity);
         }
 
+        std::string componentRemovalBlockReason(entt::registry& reg, entt::entity entity, const std::string& key)
+        {
+            if (key == "Prefab")
+                return "Prefab data is managed by the prefab instance.";
+
+            if (key == "UiImage")
+            {
+                const auto* button = reg.try_get<vultra::UiButtonComponent>(entity);
+                const auto* id     = reg.try_get<vultra::IDComponent>(entity);
+                if (button && id && button->targetGraphic.valid() && button->targetGraphic == id->uuid)
+                    return "UI Button targetGraphic uses this Image. Clear or retarget targetGraphic before removing it.";
+            }
+
+            return {};
+        }
+
         bool orderedComponentHeader(const std::string& key,
                                     const std::size_t  index,
                                     const std::size_t  count,
+                                    const char*        removeBlockReason,
                                     bool&              removeRequested,
                                     bool&              moveUpRequested,
                                     bool&              moveDownRequested)
@@ -3539,13 +4169,13 @@ namespace vultra_app
                 moveDownRequested = true;
             ImGui::EndDisabled();
             ImGui::SameLine();
-            const bool removable = key != "Prefab";
+            const bool removable = !removeBlockReason || removeBlockReason[0] == '\0';
             ImGui::BeginDisabled(!removable);
             if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE))
                 removeRequested = true;
             ImGui::EndDisabled();
             if (!removable && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("Prefab data is managed by the prefab instance.");
+                ImGui::SetTooltip("%s", removeBlockReason);
 
             ImGui::PopID();
             return open;
@@ -3712,8 +4342,15 @@ namespace vultra_app
             bool              removeRequested   = false;
             bool              moveUpRequested   = false;
             bool              moveDownRequested = false;
+            const auto        removeBlockReason = componentRemovalBlockReason(reg, e, key);
             const bool        open              = orderedComponentHeader(
-                key, i, componentOrder.size(), removeRequested, moveUpRequested, moveDownRequested);
+                key,
+                i,
+                componentOrder.size(),
+                removeBlockReason.c_str(),
+                removeRequested,
+                moveUpRequested,
+                moveDownRequested);
 
             if (moveUpRequested && i > 0)
             {
@@ -3767,6 +4404,16 @@ namespace vultra_app
                         }
                 }
             }
+            else if (key == "Layer")
+            {
+                if (auto* layer = reg.try_get<vultra::LayerComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *layer))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Layer");
+                    }
+            }
             else if (key == "Canvas")
             {
                 if (auto* canvas = reg.try_get<vultra::CanvasComponent>(e))
@@ -3815,6 +4462,36 @@ namespace vultra_app
                         ctx.state.sceneDirty = true;
                         if (ctx.history)
                             ctx.history->setNextLabel("Edit UI Button");
+                    }
+            }
+            else if (key == "UiToggle")
+            {
+                if (auto* toggle = reg.try_get<vultra::UiToggleComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *toggle))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit UI Toggle");
+                    }
+            }
+            else if (key == "UiSlider")
+            {
+                if (auto* slider = reg.try_get<vultra::UiSliderComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *slider))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit UI Slider");
+                    }
+            }
+            else if (key == "UiProgressBar")
+            {
+                if (auto* progress = reg.try_get<vultra::UiProgressBarComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *progress))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit UI Progress Bar");
                     }
             }
             else if (key == "UiLayout")
@@ -4237,6 +4914,13 @@ namespace vultra_app
             ImGui::Text("Size: %s", formatFileSize(std::filesystem::file_size(path, ec)).c_str());
 
         const bool renderGraphPassSource = std::filesystem::is_regular_file(path, ec) && fileLooksLikeRenderGraphPass(path);
+        const bool materialAssetSource   = std::filesystem::is_regular_file(path, ec) && isMaterialAssetSource(path);
+        if (materialAssetSource)
+        {
+            ImGui::Spacing();
+            drawMaterialAssetSourceInspector(ctx, path);
+        }
+
         if (renderGraphPassSource)
         {
             ImGui::Spacing();
@@ -4262,6 +4946,8 @@ namespace vultra_app
         if (ui::isTextureSourceAsset(path))
         {
             ImGui::Spacing();
+            drawSourceTextureImportInspector(ctx, path);
+            ImGui::Spacing();
             drawSourceTexturePreview(ctx, path);
         }
         else if (!isDir && isModelSourceAsset(path))
@@ -4285,6 +4971,259 @@ namespace vultra_app
                 }
             }
         }
+    }
+
+    bool InspectorWindow::drawMaterialAssetSourceInspector(EditorContext& ctx, const std::filesystem::path& path)
+    {
+        struct MaterialAssetEditState
+        {
+            std::filesystem::path path;
+            nlohmann::json        doc;
+            std::string           error;
+            std::vector<std::string> diagnostics;
+            bool                  valid {false};
+            bool                  dirty {false};
+        };
+
+        static MaterialAssetEditState state;
+        const auto normalized = path.lexically_normal();
+        if (state.path != normalized)
+        {
+            state       = {};
+            state.path  = normalized;
+            state.valid = readJsonFile(normalized, state.doc, state.error);
+            if (state.valid)
+            {
+                if (!state.doc.contains("type"))
+                    state.doc["type"] = "Material";
+                if (!state.doc.contains("version"))
+                    state.doc["version"] = 1;
+                if (!state.doc.contains("properties") || !state.doc["properties"].is_object())
+                    state.doc["properties"] = nlohmann::json::object();
+                state.diagnostics = vultra::material::materialAssetFromJson(state.doc).diagnostics;
+            }
+        }
+
+        ui::sectionTitle(ICON_MDI_PALETTE_SWATCH, "Material");
+        if (!state.valid)
+        {
+            ImGui::TextWrapped("Failed to parse material asset: %s", state.error.c_str());
+            if (ImGui::Button(ICON_MDI_REFRESH " Reload"))
+            {
+                state.valid = readJsonFile(normalized, state.doc, state.error);
+                state.dirty = false;
+            }
+            return false;
+        }
+
+        bool dirty = false;
+
+        auto materialName = state.doc.value("name", normalized.stem().generic_string());
+        if (drawMaterialStringInput("Name", materialName))
+        {
+            state.doc["name"] = materialName;
+            dirty             = true;
+        }
+
+        auto source = materialSourceFromJson(state.doc);
+        state.diagnostics = vultra::material::materialAssetFromJson(state.doc).diagnostics;
+        if (!state.diagnostics.empty())
+        {
+            ImGui::Spacing();
+            ImGui::TextUnformatted("Diagnostics");
+            for (const auto& diagnostic : state.diagnostics)
+                ImGui::BulletText("%s", diagnostic.c_str());
+        }
+
+        int  kind   = source.kind == vultra::material::MaterialSourceKind::eShader ? 1 :
+                      source.kind == vultra::material::MaterialSourceKind::eGraph  ? 2 :
+                                                                                     0;
+        const char* kinds[] = {"Builtin", "Shader", "Graph"};
+        if (ImGui::Combo("Source", &kind, kinds, IM_ARRAYSIZE(kinds)))
+        {
+            source.kind = kind == 1 ? vultra::material::MaterialSourceKind::eShader :
+                          kind == 2 ? vultra::material::MaterialSourceKind::eGraph :
+                                      vultra::material::MaterialSourceKind::eBuiltin;
+            if (source.kind == vultra::material::MaterialSourceKind::eBuiltin && source.id.empty())
+                source.id = "builtin/pbr";
+            materialSourceToJson(source, state.doc);
+            dirty = true;
+        }
+
+        if (source.kind == vultra::material::MaterialSourceKind::eBuiltin)
+        {
+            if (source.id.empty())
+                source.id = "builtin/pbr";
+            if (drawMaterialStringInput("Builtin ID", source.id))
+            {
+                materialSourceToJson(source, state.doc);
+                dirty = true;
+            }
+        }
+        else if (source.kind == vultra::material::MaterialSourceKind::eGraph)
+        {
+            if (drawMaterialStringInput("Graph URI", source.uri))
+            {
+                materialSourceToJson(source, state.doc);
+                dirty = true;
+            }
+        }
+        else
+        {
+            std::array<char, 128> library {};
+            std::array<char, 128> shader {};
+            copyName(library, source.shaderLibrary.empty() ? std::string {"project"} : source.shaderLibrary);
+            copyName(shader, source.id);
+            if (drawShaderLibrarySelector("Library", library))
+            {
+                source.shaderLibrary = library.data();
+                materialSourceToJson(source, state.doc);
+                dirty = true;
+            }
+            if (drawLibraryShaderSelector(ctx, "Shader", "frag", library, shader, true))
+            {
+                source.shaderLibrary = library.data();
+                source.id            = shader.data();
+                materialSourceToJson(source, state.doc);
+                dirty = true;
+            }
+        }
+
+        auto schema = resolveMaterialSchemaForEditor(ctx, source);
+        if (schema.parameters.empty())
+        {
+            ImGui::Spacing();
+            ImGui::TextWrapped("No exposed parameters for this source yet.");
+        }
+        else
+        {
+            ImGui::Spacing();
+            ImGui::TextUnformatted("Properties");
+            auto& properties = state.doc["properties"];
+            for (const auto& param : schema.parameters)
+            {
+                const auto label = param.displayName.empty() ? param.name : param.displayName;
+                ImGui::PushID(param.name.c_str());
+                switch (param.type)
+                {
+                    case vultra::material::MaterialPropertyType::eInt: {
+                        int value = intFromJsonProperty(properties, param);
+                        if (ImGui::InputInt(label.c_str(), &value))
+                        {
+                            properties[param.name] = value;
+                            dirty                  = true;
+                        }
+                        break;
+                    }
+                    case vultra::material::MaterialPropertyType::eFloat: {
+                        float value = floatFromJsonProperty(properties, param);
+                        const bool changed = param.hasUiRange ?
+                                                 ImGui::SliderFloat(label.c_str(), &value, param.uiMin, param.uiMax) :
+                                                 ImGui::DragFloat(label.c_str(), &value, 0.01f);
+                        if (changed)
+                        {
+                            properties[param.name] = value;
+                            dirty                  = true;
+                        }
+                        break;
+                    }
+                    case vultra::material::MaterialPropertyType::eBool: {
+                        bool value = boolFromJsonProperty(properties, param);
+                        if (ImGui::Checkbox(label.c_str(), &value))
+                        {
+                            properties[param.name] = value;
+                            dirty                  = true;
+                        }
+                        break;
+                    }
+                    case vultra::material::MaterialPropertyType::eVec2: {
+                        auto value = vec2FromJsonProperty(properties, param);
+                        if (ImGui::DragFloat2(label.c_str(), &value.x, 0.01f))
+                        {
+                            properties[param.name] = jsonFromVec2(value);
+                            dirty                  = true;
+                        }
+                        break;
+                    }
+                    case vultra::material::MaterialPropertyType::eVec3: {
+                        auto value = vec3FromJsonProperty(properties, param);
+                        if (ImGui::DragFloat3(label.c_str(), &value.x, 0.01f))
+                        {
+                            properties[param.name] = jsonFromVec3(value);
+                            dirty                  = true;
+                        }
+                        break;
+                    }
+                    case vultra::material::MaterialPropertyType::eColor:
+                    case vultra::material::MaterialPropertyType::eVec4: {
+                        auto value = vec4FromJsonProperty(properties, param);
+                        const bool changed = param.type == vultra::material::MaterialPropertyType::eColor ?
+                                                 ImGui::ColorEdit4(label.c_str(), &value.x) :
+                                                 ImGui::DragFloat4(label.c_str(), &value.x, 0.01f);
+                        if (changed)
+                        {
+                            properties[param.name] = jsonFromVec4(value);
+                            dirty                  = true;
+                        }
+                        break;
+                    }
+                    case vultra::material::MaterialPropertyType::eTexture2D: {
+                        auto value = stringFromJsonProperty(properties, param.name);
+                        if (drawMaterialStringInput(label.c_str(), value))
+                        {
+                            if (value.empty())
+                                properties.erase(param.name);
+                            else
+                                properties[param.name] = value;
+                            dirty = true;
+                        }
+                        break;
+                    }
+                    default:
+                        ImGui::Text("%s: unsupported property type", label.c_str());
+                        break;
+                }
+                ImGui::PopID();
+            }
+        }
+
+        state.dirty = state.dirty || dirty;
+        ImGui::Spacing();
+        ImGui::BeginDisabled(!state.dirty);
+        if (ImGui::Button(ICON_MDI_CONTENT_SAVE " Save Material"))
+        {
+            std::string error;
+            if (writeJsonFile(state.path, state.doc, error))
+            {
+                state.dirty = false;
+                state.error.clear();
+                if (auto* assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
+                {
+                    const auto assetRoot = ctx.state.currentProject / ctx.state.currentAssetRoot;
+                    std::error_code relEc;
+                    const auto rel = std::filesystem::relative(state.path, assetRoot, relEc);
+                    if (!relEc)
+                        assets->clearTextAssetOverride("res://" + rel.generic_string());
+                }
+                ctx.state.statusMessage = "Saved material: " + state.path.filename().generic_string();
+            }
+            else
+            {
+                state.error             = error;
+                ctx.state.statusMessage = "Failed to save material: " + error;
+            }
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_MDI_REFRESH " Reload"))
+        {
+            state.valid = readJsonFile(normalized, state.doc, state.error);
+            state.dirty = false;
+        }
+
+        if (!state.error.empty())
+            ImGui::TextWrapped("%s", state.error.c_str());
+        return dirty;
     }
 
     bool InspectorWindow::drawRenderGraphPassSourceInspector(EditorContext& ctx, const std::filesystem::path& path)
@@ -4389,6 +5328,149 @@ namespace vultra_app
         }
 
         return true;
+    }
+
+    void InspectorWindow::drawSourceTextureImportInspector(EditorContext& ctx, const std::filesystem::path& path)
+    {
+        const auto normalizedPath = path.lexically_normal();
+        if (m_TextureImportEdit.path != normalizedPath || !m_TextureImportEdit.valid)
+        {
+            m_TextureImportEdit = {};
+            m_TextureImportEdit.path = normalizedPath;
+            auto sidecar = textureImportSidecarPath(normalizedPath);
+            if (auto loaded = vasset::loadVImport(sidecar.generic_string()))
+                m_TextureImportEdit.originalParams = loaded.value().params;
+
+            m_TextureImportEdit.saved = vasset::resolveTextureImportParams(m_TextureImportEdit.originalParams);
+            m_TextureImportEdit.edit  = m_TextureImportEdit.saved;
+            m_TextureImportEdit.valid = true;
+        }
+
+        ui::sectionTitle(ICON_MDI_IMAGE, "Texture Import");
+
+        auto& edit    = m_TextureImportEdit.edit;
+        bool  changed = false;
+
+        const auto importedPath = importedTexturePhysicalPath(ctx, normalizedPath);
+        ImGui::Text("Source Size: %s", formatFileSizeIfPresent(normalizedPath, "Missing").c_str());
+        ImGui::Text("Imported Size: %s", formatFileSizeIfPresent(importedPath, "Not imported").c_str());
+
+        constexpr std::string_view subtypeIds[] = {
+            vasset::kTextureSubtypeDefault,
+            vasset::kTextureSubtypeUiSprite,
+            vasset::kTextureSubtypeNormalMap,
+            vasset::kTextureSubtypeCursor,
+        };
+        const auto subtypePreview = std::string(textureSubtypeLabel(edit.subtype));
+        if (ImGui::BeginCombo("Subtype", subtypePreview.c_str()))
+        {
+            for (const auto subtype : subtypeIds)
+            {
+                const bool selected = edit.subtype == subtype;
+                if (ImGui::Selectable(textureSubtypeLabel(subtype), selected))
+                {
+                    edit.subtype = std::string(subtype);
+                    edit.options = vasset::textureImportOptionsForSubtype(edit.subtype);
+                    changed      = true;
+                }
+                if (selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+
+        changed |= ImGui::Checkbox("Generate Mipmaps", &edit.options.generateMipmaps);
+        changed |= ImGui::Checkbox("Flip Y", &edit.options.flipY);
+        changed |= drawTextureFileFormatCombo(edit.options.targetTextureFileFormat);
+        changed |= ImGui::Checkbox("UASTC", &edit.options.uastc);
+
+        int qualityLevel = static_cast<int>(edit.options.qualityLevel);
+        if (ImGui::SliderInt("Quality Level", &qualityLevel, 1, 255))
+        {
+            edit.options.qualityLevel = static_cast<uint32_t>(std::clamp(qualityLevel, 1, 255));
+            changed = true;
+        }
+
+        int compressionLevel = static_cast<int>(edit.options.compressionLevel);
+        if (ImGui::SliderInt("Compression Level", &compressionLevel, 0, 4))
+        {
+            edit.options.compressionLevel = static_cast<uint32_t>(std::clamp(compressionLevel, 0, 4));
+            changed = true;
+        }
+
+        changed |= ImGui::Checkbox("Compress Only Large", &edit.options.compressOnlyLargeTextures);
+        changed |= ImGui::Checkbox("Downscale Large", &edit.options.downscaleLargeTextures);
+
+        int downscaleMin = static_cast<int>(edit.options.downscaleMinDimension);
+        if (ImGui::InputInt("Downscale Min Dimension", &downscaleMin))
+        {
+            edit.options.downscaleMinDimension = static_cast<uint32_t>(std::max(downscaleMin, 1));
+            changed = true;
+        }
+
+        int downscaleTarget = static_cast<int>(edit.options.downscaleTargetDimension);
+        if (ImGui::InputInt("Downscale Target Dimension", &downscaleTarget))
+        {
+            edit.options.downscaleTargetDimension = static_cast<uint32_t>(std::max(downscaleTarget, 1));
+            changed = true;
+        }
+
+        changed |= ImGui::Checkbox("Bake Normal Map", &edit.options.bakeNormalMap);
+        changed |= ImGui::Checkbox("DirectX Normal Map", &edit.options.directXNormalMap);
+        static_cast<void>(changed);
+
+        const bool dirty = !textureImportParamsEqual(m_TextureImportEdit.saved, edit);
+        ImGui::BeginDisabled(!dirty);
+        if (ImGui::Button(ICON_MDI_CHECK " Apply"))
+        {
+            auto sidecar = textureImportSidecarPath(normalizedPath);
+            vasset::VImport vimport {};
+            if (auto loaded = vasset::loadVImport(sidecar.generic_string()))
+                vimport = std::move(loaded.value());
+
+            const auto relativeSource = relativeTextureSourcePath(ctx, normalizedPath);
+            const auto importedPath   = vimport.output.empty() ? importedTexturePathForSource(ctx, relativeSource) : vimport.output;
+            vimport.importer          = vasset::toString(vasset::VAssetType::eTexture);
+            vimport.source            = relativeSource;
+            vimport.output            = importedPath;
+            if (!vimport.uid.valid())
+                vimport.uid = vbase::uuid_from_string_key(importedPath);
+            vimport.params =
+                vasset::normalizedTextureImportParams(m_TextureImportEdit.originalParams, edit.subtype, edit.options);
+
+            if (auto saved = vasset::saveVImport(vimport, sidecar.generic_string()); !saved)
+            {
+                ctx.state.statusMessage = "Texture import settings save failed.";
+            }
+            else
+            {
+                m_TextureImportEdit.originalParams = vimport.params;
+                m_TextureImportEdit.saved          = vasset::resolveTextureImportParams(m_TextureImportEdit.originalParams);
+                m_TextureImportEdit.edit           = m_TextureImportEdit.saved;
+                queueTextureImport(ctx, normalizedPath, true);
+                ctx.state.statusMessage =
+                    "Applied texture import settings and queued reimport: " + normalizedPath.filename().generic_string();
+            }
+        }
+        ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!dirty);
+        if (ImGui::Button(ICON_MDI_RESTORE " Revert"))
+        {
+            auto sidecar = textureImportSidecarPath(normalizedPath);
+            m_TextureImportEdit.originalParams.clear();
+            if (auto loaded = vasset::loadVImport(sidecar.generic_string()))
+                m_TextureImportEdit.originalParams = loaded.value().params;
+            m_TextureImportEdit.saved = vasset::resolveTextureImportParams(m_TextureImportEdit.originalParams);
+            m_TextureImportEdit.edit  = m_TextureImportEdit.saved;
+        }
+        ImGui::EndDisabled();
+        if (dirty)
+        {
+            ImGui::SameLine();
+            ImGui::TextDisabled("Unsaved");
+        }
     }
 
     void InspectorWindow::drawSourceTexturePreview(EditorContext& ctx, const std::filesystem::path& path)

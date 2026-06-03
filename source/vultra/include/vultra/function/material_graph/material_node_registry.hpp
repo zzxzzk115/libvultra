@@ -18,6 +18,15 @@ namespace vultra::material_graph
         std::vector<Pin> inputs;
         std::vector<Pin> outputs;
         nlohmann::json defaultParams {nlohmann::json::object()};
+        nlohmann::json implementation {nlohmann::json::object()};
+    };
+
+    struct NodeDescriptorParseResult
+    {
+        NodeDescriptor descriptor;
+        std::vector<std::string> diagnostics;
+
+        [[nodiscard]] bool ok() const { return diagnostics.empty(); }
     };
 
     class NodeRegistry
@@ -33,5 +42,7 @@ namespace vultra::material_graph
     };
 
     [[nodiscard]] NodeRegistry makeBuiltinNodeRegistry();
+    [[nodiscard]] NodeDescriptorParseResult nodeDescriptorFromJson(const nlohmann::json& root);
+    [[nodiscard]] NodeDescriptorParseResult loadNodeDescriptorFromText(std::string_view text);
     [[nodiscard]] std::vector<Diagnostic> validateGraph(const Graph& graph, const NodeRegistry& registry);
 } // namespace vultra::material_graph

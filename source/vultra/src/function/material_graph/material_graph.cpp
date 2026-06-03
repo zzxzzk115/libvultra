@@ -70,16 +70,71 @@ namespace vultra::material_graph
         PinRef pinRefFromJson(const nlohmann::json& json)
         {
             if (json.is_object())
-                return PinRef {.nodeId = json.value("node", std::string {}), .pin = json.value("pin", std::string {})};
+                return PinRef {
+                    .nodeId = json.value("nodeId", json.value("node", std::string {})),
+                    .pin    = json.value("pin", std::string {}),
+                };
             return {};
         }
 
         nlohmann::json pinRefToJson(const PinRef& ref)
         {
             return nlohmann::json {
-                {"node", ref.nodeId},
+                {"nodeId", ref.nodeId},
                 {"pin", ref.pin},
             };
+        }
+
+        std::optional<BlackboardParameter> blackboardParameterFromJson(const nlohmann::json& json)
+        {
+            if (!json.is_object())
+                return std::nullopt;
+
+            BlackboardParameter param;
+            param.name         = json.value("name", std::string {});
+            param.type         = valueTypeFromString(json.value("type", std::string {"float"}));
+            param.displayName  = json.value("displayName", std::string {});
+            param.defaultValue = json.value("default", nlohmann::json {});
+            if (json.contains("ui") && json["ui"].is_object())
+            {
+                const auto& ui = json["ui"];
+                if (ui.contains("min") && ui["min"].is_number() && ui.contains("max") && ui["max"].is_number())
+                {
+                    param.uiMin      = ui["min"].get<float>();
+                    param.uiMax      = ui["max"].get<float>();
+                    param.hasUiRange = true;
+                }
+            }
+
+            if (param.name.empty())
+                return std::nullopt;
+            return param;
+        }
+
+        nlohmann::json blackboardParameterToJson(const BlackboardParameter& param)
+        {
+            nlohmann::json json {
+                {"name", param.name},
+                {"type", std::string(toString(param.type))},
+            };
+            if (!param.displayName.empty())
+                json["displayName"] = param.displayName;
+            if (!param.defaultValue.is_null())
+                json["default"] = param.defaultValue;
+            if (param.hasUiRange)
+                json["ui"] = {{"min", param.uiMin}, {"max", param.uiMax}};
+            return json;
+        }
+
+        std::vector<BlackboardParameter> blackboardFromJson(const nlohmann::json& json)
+        {
+            std::vector<BlackboardParameter> params;
+            if (!json.is_array())
+                return params;
+            for (const auto& item : json)
+                if (auto param = blackboardParameterFromJson(item))
+                    params.push_back(std::move(*param));
+            return params;
         }
     } // namespace
 
@@ -221,6 +276,7 @@ namespace vultra::material_graph
         graph.domain   = domainFromString(json.value("domain", std::string {"surface"}));
         graph.name     = json.value("name", std::string {});
         graph.metadata = json.value("metadata", nlohmann::json::object());
+        graph.blackboard = blackboardFromJson(json.value("blackboard", nlohmann::json::array()));
 
         static constexpr std::array knownKeys {
             "version",
@@ -228,6 +284,7 @@ namespace vultra::material_graph
             "name",
             "nodes",
             "links",
+            "blackboard",
             "metadata",
         };
         for (const auto& [key, value] : json.items())
@@ -254,7 +311,7 @@ namespace vultra::material_graph
                 continue;
             }
             Node node;
-            node.typeId      = item.value("type", std::string {});
+            node.typeId      = item.value("typeId", item.value("type", std::string {}));
             node.id          = item.value("id", std::string {});
             node.displayName = item.value("displayName", std::string {});
             node.params      = item.value("params", nlohmann::json::object());
@@ -296,12 +353,22 @@ namespace vultra::material_graph
         json["domain"]      = std::string(toString(graph.domain));
         json["name"]        = graph.name;
         json["metadata"]    = graph.metadata;
+        if (!graph.blackboard.empty())
+        {
+            json["blackboard"] = nlohmann::json::array();
+            for (const auto& param : graph.blackboard)
+                json["blackboard"].push_back(blackboardParameterToJson(param));
+        }
+        else
+        {
+            json.erase("blackboard");
+        }
 
         json["nodes"] = nlohmann::json::array();
         for (const auto& node : graph.nodes)
         {
             json["nodes"].push_back(nlohmann::json {
-                {"type", node.typeId},
+                {"typeId", node.typeId},
                 {"id", node.id},
                 {"displayName", node.displayName},
                 {"params", node.params},

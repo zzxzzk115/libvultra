@@ -16,6 +16,7 @@
 #include <glm/vec4.hpp>
 #include <sol/sol.hpp>
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace vultra
@@ -135,6 +136,114 @@ namespace vultra
             return *component;
         }
 
+        MaterialSlotOverride& materialSlotOverride(MeshComponent& mesh, const uint32_t slot)
+        {
+            const auto it = std::find_if(mesh.materialOverrides.begin(),
+                                         mesh.materialOverrides.end(),
+                                         [slot](const MaterialSlotOverride& value) { return value.slot == slot; });
+            if (it != mesh.materialOverrides.end())
+                return *it;
+            auto& value = mesh.materialOverrides.emplace_back();
+            value.slot  = slot;
+            return value;
+        }
+
+        MaterialPropertyBlockEntry& materialProperty(MaterialSlotOverride& slotOverride, const std::string& name)
+        {
+            const auto it = std::find_if(slotOverride.properties.begin(),
+                                         slotOverride.properties.end(),
+                                         [&name](const MaterialPropertyBlockEntry& value) { return value.name == name; });
+            if (it != slotOverride.properties.end())
+                return *it;
+            auto& value = slotOverride.properties.emplace_back();
+            value.name  = name;
+            return value;
+        }
+
+        void removeEmptyMaterialSlotOverride(MeshComponent& mesh, const uint32_t slot)
+        {
+            std::erase_if(mesh.materialOverrides, [slot](const MaterialSlotOverride& value) {
+                return value.slot == slot && value.material.empty() && value.materialGraph.empty() &&
+                       value.properties.empty();
+            });
+        }
+
+        void setMeshMaterial(ScriptContext& ctx, const ScriptMeshRef& self, const uint32_t slot, const std::string& uri)
+        {
+            auto& mesh          = requireComponent<MeshComponent>(ctx, self.entity, "MeshComponent");
+            auto& slotOverride  = materialSlotOverride(mesh, slot);
+            slotOverride.material = uri;
+            slotOverride.materialGraph.clear();
+            removeEmptyMaterialSlotOverride(mesh, slot);
+        }
+
+        void setMeshMaterialFloat(ScriptContext& ctx,
+                                  const ScriptMeshRef& self,
+                                  const uint32_t slot,
+                                  const std::string& name,
+                                  const float value)
+        {
+            if (name.empty())
+                return;
+            auto& entry      = materialProperty(materialSlotOverride(requireComponent<MeshComponent>(ctx, self.entity, "MeshComponent"), slot), name);
+            entry.type       = MaterialPropertyBlockValueType::eFloat;
+            entry.floatValue = value;
+        }
+
+        void setMeshMaterialColor(ScriptContext& ctx,
+                                  const ScriptMeshRef& self,
+                                  const uint32_t slot,
+                                  const std::string& name,
+                                  const ScriptVec4& value)
+        {
+            if (name.empty())
+                return;
+            auto& entry      = materialProperty(materialSlotOverride(requireComponent<MeshComponent>(ctx, self.entity, "MeshComponent"), slot), name);
+            entry.type       = MaterialPropertyBlockValueType::eColor;
+            entry.colorValue = toGlmVec4(value);
+        }
+
+        void setMeshMaterialTexture(ScriptContext& ctx,
+                                    const ScriptMeshRef& self,
+                                    const uint32_t slot,
+                                    const std::string& name,
+                                    const std::string& uri)
+        {
+            if (name.empty())
+                return;
+            auto& entry     = materialProperty(materialSlotOverride(requireComponent<MeshComponent>(ctx, self.entity, "MeshComponent"), slot), name);
+            entry.type      = MaterialPropertyBlockValueType::eTexture2D;
+            entry.textureUri = uri;
+        }
+
+        void clearMeshMaterialProperty(ScriptContext& ctx,
+                                       const ScriptMeshRef& self,
+                                       const uint32_t slot,
+                                       const std::string& name)
+        {
+            auto& mesh = requireComponent<MeshComponent>(ctx, self.entity, "MeshComponent");
+            const auto it = std::find_if(mesh.materialOverrides.begin(),
+                                         mesh.materialOverrides.end(),
+                                         [slot](const MaterialSlotOverride& value) { return value.slot == slot; });
+            if (it == mesh.materialOverrides.end())
+                return;
+            std::erase_if(it->properties,
+                          [&name](const MaterialPropertyBlockEntry& value) { return value.name == name; });
+            removeEmptyMaterialSlotOverride(mesh, slot);
+        }
+
+        void clearMeshMaterialProperties(ScriptContext& ctx, const ScriptMeshRef& self, const uint32_t slot)
+        {
+            auto& mesh = requireComponent<MeshComponent>(ctx, self.entity, "MeshComponent");
+            const auto it = std::find_if(mesh.materialOverrides.begin(),
+                                         mesh.materialOverrides.end(),
+                                         [slot](const MaterialSlotOverride& value) { return value.slot == slot; });
+            if (it == mesh.materialOverrides.end())
+                return;
+            it->properties.clear();
+            removeEmptyMaterialSlotOverride(mesh, slot);
+        }
+
         template<typename Component, typename Ref>
         Ref addComponent(ScriptContext& ctx, const ScriptEntity& entity)
         {
@@ -189,6 +298,12 @@ namespace vultra
                 [&ctx](const ScriptCameraRef& self) { return requireCamera(ctx, self.entity).orthographicHeight; },
                 [&ctx](const ScriptCameraRef& self, float value) {
                     requireCamera(ctx, self.entity).orthographicHeight = value;
+                }),
+            "cullingMask",
+            VULTRA_LUA_PROPERTY(
+                [&ctx](const ScriptCameraRef& self) { return requireCamera(ctx, self.entity).cullingMask; },
+                [&ctx](const ScriptCameraRef& self, uint32_t value) {
+                    requireCamera(ctx, self.entity).cullingMask = value;
                 }),
             "rendererKey",
             VULTRA_LUA_PROPERTY(
@@ -267,7 +382,29 @@ namespace vultra
                 },
                 [&ctx](const ScriptMeshRef& self, const ScriptVec4& value) {
                     requireComponent<MeshComponent>(ctx, self.entity, "MeshComponent").materialColor = toGlmVec4(value);
-                }));
+                }),
+            "setMaterial",
+            [&ctx](const ScriptMeshRef& self, uint32_t slot, const std::string& uri) {
+                setMeshMaterial(ctx, self, slot, uri);
+            },
+            "setMaterialFloat",
+            [&ctx](const ScriptMeshRef& self, uint32_t slot, const std::string& name, float value) {
+                setMeshMaterialFloat(ctx, self, slot, name, value);
+            },
+            "setMaterialColor",
+            [&ctx](const ScriptMeshRef& self, uint32_t slot, const std::string& name, const ScriptVec4& value) {
+                setMeshMaterialColor(ctx, self, slot, name, value);
+            },
+            "setMaterialTexture",
+            [&ctx](const ScriptMeshRef& self, uint32_t slot, const std::string& name, const std::string& uri) {
+                setMeshMaterialTexture(ctx, self, slot, name, uri);
+            },
+            "clearMaterialProperty",
+            [&ctx](const ScriptMeshRef& self, uint32_t slot, const std::string& name) {
+                clearMeshMaterialProperty(ctx, self, slot, name);
+            },
+            "clearMaterialProperties",
+            [&ctx](const ScriptMeshRef& self, uint32_t slot) { clearMeshMaterialProperties(ctx, self, slot); });
 
         lua.new_usertype<ScriptBoxShapeRef>(
             "BoxShape",
@@ -369,5 +506,10 @@ namespace vultra
             }
             return ScriptEntity {};
         });
+
+        auto layer = script_binding::getOrCreateTable(lua, "Layer");
+        layer["Default"] = kRenderLayerDefaultMask;
+        layer["UI"]      = kRenderLayerUiMask;
+        layer["All"]     = kRenderLayerAllMask;
     }
 } // namespace vultra

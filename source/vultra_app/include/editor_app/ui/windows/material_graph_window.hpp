@@ -19,6 +19,7 @@
 
 #include <array>
 #include <filesystem>
+#include <limits>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -66,6 +67,7 @@ namespace vultra_app
         void markDirty(EditorContext& ctx);
         void updatePreviewFocusAnimation();
         bool focusPreviewMesh(EditorContext& ctx, float aspect, bool resetAngle);
+        void refreshNodeRegistry(EditorContext& ctx);
 
         void ensurePreviewWorld(EditorContext& ctx);
         void ensurePreviewRenderTarget(EditorContext& ctx, uint32_t width, uint32_t height);
@@ -91,6 +93,7 @@ namespace vultra_app
         bool                                    m_Dirty {false};
         bool                                    m_LiveApply {true};
         int                                     m_ContextNode {0};
+        uint64_t                                m_NodeRegistryAssetGeneration {std::numeric_limits<uint64_t>::max()};
         uint64_t                                m_LoadedAssetGeneration {0};
         uint64_t                                m_LoadedWriteStamp {0};
 

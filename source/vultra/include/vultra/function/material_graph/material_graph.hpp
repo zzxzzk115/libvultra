@@ -76,6 +76,17 @@ namespace vultra::material_graph
         nlohmann::json editor {nlohmann::json::object()};
     };
 
+    struct BlackboardParameter
+    {
+        std::string name;
+        ValueType   type {ValueType::eFloat};
+        nlohmann::json defaultValue;
+        std::string displayName;
+        float       uiMin {0.0f};
+        float       uiMax {1.0f};
+        bool        hasUiRange {false};
+    };
+
     struct Graph
     {
         uint32_t version {1};
@@ -83,6 +94,7 @@ namespace vultra::material_graph
         std::string name;
         std::vector<Node> nodes;
         std::vector<Link> links;
+        std::vector<BlackboardParameter> blackboard;
         nlohmann::json metadata {nlohmann::json::object()};
         nlohmann::json unknown {nlohmann::json::object()};
     };

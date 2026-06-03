@@ -5,6 +5,7 @@
 #include "vultra/core/rhi/structs/vertex_attributes.hpp"
 #include "vultra/function/asset/builtin_assets.hpp"
 #include "vultra/function/asset/builtin_resource_ids.hpp"
+#include "vultra/function/material/material_asset.hpp"
 #include "vultra/function/resource/vtexture_loader.hpp"
 #include "vultra/function/rendering/srp/builtin/builtin_rendergraph_registry.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
@@ -25,6 +26,7 @@
 
 #include <glm/gtc/packing.hpp>
 #include <glm/gtx/quaternion.hpp>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -34,6 +36,7 @@
 #include <fstream>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <string_view>
 
 #if defined(_WIN32)
@@ -97,12 +100,39 @@ namespace vultra
             return uri.starts_with(kBuiltinTextureUriPrefix);
         }
 
+        bool isBuiltinMaterialUri(std::string_view uri)
+        {
+            return uri.starts_with(kBuiltinMaterialUriPrefix);
+        }
+
         std::filesystem::path builtinTexturePathForUri(std::string_view uri)
         {
             if (!isBuiltinTextureUri(uri))
                 return {};
             const auto rel = std::string(uri.substr(kBuiltinTextureUriPrefix.size()));
             return (std::filesystem::path("builtin") / "textures" / std::filesystem::path(rel)).lexically_normal();
+        }
+
+        std::filesystem::path builtinMaterialPathForUri(std::string_view uri)
+        {
+            if (!isBuiltinMaterialUri(uri))
+                return {};
+            const auto rel = std::string(uri.substr(kBuiltinMaterialUriPrefix.size()));
+            return (std::filesystem::path("builtin") / "materials" / std::filesystem::path(rel)).lexically_normal();
+        }
+
+        vbase::Result<std::string, std::string> readBuiltinTextFile(const std::filesystem::path& path)
+        {
+            std::ifstream file(path, std::ios::binary | std::ios::ate);
+            if (!file)
+                return vbase::Result<std::string, std::string>::err("builtin text asset not found");
+
+            const auto  size = static_cast<std::streamsize>(file.tellg());
+            std::string text(static_cast<size_t>(std::max<std::streamsize>(size, 0)), '\0');
+            file.seekg(0);
+            if (!text.empty() && !file.read(text.data(), size))
+                return vbase::Result<std::string, std::string>::err("failed to read builtin text asset");
+            return vbase::Result<std::string, std::string>::ok(std::move(text));
         }
 
         bool isLoadableBuiltinTexturePath(const std::filesystem::path& path)
@@ -272,6 +302,110 @@ namespace vultra
             uint32_t  pad2 {0};
         };
         static_assert(sizeof(MaterialParamsPBRMR) % 16 == 0);
+
+        std::string sanitizeMaterialAssetSegment(std::string text)
+        {
+            if (text.empty())
+                text = "material";
+            for (char& c : text)
+            {
+                const auto ch = static_cast<unsigned char>(c);
+                if (!std::isalnum(ch) && c != '_' && c != '-' && c != '.')
+                    c = '_';
+            }
+            while (!text.empty() && (text.front() == '_' || text.front() == '.'))
+                text.erase(text.begin());
+            if (text.empty())
+                text = "material";
+            return text;
+        }
+
+        std::filesystem::path importedMaterialAssetRelativePath(const std::string_view meshImportedPath,
+                                                                const uint32_t         slot,
+                                                                const std::string_view materialName)
+        {
+            const auto meshKey = sanitizeMaterialAssetSegment(
+                std::filesystem::path(std::string(meshImportedPath)).filename().generic_string());
+            const auto materialKey = sanitizeMaterialAssetSegment(std::string(materialName));
+            return std::filesystem::path("materials") / "imported" / meshKey /
+                   (std::to_string(slot) + "_" + materialKey + ".vmat.json");
+        }
+
+        nlohmann::json jsonVec4(const glm::vec4& v)
+        {
+            return nlohmann::json::array({v.x, v.y, v.z, v.w});
+        }
+
+        nlohmann::json jsonVec3(const glm::vec3& v)
+        {
+            return nlohmann::json::array({v.x, v.y, v.z});
+        }
+
+        std::optional<glm::vec4> jsonVec4Value(const nlohmann::json& value)
+        {
+            if (!value.is_array() || value.size() != 4)
+                return std::nullopt;
+
+            glm::vec4 out {1.0f};
+            for (size_t i = 0; i < 4; ++i)
+            {
+                if (!value[i].is_number())
+                    return std::nullopt;
+                out[static_cast<glm::length_t>(i)] = value[i].get<float>();
+            }
+            return out;
+        }
+
+        std::optional<float> jsonFloatValue(const nlohmann::json& value)
+        {
+            if (!value.is_number())
+                return std::nullopt;
+            return value.get<float>();
+        }
+
+        std::optional<bool> jsonBoolValue(const nlohmann::json& value)
+        {
+            if (!value.is_boolean())
+                return std::nullopt;
+            return value.get<bool>();
+        }
+
+        std::optional<std::string> jsonStringValue(const nlohmann::json& value)
+        {
+            if (!value.is_string())
+                return std::nullopt;
+            return value.get<std::string>();
+        }
+
+        const char* alphaModeString(const vasset::VMaterialAlphaMode mode)
+        {
+            switch (mode)
+            {
+                case vasset::VMaterialAlphaMode::eMask:
+                    return "Mask";
+                case vasset::VMaterialAlphaMode::eBlend:
+                    return "Blend";
+                case vasset::VMaterialAlphaMode::eOpaque:
+                default:
+                    return "Opaque";
+            }
+        }
+
+        uint32_t alphaModeFromString(const std::string_view text)
+        {
+            if (text == "Mask" || text == "mask")
+                return static_cast<uint32_t>(vasset::VMaterialAlphaMode::eMask);
+            if (text == "Blend" || text == "blend")
+                return static_cast<uint32_t>(vasset::VMaterialAlphaMode::eBlend);
+            return static_cast<uint32_t>(vasset::VMaterialAlphaMode::eOpaque);
+        }
+
+        float roughnessFromPhongShininess(const float shininess)
+        {
+            if (!(shininess > 0.0f))
+                return 1.0f;
+            return std::clamp(std::sqrt(2.0f / (shininess + 2.0f)), 0.045f, 1.0f);
+        }
 
         struct alignas(16) MaterialParamsPBRSG
         {
@@ -604,6 +738,7 @@ namespace vultra
             const auto filename = path.filename().generic_string();
             return ext == ".vscn" || ext == ".vmanifest" || ext == ".lua" || ext == ".vmatgraph" ||
                    filename.ends_with(".vrg.json") || filename.ends_with(".vmatgraph.json") ||
+                   filename.ends_with(".vmat.json") || filename.ends_with(".vmatnode.json") ||
                    filename.ends_with(".vshaderlib.lua") || filename.ends_with(".vso.lua") ||
                    filename.ends_with(".vsrp.lua") || filename.ends_with(".vfeature.lua");
         }
@@ -981,9 +1116,27 @@ namespace vultra
                     {
                         auto&          pool           = m_GpuResourceService->pool();
                         const uint32_t materialOffset = static_cast<uint32_t>(pool.materials.size());
-                        for (const auto& mat : rec->cpu->materials)
+                        const auto     meshEntry      = m_Registry.lookup(cmd.uuid.native());
+                        for (uint32_t materialSlot = 0; materialSlot < static_cast<uint32_t>(rec->cpu->materials.size());
+                             ++materialSlot)
                         {
-                            createAndAppendGpuMaterial(mat);
+                            const auto& mat = rec->cpu->materials[materialSlot];
+                            uint32_t materialIndex = std::numeric_limits<uint32_t>::max();
+                            if (!meshEntry.importedPath.empty())
+                            {
+                                const auto relativeMaterialPath =
+                                    importedMaterialAssetRelativePath(meshEntry.importedPath, materialSlot, mat.name);
+                                const auto physicalMaterialPath =
+                                    (std::filesystem::path(m_Desc.assetRoot) / relativeMaterialPath).lexically_normal();
+                                std::error_code ec;
+                                if (std::filesystem::is_regular_file(physicalMaterialPath, ec))
+                                {
+                                    materialIndex = createAndAppendGpuMaterialFromAsset(
+                                        m_Desc.scheme + "://" + relativeMaterialPath.generic_string(), mat);
+                                }
+                            }
+                            if (materialIndex == std::numeric_limits<uint32_t>::max())
+                                createAndAppendGpuMaterial(mat);
                         }
 
                         const uint32_t meshIndex = uploadMesh(*rec->cpu, materialOffset);
@@ -1655,6 +1808,247 @@ namespace vultra
         pool.materialTableDirty = true;
         m_GpuResourceService->markContentDirty();
         return gm.tableIndex;
+    }
+
+    uint32_t AssetSystem::createAndAppendGpuMaterialFromAsset(const std::string_view uri,
+                                                              const vasset::VMaterial& fallback)
+    {
+        using resource::GpuMaterial;
+        using resource::GpuMaterialModel;
+
+        auto textResult = loadTextAssetSync(uri);
+        if (!textResult)
+            return std::numeric_limits<uint32_t>::max();
+
+        nlohmann::json doc;
+        try
+        {
+            doc = nlohmann::json::parse(textResult.value());
+        }
+        catch (const std::exception& e)
+        {
+            VULTRA_CORE_WARN("[AssetSystem] Failed to parse material asset '{}': {}", uri, e.what());
+            return std::numeric_limits<uint32_t>::max();
+        }
+
+        const auto parsed = material::materialAssetFromJson(doc);
+        if (!parsed.ok() || parsed.asset.source.kind != material::MaterialSourceKind::eBuiltin ||
+            parsed.asset.source.id != "builtin/pbr")
+        {
+            for (const auto& diagnostic : parsed.diagnostics)
+                VULTRA_CORE_WARN("[AssetSystem] Material asset '{}': {}", uri, diagnostic);
+            return std::numeric_limits<uint32_t>::max();
+        }
+
+        MaterialParamsPBRMR p;
+        if (fallback.model == vasset::VMaterialModel::ePBRMetallicRoughness)
+        {
+            p.baseColor       = fallback.core.pbrMR.baseColor;
+            p.metallicFactor  = fallback.core.pbrMR.metallicFactor;
+            p.roughnessFactor = fallback.core.pbrMR.roughnessFactor;
+            p.alphaCutoff     = fallback.core.pbrMR.alphaCutoff;
+            p.alphaMode       = static_cast<uint32_t>(fallback.core.pbrMR.alphaMode);
+            p.baseColorTex    = resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.baseColorTexture.uuid));
+            p.normalTex       = resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.normalTexture.uuid));
+            p.mrTex           = resolveBindlessTextureIndexAsync(pbrMrCombinedTextureUuid(fallback.core.pbrMR));
+            p.metallicTex     = resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.metallicTexture.uuid));
+            p.roughnessTex    = resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.roughnessTexture.uuid));
+            p.occlusionTex =
+                resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.ambientOcclusionTexture.uuid));
+            p.emissiveTex   = resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.emissiveTexture.uuid));
+            p.doubleSided   = fallback.core.pbrMR.doubleSided ? 1u : 0u;
+            p.mrTextureMode = static_cast<uint32_t>(pbrMrTextureMode(fallback.core.pbrMR));
+        }
+
+        auto textureIndexForUri = [&](const nlohmann::json& properties, const char* key) {
+            if (!properties.contains(key))
+                return 0u;
+            const auto textureUri = jsonStringValue(properties[key]);
+            if (!textureUri || textureUri->empty())
+                return 0u;
+            CoreUUID uuid;
+            if (!resolveUriToUUID(*textureUri, uuid))
+                return 0u;
+            return resolveBindlessTextureIndexAsync(uuid);
+        };
+
+        const auto* properties = doc.contains("properties") && doc["properties"].is_object() ? &doc["properties"] :
+                                                                                                  nullptr;
+        if (properties)
+        {
+            if (properties->contains("baseColor"))
+            {
+                if (const auto value = jsonVec4Value((*properties)["baseColor"]))
+                    p.baseColor = *value;
+            }
+            if (properties->contains("metallic"))
+            {
+                if (const auto value = jsonFloatValue((*properties)["metallic"]))
+                    p.metallicFactor = *value;
+            }
+            if (properties->contains("roughness"))
+            {
+                if (const auto value = jsonFloatValue((*properties)["roughness"]))
+                    p.roughnessFactor = *value;
+            }
+            if (properties->contains("alphaCutoff"))
+            {
+                if (const auto value = jsonFloatValue((*properties)["alphaCutoff"]))
+                    p.alphaCutoff = *value;
+            }
+            if (properties->contains("alphaMode"))
+            {
+                if (const auto value = jsonStringValue((*properties)["alphaMode"]))
+                    p.alphaMode = alphaModeFromString(*value);
+            }
+            if (properties->contains("doubleSided"))
+            {
+                if (const auto value = jsonBoolValue((*properties)["doubleSided"]))
+                    p.doubleSided = *value ? 1u : 0u;
+            }
+
+            p.baseColorTex = textureIndexForUri(*properties, "baseColorTexture");
+            p.normalTex    = textureIndexForUri(*properties, "normalTexture");
+            p.mrTex        = textureIndexForUri(*properties, "metallicRoughnessTexture");
+            p.metallicTex  = textureIndexForUri(*properties, "metallicTexture");
+            p.roughnessTex = textureIndexForUri(*properties, "roughnessTexture");
+            p.occlusionTex = textureIndexForUri(*properties, "ambientOcclusionTexture");
+            p.emissiveTex  = textureIndexForUri(*properties, "emissiveTexture");
+            p.mrTextureMode =
+                p.mrTex != 0u ? static_cast<uint32_t>(PbrMrTextureMode::eGltfMetallicRoughness) : 0u;
+        }
+
+        auto& pool = m_GpuResourceService->pool();
+
+        GpuMaterial gm;
+        gm.model            = GpuMaterialModel::ePBRMetallicRoughness;
+        gm.blockOffsetBytes = pool.materialParams.allocAndUpload(*m_RenderDevice, &p, sizeof(p), 16);
+        gm.tableIndex       = static_cast<uint32_t>(pool.materials.size());
+        pool.materials.push_back(gm);
+        pool.materialTableDirty = true;
+        m_GpuResourceService->markContentDirty();
+        return gm.tableIndex;
+    }
+
+    void AssetSystem::emitImportedMaterialAssets(const std::string_view sourceRelativePath)
+    {
+#ifdef VULTRA_HAS_VASSET_IMPORT
+        auto materialUriForRef = [&](const vasset::VTextureRef& ref) -> std::string {
+            const CoreUUID uuid(ref.uuid);
+            if (!uuid.valid())
+                return {};
+            std::string uri;
+            return resolveUUIDToUri(uuid, uri) ? uri : std::string {};
+        };
+
+        auto addTextureProperty = [&](nlohmann::json& properties, const char* key, const vasset::VTextureRef& ref) {
+            if (const auto uri = materialUriForRef(ref); !uri.empty())
+                properties[key] = uri;
+        };
+
+        auto makeMaterialJson = [&](const vasset::VMaterial& material, const uint32_t slot) {
+            nlohmann::json properties = nlohmann::json::object();
+            switch (material.model)
+            {
+                case vasset::VMaterialModel::eUnlit:
+                    properties["baseColor"] = jsonVec4(material.core.unlit.color);
+                    properties["metallic"]  = 0.0f;
+                    properties["roughness"] = 1.0f;
+                    addTextureProperty(properties, "baseColorTexture", material.core.unlit.colorTexture);
+                    break;
+                case vasset::VMaterialModel::ePBRSpecularGlossiness:
+                    properties["baseColor"] = jsonVec4(material.core.pbrSG.diffuseColor);
+                    properties["metallic"]  = 0.0f;
+                    properties["roughness"] = std::clamp(1.0f - material.core.pbrSG.glossinessFactor, 0.045f, 1.0f);
+                    addTextureProperty(properties, "baseColorTexture", material.core.pbrSG.diffuseTexture);
+                    break;
+                case vasset::VMaterialModel::ePhong:
+                    properties["baseColor"] = jsonVec4(material.core.phong.diffuse);
+                    properties["metallic"]  = 0.0f;
+                    properties["roughness"] = roughnessFromPhongShininess(material.core.phong.shininess);
+                    addTextureProperty(properties, "baseColorTexture", material.core.phong.diffuseTexture);
+                    addTextureProperty(properties, "normalTexture", material.core.phong.normalTexture);
+                    addTextureProperty(properties, "emissiveTexture", material.core.phong.emissiveTexture);
+                    break;
+                case vasset::VMaterialModel::ePBRMetallicRoughness:
+                default:
+                    properties["baseColor"]   = jsonVec4(material.core.pbrMR.baseColor);
+                    properties["metallic"]    = material.core.pbrMR.metallicFactor;
+                    properties["roughness"]   = material.core.pbrMR.roughnessFactor;
+                    properties["alphaCutoff"] = material.core.pbrMR.alphaCutoff;
+                    properties["alphaMode"]   = alphaModeString(material.core.pbrMR.alphaMode);
+                    properties["doubleSided"] = material.core.pbrMR.doubleSided;
+                    addTextureProperty(properties, "baseColorTexture", material.core.pbrMR.baseColorTexture);
+                    addTextureProperty(properties, "normalTexture", material.core.pbrMR.normalTexture);
+                    addTextureProperty(properties, "metallicTexture", material.core.pbrMR.metallicTexture);
+                    addTextureProperty(properties, "roughnessTexture", material.core.pbrMR.roughnessTexture);
+                    addTextureProperty(
+                        properties, "metallicRoughnessTexture", material.core.pbrMR.metallicRoughnessTexture);
+                    addTextureProperty(
+                        properties, "ambientOcclusionTexture", material.core.pbrMR.ambientOcclusionTexture);
+                    addTextureProperty(properties, "emissiveTexture", material.core.pbrMR.emissiveTexture);
+                    break;
+            }
+
+            const auto name = material.name.empty() ? std::string("Material ") + std::to_string(slot) :
+                                                      material.name;
+            return nlohmann::json {
+                {"type", "Material"},
+                {"version", 1},
+                {"name", name},
+                {"source", {{"kind", "builtin"}, {"id", "builtin/pbr"}}},
+                {"properties", properties},
+            };
+        };
+
+        const auto source = std::string(sourceRelativePath);
+        const auto sourceMeshPrefix = source + "#mesh/";
+        for (const auto& [uuidText, entry] : m_Registry.getRegistry())
+        {
+            static_cast<void>(uuidText);
+            if (entry.type != vasset::VAssetType::eMesh || entry.importedPath.empty())
+                continue;
+            if (entry.sourcePath != source && !entry.sourcePath.starts_with(sourceMeshPrefix))
+                continue;
+
+            vasset::VMesh mesh;
+            const auto meshPath = (std::filesystem::path(m_Desc.assetRoot) / entry.importedPath).lexically_normal();
+            if (!vasset::loadMesh(meshPath.generic_string(), mesh))
+            {
+                VULTRA_CORE_WARN("[AssetSystem] Failed to read imported mesh while emitting material assets: {}",
+                                 meshPath.generic_string());
+                continue;
+            }
+
+            for (uint32_t slot = 0; slot < static_cast<uint32_t>(mesh.materials.size()); ++slot)
+            {
+                const auto& material = mesh.materials[slot];
+                const auto  relative = importedMaterialAssetRelativePath(entry.importedPath, slot, material.name);
+                const auto  physical = (std::filesystem::path(m_Desc.assetRoot) / relative).lexically_normal();
+
+                std::error_code ec;
+                std::filesystem::create_directories(physical.parent_path(), ec);
+                if (ec)
+                {
+                    VULTRA_CORE_WARN("[AssetSystem] Failed to create imported material asset folder '{}': {}",
+                                     physical.parent_path().generic_string(),
+                                     ec.message());
+                    continue;
+                }
+
+                std::ofstream file(physical, std::ios::binary | std::ios::trunc);
+                if (!file)
+                {
+                    VULTRA_CORE_WARN("[AssetSystem] Failed to write imported material asset: {}",
+                                     physical.generic_string());
+                    continue;
+                }
+                file << makeMaterialJson(material, slot).dump(2) << '\n';
+            }
+        }
+#else
+        static_cast<void>(sourceRelativePath);
+#endif
     }
 
     uint32_t AssetSystem::uploadMesh(const vasset::VMesh& cpuMesh, uint32_t materialOffset)
@@ -2472,6 +2866,11 @@ namespace vultra
         return m_Desc.assetRoot + vbaseUri.path.str().data();
     }
 
+    bool AssetSystem::resolveAssetUri(const CoreUUID& uuid, std::string& outUri) const
+    {
+        return resolveUUIDToUri(uuid, outUri);
+    }
+
     bool AssetSystem::reimportAsset(std::string_view uri, const bool forceReimport)
     {
 #ifdef VULTRA_HAS_VASSET_IMPORT
@@ -2487,6 +2886,15 @@ namespace vultra
         {
             VULTRA_CORE_ERROR("[AssetSystem] Failed to reimport asset '{}'", uri);
             return false;
+        }
+
+        std::error_code ec;
+        const auto sourceRelativePath = std::filesystem::relative(physicalPath, m_Desc.assetRoot, ec);
+        if (!ec && !sourceRelativePath.empty())
+        {
+            const auto relativeText = sourceRelativePath.generic_string();
+            if (!relativeText.starts_with("../"))
+                emitImportedMaterialAssets(relativeText);
         }
 
         const auto registryPath =
@@ -2542,6 +2950,11 @@ namespace vultra
         {
             if (const auto text = builtinRenderGraphText(uri); !text.empty())
                 return vbase::Result<std::string, std::string>::ok(std::string(text));
+            if (isBuiltinMaterialUri(uri))
+            {
+                if (auto text = readBuiltinTextFile(builtinMaterialPathForUri(uri)))
+                    return text;
+            }
         }
 
         if (!ctx().config.asset.loadFromVPK)

@@ -27,10 +27,12 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <ranges>
@@ -42,6 +44,186 @@ namespace vultra_app
 {
     namespace
     {
+        constexpr const char* kBlackboardTypeLabels[] = {
+            "Bool",
+            "Int",
+            "Float",
+            "Vec2",
+            "Vec3",
+            "Vec4",
+            "Color",
+            "Texture2D",
+        };
+
+        vultra::material_graph::ValueType blackboardTypeFromIndex(const int index)
+        {
+            using enum vultra::material_graph::ValueType;
+            switch (index)
+            {
+                case 0:
+                    return eBool;
+                case 1:
+                    return eInt;
+                case 3:
+                    return eVec2;
+                case 4:
+                    return eVec3;
+                case 5:
+                    return eVec4;
+                case 6:
+                    return eColor;
+                case 7:
+                    return eTexture2D;
+                case 2:
+                default:
+                    return eFloat;
+            }
+        }
+
+        int blackboardTypeIndex(const vultra::material_graph::ValueType type)
+        {
+            using enum vultra::material_graph::ValueType;
+            switch (type)
+            {
+                case eBool:
+                    return 0;
+                case eInt:
+                    return 1;
+                case eVec2:
+                    return 3;
+                case eVec3:
+                    return 4;
+                case eVec4:
+                    return 5;
+                case eColor:
+                    return 6;
+                case eTexture2D:
+                    return 7;
+                case eFloat:
+                default:
+                    return 2;
+            }
+        }
+
+        nlohmann::json defaultBlackboardValue(const vultra::material_graph::ValueType type)
+        {
+            using enum vultra::material_graph::ValueType;
+            switch (type)
+            {
+                case eBool:
+                    return false;
+                case eInt:
+                    return 0;
+                case eVec2:
+                    return nlohmann::json::array({0.0f, 0.0f});
+                case eVec3:
+                    return nlohmann::json::array({0.0f, 0.0f, 0.0f});
+                case eVec4:
+                    return nlohmann::json::array({0.0f, 0.0f, 0.0f, 0.0f});
+                case eColor:
+                    return nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f});
+                case eTexture2D:
+                    return "";
+                case eFloat:
+                default:
+                    return 0.0f;
+            }
+        }
+
+        void normalizeBlackboardDefault(vultra::material_graph::BlackboardParameter& param)
+        {
+            if (param.defaultValue.is_null())
+                param.defaultValue = defaultBlackboardValue(param.type);
+        }
+
+        bool inputStringField(const char* label, std::string& value)
+        {
+            std::array<char, 256> buffer {};
+            const auto count = std::min(buffer.size() - 1, value.size());
+            std::memcpy(buffer.data(), value.data(), count);
+            buffer[count] = '\0';
+            if (!ImGui::InputText(label, buffer.data(), buffer.size()))
+                return false;
+            value = buffer.data();
+            return true;
+        }
+
+        bool drawBlackboardDefaultValue(vultra::material_graph::BlackboardParameter& param)
+        {
+            using enum vultra::material_graph::ValueType;
+            normalizeBlackboardDefault(param);
+            switch (param.type)
+            {
+                case eBool: {
+                    bool value = param.defaultValue.is_boolean() ? param.defaultValue.get<bool>() : false;
+                    if (!ImGui::Checkbox("Default", &value))
+                        return false;
+                    param.defaultValue = value;
+                    return true;
+                }
+                case eInt: {
+                    int value = param.defaultValue.is_number_integer() ? param.defaultValue.get<int>() : 0;
+                    if (!ImGui::InputInt("Default", &value))
+                        return false;
+                    param.defaultValue = value;
+                    return true;
+                }
+                case eVec2: {
+                    float value[2] {
+                        param.defaultValue.is_array() && param.defaultValue.size() > 0 ? param.defaultValue[0].get<float>() : 0.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 1 ? param.defaultValue[1].get<float>() : 0.0f,
+                    };
+                    if (!ImGui::DragFloat2("Default", value, 0.01f))
+                        return false;
+                    param.defaultValue = nlohmann::json::array({value[0], value[1]});
+                    return true;
+                }
+                case eVec3: {
+                    float value[3] {
+                        param.defaultValue.is_array() && param.defaultValue.size() > 0 ? param.defaultValue[0].get<float>() : 0.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 1 ? param.defaultValue[1].get<float>() : 0.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 2 ? param.defaultValue[2].get<float>() : 0.0f,
+                    };
+                    if (!ImGui::DragFloat3("Default", value, 0.01f))
+                        return false;
+                    param.defaultValue = nlohmann::json::array({value[0], value[1], value[2]});
+                    return true;
+                }
+                case eVec4:
+                case eColor: {
+                    float value[4] {
+                        param.defaultValue.is_array() && param.defaultValue.size() > 0 ? param.defaultValue[0].get<float>() : 1.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 1 ? param.defaultValue[1].get<float>() : 1.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 2 ? param.defaultValue[2].get<float>() : 1.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 3 ? param.defaultValue[3].get<float>() : 1.0f,
+                    };
+                    const bool changed =
+                        param.type == eColor ? ImGui::ColorEdit4("Default", value) : ImGui::DragFloat4("Default", value, 0.01f);
+                    if (!changed)
+                        return false;
+                    param.defaultValue = nlohmann::json::array({value[0], value[1], value[2], value[3]});
+                    return true;
+                }
+                case eTexture2D: {
+                    std::string value = param.defaultValue.is_string() ? param.defaultValue.get<std::string>() : std::string {};
+                    if (!inputStringField("Default URI", value))
+                        return false;
+                    param.defaultValue = value;
+                    return true;
+                }
+                case eFloat:
+                default: {
+                    float value = param.defaultValue.is_number() ? param.defaultValue.get<float>() : 0.0f;
+                    const bool changed = param.hasUiRange ? ImGui::SliderFloat("Default", &value, param.uiMin, param.uiMax) :
+                                                            ImGui::DragFloat("Default", &value, 0.01f);
+                    if (!changed)
+                        return false;
+                    param.defaultValue = value;
+                    return true;
+                }
+            }
+        }
+
         constexpr uint64_t  kRenderTargetReleaseDelayFrames = 4u;
         constexpr glm::vec3 kPreviewWorldUp {0.0f, 1.0f, 0.0f};
 
@@ -571,6 +753,7 @@ namespace vultra_app
     void MaterialGraphWindow::draw(EditorContext& ctx)
     {
         consumeOpenRequest(ctx);
+        refreshNodeRegistry(ctx);
         ensureLoaded(ctx);
 
         ImGuiWindowFlags flags = ImGuiWindowFlags_None;
@@ -620,6 +803,64 @@ namespace vultra_app
                 renderService->releaseOverrideRenderWorld(&m_PreviewWorld);
         }
         releasePreviewRenderTarget(ctx);
+    }
+
+    void MaterialGraphWindow::refreshNodeRegistry(EditorContext& ctx)
+    {
+        if (m_NodeRegistryAssetGeneration == ctx.state.assetFileGeneration)
+            return;
+
+        m_NodeRegistryAssetGeneration = ctx.state.assetFileGeneration;
+        m_Registry                    = vultra::material_graph::makeBuiltinNodeRegistry();
+
+        const auto assetRoot = (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
+        std::error_code ec;
+        if (assetRoot.empty() || !std::filesystem::is_directory(assetRoot, ec))
+            return;
+
+        int loaded = 0;
+        int failed = 0;
+        for (auto it = std::filesystem::recursive_directory_iterator(assetRoot, ec);
+             !ec && it != std::filesystem::recursive_directory_iterator();
+             it.increment(ec))
+        {
+            if (ec)
+                break;
+            if (!it->is_regular_file(ec))
+            {
+                ec.clear();
+                continue;
+            }
+
+            const auto path = it->path();
+            const auto name = path.filename().generic_string();
+            if (!name.ends_with(".vmatnode.json"))
+                continue;
+
+            std::ifstream file(path, std::ios::binary);
+            if (!file)
+            {
+                ++failed;
+                continue;
+            }
+            std::ostringstream text;
+            text << file.rdbuf();
+            auto parsed = vultra::material_graph::loadNodeDescriptorFromText(text.str());
+            if (!parsed.ok() || !m_Registry.registerNode(std::move(parsed.descriptor)))
+            {
+                ++failed;
+                continue;
+            }
+            ++loaded;
+        }
+
+        for (auto& node : m_Graph.nodes)
+            ensureNodePorts(node);
+
+        if (failed > 0)
+            m_Status = "Loaded " + std::to_string(loaded) + " custom node(s), skipped " + std::to_string(failed);
+        else if (loaded > 0)
+            m_Status = "Loaded " + std::to_string(loaded) + " custom node(s)";
     }
 
     void MaterialGraphWindow::ensureLoaded(EditorContext& ctx)
@@ -1009,8 +1250,93 @@ namespace vultra_app
         drawAddNodePopup(ctx);
     }
 
-    void MaterialGraphWindow::drawInspector(EditorContext&)
+    void MaterialGraphWindow::drawInspector(EditorContext& ctx)
     {
+        ImGui::TextUnformatted("Blackboard");
+        if (ImGui::SmallButton(ICON_MDI_PLUS " Add Parameter"))
+        {
+            std::string name = "param";
+            int         suffix = 1;
+            const auto  exists = [&]() {
+                return std::any_of(m_Graph.blackboard.begin(), m_Graph.blackboard.end(), [&](const auto& p) {
+                    return p.name == name;
+                });
+            };
+            while (exists())
+                name = "param" + std::to_string(++suffix);
+
+            m_Graph.blackboard.push_back(vultra::material_graph::BlackboardParameter {
+                .name         = name,
+                .type         = vultra::material_graph::ValueType::eFloat,
+                .defaultValue = 0.0f,
+                .displayName  = name,
+                .uiMin        = 0.0f,
+                .uiMax        = 1.0f,
+                .hasUiRange   = true,
+            });
+            markDirty(ctx);
+        }
+
+        if (m_Graph.blackboard.empty())
+        {
+            ImGui::TextDisabled("No exposed parameters.");
+        }
+        else
+        {
+            int removeIndex = -1;
+            for (int i = 0; i < static_cast<int>(m_Graph.blackboard.size()); ++i)
+            {
+                auto& param = m_Graph.blackboard[static_cast<size_t>(i)];
+                ImGui::PushID(i);
+                const auto header = param.displayName.empty() ? param.name : param.displayName;
+                if (ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    if (inputStringField("Name", param.name))
+                        markDirty(ctx);
+                    if (inputStringField("Display Name", param.displayName))
+                        markDirty(ctx);
+
+                    int typeIndex = blackboardTypeIndex(param.type);
+                    if (ImGui::Combo("Type", &typeIndex, kBlackboardTypeLabels, IM_ARRAYSIZE(kBlackboardTypeLabels)))
+                    {
+                        param.type         = blackboardTypeFromIndex(typeIndex);
+                        param.defaultValue = defaultBlackboardValue(param.type);
+                        if (param.type != vultra::material_graph::ValueType::eFloat)
+                            param.hasUiRange = false;
+                        markDirty(ctx);
+                    }
+
+                    if (drawBlackboardDefaultValue(param))
+                        markDirty(ctx);
+
+                    const bool rangeSupported = param.type == vultra::material_graph::ValueType::eFloat;
+                    ImGui::BeginDisabled(!rangeSupported);
+                    if (ImGui::Checkbox("UI Range", &param.hasUiRange))
+                        markDirty(ctx);
+                    if (param.hasUiRange)
+                    {
+                        if (ImGui::DragFloat("Min", &param.uiMin, 0.01f))
+                            markDirty(ctx);
+                        if (ImGui::DragFloat("Max", &param.uiMax, 0.01f))
+                            markDirty(ctx);
+                        if (param.uiMax < param.uiMin)
+                            param.uiMax = param.uiMin;
+                    }
+                    ImGui::EndDisabled();
+
+                    if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE " Remove"))
+                        removeIndex = i;
+                }
+                ImGui::PopID();
+            }
+            if (removeIndex >= 0)
+            {
+                m_Graph.blackboard.erase(m_Graph.blackboard.begin() + removeIndex);
+                markDirty(ctx);
+            }
+        }
+
+        ImGui::Separator();
         ImGui::TextUnformatted("Diagnostics");
         if (m_Diagnostics.empty())
             ImGui::TextDisabled("No diagnostics.");

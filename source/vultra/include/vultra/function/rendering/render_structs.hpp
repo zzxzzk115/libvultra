@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/base/uuid.hpp"
+#include "vultra/function/world/components/layer_component.hpp"
 #include "vultra/function/resource/gpu_scene_database.hpp"
 #include "vultra/function/resource/gpu_scene_view.hpp"
 
@@ -86,6 +87,10 @@ namespace vultra
         bool          renderImGui {true};
         bool          debugEntityIdOutput {false};
         bool          selectionOutlineEnabled {false};
+        uint32_t      cullingMask {kRenderLayerAllMask};
+        bool          uiOverlayTransformOverride {false};
+        glm::vec2     uiOverlayOffsetPx {0.0f};
+        float         uiOverlayScale {1.0f};
 
         // Optional per-camera frame time override. Editor static previews use this to render deterministic
         // shader-time output without affecting other cameras submitted in the same frame.
@@ -115,6 +120,7 @@ namespace vultra
         glm::vec4 baseColorOverride {1.0f};
         bool      hasBaseColorOverride {false};
         bool      castsShadow {true};
+        uint32_t  layerMask {kRenderLayerDefaultMask};
         uint32_t  skinMatrixOffset {std::numeric_limits<uint32_t>::max()};
         uint32_t  skinMatrixCount {0};
         std::vector<glm::mat4> skinMatrices;
@@ -134,6 +140,7 @@ namespace vultra
         uint32_t  fitMode {0u};
         int       sortOrder {0};
         uint32_t  depth {0u};
+        uint32_t  layerMask {kRenderLayerUiMask};
     };
 
     struct RenderGaussianSplatInstance
@@ -141,7 +148,14 @@ namespace vultra
         CoreUUID  entity;
         uint32_t  splatIndex {0};
         glm::mat4 worldMatrix {1.0f};
+        uint32_t  layerMask {kRenderLayerDefaultMask};
     };
+
+    [[nodiscard]] inline bool renderLayerVisible(const RenderCamera* camera, const uint32_t layerMask)
+    {
+        const uint32_t cameraMask = camera ? camera->cullingMask : kRenderLayerAllMask;
+        return (cameraMask & layerMask) != 0u;
+    }
 
     [[nodiscard]] inline uint32_t makeEntityPickingId(const CoreUUID& entity)
     {

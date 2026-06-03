@@ -8,7 +8,9 @@
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
+#include <vasset/texture_import_params.hpp>
 #include <vasset/vasset_type.hpp>
+#include <vasset/vimport.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -32,6 +34,59 @@ namespace vultra_app::ui
             if (ec || rel.empty())
                 return {};
             return "res://" + rel.generic_string();
+        }
+
+        vultra::CoreUUID textureUuidForUri(EditorContext& ctx, std::string_view uri)
+        {
+            if (uri.empty() || !ctx.services)
+                return {};
+
+            if (uri.starts_with(vultra::kBuiltinTextureUriPrefix))
+                return vultra::builtinTextureUuidForUri(std::string(uri));
+
+            auto* assets = ctx.services->tryGet<vultra::IAssetService>();
+            if (!assets)
+                return {};
+
+            vultra::CoreUUID uuid;
+            if (!assets->resolver().reverseResolve(uri, uuid) || !uuid.valid())
+                return {};
+
+            const auto entry = assets->registry().lookup(uuid.native());
+            return entry.type == vasset::VAssetType::eTexture ? uuid : vultra::CoreUUID {};
+        }
+
+        bool refreshTextureSelection(EditorContext& ctx, TextureSelection& selection)
+        {
+            if (selection.uri.empty() || !ctx.services)
+                return selection.uuid.valid();
+
+            if (selection.uuid.valid())
+                return true;
+
+            if (auto resolved = textureUuidForUri(ctx, selection.uri); resolved.valid())
+            {
+                selection.uuid = resolved;
+                return true;
+            }
+
+            if (selection.uri.starts_with(vultra::kBuiltinTextureUriPrefix))
+                return false;
+
+            auto* assets = ctx.services->tryGet<vultra::IAssetService>();
+            if (!assets)
+                return false;
+
+            if (!assets->reimportAsset(selection.uri, false))
+                return false;
+
+            ++ctx.state.assetFileGeneration;
+            if (auto resolved = textureUuidForUri(ctx, selection.uri); resolved.valid())
+            {
+                selection.uuid = resolved;
+                return true;
+            }
+            return false;
         }
 
         bool containsIgnoreCase(std::string_view text, std::string_view needle)
@@ -83,7 +138,19 @@ namespace vultra_app::ui
                 uuid = vultra::CoreUUID(parsed);
                 if (!uuid.valid())
                     continue;
-                out["res://" + std::filesystem::path(entry.sourcePath).generic_string()] = uuid;
+                const auto directUri = "res://" + std::filesystem::path(entry.sourcePath).generic_string();
+                out[directUri]       = uuid;
+
+                const auto root = assetRoot(ctx);
+                for (const auto& candidate : {std::filesystem::path(entry.sourcePath),
+                                              (ctx.state.currentProject / std::filesystem::path(entry.sourcePath))
+                                                  .lexically_normal(),
+                                              (root / std::filesystem::path(entry.sourcePath)).lexically_normal()})
+                {
+                    auto uri = uriForPath(ctx, candidate);
+                    if (!uri.empty())
+                        out[std::move(uri)] = uuid;
+                }
             }
             return out;
         }
@@ -99,21 +166,45 @@ namespace vultra_app::ui
                 state.builtinCacheReady     = true;
             }
 
-            if (state.cachedProjectGeneration != ctx.state.projectGeneration)
+            if (state.cachedProjectGeneration != ctx.state.projectGeneration ||
+                state.cachedAssetFileGeneration != ctx.state.assetFileGeneration)
             {
-                state.cachedProjectTextures   = collectProjectTexturesUncached(ctx);
-                state.cachedProjectGeneration = ctx.state.projectGeneration;
+                state.cachedProjectTextures       = collectProjectTexturesUncached(ctx);
+                state.cachedProjectGeneration     = ctx.state.projectGeneration;
+                state.cachedAssetFileGeneration   = ctx.state.assetFileGeneration;
             }
         }
 
-        std::vector<TextureSelection> cachedTextures(EditorContext& ctx, TextureSelectorState& state)
+        bool matchesSubtypeFilter(const TextureSelection& texture, std::string_view subtypeFilter)
+        {
+            return subtypeFilter.empty() || texture.subtype == subtypeFilter;
+        }
+
+        std::vector<TextureSelection>
+        cachedTextures(EditorContext& ctx, TextureSelectorState& state, std::string_view subtypeFilter = {})
         {
             ensureTextureSelectorCache(ctx, state);
             std::vector<TextureSelection> out;
             out.reserve(state.cachedBuiltinTextures.size() + state.cachedProjectTextures.size());
-            out.insert(out.end(), state.cachedBuiltinTextures.begin(), state.cachedBuiltinTextures.end());
-            out.insert(out.end(), state.cachedProjectTextures.begin(), state.cachedProjectTextures.end());
+            for (const auto& texture : state.cachedBuiltinTextures)
+                if (matchesSubtypeFilter(texture, subtypeFilter))
+                    out.push_back(texture);
+            for (const auto& texture : state.cachedProjectTextures)
+                if (matchesSubtypeFilter(texture, subtypeFilter))
+                    out.push_back(texture);
             return out;
+        }
+
+        void refreshPreviewCacheForAssetChanges(EditorContext& ctx, TextureSelectorState& state)
+        {
+            if (state.observedProjectGeneration == ctx.state.projectGeneration &&
+                state.observedAssetFileGeneration == ctx.state.assetFileGeneration)
+                return;
+
+            state.observedProjectGeneration   = ctx.state.projectGeneration;
+            state.observedAssetFileGeneration = ctx.state.assetFileGeneration;
+            state.previewCache.clear(ctx);
+            state.remainingPreviewLoads = 16;
         }
 
         std::string textureUriForUuid(EditorContext& ctx, TextureSelectorState& state, const vultra::CoreUUID& uuid)
@@ -125,6 +216,12 @@ namespace vultra_app::ui
             {
                 if (texture.uuid == uuid)
                     return texture.uri;
+            }
+            if (auto* assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
+            {
+                std::string resolved;
+                if (assets->resolveAssetUri(uuid, resolved))
+                    return resolved;
             }
             if (!ctx.services)
                 return {};
@@ -369,6 +466,10 @@ namespace vultra_app::ui
                 selection.uri        = std::move(uri);
                 selection.label      = trimLabel(path);
                 selection.sourcePath = path;
+                auto sidecar = path;
+                sidecar.replace_extension(".vimport");
+                if (auto loaded = vasset::loadVImport(sidecar.generic_string()))
+                    selection.subtype = vasset::textureSubtypeFromParams(loaded.value().params);
                 if (auto it = uuidByUri.find(selection.uri); it != uuidByUri.end())
                     selection.uuid = it->second;
                 out.push_back(std::move(selection));
@@ -380,11 +481,13 @@ namespace vultra_app::ui
         }
     } // namespace
 
-    std::vector<TextureSelection> collectProjectTextures(EditorContext& ctx)
+    std::vector<TextureSelection> collectProjectTextures(EditorContext& ctx, std::string_view subtypeFilter)
     {
         auto out     = collectBuiltinTextures();
         auto project = collectProjectTexturesUncached(ctx);
         out.insert(out.end(), project.begin(), project.end());
+        if (!subtypeFilter.empty())
+            std::erase_if(out, [&](const TextureSelection& texture) { return !matchesSubtypeFilter(texture, subtypeFilter); });
         std::ranges::sort(out,
                           [](const TextureSelection& lhs, const TextureSelection& rhs) { return lhs.uri < rhs.uri; });
         return out;
@@ -394,14 +497,10 @@ namespace vultra_app::ui
                                   const char*           popupId,
                                   TextureSelectorState& state,
                                   std::string_view      selectedUri,
-                                  TextureSelection*     selected)
+                                  TextureSelection*     selected,
+                                  std::string_view      subtypeFilter)
     {
-        if (state.observedProjectGeneration != ctx.state.projectGeneration)
-        {
-            state.observedProjectGeneration = ctx.state.projectGeneration;
-            state.previewCache.clear(ctx);
-            state.remainingPreviewLoads = 16;
-        }
+        refreshPreviewCacheForAssetChanges(ctx, state);
         ensureTextureSelectorCache(ctx, state);
 
         bool changed = false;
@@ -417,7 +516,7 @@ namespace vultra_app::ui
         ImGui::Separator();
 
         state.remainingPreviewLoads = 24;
-        const auto  textures        = cachedTextures(ctx, state);
+        const auto  textures        = cachedTextures(ctx, state, subtypeFilter);
         const float iconSize        = state.iconSize;
         const float cellWidth       = iconSize + 20.0f;
         const int   columns         = std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / cellWidth));
@@ -490,7 +589,11 @@ namespace vultra_app::ui
         return changed;
     }
 
-    bool drawTextureUriField(EditorContext& ctx, const char* label, std::string& uri, TextureSelectorState& state)
+    bool drawTextureUriField(EditorContext&        ctx,
+                             const char*           label,
+                             std::string&          uri,
+                             TextureSelectorState& state,
+                             std::string_view      subtypeFilter)
     {
         bool changed = false;
         ImGui::TextUnformatted(label);
@@ -499,7 +602,7 @@ namespace vultra_app::ui
         const float fieldHeight     = 40.0f;
         const float width =
             std::max(1.0f, ImGui::GetContentRegionAvail().x - clearButtonSize - ImGui::GetStyle().ItemSpacing.x);
-        changed |= drawTextureUriSelector(ctx, "TextureSelectorPopup", uri, state, ImVec2(width, fieldHeight));
+        changed |= drawTextureUriSelector(ctx, "TextureSelectorPopup", uri, state, ImVec2(width, fieldHeight), subtypeFilter);
         ImGui::SameLine();
         if (ImGui::SmallButton(ICON_MDI_CLOSE) && !uri.empty())
         {
@@ -514,14 +617,10 @@ namespace vultra_app::ui
                                 const char*           popupId,
                                 std::string&          uri,
                                 TextureSelectorState& state,
-                                const ImVec2          size)
+                                const ImVec2          size,
+                                std::string_view      subtypeFilter)
     {
-        if (state.observedProjectGeneration != ctx.state.projectGeneration)
-        {
-            state.observedProjectGeneration = ctx.state.projectGeneration;
-            state.previewCache.clear(ctx);
-            state.remainingPreviewLoads = 16;
-        }
+        refreshPreviewCacheForAssetChanges(ctx, state);
         ensureTextureSelectorCache(ctx, state);
 
         bool        changed   = false;
@@ -535,7 +634,7 @@ namespace vultra_app::ui
             ImGui::OpenPopup(popupId);
 
         TextureSelection popupSelection;
-        if (drawTextureSelectorPopup(ctx, popupId, state, uri, &popupSelection))
+        if (drawTextureSelectorPopup(ctx, popupId, state, uri, &popupSelection, subtypeFilter))
         {
             uri     = popupSelection.uri;
             changed = true;
@@ -544,14 +643,13 @@ namespace vultra_app::ui
     }
 
     bool
-    drawTextureUuidField(EditorContext& ctx, const char* label, vultra::CoreUUID& uuid, TextureSelectorState& state)
+    drawTextureUuidField(EditorContext&        ctx,
+                         const char*           label,
+                         vultra::CoreUUID&     uuid,
+                         TextureSelectorState& state,
+                         std::string_view      subtypeFilter)
     {
-        if (state.observedProjectGeneration != ctx.state.projectGeneration)
-        {
-            state.observedProjectGeneration = ctx.state.projectGeneration;
-            state.previewCache.clear(ctx);
-            state.remainingPreviewLoads = 16;
-        }
+        refreshPreviewCacheForAssetChanges(ctx, state);
         ensureTextureSelectorCache(ctx, state);
 
         bool        changed = false;
@@ -576,10 +674,18 @@ namespace vultra_app::ui
             ImGui::OpenPopup("TextureSelectorPopup");
 
         TextureSelection selection;
-        if (drawTextureSelectorPopup(ctx, "TextureSelectorPopup", state, uri, &selection))
+        if (drawTextureSelectorPopup(ctx, "TextureSelectorPopup", state, uri, &selection, subtypeFilter))
         {
-            uuid    = selection.uuid;
-            changed = true;
+            if (!refreshTextureSelection(ctx, selection))
+                ctx.state.statusMessage = selection.uri.empty() ? std::string {} :
+                                                                "Texture is not imported or failed to import: " +
+                                                                    selection.uri;
+            ensureTextureSelectorCache(ctx, state);
+            if (selection.uri.empty() || selection.uuid.valid())
+            {
+                uuid    = selection.uuid;
+                changed = true;
+            }
         }
         ImGui::SameLine();
         if (ImGui::SmallButton(ICON_MDI_CLOSE) && uuid.valid())

@@ -89,8 +89,16 @@ namespace vultra
             VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptTransformRef {self.value}; }),
             "rectTransform",
             VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptRectTransformRef {self.value}; }),
+            "ui",
+            VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptUiRef {self.value}; }),
             "uiButton",
             VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptUiButtonRef {self.value}; }),
+            "uiToggle",
+            VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptUiToggleRef {self.value}; }),
+            "uiSlider",
+            VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptUiSliderRef {self.value}; }),
+            "uiProgressBar",
+            VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptUiProgressBarRef {self.value}; }),
             "rigidBody",
             VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptRigidBodyRef {self.value}; }),
             "camera",
@@ -150,6 +158,12 @@ namespace vultra
             "hasRectTransform",
             [&ctx](const ScriptEntity& self) { return hasComponent<RectTransformComponent>(ctx, self.value); },
             "hasUiButton",
-            [&ctx](const ScriptEntity& self) { return hasComponent<UiButtonComponent>(ctx, self.value); });
+            [&ctx](const ScriptEntity& self) { return hasComponent<UiButtonComponent>(ctx, self.value); },
+            "hasUiToggle",
+            [&ctx](const ScriptEntity& self) { return hasComponent<UiToggleComponent>(ctx, self.value); },
+            "hasUiSlider",
+            [&ctx](const ScriptEntity& self) { return hasComponent<UiSliderComponent>(ctx, self.value); },
+            "hasUiProgressBar",
+            [&ctx](const ScriptEntity& self) { return hasComponent<UiProgressBarComponent>(ctx, self.value); });
     }
 } // namespace vultra

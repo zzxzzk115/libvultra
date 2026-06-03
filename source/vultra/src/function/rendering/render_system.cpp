@@ -8,6 +8,8 @@
 #include "vultra/core/rhi/backends/webgpu/webgpu_command_buffer_access.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/services/window_service.hpp"
+#include "vultra/function/asset/builtin_assets.hpp"
+#include "vultra/function/material/material_asset.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
 #include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
@@ -31,6 +33,7 @@
 #include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
+#include "vultra/function/world/components/layer_component.hpp"
 #include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/hierarchy_component.hpp"
@@ -84,6 +87,28 @@ namespace vultra
         };
 
         static_assert(sizeof(MaterialGraphSurfaceParams) % 16 == 0);
+
+        struct alignas(16) MaterialParamsPBRMR
+        {
+            glm::vec4 baseColor {1, 1, 1, 1};
+            float     metallicFactor {1.0f};
+            float     roughnessFactor {1.0f};
+            float     alphaCutoff {0.5f};
+            uint32_t  alphaMode {0};
+            uint32_t  baseColorTex {0};
+            uint32_t  normalTex {0};
+            uint32_t  mrTex {0};
+            uint32_t  metallicTex {0};
+            uint32_t  roughnessTex {0};
+            uint32_t  occlusionTex {0};
+            uint32_t  emissiveTex {0};
+            uint32_t  doubleSided {0};
+            uint32_t  mrTextureMode {0};
+            uint32_t  pad1 {0};
+            uint32_t  pad2 {0};
+        };
+
+        static_assert(sizeof(MaterialParamsPBRMR) % 16 == 0);
 
         void importPreparedFrameGraphUniforms(FrameGraph& fg, FrameRenderData& frameData, ViewRenderData& viewData)
         {
@@ -180,17 +205,59 @@ namespace vultra
             return false;
         }
 
+        [[nodiscard]] const nlohmann::json*
+        graphPropertyOverride(const material_graph::Graph& graph,
+                              const nlohmann::json*       properties,
+                              const material_graph::Node& node)
+        {
+            if (!properties || !properties->is_object())
+                return nullptr;
+
+            const auto findByName = [&](std::string_view name) -> const nlohmann::json* {
+                if (name.empty())
+                    return nullptr;
+                auto it = properties->find(std::string(name));
+                return it != properties->end() ? &*it : nullptr;
+            };
+
+            if (const auto* value = findByName(node.id))
+                return value;
+            if (const auto* value = findByName(node.displayName))
+                return value;
+            if (node.params.contains("name") && node.params["name"].is_string())
+                if (const auto* value = findByName(node.params["name"].get<std::string>()))
+                    return value;
+
+            for (const auto& param : graph.blackboard)
+            {
+                if (param.name == node.id || param.name == node.displayName)
+                    if (const auto* value = findByName(param.name))
+                        return value;
+            }
+            return nullptr;
+        }
+
+        [[nodiscard]] const nlohmann::json*
+        graphSurfacePropertyOverride(const nlohmann::json* properties, std::string_view pin)
+        {
+            if (!properties || !properties->is_object() || pin.empty())
+                return nullptr;
+            auto it = properties->find(std::string(pin));
+            return it != properties->end() ? &*it : nullptr;
+        }
+
         [[nodiscard]] nlohmann::json constantNodeValue(const material_graph::Graph& graph,
                                                        const material_graph::Node&  node,
                                                        std::string_view             outputPin,
                                                        const nlohmann::json&        fallback,
-                                                       const float                  timeSeconds)
+                                                       const float                  timeSeconds,
+                                                       const nlohmann::json*        properties = nullptr)
         {
             const auto inputValue = [&](std::string_view pin, const nlohmann::json& inputFallback) {
                 const auto* inputLink = linkedInput(graph, node, pin);
                 const auto* inputNode = inputLink ? material_graph::findNode(graph, inputLink->from.nodeId) : nullptr;
                 return inputNode ?
-                           constantNodeValue(graph, *inputNode, inputLink->from.pin, inputFallback, timeSeconds) :
+                           constantNodeValue(graph, *inputNode, inputLink->from.pin, inputFallback, timeSeconds, properties) :
                            inputFallback;
             };
 
@@ -198,7 +265,11 @@ namespace vultra
                 node.typeId == "vultra.param.vec3" || node.typeId == "vultra.param.vec4" ||
                 node.typeId == "vultra.param.color" || node.typeId == "vultra.param.bool" ||
                 node.typeId == "vultra.param.int" || node.typeId == "vultra.param.enum")
+            {
+                if (const auto* value = graphPropertyOverride(graph, properties, node))
+                    return *value;
                 return node.params.value("value", fallback);
+            }
 
             if (node.typeId == "vultra.input.time" &&
                 (outputPin == "seconds" || outputPin == "value" || outputPin == "out"))
@@ -297,21 +368,31 @@ namespace vultra
                                                        const material_graph::Node&  output,
                                                        std::string_view             pin,
                                                        const nlohmann::json&        fallback,
-                                                       const float                  timeSeconds)
+                                                       const float                  timeSeconds,
+                                                       const nlohmann::json*        properties = nullptr)
         {
             if (const auto* link = linkedInput(graph, output, pin))
             {
                 if (const auto* source = material_graph::findNode(graph, link->from.nodeId))
-                    return constantNodeValue(graph, *source, link->from.pin, fallback, timeSeconds);
+                    return constantNodeValue(graph, *source, link->from.pin, fallback, timeSeconds, properties);
             }
+            if (const auto* value = graphSurfacePropertyOverride(properties, pin))
+                return *value;
             return output.params.value(std::string(pin), fallback);
         }
 
         [[nodiscard]] uint32_t materialGraphTextureIndex(IAssetService&               assets,
                                                          const material_graph::Graph& graph,
                                                          const material_graph::Node&  output,
-                                                         std::string_view             pin)
+                                                         std::string_view             pin,
+                                                         const nlohmann::json*        properties = nullptr)
         {
+            if (const auto* value = graphSurfacePropertyOverride(properties, pin); value && value->is_string())
+            {
+                auto texture = assets.loadTextureAsync(value->get<std::string>());
+                return texture.ready() ? texture.gpuIndex() : 0u;
+            }
+
             const auto* link = linkedInput(graph, output, pin);
             if (!link)
                 return 0u;
@@ -327,7 +408,9 @@ namespace vultra
 
                 if (node.typeId == "vultra.param.texture2d")
                 {
-                    const auto uri = node.params.value("texture", std::string {});
+                    std::string uri = node.params.value("texture", std::string {});
+                    if (const auto* value = graphPropertyOverride(graph, properties, node); value && value->is_string())
+                        uri = value->get<std::string>();
                     if (uri.empty())
                         return 0u;
 
@@ -400,6 +483,7 @@ namespace vultra
                                                                             const uint32_t   graphId,
                                                                             const uint64_t   contentRevision,
                                                                             const float      timeSeconds,
+                                                                            const nlohmann::json* properties = nullptr,
                                                                             bool*            timeDependent = nullptr)
         {
             if (timeDependent)
@@ -416,7 +500,7 @@ namespace vultra
 
             const auto& graph  = *cached->graph;
             const auto& output = graph.nodes[cached->outputIndex];
-            params.textureInfo.x = materialGraphTextureIndex(assets, graph, output, "baseColor");
+            params.textureInfo.x = materialGraphTextureIndex(assets, graph, output, "baseColor", properties);
             params.alphaMode     = static_cast<uint32_t>(
                 material_graph::alphaModeFromString(output.params.value("alphaMode", std::string {"Opaque"})));
             params.shadingModel = static_cast<uint32_t>(
@@ -424,23 +508,24 @@ namespace vultra
 
             params.baseColor = jsonVec4(
                 surfaceInputValue(
-                    graph, output, "baseColor", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f}), timeSeconds),
+                    graph, output, "baseColor", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f}), timeSeconds, properties),
                 glm::vec4(1.0f));
             const glm::vec3 emissive = jsonVec3(
-                surfaceInputValue(graph, output, "emissive", nlohmann::json::array({0.0f, 0.0f, 0.0f}), timeSeconds),
+                surfaceInputValue(
+                    graph, output, "emissive", nlohmann::json::array({0.0f, 0.0f, 0.0f}), timeSeconds, properties),
                 glm::vec3(0.0f));
             params.emissiveAlpha = glm::vec4(
                 emissive,
                 glm::clamp(
-                    jsonFloat(surfaceInputValue(graph, output, "alpha", 1.0f, timeSeconds), 1.0f), 0.0f, 1.0f));
+                    jsonFloat(surfaceInputValue(graph, output, "alpha", 1.0f, timeSeconds, properties), 1.0f), 0.0f, 1.0f));
             params.metallicRoughnessAoCutoff = glm::vec4(
                 glm::clamp(
-                    jsonFloat(surfaceInputValue(graph, output, "metallic", 0.0f, timeSeconds), 0.0f), 0.0f, 1.0f),
+                    jsonFloat(surfaceInputValue(graph, output, "metallic", 0.0f, timeSeconds, properties), 0.0f), 0.0f, 1.0f),
                 glm::clamp(
-                    jsonFloat(surfaceInputValue(graph, output, "roughness", 1.0f, timeSeconds), 1.0f), 0.045f, 1.0f),
-                glm::clamp(jsonFloat(surfaceInputValue(graph, output, "ao", 1.0f, timeSeconds), 1.0f), 0.0f, 1.0f),
+                    jsonFloat(surfaceInputValue(graph, output, "roughness", 1.0f, timeSeconds, properties), 1.0f), 0.045f, 1.0f),
+                glm::clamp(jsonFloat(surfaceInputValue(graph, output, "ao", 1.0f, timeSeconds, properties), 1.0f), 0.0f, 1.0f),
                 glm::clamp(
-                    jsonFloat(surfaceInputValue(graph, output, "alphaCutoff", 0.5f, timeSeconds), 0.5f), 0.0f, 1.0f));
+                    jsonFloat(surfaceInputValue(graph, output, "alphaCutoff", 0.5f, timeSeconds, properties), 0.5f), 0.0f, 1.0f));
             if (params.shadingModel == static_cast<uint32_t>(material_graph::ShadingModel::ePBRSpecularGlossiness) ||
                 params.shadingModel == static_cast<uint32_t>(material_graph::ShadingModel::ePhong))
                 params.metallicRoughnessAoCutoff.x = 0.0f;
@@ -455,11 +540,19 @@ namespace vultra
             if (material.blockOffsetBytes + sizeof(params) <= pool.materialParams.cpu.size())
             {
                 std::memcpy(pool.materialParams.cpu.data() + material.blockOffsetBytes, &params, sizeof(params));
+                if (pool.materialParams.gpu)
+                {
+                    rd.uploadS(*pool.materialParams.gpu,
+                               0,
+                               static_cast<uint64_t>(pool.materialParams.cpu.size()),
+                               pool.materialParams.cpu.data());
+                }
             }
             else
             {
                 material.blockOffsetBytes = pool.materialParams.allocAndUpload(rd, &params, sizeof(params));
                 pool.materialTableDirty   = true;
+                pool.uploadMaterialTable(rd);
             }
         }
 
@@ -467,18 +560,23 @@ namespace vultra
                                                               IGpuResourceService& gpuResources,
                                                               rhi::RenderDevice&   rd,
                                                               std::string_view     materialGraphUri,
-                                                              const float          timeSeconds)
+                                                              const float          timeSeconds,
+                                                              const nlohmann::json* properties = nullptr,
+                                                              std::string_view     materialKey = {})
         {
             if (materialGraphUri.empty())
                 return std::numeric_limits<uint32_t>::max();
 
             auto&          pool    = gpuResources.pool();
+            const auto      keyText = materialKey.empty() ? std::string(materialGraphUri) : std::string(materialKey);
             const uint32_t graphId = material_graph::stableGraphId(materialGraphUri);
+            const uint32_t materialInstanceId = material_graph::stableGraphId(keyText);
             const uint64_t contentRevision = gpuResources.contentRevision();
             for (uint32_t i = 0; i < static_cast<uint32_t>(pool.materials.size()); ++i)
             {
                 auto& material = pool.materials[i];
-                if (material.model == resource::GpuMaterialModel::eMaterialGraph && material.tableIndex == graphId)
+                if (material.model == resource::GpuMaterialModel::eMaterialGraph &&
+                    material.tableIndex == materialInstanceId)
                 {
                     struct MaterialGraphCacheEntry
                     {
@@ -489,17 +587,17 @@ namespace vultra
                         MaterialGraphSurfaceParams params {};
                     };
                     static std::unordered_map<std::string, MaterialGraphCacheEntry> cache;
-                    auto& cached = cache[std::string(materialGraphUri)];
-                    if (cached.contentRevision == contentRevision && !cached.timeDependent)
+                    auto& cached = cache[keyText];
+                    if (!properties && cached.contentRevision == contentRevision && !cached.timeDependent)
                         return i;
-                    if (cached.contentRevision == contentRevision && cached.timeDependent &&
+                    if (!properties && cached.contentRevision == contentRevision && cached.timeDependent &&
                         cached.materialIndex == i && cached.timeSeconds == timeSeconds)
                         return i;
 
                     bool       timeDependent = false;
                     const auto params =
                         materialGraphSurfaceParams(
-                            assets, materialGraphUri, graphId, contentRevision, timeSeconds, &timeDependent);
+                            assets, materialGraphUri, graphId, contentRevision, timeSeconds, properties, &timeDependent);
                     if (material.blockOffsetBytes + sizeof(params) <= pool.materialParams.cpu.size() &&
                         std::memcmp(pool.materialParams.cpu.data() + material.blockOffsetBytes, &params, sizeof(params)) == 0)
                     {
@@ -525,18 +623,296 @@ namespace vultra
                 }
             }
 
-            const auto params = materialGraphSurfaceParams(assets, materialGraphUri, graphId, contentRevision, timeSeconds);
+            const auto params =
+                materialGraphSurfaceParams(assets, materialGraphUri, graphId, contentRevision, timeSeconds, properties);
             resource::GpuMaterial material;
             material.model            = resource::GpuMaterialModel::eMaterialGraph;
             material.blockOffsetBytes = pool.materialParams.allocAndUpload(rd, &params, sizeof(params));
-            material.tableIndex       = graphId;
+            material.tableIndex       = materialInstanceId;
             material.padding          = 0u;
 
             const uint32_t index = static_cast<uint32_t>(pool.materials.size());
             pool.materials.push_back(material);
             pool.materialTableDirty = true;
+            pool.uploadMaterialTable(rd);
             gpuResources.markContentDirty();
             return index;
+        }
+
+        [[nodiscard]] uint32_t stableMaterialAssetId(std::string_view uri)
+        {
+            uint32_t hash = 2166136261u;
+            for (const unsigned char ch : uri)
+            {
+                hash ^= ch;
+                hash *= 16777619u;
+            }
+            return hash == 0u ? 1u : hash;
+        }
+
+        [[nodiscard]] std::optional<MaterialParamsPBRMR> builtinPbrMaterialParamsFromAsset(IAssetService& assets,
+                                                                                           std::string_view materialUri,
+                                                                                           const nlohmann::json* overrides = nullptr)
+        {
+            auto text = assets.loadTextAssetSync(materialUri);
+            if (!text)
+                return std::nullopt;
+
+            nlohmann::json root;
+            try
+            {
+                root = nlohmann::json::parse(text.value());
+            }
+            catch (const nlohmann::json::exception&)
+            {
+                return std::nullopt;
+            }
+
+            if (!root.is_object() || root.value("type", std::string {}) != "Material")
+                return std::nullopt;
+
+            const auto parsed = material::materialAssetFromJson(root);
+            if (!parsed.ok() || parsed.asset.source.kind != material::MaterialSourceKind::eBuiltin ||
+                parsed.asset.source.id != "builtin/pbr")
+            {
+                return std::nullopt;
+            }
+
+            const auto& properties = root["properties"];
+            MaterialParamsPBRMR params;
+            const auto textureIndex = [&](const nlohmann::json& sourceProperties, const char* key) -> uint32_t {
+                if (!sourceProperties.is_object())
+                    return 0u;
+                const auto uri = sourceProperties.value(key, std::string {});
+                if (uri.empty())
+                    return 0u;
+                auto texture = assets.loadTextureAsync(uri);
+                return texture.ready() ? texture.gpuIndex() : 0u;
+            };
+            const auto applyTextureProperties = [&](const nlohmann::json& sourceProperties) {
+                if (!sourceProperties.is_object())
+                    return;
+                if (auto index = textureIndex(sourceProperties, "baseColorTexture"); index != 0u)
+                    params.baseColorTex = index;
+                if (auto index = textureIndex(sourceProperties, "normalTexture"); index != 0u)
+                    params.normalTex = index;
+                if (auto index = textureIndex(sourceProperties, "metallicRoughnessTexture"); index != 0u)
+                {
+                    params.mrTex         = index;
+                    params.mrTextureMode = 0u;
+                }
+                if (auto index = textureIndex(sourceProperties, "metallicTexture"); index != 0u)
+                    params.metallicTex = index;
+                if (auto index = textureIndex(sourceProperties, "roughnessTexture"); index != 0u)
+                    params.roughnessTex = index;
+                if (auto index = textureIndex(sourceProperties, "ambientOcclusionTexture"); index != 0u)
+                    params.occlusionTex = index;
+                if (auto index = textureIndex(sourceProperties, "emissiveTexture"); index != 0u)
+                    params.emissiveTex = index;
+            };
+            if (properties.is_object())
+            {
+                params.baseColor       = jsonVec4(properties.value("baseColor", nlohmann::json::array()), params.baseColor);
+                params.metallicFactor  = glm::clamp(jsonFloat(properties.value("metallic", params.metallicFactor),
+                                                             params.metallicFactor),
+                                                   0.0f,
+                                                   1.0f);
+                params.roughnessFactor = glm::clamp(jsonFloat(properties.value("roughness", params.roughnessFactor),
+                                                             params.roughnessFactor),
+                                                   0.045f,
+                                                   1.0f);
+                params.alphaCutoff     = glm::clamp(jsonFloat(properties.value("alphaCutoff", params.alphaCutoff),
+                                                             params.alphaCutoff),
+                                                   0.0f,
+                                                   1.0f);
+                params.doubleSided     = properties.value("doubleSided", false) ? 1u : 0u;
+                applyTextureProperties(properties);
+            }
+            if (overrides && overrides->is_object())
+            {
+                params.baseColor       = jsonVec4(overrides->value("baseColor", nlohmann::json::array()), params.baseColor);
+                params.metallicFactor  = glm::clamp(jsonFloat(overrides->value("metallic", params.metallicFactor),
+                                                             params.metallicFactor),
+                                                   0.0f,
+                                                   1.0f);
+                params.roughnessFactor = glm::clamp(jsonFloat(overrides->value("roughness", params.roughnessFactor),
+                                                             params.roughnessFactor),
+                                                   0.045f,
+                                                   1.0f);
+                params.alphaCutoff     = glm::clamp(jsonFloat(overrides->value("alphaCutoff", params.alphaCutoff),
+                                                             params.alphaCutoff),
+                                                   0.0f,
+                                                   1.0f);
+                applyTextureProperties(*overrides);
+            }
+            return params;
+        }
+
+        [[nodiscard]] uint32_t ensureBuiltinMaterialAssetGpuMaterial(IAssetService&       assets,
+                                                                     IGpuResourceService& gpuResources,
+                                                                     rhi::RenderDevice&   rd,
+                                                                     std::string_view     materialUri,
+                                                                     const nlohmann::json* overrides = nullptr)
+        {
+            if (materialUri.empty())
+                return std::numeric_limits<uint32_t>::max();
+
+            auto params = builtinPbrMaterialParamsFromAsset(assets, materialUri, overrides);
+            if (!params)
+                return std::numeric_limits<uint32_t>::max();
+
+            auto&          pool       = gpuResources.pool();
+            const uint32_t materialId =
+                overrides && overrides->is_object() && !overrides->empty() ?
+                    material_graph::stableGraphId(std::string(materialUri) + "#" + overrides->dump()) :
+                    stableMaterialAssetId(materialUri);
+            for (uint32_t i = 0; i < static_cast<uint32_t>(pool.materials.size()); ++i)
+            {
+                auto& material = pool.materials[i];
+                if (material.model != resource::GpuMaterialModel::ePBRMetallicRoughness ||
+                    material.tableIndex != materialId)
+                {
+                    continue;
+                }
+
+                if (material.blockOffsetBytes + sizeof(*params) <= pool.materialParams.cpu.size() &&
+                    std::memcmp(pool.materialParams.cpu.data() + material.blockOffsetBytes, &*params, sizeof(*params)) == 0)
+                {
+                    return i;
+                }
+
+                if (material.blockOffsetBytes + sizeof(*params) <= pool.materialParams.cpu.size())
+                {
+                    std::memcpy(pool.materialParams.cpu.data() + material.blockOffsetBytes, &*params, sizeof(*params));
+                    if (pool.materialParams.gpu)
+                    {
+                        rd.uploadS(*pool.materialParams.gpu,
+                                   0,
+                                   static_cast<uint64_t>(pool.materialParams.cpu.size()),
+                                   pool.materialParams.cpu.data());
+                    }
+                }
+                else
+                {
+                    material.blockOffsetBytes = pool.materialParams.allocAndUpload(rd, &*params, sizeof(*params), 16);
+                    pool.materialTableDirty   = true;
+                    pool.uploadMaterialTable(rd);
+                }
+                return i;
+            }
+
+            resource::GpuMaterial material;
+            material.model            = resource::GpuMaterialModel::ePBRMetallicRoughness;
+            material.blockOffsetBytes = pool.materialParams.allocAndUpload(rd, &*params, sizeof(*params), 16);
+            material.tableIndex       = materialId;
+
+            const uint32_t index = static_cast<uint32_t>(pool.materials.size());
+            pool.materials.push_back(material);
+            pool.materialTableDirty = true;
+            pool.uploadMaterialTable(rd);
+            gpuResources.markContentDirty();
+            return index;
+        }
+
+        struct GraphMaterialAssetSource
+        {
+            std::string   graphUri;
+            nlohmann::json properties {nlohmann::json::object()};
+        };
+
+        [[nodiscard]] std::optional<GraphMaterialAssetSource> graphMaterialSourceFromAsset(IAssetService& assets,
+                                                                                           std::string_view materialUri)
+        {
+            auto text = assets.loadTextAssetSync(materialUri);
+            if (!text)
+                return std::nullopt;
+
+            nlohmann::json root;
+            try
+            {
+                root = nlohmann::json::parse(text.value());
+            }
+            catch (const nlohmann::json::exception&)
+            {
+                return std::nullopt;
+            }
+
+            if (!root.is_object() || root.value("type", std::string {}) != "Material")
+                return std::nullopt;
+
+            const auto parsed = material::materialAssetFromJson(root);
+            if (!parsed.ok() || parsed.asset.source.kind != material::MaterialSourceKind::eGraph)
+                return std::nullopt;
+
+            GraphMaterialAssetSource out;
+            out.graphUri = parsed.asset.source.uri;
+            if (out.graphUri.empty())
+                return std::nullopt;
+            if (const auto& properties = root["properties"]; properties.is_object())
+                out.properties = properties;
+            return out;
+        }
+
+        [[nodiscard]] uint32_t ensureMaterialAssetGpuMaterial(IAssetService&       assets,
+                                                              IGpuResourceService& gpuResources,
+                                                              rhi::RenderDevice&   rd,
+                                                              std::string_view     materialUri,
+                                                              const float          timeSeconds,
+                                                              const nlohmann::json* overrides = nullptr,
+                                                              std::string_view     materialKey = {})
+        {
+            if (materialUri.empty())
+                return std::numeric_limits<uint32_t>::max();
+
+            const uint32_t builtinMaterial =
+                ensureBuiltinMaterialAssetGpuMaterial(assets, gpuResources, rd, materialUri, overrides);
+            if (builtinMaterial != std::numeric_limits<uint32_t>::max())
+                return builtinMaterial;
+
+            auto graphSource = graphMaterialSourceFromAsset(assets, materialUri);
+            if (!graphSource)
+                return std::numeric_limits<uint32_t>::max();
+
+            nlohmann::json graphProperties = graphSource->properties.is_object() ? graphSource->properties :
+                                                                                   nlohmann::json::object();
+            if (overrides && overrides->is_object())
+            {
+                for (const auto& [key, value] : overrides->items())
+                    graphProperties[key] = value;
+            }
+
+            return ensureMaterialGraphGpuMaterial(assets,
+                                                  gpuResources,
+                                                  rd,
+                                                  graphSource->graphUri,
+                                                  timeSeconds,
+                                                  &graphProperties,
+                                                  materialKey.empty() ? materialUri : materialKey);
+        }
+
+        [[nodiscard]] nlohmann::json materialPropertyBlockToJson(const std::vector<MaterialPropertyBlockEntry>& properties)
+        {
+            nlohmann::json json = nlohmann::json::object();
+            for (const auto& property : properties)
+            {
+                if (property.name.empty())
+                    continue;
+                switch (property.type)
+                {
+                    case MaterialPropertyBlockValueType::eColor:
+                        json[property.name] = nlohmann::json::array(
+                            {property.colorValue.x, property.colorValue.y, property.colorValue.z, property.colorValue.w});
+                        break;
+                    case MaterialPropertyBlockValueType::eTexture2D:
+                        json[property.name] = property.textureUri;
+                        break;
+                    case MaterialPropertyBlockValueType::eFloat:
+                    default:
+                        json[property.name] = property.floatValue;
+                        break;
+                }
+            }
+            return json;
         }
 
         [[nodiscard]] uint32_t
@@ -942,12 +1318,35 @@ namespace vultra
             return true;
         }
 
-        [[nodiscard]] uint32_t uiTextureIndex(IAssetService& assets, const CoreUUID& texture)
+        [[nodiscard]] uint32_t entityLayerMask(const entt::registry& reg,
+                                               const entt::entity    entity,
+                                               const uint32_t        fallbackMask)
+        {
+            if (const auto* layer = reg.try_get<LayerComponent>(entity))
+                return layer->mask;
+            return fallbackMask;
+        }
+
+        [[nodiscard]] std::optional<uint32_t> uiTextureIndex(IAssetService& assets, const CoreUUID& texture)
         {
             if (!texture.valid())
-                return 0u;
+                return std::nullopt;
             auto handle = assets.loadTextureAsync(texture);
-            return handle.ready() ? handle.gpuIndex() : 0u;
+            if (!handle.ready())
+                return std::nullopt;
+            return handle.gpuIndex();
+        }
+
+        void resolveUiRectTopLeft(const RectTransformComponent& rect,
+                                  const glm::vec2&             parentMin,
+                                  const glm::vec2&             parentSize,
+                                  glm::vec2&                   outMinPx,
+                                  glm::vec2&                   outSizePx)
+        {
+            const glm::vec2 anchorMin = parentMin + parentSize * rect.anchorMin;
+            const glm::vec2 anchorMax = parentMin + parentSize * rect.anchorMax;
+            outSizePx                 = (anchorMax - anchorMin) + rect.sizeDeltaPx;
+            outMinPx                  = anchorMin + rect.anchoredPositionPx - outSizePx * rect.pivot;
         }
 
         void cookUiChildren(World&                 world,
@@ -965,18 +1364,23 @@ namespace vultra
             if (!rect || !uiVisible(reg, entity))
                 return;
 
-            const glm::vec2 anchorMin = parentMin + parentSize * rect->anchorMin;
-            const glm::vec2 anchorMax = parentMin + parentSize * rect->anchorMax;
-            const glm::vec2 sizePx    = (anchorMax - anchorMin) + rect->sizeDeltaPx;
-            const glm::vec2 minPx     = anchorMin + rect->anchoredPositionPx - sizePx * rect->pivot;
+            glm::vec2 minPx {};
+            glm::vec2 sizePx {};
+            resolveUiRectTopLeft(*rect, parentMin, parentSize, minPx, sizePx);
             const glm::vec2 maxPx     = minPx + sizePx * rect->scale;
+            uint32_t        localDrawOrder {0u};
 
-            const auto pushItem = [&](const glm::vec4& color, const uint32_t textureIndex, const uint32_t flags, const uint32_t fitMode) {
+            const auto pushRectItem = [&](const glm::vec2& drawMin,
+                                          const glm::vec2& drawMax,
+                                          const glm::vec4& color,
+                                          const uint32_t textureIndex,
+                                          const uint32_t flags,
+                                          const uint32_t fitMode) {
                 RenderUiDrawItem item {};
                 if (const auto* id = reg.try_get<IDComponent>(entity))
                     item.entity = id->uuid;
-                item.rectMinPx         = minPx;
-                item.rectMaxPx         = maxPx;
+                item.rectMinPx         = drawMin;
+                item.rectMaxPx         = drawMax;
                 item.canvasReferencePx = glm::max(canvas.referenceResolutionPx, glm::vec2 {1.0f});
                 item.color             = color;
                 item.textureIndex      = textureIndex;
@@ -984,26 +1388,113 @@ namespace vultra
                 item.scaleMode         = canvas.scaleMode;
                 item.fitMode           = fitMode;
                 item.sortOrder         = sortOrder;
-                item.depth             = depth;
+                item.depth             = depth * 16u + localDrawOrder++;
+                item.layerMask         = entityLayerMask(reg, entity, kRenderLayerUiMask);
                 out.uiDrawItems.push_back(item);
+            };
+            const auto pushItem = [&](const glm::vec4& color,
+                                      const uint32_t textureIndex,
+                                      const uint32_t flags,
+                                      const uint32_t fitMode) {
+                pushRectItem(minPx, maxPx, color, textureIndex, flags, fitMode);
+            };
+
+            const auto normalizedRangeValue = [](float value, const float minValue, const float maxValue) {
+                if (maxValue <= minValue)
+                    return 0.0f;
+                return std::clamp((value - minValue) / (maxValue - minValue), 0.0f, 1.0f);
+            };
+
+            const auto buttonStateColor = [](const UiButtonComponent& button) {
+                if (button.pressed)
+                    return button.pressedColor;
+                if (button.hovered)
+                    return button.hoveredColor;
+                return button.normalColor;
+            };
+            const auto isButtonTargetGraphic = [&](const UiButtonComponent& button) {
+                if (!button.targetGraphic.valid())
+                    return true;
+                const auto* id = reg.try_get<IDComponent>(entity);
+                return id && id->uuid == button.targetGraphic;
+            };
+            const auto targetGraphicButtonColor = [&]() -> std::optional<glm::vec4> {
+                for (auto buttonEntity : reg.view<UiButtonComponent>())
+                {
+                    const auto& button = reg.get<UiButtonComponent>(buttonEntity);
+                    if (!button.enabled)
+                        continue;
+                    if (!button.targetGraphic.valid())
+                    {
+                        if (buttonEntity == entity)
+                            return buttonStateColor(button);
+                        continue;
+                    }
+                    if (const auto* id = reg.try_get<IDComponent>(entity); id && id->uuid == button.targetGraphic)
+                        return buttonStateColor(button);
+                }
+                return std::nullopt;
             };
 
             if (const auto* button = reg.try_get<UiButtonComponent>(entity); button && button->enabled)
             {
-                glm::vec4 color = button->normalColor;
-                if (button->pressed)
-                    color = button->pressedColor;
-                else if (button->hovered)
-                    color = button->hoveredColor;
-                pushItem(color, 0u, 0u, 0u);
+                const auto* image = reg.try_get<UiImageComponent>(entity);
+                const auto* panel = reg.try_get<UiPanelComponent>(entity);
+                if ((!image || !image->enabled) && (!panel || !panel->enabled) && isButtonTargetGraphic(*button))
+                    pushItem(buttonStateColor(*button), 0u, 0u, 0u);
             }
-            else if (const auto* panel = reg.try_get<UiPanelComponent>(entity); panel && panel->enabled)
+            if (const auto* panel = reg.try_get<UiPanelComponent>(entity); panel && panel->enabled)
             {
-                pushItem(panel->color, 0u, 0u, 0u);
+                pushItem(panel->color * targetGraphicButtonColor().value_or(glm::vec4 {1.0f}), 0u, 0u, 0u);
+            }
+
+            if (const auto* toggle = reg.try_get<UiToggleComponent>(entity); toggle && toggle->enabled)
+            {
+                pushItem(toggle->checked ? toggle->onColor : toggle->offColor, 0u, 0u, 0u);
+                if (toggle->checked)
+                {
+                    const glm::vec2 inset = glm::max((maxPx - minPx) * 0.22f, glm::vec2 {4.0f});
+                    pushRectItem(minPx + inset, maxPx - inset, toggle->checkColor, 0u, 0u, 0u);
+                }
+            }
+
+            if (const auto* progress = reg.try_get<UiProgressBarComponent>(entity); progress && progress->enabled)
+            {
+                const float t = normalizedRangeValue(progress->value, progress->minValue, progress->maxValue);
+                pushItem(progress->trackColor, 0u, 0u, 0u);
+                if (t > 0.0f)
+                {
+                    const glm::vec2 fillMax {minPx.x + (maxPx.x - minPx.x) * t, maxPx.y};
+                    pushRectItem(minPx, fillMax, progress->fillColor, 0u, 0u, 0u);
+                }
+            }
+
+            if (const auto* slider = reg.try_get<UiSliderComponent>(entity); slider && slider->enabled)
+            {
+                const float t = normalizedRangeValue(slider->value, slider->minValue, slider->maxValue);
+                const float height = std::max(maxPx.y - minPx.y, 1.0f);
+                const float trackInsetY = std::max(height * 0.35f, 2.0f);
+                const glm::vec2 trackMin {minPx.x, minPx.y + trackInsetY};
+                const glm::vec2 trackMax {maxPx.x, maxPx.y - trackInsetY};
+                pushRectItem(trackMin, trackMax, slider->trackColor, 0u, 0u, 0u);
+                if (t > 0.0f)
+                    pushRectItem(trackMin, {trackMin.x + (trackMax.x - trackMin.x) * t, trackMax.y}, slider->fillColor, 0u, 0u, 0u);
+                const float handleRadius = std::min(std::max(height * 0.45f, 6.0f), std::max((maxPx.x - minPx.x) * 0.12f, 6.0f));
+                const float handleX = minPx.x + (maxPx.x - minPx.x) * t;
+                pushRectItem({handleX - handleRadius, minPx.y},
+                             {handleX + handleRadius, maxPx.y},
+                             slider->handleColor,
+                             0u,
+                             0u,
+                             0u);
             }
 
             if (const auto* image = reg.try_get<UiImageComponent>(entity); image && image->enabled)
-                pushItem(image->tint, uiTextureIndex(assets, image->texture), 1u, image->fitMode);
+            {
+                const auto textureIndex = uiTextureIndex(assets, image->texture);
+                glm::vec4 color = image->tint * targetGraphicButtonColor().value_or(glm::vec4 {1.0f});
+                pushItem(color, textureIndex.value_or(0u), textureIndex ? 1u : 0u, image->fitMode);
+            }
 
             const auto* layout = reg.try_get<UiLayoutComponent>(entity);
             uint32_t childIndex = 0u;
@@ -1582,6 +2073,7 @@ namespace vultra
                 inst.entity      = id.uuid;
                 inst.meshIndex   = meshIndex;
                 inst.worldMatrix = tr.worldMatrix;
+                inst.layerMask   = entityLayerMask(reg, e, kRenderLayerDefaultMask);
                 const auto& pool = gpuResources.pool();
                 if (meshIndex < pool.meshes.size())
                 {
@@ -1601,18 +2093,64 @@ namespace vultra
                     RuntimeProfiler::ExternalScope materialScope {"RenderWorldCooker::cook/materialOverrides"};
                     for (const auto& materialOverride : mesh.materialOverrides)
                     {
-                        const uint32_t graphMaterialIndex = ensureMaterialGraphGpuMaterial(
-                            assets, gpuResources, rd, materialOverride.materialGraph, timeSeconds);
-                        if (graphMaterialIndex != std::numeric_limits<uint32_t>::max())
+                        uint32_t materialIndex = std::numeric_limits<uint32_t>::max();
+                        if (!materialOverride.material.empty())
+                        {
+                            const auto propertyBlock = materialPropertyBlockToJson(materialOverride.properties);
+                            const auto materialKey =
+                                propertyBlock.empty() ?
+                                    std::string(materialOverride.material) :
+                                    std::string(materialOverride.material) + "#slot" +
+                                        std::to_string(materialOverride.slot) + "#" + propertyBlock.dump();
+                            materialIndex = ensureMaterialAssetGpuMaterial(
+                                assets,
+                                gpuResources,
+                                rd,
+                                materialOverride.material,
+                                timeSeconds,
+                                propertyBlock.empty() ? nullptr : &propertyBlock,
+                                materialKey);
+                        }
+                        if (materialIndex == std::numeric_limits<uint32_t>::max() &&
+                            !materialOverride.materialGraph.empty())
+                        {
+                            const auto propertyBlock = materialPropertyBlockToJson(materialOverride.properties);
+                            const auto materialKey =
+                                propertyBlock.empty() ?
+                                    std::string(materialOverride.materialGraph) :
+                                    std::string(materialOverride.materialGraph) + "#slot" +
+                                        std::to_string(materialOverride.slot) + "#" + propertyBlock.dump();
+                            materialIndex = ensureMaterialGraphGpuMaterial(
+                                assets,
+                                gpuResources,
+                                rd,
+                                materialOverride.materialGraph,
+                                timeSeconds,
+                                propertyBlock.empty() ? nullptr : &propertyBlock,
+                                materialKey);
+                        }
+                        if (materialIndex != std::numeric_limits<uint32_t>::max())
                         {
                             inst.materialOverrides.push_back(RenderInstance::MaterialOverride {
                                 .slot          = materialOverride.slot,
-                                .materialIndex = graphMaterialIndex,
+                                .materialIndex = materialIndex,
                             });
                         }
                     }
                 }
-                if (mesh.builtinGeometry != UINT32_MAX && inst.materialOverrides.empty())
+                if (mesh.builtinGeometry != UINT32_MAX && mesh.materialOverrides.empty())
+                {
+                    const uint32_t materialIndex =
+                        ensureBuiltinMaterialAssetGpuMaterial(assets, gpuResources, rd, kBuiltinDefaultMaterialUri);
+                    if (materialIndex != std::numeric_limits<uint32_t>::max())
+                    {
+                        inst.materialOverrides.push_back(RenderInstance::MaterialOverride {
+                            .slot          = 0u,
+                            .materialIndex = materialIndex,
+                        });
+                    }
+                }
+                if (mesh.builtinGeometry != UINT32_MAX && mesh.materialOverrides.empty())
                 {
                     inst.baseColorOverride    = mesh.materialColor;
                     inst.hasBaseColorOverride = true;
@@ -1655,6 +2193,7 @@ namespace vultra
                 inst.entity      = id.uuid;
                 inst.splatIndex  = h.gpuIndex();
                 inst.worldMatrix = tr.worldMatrix;
+                inst.layerMask   = entityLayerMask(reg, e, kRenderLayerDefaultMask);
                 out.gaussianSplats.push_back(inst);
             }
         }
@@ -1701,6 +2240,7 @@ namespace vultra
                         surface.baseColorOverride    = glm::vec4(outLight.color, 1.0f);
                         surface.hasBaseColorOverride = true;
                         surface.castsShadow          = false;
+                        surface.layerMask            = entityLayerMask(reg, e, kRenderLayerDefaultMask);
                         out.instances.push_back(surface);
 
                         const auto& pool = gpuResources.pool();

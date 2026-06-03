@@ -106,6 +106,7 @@ namespace vultra
         [[nodiscard]] virtual AssetMemoryStats memoryStats() const = 0;
 
         virtual std::string resolveUri(const std::string_view uri) const = 0;
+        virtual bool        resolveAssetUri(const CoreUUID& uuid, std::string& outUri) const = 0;
 
         // Editor/development import path. Production builds may return false when import support is not linked.
         virtual bool reimportAsset(std::string_view uri, bool forceReimport = true) = 0;

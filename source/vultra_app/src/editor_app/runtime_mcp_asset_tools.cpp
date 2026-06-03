@@ -2,6 +2,8 @@
 
 #include "editor_app/vultra_package.hpp"
 
+#include <vultra/function/material_graph/material_graph_compiler.hpp>
+#include <vultra/function/material_graph/material_node_registry.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_service.hpp>
 
@@ -126,6 +128,140 @@ namespace vultra_app
             return out;
         }
 
+        nlohmann::json materialGraphPinJson(const vultra::material_graph::Pin& pin)
+        {
+            nlohmann::json out {
+                {"name", pin.name},
+                {"type", vultra::material_graph::toString(pin.type)},
+            };
+            if (pin.defaultValue)
+                out["defaultValue"] = *pin.defaultValue;
+            return out;
+        }
+
+        nlohmann::json materialGraphNodeDescriptorJson(const vultra::material_graph::NodeDescriptor& desc)
+        {
+            nlohmann::json inputs = nlohmann::json::array();
+            for (const auto& pin : desc.inputs)
+                inputs.push_back(materialGraphPinJson(pin));
+
+            nlohmann::json outputs = nlohmann::json::array();
+            for (const auto& pin : desc.outputs)
+                outputs.push_back(materialGraphPinJson(pin));
+
+            nlohmann::json implementationOutputs = nlohmann::json::object();
+            if (desc.implementation.is_object() && desc.implementation.contains("outputs") &&
+                desc.implementation["outputs"].is_object())
+                implementationOutputs = desc.implementation["outputs"];
+
+            return {{"typeId", desc.typeId},
+                    {"displayName", desc.displayName},
+                    {"inputs", std::move(inputs)},
+                    {"outputs", std::move(outputs)},
+                    {"defaultParams", desc.defaultParams},
+                    {"implementationLanguage",
+                     desc.implementation.is_object() ?
+                         desc.implementation.value("language", std::string {"glsl"}) :
+                         std::string {}},
+                    {"implementationOutputs", std::move(implementationOutputs)}};
+        }
+
+        nlohmann::json materialGraphDiagnosticJson(const vultra::material_graph::Diagnostic& diagnostic)
+        {
+            std::string severity;
+            switch (diagnostic.severity)
+            {
+                case vultra::material_graph::Diagnostic::Severity::eInfo:
+                    severity = "info";
+                    break;
+                case vultra::material_graph::Diagnostic::Severity::eWarning:
+                    severity = "warning";
+                    break;
+                case vultra::material_graph::Diagnostic::Severity::eError:
+                default:
+                    severity = "error";
+                    break;
+            }
+            nlohmann::json out {{"severity", severity}, {"message", diagnostic.message}};
+            if (!diagnostic.nodeId.empty())
+                out["nodeId"] = diagnostic.nodeId;
+            if (!diagnostic.pin.empty())
+                out["pin"] = diagnostic.pin;
+            return out;
+        }
+
+        nlohmann::json materialGraphDiagnosticsJson(const std::vector<vultra::material_graph::Diagnostic>& diagnostics)
+        {
+            nlohmann::json out = nlohmann::json::array();
+            for (const auto& diagnostic : diagnostics)
+                out.push_back(materialGraphDiagnosticJson(diagnostic));
+            return out;
+        }
+
+        struct ProjectMaterialGraphNodes
+        {
+            vultra::material_graph::NodeRegistry registry {vultra::material_graph::makeBuiltinNodeRegistry()};
+            std::vector<nlohmann::json>          nodes;
+            nlohmann::json                       diagnostics {nlohmann::json::array()};
+        };
+
+        ProjectMaterialGraphNodes loadProjectMaterialGraphNodes(const EditorContext& ctx)
+        {
+            ProjectMaterialGraphNodes result;
+            const auto                root = projectAssetRoot(ctx);
+
+            std::error_code ec;
+            if (root.empty() || !std::filesystem::is_directory(root, ec))
+                return result;
+
+            for (auto it = std::filesystem::recursive_directory_iterator(
+                     root, std::filesystem::directory_options::skip_permission_denied, ec);
+                 !ec && it != std::filesystem::recursive_directory_iterator {};
+                 it.increment(ec))
+            {
+                if (ec)
+                    break;
+                if (!it->is_regular_file(ec))
+                {
+                    ec.clear();
+                    continue;
+                }
+
+                const auto path = it->path();
+                if (!path.filename().generic_string().ends_with(".vmatnode.json"))
+                    continue;
+
+                const auto uri = assetUriForPath(ctx, path);
+                std::ifstream in(path, std::ios::binary);
+                if (!in)
+                {
+                    result.diagnostics.push_back({{"uri", uri}, {"message", "failed to open"}});
+                    continue;
+                }
+
+                std::ostringstream text;
+                text << in.rdbuf();
+                auto parsed = vultra::material_graph::loadNodeDescriptorFromText(text.str());
+                if (!parsed.ok())
+                {
+                    result.diagnostics.push_back({{"uri", uri}, {"messages", parsed.diagnostics}});
+                    continue;
+                }
+
+                auto node = materialGraphNodeDescriptorJson(parsed.descriptor);
+                node["uri"] = uri;
+                result.nodes.push_back(std::move(node));
+
+                if (!result.registry.registerNode(std::move(parsed.descriptor)))
+                    result.diagnostics.push_back({{"uri", uri}, {"message", "duplicate material graph node typeId"}});
+            }
+
+            std::ranges::sort(result.nodes, [](const nlohmann::json& lhs, const nlohmann::json& rhs) {
+                return lhs.value("typeId", std::string {}) < rhs.value("typeId", std::string {});
+            });
+            return result;
+        }
+
         bool isWebUrl(const std::string& url)
         {
             const auto lower = lowerAscii(url);
@@ -243,10 +379,15 @@ namespace vultra_app
 
         if (name == "vultra.assets.write")
         {
-            const auto uri = args.value("uri", std::string {});
-            if (uri.empty() || !args.contains("text") || !args["text"].is_string())
+            if (!args.is_object())
+                return toolError("assets.write requires object arguments");
+            const auto uriIt  = args.find("uri");
+            const auto textIt = args.find("text");
+            const auto allowIt = args.find("allowWrite");
+            const auto uri = uriIt != args.end() && uriIt->is_string() ? uriIt->get<std::string>() : std::string {};
+            if (uri.empty() || textIt == args.end() || !textIt->is_string())
                 return toolError("assets.write requires uri and string text");
-            if (!args.value("allowWrite", false))
+            if (allowIt == args.end() || !allowIt->is_boolean() || !allowIt->get<bool>())
                 return toolError("assets.write requires allowWrite=true");
 
             std::string error;
@@ -261,7 +402,7 @@ namespace vultra_app
             std::ofstream out(*path, std::ios::binary | std::ios::trunc);
             if (!out)
                 return toolError("failed to open asset for writing: " + path->generic_string());
-            const auto text = args["text"].get<std::string>();
+            const auto text = textIt->get<std::string>();
             out.write(text.data(), static_cast<std::streamsize>(text.size()));
             if (!out)
                 return toolError("failed to write asset: " + path->generic_string());
@@ -269,7 +410,9 @@ namespace vultra_app
             ++ctx.state.assetFileGeneration;
             bool imported = false;
             nlohmann::json diagnostics = nlohmann::json::array();
-            if (args.value("reimport", true))
+            const auto reimportIt = args.find("reimport");
+            const bool reimport = reimportIt == args.end() || !reimportIt->is_boolean() || reimportIt->get<bool>();
+            if (reimport)
             {
                 if (auto* assetService = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
                 {
@@ -283,6 +426,88 @@ namespace vultra_app
                              {"bytesWritten", text.size()},
                              {"reimported", imported},
                              {"diagnostics", std::move(diagnostics)}});
+        }
+
+        if (name == "vultra.material_graph.list_nodes")
+        {
+            const auto root = projectAssetRoot(ctx);
+            if (root.empty())
+                return toolError("no project is loaded");
+
+            auto projectNodes = loadProjectMaterialGraphNodes(ctx);
+            nlohmann::json nodeArray = nlohmann::json::array();
+            for (auto& node : projectNodes.nodes)
+                nodeArray.push_back(std::move(node));
+
+            return toolJson({{"ok", true},
+                             {"assetRoot", root.generic_string()},
+                             {"count", nodeArray.size()},
+                             {"nodes", std::move(nodeArray)},
+                             {"diagnostics", std::move(projectNodes.diagnostics)}});
+        }
+
+        if (name == "vultra.material_graph.compile")
+        {
+            const auto uri = args.value("uri", args.value("graph", std::string {}));
+            if (uri.empty())
+                return toolError("material_graph.compile requires uri");
+
+            std::string error;
+            auto        path = resolveProjectAssetPath(ctx, uri, &error);
+            if (!path)
+                return toolError(error);
+
+            std::ifstream in(*path, std::ios::binary);
+            if (!in)
+                return toolError("failed to open material graph: " + path->generic_string());
+            std::ostringstream text;
+            text << in.rdbuf();
+
+            std::vector<vultra::material_graph::Diagnostic> loadDiagnostics;
+            auto graph = vultra::material_graph::loadGraphFromText(text.str(), &loadDiagnostics);
+            if (!graph)
+                return toolJson({{"ok", false},
+                                 {"uri", uri},
+                                 {"stage", "load"},
+                                 {"diagnostics", materialGraphDiagnosticsJson(loadDiagnostics)}});
+
+            auto projectNodes = loadProjectMaterialGraphNodes(ctx);
+            vultra::material_graph::MaterialGraphCompiler compiler {std::move(projectNodes.registry)};
+            vultra::material_graph::SurfaceFunctionBackend backend;
+            auto result = compiler.compile(
+                vultra::material_graph::CompileInput {
+                    .graph    = std::move(*graph),
+                    .shaderId = uri,
+                    .graphId  = vultra::material_graph::stableGraphId(uri),
+                },
+                backend);
+
+            nlohmann::json projectNodeArray = nlohmann::json::array();
+            for (auto& node : projectNodes.nodes)
+                projectNodeArray.push_back(std::move(node));
+
+            if (!result)
+            {
+                return toolJson({{"ok", false},
+                                 {"uri", uri},
+                                 {"stage", "compile"},
+                                 {"projectNodeCount", projectNodeArray.size()},
+                                 {"projectNodes", std::move(projectNodeArray)},
+                                 {"projectNodeDiagnostics", std::move(projectNodes.diagnostics)},
+                                 {"diagnostics", materialGraphDiagnosticsJson(result.error())}});
+            }
+
+            nlohmann::json payload {{"ok", true},
+                                    {"uri", uri},
+                                    {"shaderId", result->shaderId},
+                                    {"projectNodeCount", projectNodeArray.size()},
+                                    {"projectNodes", std::move(projectNodeArray)},
+                                    {"projectNodeDiagnostics", std::move(projectNodes.diagnostics)},
+                                    {"diagnostics", materialGraphDiagnosticsJson(result->diagnostics)},
+                                    {"sourceBytes", result->vshaderSource.size()}};
+            if (args.value("includeSource", false))
+                payload["source"] = result->vshaderSource;
+            return toolJson(std::move(payload));
         }
 
         if (name == "vultra.assets.import")

@@ -230,6 +230,8 @@ namespace vultra
                 uint64_t drawCallCount = 0u;
                 for (const auto& instance : renderWorld->instances)
                 {
+                    if (!renderLayerVisible(rc.view().camera, instance.layerMask))
+                        continue;
                     if (instance.meshIndex >= gpuSceneDatabase->resources->meshes.size())
                         continue;
                     const auto& mesh = gpuSceneDatabase->resources->meshes[instance.meshIndex];
@@ -249,6 +251,8 @@ namespace vultra
                 uint64_t drawParamIndex = 0u;
                 for (const auto& instance : renderWorld->instances)
                 {
+                    if (!renderLayerVisible(rc.view().camera, instance.layerMask))
+                        continue;
                     if (instance.meshIndex >= gpuSceneDatabase->resources->meshes.size())
                         continue;
                     const auto& mesh = gpuSceneDatabase->resources->meshes[instance.meshIndex];
