@@ -4,8 +4,11 @@
 #include "vultra/core/rhi/structs/render_mesh.hpp"
 #include "vultra/core/rhi/structs/vertex_attributes.hpp"
 #include "vultra/function/asset/builtin_assets.hpp"
+#include "vultra/function/asset/asset_memory_estimate.hpp"
 #include "vultra/function/asset/builtin_resource_ids.hpp"
+#include "vultra/function/asset/mesh_vertex_packing.hpp"
 #include "vultra/function/material/material_asset.hpp"
+#include "vultra/function/material/material_params.hpp"
 #include "vultra/function/resource/vtexture_loader.hpp"
 #include "vultra/function/rendering/srp/builtin/builtin_rendergraph_registry.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
@@ -280,28 +283,9 @@ namespace vultra
             return makeTextureFromBytes(uri, builtinTexturePathForUri(uri), bytes);
         }
 
-        // Fixed builtin/imported PBR parameter block. Shader-backed materials
-        // use vshadersystem reflection offsets when their assets are resolved.
-        struct alignas(16) MaterialParamsPBRMR
-        {
-            glm::vec4 baseColor {1, 1, 1, 1};
-            float     metallicFactor {1.0f};
-            float     roughnessFactor {1.0f};
-            float     alphaCutoff {0.5f};
-            uint32_t  alphaMode {0};
-            uint32_t  baseColorTex {0};
-            uint32_t  normalTex {0};
-            uint32_t  mrTex {0};
-            uint32_t  metallicTex {0};
-            uint32_t  roughnessTex {0};
-            uint32_t  occlusionTex {0};
-            uint32_t  emissiveTex {0};
-            uint32_t  doubleSided {0};
-            uint32_t  mrTextureMode {0};
-            uint32_t  pad1 {0};
-            uint32_t  pad2 {0};
-        };
-        static_assert(sizeof(MaterialParamsPBRMR) % 16 == 0);
+        // Fixed builtin/imported PBR parameter block lives in
+        // vultra/function/material/material_params.hpp. Shader-backed materials use
+        // vshadersystem reflection offsets when their assets are resolved.
 
         std::string sanitizeMaterialAssetSegment(std::string text)
         {
@@ -486,46 +470,8 @@ namespace vultra
         using namespace rhi;
         using namespace vasset;
 
-        rhi::VertexAttributes buildVertexAttributes(VVertexFlags flags, uint32_t& stride)
-        {
-            VertexAttributes attrs;
-
-            uint32_t offset = 0;
-
-            auto add = [&](uint32_t loc, VertexAttribute::Type type) {
-                attrs[loc] = VertexAttribute {loc, type, offset};
-
-                offset += getSize(type);
-            };
-
-            if (flags & VVertexFlags::ePosition)
-                add(0, VertexAttribute::Type::eFloat3);
-
-            if (flags & VVertexFlags::eNormal)
-                add(1, VertexAttribute::Type::eFloat3);
-
-            if (flags & VVertexFlags::eColor)
-                add(2, VertexAttribute::Type::eFloat3);
-
-            if (flags & VVertexFlags::eTexCoord0)
-                add(3, VertexAttribute::Type::eFloat2);
-
-            if (flags & VVertexFlags::eTexCoord1)
-                add(4, VertexAttribute::Type::eFloat2);
-
-            if (flags & VVertexFlags::eTangent)
-                add(5, VertexAttribute::Type::eFloat4);
-
-            if (flags & VVertexFlags::eJointIndices)
-                add(6, VertexAttribute::Type::eInt4);
-
-            if (flags & VVertexFlags::eJointWeights)
-                add(7, VertexAttribute::Type::eFloat4);
-
-            stride = offset;
-
-            return attrs;
-        }
+        // buildVertexAttributes / PackedVertexLayout / packVertices now live in
+        // vultra/function/asset/mesh_vertex_packing.hpp.
 
         [[nodiscard]] bool materialNeedsAnyHit(const vasset::VMaterial& material)
         {
@@ -558,155 +504,10 @@ namespace vultra
             return PbrMrTextureMode::eGltfMetallicRoughness;
         }
 
-        struct PackedVertexLayout
-        {
-            uint32_t              stride {0};
-            rhi::VertexAttributes attributes;
-        };
-
-        std::vector<uint8_t> packVertices(const VMesh& mesh, const PackedVertexLayout& layout)
-        {
-            const auto&    attrs  = layout.attributes;
-            const uint32_t stride = layout.stride;
-
-            std::vector<uint8_t> buffer;
-
-            buffer.resize(mesh.vertexCount * stride);
-
-            for (uint32_t i = 0; i < mesh.vertexCount; i++)
-            {
-                uint8_t* dst = buffer.data() + i * stride;
-
-                for (const auto& [location, attr] : attrs)
-                {
-                    uint8_t* ptr = dst + attr.offset;
-
-                    switch (location)
-                    {
-                        case 0:
-                            memcpy(ptr, &mesh.positions[i], sizeof(glm::vec3));
-                            break;
-
-                        case 1:
-                            memcpy(ptr, &mesh.normals[i], sizeof(glm::vec3));
-                            break;
-
-                        case 2:
-                            memcpy(ptr, &mesh.colors[i], sizeof(glm::vec3));
-                            break;
-
-                        case 3:
-                            memcpy(ptr, &mesh.texCoords0[i], sizeof(glm::vec2));
-                            break;
-
-                        case 4:
-                            memcpy(ptr, &mesh.texCoords1[i], sizeof(glm::vec2));
-                            break;
-
-                        case 5:
-                            memcpy(ptr, &mesh.tangents[i], sizeof(glm::vec4));
-                            break;
-
-                        case 6:
-                            memcpy(ptr, &mesh.jointIndices[i], sizeof(glm::ivec4));
-                            break;
-
-                        case 7:
-                            memcpy(ptr, &mesh.jointWeights[i], sizeof(glm::vec4));
-                            break;
-                    }
-                }
-            }
-
-            return buffer;
-        }
-
         float sigmoid(float x) { return 1.0f / (1.0f + std::exp(-x)); }
 
-        [[nodiscard]] uint64_t stringBytes(const std::string& value) { return static_cast<uint64_t>(value.capacity()); }
-
-        template<typename T>
-        [[nodiscard]] uint64_t vectorBytes(const std::vector<T>& value)
-        {
-            return static_cast<uint64_t>(value.capacity()) * sizeof(T);
-        }
-
-        [[nodiscard]] uint64_t estimateVMaterialPropertyBytes(const vasset::VMaterialProperty& property)
-        {
-            return sizeof(property) + stringBytes(property.key) + vectorBytes(property.data);
-        }
-
-        [[nodiscard]] uint64_t estimateVMaterialBytes(const vasset::VMaterial& material)
-        {
-            uint64_t bytes = sizeof(material) + stringBytes(material.name) + vectorBytes(material.textures);
-            for (const auto& property : material.properties)
-            {
-                bytes += estimateVMaterialPropertyBytes(property);
-            }
-            return bytes;
-        }
-
-        [[nodiscard]] uint64_t estimateVSubMeshBytes(const vasset::VSubMesh& subMesh)
-        {
-            return sizeof(subMesh) + stringBytes(subMesh.name) + vectorBytes(subMesh.meshletGroup.meshlets) +
-                   vectorBytes(subMesh.meshletGroup.meshletVertices) +
-                   vectorBytes(subMesh.meshletGroup.meshletTriangles);
-        }
-
-        [[nodiscard]] uint64_t estimateVMeshBytes(const vasset::VMesh& mesh)
-        {
-            uint64_t bytes = sizeof(mesh) + vectorBytes(mesh.positions) + vectorBytes(mesh.normals) +
-                             vectorBytes(mesh.colors) + vectorBytes(mesh.texCoords0) + vectorBytes(mesh.texCoords1) +
-                             vectorBytes(mesh.tangents) + vectorBytes(mesh.jointIndices) +
-                             vectorBytes(mesh.jointWeights) + vectorBytes(mesh.indices) + stringBytes(mesh.name) +
-                             stringBytes(mesh.sourceFileName);
-
-            bytes += vectorBytes(mesh.subMeshes);
-            for (const auto& subMesh : mesh.subMeshes)
-            {
-                bytes += estimateVSubMeshBytes(subMesh);
-            }
-
-            bytes += vectorBytes(mesh.materials);
-            for (const auto& material : mesh.materials)
-            {
-                bytes += estimateVMaterialBytes(material);
-            }
-
-            return bytes;
-        }
-
-        [[nodiscard]] uint64_t estimateVTextureBytes(const vasset::VTexture& texture)
-        {
-            return sizeof(texture) + vectorBytes(texture.data);
-        }
-
-        [[nodiscard]] uint64_t estimateVGaussianSplatLodBytes(const vasset::VGaussianSplatLodData& lod)
-        {
-            return sizeof(lod) + vectorBytes(lod.importance) + vectorBytes(lod.lodLevel) + vectorBytes(lod.clusterId);
-        }
-
-        [[nodiscard]] uint64_t estimateVGaussianSplatBytes(const vasset::VGaussianSplat& splat)
-        {
-            return sizeof(splat) + vectorBytes(splat.splats) + vectorBytes(splat.sh) +
-                   estimateVGaussianSplatLodBytes(splat.lod) + stringBytes(splat.name) +
-                   stringBytes(splat.sourceFileName);
-        }
-
-        [[nodiscard]] uint64_t estimateVSkeletonBytes(const vasset::VSkeleton& skeleton)
-        {
-            uint64_t bytes = sizeof(skeleton) + vectorBytes(skeleton.jointParents) + vectorBytes(skeleton.ozzData) +
-                             stringBytes(skeleton.name) + stringBytes(skeleton.sourceFileName);
-            for (const auto& name : skeleton.jointNames)
-                bytes += stringBytes(name);
-            return bytes;
-        }
-
-        [[nodiscard]] uint64_t estimateVAnimationBytes(const vasset::VAnimation& animation)
-        {
-            return sizeof(animation) + vectorBytes(animation.ozzData) + stringBytes(animation.name) +
-                   stringBytes(animation.sourceFileName);
-        }
+        // estimateV*Bytes / stringBytes / vectorBytes now live in
+        // vultra/function/asset/asset_memory_estimate.hpp.
 
         float clampToF16(float x)
         {

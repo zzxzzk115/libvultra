@@ -10,6 +10,7 @@
 #include "vultra/function/rendering/srp/builtin/upload_resources.hpp"
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
+#include "vultra/function/material/material_params.hpp"
 #include "vultra/function/resource/gpu_material.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
 #include "vultra/function/resource/gpu_vertex_layout.hpp"
@@ -66,25 +67,7 @@ namespace vultra
             std::vector<std::byte>          paramBytes;
         };
 
-        struct alignas(16) MaterialParamsPBRMR
-        {
-            glm::vec4 baseColor {1.0f};
-            float     metallicFactor {1.0f};
-            float     roughnessFactor {1.0f};
-            float     alphaCutoff {0.5f};
-            uint32_t  alphaMode {0};
-            uint32_t  baseColorTex {0};
-            uint32_t  normalTex {0};
-            uint32_t  mrTex {0};
-            uint32_t  metallicTex {0};
-            uint32_t  roughnessTex {0};
-            uint32_t  occlusionTex {0};
-            uint32_t  emissiveTex {0};
-            uint32_t  doubleSided {0};
-            uint32_t  mrTextureMode {0};
-            uint32_t  pad1 {0};
-            uint32_t  pad2 {0};
-        };
+        // MaterialParamsPBRMR now lives in vultra/function/material/material_params.hpp.
 
         struct alignas(16) MaterialParamsPBRSG
         {

@@ -10,6 +10,7 @@
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/asset/builtin_assets.hpp"
 #include "vultra/function/material/material_asset.hpp"
+#include "vultra/function/material/material_params.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
 #include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
@@ -89,27 +90,7 @@ namespace vultra
 
         static_assert(sizeof(MaterialGraphSurfaceParams) % 16 == 0);
 
-        struct alignas(16) MaterialParamsPBRMR
-        {
-            glm::vec4 baseColor {1, 1, 1, 1};
-            float     metallicFactor {1.0f};
-            float     roughnessFactor {1.0f};
-            float     alphaCutoff {0.5f};
-            uint32_t  alphaMode {0};
-            uint32_t  baseColorTex {0};
-            uint32_t  normalTex {0};
-            uint32_t  mrTex {0};
-            uint32_t  metallicTex {0};
-            uint32_t  roughnessTex {0};
-            uint32_t  occlusionTex {0};
-            uint32_t  emissiveTex {0};
-            uint32_t  doubleSided {0};
-            uint32_t  mrTextureMode {0};
-            uint32_t  pad1 {0};
-            uint32_t  pad2 {0};
-        };
-
-        static_assert(sizeof(MaterialParamsPBRMR) % 16 == 0);
+        // MaterialParamsPBRMR now lives in vultra/function/material/material_params.hpp.
 
         void importPreparedFrameGraphUniforms(FrameGraph& fg, FrameRenderData& frameData, ViewRenderData& viewData)
         {
