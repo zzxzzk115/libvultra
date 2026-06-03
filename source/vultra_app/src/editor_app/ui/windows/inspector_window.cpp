@@ -10,6 +10,7 @@
 #include <vultra/function/asset/builtin_assets.hpp>
 #include <vultra/function/material/material_asset.hpp>
 #include <vultra/function/material_graph/material_graph.hpp>
+#include <vultra/function/material_graph/material_node_registry.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/services/animation_service.hpp>
 #include <vultra/function/services/asset_service.hpp>
@@ -18,6 +19,7 @@
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
+#include <vultra/function/services/shader_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/animator_component.hpp>
 #include <vultra/function/world/components/box_shape_component.hpp>
@@ -180,6 +182,15 @@ namespace vultra_app
                 return static_cast<char>(std::tolower(ch));
             });
             return name.ends_with(".vmat.json");
+        }
+
+        bool isMaterialGraphNodeAssetSource(const std::filesystem::path& path)
+        {
+            auto name = path.filename().generic_string();
+            std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            return name.ends_with(".vmatnode.json");
         }
 
         bool readJsonFile(const std::filesystem::path& path, nlohmann::json& out, std::string& error)
@@ -361,6 +372,39 @@ namespace vultra_app
         vultra::material::MaterialSourceSchema resolveMaterialSchemaForEditor(EditorContext& ctx,
                                                                               const vultra::material::MaterialSourceRef& source)
         {
+            if (source.kind == vultra::material::MaterialSourceKind::eShader)
+            {
+                if (source.id.empty() || !ctx.services)
+                    return {};
+
+                auto* shaders = ctx.services->tryGet<vultra::IShaderService>();
+                if (!shaders)
+                    return {};
+
+                vultra::rhi::ShaderLibraryRuntime* library = nullptr;
+                if (source.shaderLibrary == "builtin")
+                {
+                    library = &shaders->builtinLibrary();
+                }
+                else
+                {
+                    library = shaders->findProjectLibrary("res://shaders/project.vshaderlib.lua");
+                    if (!library)
+                        library = shaders->loadProjectLibrary("res://shaders/project.vshaderlib.lua");
+                }
+                if (!library)
+                    return {};
+
+                const auto variantHash = vultra::rhi::ShaderLibraryRuntime::computeVariantHash(
+                    source.id, vshadersystem::ShaderStage::eFrag, {});
+                if (!library->hasVariant(variantHash, vshadersystem::ShaderStage::eFrag))
+                    return {};
+
+                auto shader = library->load(variantHash, vshadersystem::ShaderStage::eFrag);
+                return shader ? vultra::material::materialSourceSchemaFromShaderMaterialDescription(shader->materialDesc) :
+                                vultra::material::MaterialSourceSchema {};
+            }
+
             if (source.kind != vultra::material::MaterialSourceKind::eGraph || source.uri.empty())
                 return vultra::material::resolveMaterialSourceSchema(source);
 
@@ -395,6 +439,161 @@ namespace vultra_app
                 return false;
             value = buffer.data();
             return true;
+        }
+
+        constexpr const char* kMaterialGraphValueTypeLabels[] = {
+            "Bool",
+            "Int",
+            "Float",
+            "Vec2",
+            "Vec3",
+            "Vec4",
+            "Color",
+            "Texture2D",
+        };
+
+        vultra::material_graph::ValueType materialGraphValueTypeFromIndex(const int index)
+        {
+            using enum vultra::material_graph::ValueType;
+            switch (index)
+            {
+                case 0:
+                    return eBool;
+                case 1:
+                    return eInt;
+                case 2:
+                    return eFloat;
+                case 3:
+                    return eVec2;
+                case 4:
+                    return eVec3;
+                case 5:
+                    return eVec4;
+                case 6:
+                    return eColor;
+                case 7:
+                    return eTexture2D;
+                default:
+                    return eFloat;
+            }
+        }
+
+        int materialGraphValueTypeIndex(const vultra::material_graph::ValueType type)
+        {
+            using enum vultra::material_graph::ValueType;
+            switch (type)
+            {
+                case eBool:
+                    return 0;
+                case eInt:
+                    return 1;
+                case eFloat:
+                    return 2;
+                case eVec2:
+                    return 3;
+                case eVec3:
+                    return 4;
+                case eVec4:
+                    return 5;
+                case eColor:
+                    return 6;
+                case eTexture2D:
+                    return 7;
+                default:
+                    return 2;
+            }
+        }
+
+        nlohmann::json defaultMaterialGraphValue(const vultra::material_graph::ValueType type)
+        {
+            using enum vultra::material_graph::ValueType;
+            switch (type)
+            {
+                case eBool:
+                    return false;
+                case eInt:
+                    return 0;
+                case eVec2:
+                    return nlohmann::json::array({0.0f, 0.0f});
+                case eVec3:
+                    return nlohmann::json::array({0.0f, 0.0f, 0.0f});
+                case eVec4:
+                    return nlohmann::json::array({0.0f, 0.0f, 0.0f, 0.0f});
+                case eColor:
+                    return nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f});
+                case eTexture2D:
+                    return std::string {};
+                case eFloat:
+                default:
+                    return 0.0f;
+            }
+        }
+
+        bool drawJsonDefaultValue(nlohmann::json& value, const vultra::material_graph::ValueType type)
+        {
+            using enum vultra::material_graph::ValueType;
+            switch (type)
+            {
+                case eBool: {
+                    bool v = value.is_boolean() ? value.get<bool>() : false;
+                    if (!ImGui::Checkbox("Default", &v))
+                        return false;
+                    value = v;
+                    return true;
+                }
+                case eInt: {
+                    int v = value.is_number_integer() ? value.get<int>() : 0;
+                    if (!ImGui::InputInt("Default", &v))
+                        return false;
+                    value = v;
+                    return true;
+                }
+                case eVec2: {
+                    glm::vec2 v {0.0f};
+                    if (value.is_array() && value.size() >= 2)
+                        v = {value[0].get<float>(), value[1].get<float>()};
+                    if (!ImGui::DragFloat2("Default", &v.x, 0.01f))
+                        return false;
+                    value = nlohmann::json::array({v.x, v.y});
+                    return true;
+                }
+                case eVec3: {
+                    glm::vec3 v {0.0f};
+                    if (value.is_array() && value.size() >= 3)
+                        v = {value[0].get<float>(), value[1].get<float>(), value[2].get<float>()};
+                    if (!ImGui::DragFloat3("Default", &v.x, 0.01f))
+                        return false;
+                    value = nlohmann::json::array({v.x, v.y, v.z});
+                    return true;
+                }
+                case eVec4:
+                case eColor: {
+                    glm::vec4 v = type == eColor ? glm::vec4 {1.0f} : glm::vec4 {0.0f};
+                    if (value.is_array() && value.size() >= 4)
+                        v = {value[0].get<float>(), value[1].get<float>(), value[2].get<float>(), value[3].get<float>()};
+                    const bool changed = type == eColor ? ImGui::ColorEdit4("Default", &v.x) :
+                                                          ImGui::DragFloat4("Default", &v.x, 0.01f);
+                    if (!changed)
+                        return false;
+                    value = nlohmann::json::array({v.x, v.y, v.z, v.w});
+                    return true;
+                }
+                case eTexture2D: {
+                    std::string v = value.is_string() ? value.get<std::string>() : std::string {};
+                    if (!drawMaterialStringInput("Default URI", v))
+                        return false;
+                    value = v;
+                    return true;
+                }
+                case eFloat:
+                default: {
+                    float v = value.is_number() ? value.get<float>() : 0.0f;
+                    if (!ImGui::DragFloat("Default", &v, 0.01f))
+                        return false;
+                    value = v;
+                    return true;
+                }
+            }
         }
 
         void drawImagePreviewPlaceholder(const std::filesystem::path& path, const char* note)
@@ -1918,6 +2117,98 @@ namespace vultra_app
             return "res://" + rel.generic_string();
         }
 
+        std::string materialForkFileName(const uint32_t slot)
+        {
+            return "forked_builtin_material_slot_" + std::to_string(slot) + ".vmat.json";
+        }
+
+        std::filesystem::path uniqueMaterialAssetPath(const std::filesystem::path& materialDir, const uint32_t slot)
+        {
+            auto target = (materialDir / materialForkFileName(slot)).lexically_normal();
+            if (!std::filesystem::exists(target))
+                return target;
+
+            for (uint32_t i = 2; i < 1000; ++i)
+            {
+                target = (materialDir / ("forked_builtin_material_slot_" + std::to_string(slot) + "_" +
+                                         std::to_string(i) + ".vmat.json"))
+                             .lexically_normal();
+                if (!std::filesystem::exists(target))
+                    return target;
+            }
+            return {};
+        }
+
+        bool forkBuiltinDefaultMaterial(EditorContext& ctx, const uint32_t slot, std::string& outUri)
+        {
+            const auto assetRoot = editorAssetRoot(ctx);
+            if (assetRoot.empty())
+            {
+                ctx.state.statusMessage = "Fork material failed: no project asset root.";
+                return false;
+            }
+
+            const auto materialDir = (assetRoot / "materials").lexically_normal();
+            std::error_code ec;
+            std::filesystem::create_directories(materialDir, ec);
+            if (ec)
+            {
+                ctx.state.statusMessage = "Fork material failed: " + ec.message();
+                return false;
+            }
+
+            const auto target = uniqueMaterialAssetPath(materialDir, slot);
+            if (target.empty())
+            {
+                ctx.state.statusMessage = "Fork material failed: no available file name.";
+                return false;
+            }
+
+            nlohmann::json doc {
+                {"type", "Material"},
+                {"version", 1},
+                {"name", "Forked Builtin Material"},
+                {"source", {{"kind", "builtin"}, {"id", "builtin/pbr"}}},
+                {"properties",
+                 {
+                     {"baseColor", {1.0f, 1.0f, 1.0f, 1.0f}},
+                     {"metallic", 0.0f},
+                     {"roughness", 0.5f},
+                     {"baseColorTexture", ""},
+                 }},
+            };
+
+            std::string error;
+            if (!writeJsonFile(target, doc, error))
+            {
+                ctx.state.statusMessage = "Fork material failed: " + error;
+                return false;
+            }
+
+            auto uri = pathToResUri(ctx, target);
+            if (uri.empty())
+            {
+                ctx.state.statusMessage = "Fork material failed: target is outside project assets.";
+                return false;
+            }
+
+            bool registered = false;
+            if (ctx.services)
+            {
+                if (auto* assets = ctx.services->tryGet<vultra::IAssetService>())
+                {
+                    assets->clearTextAssetOverride(uri);
+                    registered = assets->reimportAsset(uri, false);
+                }
+            }
+
+            ++ctx.state.assetFileGeneration;
+            outUri                  = std::move(uri);
+            ctx.state.statusMessage = registered ? "Forked builtin material: " + outUri :
+                                                   "Forked builtin material, but asset registry import did not run.";
+            return true;
+        }
+
         struct RenderGraphPassEditState
         {
             std::filesystem::path path;
@@ -3045,6 +3336,109 @@ namespace vultra_app
             return changed;
         }
 
+        bool isMaterialPropertyBlockSupported(const vultra::material::MaterialPropertyType type)
+        {
+            return type == vultra::material::MaterialPropertyType::eFloat ||
+                   type == vultra::material::MaterialPropertyType::eColor ||
+                   type == vultra::material::MaterialPropertyType::eVec4 ||
+                   type == vultra::material::MaterialPropertyType::eTexture2D;
+        }
+
+        vultra::material::MaterialSourceSchema resolveMaterialSlotOverrideSchema(EditorContext* ctx,
+                                                                                 const vultra::MaterialSlotOverride& slot)
+        {
+            if (!ctx || !ctx->services)
+                return {};
+
+            auto* assets = ctx->services->tryGet<vultra::IAssetService>();
+            if (!assets)
+                return {};
+
+            if (!slot.material.empty())
+            {
+                auto text = assets->loadTextAssetSync(slot.material);
+                if (!text)
+                    return {};
+
+                const auto parsed = vultra::material::loadMaterialAssetFromText(text.value());
+                if (!parsed.ok())
+                    return {};
+                return resolveMaterialSchemaForEditor(*ctx, parsed.asset.source);
+            }
+
+            if (!slot.materialGraph.empty())
+            {
+                vultra::material::MaterialSourceRef source;
+                source.kind = vultra::material::MaterialSourceKind::eGraph;
+                source.uri  = slot.materialGraph;
+                return resolveMaterialSchemaForEditor(*ctx, source);
+            }
+
+            return {};
+        }
+
+        vultra::MaterialPropertyBlockEntry
+        materialPropertyBlockEntryFromSchema(const vultra::material::MaterialPropertySchema& schema)
+        {
+            vultra::MaterialPropertyBlockEntry entry;
+            entry.name = schema.name;
+            switch (schema.type)
+            {
+                case vultra::material::MaterialPropertyType::eTexture2D:
+                    entry.type = vultra::MaterialPropertyBlockValueType::eTexture2D;
+                    if (const auto* value = std::get_if<std::string>(&schema.defaultValue))
+                        entry.textureUri = *value;
+                    break;
+                case vultra::material::MaterialPropertyType::eColor:
+                case vultra::material::MaterialPropertyType::eVec4:
+                    entry.type = vultra::MaterialPropertyBlockValueType::eColor;
+                    if (const auto* value = std::get_if<glm::vec4>(&schema.defaultValue))
+                        entry.colorValue = *value;
+                    break;
+                case vultra::material::MaterialPropertyType::eFloat:
+                default:
+                    entry.type = vultra::MaterialPropertyBlockValueType::eFloat;
+                    if (const auto* value = std::get_if<float>(&schema.defaultValue))
+                        entry.floatValue = *value;
+                    break;
+            }
+            return entry;
+        }
+
+        bool drawAddMaterialPropertyBlockEntry(EditorContext* ctx, vultra::MaterialSlotOverride& slot)
+        {
+            auto schema = resolveMaterialSlotOverrideSchema(ctx, slot);
+            std::vector<const vultra::material::MaterialPropertySchema*> candidates;
+            for (const auto& param : schema.parameters)
+            {
+                if (!isMaterialPropertyBlockSupported(param.type))
+                    continue;
+                const auto exists = std::any_of(slot.properties.begin(), slot.properties.end(), [&](const auto& entry) {
+                    return entry.name == param.name;
+                });
+                if (!exists)
+                    candidates.push_back(&param);
+            }
+
+            bool changed = false;
+            ImGui::BeginDisabled(candidates.empty());
+            if (ImGui::BeginCombo("Add Source Property", candidates.empty() ? "<none>" : "<select>"))
+            {
+                for (const auto* param : candidates)
+                {
+                    const auto label = param->displayName.empty() ? param->name : param->displayName;
+                    if (ImGui::Selectable(label.c_str()))
+                    {
+                        slot.properties.push_back(materialPropertyBlockEntryFromSchema(*param));
+                        changed = true;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::EndDisabled();
+            return changed;
+        }
+
         bool drawRendererKeyCombo(EditorContext* ctx, std::string& rendererKey, const char* label)
         {
             auto* renderService = ctx && ctx->services ? ctx->services->tryGet<vultra::IRenderService>() : nullptr;
@@ -3580,10 +3974,28 @@ namespace vultra_app
                         changed = true;
                     if (drawMaterialUriField(ctx, override.material, "Material"))
                         changed = true;
+                    const bool canForkBuiltin =
+                        ctx && (override.material.empty() || override.material == vultra::kBuiltinDefaultMaterialUri);
+                    ImGui::BeginDisabled(!canForkBuiltin);
+                    if (ImGui::SmallButton(ICON_MDI_CONTENT_COPY " Fork Builtin"))
+                    {
+                        std::string forkedUri;
+                        if (forkBuiltinDefaultMaterial(*ctx, override.slot, forkedUri))
+                        {
+                            override.material = std::move(forkedUri);
+                            override.materialGraph.clear();
+                            changed = true;
+                        }
+                    }
+                    ImGui::EndDisabled();
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                        ImGui::SetTooltip("Create an editable project .vmat.json from the builtin PBR material.");
                     if (drawMaterialGraphUriField(ctx, override.materialGraph, "Graph"))
                         changed = true;
                     if (ImGui::TreeNode("Property Block"))
                     {
+                        if (drawAddMaterialPropertyBlockEntry(ctx, override))
+                            changed = true;
                         int removeProperty = -1;
                         for (int propertyIndex = 0; propertyIndex < static_cast<int>(override.properties.size());
                              ++propertyIndex)
@@ -3612,7 +4024,10 @@ namespace vultra_app
                                         changed = true;
                                     break;
                                 case vultra::MaterialPropertyBlockValueType::eTexture2D:
-                                    if (drawMaterialStringInput("Texture URI", property.textureUri))
+                                    if (ctx && textureSelector)
+                                        changed |= ui::drawTextureUriField(
+                                            *ctx, "Texture", property.textureUri, *textureSelector);
+                                    else if (drawMaterialStringInput("Texture URI", property.textureUri))
                                         changed = true;
                                     break;
                                 case vultra::MaterialPropertyBlockValueType::eFloat:
@@ -4915,10 +5330,18 @@ namespace vultra_app
 
         const bool renderGraphPassSource = std::filesystem::is_regular_file(path, ec) && fileLooksLikeRenderGraphPass(path);
         const bool materialAssetSource   = std::filesystem::is_regular_file(path, ec) && isMaterialAssetSource(path);
+        const bool materialGraphNodeSource =
+            std::filesystem::is_regular_file(path, ec) && isMaterialGraphNodeAssetSource(path);
         if (materialAssetSource)
         {
             ImGui::Spacing();
             drawMaterialAssetSourceInspector(ctx, path);
+        }
+
+        if (materialGraphNodeSource)
+        {
+            ImGui::Spacing();
+            drawMaterialGraphNodeSourceInspector(ctx, path);
         }
 
         if (renderGraphPassSource)
@@ -5054,15 +5477,26 @@ namespace vultra_app
         {
             if (source.id.empty())
                 source.id = "builtin/pbr";
-            if (drawMaterialStringInput("Builtin ID", source.id))
+            const char* builtinIds[] = {"builtin/pbr"};
+            int         builtinIndex = source.id == "builtin/pbr" ? 0 : -1;
+            if (ImGui::Combo("Builtin", &builtinIndex, builtinIds, IM_ARRAYSIZE(builtinIds)) && builtinIndex == 0)
             {
+                source.id = "builtin/pbr";
                 materialSourceToJson(source, state.doc);
                 dirty = true;
+            }
+            if (source.id != "builtin/pbr")
+            {
+                if (drawMaterialStringInput("Custom Builtin ID", source.id))
+                {
+                    materialSourceToJson(source, state.doc);
+                    dirty = true;
+                }
             }
         }
         else if (source.kind == vultra::material::MaterialSourceKind::eGraph)
         {
-            if (drawMaterialStringInput("Graph URI", source.uri))
+            if (drawMaterialGraphUriField(&ctx, source.uri, "Graph"))
             {
                 materialSourceToJson(source, state.doc);
                 dirty = true;
@@ -5093,97 +5527,129 @@ namespace vultra_app
         if (schema.parameters.empty())
         {
             ImGui::Spacing();
-            ImGui::TextWrapped("No exposed parameters for this source yet.");
+            if (source.kind == vultra::material::MaterialSourceKind::eShader)
+            {
+                ImGui::TextWrapped(
+                    "No editable material parameters were found for this shader. Check that the shader library is loaded and the shader declares material params.");
+            }
+            else
+            {
+                ImGui::TextWrapped("No exposed parameters for this source yet.");
+            }
         }
         else
         {
             ImGui::Spacing();
             ImGui::TextUnformatted("Properties");
             auto& properties = state.doc["properties"];
-            for (const auto& param : schema.parameters)
+            if (ImGui::BeginTable("MaterialProperties", 2, ImGuiTableFlags_SizingStretchProp))
             {
-                const auto label = param.displayName.empty() ? param.name : param.displayName;
-                ImGui::PushID(param.name.c_str());
-                switch (param.type)
+                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 170.0f);
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+                for (const auto& param : schema.parameters)
                 {
-                    case vultra::material::MaterialPropertyType::eInt: {
-                        int value = intFromJsonProperty(properties, param);
-                        if (ImGui::InputInt(label.c_str(), &value))
-                        {
-                            properties[param.name] = value;
-                            dirty                  = true;
-                        }
-                        break;
-                    }
-                    case vultra::material::MaterialPropertyType::eFloat: {
-                        float value = floatFromJsonProperty(properties, param);
-                        const bool changed = param.hasUiRange ?
-                                                 ImGui::SliderFloat(label.c_str(), &value, param.uiMin, param.uiMax) :
-                                                 ImGui::DragFloat(label.c_str(), &value, 0.01f);
-                        if (changed)
-                        {
-                            properties[param.name] = value;
-                            dirty                  = true;
-                        }
-                        break;
-                    }
-                    case vultra::material::MaterialPropertyType::eBool: {
-                        bool value = boolFromJsonProperty(properties, param);
-                        if (ImGui::Checkbox(label.c_str(), &value))
-                        {
-                            properties[param.name] = value;
-                            dirty                  = true;
-                        }
-                        break;
-                    }
-                    case vultra::material::MaterialPropertyType::eVec2: {
-                        auto value = vec2FromJsonProperty(properties, param);
-                        if (ImGui::DragFloat2(label.c_str(), &value.x, 0.01f))
-                        {
-                            properties[param.name] = jsonFromVec2(value);
-                            dirty                  = true;
-                        }
-                        break;
-                    }
-                    case vultra::material::MaterialPropertyType::eVec3: {
-                        auto value = vec3FromJsonProperty(properties, param);
-                        if (ImGui::DragFloat3(label.c_str(), &value.x, 0.01f))
-                        {
-                            properties[param.name] = jsonFromVec3(value);
-                            dirty                  = true;
-                        }
-                        break;
-                    }
-                    case vultra::material::MaterialPropertyType::eColor:
-                    case vultra::material::MaterialPropertyType::eVec4: {
-                        auto value = vec4FromJsonProperty(properties, param);
-                        const bool changed = param.type == vultra::material::MaterialPropertyType::eColor ?
-                                                 ImGui::ColorEdit4(label.c_str(), &value.x) :
-                                                 ImGui::DragFloat4(label.c_str(), &value.x, 0.01f);
-                        if (changed)
-                        {
-                            properties[param.name] = jsonFromVec4(value);
-                            dirty                  = true;
-                        }
-                        break;
-                    }
-                    case vultra::material::MaterialPropertyType::eTexture2D: {
-                        auto value = stringFromJsonProperty(properties, param.name);
-                        if (drawMaterialStringInput(label.c_str(), value))
-                        {
-                            if (value.empty())
-                                properties.erase(param.name);
-                            else
+                    const auto label = param.displayName.empty() ? param.name : param.displayName;
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::AlignTextToFramePadding();
+                    ImGui::TextUnformatted(label.c_str());
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::PushID(param.name.c_str());
+                    ImGui::SetNextItemWidth(-1.0f);
+                    switch (param.type)
+                    {
+                        case vultra::material::MaterialPropertyType::eInt: {
+                            int value = intFromJsonProperty(properties, param);
+                            if (ImGui::InputInt("##value", &value))
+                            {
                                 properties[param.name] = value;
-                            dirty = true;
+                                dirty                  = true;
+                            }
+                            break;
                         }
-                        break;
+                        case vultra::material::MaterialPropertyType::eFloat: {
+                            float value = floatFromJsonProperty(properties, param);
+                            const bool changed = param.hasUiRange ?
+                                                     ImGui::SliderFloat("##value", &value, param.uiMin, param.uiMax) :
+                                                     ImGui::DragFloat("##value", &value, 0.01f);
+                            if (changed)
+                            {
+                                properties[param.name] = value;
+                                dirty                  = true;
+                            }
+                            break;
+                        }
+                        case vultra::material::MaterialPropertyType::eBool: {
+                            bool value = boolFromJsonProperty(properties, param);
+                            if (ImGui::Checkbox("##value", &value))
+                            {
+                                properties[param.name] = value;
+                                dirty                  = true;
+                            }
+                            break;
+                        }
+                        case vultra::material::MaterialPropertyType::eVec2: {
+                            auto value = vec2FromJsonProperty(properties, param);
+                            if (ImGui::DragFloat2("##value", &value.x, 0.01f))
+                            {
+                                properties[param.name] = jsonFromVec2(value);
+                                dirty                  = true;
+                            }
+                            break;
+                        }
+                        case vultra::material::MaterialPropertyType::eVec3: {
+                            auto value = vec3FromJsonProperty(properties, param);
+                            if (ImGui::DragFloat3("##value", &value.x, 0.01f))
+                            {
+                                properties[param.name] = jsonFromVec3(value);
+                                dirty                  = true;
+                            }
+                            break;
+                        }
+                        case vultra::material::MaterialPropertyType::eColor:
+                        case vultra::material::MaterialPropertyType::eVec4: {
+                            auto value = vec4FromJsonProperty(properties, param);
+                            const bool changed = param.type == vultra::material::MaterialPropertyType::eColor ?
+                                                     ImGui::ColorEdit4("##value", &value.x) :
+                                                     ImGui::DragFloat4("##value", &value.x, 0.01f);
+                            if (changed)
+                            {
+                                properties[param.name] = jsonFromVec4(value);
+                                dirty                  = true;
+                            }
+                            break;
+                        }
+                        case vultra::material::MaterialPropertyType::eTexture2D: {
+                            auto        value = stringFromJsonProperty(properties, param.name);
+                            const float clearButtonSize = ImGui::GetFrameHeight();
+                            const float width = std::max(
+                                1.0f,
+                                ImGui::GetContentRegionAvail().x - clearButtonSize - ImGui::GetStyle().ItemSpacing.x);
+                            bool changed = ui::drawTextureUriSelector(
+                                ctx, "TextureSelectorPopup", value, m_TextureSelector, ImVec2(width, 40.0f));
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton(ICON_MDI_CLOSE) && !value.empty())
+                            {
+                                value.clear();
+                                changed = true;
+                            }
+                            if (changed)
+                            {
+                                if (value.empty())
+                                    properties.erase(param.name);
+                                else
+                                    properties[param.name] = value;
+                                dirty = true;
+                            }
+                            break;
+                        }
+                        default:
+                            ImGui::TextDisabled("Unsupported property type");
+                            break;
                     }
-                    default:
-                        ImGui::Text("%s: unsupported property type", label.c_str());
-                        break;
+                    ImGui::PopID();
                 }
-                ImGui::PopID();
+                ImGui::EndTable();
             }
         }
 
@@ -5223,6 +5689,253 @@ namespace vultra_app
 
         if (!state.error.empty())
             ImGui::TextWrapped("%s", state.error.c_str());
+        return dirty;
+    }
+
+    bool InspectorWindow::drawMaterialGraphNodeSourceInspector(EditorContext& ctx, const std::filesystem::path& path)
+    {
+        struct NodeEditState
+        {
+            std::filesystem::path path;
+            nlohmann::json        doc;
+            std::string           error;
+            bool                  valid {false};
+            bool                  dirty {false};
+        };
+
+        static NodeEditState state;
+        const auto normalized = path.lexically_normal();
+        if (state.path != normalized)
+        {
+            state       = {};
+            state.path  = normalized;
+            state.valid = readJsonFile(normalized, state.doc, state.error);
+            if (state.valid)
+            {
+                if (!state.doc.contains("type"))
+                    state.doc["type"] = "MaterialGraphNode";
+                if (!state.doc.contains("version"))
+                    state.doc["version"] = 1;
+                if (!state.doc.contains("inputs") || !state.doc["inputs"].is_array())
+                    state.doc["inputs"] = nlohmann::json::array();
+                if (!state.doc.contains("outputs") || !state.doc["outputs"].is_array())
+                    state.doc["outputs"] = nlohmann::json::array({{{"name", "out"}, {"type", "float"}}});
+                if (!state.doc.contains("defaultParams") || !state.doc["defaultParams"].is_object())
+                    state.doc["defaultParams"] = nlohmann::json::object();
+                if (!state.doc.contains("implementation") || !state.doc["implementation"].is_object())
+                    state.doc["implementation"] = {{"language", "glsl"}, {"outputs", nlohmann::json::object()}};
+                if (!state.doc["implementation"].contains("outputs") || !state.doc["implementation"]["outputs"].is_object())
+                    state.doc["implementation"]["outputs"] = nlohmann::json::object();
+            }
+        }
+
+        ui::sectionTitle(ICON_MDI_VECTOR_POINT, "Material Graph Node");
+        if (!state.valid)
+        {
+            ImGui::TextWrapped("Failed to parse material graph node: %s", state.error.c_str());
+            if (ImGui::Button(ICON_MDI_REFRESH " Reload"))
+            {
+                state.valid = readJsonFile(normalized, state.doc, state.error);
+                state.dirty = false;
+            }
+            return false;
+        }
+
+        bool dirty = false;
+        auto typeId = state.doc.value("typeId", state.doc.value("id", std::string {"project.custom_node"}));
+        if (drawMaterialStringInput("Type ID", typeId))
+        {
+            state.doc["typeId"] = typeId;
+            dirty               = true;
+        }
+        auto displayName = state.doc.value("displayName", state.doc.value("name", std::string {"Custom Node"}));
+        if (drawMaterialStringInput("Display Name", displayName))
+        {
+            state.doc["displayName"] = displayName;
+            dirty                    = true;
+        }
+
+        auto drawPins = [&](const char* title, nlohmann::json& pins) {
+            ImGui::Spacing();
+            ImGui::TextUnformatted(title);
+            int removeIndex = -1;
+            for (int i = 0; i < static_cast<int>(pins.size()); ++i)
+            {
+                auto& pin = pins[static_cast<size_t>(i)];
+                ImGui::PushID(i);
+                if (ImGui::CollapsingHeader(pin.value("name", std::string {"pin"}).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto name = pin.value("name", std::string {});
+                    if (drawMaterialStringInput("Name", name))
+                    {
+                        pin["name"] = name;
+                        dirty       = true;
+                    }
+                    auto type = vultra::material_graph::valueTypeFromString(pin.value("type", std::string {"float"}));
+                    int  typeIndex = materialGraphValueTypeIndex(type);
+                    if (ImGui::Combo("Type",
+                                     &typeIndex,
+                                     kMaterialGraphValueTypeLabels,
+                                     IM_ARRAYSIZE(kMaterialGraphValueTypeLabels)))
+                    {
+                        type        = materialGraphValueTypeFromIndex(typeIndex);
+                        pin["type"] = std::string(vultra::material_graph::toString(type));
+                        if (pin.contains("defaultValue"))
+                            pin["defaultValue"] = defaultMaterialGraphValue(type);
+                        dirty = true;
+                    }
+                    auto defaultValue = pin.value("defaultValue", defaultMaterialGraphValue(type));
+                    if (drawJsonDefaultValue(defaultValue, type))
+                    {
+                        pin["defaultValue"] = defaultValue;
+                        dirty               = true;
+                    }
+                    if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE " Remove Pin"))
+                        removeIndex = i;
+                }
+                ImGui::PopID();
+            }
+            if (removeIndex >= 0)
+            {
+                pins.erase(pins.begin() + removeIndex);
+                dirty = true;
+            }
+            if (ImGui::SmallButton(ICON_MDI_PLUS " Add Pin"))
+            {
+                pins.push_back({{"name", "value"}, {"type", "float"}, {"defaultValue", 0.0f}});
+                dirty = true;
+            }
+        };
+
+        drawPins("Inputs", state.doc["inputs"]);
+        drawPins("Outputs", state.doc["outputs"]);
+
+        ImGui::Spacing();
+        ImGui::TextUnformatted("Default Params");
+        if (ImGui::BeginTable("NodeDefaultParams", 2, ImGuiTableFlags_SizingStretchProp))
+        {
+            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 160.0f);
+            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+            std::string removeKey;
+            for (auto& [key, value] : state.doc["defaultParams"].items())
+            {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextUnformatted(key.c_str());
+                ImGui::TableSetColumnIndex(1);
+                ImGui::PushID(key.c_str());
+                if (value.is_number())
+                {
+                    float v = value.get<float>();
+                    ImGui::SetNextItemWidth(-1.0f);
+                    if (ImGui::DragFloat("##value", &v, 0.01f))
+                    {
+                        value = v;
+                        dirty = true;
+                    }
+                }
+                else if (value.is_boolean())
+                {
+                    bool v = value.get<bool>();
+                    if (ImGui::Checkbox("##value", &v))
+                    {
+                        value = v;
+                        dirty = true;
+                    }
+                }
+                else
+                {
+                    auto text = value.is_string() ? value.get<std::string>() : value.dump();
+                    if (drawMaterialStringInput("##value", text))
+                    {
+                        value = text;
+                        dirty = true;
+                    }
+                }
+                if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE "##remove"))
+                    removeKey = key;
+                ImGui::PopID();
+            }
+            if (!removeKey.empty())
+            {
+                state.doc["defaultParams"].erase(removeKey);
+                dirty = true;
+            }
+            ImGui::EndTable();
+        }
+        static std::array<char, 64> newParamName {};
+        ImGui::SetNextItemWidth(160.0f);
+        ImGui::InputTextWithHint("##NewParamName", "param name", newParamName.data(), newParamName.size());
+        ImGui::SameLine();
+        if (ImGui::SmallButton(ICON_MDI_PLUS " Add Param") && newParamName[0] != '\0')
+        {
+            state.doc["defaultParams"][newParamName.data()] = 0.0f;
+            newParamName = {};
+            dirty        = true;
+        }
+
+        ImGui::Spacing();
+        ImGui::TextUnformatted("GLSL Output Expressions");
+        state.doc["implementation"]["language"] = "glsl";
+        auto& outputs = state.doc["implementation"]["outputs"];
+        for (const auto& pin : state.doc["outputs"])
+        {
+            const auto name = pin.value("name", std::string {});
+            if (name.empty())
+                continue;
+            auto expression = outputs.value(name, std::string {});
+            if (expression.empty())
+                expression = "{{input:value}}";
+            if (drawMaterialStringInput(name.c_str(), expression))
+            {
+                outputs[name] = expression;
+                dirty         = true;
+            }
+        }
+
+        const auto parsed = vultra::material_graph::nodeDescriptorFromJson(state.doc);
+        if (!parsed.diagnostics.empty())
+        {
+            ImGui::Spacing();
+            ImGui::TextUnformatted("Diagnostics");
+            for (const auto& diagnostic : parsed.diagnostics)
+                ImGui::BulletText("%s", diagnostic.c_str());
+        }
+
+        state.dirty = state.dirty || dirty;
+        ImGui::Spacing();
+        ImGui::BeginDisabled(!state.dirty);
+        if (ImGui::Button(ICON_MDI_CONTENT_SAVE " Save Node"))
+        {
+            std::string error;
+            if (writeJsonFile(state.path, state.doc, error))
+            {
+                state.dirty = false;
+                state.error.clear();
+                ++ctx.state.assetFileGeneration;
+                if (auto* assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
+                {
+                    const auto assetRoot = editorAssetRoot(ctx);
+                    std::error_code relEc;
+                    const auto rel = std::filesystem::relative(state.path, assetRoot, relEc);
+                    if (!relEc)
+                        assets->clearTextAssetOverride("res://" + rel.generic_string());
+                }
+                ctx.state.statusMessage = "Saved material graph node: " + state.path.filename().generic_string();
+            }
+            else
+            {
+                state.error             = error;
+                ctx.state.statusMessage = "Failed to save material graph node: " + error;
+            }
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_MDI_REFRESH " Reload"))
+        {
+            state.valid = readJsonFile(normalized, state.doc, state.error);
+            state.dirty = false;
+        }
         return dirty;
     }
 

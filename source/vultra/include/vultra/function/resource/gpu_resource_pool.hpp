@@ -309,6 +309,7 @@ namespace vultra::resource
         std::vector<GpuTexture>  textures;
         std::vector<GpuMaterial> materials;
         std::vector<GpuMesh>     meshes;
+        ShaderMaterialRuntimeInfoMap shaderMaterials;
 
         struct GaussianStorage
         {
@@ -571,6 +572,7 @@ namespace vultra::resource
             textures.clear();
             materials.clear();
             meshes.clear();
+            shaderMaterials.clear();
             gaussianSplats.clear();
             gaussianSplatMetaBuffer = nullptr;
             materialTableBuffer     = nullptr;

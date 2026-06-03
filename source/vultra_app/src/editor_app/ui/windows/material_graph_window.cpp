@@ -666,6 +666,28 @@ namespace vultra_app
             return {};
         }
 
+        std::string lowerAscii(std::string_view text)
+        {
+            std::string out(text);
+            std::ranges::transform(out, out.begin(), [](const unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            return out;
+        }
+
+        bool nodeMatchesSearch(const vultra::material_graph::NodeDescriptor& desc, std::string_view query)
+        {
+            if (query.empty())
+                return true;
+
+            const auto lowerQuery = lowerAscii(query);
+            const auto matches = [&](std::string_view value) {
+                return lowerAscii(value).find(lowerQuery) != std::string::npos;
+            };
+            return matches(desc.displayName) || matches(desc.typeId) || matches(nodeMenuCategory(desc.typeId)) ||
+                   matches(nodeMenuSubcategory(desc.typeId));
+        }
+
         bool hasInputLink(const vultra::material_graph::Graph& graph, std::string_view node, std::string_view pin)
         {
             return vultra::material_graph::findInputLink(graph, node, pin) != nullptr;
@@ -1566,6 +1588,11 @@ namespace vultra_app
         if (!ImGui::BeginPopup("MaterialGraphAddNode"))
             return;
 
+        static std::array<char, 128> search {};
+        ImGui::SetNextItemWidth(260.0f);
+        ImGui::InputTextWithHint("##NodeSearch", "Search nodes", search.data(), search.size());
+        ImGui::Separator();
+
         const auto addNodeItem = [&](const vultra::material_graph::NodeDescriptor& desc) {
             if (!ImGui::MenuItem(desc.displayName.c_str()))
                 return;
@@ -1609,6 +1636,24 @@ namespace vultra_app
             "Other",
         };
         const auto typeIds = m_Registry.typeIds();
+        if (search[0] != '\0')
+        {
+            int matched = 0;
+            for (const auto& typeId : typeIds)
+            {
+                const auto* desc = m_Registry.find(typeId);
+                if (!desc || !nodeMatchesSearch(*desc, search.data()))
+                    continue;
+
+                ++matched;
+                drawNodeTypeItem(typeId);
+            }
+            if (matched == 0)
+                ImGui::TextDisabled("No matching nodes.");
+            ImGui::EndPopup();
+            return;
+        }
+
         for (const char* category : categories)
         {
             bool hasItems = false;

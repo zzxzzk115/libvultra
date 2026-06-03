@@ -43,6 +43,7 @@ namespace vultra
             rhi::ShaderLibraryRuntime* builtinShaderLib {nullptr};
             rhi::ShaderLibraryRuntime* builtinHighendShaderLib {nullptr};
             rhi::ShaderLibraryRuntime* builtinCompatibilityShaderLib {nullptr};
+            rhi::ShaderLibraryRuntime* projectShaderLib {nullptr};
             Samplers                   samplers;
 
             [[nodiscard]] rhi::ShaderLibraryRuntime* builtinShaderLibForProfile(const rhi::ShaderProfile profile) const

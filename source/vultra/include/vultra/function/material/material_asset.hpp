@@ -2,12 +2,15 @@
 
 #include "vultra/function/material_graph/material_graph.hpp"
 
+#include <vshadersystem/types.hpp>
+
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
 #include <nlohmann/json.hpp>
 
+#include <cstring>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -363,8 +366,174 @@ namespace vultra::material
         if (source.kind == MaterialSourceKind::eBuiltin && source.id == "builtin/pbr")
             return builtinPbrMaterialSchema();
 
-        // Shader reflection plugs in here in a later phase. Graph blackboards are
-        // resolved from loaded graph data by materialSourceSchemaFromGraph().
+        // Graph blackboards are resolved from loaded graph data by
+        // materialSourceSchemaFromGraph(). Shader sources are resolved from
+        // vshadersystem::MaterialDescription after loading a compiled shader.
+        return {};
+    }
+
+    inline MaterialPropertyType materialPropertyTypeFromShaderParamType(const vshadersystem::ParamType type)
+    {
+        switch (type)
+        {
+            case vshadersystem::ParamType::eVec2:
+                return MaterialPropertyType::eVec2;
+            case vshadersystem::ParamType::eVec3:
+                return MaterialPropertyType::eVec3;
+            case vshadersystem::ParamType::eVec4:
+                return MaterialPropertyType::eVec4;
+            case vshadersystem::ParamType::eInt:
+            case vshadersystem::ParamType::eUInt:
+                return MaterialPropertyType::eInt;
+            case vshadersystem::ParamType::eBool:
+                return MaterialPropertyType::eBool;
+            case vshadersystem::ParamType::eFloat:
+            default:
+                return MaterialPropertyType::eFloat;
+        }
+    }
+
+    inline bool shaderParamTypeIsMaterialSchemaSupported(const vshadersystem::ParamType type)
+    {
+        switch (type)
+        {
+            case vshadersystem::ParamType::eFloat:
+            case vshadersystem::ParamType::eVec2:
+            case vshadersystem::ParamType::eVec3:
+            case vshadersystem::ParamType::eVec4:
+            case vshadersystem::ParamType::eInt:
+            case vshadersystem::ParamType::eUInt:
+            case vshadersystem::ParamType::eBool:
+                return true;
+            case vshadersystem::ParamType::eMat3:
+            case vshadersystem::ParamType::eMat4:
+            default:
+                return false;
+        }
+    }
+
+    template<typename T>
+    inline T shaderParamDefaultAs(const vshadersystem::ParamDefault& value, const T fallback)
+    {
+        T out = fallback;
+        std::memcpy(&out, value.valueBuffer, sizeof(T));
+        return out;
+    }
+
+    inline MaterialPropertyValue materialPropertyDefaultFromShaderParam(const vshadersystem::MaterialParamDesc& param)
+    {
+        if (!param.hasDefault)
+        {
+            switch (param.type)
+            {
+                case vshadersystem::ParamType::eVec2:
+                    return glm::vec2 {0.0f};
+                case vshadersystem::ParamType::eVec3:
+                    return glm::vec3 {0.0f};
+                case vshadersystem::ParamType::eVec4:
+                    return glm::vec4 {0.0f};
+                case vshadersystem::ParamType::eInt:
+                case vshadersystem::ParamType::eUInt:
+                    return int32_t {0};
+                case vshadersystem::ParamType::eBool:
+                    return false;
+                case vshadersystem::ParamType::eFloat:
+                default:
+                    return 0.0f;
+            }
+        }
+
+        switch (param.type)
+        {
+            case vshadersystem::ParamType::eVec2:
+                return shaderParamDefaultAs(param.defaultValue, glm::vec2 {0.0f});
+            case vshadersystem::ParamType::eVec3:
+                return shaderParamDefaultAs(param.defaultValue, glm::vec3 {0.0f});
+            case vshadersystem::ParamType::eVec4:
+                return shaderParamDefaultAs(param.defaultValue, glm::vec4 {0.0f});
+            case vshadersystem::ParamType::eInt:
+                return shaderParamDefaultAs(param.defaultValue, int32_t {0});
+            case vshadersystem::ParamType::eUInt:
+                return static_cast<int32_t>(shaderParamDefaultAs(param.defaultValue, uint32_t {0}));
+            case vshadersystem::ParamType::eBool:
+                return shaderParamDefaultAs(param.defaultValue, bool {false});
+            case vshadersystem::ParamType::eFloat:
+            default:
+                return shaderParamDefaultAs(param.defaultValue, 0.0f);
+        }
+    }
+
+    inline std::optional<std::string>
+    shaderTexturePropertyNameFromIndexParam(const vshadersystem::MaterialParamDesc& param)
+    {
+        if ((param.type != vshadersystem::ParamType::eInt && param.type != vshadersystem::ParamType::eUInt) ||
+            !param.name.ends_with("_index"))
+        {
+            return std::nullopt;
+        }
+
+        auto name = param.name.substr(0, param.name.size() - std::string_view("_index").size());
+        return name.empty() ? std::nullopt : std::optional<std::string> {std::move(name)};
+    }
+
+    inline MaterialSourceSchema
+    materialSourceSchemaFromShaderMaterialDescription(const vshadersystem::MaterialDescription& desc)
+    {
+        MaterialSourceSchema schema;
+        schema.parameters.reserve(desc.params.size() + desc.textures.size());
+
+        for (const auto& param : desc.params)
+        {
+            if (param.name.empty() || !shaderParamTypeIsMaterialSchemaSupported(param.type))
+                continue;
+
+            if (auto textureName = shaderTexturePropertyNameFromIndexParam(param))
+            {
+                auto name = std::move(*textureName);
+                schema.parameters.push_back(MaterialPropertySchema {
+                    .name         = name,
+                    .type         = MaterialPropertyType::eTexture2D,
+                    .defaultValue = std::string {},
+                    .displayName  = std::move(name),
+                });
+                continue;
+            }
+
+            schema.parameters.push_back(MaterialPropertySchema {
+                .name         = param.name,
+                .type         = materialPropertyTypeFromShaderParamType(param.type),
+                .defaultValue = materialPropertyDefaultFromShaderParam(param),
+                .displayName  = param.name,
+                .uiMin        = static_cast<float>(param.range.min),
+                .uiMax        = static_cast<float>(param.range.max),
+                .hasUiRange   = param.hasRange,
+            });
+        }
+
+        for (const auto& texture : desc.textures)
+        {
+            if (texture.name.empty() || texture.type != vshadersystem::TextureType::eTex2D)
+                continue;
+
+            schema.parameters.push_back(MaterialPropertySchema {
+                .name         = texture.name,
+                .type         = MaterialPropertyType::eTexture2D,
+                .defaultValue = std::string {},
+                .displayName  = texture.name,
+            });
+        }
+
+        return schema;
+    }
+
+    inline MaterialSourceSchema materialSourceSchemaFromShaderReflection(const MaterialSourceRef& source)
+    {
+        if (source.kind != MaterialSourceKind::eShader || source.id.empty())
+            return {};
+
+        // A live shader library is needed to load vshadersystem::MaterialDescription.
+        // Call materialSourceSchemaFromShaderMaterialDescription() after resolving
+        // the shader source to a compiled library variant.
         return {};
     }
 

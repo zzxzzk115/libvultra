@@ -17,7 +17,8 @@ namespace vultra::resource
     // - Async later: worker builds CPU blob; main thread performs one upload per frame.
     //
     // NOTE: This buffer stores tightly packed material parameter blocks.
-    // The packing strategy will later be driven by vshadersystem reflection.
+    // Shader-backed materials use vshadersystem reflection offsets; builtin
+    // paths keep their existing packed structs.
     struct MaterialBuffer
     {
         Ref<rhi::StorageBuffer> gpu {nullptr};

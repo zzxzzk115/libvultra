@@ -50,6 +50,7 @@ namespace vultra_app
         void drawAnimationAssetInspector(EditorContext& ctx, const vasset::VAssetRegistry::AssetEntry& entry);
         bool drawRenderGraphPassSourceInspector(EditorContext& ctx, const std::filesystem::path& path);
         bool drawMaterialAssetSourceInspector(EditorContext& ctx, const std::filesystem::path& path);
+        bool drawMaterialGraphNodeSourceInspector(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceTextureImportInspector(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceTexturePreview(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceModelPreview(EditorContext& ctx, const std::filesystem::path& path);

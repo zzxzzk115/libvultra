@@ -38,9 +38,12 @@ namespace vultra
                                              uint32_t         jointWeightsOffset,
                                              bool             doubleSided,
                                              uint32_t         vertexStride,
+                                             uint64_t         fragmentVariantHash,
+                                             uintptr_t        fragmentLibraryKey,
                                              uint32_t         viewMask) const;
 
         rhi::UniformBuffer& retainDrawParamBuffer(uint64_t frameIndex, rhi::UniformBuffer buffer);
+        void setCustomFragmentShaderLib(rhi::ShaderLibraryRuntime* shaderLib) { m_CustomFragmentShaderLib = shaderLib; }
 
         struct RetainedDrawParamBuffer
         {
@@ -49,5 +52,6 @@ namespace vultra
         };
 
         std::vector<RetainedDrawParamBuffer> m_DrawParamBuffers;
+        rhi::ShaderLibraryRuntime*           m_CustomFragmentShaderLib {nullptr};
     };
 } // namespace vultra

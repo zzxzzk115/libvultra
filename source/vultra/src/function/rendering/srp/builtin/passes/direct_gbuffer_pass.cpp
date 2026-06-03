@@ -7,6 +7,7 @@
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
+#include "vultra/function/rendering/srp/builtin/upload_resources.hpp"
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/resource/gpu_material.hpp"
@@ -51,6 +52,12 @@ namespace vultra
             uint32_t                      indexOffset {0u};
             uint32_t                      indexCount {0u};
             bool                          doubleSided {false};
+            bool                          shaderMaterial {false};
+            uint32_t                      shaderMaterialTableIndex {0u};
+            uint32_t                      shaderMaterialBlockOffset {0u};
+            uint32_t                      shaderMaterialBlockSize {0u};
+            uint64_t                      fragmentVariantHash {0u};
+            bool                          fragmentFromBuiltinLibrary {false};
         };
 
         struct PreparedDirectDrawSet
@@ -253,6 +260,11 @@ namespace vultra
                     out.entityInfo.z = static_cast<uint32_t>(glm::clamp(p.metallicRoughnessAoCutoff.w, 0.0f, 1.0f) * 255.0f);
                     break;
                 }
+                case resource::GpuMaterialModel::eShaderMaterial:
+                {
+                    out.materialMRA = glm::vec4(0.0f, 1.0f, 1.0f, materialModelCode(material.model));
+                    break;
+                }
                 case resource::GpuMaterialModel::eInvalid:
                 default:
                     break;
@@ -288,6 +300,18 @@ namespace vultra
             const auto p = loadMaterialParams<MaterialParamsPBRMR>(resources.materialParams,
                                                                    material.blockOffsetBytes);
             return p.doubleSided != 0u;
+        }
+
+        [[nodiscard]] const resource::ShaderMaterialRuntimeInfo*
+        shaderMaterialInfo(const resource::GpuResourcePool& resources, const uint32_t materialIndex)
+        {
+            if (materialIndex >= resources.materials.size())
+                return nullptr;
+            const auto& material = resources.materials[materialIndex];
+            if (material.model != resource::GpuMaterialModel::eShaderMaterial)
+                return nullptr;
+            const auto it = resources.shaderMaterials.find(material.tableIndex);
+            return it != resources.shaderMaterials.end() ? &it->second : nullptr;
         }
 
         [[nodiscard]] constexpr uint64_t alignUp(const uint64_t value, const uint64_t alignment)
@@ -372,6 +396,9 @@ namespace vultra
                     const auto paramIndex = static_cast<uint32_t>(byteOffset / kUniformOffsetAlignment);
                     out.paramBytes.resize(byteOffset + static_cast<size_t>(kUniformOffsetAlignment), std::byte {0});
                     std::memcpy(out.paramBytes.data() + byteOffset, &drawParams, sizeof(DirectDrawParams));
+                    const auto* shaderInfo = shaderMaterialInfo(resources, materialIndex);
+                    const auto& material = materialIndex < resources.materials.size() ? resources.materials[materialIndex] :
+                                                                                    resource::GpuMaterial {};
                     out.records.push_back(PreparedDirectDraw {
                         .mesh         = &mesh,
                         .layout       = layout,
@@ -383,6 +410,12 @@ namespace vultra
                         .indexOffset  = subMesh.indexOffset,
                         .indexCount   = subMesh.indexCount,
                         .doubleSided  = isMaterialDoubleSided(resources, materialIndex),
+                        .shaderMaterial = shaderInfo != nullptr,
+                        .shaderMaterialTableIndex = material.tableIndex,
+                        .shaderMaterialBlockOffset = material.blockOffsetBytes,
+                        .shaderMaterialBlockSize = shaderInfo ? shaderInfo->materialParamSize : 0u,
+                        .fragmentVariantHash = shaderInfo ? shaderInfo->fragmentVariantHash : 0u,
+                        .fragmentFromBuiltinLibrary = shaderInfo && shaderInfo->shaderLibraryUri == "builtin",
                     });
                 };
 
@@ -534,6 +567,8 @@ namespace vultra
                                                        layout.jointWeightsOffsetBytes,
                                                        record.doubleSided,
                                                        mesh->vertexStrideBytes,
+                                                       0u,
+                                                       0u,
                                                        framebufferInfo.viewMask);
                     if (!pipeline)
                         continue;
@@ -771,6 +806,25 @@ namespace vultra
                     rhi::prepareForReading(rc.cb, mesh->indexBuffer);
 
                     const auto& layout = record.layout;
+                    auto* fragmentLibrary = record.shaderMaterial ?
+                                                (record.fragmentFromBuiltinLibrary ?
+                                                     rc.ext.builtinHighendShaderLib :
+                                                     rc.ext.projectShaderLib) :
+                                                rc.ext.builtinHighendShaderLib;
+                    uint64_t fragmentVariantHash = 0u;
+                    bool     useShaderMaterial = false;
+                    if (record.shaderMaterial && fragmentLibrary &&
+                        fragmentLibrary->hasVariant(record.fragmentVariantHash, vshadersystem::ShaderStage::eFrag) &&
+                        gpuSceneDatabase->resources->materialParams.gpu)
+                    {
+                        fragmentVariantHash = record.fragmentVariantHash;
+                        useShaderMaterial   = true;
+                    }
+                    if (!fragmentLibrary)
+                        fragmentLibrary = rc.ext.builtinHighendShaderLib ? rc.ext.builtinHighendShaderLib :
+                                                                          rc.ext.builtinShaderLib;
+                    setCustomFragmentShaderLib(useShaderMaterial ? fragmentLibrary : nullptr);
+                    const auto fragmentLibraryKey = reinterpret_cast<uintptr_t>(useShaderMaterial ? fragmentLibrary : nullptr);
                     const auto* pipeline = getPipeline(false,
                                                        colorFormat,
                                                        normalFormat,
@@ -787,6 +841,8 @@ namespace vultra
                                                        layout.jointWeightsOffsetBytes,
                                                        record.doubleSided,
                                                        mesh->vertexStrideBytes,
+                                                       fragmentVariantHash,
+                                                       fragmentLibraryKey,
                                                        framebufferInfo.viewMask);
                     if (!pipeline)
                         continue;
@@ -799,6 +855,25 @@ namespace vultra
                              .range  = sizeof(DirectDrawParams),
                          }},
                     };
+                    if (useShaderMaterial)
+                    {
+                        rc.resourceSet[1][1] = rhi::bindings::StorageBuffer {
+                            .buffer = gpuSceneDatabase->resources->materialParams.gpu.get(),
+                            .offset = record.shaderMaterialBlockOffset,
+                            .range  = std::max<uint32_t>(record.shaderMaterialBlockSize, 16u),
+                        };
+                        if (rc.frame.frameData.frameBlock.buffer)
+                        {
+                            rc.resourceSet[0][1] = rhi::bindings::UniformBuffer {
+                                .buffer = rc.frame.frameData.frameBlock.buffer,
+                                .range  = sizeof(GPUFrameBlock),
+                            };
+                        }
+                    }
+                    else
+                    {
+                        rc.resourceSet[0].erase(1);
+                    }
                     if (layout.hasSkinning())
                     {
                         if (auto* db = rc.view().gpuSceneDatabase)
@@ -815,10 +890,10 @@ namespace vultra
                     if (pipeline != boundPipeline)
                     {
                         rc.cb.bindPipeline(*pipeline);
-                        rc.bindDescriptorSet(*pipeline, 0);
-                        rc.bindDescriptorSet(*pipeline, 3);
                         boundPipeline = pipeline;
                     }
+                    rc.bindDescriptorSet(*pipeline, 0);
+                    rc.bindDescriptorSet(*pipeline, 3);
                     rc.bindDescriptorSet(*pipeline, 1);
                     rc.cb.draw(rhi::GeometryInfo {
                         .topology     = rhi::PrimitiveTopology::eTriangleList,
@@ -875,8 +950,11 @@ namespace vultra
                                                             const uint32_t         jointWeightsOffset,
                                                             const bool             doubleSided,
                                                             const uint32_t         vertexStride,
+                                                            const uint64_t         fragmentVariantHash,
+                                                            const uintptr_t        fragmentLibraryKey,
                                                             const uint32_t         viewMask) const
     {
+        static_cast<void>(fragmentLibraryKey);
         const resource::GpuVertexLayout layout {
             .attributeMask = vertexAttributeMask,
             .positionOffsetBytes = positionOffset,
@@ -896,6 +974,8 @@ namespace vultra
             depthOnly ? loadHighendShader("direct_depth_pre.frag",
                                           vshadersystem::ShaderStage::eFrag,
                                           {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1 : 0}}) :
+                        fragmentVariantHash != 0u && m_CustomFragmentShaderLib ?
+                        m_CustomFragmentShaderLib->load(fragmentVariantHash, vshadersystem::ShaderStage::eFrag) :
                         loadHighendShader("direct_gbuffer.frag",
                                           vshadersystem::ShaderStage::eFrag,
                                           {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1 : 0},

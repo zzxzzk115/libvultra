@@ -280,8 +280,8 @@ namespace vultra
             return makeTextureFromBytes(uri, builtinTexturePathForUri(uri), bytes);
         }
 
-        // Very small fallback: pack a subset of material params into a fixed block.
-        // This is intentionally simple; later, vshadersystem reflection will pack arbitrary params.
+        // Fixed builtin/imported PBR parameter block. Shader-backed materials
+        // use vshadersystem reflection offsets when their assets are resolved.
         struct alignas(16) MaterialParamsPBRMR
         {
             glm::vec4 baseColor {1, 1, 1, 1};
@@ -455,6 +455,14 @@ namespace vultra
                     .virtualPath = source.path,
                     .sourceText  = std::string(reinterpret_cast<const char*>(source.data), source.size),
                 });
+                constexpr std::string_view includePrefix = "include/";
+                if (std::string_view(source.path).starts_with(includePrefix))
+                {
+                    options.shaderVirtualIncludes.push_back({
+                        .virtualPath = std::string(source.path).substr(includePrefix.size()),
+                        .sourceText  = std::string(reinterpret_cast<const char*>(source.data), source.size),
+                    });
+                }
             }
             return options;
         }

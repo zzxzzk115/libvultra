@@ -28,6 +28,7 @@ namespace vultra
     {
         class Texture;
     }
+    class IShaderService;
 
     // RenderSystem (SRP host):
     // - Reads cooked cameras from CameraSystem
@@ -218,6 +219,7 @@ namespace vultra
                          rhi::RenderDevice&  rd,
                          GeometryFactory&    geometryFactory,
                          RenderWorld&        out,
+                         IShaderService*     shaderService = nullptr,
                          float               timeSeconds = 0.0f);
     };
 } // namespace vultra

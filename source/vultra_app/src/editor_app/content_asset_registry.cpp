@@ -30,22 +30,22 @@ end
 language = glsl
 version = 460
 
-[vert]
-layout(location = 0) out vec2 v_TexCoord;
-
-void main()
-{
-    v_TexCoord = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
-    gl_Position = vec4(v_TexCoord * 2.0 - 1.0, 0.0, 1.0);
-}
+[properties]
+tint : vec4 = (1.0, 0.2, 0.1, 1.0)
+roughness : float = 0.5
+albedoTex : Texture2D
 
 [frag]
-layout(location = 0) in vec2 v_TexCoord;
-layout(location = 0) out vec4 FragColor;
+#include "vultra/mesh_material.glsl"
 
-void main()
+VULTRA_MATERIAL_MAIN(shade)
+
+void shade(in VultraMaterialInput IN, inout VultraMaterialEval OUT)
 {
-    FragColor = vec4(v_TexCoord, 1.0, 1.0);
+    Material m = VULTRA_MATERIAL();
+    vec4 tex = VULTRA_SAMPLE2D(m.albedoTex_index, IN.uv0);
+    OUT.baseColor = m.tint * tex;
+    OUT.roughness = m.roughness;
 }
 )";
         }
@@ -202,6 +202,22 @@ void main()
 )";
         }
 
+        std::string makeSingleShaderMaterialText(std::string_view)
+        {
+            return R"({
+  "type": "Material",
+  "version": 1,
+  "name": "New Shader Material",
+  "source": {
+    "kind": "shader",
+    "shaderLibrary": "project",
+    "id": "pixelate.frag"
+  },
+  "properties": {}
+}
+)";
+        }
+
         std::string makeMaterialGraphNodeText(std::string_view)
         {
             return R"({
@@ -302,6 +318,16 @@ void main()
             .assetType       = vasset::VAssetType::eUnknown,
             .openInCodeEditor = true,
             .makeText        = makeBuiltinPbrMaterialText,
+        });
+        registry.registerCreator(ContentAssetCreator {
+            .id              = "vultra.single_shader_material",
+            .menuPath        = "Material/Single Shader",
+            .displayName     = "Single Shader Material",
+            .defaultFileName = "NewShaderMaterial.vmat.json",
+            .extension       = ".vmat.json",
+            .assetType       = vasset::VAssetType::eUnknown,
+            .openInCodeEditor = true,
+            .makeText        = makeSingleShaderMaterialText,
         });
         registry.registerCreator(ContentAssetCreator {
             .id              = "vultra.material_graph_node",

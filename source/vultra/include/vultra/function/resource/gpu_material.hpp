@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <unordered_map>
 
 namespace vultra::resource
 {
@@ -12,6 +14,7 @@ namespace vultra::resource
         eUnlit,
         ePhong,
         eMaterialGraph,
+        eShaderMaterial,
     };
 
     struct GpuMaterial
@@ -30,4 +33,14 @@ namespace vultra::resource
     };
 
     static_assert(sizeof(GpuMaterial) % 16 == 0, "GpuMaterial must be 16-byte aligned for std430 buffer layout");
+
+    struct ShaderMaterialRuntimeInfo
+    {
+        std::string shaderLibraryUri;
+        std::string fragmentShaderId;
+        uint64_t    fragmentVariantHash {0};
+        uint32_t    materialParamSize {0};
+    };
+
+    using ShaderMaterialRuntimeInfoMap = std::unordered_map<uint32_t, ShaderMaterialRuntimeInfo>;
 } // namespace vultra::resource
