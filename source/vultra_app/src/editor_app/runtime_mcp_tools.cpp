@@ -9,15 +9,17 @@
 #include <chrono>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 
 namespace vultra_app
 {
     namespace
     {
         constexpr std::string_view kProtocolVersion {"2025-03-26"};
-        constexpr auto             kToolTimeout = std::chrono::seconds(5);
 
         nlohmann::json jsonRpcError(const nlohmann::json& id, const int code, std::string message)
         {
@@ -51,6 +53,124 @@ namespace vultra_app
             };
         }
 
+        // Forward an MCP tool straight to a named editor command. This is the shared body that
+        // every thin "vultra.*" pass-through tool used to inline verbatim.
+        nlohmann::json dispatchEditorCommand(EditorContext& ctx, std::string_view commandName, const nlohmann::json& args)
+        {
+            if (!ctx.editor)
+                return toolError("editor command executor is unavailable");
+            auto result = ctx.editor->executeCommand(ctx, std::string(commandName), args);
+            if (!result.value("ok", false))
+                return toolError(result.value("error", std::string(commandName) + " failed"));
+            return toolJson(std::move(result));
+        }
+
+        // Single source of truth for the thin pass-through tools: MCP tool name -> editor command
+        // name. Most map 1:1 (prefix dropped); the few that differ (e.g. scene.save) are explicit.
+        // Tools with bespoke logic (command, command_batch) stay as special cases below.
+        const std::unordered_map<std::string_view, std::string_view> kEditorCommandTools {
+            {"vultra.editor.back_to_launcher", "editor.back_to_launcher"},
+            {"vultra.editor.window", "editor.window"},
+            {"vultra.project.create_empty", "project.create_empty"},
+            {"vultra.scene.new", "scene.new"},
+            {"vultra.scene.list_entity_kinds", "scene.list_entity_kinds"},
+            {"vultra.scene.list_component_kinds", "scene.list_component_kinds"},
+            {"vultra.scene.component_metadata", "scene.component_metadata"},
+            {"vultra.scene.get_component", "scene.get_component"},
+            {"vultra.scene.add_entity", "scene.add_entity"},
+            {"vultra.scene.remove_entity", "scene.remove_entity"},
+            {"vultra.scene.add_component", "scene.add_component"},
+            {"vultra.scene.update_component", "scene.update_component"},
+            {"vultra.scene.remove_component", "scene.remove_component"},
+            {"vultra.scene.select_entity", "scene.select_entity"},
+            {"vultra.scene.move_entity", "scene.move_entity"},
+            {"vultra.scene.instantiate_asset", "scene.instantiate_asset"},
+            {"vultra.scene.save", "editor.save_scene"},
+        };
+
+        // tool name -> published inputSchema, built once from the same toolsList() that
+        // tools/list returns, so validation and the advertised schema cannot drift apart.
+        const std::unordered_map<std::string, nlohmann::json>& toolSchemas()
+        {
+            static const std::unordered_map<std::string, nlohmann::json> schemas = [] {
+                std::unordered_map<std::string, nlohmann::json> map;
+                const auto list = runtime_mcp::toolsList();
+                if (list.contains("tools") && list["tools"].is_array())
+                {
+                    for (const auto& tool : list["tools"])
+                    {
+                        if (tool.contains("name") && tool["name"].is_string())
+                            map.emplace(tool["name"].get<std::string>(),
+                                        tool.value("inputSchema", nlohmann::json::object()));
+                    }
+                }
+                return map;
+            }();
+            return schemas;
+        }
+
+        bool jsonMatchesSchemaType(const nlohmann::json& value, std::string_view type)
+        {
+            if (type == "string")
+                return value.is_string();
+            if (type == "boolean")
+                return value.is_boolean();
+            if (type == "object")
+                return value.is_object();
+            if (type == "array")
+                return value.is_array();
+            if (type == "integer" || type == "number")
+                return value.is_number();
+            return true; // unknown/unspecified type: do not reject
+        }
+
+        // Minimal pre-dispatch validation against the published inputSchema: required fields
+        // must be present, and any provided field declared with a type must match it. Returns an
+        // actionable message on failure, or nullopt when the call looks well-formed. Unknown
+        // tools are not validated here; dispatch reports them.
+        std::optional<std::string> validateToolArgs(const std::string& name, const nlohmann::json& args)
+        {
+            const auto& schemas = toolSchemas();
+            const auto  it      = schemas.find(name);
+            if (it == schemas.end())
+                return std::nullopt;
+            const auto& schema = it->second;
+
+            std::vector<std::string> problems;
+
+            if (schema.contains("required") && schema["required"].is_array())
+            {
+                for (const auto& required : schema["required"])
+                {
+                    if (required.is_string() && !args.contains(required.get<std::string>()))
+                        problems.push_back("missing required field '" + required.get<std::string>() + "'");
+                }
+            }
+
+            if (schema.contains("properties") && schema["properties"].is_object() && args.is_object())
+            {
+                const auto& properties = schema["properties"];
+                for (auto field = args.begin(); field != args.end(); ++field)
+                {
+                    const auto prop = properties.find(field.key());
+                    if (prop == properties.end() || !prop->is_object() || !prop->contains("type") ||
+                        !(*prop)["type"].is_string())
+                        continue; // unknown/extra field or untyped schema entry: allowed
+                    const auto expected = (*prop)["type"].get<std::string>();
+                    if (!jsonMatchesSchemaType(field.value(), expected))
+                        problems.push_back("field '" + field.key() + "' should be of type " + expected);
+                }
+            }
+
+            if (problems.empty())
+                return std::nullopt;
+
+            std::string message = "invalid arguments for " + name + ": ";
+            for (std::size_t i = 0; i < problems.size(); ++i)
+                message += (i == 0 ? "" : "; ") + problems[i];
+            return message;
+        }
+
     } // namespace
 
     nlohmann::json RuntimeMcpServer::handleMcpRequest(const nlohmann::json& request)
@@ -79,10 +199,15 @@ namespace vultra_app
         auto call  = std::make_shared<PendingCall>();
         call->name = params["name"].get<std::string>();
         call->args = params.value("arguments", nlohmann::json::object());
+
+        // Fail fast with an actionable message before occupying the main thread.
+        if (auto validationError = validateToolArgs(call->name, call->args))
+            return jsonRpcResult(id, toolError(std::move(*validationError)));
+
         enqueueCall(call);
 
         std::unique_lock callLock {call->mutex};
-        if (!call->cv.wait_for(callLock, kToolTimeout, [&] { return call->done; }))
+        if (!call->cv.wait_for(callLock, kMcpToolDeadline, [&] { return call->done; }))
             return jsonRpcError(id, -32000, "runtime MCP tool timed out waiting for main thread");
         return jsonRpcResult(id, call->result);
     }
@@ -161,175 +286,8 @@ namespace vultra_app
             return toolJson(std::move(payload));
         }
 
-        if (name == "vultra.editor.back_to_launcher")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "editor.back_to_launcher", nlohmann::json::object());
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "editor.back_to_launcher failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.editor.window")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "editor.window", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "editor.window failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.project.create_empty")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "project.create_empty", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "project.create_empty failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.new")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "scene.new", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "scene.new failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.list_entity_kinds")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "scene.list_entity_kinds", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "scene.list_entity_kinds failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.list_component_kinds")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "scene.list_component_kinds", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "scene.list_component_kinds failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.component_metadata")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "scene.component_metadata", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "scene.component_metadata failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.get_component")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "scene.get_component", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "scene.get_component failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.add_entity")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "scene.add_entity", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "scene.add_entity failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.remove_entity")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "scene.remove_entity", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "scene.remove_entity failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.add_component")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "scene.add_component", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "scene.add_component failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.update_component")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "scene.update_component", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "scene.update_component failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.remove_component")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "scene.remove_component", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "scene.remove_component failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.select_entity")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "scene.select_entity", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "scene.select_entity failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.move_entity")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "scene.move_entity", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "scene.move_entity failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.instantiate_asset")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "scene.instantiate_asset", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "scene.instantiate_asset failed"));
-            return toolJson(std::move(result));
-        }
-
-        if (name == "vultra.scene.save")
-        {
-            if (!ctx.editor)
-                return toolError("editor command executor is unavailable");
-            auto result = ctx.editor->executeCommand(ctx, "editor.save_scene", args);
-            if (!result.value("ok", false))
-                return toolError(result.value("error", "editor.save_scene failed"));
-            return toolJson(std::move(result));
-        }
+        if (const auto it = kEditorCommandTools.find(name); it != kEditorCommandTools.end())
+            return dispatchEditorCommand(ctx, it->second, args);
 
         if (auto result = handleAssetTool(name, args, ctx); !result.is_null())
             return result;

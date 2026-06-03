@@ -159,10 +159,10 @@ namespace vultra_app::runtime_mcp
                    "Return component field metadata for scene component tools. Pass component_kind for one kind, or omit it for all kinds."},
                   {"inputSchema",
                    {{"type", "object"},
-                    {"properties",
-                     {{"component_kind", {{"type", "string"}}},
-                      {"componentKind", {{"type", "string"}}},
-                      {"kind", {{"type", "string"}}}}}}}},
+                    // Canonical key is snake_case component_kind, matching every other scene
+                    // component tool. The command still tolerates componentKind/kind aliases, but
+                    // the published schema advertises only the canonical form.
+                    {"properties", {{"component_kind", {{"type", "string"}}}}}}}},
                  {{"name", "vultra.scene.get_component"},
                   {"description", "Read an entity component as update_component-compatible JSON."},
                   {"inputSchema",

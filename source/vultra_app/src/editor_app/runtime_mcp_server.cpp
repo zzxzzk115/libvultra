@@ -81,7 +81,6 @@ namespace vultra_app
     namespace
     {
         constexpr std::string_view kProtocolVersion {"2025-03-26"};
-        constexpr auto             kToolTimeout = std::chrono::seconds(5);
 
 #if defined(_WIN32)
         using SocketHandle = SOCKET;
@@ -404,6 +403,20 @@ namespace vultra_app
                 m_PendingCalls.pop();
             }
 
+            // Past the shared deadline the HTTP worker has already stopped waiting, so do not run
+            // (or re-run a deferred) call: that would mutate ctx on behalf of a caller that is gone,
+            // and a never-resolving deferred condition would otherwise spin every frame forever.
+            if (std::chrono::steady_clock::now() >= call->deferDeadline)
+            {
+                {
+                    std::lock_guard callLock {call->mutex};
+                    call->result = toolError("runtime MCP tool exceeded deadline before completing");
+                    call->done   = true;
+                }
+                call->cv.notify_one();
+                continue;
+            }
+
             nlohmann::json result;
             try
             {
@@ -438,6 +451,9 @@ namespace vultra_app
     {
         {
             std::lock_guard lock {m_Mutex};
+            // Set once here, at the same moment the HTTP worker begins its bounded wait, so the
+            // main-thread deadline and the client-side timeout share one window.
+            call->deferDeadline = std::chrono::steady_clock::now() + kMcpToolDeadline;
             m_PendingCalls.push(std::move(call));
         }
     }
