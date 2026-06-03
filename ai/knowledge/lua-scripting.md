@@ -24,20 +24,37 @@ Stable facts for agents:
 - Check component presence before component property access:
   `entity:hasRigidBody()`, `entity:hasCamera()`, `entity:hasMesh()`,
   `entity:hasBoxShape()`, `entity:hasSphereShape()`,
-  `entity:hasRectTransform()`, `entity:hasUiButton()`.
+  `entity:hasRectTransform()`, `entity:hasUiButton()`,
+  `entity:hasUiToggle()`, `entity:hasUiSlider()`, and
+  `entity:hasUiProgressBar()`.
 - UI APIs are screen-space and pixel-authored. `RectTransform` fields,
   layout spacing/padding/margins, text sizes, and button hit rects use Canvas
   reference-resolution pixels before Canvas scaling.
 - If an entity has `RectTransformComponent`, `entity.transform` operations
   forward to RectTransform pixel fields; use `entity.rectTransform` for direct
   access to anchors, pivot, `anchoredPositionPx`, `sizeDeltaPx`, `scale`, and
-  `rotationDegrees`. `entity.uiButton.clicked` and `UI.isPointerOverUI()` are
-  available through the runtime UI service.
+  `rotationDegrees`. UI authoring should prefer signal callbacks:
+  `entity.uiButton.clicked:connect(fn)` for buttons and
+  `entity.uiToggle.clicked:connect(fn)` for toggles, plus
+  `entity.ui.onPointerEnter/onPointerExit/onPointerMove/onPointerDown/onPointerUp/onClick`
+  for general UI entities. Sliders expose `entity.uiSlider.value`,
+  `minValue`, and `maxValue`; progress bars expose
+  `entity.uiProgressBar.value`, `minValue`, and `maxValue`.
+  `entity.uiButton.clickedThisFrame`,
+  `UI.isPointerOverUI()`, `UI.raycast(screenPosition?)`, and `UI.events()` are
+  also available through the runtime UI service.
 - Physics-driven movement should use `OnFixedUpdate` and rigid-body
   `addForce`/`addImpulse`. Avoid writing `Transform.position` every rendered
   frame for dynamic rigid bodies.
 - `Camera.findPrimary()` returns the game camera entity; camera follow scripts
-  should update that camera in `OnUpdate` and call `transform:lookAt`.
+  should update that camera in `OnUpdate` and call `transform:lookAt`. Camera
+  scripts can read/write `camera.camera.cullingMask`; layer constants are
+  exposed as `Layer.Default`, `Layer.UI`, and `Layer.All`.
+- Mesh material scripting should use `entity.mesh:setMaterial(slot, uri)` for
+  `.vmat.json` slot assignment and `setMaterialFloat`, `setMaterialColor`,
+  `setMaterialTexture`, `clearMaterialProperty`, and
+  `clearMaterialProperties` for per-entity MaterialPropertyBlock overrides.
+  Use `materialColor` only for the legacy builtin primitive color shortcut.
 - Lua exposes `Physics.overlapSphere(center, radius, activeOnly?)` through
   `IPhysicsService`, plus `raycast`, `overlapBox`, `contactPairs`, and
   `setPosition`. Pickup gameplay should prefer physics queries, then toggle

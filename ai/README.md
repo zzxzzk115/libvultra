@@ -88,6 +88,23 @@ curl -s http://127.0.0.1:8848/mcp -H "Content-Type: application/json" --data-bin
 Invoke-RestMethod -Uri "http://127.0.0.1:8848/mcp" -Method Post -ContentType "application/json" -Body (Get-Content request.json -Raw)
 ```
 
+When writing PowerShell helper functions for `tools/call`, do not name a
+parameter `$args`. `$args` is a PowerShell automatic variable for unbound
+arguments, so using it as the MCP tool-arguments object can silently send an
+array instead of a JSON object. Prefer a name like `$toolArgs`:
+
+```powershell
+function Call-Mcp($id, $toolName, $toolArgs) {
+  $body = @{
+    jsonrpc = "2.0"
+    id = $id
+    method = "tools/call"
+    params = @{ name = $toolName; arguments = $toolArgs }
+  } | ConvertTo-Json -Depth 50
+  Invoke-RestMethod -Uri "http://127.0.0.1:8848/mcp" -Method Post -ContentType "application/json" -Body $body
+}
+```
+
 Runtime MCP tools must be treated as live engine operations. Do not use them for
 AI Harness file edits. Read repository/project AI context directly from `ai/`
 unless the editor is running with Runtime MCP enabled for live automation.

@@ -1,58 +1,53 @@
 ---
 name: vultra-component-workflow
-description: Use when adding, updating, wiring, reviewing, or debugging libvultra ECS/world components, scene .vscn serialization, EnTT reflection metadata, Inspector/Add Component UI, hierarchy icons, camera cooking, render-world cooking, or component-driven renderer behavior.
+description: Use when adding, changing, or reviewing Vultra ECS/world components, including engine runtime components, editor components, UI components, physics/rendering/camera components, scene serialization, Inspector editing, editor/MCP commands, Scene Hierarchy creation menus, runtime cooking, Lua bindings, docs, and verification.
 ---
 
 # Vultra Component Workflow
 
-## Read First
+Use this checklist whenever a component is added or its public fields change.
+Keep the implementation scoped, but do not stop after adding the C++ struct.
 
-- Start from existing component patterns in `source/vultra/include/vultra/function/world/components`.
-- Keep component fields simple and serialization-friendly: `bool`, integers, `float`, `std::string`, `CoreUUID`, and supported `glm` vector/quaternion types.
-- Treat `.vscn` field names as stable API. Prefer additive fields with safe defaults over renames.
-- Do not touch unrelated generated assets or scene files just to prove serialization.
+## Registration Chain
 
-## Checklist
+1. Define the component in the appropriate header under
+   `source/vultra/include/vultra/function/world/components/`.
+2. Register reflection fields in
+   `source/vultra/src/function/scene/scene_reflection.cpp`.
+3. Register scene serialization fields in
+   `source/vultra/src/function/scene/scene_system.cpp`.
+4. Add Inspector support in
+   `source/vultra_app/src/editor_app/ui/windows/inspector_window.cpp`:
+   display name, Add Component descriptor, default order, presence test, label,
+   remove path, and edit branch.
+5. Add editor/MCP command support in
+   `source/vultra_app/src/editor_app/editor_commands.cpp` when the component
+   should be created, updated, removed, or listed by tools.
+6. Update Scene Hierarchy creation menus in
+   `source/vultra_app/src/editor_app/ui/windows/scene_hierarchy_window.cpp`
+   when there is a common entity template for the component.
+7. Wire runtime behavior in the owning system. Examples:
+   `camera_system.cpp` cooks `CameraComponent`; `render_system.cpp` cooks
+   renderable and UI components; `ui_system.cpp` handles UI interaction.
+8. Decide Lua parity. If gameplay scripts reasonably need the component, add a
+   thin binding in the relevant `script_*_binding.cpp`, update
+   `script_types.hpp` when entity refs are needed, and update Lua docs.
+9. Update durable docs or AI knowledge only for stable behavior and scripting
+   API. Avoid keeping one-off debugging notes as permanent docs.
 
-1. Define the component header.
-   - Add `source/vultra/include/vultra/function/world/components/<name>_component.hpp`.
-   - Use numeric enums for serialized choices when that matches nearby components.
-   - Use `CoreUUID` for asset references.
-2. Register scene reflection.
-   - Include the header in `source/vultra/src/function/scene/scene_reflection.cpp`.
-   - Add `entt::meta_factory<Component>().type("ComponentName"_hs).data<&...>("field"_hs)...`.
-3. Register scene serialization.
-   - Include the header in `source/vultra/src/function/scene/scene_system.cpp`.
-   - Add `m_ComponentRegistry.registerComponent<Component>("ComponentName", {"field", ...});`.
-   - Ensure `SceneSystem::parseValueToAny` and `any_to_text` support every field type.
-4. Add editor UI.
-   - Include the component in `inspector_window.cpp`.
-   - Add display names, `metaFieldNameFromId`, specialized combos, or asset picker handling when needed.
-   - Add it to `addableComponents()` unless it is internal-only.
-   - Draw the reflected component in `drawEntityInspector`.
-   - Add a hierarchy icon in `scene_hierarchy_window.cpp` when it helps scanning.
-5. Cook runtime data when the renderer needs it.
-   - For cameras, update `CameraSystem::cameras()` and any editor/manual camera builders.
-   - For renderable or scene-global state, update `RenderWorld`, `RenderWorld::clear()`, and `RenderWorldCooker::cook`.
-   - Resolve asset references through `IAssetService`; resolve GPU resources through `IGpuResourceService`.
-6. Wire renderer behavior only where the component has runtime meaning.
-   - Prefer passing cooked data through `RenderWorld` or `RenderCamera`, instead of reading ECS directly in render passes.
-   - Keep camera policy on camera fields; keep scene/world state on environment-style components.
-7. Update project templates or sample scenes only when defaults should change.
-8. Verify.
-   - Run `xmake build -y vultra-app`.
-   - For editor-visible components, check Add Component, Inspector editing, save/reload `.vscn`, and runtime behavior.
+## Naming
 
-## Common Patterns
+- Use `ComponentNameComponent` for C++ type names.
+- Use stable command/component kinds in snake_case.
+- Keep aliases for common legacy spellings only in command normalization.
+- Use concise Inspector labels matching existing style.
 
-- Camera fields: add to `CameraComponent`, scene meta/registry, `CameraSystem`, and editor/manual camera constructors.
-- Scene-global fields: create an explicit component like `EnvironmentComponent`, cook into `RenderWorld`, and let render features consume cooked data.
-- Asset fields: use `CoreUUID`; add `expectedAssetTypeForField` and readable labels in Inspector for drag-drop and picker support.
-- Choice fields: use `uint32_t` and add an Inspector combo in `drawMetaValue`.
+## Verification
 
-## Pitfalls
-
-- Forgetting `metaFieldNameFromId` can make reflected fields unreadable or uneditable.
-- Adding a component header without scene meta means `.vscn` properties will not apply.
-- Loading assets inside render passes should be avoided; cook asset handles or pointers before render graph build.
-- New fields with no defaults can break old scenes; always default safely.
+- Build with `xmake build -y vultra-app`.
+- For editor-visible components, run an MCP smoke when practical:
+  list component/entity kinds, create an entity, update component properties,
+  select it, capture the editor, and save/reload if serialization changed.
+- For runtime components, verify the owning system observes the new fields.
+- For Lua-facing changes, verify the binding compiles and document the API in
+  `doc/lua_scripting.md` and `ai/knowledge/lua-scripting.md`.

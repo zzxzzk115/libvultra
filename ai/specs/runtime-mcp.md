@@ -85,6 +85,8 @@ pure local widget state change.
 - `vultra.assets.list`
 - `vultra.assets.read`
 - `vultra.assets.write`
+- `vultra.material_graph.list_nodes`
+- `vultra.material_graph.compile`
 - `vultra.assets.import`
 - `vultra.assets.import_from_web`
 - `vultra.assets.import_package`
@@ -104,6 +106,11 @@ pure local widget state change.
 
 Runtime tools return structured JSON payloads inside MCP text content. Service
 unavailability is reported as an MCP tool error payload rather than a crash.
+
+PowerShell test helpers should avoid `$args` as a function parameter for MCP
+tool arguments. It is a PowerShell automatic variable and can turn
+`tools/call.params.arguments` into an array. Use `$toolArgs` or another explicit
+name in examples and smoke scripts.
 
 `scene_context` reports the currently opened scene, dirty state, all camera
 components, the selected main camera (primary camera first, otherwise highest
@@ -157,6 +164,15 @@ Runtime MCP also exposes editor/project automation helpers:
 - `vultra.assets.write` writes text assets only under the current project asset
   root and requires `allowWrite=true`; it can optionally reimport the written
   asset.
+- `vultra.material_graph.list_nodes` scans `.vmatnode.json` assets under the
+  current project asset root and returns parsed project-defined Material Graph
+  node descriptors plus diagnostics. Use it to verify editor-visible custom
+  node discovery without relying on manual menu inspection.
+- `vultra.material_graph.compile` reads a project `.vmatgraph.json`, loads
+  project `.vmatnode.json` descriptors into the same registry shape used by the
+  editor, and runs the surface material graph compiler. It can return generated
+  source with `includeSource=true` for smoke tests that need to confirm custom
+  node snippets were expanded.
 - `vultra.assets.import` reimports an existing project asset through
   `IAssetService::reimportAsset`.
 - `vultra.assets.import_from_web` downloads an `http://` or `https://` URL into

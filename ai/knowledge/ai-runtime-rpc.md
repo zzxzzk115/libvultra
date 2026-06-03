@@ -45,3 +45,7 @@ Stable facts:
 - Render capture is unavailable in `render-mode=none`.
 - This bridge does not require Lua documentation updates unless a later task
   exposes the same behavior as player-facing gameplay scripting.
+- PowerShell MCP helper functions must not use `$args` as the parameter name for
+  tool arguments. `$args` is a PowerShell automatic variable and can cause
+  `tools/call.params.arguments` to be sent as an array instead of an object; use
+  `$toolArgs` or another explicit name.

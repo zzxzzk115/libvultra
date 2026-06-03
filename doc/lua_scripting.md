@@ -127,6 +127,9 @@ Entity properties:
 - `entity.sphereShape`
 - `entity.rectTransform`
 - `entity.uiButton`
+- `entity.uiToggle`
+- `entity.uiSlider`
+- `entity.uiProgressBar`
 
 Entity methods use `:` syntax:
 
@@ -149,6 +152,27 @@ Component checks:
 - `entity:hasSphereShape()`
 - `entity:hasRectTransform()`
 - `entity:hasUiButton()`
+- `entity:hasUiToggle()`
+- `entity:hasUiSlider()`
+- `entity:hasUiProgressBar()`
+
+## Mesh Materials
+
+Mesh scripts can assign a mesh slot material asset and per-entity property
+overrides without editing the shared `.vmat.json`:
+
+```lua
+self.mesh:setMaterial(0, "res://materials/red.vmat.json")
+self.mesh:setMaterialFloat(0, "roughness", 0.8)
+self.mesh:setMaterialColor(0, "baseColor", vec4(1, 0, 0, 1))
+self.mesh:setMaterialTexture(0, "baseColorTexture", "res://textures/albedo.png")
+self.mesh:clearMaterialProperty(0, "roughness")
+self.mesh:clearMaterialProperties(0)
+```
+
+`setMaterial` expects a `.vmat.json` URI. The property methods write the
+slot-level `MaterialPropertyBlock`, so two entities can share one material asset
+while using different runtime values.
 
 ## Transforms And Cameras
 
@@ -192,22 +216,80 @@ if UI.isPointerOverUI() then
   local hovered = UI.hoveredEntity()
 end
 
-if self.uiButton.clicked then
+if self.uiButton.clickedThisFrame then
   print("Clicked")
 end
 ```
+
+Signal-based UI events are the recommended authoring style:
+
+```lua
+function OnCreate(self)
+  self.uiButton.clicked:connect(function(event)
+    print("Clicked", event.target.name)
+  end)
+
+  self.ui.onPointerEnter:connect(function(event)
+    print("Pointer entered", event.currentTarget.name)
+  end)
+
+  self.ui.onClick:connect(function(event)
+    event:stopPropagation()
+  end)
+end
+```
+
+Common UI controls expose thin component references:
+
+```lua
+function OnCreate(self)
+  if self:hasUiToggle() then
+    self.uiToggle.checked = true
+    self.uiToggle.clicked:connect(function(event)
+      print("toggle", self.uiToggle.checked)
+    end)
+  end
+
+  if self:hasUiSlider() then
+    self.uiSlider.minValue = 0
+    self.uiSlider.maxValue = 100
+    self.uiSlider.value = 50
+  end
+
+  if self:hasUiProgressBar() then
+    self.uiProgressBar.value = 0.5
+  end
+end
+```
+
+UI signals bubble from the hit target through its parents up to the owning
+Canvas. `event.target` is the original hit entity, `event.currentTarget` is the
+entity whose signal is currently running, and `event:stopPropagation()` prevents
+later parent signals for the same source event.
 
 UI functions:
 
 - `UI.isPointerOverUI()`
 - `UI.hoveredEntity()`
 - `UI.pressedEntity()`
+- `UI.raycast(screenPosition?)`
+- `UI.events()`
 
 UI component references:
 
 - `RectTransform`: `anchorMin`, `anchorMax`, `pivot`, `anchoredPositionPx`,
   `sizeDeltaPx`, `scale`, `rotationDegrees`
-- `UiButton`: `interactable`, `hovered`, `pressed`, `clicked`
+- `UiButton`: `interactable`, `hovered`, `pressed`, `clicked`,
+  `clickedThisFrame`
+- `UiToggle`: `interactable`, `checked`, `clicked`
+- `UiSlider`: `interactable`, `value`, `minValue`, `maxValue`
+- `UiProgressBar`: `value`, `minValue`, `maxValue`
+- `Ui`: `onPointerEnter`, `onPointerExit`, `onPointerMove`, `onPointerDown`,
+  `onPointerUp`, `onClick`
+
+UI event fields are `type`, `target`, `currentTarget`, `canvas`,
+`screenPosition`, `canvasPosition`, `localPosition`, `button`, `clickCount`,
+and `handled`.
 
 Primary camera lookup:
 
@@ -226,7 +308,11 @@ Camera component properties:
 - `camera.camera.projection`
 - `camera.camera.fovYDegrees`
 - `camera.camera.orthographicHeight`
+- `camera.camera.cullingMask`
 - `camera.camera.rendererKey`
+
+Layer mask constants are available through `Layer.Default`, `Layer.UI`, and
+`Layer.All`.
 
 ## Input
 
