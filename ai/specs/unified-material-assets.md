@@ -12,8 +12,8 @@ Material authoring has three source kinds:
 
 - Builtin source: engine-provided material behavior such as `builtin/pbr`.
 - Graph source: a `.vmatgraph.json` material graph.
-- Shader source: one handwritten shader entry for conventional custom shader
-  materials.
+- Shader source: one handwritten mesh material shader entry using the Vultra
+  mesh material ABI.
 
 Material Graph is the extensibility path. Users who need reusable custom
 behavior add reusable graph nodes, with shader code hidden behind node
@@ -74,7 +74,8 @@ Single-shader material:
 Material parameters are not owned by the Inspector. A material source exposes a
 schema, and `.vmat.json` stores values for that schema in `properties`. Builtin
 sources expose engine-authored schemas, graph sources expose blackboard schemas,
-and shader sources expose reflection-derived schemas when that path is wired.
+and shader sources expose reflection-derived schemas from the compiled shader
+library when available.
 
 `.vmatnode.json` stores reusable Material Graph node descriptors. Version 1
 defines a custom node `typeId`, display name, typed input/output pins, default
@@ -162,6 +163,12 @@ Mesh material slot overrides can carry a first-version MaterialPropertyBlock.
 The block supports float, color/vec4, and texture URI values and is applied on
 top of shared `.vmat.json` properties for that entity/slot.
 
+MaterialPropertyBlock values authored in the Mesh Inspector are scene authoring
+data and are serialized with `MeshComponent/materialOverrides`. Runtime or Lua
+writes update the current world/entity component state and must not mutate the
+referenced shared `.vmat.json`; they become persistent only if an editor
+workflow explicitly saves that world state back to a scene.
+
 ## Acceptance Criteria
 
 - The engine includes `builtin://materials/default.vmat.json`; new projects do
@@ -178,7 +185,9 @@ top of shared `.vmat.json` properties for that entity/slot.
   graph surface evaluation path.
 - Material Graph supports user-extensible reusable nodes through
   `.vmatnode.json` descriptors and GLSL output expressions.
-- Single-shader material sources remain valid for conventional custom shader
-  use.
+- Single-shader material sources render through the DirectGBuffer mesh material
+  ABI. Shader reflection drives editable schemas and parameter packing, while
+  the shader writes `VultraMaterialEval` for the existing deferred lighting
+  path.
 - MaterialPropertyBlock can override float, color, and texture URI properties per
   mesh slot without modifying the referenced shared `.vmat.json`.

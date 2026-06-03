@@ -31,9 +31,11 @@ Material Graph custom nodes.
   PBR or graph material assets.
 - Inspector material source read/edit paths now use the shared parser and show
   diagnostics in the `.vmat.json` asset view.
-- Content Browser keeps only the `Material/Builtin PBR` template for now because
-  that is the only fully wired renderer path. Graph and single shader sources
-  are parseable/savable but their complete render bindings remain later phases.
+- Content Browser initially kept only the `Material/Builtin PBR` template while
+  graph and single shader sources were parser-only. That is now historical:
+  shader-backed `.vmat.json` assets have a DirectGBuffer mesh material ABI
+  render path, and graph-backed material assets continue to use the existing
+  material graph surface path.
 
 ## Verification
 
@@ -55,4 +57,5 @@ Material Graph custom nodes.
 - Continue with Material Graph blackboard/custom node work before treating graph
   materials as fully authorable project assets.
 - Keep single shader material source simple: one shader library plus one shader
-  id, with parameters coming from future shader reflection.
+  id, with parameters coming from shader reflection and material values packed
+  by `MaterialDescription` offsets.

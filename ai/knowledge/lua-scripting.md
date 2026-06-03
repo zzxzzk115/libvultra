@@ -54,7 +54,9 @@ Stable facts for agents:
   `.vmat.json` slot assignment and `setMaterialFloat`, `setMaterialColor`,
   `setMaterialTexture`, `clearMaterialProperty`, and
   `clearMaterialProperties` for per-entity MaterialPropertyBlock overrides.
-  Use `materialColor` only for the legacy builtin primitive color shortcut.
+  These calls update the current entity/component state and do not mutate shared
+  `.vmat.json` assets; Inspector-authored blocks are scene authoring data. Use
+  `materialColor` only for the legacy builtin primitive color shortcut.
 - Lua exposes `Physics.overlapSphere(center, radius, activeOnly?)` through
   `IPhysicsService`, plus `raycast`, `overlapBox`, `contactPairs`, and
   `setPosition`. Pickup gameplay should prefer physics queries, then toggle

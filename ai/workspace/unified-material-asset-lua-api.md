@@ -22,12 +22,24 @@ Date: 2026-06-02
   `xmake run vultra-app --editor --mcp --project example.vproject --no-xr`
 - Created a temporary primitive, updated its mesh `materialOverrides`, and read
   the values back through `vultra.scene.get_component`.
+- Runtime MCP direct Lua script smoke with direct launch:
+  `xmake run vultra-app --editor --mcp --project build/.tmp/material-shader-mcp-project/material-shader-mcp.vproject --no-xr --render-mode=offscreen`
+- Wrote `res://scripts/lua_material_smoke.lua`, attached it to a primitive
+  cube, started playback, stepped five frames, and read back the MeshComponent.
+  `OnCreate` successfully called `setMaterial`, `setMaterialFloat`,
+  `setMaterialColor`, `setMaterialTexture`, `clearMaterialProperty`, and
+  `clearMaterialProperties`.
+- Mesh readback during playback showed slot 0 referencing
+  `res://materials/mcp_shader_material.vmat.json` with `roughness`, `tint`, and
+  `albedoTex` property block entries. The temporary property cleared by
+  `clearMaterialProperty` was absent, and clearing slot 1 left no empty slot
+  override.
+- Reading the shared material asset afterwards confirmed the Lua runtime writes
+  did not mutate `res://materials/mcp_shader_material.vmat.json`.
 - Closed the editor with `vultra.editor.quit` and confirmed no `xmake` or
   `vultra` processes remained.
 
 ## Follow-Up
 
-- Add a dedicated Lua script smoke once the test harness has a direct script
-  execution path for small runtime snippets.
 - Continue Phase 9 cleanup by routing material operations through a small C++
   material/mesh service if the runtime grows more material mutation rules.

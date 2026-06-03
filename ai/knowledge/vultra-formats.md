@@ -11,6 +11,13 @@
   `builtin`, `graph`, or single `shader` source and stores material property
   overrides. Builtin defaults live under `builtin://materials/`;
   project-authored or forked materials live under `res://`.
+  Shader sources use `source.shaderLibrary` plus one shader `id`; editable
+  shader parameters are derived from the compiled shader's
+  `vshadersystem::MaterialDescription` when the shader library can be loaded.
+  Runtime shader-backed materials render through the DirectGBuffer mesh
+  material ABI: `.vmat.json` values and per-slot `MaterialPropertyBlock`
+  overrides are packed into the reflected material parameter block, and the
+  shader writes `VultraMaterialEval` for the existing deferred lighting path.
 - `.vmatgraph.json` stores material graph authoring data. It is a material
   source editor format; mesh slots should prefer `.vmat.json` assets that
   reference graphs when graph-backed material instances need fork/edit behavior.

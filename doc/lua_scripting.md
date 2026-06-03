@@ -172,7 +172,9 @@ self.mesh:clearMaterialProperties(0)
 
 `setMaterial` expects a `.vmat.json` URI. The property methods write the
 slot-level `MaterialPropertyBlock`, so two entities can share one material asset
-while using different runtime values.
+while using different runtime values. Lua writes affect the current
+entity/component state and do not mutate material assets; Inspector-authored
+blocks are scene authoring data and persist when the scene is saved.
 
 ## Transforms And Cameras
 
