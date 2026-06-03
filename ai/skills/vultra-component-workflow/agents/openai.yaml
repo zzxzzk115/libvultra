@@ -2,3 +2,27 @@ interface:
   display_name: "Vultra Component Workflow"
   short_description: "Add or update Vultra ECS scene components safely."
   default_prompt: "Use this skill when adding or updating a Vultra ECS component, scene serialization, inspector UI, or render-world cooking path."
+
+metadata:
+  skill: vultra-component-workflow
+  prerequisites:
+    - "Read ai/knowledge/harness-config.md."
+    - "Read an existing component end-to-end across the registration chain below."
+  in_scope:
+    - "Component structs under source/vultra/include/vultra/function/world/components/."
+    - "Reflection (scene_reflection.cpp) and serialization (scene_system.cpp) fields."
+    - "Inspector support in inspector_window.cpp (add/label/presence/remove/edit)."
+    - "Editor/MCP command support in editor_commands.cpp for create/update/remove/list."
+    - "Scene Hierarchy creation menu and runtime cooking paths."
+  out_of_scope:
+    - "Pure rendering pass authoring (use vultra-lua-render-pass)."
+    - "Lua API surface design beyond the component (use binding-gen)."
+  linked_knowledge:
+    - ai/knowledge/vultra-formats.md
+    - ai/knowledge/harness-config.md
+  linked_tasks: []
+  verification:
+    - "xmake build -y vultra-app."
+    - "Scene save/load round-trip preserves new fields."
+    - "Inspector add/edit/remove works; MCP component_metadata lists the kind."
+    - "Use snake_case wire keys (component_kind) per ai/knowledge/harness-config.md."

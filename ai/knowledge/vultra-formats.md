@@ -21,10 +21,16 @@
 - `.vmatgraph.json` stores material graph authoring data. It is a material
   source editor format; mesh slots should prefer `.vmat.json` assets that
   reference graphs when graph-backed material instances need fork/edit behavior.
-  Canonical graph files use `typeId` for node type identifiers and `nodeId` for
-  link endpoint node references. Pin `type` remains the value type. Runtime
-  readers may accept old `type`/`node` graph files, but new files, templates,
-  tests, and docs should write `typeId`/`nodeId`.
+  - **Canonical fields:** `typeId` (node type identifier), `nodeId` (link endpoint
+    node reference). Pin `type` is **not** deprecated — it remains the value type.
+  - **Deprecated (read-only legacy):** `type` used as a *node type* and `node` used
+    as a *link endpoint*. Runtime readers still accept these so old files keep
+    loading, but they are legacy aliases only.
+  - **Migration:** writers, templates, tests, and docs must emit `typeId`/`nodeId`;
+    do not introduce new files with the legacy `type`/`node` node fields. Re-saving
+    an old graph through the editor rewrites it into the canonical form. There is no
+    automatic batch migration — re-save (or delete and recreate) stale graphs when
+    they need refreshing.
 - `.vmatnode.json` stores reusable Material Graph custom node descriptors:
   `typeId`, display name, typed input/output pins, default params, and optional
   GLSL output expressions. The `vultra.*` namespace is reserved for engine

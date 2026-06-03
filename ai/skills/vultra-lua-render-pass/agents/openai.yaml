@@ -2,3 +2,26 @@ interface:
   display_name: "Vultra Lua Render Pass"
   short_description: "Add Lua-based render graph passes and shader-backed graph nodes."
   default_prompt: "Use this skill when adding a Lua-based render pass, project render graph pass, FullscreenShader-style pass, shader reflection path, or render graph editor/runtime integration in libvultra."
+
+metadata:
+  skill: vultra-lua-render-pass
+  prerequisites:
+    - "Read ai/knowledge/harness-config.md and ai/knowledge/vultra-formats.md."
+    - "Identify the asset model: .vrg.json graph, .vrp.lua pipeline, or project pass Lua."
+  in_scope:
+    - "Lua render graph passes and project render pipeline/pass assets."
+    - "Shader-backed FullscreenShader-style passes and shader library lookup."
+    - "Render graph editor reflection and runtime graph integration."
+  out_of_scope:
+    - "ECS component changes (use vultra-component-workflow)."
+    - "Lua gameplay bindings unrelated to rendering (use binding-gen)."
+    - "Remapping user-defined renderer/pass keys unless the asset says so."
+  linked_knowledge:
+    - ai/knowledge/vultra-formats.md
+    - ai/knowledge/harness-config.md
+  linked_tasks: []
+  verification:
+    - "xmake build -y vultra-app."
+    - "Open the graph in the editor; nodes reflect inputs/outputs/params."
+    - "Runtime render smoke via MCP (vultra.render.capture_rgb) where applicable."
+    - "Do not reload project shader libraries from an ImGui draw loop."

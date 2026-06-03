@@ -2,3 +2,27 @@ interface:
   display_name: "Binding Gen"
   short_description: "Generate libvultra Lua binding modules consistently."
   default_prompt: "Use $binding-gen to generate or update a libvultra Lua binding module."
+
+metadata:
+  skill: binding-gen
+  prerequisites:
+    - "Read ai/knowledge/harness-config.md and ai/knowledge/lua-scripting.md."
+    - "Read the target subsystem header/source and nearby service/component interfaces."
+    - "Read existing modules in source/vultra/{include,src}/function/scripting/bindings/."
+  in_scope:
+    - "New/updated script_<subsystem>_binding.hpp/.cpp modules."
+    - "Wiring register functions into registerScriptBindings (script_binding.cpp)."
+    - "Extending ScriptContext for service-backed bindings."
+    - "Preserving existing Lua API names and compatibility."
+  out_of_scope:
+    - "Implementing missing runtime services/data models (do that first, then bind)."
+    - "Editor-only UI behavior with no runtime service boundary."
+    - "Broad automatic reflection that dumps entire C++ classes."
+  linked_knowledge:
+    - ai/knowledge/lua-scripting.md
+    - doc/lua_scripting.md
+  linked_tasks: []
+  verification:
+    - "xmake build -y vultra-app."
+    - "Run a valid and an invalid Lua call against the new binding."
+    - "Update doc/lua_scripting.md and ai/knowledge/lua-scripting.md."

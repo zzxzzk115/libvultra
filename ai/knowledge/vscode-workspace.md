@@ -8,10 +8,17 @@ missing, create it with the project defaults needed by the common extensions:
   "clangd.arguments": [
     "--header-insertion=never",
     "--compile-commands-dir=.vscode"
-  ],
-  "clang-format.executable": "C:\\Program Files\\LLVM\\bin\\clang-format.exe"
+  ]
 }
 ```
+
+Do not hardcode an absolute `clang-format.executable` path: it breaks the moment
+the file is copied to another machine or OS. Leave it unset so the extension
+finds `clang-format` on `PATH`. Only if it is not on `PATH`, point it at the
+developer's own LLVM install — per platform, e.g.
+`C:\\Program Files\\LLVM\\bin\\clang-format.exe` on Windows or
+`/usr/bin/clang-format` on Linux — and keep that override out of any committed
+default.
 
 If an xmake debug target needs runtime arguments, configure
 `xmake.debuggingTargetsArguments` in the same file. For the editor sample app,
@@ -41,9 +48,9 @@ clangd --enable-config --check=<source-file> --compile-commands-dir=.vscode
 The `--enable-config` flag is important because repository settings such as
 `.clangd` `CompileFlags` are otherwise easy to miss in command-line checks.
 
-Use clang-format from the same LLVM toolchain when formatting C++ files. VS Code
-should point `clang-format.executable` at the installed LLVM binary, and
-command-line formatting should let clang-format discover the repository
+Use clang-format from the same LLVM toolchain when formatting C++ files. Prefer a
+`clang-format` resolved from `PATH` (override `clang-format.executable` only when it
+is not discoverable), and let command-line formatting discover the repository
 `.clang-format` file:
 
 ```powershell

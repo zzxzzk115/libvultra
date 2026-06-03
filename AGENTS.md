@@ -4,6 +4,8 @@ Before planning or editing in this repository, read:
 
 - `ai/README.md`
 - `ai/specs/ai-harness.md`
+- `ai/knowledge/harness-config.md` (MCP host/port, build target, tool-arg casing,
+  fresh-agent decision tree, canonical smoke commands)
 - `ai/skills/README.md`
 - relevant files under `ai/knowledge/`
 - relevant task files under `ai/tasks/`, if they exist
@@ -68,3 +70,21 @@ Use the smallest command set that proves the change. Common checks include:
 - `xmake build -y <target>`
 - asset import or pack scripts when resources change
 - Runtime MCP smoke tests when editor automation or runtime diagnostics change
+
+## Temp Artifacts and Cleanup
+
+Runtime MCP smoke tests must keep their scratch (throwaway projects, PNG captures,
+frame-texture dumps) under `build/.tmp/`. `build/` is gitignored, so this scratch is
+never committed, but it accumulates unbounded if every run creates a new timestamped
+directory and nothing reclaims it.
+
+Conventions:
+
+- Write smoke scratch under `build/.tmp/` only — never into tracked content or other
+  build outputs. Use a clear prefix (e.g. `material-mcp-smoke-`, `material-mcp-step-`).
+- Reclaim scratch after a smoke session. Run, from the repo root:
+  - PowerShell: `tools/clean-mcp-tmp.ps1` (add `-DryRun` to preview, `-All` to wipe
+    the whole `build/.tmp`)
+  - bash/zsh: `tools/clean-mcp-tmp.sh` (`--dry-run`, `--all`)
+- If a smoke flow introduces a new scratch prefix, add it to the prefix lists in both
+  `tools/clean-mcp-tmp.ps1` and `tools/clean-mcp-tmp.sh`.
