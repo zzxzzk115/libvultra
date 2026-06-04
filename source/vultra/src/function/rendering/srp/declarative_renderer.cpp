@@ -400,6 +400,21 @@ namespace vultra
             return fallback;
         }
 
+        [[nodiscard]] bool isDepthFormat(rhi::PixelFormat format)
+        {
+            switch (format)
+            {
+                case rhi::PixelFormat::eDepth16:
+                case rhi::PixelFormat::eDepth32F:
+                case rhi::PixelFormat::eDepth16_Stencil8:
+                case rhi::PixelFormat::eDepth24_Stencil8:
+                case rhi::PixelFormat::eDepth32F_Stencil8:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         [[nodiscard]] bool isBackbufferResource(std::string_view name)
         {
             const auto normalized = normalizeId(std::string(name));
@@ -885,7 +900,8 @@ namespace vultra
                                    FrameGraphResource      directInput        = {},
                                    FrameGraphResource      directOutput       = {},
                                    const bool              publishNamedOutput = true,
-                                   const vrendergraph::ParamBlock& params = {})
+                                   const vrendergraph::ParamBlock& params       = {},
+                                   std::vector<FrameGraphResource> extraInputs = {})
         {
             if (!ctx.view().target || !m_VertexShaderLibrary || !m_FragmentShaderLibrary)
                 return {};
@@ -922,7 +938,8 @@ namespace vultra
 
             ctx.fg.addCallbackPass<PassData>(
                 m_Desc.name.c_str(),
-                [input, outputDesc, &output, &ctx, this](FrameGraph::Builder& builder, PassData& data) mutable {
+                [input, outputDesc, &output, &ctx, extraInputs = std::move(extraInputs), this](
+                    FrameGraph::Builder& builder, PassData& data) mutable {
                     if (input)
                     {
                         data.input =
@@ -936,6 +953,33 @@ namespace vultra
                                              .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
                                              .imageAspect = rhi::ImageAspect::eColor,
                                          });
+                    }
+
+                    // Additional declared inputs bind to set=3, binding=1,2,... so a project
+                    // (Lua) fragment shader can sample engine resources (depth, gbuffer,
+                    // ao, ssr, shadow, etc.) wired in via the render graph `inputs` map.
+                    uint32_t extraBinding = 1u;
+                    for (const auto& extra : extraInputs)
+                    {
+                        if (!extra)
+                        {
+                            ++extraBinding;
+                            continue;
+                        }
+                        const auto extraDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(extra);
+                        const bool depthInput = isDepthFormat(extraDesc.format);
+                        (void)builder.read(extra,
+                                           framegraph::TextureRead {
+                                               .binding =
+                                                   {
+                                                       .location = {.set = 3, .binding = extraBinding},
+                                                       .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                                   },
+                                               .type = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                               .imageAspect =
+                                                   depthInput ? rhi::ImageAspect::eDepth : rhi::ImageAspect::eColor,
+                                           });
+                        ++extraBinding;
                     }
 
                     if (!output)
@@ -1653,8 +1697,17 @@ namespace vultra
                                 else
                                     runtime->update(pass, vertexLibrary, fragmentLibrary);
 
-                                const auto input  = passCtx.getInput(pass.input.empty() ? inputSlot(0) : pass.input);
-                                const auto output = runtime->addPass(*ctx, input, {}, false, params);
+                                const auto input = passCtx.getInput(pass.input.empty() ? inputSlot(0) : pass.input);
+
+                                // Bind any additional declared input slots (depth, gbuffer,
+                                // ao, ...) at fragment set=3 bindings 1.. so script fragment
+                                // shaders are no longer limited to a single source texture.
+                                std::vector<FrameGraphResource> extraInputs;
+                                for (size_t i = 1; i < inputCount; ++i)
+                                    extraInputs.push_back(passCtx.getInput(inputSlot(i)));
+
+                                const auto output =
+                                    runtime->addPass(*ctx, input, {}, false, params, std::move(extraInputs));
                                 if (output)
                                     passCtx.setOutput(pass.output.empty() ? outputSlot(0) : pass.output, output);
                                 return;

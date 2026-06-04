@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="script_lua"
+uid="f7696f570263eda5e41a17235469602a"
+
+[source]
+file="render/passes/depth_tint.lua"
+
+[output]
+file="imported/script_lua/render/passes/depth_tint.lua"
+
+[params]

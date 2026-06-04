@@ -23,6 +23,16 @@ description: Use when adding, updating, wiring, reviewing, or debugging Lua-base
    - Keep pass `type` and custom keys exactly as authored.
    - Define stable inputs, outputs, params, and shader refs.
    - Use defaults so editor graph nodes are usable immediately.
+   - Multi-input passes: declare `inputs = { "source", "depth", ... }`. Both compute AND
+     fullscreen (graphics) passes now bind every declared input to fragment/compute
+     `set = 3` bindings `0,1,2,...` in declaration order. This lets script passes read
+     engine resources (scene depth, gbuffer normal/material, ao, ssr, shadow, ...) — wire
+     each extra input in the `.vrg.json` `inputs` map to a producing pass output (e.g.
+     `"depth": "DirectGBuffer.depth"`). Depth-format inputs are bound with the depth aspect
+     automatically. Example: `resources/render/passes/depth_tint.lua` +
+     `resources/shaders/fullscreen/depth_tint.frag.vshader` sample source (binding 0) and
+     depth (binding 1). (Implemented in `FullscreenPassRuntime::addPass` extraInputs +
+     the graphics branch of `registerPasses`.)
 3. Register editor-visible pass types.
    - In `render_graph_window.cpp`, project Lua pass discovery should register pass definitions without hardcoded renderer key remaps.
    - Call registration at editor state setup, not every frame when avoidable.
