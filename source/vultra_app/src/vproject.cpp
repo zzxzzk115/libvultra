@@ -89,8 +89,11 @@ namespace vultra_app
                 project.editingRenderGraph = value;
             else if (auto index = parseIndexedKey(key, "build_scene."))
                 ensureBuildScene(project.buildScenes, *index).uri = value;
+            else if (auto index = parseIndexedKey(key, "build_scene_alias."))
+                ensureBuildScene(project.buildScenes, *index).alias = value;
+            // Legacy: the old free-form per-scene "name" is migrated into the alias.
             else if (auto index = parseIndexedKey(key, "build_scene_name."))
-                ensureBuildScene(project.buildScenes, *index).name = value;
+                ensureBuildScene(project.buildScenes, *index).alias = value;
             else if (auto index = parseIndexedKey(key, "build_scene_enabled."))
                 ensureBuildScene(project.buildScenes, *index).enabled = parseBool(value);
         }
@@ -106,8 +109,11 @@ namespace vultra_app
                 manifest.entryScene = value;
             else if (auto index = parseIndexedKey(key, "build_scene."))
                 ensureBuildScene(manifest.buildScenes, *index).uri = value;
+            else if (auto index = parseIndexedKey(key, "build_scene_alias."))
+                ensureBuildScene(manifest.buildScenes, *index).alias = value;
+            // Legacy: the old free-form per-scene "name" is migrated into the alias.
             else if (auto index = parseIndexedKey(key, "build_scene_name."))
-                ensureBuildScene(manifest.buildScenes, *index).name = value;
+                ensureBuildScene(manifest.buildScenes, *index).alias = value;
             else if (auto index = parseIndexedKey(key, "build_scene_enabled."))
                 ensureBuildScene(manifest.buildScenes, *index).enabled = parseBool(value);
         }
@@ -201,6 +207,25 @@ namespace vultra_app
             return "res://" + rel.generic_string();
         }
     } // namespace
+
+    std::string buildSceneName(std::string_view uri)
+    {
+        if (uri.empty())
+            return {};
+        return std::filesystem::path(uri).stem().generic_string();
+    }
+
+    const VBuildScene* findBuildScene(const std::vector<VBuildScene>& scenes, std::string_view nameOrAlias)
+    {
+        if (nameOrAlias.empty())
+            return nullptr;
+        for (const auto& scene : scenes)
+        {
+            if (scene.alias == nameOrAlias || buildSceneName(scene.uri) == nameOrAlias)
+                return &scene;
+        }
+        return nullptr;
+    }
 
     std::vector<VBuildScene> normalizedBuildScenes(const std::string&              defaultScene,
                                                    const std::vector<VBuildScene>& scenes)
@@ -327,8 +352,8 @@ namespace vultra_app
         for (const auto& scene : buildScenes)
         {
             file << "build_scene." << scene.index << " = " << quote(scene.uri) << "\n";
-            if (!scene.name.empty())
-                file << "build_scene_name." << scene.index << " = " << quote(scene.name) << "\n";
+            if (!scene.alias.empty())
+                file << "build_scene_alias." << scene.index << " = " << quote(scene.alias) << "\n";
             file << "build_scene_enabled." << scene.index << " = " << (scene.enabled ? "true" : "false") << "\n";
         }
         return true;
@@ -366,8 +391,8 @@ namespace vultra_app
         for (const auto& scene : buildScenes)
         {
             file << "build_scene." << scene.index << " = " << quote(scene.uri) << "\n";
-            if (!scene.name.empty())
-                file << "build_scene_name." << scene.index << " = " << quote(scene.name) << "\n";
+            if (!scene.alias.empty())
+                file << "build_scene_alias." << scene.index << " = " << quote(scene.alias) << "\n";
             file << "build_scene_enabled." << scene.index << " = " << (scene.enabled ? "true" : "false") << "\n";
         }
         return true;

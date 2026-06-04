@@ -156,14 +156,6 @@ namespace vultra_app
             });
         }
 
-        std::string buildSceneDisplayName(const VBuildScene& scene)
-        {
-            if (!scene.name.empty())
-                return scene.name;
-            if (!scene.uri.empty())
-                return std::filesystem::path(scene.uri).stem().generic_string();
-            return "Scene";
-        }
     } // namespace
 
     void EditorApp::drawProjectSettingsPopup(EditorContext& ctx)
@@ -330,7 +322,6 @@ namespace vultra_app
                     ctx.state.currentBuildScenes.push_back(VBuildScene {
                         .index   = static_cast<uint32_t>(ctx.state.currentBuildScenes.size()),
                         .uri     = defaultScene,
-                        .name    = buildSceneDisplayName(VBuildScene {.uri = defaultScene}),
                         .enabled = true,
                     });
                     projectSettingsChanged = true;
@@ -346,7 +337,6 @@ namespace vultra_app
                     ctx.state.currentBuildScenes.push_back(VBuildScene {
                         .index   = static_cast<uint32_t>(ctx.state.currentBuildScenes.size()),
                         .uri     = uri,
-                        .name    = buildSceneDisplayName(VBuildScene {.uri = uri}),
                         .enabled = true,
                     });
                     projectSettingsChanged = true;
@@ -359,14 +349,15 @@ namespace vultra_app
                 ui::drawInfoRegion("No build scenes configured. Add scenes to control package roots and runtime scene indices.");
             }
             else if (ImGui::BeginTable("BuildScenesTable",
-                                       6,
+                                       7,
                                        ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
                                            ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Resizable))
             {
                 ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 34.0f);
                 ImGui::TableSetupColumn("Enabled", ImGuiTableColumnFlags_WidthFixed, 64.0f);
-                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 0.32f);
-                ImGui::TableSetupColumn("Scene", ImGuiTableColumnFlags_WidthStretch, 0.68f);
+                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 0.26f);
+                ImGui::TableSetupColumn("Alias", ImGuiTableColumnFlags_WidthStretch, 0.26f);
+                ImGui::TableSetupColumn("Scene", ImGuiTableColumnFlags_WidthStretch, 0.48f);
                 ImGui::TableSetupColumn("Order", ImGuiTableColumnFlags_WidthFixed, 62.0f);
                 ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 34.0f);
                 ImGui::TableHeadersRow();
@@ -387,17 +378,28 @@ namespace vultra_app
                     if (ImGui::Checkbox("##BuildSceneEnabled", &scene.enabled))
                         projectSettingsChanged = true;
 
+                    // Name is locked to the scene's filename stem (not user-editable).
                     ImGui::TableSetColumnIndex(2);
                     std::array<char, 128> nameBuffer {};
-                    setBuffer(nameBuffer, scene.name);
+                    setBuffer(nameBuffer, buildSceneName(scene.uri));
                     ImGui::SetNextItemWidth(-1.0f);
-                    if (ImGui::InputText("##BuildSceneName", nameBuffer.data(), nameBuffer.size()))
+                    ImGui::InputText("##BuildSceneName",
+                                     nameBuffer.data(),
+                                     nameBuffer.size(),
+                                     ImGuiInputTextFlags_ReadOnly);
+
+                    // Alias is the optional, player-defined handle.
+                    ImGui::TableSetColumnIndex(3);
+                    std::array<char, 128> aliasBuffer {};
+                    setBuffer(aliasBuffer, scene.alias);
+                    ImGui::SetNextItemWidth(-1.0f);
+                    if (ImGui::InputText("##BuildSceneAlias", aliasBuffer.data(), aliasBuffer.size()))
                     {
-                        scene.name             = bufferString(nameBuffer);
+                        scene.alias            = bufferString(aliasBuffer);
                         projectSettingsChanged = true;
                     }
 
-                    ImGui::TableSetColumnIndex(3);
+                    ImGui::TableSetColumnIndex(4);
                     if (ImGui::BeginCombo("##BuildSceneUri", scene.uri.empty() ? "(none)" : scene.uri.c_str()))
                     {
                         for (const auto& uri : sceneUris)
@@ -405,9 +407,7 @@ namespace vultra_app
                             const bool selected = uri == scene.uri;
                             if (ImGui::Selectable(uri.c_str(), selected))
                             {
-                                scene.uri = uri;
-                                if (scene.name.empty())
-                                    scene.name = buildSceneDisplayName(scene);
+                                scene.uri              = uri;
                                 projectSettingsChanged = true;
                             }
                             if (selected)
@@ -416,7 +416,7 @@ namespace vultra_app
                         ImGui::EndCombo();
                     }
 
-                    ImGui::TableSetColumnIndex(4);
+                    ImGui::TableSetColumnIndex(5);
                     if (i == 0)
                         ImGui::BeginDisabled();
                     if (ImGui::SmallButton(ICON_MDI_ARROW_UP))
@@ -437,7 +437,7 @@ namespace vultra_app
                     if (i + 1 == static_cast<int>(ctx.state.currentBuildScenes.size()))
                         ImGui::EndDisabled();
 
-                    ImGui::TableSetColumnIndex(5);
+                    ImGui::TableSetColumnIndex(6);
                     if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE))
                         removeIndex = i;
                     ImGui::PopID();

@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace vultra_app
@@ -14,9 +15,20 @@ namespace vultra_app
     {
         uint32_t    index {0};
         std::string uri;
-        std::string name;
+        // Optional, player-defined alias. The canonical scene name is the uri filename stem
+        // (see buildSceneName) and is not user-editable; alias is an additional handle.
+        std::string alias;
         bool        enabled {true};
     };
+
+    // Canonical, locked name of a build scene: the uri filename without directory or extension
+    // (e.g. "res://scenes/Level_01.vscn" -> "Level_01"). Not user-editable.
+    [[nodiscard]] std::string buildSceneName(std::string_view uri);
+
+    // Resolve a build scene by either its canonical filename name or its alias (case-sensitive).
+    // This is the entry point scene management should use so both handles stay interchangeable.
+    [[nodiscard]] const VBuildScene* findBuildScene(const std::vector<VBuildScene>& scenes,
+                                                    std::string_view                nameOrAlias);
 
     struct VProject
     {

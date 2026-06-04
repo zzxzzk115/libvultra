@@ -1934,7 +1934,7 @@ namespace vultra_app
                 .name = projectName,
                 .assetRoot = "resources",
                 .defaultScene = "res://scenes/main.vscn",
-                .buildScenes = {VBuildScene {.index = 0, .uri = "res://scenes/main.vscn", .name = "Main", .enabled = true}},
+                .buildScenes = {VBuildScene {.index = 0, .uri = "res://scenes/main.vscn", .enabled = true}},
                 .editingRenderGraph = templateKind == ProjectTemplateKind::Empty ? std::string {} :
                                                                              std::string {"res://render/default.vrg.json"},
             };
