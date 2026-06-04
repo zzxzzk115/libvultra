@@ -323,6 +323,8 @@ namespace vultra_app
                     ctx.state.frameDebuggerWindowOpenRequested = true;
                 if (ImGui::MenuItem("Runtime Frame Graph Viewer"))
                     ctx.state.runtimeFrameGraphViewerOpenRequested = true;
+                if (ImGui::MenuItem("World Viewer"))
+                    ctx.state.editorWindowFocusRequested = "World Viewer";
                 drawRenderDocMenu(ctx);
                 ImGui::EndPopup();
             }

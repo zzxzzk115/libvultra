@@ -803,6 +803,7 @@ namespace vultra
         {
             load.message = "Preparing scene assets...";
             load.stagingWorld = std::make_unique<World>();
+            load.stagingWorld->setDebugName("Staging: " + load.uri);
             load.stagingRoot  = instantiateSceneDocument(*load.stagingWorld, *load.doc, entt::null, true);
             if (load.stagingRoot == entt::null)
             {

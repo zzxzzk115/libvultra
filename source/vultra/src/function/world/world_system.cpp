@@ -15,6 +15,7 @@ namespace vultra
 
         VULTRA_CORE_TRACE("[WorldSystem] Creating world");
         m_World = std::make_unique<World>();
+        m_World->setDebugName("Main");
 
         VULTRA_CORE_TRACE("[WorldSystem] Providing IWorldService");
         ctx().services.provide<IWorldService>(this);

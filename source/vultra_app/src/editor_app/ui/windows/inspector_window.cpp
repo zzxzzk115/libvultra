@@ -4708,7 +4708,10 @@ namespace vultra_app
         }
     } // namespace
 
-    InspectorWindow::InspectorWindow() : EditorWindow("Inspector", ICON_MDI_TUNE) {}
+    InspectorWindow::InspectorWindow() : EditorWindow("Inspector", ICON_MDI_TUNE)
+    {
+        m_ModelPreviewWorld.setDebugName("Inspector Preview");
+    }
 
     void InspectorWindow::onClosed(EditorContext& ctx)
     {

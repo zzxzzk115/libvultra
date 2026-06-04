@@ -5,11 +5,74 @@
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
 
+#include <algorithm>
+#include <atomic>
+#include <mutex>
 #include <ranges>
 #include <vector>
 
 namespace vultra
 {
+    namespace
+    {
+        // Function-local statics (Meyers singletons) avoid static init-order fiasco: the registry
+        // is constructed on first use, which is guaranteed to be before the first World is created.
+        std::mutex& liveWorldsMutex()
+        {
+            static std::mutex m;
+            return m;
+        }
+
+        std::vector<World*>& liveWorlds()
+        {
+            static std::vector<World*> worlds;
+            return worlds;
+        }
+
+        std::atomic<std::uint64_t>& worldInstanceCounter()
+        {
+            static std::atomic<std::uint64_t> counter {0};
+            return counter;
+        }
+    } // namespace
+
+    World::World()
+    {
+        m_InstanceId = worldInstanceCounter().fetch_add(1, std::memory_order_relaxed) + 1;
+        std::lock_guard lock {liveWorldsMutex()};
+        liveWorlds().push_back(this);
+    }
+
+    World::~World()
+    {
+        std::lock_guard lock {liveWorldsMutex()};
+        auto& worlds = liveWorlds();
+        if (const auto it = std::find(worlds.begin(), worlds.end(), this); it != worlds.end())
+            worlds.erase(it);
+    }
+
+    void World::forEachLive(const std::function<void(World&)>& fn)
+    {
+        if (!fn)
+            return;
+
+        // Snapshot under lock, then invoke outside it so the callback may safely call back into
+        // World (and so a World destroyed during iteration can't dangle the locked vector).
+        std::vector<World*> snapshot;
+        {
+            std::lock_guard lock {liveWorldsMutex()};
+            snapshot = liveWorlds();
+        }
+        for (World* world : snapshot)
+            fn(*world);
+    }
+
+    std::size_t World::liveCount()
+    {
+        std::lock_guard lock {liveWorldsMutex()};
+        return liveWorlds().size();
+    }
+
     void World::clear()
     {
         m_Registry.clear();

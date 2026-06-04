@@ -17,6 +17,7 @@
 #include "editor_app/ui/windows/render_graph_window.hpp"
 #include "editor_app/ui/windows/scene_hierarchy_window.hpp"
 #include "editor_app/ui/windows/scene_view_window.hpp"
+#include "editor_app/ui/windows/world_viewer_window.hpp"
 #include "vproject.hpp"
 
 #include <vultra/core/base/common_context.hpp>
@@ -1017,6 +1018,7 @@ namespace vultra_app
         m_WindowManager.addWindow<ProfilerWindow>();
         m_WindowManager.addWindow<InspectorWindow>();
         m_WindowManager.addWindow<HistoryWindow>();
+        m_WindowManager.addWindow<WorldViewerWindow>();
         m_Initialized = true;
     }
 

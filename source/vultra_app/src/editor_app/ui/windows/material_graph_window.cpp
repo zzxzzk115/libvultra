@@ -764,6 +764,7 @@ namespace vultra_app
         EditorWindow("Material Graph", ICON_MDI_MOLECULE), m_Registry(vultra::material_graph::makeBuiltinNodeRegistry())
     {
         m_NodeEditor = ImNodes::EditorContextCreate();
+        m_PreviewWorld.setDebugName("Material Preview");
     }
 
     MaterialGraphWindow::~MaterialGraphWindow()
