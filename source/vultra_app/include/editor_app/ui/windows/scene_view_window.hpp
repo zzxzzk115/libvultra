@@ -116,11 +116,22 @@ namespace vultra_app
         void initializeCameraFromPrimaryCamera(EditorContext& ctx);
         void updateFocusAnimation();
         bool focusSelection(EditorContext& ctx, float aspect);
+        void submitSceneDebugDraw(EditorContext& ctx, const glm::mat4& view, const glm::mat4& projection, float aspect);
+        void drawEntityIconGizmos(EditorContext&   ctx,
+                                  const glm::mat4&  view,
+                                  const glm::mat4&  projection,
+                                  const ImVec2&     imagePos,
+                                  const ImVec2&     avail);
 
         Tool m_Tool {Tool::Select};
         ViewMode m_ViewMode {ViewMode::View3D};
         CoordinateMode m_CoordinateMode {CoordinateMode::Local};
         bool m_ShowGrid {false};
+        bool m_ShowIcons {true};
+        bool m_ShowSelectionBounds {false};
+        bool m_ShowColliders {true};
+        bool m_ShowLightGizmos {true};
+        float m_IconSize {4.0f};
         bool m_UiSnapEnabled {true};
         glm::vec4 m_Ui2DClearColor {0.0f, 0.0f, 0.0f, 1.0f};
 

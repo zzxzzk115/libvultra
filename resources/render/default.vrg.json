@@ -2,6 +2,12 @@
   "meta": {
     "editor": {
       "nodes": {
+        "DebugDraw": {
+          "pos": [
+            4293.0,
+            448.0
+          ]
+        },
         "DeferredLighting": {
           "pos": [
             1134.0,
@@ -22,8 +28,8 @@
         },
         "FinalComposition": {
           "pos": [
-            4317.0,
-            265.0
+            4990.0,
+            488.0
           ]
         },
         "Fxaa": {
@@ -52,14 +58,8 @@
         },
         "SelectionOutline": {
           "pos": [
-            3917.0,
-            176.0
-          ]
-        },
-        "UiOverlay": {
-          "pos": [
-            4140.0,
-            176.0
+            3930.0,
+            139.0
           ]
         },
         "ShadowMap": {
@@ -90,6 +90,12 @@
           "pos": [
             3292.0,
             -59.0
+          ]
+        },
+        "UiOverlay": {
+          "pos": [
+            4624.0,
+            343.0
           ]
         }
       }
@@ -281,9 +287,21 @@
     },
     {
       "enabled": true,
+      "id": "DebugDraw",
+      "inputs": {
+        "depth": "DirectGBuffer.depth",
+        "source": "SelectionOutline.color"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "DebugDraw"
+    },
+    {
+      "enabled": true,
       "id": "UiOverlay",
       "inputs": {
-        "source": "SelectionOutline.color"
+        "source": "DebugDraw.color"
       },
       "params": {
         "enabled": true

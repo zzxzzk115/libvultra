@@ -19,6 +19,7 @@
 #include "vultra/function/rendering/srp/builtin/passes/build_indirect_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/coarse_instance_cull_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/compatibility_basecolor_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/debug_draw_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/deferred_lighting_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/depth_pre_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/direct_gbuffer_pass.hpp"
@@ -788,6 +789,10 @@ namespace vultra
              {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
         pass("SelectionOutline",
              {"source", "entityId", "depth"},
+             {"color"},
+             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
+        pass("DebugDraw",
+             {"source", "depth"},
              {"color"},
              {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
         pass("UiOverlay",
@@ -2199,6 +2204,45 @@ namespace vultra
                                 }
                             });
 
+            registerBuiltin("DebugDraw",
+                            {"source", "depth"},
+                            {"color"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock& params,
+                                   vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                auto* renderService =
+                                    m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
+                                const auto* camera = ctx ? ctx->view().camera : nullptr;
+                                const bool  cameraAllowsDebugDraw = camera != nullptr && camera->debugDrawEnabled;
+                                if (!ctx || !renderService || !params.get<bool>("enabled", true) ||
+                                    !renderService->builtinRenderSettings().debugDraw.enabled || !cameraAllowsDebugDraw)
+                                {
+                                    passCtx.setOutput("color", passCtx.getInput("source"));
+                                    return;
+                                }
+                                // Match the scene geometry's clip space: GPUCameraBlock flips
+                                // projection[1][1] for Vulkan (see upload_resources.cpp). The debug-draw
+                                // VP must apply the same flip or wireframes drift in Y as the camera moves.
+                                glm::mat4 debugProjection = camera->projection;
+                                if (ctx->rd.getBackendApi() == rhi::RenderBackendApi::eVulkan)
+                                    debugProjection[1][1] *= -1.0f;
+                                auto color = m_DebugDrawPass.addPass(*ctx,
+                                                                     passCtx.getInput("source"),
+                                                                     passCtx.getInput("depth"),
+                                                                     debugProjection * camera->view);
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                                else
+                                {
+                                    passCtx.setOutput("color", passCtx.getInput("source"));
+                                }
+                            });
+
             registerBuiltin("UiOverlay",
                             {"source"},
                             {"color"},
@@ -2659,6 +2703,7 @@ namespace vultra
         FxaaPass                                                                m_FxaaPass;
         ToneMappingPass                                                         m_ToneMappingPass;
         SelectionOutlinePass                                                    m_SelectionOutlinePass;
+        DebugDrawPass                                                           m_DebugDrawPass;
         UiOverlayPass                                                           m_UiOverlayPass;
         FinalCompositionPass                                                    m_FinalCompositionPass;
         RayTracingPrimaryPass                                                   m_RayTracingPrimaryPass;

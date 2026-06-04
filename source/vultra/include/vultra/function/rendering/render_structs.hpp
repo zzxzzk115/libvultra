@@ -87,6 +87,7 @@ namespace vultra
         bool          renderImGui {true};
         bool          debugEntityIdOutput {false};
         bool          selectionOutlineEnabled {false};
+        bool          debugDrawEnabled {false};
         uint32_t      cullingMask {kRenderLayerAllMask};
         bool          uiOverlayTransformOverride {false};
         glm::vec2     uiOverlayOffsetPx {0.0f};
@@ -439,12 +440,20 @@ namespace vultra
             float     edgeOpacity {0.35f};
         };
 
+        // Master toggle for the builtin DebugDraw pass. Geometry itself is submitted via the global
+        // dd:: queue (IRenderService::debugDraw*) and flushed by the pass each frame.
+        struct DebugDrawSettings
+        {
+            bool enabled {true};
+        };
+
         SsaoRenderSettings ssao;
         SsrRenderSettings  ssr;
         ToneMappingRenderSettings toneMapping;
         ShadowRenderSettings shadow;
         PbrLightingSettings pbrLighting;
         SelectionOutlineSettings selectionOutline;
+        DebugDrawSettings  debugDraw;
         bool               xrMirrorGammaCorrect {true};
         bool               enableFXAA {true};
     };

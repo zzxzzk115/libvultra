@@ -1,8 +1,11 @@
 #include "editor_app/ui/windows/scene_view_window.hpp"
 
+#include "editor_app/editor_app.hpp"
 #include "editor_app/editor_history.hpp"
+#include "editor_app/scene_asset_instantiation.hpp"
 #include "editor_app/scene_thumbnail.hpp"
 #include "editor_app/selection.hpp"
+#include "editor_app/ui/viewport_math.hpp"
 
 #include <IconsMaterialDesignIcons.h>
 #include <vultra/core/services/input_service.hpp>
@@ -12,18 +15,23 @@
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/world_service.hpp>
+#include <vultra/function/world/components/box_shape_component.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
+#include <vultra/function/world/components/capsule_shape_component.hpp>
 #include <vultra/function/world/components/entity_status_component.hpp>
+#include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/gaussian_splat_component.hpp>
 #include <vultra/function/world/components/hierarchy_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
+#include <vultra/function/world/components/sphere_shape_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
 #include <vultra/function/world/components/ui_components.hpp>
 #include <vultra/function/world/world.hpp>
 
 #include <ImGuizmo/ImGuizmo.h>
+#include <nlohmann/json.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -31,6 +39,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <imoguizmo/imoguizmo.hpp>
+#include <nlohmann/json.hpp>
 #include <stb_image_resize2.h>
 #include <stb_image_write.h>
 
@@ -178,71 +187,6 @@ namespace vultra_app
             return entt::null;
         }
 
-        void selectEntityIfPossible(vultra::World& world, entt::entity entity)
-        {
-            if (entity == entt::null)
-                return;
-            if (auto* id = world.registry().try_get<vultra::IDComponent>(entity))
-                Selection::select(SelectionCategory::Entity, id->uuid);
-        }
-
-        std::string assetNameFromEntry(const vasset::VAssetRegistry::AssetEntry& entry)
-        {
-            const auto sourceName = std::filesystem::path(entry.sourcePath).stem().generic_string();
-            if (!sourceName.empty())
-                return sourceName;
-            const auto importedName = std::filesystem::path(entry.importedPath).stem().generic_string();
-            return importedName.empty() ? "Asset" : importedName;
-        }
-
-        bool instantiateDroppedAssetAtViewCenter(EditorContext& ctx, const vultra::CoreUUID& uuid)
-        {
-            if (!ctx.services || !uuid.valid())
-                return false;
-
-            auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
-            auto* worldService = ctx.services->tryGet<vultra::IWorldService>();
-            if (!assetService || !worldService)
-                return false;
-
-            const auto entry = assetService->registry().lookup(uuid.native());
-            if (entry.type != vasset::VAssetType::eMesh && entry.type != vasset::VAssetType::eGaussianSplat)
-            {
-                ctx.state.statusMessage = "Dropped asset type cannot be placed in Scene View.";
-                return false;
-            }
-
-            auto&      world  = worldService->world();
-            auto&      reg    = world.registry();
-            auto       entity = world.createEntity();
-            const auto name   = assetNameFromEntry(entry);
-            reg.emplace<vultra::NameComponent>(entity, vultra::NameComponent {name});
-            auto& transform    = reg.get_or_emplace<vultra::TransformComponent>(entity);
-            transform.position = ctx.state.sceneCamera.valid ?
-                                     ctx.state.sceneCamera.position +
-                                         ctx.state.sceneCamera.rotation * glm::vec3(0.0f, 0.0f, -3.0f) :
-                                     glm::vec3(0.0f);
-            transform.dirty    = true;
-
-            if (entry.type == vasset::VAssetType::eMesh)
-            {
-                reg.emplace<vultra::MeshComponent>(entity, vultra::MeshComponent {.mesh = uuid});
-                ctx.state.statusMessage = "Created mesh entity: " + name;
-            }
-            else
-            {
-                reg.emplace<vultra::GaussianSplatComponent>(
-                    entity, vultra::GaussianSplatComponent {.gaussianSplat = uuid});
-                ctx.state.statusMessage = "Created gaussian splat entity: " + name;
-            }
-
-            selectEntityIfPossible(world, entity);
-            ctx.state.sceneDirty = true;
-            if (ctx.history)
-                ctx.history->setNextLabel("Drop Asset");
-            return true;
-        }
-
         bool currentWindowDockTabVisible()
         {
             const ImGuiWindow* window = ImGui::GetCurrentWindowRead();
@@ -319,6 +263,7 @@ namespace vultra_app
             camera.rendererKey = rendererKey.empty() ? "universal" : std::string(rendererKey);
             camera.debugEntityIdOutput     = false;
             camera.selectionOutlineEnabled = true;
+            camera.debugDrawEnabled        = true;
             return camera;
         }
 
@@ -521,6 +466,55 @@ namespace vultra_app
             }
 
             return bounds;
+        }
+
+        // Ray vs. axis-aligned box (slab test). Returns the nearest non-negative hit distance.
+        std::optional<float> rayAabb(const viewport::Ray& ray, const glm::vec3& min, const glm::vec3& max)
+        {
+            float tMin = 0.0f;
+            float tMax = std::numeric_limits<float>::max();
+            for (int a = 0; a < 3; ++a)
+            {
+                if (std::abs(ray.dir[a]) < 1e-8f)
+                {
+                    if (ray.origin[a] < min[a] || ray.origin[a] > max[a])
+                        return std::nullopt;
+                    continue;
+                }
+                const float inv = 1.0f / ray.dir[a];
+                float       t0  = (min[a] - ray.origin[a]) * inv;
+                float       t1  = (max[a] - ray.origin[a]) * inv;
+                if (t0 > t1)
+                    std::swap(t0, t1);
+                tMin = std::max(tMin, t0);
+                tMax = std::min(tMax, t1);
+                if (tMin > tMax)
+                    return std::nullopt;
+            }
+            return tMin;
+        }
+
+        // Casts a ray against every mesh entity's world AABB; returns the nearest hit distance.
+        std::optional<float> raycastSceneMeshes(vultra::World& world, vultra::IAssetService& assets, const viewport::Ray& ray)
+        {
+            auto&                reg = world.registry();
+            std::optional<float> best;
+            for (auto e : reg.view<vultra::TransformComponent, vultra::MeshComponent>())
+            {
+                const auto& meshComponent = reg.get<vultra::MeshComponent>(e);
+                if (!meshComponent.mesh.valid())
+                    continue;
+                auto mesh = assets.loadMeshAsync(meshComponent.mesh);
+                if (!mesh.cpu())
+                    continue;
+                Bounds bounds;
+                includeMeshWorldBounds(bounds, *mesh.cpu(), makeWorldTransformMatrix(reg, e));
+                if (!bounds.valid)
+                    continue;
+                if (const auto t = rayAabb(ray, bounds.min, bounds.max); t && (!best || *t < *best))
+                    best = t;
+            }
+            return best;
         }
 
         glm::mat4 makeGameProjection(const vultra::CameraComponent& camera, const float aspect)
@@ -1507,6 +1501,217 @@ namespace vultra_app
         return true;
     }
 
+    void SceneViewWindow::submitSceneDebugDraw(EditorContext&   ctx,
+                                               const glm::mat4& view,
+                                               const glm::mat4& projection,
+                                               const float      aspect)
+    {
+        if (!ctx.services)
+            return;
+        auto* renderService = ctx.services->tryGet<vultra::IRenderService>();
+        auto* worldService  = ctx.services->tryGet<vultra::IWorldService>();
+        if (!renderService || !worldService)
+            return;
+
+        auto& world = worldService->world();
+        auto& reg   = world.registry();
+
+        const auto worldScale = [](const glm::mat4& m) {
+            return std::max({glm::length(glm::vec3(m[0])), glm::length(glm::vec3(m[1])), glm::length(glm::vec3(m[2]))});
+        };
+
+        // (a) Selection bounds.
+        if (m_ShowSelectionBounds && Selection::lastCategory() == SelectionCategory::Entity)
+        {
+            if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
+            {
+                const auto entity = findEntityByUUID(world, Selection::lastId());
+                if (entity != entt::null && reg.valid(entity))
+                {
+                    const auto bounds = computeEntityFocusBounds(world, *assetService, entity);
+                    if (bounds.valid)
+                        renderService->debugDrawAabb(bounds.min, bounds.max, glm::vec3 {1.0f, 0.6f, 0.1f});
+                }
+            }
+        }
+
+        // (b) Physics collider wireframes.
+        if (m_ShowColliders)
+        {
+            const glm::vec3 colliderColor {0.2f, 0.9f, 0.35f};
+            for (auto e : reg.view<vultra::TransformComponent, vultra::BoxShapeComponent>())
+            {
+                const auto worldMatrix = makeWorldTransformMatrix(reg, e);
+                renderService->debugDrawBox(
+                    worldMatrix, reg.get<vultra::BoxShapeComponent>(e).halfExtents, colliderColor);
+            }
+            for (auto e : reg.view<vultra::TransformComponent, vultra::SphereShapeComponent>())
+            {
+                const auto worldMatrix = makeWorldTransformMatrix(reg, e);
+                const float radius = reg.get<vultra::SphereShapeComponent>(e).radius * worldScale(worldMatrix);
+                renderService->debugDrawSphere(glm::vec3(worldMatrix[3]), radius, colliderColor);
+            }
+            for (auto e : reg.view<vultra::TransformComponent, vultra::CapsuleShapeComponent>())
+            {
+                const auto&     shape       = reg.get<vultra::CapsuleShapeComponent>(e);
+                const auto      worldMatrix = makeWorldTransformMatrix(reg, e);
+                const float     scale       = worldScale(worldMatrix);
+                const float     radius      = shape.radius * scale;
+                const float     half        = shape.halfHeightOfCylinder * scale;
+                const glm::vec3 up          = glm::normalize(glm::vec3(worldMatrix[1]));
+                const glm::vec3 center      = glm::vec3(worldMatrix[3]);
+                const glm::vec3 top         = center + up * half;
+                const glm::vec3 bottom      = center - up * half;
+                renderService->debugDrawSphere(top, radius, colliderColor);
+                renderService->debugDrawSphere(bottom, radius, colliderColor);
+                const glm::vec3 right   = glm::normalize(glm::vec3(worldMatrix[0])) * radius;
+                const glm::vec3 forward = glm::normalize(glm::vec3(worldMatrix[2])) * radius;
+                renderService->debugDrawLine(top + right, bottom + right, colliderColor);
+                renderService->debugDrawLine(top - right, bottom - right, colliderColor);
+                renderService->debugDrawLine(top + forward, bottom + forward, colliderColor);
+                renderService->debugDrawLine(top - forward, bottom - forward, colliderColor);
+            }
+        }
+
+        // (c) Light & camera wireframes.
+        if (m_ShowLightGizmos)
+        {
+            for (auto e : reg.view<vultra::TransformComponent, vultra::LightComponent>())
+            {
+                const auto&     light       = reg.get<vultra::LightComponent>(e);
+                const auto      worldMatrix = makeWorldTransformMatrix(reg, e);
+                const glm::vec3 pos         = glm::vec3(worldMatrix[3]);
+                const glm::vec3 forward     = glm::normalize(glm::vec3(worldMatrix * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
+                const glm::vec3 col         = glm::clamp(light.color, glm::vec3 {0.0f}, glm::vec3 {1.0f});
+                switch (light.kind)
+                {
+                    case 1: // point
+                        renderService->debugDrawSphere(pos, light.range, col);
+                        break;
+                    case 2: // spot
+                    {
+                        const float     coneRadius = light.range * std::tan(glm::radians(light.outerConeDegrees));
+                        const glm::vec3 baseCenter  = pos + forward * light.range;
+                        const glm::vec3 right       = glm::normalize(glm::vec3(worldMatrix[0])) * coneRadius;
+                        const glm::vec3 upv         = glm::normalize(glm::vec3(worldMatrix[1])) * coneRadius;
+                        for (int i = 0; i < 4; ++i)
+                        {
+                            const glm::vec3 dir = (i == 0) ? right : (i == 1) ? -right : (i == 2) ? upv : -upv;
+                            renderService->debugDrawLine(pos, baseCenter + dir, col);
+                        }
+                        constexpr int kSeg = 24;
+                        glm::vec3     prev = baseCenter + right;
+                        for (int s = 1; s <= kSeg; ++s)
+                        {
+                            const float a   = 6.28318530718f * static_cast<float>(s) / static_cast<float>(kSeg);
+                            const glm::vec3 cur = baseCenter + right * std::cos(a) + upv * std::sin(a);
+                            renderService->debugDrawLine(prev, cur, col);
+                            prev = cur;
+                        }
+                        break;
+                    }
+                    case 0: // directional (sun): a disc with parallel rays along the light direction
+                    {
+                        const glm::vec3 right = glm::normalize(glm::vec3(worldMatrix[0]));
+                        const glm::vec3 upv   = glm::normalize(glm::vec3(worldMatrix[1]));
+                        constexpr float kRadius = 0.4f;
+                        constexpr float kRayLen = 1.5f;
+                        constexpr int   kRing   = 24;
+                        constexpr int   kRays   = 8;
+                        glm::vec3       prev    = pos + right * kRadius;
+                        for (int s = 1; s <= kRing; ++s)
+                        {
+                            const float     a   = 6.28318530718f * static_cast<float>(s) / static_cast<float>(kRing);
+                            const glm::vec3 cur = pos + (right * std::cos(a) + upv * std::sin(a)) * kRadius;
+                            renderService->debugDrawLine(prev, cur, col);
+                            prev = cur;
+                        }
+                        for (int r = 0; r < kRays; ++r)
+                        {
+                            const float     a = 6.28318530718f * static_cast<float>(r) / static_cast<float>(kRays);
+                            const glm::vec3 p = pos + (right * std::cos(a) + upv * std::sin(a)) * kRadius;
+                            renderService->debugDrawLine(p, p + forward * kRayLen, col);
+                        }
+                        break;
+                    }
+                    default: // area / other: short direction arrow
+                        renderService->debugDrawLine(pos, pos + forward * 2.0f, col);
+                        break;
+                }
+            }
+
+            for (auto e : reg.view<vultra::TransformComponent, vultra::CameraComponent>())
+            {
+                const auto&     cam         = reg.get<vultra::CameraComponent>(e);
+                const auto      worldMatrix = makeWorldTransformMatrix(reg, e);
+                const glm::mat4 camView     = glm::inverse(worldMatrix);
+                const glm::mat4 camProj     = makeGameProjection(cam, aspect);
+                renderService->debugDrawFrustum(glm::inverse(camProj * camView), glm::vec3 {0.45f, 0.7f, 1.0f});
+            }
+        }
+
+        (void)view;
+        (void)projection;
+    }
+
+    void SceneViewWindow::drawEntityIconGizmos(EditorContext&   ctx,
+                                               const glm::mat4& view,
+                                               const glm::mat4& projection,
+                                               const ImVec2&    imagePos,
+                                               const ImVec2&    avail)
+    {
+        if (!m_ShowIcons || !ctx.services)
+            return;
+        auto* worldService = ctx.services->tryGet<vultra::IWorldService>();
+        if (!worldService)
+            return;
+
+        auto& world = worldService->world();
+        auto& reg   = world.registry();
+
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const float fontSize = ImGui::GetFontSize() * m_IconSize;
+
+        const auto drawIcon = [&](entt::entity e, const char* glyph, ImU32 color) {
+            if (auto* status = reg.try_get<vultra::EntityStatusComponent>(e); status && !status->visible)
+                return;
+            const glm::vec3 pos = glm::vec3(makeWorldTransformMatrix(reg, e)[3]);
+            const auto      screen = viewport::worldToScreen(view, projection, pos, imagePos, avail);
+            if (!screen)
+                return;
+            const ImVec2 size = ImGui::CalcTextSize(glyph);
+            const ImVec2 topLeft {screen->x - size.x * 0.5f, screen->y - size.y * 0.5f};
+            drawList->AddText(ImGui::GetFont(), fontSize, topLeft, color, glyph);
+
+            // Click-to-select: hit-test the icon rect before GPU picking consumes the click.
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+            {
+                const ImVec2 mouse = ImGui::GetMousePos();
+                if (mouse.x >= topLeft.x && mouse.x <= topLeft.x + size.x && mouse.y >= topLeft.y &&
+                    mouse.y <= topLeft.y + size.y)
+                {
+                    if (auto* id = reg.try_get<vultra::IDComponent>(e))
+                    {
+                        ctx.state.selectedSourceAsset.clear();
+                        Selection::select(SelectionCategory::Entity, id->uuid);
+                        ctx.state.scenePicking.requested = false;
+                    }
+                }
+            }
+        };
+
+        for (auto e : reg.view<vultra::TransformComponent, vultra::CameraComponent>())
+            drawIcon(e, ICON_MDI_CAMERA, IM_COL32(220, 220, 235, 255));
+        for (auto e : reg.view<vultra::TransformComponent, vultra::LightComponent>())
+        {
+            const auto& light = reg.get<vultra::LightComponent>(e);
+            const char* glyph = light.kind == 0 ? ICON_MDI_WHITE_BALANCE_SUNNY :
+                                light.kind == 2 ? ICON_MDI_SPOTLIGHT :
+                                                  ICON_MDI_LIGHTBULB_ON;
+            drawIcon(e, glyph, IM_COL32(255, 226, 120, 255));
+        }
+    }
+
     void SceneViewWindow::draw(EditorContext& ctx)
     {
         resetRenderTargetsForProject(ctx);
@@ -1663,19 +1868,6 @@ namespace vultra_app
                 dl->AddLine(ImVec2(imageMin.x, y), ImVec2(imageMax.x, y), IM_COL32(255, 255, 255, 18));
         }
         dl->AddRect(imageMin, imageMax, IM_COL32(90, 100, 118, 255));
-        if (ImGui::BeginDragDropTarget())
-        {
-            if (const ImGuiPayload* payload =
-                    ImGui::AcceptDragDropPayload(kAssetUuidPayload, ImGuiDragDropFlags_AcceptNoDrawDefaultRect))
-            {
-                if (payload->DataSize == sizeof(vultra::CoreUUID))
-                {
-                    const auto uuid = *static_cast<const vultra::CoreUUID*>(payload->Data);
-                    (void)instantiateDroppedAssetAtViewCenter(ctx, uuid);
-                }
-            }
-            ImGui::EndDragDropTarget();
-        }
         const float aspect                = avail.x / std::max(avail.y, 1.0f);
         auto*       renderTarget          = m_PendingRenderTarget.texture ?
                                                 &*m_PendingRenderTarget.texture :
@@ -1708,6 +1900,83 @@ namespace vultra_app
         ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
         ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
 
+        if (!ui2DMode)
+            submitSceneDebugDraw(ctx, editorCamera.view, editorCamera.projection, aspect);
+
+        // Asset drag-drop with a cursor-following ghost preview (raycast onto geometry, else ground plane).
+        if (!ui2DMode && ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload* payload =
+                    ImGui::AcceptDragDropPayload(kAssetUuidPayload,
+                                                 ImGuiDragDropFlags_AcceptNoDrawDefaultRect |
+                                                     ImGuiDragDropFlags_AcceptBeforeDelivery))
+            {
+                if (payload->DataSize == sizeof(vultra::CoreUUID) && ctx.services)
+                {
+                    const auto uuid          = *static_cast<const vultra::CoreUUID*>(payload->Data);
+                    auto*      worldService  = ctx.services->tryGet<vultra::IWorldService>();
+                    auto*      assetService  = ctx.services->tryGet<vultra::IAssetService>();
+                    auto*      renderService = ctx.services->tryGet<vultra::IRenderService>();
+
+                    std::optional<glm::vec3> placement;
+                    if (worldService)
+                    {
+                        const auto ray = viewport::screenToWorldRay(
+                            editorCamera.view, editorCamera.projection, ImGui::GetMousePos(), imagePos, avail);
+                        std::optional<float> t;
+                        if (assetService)
+                            t = raycastSceneMeshes(worldService->world(), *assetService, ray);
+                        if (!t)
+                            t = viewport::rayPlaneY(ray, 0.0f);
+                        // Always place under the cursor (in view); clamp the distance so the asset never
+                        // spawns on top of / behind the camera (which clips through the dropped mesh).
+                        constexpr float kMinDropDistance     = 1.0f;
+                        constexpr float kDefaultDropDistance = 6.0f;
+                        constexpr float kMaxDropDistance     = 200.0f;
+                        const float     dist =
+                            std::clamp(t ? *t : kDefaultDropDistance, kMinDropDistance, kMaxDropDistance);
+                        placement = ray.origin + ray.dir * dist;
+                    }
+
+                    // Ghost wireframe at the placement point (mesh local bounds).
+                    if (placement && assetService && renderService)
+                    {
+                        glm::vec3  gmin {-0.5f};
+                        glm::vec3  gmax {0.5f};
+                        const auto entry = assetService->registry().lookup(uuid.native());
+                        if (entry.type == vasset::VAssetType::eMesh)
+                        {
+                            auto mesh = assetService->loadMeshAsync(uuid);
+                            if (mesh.cpu() && mesh.cpu()->hasLocalBounds)
+                            {
+                                gmin = mesh.cpu()->localBoundsMin;
+                                gmax = mesh.cpu()->localBoundsMax;
+                            }
+                        }
+                        renderService->debugDrawAabb(*placement + gmin, *placement + gmax, glm::vec3 {0.3f, 0.8f, 1.0f});
+                    }
+
+                    if (payload->IsDelivery() && !ImGui::IsKeyDown(ImGuiKey_Escape) && worldService)
+                    {
+                        // Instantiate through the shared path so the asset's default scale/rotation are
+                        // applied, then move it to the cursor placement.
+                        const auto entity =
+                            instantiateAssetInScene(ctx, worldService->world(), uuid, AssetInstantiationOptions {});
+                        if (entity != entt::null && placement)
+                        {
+                            auto& reg = worldService->world().registry();
+                            if (auto* transform = reg.try_get<vultra::TransformComponent>(entity))
+                            {
+                                transform->position = *placement;
+                                transform->dirty    = true;
+                            }
+                        }
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
         const bool mouseOverViewManipulator = !ui2DMode && isMouseOverViewManipulator(imageMin, imageMax);
         const bool mouseOverGameOverlay     = isMouseOverGameOverlay(ctx, imageMin, imageMax, m_GameOverlayZoom);
         const bool sceneViewportHovered = hovered && !mouseOverViewManipulator && !mouseOverGameOverlay;
@@ -1729,6 +1998,19 @@ namespace vultra_app
                 m_Tool = Tool::Transform;
             if (!ui2DMode && ImGui::IsKeyPressed(ImGuiKey_F))
                 focusSelection(ctx, avail.x / std::max(avail.y, 1.0f));
+            if (ImGui::IsKeyPressed(ImGuiKey_Delete) && ctx.editor && ctx.services &&
+                Selection::lastCategory() == SelectionCategory::Entity)
+            {
+                if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
+                {
+                    const auto entity = findEntityByUUID(worldService->world(), Selection::lastId());
+                    if (entity != entt::null)
+                    {
+                        const nlohmann::json args {{"entity", static_cast<uint32_t>(entity)}};
+                        ctx.editor->executeCommand(ctx, "scene.remove_entity", args);
+                    }
+                }
+            }
         }
 
         if (!ui2DMode && ctx.services)
@@ -2013,6 +2295,9 @@ namespace vultra_app
             }
         }
 
+        if (!ui2DMode)
+            drawEntityIconGizmos(ctx, editorCamera.view, editorCamera.projection, imagePos, avail);
+
         drawGameViewOverlay(ctx, imageMin, imageMax);
 
         if (ctx.state.scenePicking.requested && sceneViewportHovered)
@@ -2169,6 +2454,39 @@ namespace vultra_app
         tooltip("Grid");
         if (m_ShowGrid)
             ImGui::PopStyleColor(2);
+        ImGui::SameLine();
+
+        const bool gizmosActive = m_ShowIcons || m_ShowSelectionBounds || m_ShowColliders || m_ShowLightGizmos;
+        if (gizmosActive)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.17f, 0.38f, 0.28f, 0.95f});
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {0.20f, 0.48f, 0.34f, 1.0f});
+        }
+        if (ImGui::Button(ICON_MDI_EYE, ImVec2 {buttonSize, buttonSize}))
+            ImGui::OpenPopup("SceneViewGizmosPopup");
+        tooltip("Editor gizmos (icons, bounds, colliders, lights)");
+        if (gizmosActive)
+            ImGui::PopStyleColor(2);
+        if (ImGui::BeginPopup("SceneViewGizmosPopup"))
+        {
+            ImGui::TextDisabled("Editor Gizmos");
+            ImGui::Separator();
+            ImGui::Checkbox("Icons", &m_ShowIcons);
+            ImGui::BeginDisabled(!m_ShowIcons);
+            ImGui::SetNextItemWidth(140.0f);
+            ImGui::SliderFloat("Icon Size", &m_IconSize, 1.0f, 8.0f, "%.1fx");
+            ImGui::EndDisabled();
+            ImGui::Checkbox("Selection Bounds", &m_ShowSelectionBounds);
+            ImGui::Checkbox("Colliders", &m_ShowColliders);
+            ImGui::Checkbox("Light & Camera Gizmos", &m_ShowLightGizmos);
+            ImGui::Separator();
+            if (ImGui::SmallButton("Show All"))
+                m_ShowIcons = m_ShowSelectionBounds = m_ShowColliders = m_ShowLightGizmos = true;
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Hide All"))
+                m_ShowIcons = m_ShowSelectionBounds = m_ShowColliders = m_ShowLightGizmos = false;
+            ImGui::EndPopup();
+        }
         ImGui::SameLine();
         const bool snapActive = m_ViewMode == ViewMode::Ui2D && m_UiSnapEnabled;
         if (snapActive)

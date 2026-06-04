@@ -109,5 +109,15 @@ namespace vultra
         virtual const GaussianSplatFrameStats&     gaussianSplatFrameStats() const = 0;
         virtual BuiltinRenderSettings&             builtinRenderSettings() = 0;
         virtual const BuiltinRenderSettings&       builtinRenderSettings() const = 0;
+
+        // Immediate-mode debug drawing. Geometry submitted during a frame is rendered by the builtin
+        // DebugDraw pass (editor scene-view cameras) and cleared automatically once the frame is done.
+        // All positions are world space; colors are linear RGB in [0, 1].
+        virtual void debugDrawLine(const glm::vec3& from, const glm::vec3& to, const glm::vec3& color) = 0;
+        virtual void debugDrawAabb(const glm::vec3& min, const glm::vec3& max, const glm::vec3& color) = 0;
+        virtual void debugDrawBox(const glm::mat4& worldMatrix, const glm::vec3& halfExtents, const glm::vec3& color) = 0;
+        virtual void debugDrawSphere(const glm::vec3& center, float radius, const glm::vec3& color) = 0;
+        // invViewProjection maps clip space back to world; draws the camera frustum it represents.
+        virtual void debugDrawFrustum(const glm::mat4& invViewProjection, const glm::vec3& color) = 0;
     };
 } // namespace vultra

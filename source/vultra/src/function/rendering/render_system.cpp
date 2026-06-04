@@ -3,6 +3,9 @@
 
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
+#include "vultra/function/debug_draw/debug_draw_interface.hpp"
+
+#include <glm/gtc/type_ptr.hpp>
 #include "vultra/core/math/math.hpp"
 #include "vultra/core/services/timing_service.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_command_buffer_access.hpp"
@@ -3066,6 +3069,12 @@ namespace vultra
         if (initialExtent.width > 0u && initialExtent.height > 0u)
             onResize(initialExtent.width, initialExtent.height);
 
+        VULTRA_CORE_TRACE("[RenderSystem] Initializing debug draw");
+        commonContext.debugDraw = createRef<DebugDrawInterface>();
+        commonContext.debugDraw->initialize(backendService.renderDevice(),
+                                            backendService.swapchain().getPixelFormat());
+        dd::initialize(commonContext.debugDraw.get());
+
         VULTRA_CORE_INFO("[RenderSystem] Initialized!");
 
         return true;
@@ -3077,6 +3086,9 @@ namespace vultra
 
         auto& backendService = ctx().services.require<IRenderBackendService>();
         backendService.renderDevice().waitIdle();
+
+        dd::shutdown();
+        commonContext.debugDraw.reset();
 
         m_GpuSceneViewBack.clear();
         m_GpuSceneViewFront.clear();
@@ -5008,6 +5020,50 @@ namespace vultra
         updateGaussianSplatFoveatedBudgetController(m_GaussianSplatSettings, gpuFrameMs);
         rhi::setBuiltinProfilerGpuScopeCallbacks({}, {});
         m_RuntimeProfiler.setGpuScopeCallbacks({}, {}, {});
+    }
+
+    // All debug-draw submission forwards to the global dd:: immediate-mode queue, which the builtin
+    // DebugDraw render pass flushes (and clears) each frame. Geometry is world space; duration 0.
+    void RenderSystem::debugDrawLine(const glm::vec3& from, const glm::vec3& to, const glm::vec3& color)
+    {
+        dd::line(glm::value_ptr(from), glm::value_ptr(to), glm::value_ptr(color));
+    }
+
+    void RenderSystem::debugDrawAabb(const glm::vec3& min, const glm::vec3& max, const glm::vec3& color)
+    {
+        dd::aabb(glm::value_ptr(min), glm::value_ptr(max), glm::value_ptr(color));
+    }
+
+    void RenderSystem::debugDrawBox(const glm::mat4& worldMatrix, const glm::vec3& halfExtents, const glm::vec3& color)
+    {
+        // Oriented box: transform the 8 local corners and draw the 12 edges (dd::box's point order is
+        // fixed, so emit explicit edges to stay correct under rotation/scale).
+        glm::vec3 c[8];
+        int       i = 0;
+        for (int sx = -1; sx <= 1; sx += 2)
+            for (int sy = -1; sy <= 1; sy += 2)
+                for (int sz = -1; sz <= 1; sz += 2)
+                    c[i++] = glm::vec3(worldMatrix * glm::vec4(static_cast<float>(sx) * halfExtents.x,
+                                                               static_cast<float>(sy) * halfExtents.y,
+                                                               static_cast<float>(sz) * halfExtents.z,
+                                                               1.0f));
+        // Index pattern matches the (sx, sy, sz) iteration order above.
+        constexpr int edges[12][2] = {
+            {0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3},
+            {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
+        };
+        for (const auto& e : edges)
+            dd::line(glm::value_ptr(c[e[0]]), glm::value_ptr(c[e[1]]), glm::value_ptr(color));
+    }
+
+    void RenderSystem::debugDrawSphere(const glm::vec3& center, float radius, const glm::vec3& color)
+    {
+        dd::sphere(glm::value_ptr(center), glm::value_ptr(color), radius);
+    }
+
+    void RenderSystem::debugDrawFrustum(const glm::mat4& invViewProjection, const glm::vec3& color)
+    {
+        dd::frustum(glm::value_ptr(invViewProjection), glm::value_ptr(color));
     }
 
     void RenderSystem::onPreRender() { m_SkipRender = false; }

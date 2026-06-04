@@ -529,6 +529,24 @@ namespace vultra_app
             ImGui::EndTable();
         }
 
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && m_RenameEntity == entt::null &&
+            !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete) &&
+            Selection::lastCategory() == SelectionCategory::Entity)
+        {
+            const auto selectedUuid = Selection::lastId();
+            for (auto entity : reg.view<vultra::IDComponent>())
+            {
+                if (reg.get<vultra::IDComponent>(entity).uuid != selectedUuid)
+                    continue;
+                if (auto* status = reg.try_get<vultra::EntityStatusComponent>(entity); status && status->locked)
+                    ctx.state.statusMessage = "Entity is locked.";
+                else
+                    (void)executeSceneHierarchyCommand(
+                        ctx, "scene.remove_entity", {{"entity", static_cast<uint32_t>(entity)}});
+                break;
+            }
+        }
+
         drawPendingAssetInstantiationPopup(ctx, world);
 
         ImGui::End();

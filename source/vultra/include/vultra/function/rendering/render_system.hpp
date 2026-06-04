@@ -118,6 +118,12 @@ namespace vultra
         BuiltinRenderSettings&             builtinRenderSettings() override { return m_BuiltinRenderSettings; }
         const BuiltinRenderSettings&       builtinRenderSettings() const override { return m_BuiltinRenderSettings; }
 
+        void debugDrawLine(const glm::vec3& from, const glm::vec3& to, const glm::vec3& color) override;
+        void debugDrawAabb(const glm::vec3& min, const glm::vec3& max, const glm::vec3& color) override;
+        void debugDrawBox(const glm::mat4& worldMatrix, const glm::vec3& halfExtents, const glm::vec3& color) override;
+        void debugDrawSphere(const glm::vec3& center, float radius, const glm::vec3& color) override;
+        void debugDrawFrustum(const glm::mat4& invViewProjection, const glm::vec3& color) override;
+
     private:
         Ref<Renderer> resolveRenderer(const RenderCamera& cam) const;
         bool          rendererRequiresRayTracingScene(std::string_view rendererKey) const;

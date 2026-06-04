@@ -37,6 +37,7 @@ CameraComponent/zFar = 1000.000000
 CameraComponent/clearMode = 1
 CameraComponent/clearColor = (0.02, 0.025, 0.035, 1)
 CameraComponent/priority = 0
+CameraComponent/cullingMask = 4294967295
 CameraComponent/rendererKey = "default"
 
 [node id=3 name="Sun" parent=0 uuid="206733c1f880193cbd1dd2b65e0d0ca8"]
@@ -45,7 +46,7 @@ EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
 EntityStatusComponent/locked = false
 EntityStatusComponent/selectable = true
-TransformComponent/position = (0, 0, 0)
+TransformComponent/position = (0, 4, 0)
 TransformComponent/rotation = (0.479269, 0.472498, 0.526066, -0.519905)
 TransformComponent/scale = (1, 1, 1)
 LightComponent/kind = 0

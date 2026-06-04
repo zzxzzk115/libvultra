@@ -7,6 +7,8 @@
 #define DEBUG_DRAW_IMPLEMENTATION
 #include <debug_draw.hpp>
 
+using namespace dd; // contained to this translation unit
+
 namespace vultra
 {
     void DebugDrawInterface::initialize(rhi::RenderDevice& renderDevice, rhi::PixelFormat colorFormat)
@@ -42,6 +44,15 @@ namespace vultra
         }
     }
 
+    void DebugDrawInterface::setDepthTest(rhi::PixelFormat depthFormat)
+    {
+        if (m_DepthTestFormat != depthFormat)
+        {
+            m_DepthTestFormat      = depthFormat;
+            m_NeedsPipelineRebuild = true;
+        }
+    }
+
     void DebugDrawInterface::buildPipelineIfNeeded()
     {
         if (!m_NeedsPipelineRebuild)
@@ -50,10 +61,12 @@ namespace vultra
         auto builder = rhi::GraphicsPipeline::Builder {};
         builder.setColorFormats({m_ColorFormat});
 
-        if (m_DepthTexture)
+        const rhi::PixelFormat depthFormat =
+            m_DepthTexture ? m_DepthTexture->getPixelFormat() : m_DepthTestFormat;
+        if (depthFormat != rhi::PixelFormat::eUndefined)
         {
-            builder.setDepthFormat(m_DepthTexture->getPixelFormat())
-                .setDepthStencil({.depthTest = true, .depthWrite = true});
+            // Depth-test against the scene depth but do not write (debug overlay must not corrupt depth).
+            builder.setDepthFormat(depthFormat).setDepthStencil({.depthTest = true, .depthWrite = false});
         }
 
         const auto vertexHash =
@@ -76,6 +89,7 @@ namespace vultra
                                          attrs[2] = rhi::VertexAttribute {2, rhi::VertexAttribute::Type::eFloat, 24};
                                          return attrs;
                                      }())
+                                     .setVertexStride(sizeof(DrawVertex))
                                      .addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)
                                      .addBuiltinShader(rhi::ShaderType::eFragment, fragmentShader->spirv)
                                      .setBlending(0, {.enabled = false})

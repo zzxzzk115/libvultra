@@ -8,6 +8,8 @@
 
 namespace vultra
 {
+    class DebugDrawInterface;
+
     struct CommonContext
     {
         CommonContext();
@@ -15,6 +17,9 @@ namespace vultra
         void cleanup();
 
         Logger                  logger;
+        // Global immediate-mode debug-draw backend (dd:: library RenderInterface). Created and
+        // dd::initialize()'d by RenderSystem; submitters use IRenderService::debugDraw* / dd::.
+        Ref<DebugDrawInterface> debugDraw;
     };
 
     extern CommonContext commonContext;
