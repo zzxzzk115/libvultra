@@ -17,6 +17,7 @@ namespace JPH
     class BodyInterface;
     class JobSystem;
     class PhysicsSystem;
+    class Shape;
     class TempAllocator;
 }
 
@@ -25,6 +26,7 @@ namespace vultra
     class ITimingService;
     class IJobService;
     class IWorldService;
+    class IAssetService;
 
     class PhysicsSystem final : public EngineSubsystem, public IPhysicsService
     {
@@ -59,25 +61,57 @@ namespace vultra
         bool      setAngularVelocity(entt::entity entity, const glm::vec3& velocity) override;
 
         bool addForce(entt::entity entity, const glm::vec3& force) override;
+        bool addTorque(entt::entity entity, const glm::vec3& torque) override;
         bool addImpulse(entt::entity entity, const glm::vec3& impulse) override;
+        bool addAngularImpulse(entt::entity entity, const glm::vec3& impulse) override;
         bool setPosition(entt::entity entity, const glm::vec3& position, bool activate = true) override;
+        bool setRotation(entt::entity entity, const glm::vec3& eulerDegrees, bool activate = true) override;
 
-        std::optional<PhysicsRaycastHit> raycast(const glm::vec3& origin,
-                                                 const glm::vec3& direction,
-                                                 float            maxDistance,
-                                                 bool             activeOnly = true) const override;
-        std::vector<entt::entity> overlapSphere(const glm::vec3& center,
-                                                float            radius,
-                                                bool             activeOnly = true) const override;
-        std::vector<entt::entity> overlapBox(const glm::vec3& center,
-                                             const glm::vec3& halfExtents,
-                                             bool             activeOnly = true) const override;
+        void      setGravity(const glm::vec3& gravity) override;
+        glm::vec3 gravity() const override;
+
+        void setLayerCollision(uint32_t layerA, uint32_t layerB, bool enabled) override;
+        bool layerCollision(uint32_t layerA, uint32_t layerB) const override;
+
+        std::optional<PhysicsRaycastHit> raycast(const glm::vec3&          origin,
+                                                 const glm::vec3&          direction,
+                                                 float                     maxDistance,
+                                                 const PhysicsQueryFilter& filter = {}) const override;
+        std::vector<PhysicsRaycastHit> raycastAll(const glm::vec3&          origin,
+                                                  const glm::vec3&          direction,
+                                                  float                     maxDistance,
+                                                  const PhysicsQueryFilter& filter = {}) const override;
+        std::optional<PhysicsShapeCastHit> sphereCast(const glm::vec3&          origin,
+                                                      const glm::vec3&          direction,
+                                                      float                     radius,
+                                                      float                     maxDistance,
+                                                      const PhysicsQueryFilter& filter = {}) const override;
+        std::vector<entt::entity> overlapSphere(const glm::vec3&          center,
+                                                float                     radius,
+                                                const PhysicsQueryFilter& filter = {}) const override;
+        std::vector<entt::entity> overlapBox(const glm::vec3&          center,
+                                             const glm::vec3&          halfExtents,
+                                             const PhysicsQueryFilter& filter = {}) const override;
+        std::vector<entt::entity> overlapCapsule(const glm::vec3&          center,
+                                                 float                     halfHeight,
+                                                 float                     radius,
+                                                 const PhysicsQueryFilter& filter = {}) const override;
         std::vector<PhysicsContactPair> contactPairs(bool activeOnly = true) const override;
+        std::vector<PhysicsContactEvent> consumeContactEvents() override;
+
+        bool      hasCharacter(entt::entity entity) const override;
+        bool      characterMove(entt::entity entity, const glm::vec3& horizontalVelocity) override;
+        bool      characterJump(entt::entity entity, float speed) override;
+        bool      characterIsGrounded(entt::entity entity) const override;
+        glm::vec3 characterVelocity(entt::entity entity) const override;
+        glm::vec3 characterGroundNormal(entt::entity entity) const override;
+        bool      characterSetPosition(entt::entity entity, const glm::vec3& position) override;
 
     private:
         struct Impl;
         struct BodyRecord;
         struct BodySignature;
+        struct CharacterRecord;
 
         void ensureJoltGlobals();
         void releaseJoltGlobals();
@@ -90,12 +124,23 @@ namespace vultra
         bool ensureBody(entt::entity entity);
         void destroyBody(entt::entity entity);
         bool buildSignature(entt::entity entity, BodySignature& out) const;
+        std::vector<entt::entity>
+        collectOverlap(const JPH::Shape* shape, const glm::vec3& center, const PhysicsQueryFilter& filter) const;
+
+        void syncCharacters();
+        void updateCharacters(float seconds);
+        void removeStaleCharacters();
+        void clearCharacters();
+        bool ensureCharacter(entt::entity entity);
 
         std::unique_ptr<Impl> m_Impl;
 
         IWorldService* m_WorldService {nullptr};
         IJobService*   m_JobService {nullptr};
         ITimingService* m_TimingService {nullptr};
+        IAssetService*  m_AssetService {nullptr};
+
+        glm::vec3 m_Gravity {0.0f, -9.81f, 0.0f};
 
         bool  m_Enabled {true};
         bool  m_Playing {true};

@@ -12,6 +12,7 @@
 #include <vultra/function/world/components/entity_status_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
+#include <vultra/function/world/components/character_controller_component.hpp>
 #include <vultra/function/world/components/rigid_body_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
 #include <vultra/function/world/world.hpp>
@@ -173,6 +174,14 @@ namespace vultra_app
                     out["angularVelocity"] = vec3Json(angular);
                 }
             }
+            if (const auto* cc = reg.try_get<vultra::CharacterControllerComponent>(entity))
+            {
+                out["character"] = {
+                    {"hasController", physics ? physics->hasCharacter(entity) : false},
+                    {"grounded", physics ? physics->characterIsGrounded(entity) : cc->grounded},
+                    {"velocity", vec3Json(physics ? physics->characterVelocity(entity) : cc->velocity)},
+                };
+            }
             return out;
         }
 
@@ -294,8 +303,29 @@ namespace vultra_app
                         transform->dirty = true;
                         ok = true;
                     }
-                    if (physics)
+                    if (physics && physics->hasCharacter(entity))
+                        ok = physics->characterSetPosition(entity, position) || ok;
+                    else if (physics)
                         ok = physics->setPosition(entity, position) || ok;
+                }
+                else if (kind == "character_move" || kind == "move")
+                {
+                    const auto value =
+                        vec3Arg(action.value("velocity", action.value("value", nlohmann::json::array())));
+                    ok = physics && physics->characterMove(entity, value);
+                    if (!physics)
+                        error = "physics service is unavailable";
+                    else if (!ok)
+                        error = "entity has no CharacterControllerComponent";
+                }
+                else if (kind == "character_jump" || kind == "jump")
+                {
+                    const float speed = action.value("speed", action.value("value", 0.0f));
+                    ok = physics && physics->characterJump(entity, speed);
+                    if (!physics)
+                        error = "physics service is unavailable";
+                    else if (!ok)
+                        error = "entity has no CharacterControllerComponent";
                 }
                 else
                 {
@@ -332,6 +362,126 @@ namespace vultra_app
 
         if (name == "vultra.sim.apply_actions_batch")
             return toolJson(applyActions(ctx, args.value("actions", nlohmann::json::array())));
+
+        if (name == "vultra.sim.raycast")
+        {
+            auto* physics = ctx.services ? ctx.services->tryGet<vultra::IPhysicsService>() : nullptr;
+            if (!physics)
+                return toolError("physics service is unavailable");
+
+            const auto origin = vec3Arg(args.value("origin", nlohmann::json::array()));
+            const auto direction = vec3Arg(args.value("direction", nlohmann::json::array()));
+            const float maxDistance = args.value("maxDistance", 1000.0f);
+
+            vultra::PhysicsQueryFilter filter;
+            filter.activeOnly = args.value("activeOnly", true);
+            filter.layerMask = static_cast<uint32_t>(args.value("layerMask", 0xFFFFFFFFu));
+
+            auto hitJson = [](const vultra::PhysicsRaycastHit& h) {
+                return nlohmann::json {{"entity", static_cast<uint32_t>(h.entity)},
+                                       {"point", {{"x", h.point.x}, {"y", h.point.y}, {"z", h.point.z}}},
+                                       {"normal", {{"x", h.normal.x}, {"y", h.normal.y}, {"z", h.normal.z}}},
+                                       {"distance", h.distance},
+                                       {"fraction", h.fraction}};
+            };
+
+            if (args.value("all", false))
+            {
+                nlohmann::json hits = nlohmann::json::array();
+                for (const auto& h : physics->raycastAll(origin, direction, maxDistance, filter))
+                    hits.push_back(hitJson(h));
+                return toolJson({{"ok", true}, {"count", hits.size()}, {"hits", std::move(hits)}});
+            }
+
+            const auto hit = physics->raycast(origin, direction, maxDistance, filter);
+            if (!hit)
+                return toolJson({{"ok", true}, {"hit", false}});
+            auto out = hitJson(*hit);
+            out["ok"] = true;
+            out["hit"] = true;
+            return toolJson(std::move(out));
+        }
+
+        if (name == "vultra.sim.overlap")
+        {
+            auto* physics = ctx.services ? ctx.services->tryGet<vultra::IPhysicsService>() : nullptr;
+            if (!physics)
+                return toolError("physics service is unavailable");
+
+            const auto shape = args.value("shape", std::string {"sphere"});
+            const auto center = vec3Arg(args.value("center", nlohmann::json::array()));
+            vultra::PhysicsQueryFilter filter;
+            filter.activeOnly = args.value("activeOnly", true);
+            filter.layerMask = static_cast<uint32_t>(args.value("layerMask", 0xFFFFFFFFu));
+
+            std::vector<entt::entity> hits;
+            if (shape == "box")
+                hits = physics->overlapBox(center, vec3Arg(args.value("halfExtents", nlohmann::json::array()), {0.5f, 0.5f, 0.5f}), filter);
+            else if (shape == "capsule")
+                hits = physics->overlapCapsule(center, args.value("halfHeight", 0.5f), args.value("radius", 0.5f), filter);
+            else
+                hits = physics->overlapSphere(center, args.value("radius", 0.5f), filter);
+
+            nlohmann::json entities = nlohmann::json::array();
+            for (auto e : hits)
+                entities.push_back(static_cast<uint32_t>(e));
+            return toolJson({{"ok", true}, {"shape", shape}, {"count", entities.size()}, {"entities", std::move(entities)}});
+        }
+
+        if (name == "vultra.sim.contact_events")
+        {
+            auto* physics = ctx.services ? ctx.services->tryGet<vultra::IPhysicsService>() : nullptr;
+            if (!physics)
+                return toolError("physics service is unavailable");
+            nlohmann::json events = nlohmann::json::array();
+            for (const auto& e : physics->consumeContactEvents())
+                events.push_back({{"type", e.type == vultra::PhysicsContactEvent::Type::eEnter ? "enter" : "exit"},
+                                  {"a", static_cast<uint32_t>(e.a)},
+                                  {"b", static_cast<uint32_t>(e.b)},
+                                  {"isSensor", e.isSensor}});
+            return toolJson({{"ok", true}, {"count", events.size()}, {"events", std::move(events)}});
+        }
+
+        if (name == "vultra.animator.set_param")
+        {
+            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+            auto* animation = ctx.services ? ctx.services->tryGet<vultra::IAnimationService>() : nullptr;
+            if (!worldService || !animation)
+                return toolError("world or animation service is unavailable");
+            const auto entity = args.contains("entity") ? findEntity(worldService->world(), args["entity"]) : entt::null;
+            if (entity == entt::null)
+                return toolError("entity was not found");
+            const auto paramName = args.value("name", std::string {});
+            if (paramName.empty())
+                return toolError("animator.set_param requires name");
+            const auto type = args.value("type", std::string {"float"});
+            bool ok = false;
+            if (type == "bool")
+                ok = animation->setBool(entity, paramName, args.value("value", false));
+            else if (type == "trigger")
+                ok = animation->setTrigger(entity, paramName);
+            else
+                ok = animation->setFloat(entity, paramName, args.value("value", 0.0f));
+            return toolJson({{"ok", ok}, {"entity", static_cast<uint32_t>(entity)}, {"name", paramName}, {"type", type}});
+        }
+
+        if (name == "vultra.animator.state")
+        {
+            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+            auto* animation = ctx.services ? ctx.services->tryGet<vultra::IAnimationService>() : nullptr;
+            if (!worldService || !animation)
+                return toolError("world or animation service is unavailable");
+            const auto entity = args.contains("entity") ? findEntity(worldService->world(), args["entity"]) : entt::null;
+            if (entity == entt::null)
+                return toolError("entity was not found");
+            const auto state = animation->controllerState(entity);
+            return toolJson({{"ok", state.valid},
+                             {"currentState", state.currentState},
+                             {"nextState", state.nextState},
+                             {"transitioning", state.transitioning},
+                             {"transitionProgress", state.transitionProgress},
+                             {"normalizedTime", state.normalizedTime}});
+        }
 
         if (name == "vultra.sim.set_state_batch")
         {
@@ -444,7 +594,12 @@ namespace vultra_app
             }
             if (call && call->simFramesRemaining > 0u)
             {
-                setPlayback(ctx, true, false);
+                // Drive one deterministic fixed step per deferred frame via the editor's
+                // single-step path, so N frames == N fixed physics/script/animation steps
+                // regardless of wall-clock (reliable for headless/unfocused automation).
+                ctx.state.editorPlaying      = true;
+                ctx.state.editorPaused       = true;
+                ctx.state.editorStepRequested = true;
                 --call->simFramesRemaining;
                 call->defer = true;
                 return {};

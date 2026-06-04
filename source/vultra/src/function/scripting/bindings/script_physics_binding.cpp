@@ -58,9 +58,10 @@ namespace vultra
             if (!ctx.physicsService || radius < 0.0f)
                 return result;
 
-            const bool requireActive = activeOnly.value_or(true);
+            PhysicsQueryFilter filter {};
+            filter.activeOnly = activeOnly.value_or(true);
             uint32_t index = 1;
-            for (auto entity : ctx.physicsService->overlapSphere(toGlmVec3(center), radius, requireActive))
+            for (auto entity : ctx.physicsService->overlapSphere(toGlmVec3(center), radius, filter))
                 result[index++] = makeEntity(entity);
 
             return result;
@@ -255,11 +256,65 @@ namespace vultra
         physics.set_function("raycast", [&ctx](const ScriptVec3& origin,
                                                const ScriptVec3& direction,
                                                float maxDistance,
-                                               sol::optional<bool> activeOnly) {
+                                               sol::optional<bool> activeOnly,
+                                               sol::optional<uint32_t> layerMask) {
+            PhysicsQueryFilter filter {};
+            filter.activeOnly = activeOnly.value_or(true);
+            filter.layerMask = layerMask.value_or(0xFFFFFFFFu);
             return ctx.physicsService ?
                        toScript(ctx.physicsService->raycast(
-                           toGlmVec3(origin), toGlmVec3(direction), maxDistance, activeOnly.value_or(true))) :
+                           toGlmVec3(origin), toGlmVec3(direction), maxDistance, filter)) :
                        ScriptPhysicsRaycastHit {};
+        });
+        physics.set_function("raycastAll", [&ctx](sol::this_state luaState,
+                                                  const ScriptVec3& origin,
+                                                  const ScriptVec3& direction,
+                                                  float maxDistance,
+                                                  sol::optional<bool> activeOnly,
+                                                  sol::optional<uint32_t> layerMask) {
+            sol::state_view lua(luaState);
+            auto result = lua.create_table();
+            if (!ctx.physicsService)
+                return result;
+            PhysicsQueryFilter filter {};
+            filter.activeOnly = activeOnly.value_or(true);
+            filter.layerMask = layerMask.value_or(0xFFFFFFFFu);
+            uint32_t index = 1;
+            for (const auto& hit :
+                 ctx.physicsService->raycastAll(toGlmVec3(origin), toGlmVec3(direction), maxDistance, filter))
+                result[index++] = toScript(hit);
+            return result;
+        });
+        physics.set_function("sphereCast", [&ctx](sol::this_state luaState,
+                                                  const ScriptVec3& origin,
+                                                  const ScriptVec3& direction,
+                                                  float radius,
+                                                  float maxDistance,
+                                                  sol::optional<bool> activeOnly,
+                                                  sol::optional<uint32_t> layerMask) {
+            sol::state_view lua(luaState);
+            auto out = lua.create_table();
+            if (!ctx.physicsService)
+            {
+                out["hit"] = false;
+                return out;
+            }
+            PhysicsQueryFilter filter {};
+            filter.activeOnly = activeOnly.value_or(true);
+            filter.layerMask = layerMask.value_or(0xFFFFFFFFu);
+            const auto hit =
+                ctx.physicsService->sphereCast(toGlmVec3(origin), toGlmVec3(direction), radius, maxDistance, filter);
+            out["hit"] = hit.has_value();
+            if (hit)
+            {
+                out["entity"] = makeEntity(hit->entity);
+                out["point"] = toScriptVec3(hit->point);
+                out["normal"] = toScriptVec3(hit->normal);
+                out["distance"] = hit->distance;
+                out["fraction"] = hit->fraction;
+                out["startPenetrating"] = hit->startPenetrating;
+            }
+            return out;
         });
         physics.set_function("overlapSphere", [&ctx](sol::this_state luaState,
                                                       const ScriptVec3& center,
@@ -275,9 +330,10 @@ namespace vultra
             auto result = lua.create_table();
             if (!ctx.physicsService)
                 return result;
+            PhysicsQueryFilter filter {};
+            filter.activeOnly = activeOnly.value_or(true);
             uint32_t index = 1;
-            for (auto entity :
-                 ctx.physicsService->overlapBox(toGlmVec3(center), toGlmVec3(halfExtents), activeOnly.value_or(true)))
+            for (auto entity : ctx.physicsService->overlapBox(toGlmVec3(center), toGlmVec3(halfExtents), filter))
                 result[index++] = makeEntity(entity);
             return result;
         });
@@ -290,6 +346,96 @@ namespace vultra
             for (const auto& pair : ctx.physicsService->contactPairs(activeOnly.value_or(true)))
                 result[index++] = ScriptPhysicsContactPair {.a = makeEntity(pair.a), .b = makeEntity(pair.b)};
             return result;
+        });
+        physics.set_function("contactEvents", [&ctx](sol::this_state luaState) {
+            sol::state_view lua(luaState);
+            auto result = lua.create_table();
+            if (!ctx.physicsService)
+                return result;
+            uint32_t index = 1;
+            for (const auto& e : ctx.physicsService->consumeContactEvents())
+            {
+                auto entry        = lua.create_table();
+                entry["a"]        = makeEntity(e.a);
+                entry["b"]        = makeEntity(e.b);
+                entry["type"]     = e.type == PhysicsContactEvent::Type::eEnter ? "enter" : "exit";
+                entry["isSensor"] = e.isSensor;
+                result[index++]   = entry;
+            }
+            return result;
+        });
+        physics.set_function("overlapCapsule", [&ctx](sol::this_state luaState,
+                                                      const ScriptVec3& center,
+                                                      float halfHeight,
+                                                      float radius,
+                                                      sol::optional<bool> activeOnly,
+                                                      sol::optional<uint32_t> layerMask) {
+            sol::state_view lua(luaState);
+            auto result = lua.create_table();
+            if (!ctx.physicsService)
+                return result;
+            PhysicsQueryFilter filter {};
+            filter.activeOnly = activeOnly.value_or(true);
+            filter.layerMask = layerMask.value_or(0xFFFFFFFFu);
+            uint32_t index = 1;
+            for (auto entity : ctx.physicsService->overlapCapsule(toGlmVec3(center), halfHeight, radius, filter))
+                result[index++] = makeEntity(entity);
+            return result;
+        });
+        physics.set_function("addTorque", [&ctx](const ScriptEntity& entity, const ScriptVec3& torque) {
+            return ctx.physicsService ? ctx.physicsService->addTorque(entity.value, toGlmVec3(torque)) : false;
+        });
+        physics.set_function("addAngularImpulse", [&ctx](const ScriptEntity& entity, const ScriptVec3& impulse) {
+            return ctx.physicsService ? ctx.physicsService->addAngularImpulse(entity.value, toGlmVec3(impulse)) : false;
+        });
+        physics.set_function("setRotation", [&ctx](const ScriptEntity& entity,
+                                                   const ScriptVec3& eulerDegrees,
+                                                   sol::optional<bool> activate) {
+            return ctx.physicsService ?
+                       ctx.physicsService->setRotation(entity.value, toGlmVec3(eulerDegrees), activate.value_or(true)) :
+                       false;
+        });
+        physics.set_function("gravity", [&ctx]() {
+            return toScriptVec3(ctx.physicsService ? ctx.physicsService->gravity() : glm::vec3 {0.0f, -9.81f, 0.0f});
+        });
+        physics.set_function("setGravity", [&ctx](const ScriptVec3& gravity) {
+            if (ctx.physicsService)
+                ctx.physicsService->setGravity(toGlmVec3(gravity));
+        });
+        physics.set_function("setLayerCollision", [&ctx](uint32_t a, uint32_t b, bool enabled) {
+            if (ctx.physicsService)
+                ctx.physicsService->setLayerCollision(a, b, enabled);
+        });
+        physics.set_function("layerCollision", [&ctx](uint32_t a, uint32_t b) {
+            return ctx.physicsService ? ctx.physicsService->layerCollision(a, b) : true;
+        });
+
+        // --- Character controller ---
+        auto character = script_binding::getOrCreateTable(lua, "Character");
+        character.set_function("has", [&ctx](const ScriptEntity& entity) {
+            return ctx.physicsService ? ctx.physicsService->hasCharacter(entity.value) : false;
+        });
+        character.set_function("move", [&ctx](const ScriptEntity& entity, const ScriptVec3& horizontalVelocity) {
+            return ctx.physicsService ? ctx.physicsService->characterMove(entity.value, toGlmVec3(horizontalVelocity)) :
+                                        false;
+        });
+        character.set_function("jump", [&ctx](const ScriptEntity& entity, sol::optional<float> speed) {
+            return ctx.physicsService ? ctx.physicsService->characterJump(entity.value, speed.value_or(0.0f)) : false;
+        });
+        character.set_function("isGrounded", [&ctx](const ScriptEntity& entity) {
+            return ctx.physicsService ? ctx.physicsService->characterIsGrounded(entity.value) : false;
+        });
+        character.set_function("velocity", [&ctx](const ScriptEntity& entity) {
+            return toScriptVec3(ctx.physicsService ? ctx.physicsService->characterVelocity(entity.value) :
+                                                     glm::vec3 {0.0f});
+        });
+        character.set_function("groundNormal", [&ctx](const ScriptEntity& entity) {
+            return toScriptVec3(ctx.physicsService ? ctx.physicsService->characterGroundNormal(entity.value) :
+                                                     glm::vec3 {0.0f, 1.0f, 0.0f});
+        });
+        character.set_function("setPosition", [&ctx](const ScriptEntity& entity, const ScriptVec3& position) {
+            return ctx.physicsService ? ctx.physicsService->characterSetPosition(entity.value, toGlmVec3(position)) :
+                                        false;
         });
     }
 } // namespace vultra
