@@ -21,9 +21,11 @@ namespace vultra::imgui_theme
         ImVec4 backgroundDeep {0.040f, 0.050f, 0.064f, 1.0f};
         ImVec4 backgroundDeeper {0.035f, 0.043f, 0.055f, 1.0f};
         ImVec4 panel {0.058f, 0.072f, 0.092f, 1.0f};
-        ImVec4 frame {0.040f, 0.052f, 0.068f, 1.0f};
-        ImVec4 frameHovered {0.075f, 0.105f, 0.138f, 1.0f};
-        ImVec4 frameActive {0.095f, 0.145f, 0.190f, 1.0f};
+        // Frame backgrounds must read clearly against `background` so empty checkboxes
+        // and input fields stay visible in the default Dark theme.
+        ImVec4 frame {0.108f, 0.132f, 0.168f, 1.0f};
+        ImVec4 frameHovered {0.150f, 0.190f, 0.245f, 1.0f};
+        ImVec4 frameActive {0.190f, 0.245f, 0.315f, 1.0f};
         ImVec4 button {0.075f, 0.105f, 0.138f, 1.0f};
         ImVec4 buttonHovered {0.100f, 0.145f, 0.190f, 1.0f};
         ImVec4 accent {0.32f, 0.74f, 1.00f, 1.0f};
