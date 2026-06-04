@@ -1622,11 +1622,13 @@ MeshComponent/mesh = "76b557078a207da86bae3f70ccaaf029"
 MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
-AnimatorComponent/skeleton = "54248d82107babe448df68f646119fe5"
+AnimatorComponent/mode = 1
+AnimatorComponent/skeleton = "00000000000000000000000000000000"
 AnimatorComponent/animation = "6cafc2bddb5fa2d871a4a3ba7d6d9519"
-AnimatorComponent/playOnStart = false
+AnimatorComponent/playOnStart = true
 AnimatorComponent/playing = true
 AnimatorComponent/loop = true
 AnimatorComponent/speed = 1.000000
-AnimatorComponent/time = 0.352401
+AnimatorComponent/time = 0.000000
+AnimatorComponent/graph = "res://animation/gangnam_style.vanimgraph.json"
 
