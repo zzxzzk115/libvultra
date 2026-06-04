@@ -62,6 +62,8 @@ namespace vultra_app::ui
             return ICON_MDI_PUZZLE;
         if (hasSuffix(name, ".vmatgraph.json") || hasExtension(path, {".vmatgraph"}))
             return ICON_MDI_PALETTE;
+        if (hasSuffix(name, ".vanimgraph.json") || hasExtension(path, {".vanimgraph"}))
+            return ICON_MDI_RUN_FAST;
         if (hasExtension(path, {".gltf", ".glb", ".obj", ".fbx", ".dae", ".ply", ".spz"}))
             return ICON_MDI_CUBE_OUTLINE;
         if (hasExtension(path, {".lua"}))

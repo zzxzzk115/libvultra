@@ -2,6 +2,7 @@
 
 #include "vultra/core/engine/engine_subsystem.hpp"
 #include "vultra/core/base/uuid.hpp"
+#include "vultra/function/animation/animator_graph.hpp"
 #include "vultra/function/asset/asset_handle.hpp"
 #include "vultra/function/resource/cpu_asset.hpp"
 #include "vultra/function/services/animation_service.hpp"
@@ -12,12 +13,16 @@
 #include <ozz/animation/runtime/skeleton.h>
 
 #include <memory>
+#include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace vultra
 {
     class IAssetService;
     class IWorldService;
+    class ITimingService;
+    struct AnimatorComponent;
 
     class AnimationSystem final : public EngineSubsystem, public IAnimationService
     {
@@ -46,6 +51,13 @@ namespace vultra
         uint32_t jointCount(const CoreUUID& skeleton) override;
         float animationDuration(const CoreUUID& animation) override;
 
+        bool                    setFloat(entt::entity entity, const std::string& name, float value) override;
+        bool                    setBool(entt::entity entity, const std::string& name, bool value) override;
+        bool                    setTrigger(entt::entity entity, const std::string& name) override;
+        float                   getFloat(entt::entity entity, const std::string& name) override;
+        bool                    getBool(entt::entity entity, const std::string& name) override;
+        AnimatorControllerState controllerState(entt::entity entity) override;
+
     private:
         struct SkeletonRuntime
         {
@@ -59,12 +71,35 @@ namespace vultra
             std::unique_ptr<ozz::animation::Animation>          animation;
         };
 
+        // Per-entity animator-graph state-machine runtime (not serialized).
+        struct ControllerRuntime
+        {
+            std::string                            graphUri;
+            animator_graph::Graph                  graph;
+            bool                                   loaded {false};
+            std::unordered_map<std::string, float> floats;
+            std::unordered_map<std::string, bool>  bools;
+            std::unordered_set<std::string>        triggers;
+            int                                    currentState {-1};
+            float                                  currentTime {0.0f};
+            int                                    targetState {-1};
+            float                                  targetTime {0.0f};
+            float                                  transitionTime {0.0f};
+            float                                  transitionDuration {0.0f};
+        };
+
         const ozz::animation::Skeleton*  runtimeSkeleton(const CoreUUID& uuid);
         const ozz::animation::Animation* runtimeAnimation(const CoreUUID& uuid);
+
+        ControllerRuntime* ensureController(entt::entity entity);
+        void updateGraphAnimator(World& world, entt::entity entity, AnimatorComponent& animator, fsec dt);
+        bool conditionMet(ControllerRuntime& rt, const animator_graph::Condition& c) const;
+        bool transitionReady(ControllerRuntime& rt, const animator_graph::Transition& t, float currentNormalized) const;
 
     private:
         IAssetService* m_Assets {nullptr};
         IWorldService* m_Worlds {nullptr};
+        ITimingService* m_Timing {nullptr};
 
         bool     m_PlaybackPlaying {true};
         bool     m_PlaybackPaused {false};
@@ -72,5 +107,6 @@ namespace vultra
 
         std::unordered_map<CoreUUID, SkeletonRuntime>  m_Skeletons;
         std::unordered_map<CoreUUID, AnimationRuntime> m_Animations;
+        std::unordered_map<entt::entity, ControllerRuntime> m_Controllers;
     };
 } // namespace vultra

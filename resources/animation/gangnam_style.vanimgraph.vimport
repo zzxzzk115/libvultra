@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="animator_graph_json"
+uid="7e6353666e3a47cd631032d3e0533a12"
+
+[source]
+file="animation/gangnam_style.vanimgraph.json"
+
+[output]
+file="imported/animator_graph_json/animation/gangnam_style.vanimgraph.json"
+
+[params]

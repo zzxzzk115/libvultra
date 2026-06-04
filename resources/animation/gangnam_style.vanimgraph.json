@@ -1,0 +1,28 @@
+{
+  "anyTransitions": [],
+  "entry": "Gangnam Style Dance",
+  "metadata": {
+    "anyStatePos": [
+      0.0,
+      0.0
+    ]
+  },
+  "name": "Example Animator Graph",
+  "parameters": [],
+  "states": [
+    {
+      "animation": "6cafc2bddb5fa2d871a4a3ba7d6d9519",
+      "editor": {
+        "pos": [
+          189.0,
+          -16.0
+        ]
+      },
+      "loop": true,
+      "name": "Gangnam Style Dance",
+      "speed": 1.0,
+      "transitions": []
+    }
+  ],
+  "version": 1
+}

@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
 namespace vultra
 {
@@ -25,6 +26,17 @@ namespace vultra
         float normalizedTime {0.0f};
         CoreUUID skeleton;
         CoreUUID animation;
+    };
+
+    // Snapshot of an animator-graph controller (state machine) for a given entity.
+    struct AnimatorControllerState
+    {
+        bool        valid {false};
+        std::string currentState;
+        std::string nextState;       // target during a transition (empty otherwise)
+        bool        transitioning {false};
+        float       transitionProgress {0.0f}; // [0,1]
+        float       normalizedTime {0.0f};     // normalized time of the current state's clip
     };
 
     class IAnimationService
@@ -51,5 +63,13 @@ namespace vultra
         virtual AnimatorPlaybackState playbackState(entt::entity entity) = 0;
         virtual uint32_t jointCount(const CoreUUID& skeleton) = 0;
         virtual float animationDuration(const CoreUUID& animation) = 0;
+
+        // --- Animator graph (state machine) parameters & introspection ---
+        virtual bool        setFloat(entt::entity entity, const std::string& name, float value) = 0;
+        virtual bool        setBool(entt::entity entity, const std::string& name, bool value) = 0;
+        virtual bool        setTrigger(entt::entity entity, const std::string& name) = 0;
+        virtual float       getFloat(entt::entity entity, const std::string& name) = 0;
+        virtual bool        getBool(entt::entity entity, const std::string& name) = 0;
+        virtual AnimatorControllerState controllerState(entt::entity entity) = 0;
     };
 } // namespace vultra

@@ -218,6 +218,29 @@ void main()
 )";
         }
 
+        std::string makeAnimatorGraphText(std::string_view)
+        {
+            return R"({
+  "version": 1,
+  "name": "New Animator Graph",
+  "entry": "New State",
+  "parameters": [],
+  "anyTransitions": [],
+  "states": [
+    {
+      "name": "New State",
+      "animation": "00000000000000000000000000000000",
+      "loop": true,
+      "speed": 1.0,
+      "transitions": [],
+      "editor": { "pos": [180.0, 0.0] }
+    }
+  ],
+  "metadata": { "anyStatePos": [0.0, 0.0] }
+}
+)";
+        }
+
         std::string makeMaterialGraphNodeText(std::string_view)
         {
             return R"({
@@ -328,6 +351,16 @@ void main()
             .assetType       = vasset::VAssetType::eUnknown,
             .openInCodeEditor = true,
             .makeText        = makeSingleShaderMaterialText,
+        });
+        registry.registerCreator(ContentAssetCreator {
+            .id               = "vultra.animator_graph",
+            .menuPath         = "Animation/Animator Graph",
+            .displayName      = "Animator Graph",
+            .defaultFileName  = "NewAnimatorGraph.vanimgraph.json",
+            .extension        = ".vanimgraph.json",
+            .assetType        = vasset::VAssetType::eAnimatorGraphJson,
+            .openInCodeEditor = false,
+            .makeText         = makeAnimatorGraphText,
         });
         registry.registerCreator(ContentAssetCreator {
             .id              = "vultra.material_graph_node",

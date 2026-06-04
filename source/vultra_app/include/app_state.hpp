@@ -117,6 +117,7 @@ namespace vultra_app
         std::vector<VBuildScene> currentBuildScenes;
         std::string           currentEditingRenderGraph {"res://render/default.vrg.json"};
         std::string           currentEditingMaterialGraph {"res://materials/default.vmatgraph.json"};
+        std::string           currentEditingAnimatorGraph {"res://animation/default.vanimgraph.json"};
         std::string           renderMode {"visible"};
         std::string           statusMessage;
         bool                  editorPlaying {false};
@@ -148,6 +149,7 @@ namespace vultra_app
         bool                  renderGraphOpenRequested {false};
         bool                  runtimeFrameGraphViewerOpenRequested {false};
         bool                  materialGraphOpenRequested {false};
+        bool                  animatorGraphOpenRequested {false};
         std::string           editorWindowFocusRequested;
         uint64_t              projectGeneration {0};
         uint64_t              assetFileGeneration {0};

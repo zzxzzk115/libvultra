@@ -197,5 +197,36 @@ namespace vultra
         animation.set_function("duration", [&ctx](const std::string& animationUuid) {
             return ctx.animationService ? ctx.animationService->animationDuration(parseUuid(animationUuid)) : 0.0f;
         });
+
+        // --- Animator graph (state machine) parameters & introspection ---
+        animation.set_function("setFloat", [&ctx](const ScriptEntity& entity, const std::string& name, float value) {
+            return ctx.animationService ? ctx.animationService->setFloat(entity.value, name, value) : false;
+        });
+        animation.set_function("setBool", [&ctx](const ScriptEntity& entity, const std::string& name, bool value) {
+            return ctx.animationService ? ctx.animationService->setBool(entity.value, name, value) : false;
+        });
+        animation.set_function("setTrigger", [&ctx](const ScriptEntity& entity, const std::string& name) {
+            return ctx.animationService ? ctx.animationService->setTrigger(entity.value, name) : false;
+        });
+        animation.set_function("getFloat", [&ctx](const ScriptEntity& entity, const std::string& name) {
+            return ctx.animationService ? ctx.animationService->getFloat(entity.value, name) : 0.0f;
+        });
+        animation.set_function("getBool", [&ctx](const ScriptEntity& entity, const std::string& name) {
+            return ctx.animationService ? ctx.animationService->getBool(entity.value, name) : false;
+        });
+        animation.set_function("currentState", [&ctx](sol::this_state luaState, const ScriptEntity& entity) {
+            sol::state_view lua(luaState);
+            auto out = lua.create_table();
+            if (!ctx.animationService)
+                return out;
+            const auto state         = ctx.animationService->controllerState(entity.value);
+            out["valid"]             = state.valid;
+            out["currentState"]      = state.currentState;
+            out["nextState"]         = state.nextState;
+            out["transitioning"]     = state.transitioning;
+            out["transitionProgress"] = state.transitionProgress;
+            out["normalizedTime"]    = state.normalizedTime;
+            return out;
+        });
     }
 } // namespace vultra

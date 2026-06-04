@@ -12,6 +12,7 @@
 #include "editor_app/ui/windows/game_view_window.hpp"
 #include "editor_app/ui/windows/history_window.hpp"
 #include "editor_app/ui/windows/inspector_window.hpp"
+#include "editor_app/ui/windows/animator_graph_window.hpp"
 #include "editor_app/ui/windows/material_graph_window.hpp"
 #include "editor_app/ui/windows/profiler_window.hpp"
 #include "editor_app/ui/windows/render_graph_window.hpp"
@@ -1014,6 +1015,7 @@ namespace vultra_app
         m_WindowManager.addWindow<ConsoleWindow>();
         m_WindowManager.addWindow<RenderGraphWindow>();
         m_WindowManager.addWindow<MaterialGraphWindow>();
+        m_WindowManager.addWindow<AnimatorGraphWindow>();
         m_WindowManager.addWindow<FrameDebuggerWindow>();
         m_WindowManager.addWindow<ProfilerWindow>();
         m_WindowManager.addWindow<InspectorWindow>();
@@ -1959,6 +1961,7 @@ namespace vultra_app
             dockWindow("Code Editor", mainId);
             dockWindow("Render Graph", mainId);
             dockWindow("Material Graph", mainId);
+            dockWindow("Animator Graph", mainId);
             dockWindow("Inspector", rightId);
             dockWindow("History", historyId);
             dockWindow("Content Browser", bottomId);

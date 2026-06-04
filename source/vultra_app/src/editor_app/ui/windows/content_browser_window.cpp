@@ -122,6 +122,13 @@ namespace vultra_app
             return ext == ".vmatgraph" || hasSuffix(name, ".vmatgraph.json");
         }
 
+        bool isAnimatorGraphSourceAsset(const std::filesystem::path& path)
+        {
+            const auto name = lowerString(path.filename().generic_string());
+            const auto ext  = lowerString(path.extension().generic_string());
+            return ext == ".vanimgraph" || hasSuffix(name, ".vanimgraph.json");
+        }
+
         bool isMaterialSourceAsset(const std::filesystem::path& path)
         {
             return hasSuffix(lowerString(path.filename().generic_string()), ".vmat.json");
@@ -396,9 +403,11 @@ namespace vultra_app
                 case vasset::VAssetType::eTexture:
                     return ICON_MDI_IMAGE;
                 case vasset::VAssetType::eSkeleton:
-                    return ICON_MDI_SOURCE_BRANCH;
+                    return ICON_MDI_BONE;
                 case vasset::VAssetType::eAnimation:
-                    return ICON_MDI_PLAY;
+                    return ICON_MDI_RUN;
+                case vasset::VAssetType::eAnimatorGraphJson:
+                    return ICON_MDI_RUN_FAST;
                 default:
                     return ICON_MDI_FILE_OUTLINE;
             }
@@ -1688,6 +1697,19 @@ namespace vultra_app
 
             queueOpenRenderGraph(ctx.state, uri);
             ctx.state.statusMessage = "Opening render graph: " + uri;
+        }
+        else if (isAnimatorGraphSourceAsset(path))
+        {
+            const auto uri = pathToResUri(ctx, path);
+            if (uri.empty())
+            {
+                ctx.state.statusMessage = "Open animator graph failed: graph is outside the asset root.";
+                return;
+            }
+            ctx.state.currentEditingAnimatorGraph = uri;
+            ctx.state.animatorGraphOpenRequested  = true;
+            ctx.state.editorWindowFocusRequested  = "Animator Graph";
+            ctx.state.statusMessage               = "Opening animator graph: " + uri;
         }
         else if (isCodeEditableSourceAsset(path))
         {
