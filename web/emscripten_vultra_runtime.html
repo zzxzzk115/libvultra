@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VultraEngine</title>
+  <link
+    href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg-0: #070707;
+      --bg-1: #071108;
+      --panel: #101010;
+      --line: #17451d;
+      --line-soft: #0f2a13;
+      --text-0: #d7ffd8;
+      --text-1: #86c88e;
+      --accent: #2dff64;
+      --accent-2: #8dffad;
+      --warn: #ffb347;
+      --err: #ff4f5e;
+      --ok: #2dff64;
+      --cursor-orbit: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"%3E%3Crect x="3" y="3" width="26" height="26" rx="13" fill="%23081409" fill-opacity="0.95" stroke="%232dff64" stroke-width="1.5"/%3E%3Ccircle cx="16" cy="16" r="5.4" fill="none" stroke="%238dffad" stroke-width="1.7" stroke-linecap="round" stroke-dasharray="22 8" transform="rotate(-36 16 16)"/%3E%3Cpath d="M20.4 8.8 24.8 10 21.6 13.2" fill="none" stroke="%238dffad" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/%3E%3Ccircle cx="16" cy="16" r="1.6" fill="%232dff64"/%3E%3C/svg%3E') 16 16, alias;
+      --cursor-grabbing: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"%3E%3Crect x="3" y="3" width="26" height="26" rx="13" fill="%23081409" fill-opacity="0.95" stroke="%232dff64" stroke-width="1.5"/%3E%3Cpath d="M11.2 23.4v-8.9c0-.8.5-1.3 1.2-1.3.8 0 1.2.5 1.2 1.3v4.4-7c0-.9.5-1.4 1.3-1.4s1.3.5 1.3 1.4v7-5.1c0-.8.5-1.3 1.2-1.3.8 0 1.2.5 1.2 1.3v5.1-3.8c0-.8.5-1.3 1.2-1.3.8 0 1.2.5 1.2 1.3v4.5-2.3c0-.8.5-1.3 1.2-1.3.8 0 1.2.5 1.2 1.3v4.8c0 1.5-.5 2.7-1.4 3.7s-2.2 1.5-3.8 1.5h-4.5c-1.6 0-2.9-.5-3.8-1.4-1-1-1.5-2.2-1.5-3.8Z" fill="none" stroke="%238dffad" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/%3E%3Cpath d="M12 24c2 .9 6.1 1 8.4.2" fill="none" stroke="%232dff64" stroke-width="1.25" stroke-linecap="round"/%3E%3C/svg%3E') 16 16, grabbing;
+      --cursor-look: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"%3E%3Crect x="3" y="3" width="26" height="26" rx="13" fill="%23081409" fill-opacity="0.95" stroke="%232dff64" stroke-width="1.5"/%3E%3Cpath d="M7.4 16c2-3.1 5.2-4.9 8.6-4.9s6.6 1.8 8.6 4.9c-2 3.1-5.2 4.9-8.6 4.9S9.4 19.1 7.4 16Z" fill="none" stroke="%238dffad" stroke-width="1.8" stroke-linejoin="round"/%3E%3Ccircle cx="16" cy="16" r="2.5" fill="none" stroke="%238dffad" stroke-width="1.6"/%3E%3Ccircle cx="16" cy="16" r="1" fill="%232dff64"/%3E%3C/svg%3E') 16 16, pointer;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      background:
+        radial-gradient(1200px 760px at 14% -20%, #0f3814 0%, transparent 62%),
+        radial-gradient(900px 560px at 95% 110%, #09280f 0%, transparent 60%),
+        linear-gradient(180deg, var(--bg-1), var(--bg-0));
+      color: var(--text-0);
+      font-family: "JetBrains Mono", "Fira Code", "Cascadia Mono", "Menlo", monospace;
+      overflow: hidden;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 10px;
+      height: 100%;
+      padding: 10px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0;
+      min-height: 46px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: linear-gradient(180deg, rgba(10, 32, 13, 0.92), rgba(8, 20, 9, 0.94));
+      box-shadow: inset 0 1px 0 rgba(120, 255, 120, 0.08), 0 8px 26px rgba(0, 0, 0, 0.4);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      letter-spacing: 0.2px;
+      font-weight: 700;
+    }
+
+    .brand-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, var(--accent-2), var(--accent));
+      box-shadow: 0 0 12px rgba(255, 47, 47, 0.9);
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-1);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 55vw;
+    }
+
+    .spinner {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--ok);
+      box-shadow: 0 0 10px rgba(113, 255, 168, 0.8);
+    }
+
+    .progress-wrap {
+      width: min(34vw, 320px);
+      height: 5px;
+      border-radius: 999px;
+      background: #0a1c0d;
+      border: 1px solid var(--line-soft);
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #0f7a2b 0%, #2dff64 55%, #a9ffc0 100%);
+      transition: width 120ms ease;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(12, 36, 16, 0.94), rgba(8, 18, 9, 0.98));
+      color: var(--text-0);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform 100ms ease, border-color 100ms ease;
+    }
+
+    .btn:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      flex-shrink: 0;
+    }
+
+    .icon-btn i {
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    .canvas-shell {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background:
+        linear-gradient(90deg, rgba(80, 255, 120, 0.03) 1px, transparent 1px) 0 0 / 24px 24px,
+        linear-gradient(180deg, rgba(80, 255, 120, 0.03) 1px, transparent 1px) 0 0 / 24px 24px,
+        linear-gradient(180deg, #081108 0%, #050805 100%);
+      box-shadow: inset 0 0 0 1px rgba(90, 255, 120, 0.08), 0 10px 28px rgba(0, 0, 0, 0.45);
+      cursor: default;
+    }
+
+    #canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      outline: none;
+      background: #000;
+      cursor: inherit;
+    }
+
+    .console {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: linear-gradient(180deg, rgba(11, 24, 12, 0.97), rgba(7, 14, 8, 0.98));
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: min(34vh, 300px);
+      transition: height 140ms ease;
+    }
+
+    .console.collapsed {
+      height: 48px;
+    }
+
+    .console-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 7px 10px;
+      font-size: 12px;
+      color: var(--text-1);
+    }
+
+    .console-title {
+      min-width: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-2);
+      font-size: 14px;
+    }
+
+    .console-preview {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #a8efb2;
+      opacity: 0.95;
+    }
+
+    .console-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .console-toggle {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #0d1b0e;
+      color: #b4ffbf;
+      cursor: pointer;
+      width: 34px;
+      height: 24px;
+      padding: 0;
+      font-size: 12px;
+      user-select: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    #console-log {
+      margin: 0;
+      padding: 10px 10px 12px;
+      overflow: auto;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #c5ffd0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border-top: 1px solid var(--line-soft);
+      scrollbar-width: thin;
+      scrollbar-color: #2dff64 #09130b;
+    }
+
+    #console-log::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    #console-log::-webkit-scrollbar-track {
+      background: linear-gradient(180deg, #09130b, #050805);
+      border-left: 1px solid rgba(45, 255, 100, 0.08);
+    }
+
+    #console-log::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, #0f7a2b 0%, #2dff64 55%, #8dffad 100%);
+      border-radius: 999px;
+      border: 2px solid #09130b;
+      box-shadow: 0 0 10px rgba(45, 255, 100, 0.18);
+    }
+
+    #console-log::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(180deg, #18a53a 0%, #5dff87 55%, #b7ffcb 100%);
+    }
+
+    .console.collapsed #console-log {
+      display: none;
+    }
+
+    .log-line {
+      margin-bottom: 2px;
+    }
+    .log-line.stdout { color: #c9ffd3; }
+    .log-line.stderr { color: var(--err); }
+    .log-line.warn { color: var(--warn); }
+    .log-line.ok { color: var(--ok); }
+
+    .log-time {
+      color: #5fa36b;
+      margin-right: 8px;
+    }
+
+    @media (max-width: 640px) {
+      html, body {
+        overflow: auto;
+      }
+
+      .layout {
+        min-height: 100vh;
+        min-height: 100dvh;
+        padding-top: max(8px, env(safe-area-inset-top));
+        padding-right: max(8px, env(safe-area-inset-right));
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
+        padding-left: max(8px, env(safe-area-inset-left));
+      }
+
+      .topbar {
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        padding: 10px 12px;
+        border-radius: 14px;
+      }
+
+      .brand {
+        flex: 1 1 100%;
+        font-size: 14px;
+      }
+
+      .status {
+        flex: 1 1 100%;
+        font-size: 11px;
+        gap: 6px;
+        white-space: normal;
+        max-width: 100%;
+      }
+
+      .progress-wrap {
+        width: 100%;
+        flex-basis: 100%;
+        height: 6px;
+      }
+
+      .actions {
+        width: 100%;
+        justify-content: flex-start;
+      }
+
+      .btn {
+        min-height: 40px;
+        padding: 10px 12px;
+        border-radius: 10px;
+      }
+
+      .icon-btn {
+        width: 40px;
+        min-height: 40px;
+        padding: 0;
+      }
+
+      .canvas-shell {
+        min-height: 38vh;
+        border-radius: 16px;
+      }
+
+      .console {
+        height: clamp(160px, 30vh, 260px);
+        border-radius: 14px;
+      }
+
+      #console-log {
+        font-size: 11px;
+        line-height: 1.4;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span id="app-title">VultraEngine / web runtime</span>
+      </div>
+      <div class="status">
+        <span class="spinner" id="status-dot"></span>
+        <span id="status-text">Bootstrapping...</span>
+        <span class="progress-wrap" aria-hidden="true">
+          <span class="progress-bar" id="status-progress"></span>
+        </span>
+      </div>
+      <div class="actions">
+        <button class="btn icon-btn" id="btn-back" type="button" aria-label="Back" title="Back">
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+        </button>
+        <button class="btn icon-btn" id="btn-fullscreen" type="button" aria-label="Fullscreen" title="Fullscreen">
+          <i class="fa-solid fa-expand" aria-hidden="true"></i>
+        </button>
+      </div>
+    </header>
+
+    <section class="canvas-shell">
+      <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+    </section>
+
+    <section class="console collapsed" id="console-panel">
+      <div class="console-header">
+        <span class="console-title" aria-label="Console" title="Console">
+          <i class="fa-solid fa-terminal" aria-hidden="true"></i>
+        </span>
+        <span class="console-preview" id="console-preview">[standby] console is collapsed</span>
+        <div class="console-actions">
+          <button class="btn icon-btn" id="btn-clear-log" type="button" aria-label="Clear log" title="Clear log">
+            <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+          </button>
+          <button class="console-toggle" id="btn-toggle-console" type="button" aria-label="Expand console" title="Expand console">
+            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+      <pre id="console-log"></pre>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      const statusText = document.getElementById("status-text");
+      const statusDot = document.getElementById("status-dot");
+      const statusProgress = document.getElementById("status-progress");
+      const appTitle = document.getElementById("app-title");
+      const consoleLog = document.getElementById("console-log");
+      const consolePanel = document.getElementById("console-panel");
+      const consolePreview = document.getElementById("console-preview");
+      const canvas = document.getElementById("canvas");
+      const btnBack = document.getElementById("btn-back");
+      const btnClear = document.getElementById("btn-clear-log");
+      const btnFullscreen = document.getElementById("btn-fullscreen");
+      const btnToggleConsole = document.getElementById("btn-toggle-console");
+
+      const MAX_LOG_LINES = 1200;
+      let logLineCount = 0;
+      let currentAppName = "VultraEngine";
+
+      function now() {
+        const d = new Date();
+        return d.toLocaleTimeString("en-GB", { hour12: false });
+      }
+
+      function appendLog(text, kind) {
+        if (text == null) return;
+        const message = String(text);
+        consolePreview.textContent = message.replace(/\s+/g, " ").trim() || "[empty]";
+        const line = document.createElement("div");
+        line.className = "log-line " + (kind || "stdout");
+        const ts = document.createElement("span");
+        ts.className = "log-time";
+        ts.textContent = "[" + now() + "]";
+        line.appendChild(ts);
+        line.appendChild(document.createTextNode(message));
+        consoleLog.appendChild(line);
+        logLineCount += 1;
+        while (logLineCount > MAX_LOG_LINES && consoleLog.firstChild) {
+          consoleLog.removeChild(consoleLog.firstChild);
+          logLineCount -= 1;
+        }
+        consoleLog.scrollTop = consoleLog.scrollHeight;
+      }
+
+      function setStatus(text, progressValue) {
+        statusText.textContent = text || "Running";
+        if (typeof progressValue === "number") {
+          const p = Math.max(0, Math.min(100, progressValue));
+          statusProgress.style.width = p.toFixed(1) + "%";
+        }
+      }
+
+      function setAppName(name) {
+        const nextName = String(name || "").trim() || "VultraEngine";
+        currentAppName = nextName;
+        document.title = nextName;
+        appTitle.textContent = nextName + " / web runtime";
+      }
+
+      function updateConsoleToggle(collapsed) {
+        const iconClass = collapsed ? "fa-chevron-up" : "fa-chevron-down";
+        const label = collapsed ? "Expand console" : "Collapse console";
+        btnToggleConsole.innerHTML = '<i class="fa-solid ' + iconClass + '" aria-hidden="true"></i>';
+        btnToggleConsole.setAttribute("aria-label", label);
+        btnToggleConsole.setAttribute("title", label);
+      }
+
+      btnBack.addEventListener("click", function () {
+        const fallbackUrl = new URL("../", window.location.href).toString();
+        if (window.history.length > 1 && document.referrer) {
+          window.history.back();
+          return;
+        }
+        window.location.href = fallbackUrl;
+      });
+
+      btnClear.addEventListener("click", function () {
+        consoleLog.textContent = "";
+        logLineCount = 0;
+        consolePreview.textContent = "[cleared]";
+      });
+
+      btnFullscreen.addEventListener("click", function () {
+        if (canvas.requestFullscreen) {
+          canvas.requestFullscreen().catch(function () {});
+        }
+      });
+
+      btnToggleConsole.addEventListener("click", function () {
+        const collapsed = consolePanel.classList.toggle("collapsed");
+        updateConsoleToggle(collapsed);
+      });
+
+      updateConsoleToggle(consolePanel.classList.contains("collapsed"));
+
+      // --- Runtime-fetch VPK bootstrap -------------------------------------------------
+      // Unlike the engine examples, the export template bakes in NO assets. The project's
+      // package is fetched over HTTP at page load and written into MEMFS at /resources.vpk
+      // (the deterministic mount path AssetSystem expects) before main() runs. The fetch is
+      // gated as an emscripten run-dependency, so the engine waits for assets to be present.
+      const params = new URLSearchParams(window.location.search);
+      const vpkUrl = params.get("vpk") || "game.vpk";
+      const sceneUri = params.get("scene") || "";
+      const VPK_MOUNT = "/resources.vpk";
+
+      const runtimeArgs = ["--vpk", "resources.vpk"];
+      if (sceneUri) {
+        runtimeArgs.push("--scene", sceneUri);
+      }
+
+      var Module = window.Module || {};
+      Module.canvas = Module.canvas || canvas;
+      Module.arguments = runtimeArgs;
+      Module.print = Module.print || function (text) { appendLog(text, "stdout"); };
+      Module.printErr = Module.printErr || function (text) { appendLog(text, "stderr"); };
+      Module.logTrace = Module.logTrace || function (text) { appendLog(text, "stdout"); };
+      Module.logInfo = Module.logInfo || function (text) { appendLog(text, "stdout"); };
+      Module.logWarn = Module.logWarn || function (text) { appendLog(text, "warn"); };
+      Module.logError = Module.logError || function (text) { appendLog(text, "stderr"); };
+      Module.logCritical = Module.logCritical || function (text) { appendLog(text, "stderr"); };
+      Module.setAppName = function (text) { setAppName(text); };
+      Module.setStatus = function (text) { setStatus(text); };
+      Module.monitorRunDependencies = function (left) {
+        if (!Module.totalDependencies) Module.totalDependencies = 0;
+        Module.totalDependencies = Math.max(Module.totalDependencies, left);
+        const total = Module.totalDependencies || 1;
+        const done = total - left;
+        const pct = total > 0 ? (done / total) * 100 : 100;
+        if (left > 0) {
+          setStatus("Loading dependencies: " + done + "/" + total, pct);
+          statusDot.style.background = "#ffd166";
+          statusDot.style.boxShadow = "0 0 10px rgba(255, 209, 102, 0.8)";
+        } else {
+          setStatus("Runtime ready", 100);
+          statusDot.style.background = "var(--ok)";
+          statusDot.style.boxShadow = "0 0 10px rgba(113, 255, 168, 0.8)";
+          appendLog("Runtime ready.", "ok");
+        }
+      };
+      Module.onAbort = function (what) {
+        setStatus("Runtime aborted");
+        statusDot.style.background = "var(--err)";
+        statusDot.style.boxShadow = "0 0 10px rgba(255, 111, 125, 0.8)";
+        appendLog("ABORT: " + what, "stderr");
+      };
+
+      Module.preRun = Module.preRun || [];
+      Module.preRun.push(function () {
+        Module.addRunDependency("fetch-vpk");
+        setStatus("Fetching package: " + vpkUrl);
+        appendLog("Fetching package: " + vpkUrl, "stdout");
+        fetch(vpkUrl)
+          .then(function (response) {
+            if (!response.ok) {
+              throw new Error("HTTP " + response.status + " " + response.statusText);
+            }
+            return response.arrayBuffer();
+          })
+          .then(function (buffer) {
+            Module.FS.writeFile(VPK_MOUNT, new Uint8Array(buffer));
+            appendLog("Package mounted at " + VPK_MOUNT + " (" + buffer.byteLength + " bytes).", "ok");
+            Module.removeRunDependency("fetch-vpk");
+          })
+          .catch(function (err) {
+            // Leave the run-dependency unresolved: the engine should not start without assets.
+            setStatus("Failed to load package");
+            statusDot.style.background = "var(--err)";
+            statusDot.style.boxShadow = "0 0 10px rgba(255, 111, 125, 0.8)";
+            appendLog("Failed to fetch package '" + vpkUrl + "': " + err, "stderr");
+            appendLog("Serve the export over http(s) (fetch is blocked on file://).", "warn");
+          });
+      });
+
+      appendLog("VultraEngine web runtime shell loaded.", "ok");
+      setAppName(Module.appName || document.title);
+      window.Module = Module;
+    })();
+  </script>
+
+  {{{ SCRIPT }}}
+</body>
+</html>

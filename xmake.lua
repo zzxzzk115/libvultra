@@ -183,6 +183,9 @@ add_rules("clangd.config", "linux.sdl.driver", "imguiconfig", "macos.package_rpa
 -- add repositories
 add_repositories("my-xmake-repo https://github.com/zzxzzk115/xmake-repo.git backup")
 
+-- shared rules (defined before any target that uses them)
+includes("xmake/rules/wasm.lua")
+
 -- include external libraries
 includes("external")
 

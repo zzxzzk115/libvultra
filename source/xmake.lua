@@ -78,7 +78,14 @@ option_end()
 -- add requirements
 add_requires("fmt", { system = false })
 add_requires("spdlog", "magic_enum", "entt", "cereal", "sol2", "argparse")
-add_requires("joltphysics v5.5.0", {configs = {debug = is_mode("debug"), shared = false, object_layer_bits = "16"}})
+local jolt_configs = {debug = is_mode("debug"), shared = false, object_layer_bits = "16"}
+if is_plat("wasm") then
+    -- physics_system.cpp subclasses JPH::JobSystemWithBarrier; under clang/Itanium the derived
+    -- class typeinfo references the base typeinfo, which Jolt only emits when built with C++ RTTI.
+    -- (Desktop/MSVC links without this.)
+    jolt_configs.rtti = true
+end
+add_requires("joltphysics v5.5.0", {configs = jolt_configs})
 add_requires("vulkan-headers 1.4.335+0")
 if not is_plat("wasm") then
     add_requires("vulkan-memory-allocator-hpp")
@@ -151,6 +158,10 @@ target("vultra")
         remove_files("vultra/src/core/profiling/tracky.cpp")
         remove_files("vultra/src/core/profiling/renderdoc_api.cpp")
         remove_files("vultra/src/function/debugging/frame_debugger_system.cpp")
+        -- (vulkan_render_device.cpp's ray-tracing entry points are removed with the vk backend
+        -- above; raytracing_stub_no_vulkan.cpp supplies inert ones. The Jolt RTTI typeinfo that
+        -- physics_system.cpp needs is provided by enabling the joltphysics 'rtti' config on wasm —
+        -- see add_requires below.)
     end
 
     -- add deps
@@ -264,6 +275,9 @@ if not is_plat("android") and not is_plat("wasm") then
         add_includedirs("vultra_app/include")
         add_headerfiles("vultra_app/include/(**.hpp)")
         add_files("vultra_app/src/**.cpp")
+        -- The standalone runtime player has its own entry point (a second main()); it is built by
+        -- the cross-platform vultra-runtime target below, not folded into the editor binary.
+        remove_files("vultra_app/src/runtime/**.cpp")
         if is_plat("windows") then
             add_files("vultra_app/resources/**.rc")
         elseif is_plat("linux") or is_plat("macosx") then
@@ -299,3 +313,74 @@ if not is_plat("android") and not is_plat("wasm") then
             end
         end)
 end
+
+-- Standalone runtime player: the editor-free "player" that runs a packaged project (.vpk).
+-- This is the single source for every platform's export template, so it builds for desktop,
+-- wasm (Emscripten) and android. It intentionally pulls in only a small slice of vultra_app
+-- (the runtime entry, project loading and launch-option parsing) and none of the editor.
+target("vultra-runtime")
+    if is_plat("android") then
+        set_kind("shared")
+        set_basename("vultra_runtime")
+    else
+        set_kind("binary")
+        set_basename("vultra-runtime")
+    end
+    add_includedirs("vultra_app/include")
+    add_files("vultra_app/src/runtime/**.cpp",
+              "vultra_app/src/vproject.cpp",
+              "vultra_app/src/launch_options.cpp")
+    add_deps("vultra")
+    add_packages("argparse")
+    if is_plat("windows") then
+        add_syslinks("ws2_32")
+    elseif is_plat("android") then
+        add_syslinks("android", "log")
+        on_load(function (target)
+            -- Mirror examples/android_app: link libgame-activity.a from the gradle prefab cache.
+            local user_home = os.getenv("USERPROFILE") or os.getenv("HOME") or ""
+            local gradle_home = os.getenv("GRADLE_USER_HOME") or path.join(user_home, ".gradle")
+            local arch = target:arch()
+            local game_activity_arch = "android." .. arch
+            local libs = os.files(path.join(gradle_home,
+                                            "caches",
+                                            "**",
+                                            "games-activity-*",
+                                            "prefab",
+                                            "modules",
+                                            "game-activity",
+                                            "libs",
+                                            game_activity_arch,
+                                            "libgame-activity.a"))
+            if #libs > 0 then
+                target:add("links", libs[1])
+            end
+        end)
+    end
+    if is_plat("wasm") then
+        -- Engine-only web template: no project --preload-file (no vpk.* values set), so the
+        -- runtime fetches the project's game.vpk at page load instead of baking it in.
+        add_rules("wasm.link")
+        set_values("wasm.shell_file", path.join(os.projectdir(), "web", "emscripten_vultra_runtime.html"))
+        -- The shell's preRun fetches the VPK into MEMFS, so the FS and run-dependency runtime
+        -- methods must be exported, and the filesystem must be forced in (no preloaded data).
+        set_values("wasm.extra_ldflags",
+                   {
+                       "-sFORCE_FILESYSTEM=1",
+                       "-sEXPORTED_RUNTIME_METHODS=['FS','callMain','addRunDependency','removeRunDependency']",
+                   })
+        -- Refresh the editor's default web export template from the freshly built engine bundle:
+        -- index.html + the js/wasm. This is a BUILD ARTIFACT (the engine-only runtime), so it lives
+        -- under build/ (git-ignored), not in a source dir. The editor copies it next to a packed
+        -- game.vpk at export time; defaultWebTemplate() in editor_app_build.cpp points here.
+        after_build(function (target)
+            local out = path.join(os.projectdir(), "build", "web-template")
+            os.mkdir(out)
+            local dir = target:targetdir()
+            os.cp(path.join(dir, "vultra-runtime.js"), out)
+            os.cp(path.join(dir, "vultra-runtime.wasm"), out)
+            os.cp(path.join(dir, "vultra-runtime.html"), path.join(out, "index.html"))
+            print("Packaged web export template -> " .. out)
+        end)
+    end
+    set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vultra-runtime")

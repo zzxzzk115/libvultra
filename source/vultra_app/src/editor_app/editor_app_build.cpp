@@ -16,6 +16,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -321,32 +322,21 @@ namespace vultra_app
         }
 
 
-        BuildRunResult runPcVulkanBuildAndLaunch(const std::filesystem::path&          projectRoot,
-                                                 const std::string&                    assetRoot,
-                                                 const std::string&                    projectName,
-                                                 const std::string&                    sceneUri,
-                                                 const std::filesystem::path&          outputFolder,
-                                                 const std::string&                    targetPlatform,
-                                                 const std::string&                    exportTemplatePath,
-                                                 const bool                            launchRuntime,
-                                                 std::shared_ptr<BuildRunTaskProgress> progress)
+        // Reimport the project's assets and pack them into vpkPath. Shared by every platform's
+        // export path (desktop copies a runtime exe next to it; web fetches it at page load).
+        BuildRunResult packProjectVpk(const std::filesystem::path&                 projectRoot,
+                                      const std::string&                           assetRoot,
+                                      const std::string&                           projectName,
+                                      const std::string&                           sceneUri,
+                                      const std::filesystem::path&                 vpkPath,
+                                      const std::shared_ptr<BuildRunTaskProgress>& progress)
         {
             namespace fs = std::filesystem;
 
             const fs::path assetRootPath = (projectRoot / assetRoot).lexically_normal();
-            const auto     packageName   = sanitizedPackageName(projectName, projectRoot);
-            const fs::path outputDir     = outputFolder.lexically_normal();
-            const fs::path packageExecutable =
-                outputDir / (targetNeedsExecutableExtension(targetPlatform) ? packageName + ".exe" : packageName);
-            const fs::path vpkPath = outputDir / (packageName + ".vpk");
-
             std::error_code ec;
             if (!fs::exists(assetRootPath, ec))
                 return {.ok = false, .message = "Export failed: missing asset root " + assetRootPath.generic_string()};
-            fs::create_directories(outputDir, ec);
-            if (ec)
-                return {.ok      = false,
-                        .message = "Export failed: cannot create output folder " + outputDir.generic_string()};
 
             setBuildRunProgress(progress, 0.15f, "Writing package manifest...");
             auto buildScenes = normalizedBuildScenes(sceneUri, {});
@@ -357,8 +347,8 @@ namespace vultra_app
             std::string manifestError;
             if (!saveVPackageManifest(assetRootPath,
                                       VPackageManifest {
-                                          .name       = projectName,
-                                          .entryScene = sceneUri,
+                                          .name        = projectName,
+                                          .entryScene  = sceneUri,
                                           .buildScenes = buildScenes,
                                       },
                                       &manifestError))
@@ -366,71 +356,88 @@ namespace vultra_app
                 return {.ok = false, .message = "Export failed: " + manifestError};
             }
 
-            auto packCurrentAssets = [&]() -> std::optional<BuildRunResult> {
-                setBuildRunProgress(progress, 0.25f, "Reimporting assets and packing VPK...");
+            setBuildRunProgress(progress, 0.25f, "Reimporting assets and packing VPK...");
 #ifdef VULTRA_HAS_VASSET_IMPORT
-                const int importResult = runAssetTool({"vultra asset", "import", assetRootPath.generic_string()});
-                if (importResult != 0)
-                    return BuildRunResult {
-                        .ok      = false,
-                        .message = "Export failed: asset import step returned " + std::to_string(importResult) + ".",
-                    };
+            const int importResult = runAssetTool({"vultra asset", "import", assetRootPath.generic_string()});
+            if (importResult != 0)
+                return {.ok      = false,
+                        .message = "Export failed: asset import step returned " + std::to_string(importResult) + "."};
 
-                std::vector<std::string> packArgs {
-                    "vultra asset", "pack", assetRootPath.generic_string(), vpkPath.generic_string(), "--zstd", "6",
-                };
-                std::vector<std::string> packRoots;
-                appendPackRoot(packArgs, packRoots, kVPackageManifestPath);
-                for (const auto& scene : buildScenes)
-                {
-                    if (scene.enabled)
-                        appendPackRoot(packArgs, packRoots, scene.uri);
-                }
-                for (const auto& renderGraph : collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vrg.json"))
-                    appendPackRoot(packArgs, packRoots, renderGraph);
-                // Graph assets are tiny and may be referenced indirectly (e.g. an animator graph
-                // assigned to a component, a material graph used as an override) — pack every one
-                // unconditionally so a stale/incomplete dependency edge can never drop them.
-                for (const auto& animatorGraph :
-                     collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vanimgraph.json"))
-                    appendPackRoot(packArgs, packRoots, animatorGraph);
-                for (const auto& materialGraph :
-                     collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vmatgraph.json"))
-                    appendPackRoot(packArgs, packRoots, materialGraph);
-                for (const auto& shaderLibrary :
-                     collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vshaderlib.lua"))
-                    appendPackRoot(packArgs, packRoots, shaderLibrary);
-                for (const auto& feature : collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vfeature.lua"))
-                    appendPackRoot(packArgs, packRoots, feature);
-                for (const auto& srp : collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vsrp.lua"))
-                    appendPackRoot(packArgs, packRoots, srp);
-                for (const auto& renderLua :
-                     collectProjectAssetUrisWithExtension(projectRoot, assetRoot, ".lua"))
-                {
-                    if (!renderLua.starts_with("res://render/"))
-                        continue;
-                    appendPackRoot(packArgs, packRoots, renderLua);
-                }
-
-                const int packResult = runAssetTool(packArgs);
-                if (packResult != 0)
-                    return BuildRunResult {
-                        .ok      = false,
-                        .message = "Export failed: asset package step returned " + std::to_string(packResult) + ".",
-                    };
-                return std::nullopt;
-#else
-                return BuildRunResult {
-                    .ok      = false,
-                    .message = "Export failed: vasset import support is not available in this build.",
-                };
-#endif
+            std::vector<std::string> packArgs {
+                "vultra asset", "pack", assetRootPath.generic_string(), vpkPath.generic_string(), "--zstd", "6",
             };
+            std::vector<std::string> packRoots;
+            appendPackRoot(packArgs, packRoots, kVPackageManifestPath);
+            for (const auto& scene : buildScenes)
+            {
+                if (scene.enabled)
+                    appendPackRoot(packArgs, packRoots, scene.uri);
+            }
+            for (const auto& renderGraph : collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vrg.json"))
+                appendPackRoot(packArgs, packRoots, renderGraph);
+            // Graph assets are tiny and may be referenced indirectly (e.g. an animator graph
+            // assigned to a component, a material graph used as an override) — pack every one
+            // unconditionally so a stale/incomplete dependency edge can never drop them.
+            for (const auto& animatorGraph :
+                 collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vanimgraph.json"))
+                appendPackRoot(packArgs, packRoots, animatorGraph);
+            for (const auto& materialGraph :
+                 collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vmatgraph.json"))
+                appendPackRoot(packArgs, packRoots, materialGraph);
+            for (const auto& shaderLibrary :
+                 collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vshaderlib.lua"))
+                appendPackRoot(packArgs, packRoots, shaderLibrary);
+            for (const auto& feature : collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vfeature.lua"))
+                appendPackRoot(packArgs, packRoots, feature);
+            for (const auto& srp : collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vsrp.lua"))
+                appendPackRoot(packArgs, packRoots, srp);
+            for (const auto& renderLua : collectProjectAssetUrisWithExtension(projectRoot, assetRoot, ".lua"))
+            {
+                if (!renderLua.starts_with("res://render/"))
+                    continue;
+                appendPackRoot(packArgs, packRoots, renderLua);
+            }
+
+            const int packResult = runAssetTool(packArgs);
+            if (packResult != 0)
+                return {.ok      = false,
+                        .message = "Export failed: asset package step returned " + std::to_string(packResult) + "."};
+            return {.ok = true, .message = "Packed VPK: " + vpkPath.generic_string()};
+#else
+            static_cast<void>(vpkPath);
+            return {.ok = false, .message = "Export failed: vasset import support is not available in this build."};
+#endif
+        }
+
+        BuildRunResult exportDesktop(const std::filesystem::path&          projectRoot,
+                                     const std::string&                    assetRoot,
+                                     const std::string&                    projectName,
+                                     const std::string&                    sceneUri,
+                                     const std::filesystem::path&          outputFolder,
+                                     const std::string&                    targetPlatform,
+                                     const std::string&                    exportTemplatePath,
+                                     const bool                            launchRuntime,
+                                     std::shared_ptr<BuildRunTaskProgress> progress)
+        {
+            namespace fs = std::filesystem;
+
+            const auto     packageName = sanitizedPackageName(projectName, projectRoot);
+            const fs::path outputDir   = outputFolder.lexically_normal();
+            const fs::path packageExecutable =
+                outputDir / (targetNeedsExecutableExtension(targetPlatform) ? packageName + ".exe" : packageName);
+            const fs::path vpkPath = outputDir / (packageName + ".vpk");
+
+            std::error_code ec;
+            fs::create_directories(outputDir, ec);
+            if (ec)
+                return {.ok      = false,
+                        .message = "Export failed: cannot create output folder " + outputDir.generic_string()};
 
             if (auto publishedRuntime = findPublishedRuntimeNextToEditor(); publishedRuntime.has_value())
             {
-                if (auto packError = packCurrentAssets(); packError.has_value())
-                    return *packError;
+                if (auto pack = packProjectVpk(projectRoot, assetRoot, projectName, sceneUri, vpkPath, progress);
+                    !pack.ok)
+                    return pack;
 
                 setBuildRunProgress(progress, 0.55f, "Copying runtime executable...");
 
@@ -454,8 +461,8 @@ namespace vultra_app
                                                    "Export complete: " + packageExecutable.generic_string()};
             }
 
-            if (auto packError = packCurrentAssets(); packError.has_value())
-                return *packError;
+            if (auto pack = packProjectVpk(projectRoot, assetRoot, projectName, sceneUri, vpkPath, progress); !pack.ok)
+                return pack;
 
             if (launchRuntime && targetPlatform != currentHostPlatform())
             {
@@ -501,6 +508,248 @@ namespace vultra_app
                     .message = launchRuntime ?
                                    "Export complete. Running package: " + packageExecutable.generic_string() :
                                    "Export complete: " + packageExecutable.generic_string()};
+        }
+
+        // --- Web (WASM / WebGPU) export -------------------------------------------------------
+
+        std::filesystem::path defaultWebTemplate()
+        {
+            const auto repoRoot = findRepoRoot();
+            if (repoRoot.empty())
+                return {};
+            // The engine-only web template is a build artifact produced by building the wasm
+            // vultra-runtime target (its after_build copies the bundle here). See source/xmake.lua.
+            return (repoRoot / "build" / "web-template").lexically_normal();
+        }
+
+        bool extractOrCopyWebTemplate(const std::filesystem::path& templateSource,
+                                      const std::filesystem::path& outputDir,
+                                      std::string&                 errorMessage)
+        {
+            namespace fs = std::filesystem;
+            std::error_code ec;
+
+            if (templateSource.empty() || !fs::exists(templateSource, ec))
+            {
+                errorMessage = "web export template not found: " + templateSource.generic_string();
+                return false;
+            }
+
+            // A .zip template is extracted in place; a directory template is copied file-by-file.
+            if (fs::is_regular_file(templateSource, ec) && templateSource.extension().generic_string() == ".zip")
+            {
+                std::ostringstream cmd;
+#if defined(_WIN32)
+                // bsdtar (tar.exe) ships on Windows 10+ and extracts .zip transparently.
+                cmd << "tar -xf " << quoteCommandArg(templateSource) << " -C " << quoteCommandArg(outputDir);
+#else
+                cmd << "unzip -o " << quoteCommandArg(templateSource) << " -d " << quoteCommandArg(outputDir);
+#endif
+                if (runCommand(cmd.str()) != 0)
+                {
+                    errorMessage = "failed to extract web template archive " + templateSource.generic_string();
+                    return false;
+                }
+                return true;
+            }
+
+            if (!fs::is_directory(templateSource, ec))
+            {
+                errorMessage =
+                    "web export template is neither a directory nor a .zip: " + templateSource.generic_string();
+                return false;
+            }
+
+            for (const auto& entry : fs::recursive_directory_iterator(templateSource, ec))
+            {
+                if (ec)
+                    break;
+                const auto relative = fs::relative(entry.path(), templateSource, ec);
+                if (ec)
+                    continue;
+                const auto destination = outputDir / relative;
+                if (entry.is_directory())
+                {
+                    fs::create_directories(destination, ec);
+                }
+                else if (entry.is_regular_file())
+                {
+                    fs::create_directories(destination.parent_path(), ec);
+                    fs::copy_file(entry.path(), destination, fs::copy_options::overwrite_existing, ec);
+                    if (ec)
+                    {
+                        errorMessage =
+                            "failed to copy template file " + entry.path().generic_string() + ": " + ec.message();
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        std::string urlEncodeQueryValue(const std::string& value)
+        {
+            static const char* hex = "0123456789ABCDEF";
+            std::string        out;
+            out.reserve(value.size());
+            for (const unsigned char ch : value)
+            {
+                const bool unreserved = std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.' || ch == '~' ||
+                                        ch == ':' || ch == '/';
+                if (unreserved)
+                    out.push_back(static_cast<char>(ch));
+                else
+                {
+                    out.push_back('%');
+                    out.push_back(hex[(ch >> 4) & 0xF]);
+                    out.push_back(hex[ch & 0xF]);
+                }
+            }
+            return out;
+        }
+
+        std::optional<std::string> findStaticServerCommand()
+        {
+            // Prefer a Python http.server; it needs no extra dependencies on most dev machines.
+            for (const char* candidate : {"py", "python", "python3"})
+            {
+#if defined(_WIN32)
+                const std::string probe = std::string {"where "} + candidate + " >nul 2>nul";
+#else
+                const std::string probe = std::string {"command -v "} + candidate + " >/dev/null 2>&1";
+#endif
+                if (runCommand(probe) == 0)
+                    return std::string {candidate};
+            }
+            return std::nullopt;
+        }
+
+        bool launchWebRuntime(const std::filesystem::path& outputDir,
+                              const std::string&           sceneUri,
+                              const int                    port,
+                              std::string&                 message)
+        {
+            const auto python = findStaticServerCommand();
+            if (!python.has_value())
+            {
+                message = "Serve the output folder over http(s) and open index.html (fetch is blocked on file://). "
+                          "No Python found to auto-launch a server.";
+                return false;
+            }
+
+            std::string url = "http://127.0.0.1:" + std::to_string(port) + "/index.html";
+            if (!sceneUri.empty())
+                url += "?scene=" + urlEncodeQueryValue(sceneUri);
+
+#if defined(_WIN32)
+            std::ostringstream serve;
+            serve << "start \"vultra-web\" /D " << quoteCommandArg(outputDir) << " " << *python
+                  << " -m http.server " << port << " --bind 127.0.0.1";
+            runCommand(serve.str());
+
+            std::ostringstream open;
+            open << "start \"\" " << quoteCommandArg(url);
+            runCommand(open.str());
+#else
+            std::ostringstream serve;
+            serve << "cd " << quoteCommandArg(outputDir) << " && " << *python << " -m http.server " << port
+                  << " --bind 127.0.0.1 >/dev/null 2>&1 &";
+            runCommand(serve.str());
+
+            std::ostringstream open;
+#if defined(__APPLE__)
+            open << "open " << quoteCommandArg(url);
+#else
+            open << "xdg-open " << quoteCommandArg(url) << " >/dev/null 2>&1 &";
+#endif
+            runCommand(open.str());
+#endif
+            message = "Serving at " + url;
+            return true;
+        }
+
+        BuildRunResult exportWeb(const std::filesystem::path&          projectRoot,
+                                 const std::string&                    assetRoot,
+                                 const std::string&                    projectName,
+                                 const std::string&                    sceneUri,
+                                 const std::filesystem::path&          outputFolder,
+                                 const std::string&                    exportTemplatePath,
+                                 const bool                            launchRuntime,
+                                 std::shared_ptr<BuildRunTaskProgress> progress)
+        {
+            namespace fs = std::filesystem;
+
+            const fs::path outputDir = outputFolder.lexically_normal();
+            std::error_code ec;
+            fs::create_directories(outputDir, ec);
+            if (ec)
+                return {.ok      = false,
+                        .message = "Export failed: cannot create output folder " + outputDir.generic_string()};
+
+            // The web shell defaults to fetching "game.vpk"; keep the name fixed for the template.
+            const fs::path vpkPath = outputDir / "game.vpk";
+            if (auto pack = packProjectVpk(projectRoot, assetRoot, projectName, sceneUri, vpkPath, progress); !pack.ok)
+                return pack;
+
+            setBuildRunProgress(progress, 0.80f, "Copying web export template...");
+            const fs::path templateSource =
+                exportTemplatePath.empty() ? defaultWebTemplate() : fs::path {exportTemplatePath}.lexically_normal();
+
+            std::string templateError;
+            if (!extractOrCopyWebTemplate(templateSource, outputDir, templateError))
+                return {.ok = false, .message = "Export failed: " + templateError};
+
+            const fs::path indexHtml = outputDir / "index.html";
+            if (!fs::exists(indexHtml, ec))
+                return {.ok      = false,
+                        .message = "Export failed: web template did not provide index.html (template: " +
+                                   templateSource.generic_string() + ")."};
+
+            if (!launchRuntime)
+            {
+                setBuildRunProgress(progress, 1.0f, "Export complete.");
+                return {.ok      = true,
+                        .message = "Export complete: " + outputDir.generic_string() + " (serve over http to run)."};
+            }
+
+            setBuildRunProgress(progress, 0.94f, "Starting local web server...");
+            std::string serverMessage;
+            const int   port = 8753;
+            const bool  served = launchWebRuntime(outputDir, sceneUri, port, serverMessage);
+
+            setBuildRunProgress(progress, 1.0f, served ? "Runtime launched in browser." : "Export complete.");
+            return {.ok      = true,
+                    .message = served ? "Export complete. " + serverMessage :
+                                        "Export complete: " + outputDir.generic_string() + ". " + serverMessage};
+        }
+
+        BuildRunResult runBuildAndLaunch(const std::filesystem::path&          projectRoot,
+                                         const std::string&                    assetRoot,
+                                         const std::string&                    projectName,
+                                         const std::string&                    sceneUri,
+                                         const std::filesystem::path&          outputFolder,
+                                         const std::string&                    targetPlatform,
+                                         const std::string&                    exportTemplatePath,
+                                         const bool                            launchRuntime,
+                                         std::shared_ptr<BuildRunTaskProgress> progress)
+        {
+            if (targetPlatform == "WebGPU" || targetPlatform == "Web" || targetPlatform == "wasm")
+                return exportWeb(
+                    projectRoot, assetRoot, projectName, sceneUri, outputFolder, exportTemplatePath, launchRuntime, progress);
+
+            if (targetPlatform == "Android")
+                return {.ok      = false,
+                        .message = "Android export is not implemented yet (planned)."};
+
+            return exportDesktop(projectRoot,
+                                 assetRoot,
+                                 projectName,
+                                 sceneUri,
+                                 outputFolder,
+                                 targetPlatform,
+                                 exportTemplatePath,
+                                 launchRuntime,
+                                 progress);
         }
     } // namespace
 
@@ -710,15 +959,15 @@ namespace vultra_app
                                        exportTemplatePath,
                                        launchRuntime,
                                        progress]() {
-                                          return runPcVulkanBuildAndLaunch(projectRoot,
-                                                                           assetRoot,
-                                                                           projectName,
-                                                                           sceneUri,
-                                                                           outputDir,
-                                                                           targetPlatform,
-                                                                           exportTemplatePath,
-                                                                           launchRuntime,
-                                                                           progress);
+                                          return runBuildAndLaunch(projectRoot,
+                                                                   assetRoot,
+                                                                   projectName,
+                                                                   sceneUri,
+                                                                   outputDir,
+                                                                   targetPlatform,
+                                                                   exportTemplatePath,
+                                                                   launchRuntime,
+                                                                   progress);
                                       });
     }
 
