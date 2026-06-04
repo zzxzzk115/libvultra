@@ -70,6 +70,7 @@ namespace vultra::material_graph
         std::string typeId;
         std::string id;
         std::string displayName;
+        std::string note; // optional, user-authored annotation shown under the type name
         nlohmann::json params {nlohmann::json::object()};
         std::vector<Pin> inputs;
         std::vector<Pin> outputs;

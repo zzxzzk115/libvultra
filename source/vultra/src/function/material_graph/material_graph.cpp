@@ -314,6 +314,7 @@ namespace vultra::material_graph
             node.typeId      = item.value("typeId", item.value("type", std::string {}));
             node.id          = item.value("id", std::string {});
             node.displayName = item.value("displayName", std::string {});
+            node.note        = item.value("note", std::string {});
             node.params      = item.value("params", nlohmann::json::object());
             node.inputs      = pinsFromJson(item.value("inputs", nlohmann::json::array()));
             node.outputs     = pinsFromJson(item.value("outputs", nlohmann::json::array()));
@@ -367,7 +368,7 @@ namespace vultra::material_graph
         json["nodes"] = nlohmann::json::array();
         for (const auto& node : graph.nodes)
         {
-            json["nodes"].push_back(nlohmann::json {
+            nlohmann::json nodeJson {
                 {"typeId", node.typeId},
                 {"id", node.id},
                 {"displayName", node.displayName},
@@ -375,7 +376,10 @@ namespace vultra::material_graph
                 {"inputs", pinsToJson(node.inputs)},
                 {"outputs", pinsToJson(node.outputs)},
                 {"editor", node.editor},
-            });
+            };
+            if (!node.note.empty())
+                nodeJson["note"] = node.note;
+            json["nodes"].push_back(std::move(nodeJson));
         }
 
         json["links"] = nlohmann::json::array();

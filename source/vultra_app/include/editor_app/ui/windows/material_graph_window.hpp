@@ -93,6 +93,9 @@ namespace vultra_app
         bool                                    m_Dirty {false};
         bool                                    m_LiveApply {true};
         int                                     m_ContextNode {0};
+        std::string                             m_NoteEditNode;          // node id being annotated
+        std::array<char, 256>                   m_NoteEditBuffer {};     // edit buffer for the note popup
+        bool                                    m_OpenNoteEditor {false};
         uint64_t                                m_NodeRegistryAssetGeneration {std::numeric_limits<uint64_t>::max()};
         uint64_t                                m_LoadedAssetGeneration {0};
         uint64_t                                m_LoadedWriteStamp {0};
@@ -120,7 +123,7 @@ namespace vultra_app
         float                         m_PreviewFocusElapsed {0.0f};
         float                         m_PreviewFocusDuration {0.28f};
         float                         m_PreviewTimeSeconds {0.0f};
-        bool                          m_PreviewTimePlaying {false};
+        bool                          m_PreviewTimePlaying {true}; // auto-play so time-driven graphs animate
         bool                          m_PreviewFocusActive {false};
         bool                          m_PreviewArcballActive {false};
     };

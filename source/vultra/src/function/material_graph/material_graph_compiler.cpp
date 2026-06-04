@@ -286,6 +286,122 @@ namespace vultra::material_graph
                     return sample;
                 }
 
+                // --- Extended unary math (float -> float) ---
+                if (type == "vultra.math.abs")
+                    return "abs(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.floor")
+                    return "floor(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.ceil")
+                    return "ceil(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.round")
+                    return "floor(" + inputExpr(node, "v") + " + 0.5)";
+                if (type == "vultra.math.truncate")
+                    return "trunc(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.sign")
+                    return "sign(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.sqrt")
+                    return "sqrt(max(" + inputExpr(node, "v") + ", 0.0))";
+                if (type == "vultra.math.exp")
+                    return "exp(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.exp2")
+                    return "exp2(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.log")
+                    return "log(max(" + inputExpr(node, "v") + ", 1e-6))";
+                if (type == "vultra.math.log2")
+                    return "log2(max(" + inputExpr(node, "v") + ", 1e-6))";
+                if (type == "vultra.math.cosine")
+                    return "cos(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.tangent")
+                    return "tan(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.arcsine")
+                    return "asin(clamp(" + inputExpr(node, "v") + ", -1.0, 1.0))";
+                if (type == "vultra.math.arccosine")
+                    return "acos(clamp(" + inputExpr(node, "v") + ", -1.0, 1.0))";
+                if (type == "vultra.math.arctangent")
+                    return "atan(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.radians")
+                    return "radians(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.degrees")
+                    return "degrees(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.negate")
+                    return "(-(" + inputExpr(node, "v") + "))";
+                if (type == "vultra.math.reciprocal")
+                    return "(1.0 / max(" + inputExpr(node, "v") + ", 1e-6))";
+                if (type == "vultra.math.square")
+                    return "(" + inputExpr(node, "v") + " * " + inputExpr(node, "v") + ")";
+
+                // --- Extended binary / interp math ---
+                if (type == "vultra.math.modulo")
+                    return "mod(" + inputExpr(node, "a") + ", max(" + inputExpr(node, "b") + ", 1e-6))";
+                if (type == "vultra.math.step")
+                    return "step(" + inputExpr(node, "edge") + ", " + inputExpr(node, "x") + ")";
+                if (type == "vultra.math.atan2")
+                    return "atan(" + inputExpr(node, "y") + ", " + inputExpr(node, "x") + ")";
+                if (type == "vultra.math.lerp")
+                    return "mix(" + inputExpr(node, "a") + ", " + inputExpr(node, "b") + ", " + inputExpr(node, "t") + ")";
+                if (type == "vultra.math.inverse_lerp")
+                    return "((" + inputExpr(node, "v") + " - " + inputExpr(node, "a") + ") / max(" + inputExpr(node, "b") +
+                           " - " + inputExpr(node, "a") + ", 1e-6))";
+                if (type == "vultra.math.remap")
+                    return "(" + inputExpr(node, "outMin") + " + (" + inputExpr(node, "v") + " - " +
+                           inputExpr(node, "inMin") + ") * (" + inputExpr(node, "outMax") + " - " +
+                           inputExpr(node, "outMin") + ") / max(" + inputExpr(node, "inMax") + " - " +
+                           inputExpr(node, "inMin") + ", 1e-6))";
+
+                // --- Vector ops ---
+                if (type == "vultra.vector.cross")
+                    return "cross(" + inputExpr(node, "a") + ", " + inputExpr(node, "b") + ")";
+                if (type == "vultra.vector.length")
+                    return "length(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.vector.distance")
+                    return "distance(" + inputExpr(node, "a") + ", " + inputExpr(node, "b") + ")";
+                if (type == "vultra.vector.reflect")
+                    return "reflect(" + inputExpr(node, "i") + ", normalize(" + inputExpr(node, "n") + "))";
+                if (type == "vultra.vector.scale")
+                    return "(" + inputExpr(node, "v") + " * " + inputExpr(node, "scale") + ")";
+                if (type == "vultra.vector.combine_vec2")
+                    return "vec2(" + inputExpr(node, "x") + ", " + inputExpr(node, "y") + ")";
+                if (type == "vultra.vector.combine_vec3")
+                    return "vec3(" + inputExpr(node, "x") + ", " + inputExpr(node, "y") + ", " + inputExpr(node, "z") + ")";
+                if (type == "vultra.vector.combine_vec4")
+                    return "vec4(" + inputExpr(node, "x") + ", " + inputExpr(node, "y") + ", " + inputExpr(node, "z") +
+                           ", " + inputExpr(node, "w") + ")";
+                if (type == "vultra.vector.split_vec3")
+                    return inputExpr(node, "v") + "." + (pinName == "y" ? "y" : pinName == "z" ? "z" : "x");
+                if (type == "vultra.vector.split_vec4")
+                    return inputExpr(node, "v") + "." +
+                           (pinName == "y" ? "y" : pinName == "z" ? "z" : pinName == "w" ? "w" : "x");
+
+                // --- UV manipulation ---
+                if (type == "vultra.uv.tiling_offset")
+                    return "(" + inputExpr(node, "uv") + " * " + inputExpr(node, "tiling") + " + " +
+                           inputExpr(node, "offset") + ")";
+                if (type == "vultra.uv.panner")
+                    return "(" + inputExpr(node, "uv") + " + " + inputExpr(node, "speed") + " * " +
+                           inputExpr(node, "time") + ")";
+                if (type == "vultra.uv.rotator")
+                {
+                    const auto uv = inputExpr(node, "uv");
+                    const auto a = inputExpr(node, "angle");
+                    return "(vec2(((" + uv + ") - 0.5).x * cos(" + a + ") - ((" + uv + ") - 0.5).y * sin(" + a +
+                           "), ((" + uv + ") - 0.5).x * sin(" + a + ") + ((" + uv + ") - 0.5).y * cos(" + a +
+                           ")) + 0.5)";
+                }
+
+                // --- Color / procedural ---
+                if (type == "vultra.color.desaturate")
+                    return "mix(" + inputExpr(node, "color") + ", vec3(dot(" + inputExpr(node, "color") +
+                           ", vec3(0.299, 0.587, 0.114))), " + inputExpr(node, "amount") + ")";
+                if (type == "vultra.color.contrast")
+                    return "((" + inputExpr(node, "color") + " - 0.5) * " + inputExpr(node, "contrast") + " + 0.5)";
+                if (type == "vultra.color.posterize")
+                    return "(floor(" + inputExpr(node, "color") + " * " + inputExpr(node, "steps") + ") / max(" +
+                           inputExpr(node, "steps") + ", 1.0))";
+                if (type == "vultra.procedural.checkerboard")
+                    return "mod(floor(" + inputExpr(node, "uv") + ".x) + floor(" + inputExpr(node, "uv") + ".y), 2.0)";
+                if (type == "vultra.procedural.white_noise")
+                    return "fract(sin(dot(" + inputExpr(node, "uv") + ", vec2(12.9898, 78.233))) * 43758.5453)";
+
                 if (type == "vultra.utility.normal_map")
                     return "normalize(" + inputExpr(node, "normalWS") + " + (" + inputExpr(node, "sample") +
                            " * 2.0 - 1.0))";

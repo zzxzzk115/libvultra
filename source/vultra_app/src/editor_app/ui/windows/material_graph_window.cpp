@@ -1121,7 +1121,23 @@ namespace vultra_app
             const int id = nodeId(node.id);
             ImNodes::BeginNode(id);
             ImNodes::BeginNodeTitleBar();
-            ImGui::TextUnformatted(node.displayName.empty() ? node.id.c_str() : node.displayName.c_str());
+            {
+                // Line 1: the node TYPE name (so a Multiply still reads as "Multiply").
+                const auto* titleDesc = m_Registry.find(node.typeId);
+                const std::string typeName = titleDesc && !titleDesc->displayName.empty() ?
+                                                 titleDesc->displayName :
+                                                 (!node.displayName.empty() ? node.displayName : node.typeId);
+                ImGui::TextUnformatted(typeName.c_str());
+                // Line 2: the user note (falls back to a legacy displayName label if distinct).
+                const std::string noteText =
+                    !node.note.empty() ? node.note : (node.displayName != typeName ? node.displayName : std::string {});
+                if (!noteText.empty())
+                {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                    ImGui::TextUnformatted(noteText.c_str());
+                    ImGui::PopStyleColor();
+                }
+            }
             ImNodes::EndNodeTitleBar();
 
             for (const auto& pin : node.inputs)
@@ -1252,14 +1268,45 @@ namespace vultra_app
                 ImGui::OpenPopup("MaterialGraphAddNode");
             }
         }
+        const auto contextNodeId = [&]() -> std::string {
+            for (const auto& n : m_Graph.nodes)
+                if (nodeId(n.id) == m_ContextNode)
+                    return n.id;
+            return {};
+        };
+        const auto findNode = [&](const std::string& id) -> vultra::material_graph::Node* {
+            for (auto& n : m_Graph.nodes)
+                if (n.id == id)
+                    return &n;
+            return nullptr;
+        };
+
         if (ImGui::BeginPopup("MaterialGraphNodeMenu"))
         {
-            if (ImGui::MenuItem("Delete"))
+            const std::string node = contextNodeId();
+            if (ImGui::MenuItem(ICON_MDI_NOTE_EDIT " Edit Note..."))
             {
-                std::string node;
-                for (const auto& item : m_Pins)
-                    if (nodeId(item.second.node) == m_ContextNode)
-                        node = item.second.node;
+                m_NoteEditNode = node;
+                m_NoteEditBuffer.fill('\0');
+                if (auto* n = findNode(node))
+                {
+                    const auto& current = !n->note.empty() ? n->note : n->displayName;
+                    std::snprintf(m_NoteEditBuffer.data(), m_NoteEditBuffer.size(), "%s", current.c_str());
+                }
+                m_OpenNoteEditor = true;
+            }
+            if (auto* n = findNode(node); n && (!n->note.empty() || !n->displayName.empty()))
+            {
+                if (ImGui::MenuItem(ICON_MDI_NOTE_OFF " Clear Note"))
+                {
+                    n->note.clear();
+                    n->displayName.clear();
+                    markDirty(ctx);
+                }
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem(ICON_MDI_DELETE " Delete"))
+            {
                 if (!node.empty() && node != "Surface")
                 {
                     std::erase_if(m_Graph.links,
@@ -1270,6 +1317,40 @@ namespace vultra_app
             }
             ImGui::EndPopup();
         }
+
+        if (m_OpenNoteEditor)
+        {
+            ImGui::OpenPopup("MaterialGraphEditNote");
+            m_OpenNoteEditor = false;
+        }
+        if (ImGui::BeginPopup("MaterialGraphEditNote"))
+        {
+            ImGui::TextUnformatted("Note");
+            ImGui::SetNextItemWidth(240.0f);
+            const bool entered = ImGui::InputText("##note",
+                                                  m_NoteEditBuffer.data(),
+                                                  m_NoteEditBuffer.size(),
+                                                  ImGuiInputTextFlags_EnterReturnsTrue);
+            const bool apply = ImGui::Button("OK") || entered;
+            ImGui::SameLine();
+            const bool cancel = ImGui::Button("Cancel");
+            if (apply)
+            {
+                if (auto* n = findNode(m_NoteEditNode))
+                {
+                    n->note = m_NoteEditBuffer.data();
+                    n->displayName.clear(); // migrate legacy label into the note
+                    markDirty(ctx);
+                }
+                ImGui::CloseCurrentPopup();
+            }
+            else if (cancel)
+            {
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+
         drawAddNodePopup(ctx);
     }
 
@@ -1567,10 +1648,7 @@ namespace vultra_app
             m_PreviewTimePlaying = !m_PreviewTimePlaying;
         ImGui::SameLine();
         if (ImGui::SmallButton(ICON_MDI_RESTART))
-        {
-            m_PreviewTimeSeconds = 0.0f;
-            m_PreviewTimePlaying = false;
-        }
+            m_PreviewTimeSeconds = 0.0f; // replay from the start, keep playing
         ImGui::SameLine();
         ImGui::SetNextItemWidth(std::max(120.0f, size - 82.0f));
         if (ImGui::SliderFloat("##MaterialGraphPreviewTime", &m_PreviewTimeSeconds, 0.0f, 60.0f, "%.2f s"))
