@@ -152,6 +152,16 @@ namespace vultra::rhi::webgpu
                 return WGPUTextureFormat_RGBA8Unorm;
             case PixelFormat::eRGBA8_sRGB:
                 return WGPUTextureFormat_RGBA8UnormSrgb;
+            case PixelFormat::eRG16F:
+                return WGPUTextureFormat_RG16Float;
+            case PixelFormat::eRGBA16F:
+                return WGPUTextureFormat_RGBA16Float;
+            case PixelFormat::eR32F:
+                return WGPUTextureFormat_R32Float;
+            case PixelFormat::eRG32F:
+                return WGPUTextureFormat_RG32Float;
+            case PixelFormat::eRGBA32F:
+                return WGPUTextureFormat_RGBA32Float;
             case PixelFormat::eDepth32F:
                 return WGPUTextureFormat_Depth32Float;
             case PixelFormat::eDepth24_Stencil8:

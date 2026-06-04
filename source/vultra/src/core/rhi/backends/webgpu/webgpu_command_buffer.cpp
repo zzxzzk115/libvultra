@@ -693,11 +693,12 @@ namespace vultra
             WGPURenderPassColorAttachment colorDesc {};
             colorDesc.view       = m_RenderView;
             colorDesc.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            // WebGPU has no DontCare load op: a used color attachment must be Clear or Load
+            // (WGPULoadOp_Undefined is rejected by wgpu-native). Treat DontCare as Load.
             colorDesc.loadOp =
                 colorAttachment.clearValue.has_value() || colorAttachment.loadOp == AttachmentLoadOp::eClear ?
                     WGPULoadOp_Clear :
-                colorAttachment.loadOp == AttachmentLoadOp::eDontCare ? WGPULoadOp_Undefined :
-                                                                        WGPULoadOp_Load;
+                    WGPULoadOp_Load;
             colorDesc.storeOp    = WGPUStoreOp_Store;
             colorDesc.clearValue = clearColor;
 
@@ -732,8 +733,7 @@ namespace vultra
                         framebufferInfo.depthAttachment->clearValue.has_value() ||
                                 framebufferInfo.depthAttachment->loadOp == AttachmentLoadOp::eClear ?
                             WGPULoadOp_Clear :
-                        framebufferInfo.depthAttachment->loadOp == AttachmentLoadOp::eDontCare ? WGPULoadOp_Undefined :
-                                                                                                 WGPULoadOp_Load;
+                            WGPULoadOp_Load;
                     depthDesc.depthStoreOp    = framebufferInfo.depthReadOnly ? WGPUStoreOp_Discard : WGPUStoreOp_Store;
                     depthDesc.depthClearValue = toWgpuDepthClear(framebufferInfo.depthAttachment->clearValue);
                     depthDesc.depthReadOnly   = framebufferInfo.depthReadOnly;
@@ -750,8 +750,6 @@ namespace vultra
                             framebufferInfo.stencilAttachment->clearValue.has_value() ||
                                     framebufferInfo.stencilAttachment->loadOp == AttachmentLoadOp::eClear ?
                                 WGPULoadOp_Clear :
-                            framebufferInfo.stencilAttachment->loadOp == AttachmentLoadOp::eDontCare ?
-                                WGPULoadOp_Undefined :
                                 WGPULoadOp_Load;
                         depthDesc.stencilStoreOp    = WGPUStoreOp_Store;
                         depthDesc.stencilClearValue = toWgpuStencilClear(framebufferInfo.stencilAttachment->clearValue);

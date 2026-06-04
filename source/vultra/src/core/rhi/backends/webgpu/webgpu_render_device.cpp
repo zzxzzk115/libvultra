@@ -303,6 +303,15 @@ namespace vultra
                 requiredFeatures.push_back(WGPUFeatureName_TextureCompressionBC);
             }
 
+            // Allow linear filtering of 32-bit float textures (e.g. the RGBA32F HDR environment map
+            // used for skyboxes). Without this feature WebGPU forbids sampling such textures with a
+            // filtering sampler. It is widely available on Dawn; request it only when supported so
+            // device creation still succeeds on adapters that lack it.
+            if (wgpuAdapterHasFeature(m_Adapter, WGPUFeatureName_Float32Filterable))
+            {
+                requiredFeatures.push_back(WGPUFeatureName_Float32Filterable);
+            }
+
             // Builtin WebGPU GPU timing is disabled on this backend/runtime path. Even when the
             // adapter reports TimestampQuery support, creating query resources has proven unstable
             // and can invalidate the device before swapchain setup completes.
@@ -449,15 +458,27 @@ namespace vultra
 
         uint64_t WebGPURenderDevice::getFormatFeatureFlagsOptimal(const PixelFormat pixelFormat) const
         {
-            constexpr uint64_t kSampledImage    = 0x00000001ull;
-            constexpr uint64_t kStorageImage    = 0x00000002ull;
-            constexpr uint64_t kColorAttachment = 0x00000080ull;
-            constexpr uint64_t kSampledLinear   = 0x00001000ull;
-            constexpr uint64_t kTransferSrc     = 0x00004000ull;
-            constexpr uint64_t kTransferDst     = 0x00008000ull;
+            constexpr uint64_t kSampledImage           = 0x00000001ull;
+            constexpr uint64_t kStorageImage           = 0x00000002ull;
+            constexpr uint64_t kColorAttachment        = 0x00000080ull;
+            constexpr uint64_t kDepthStencilAttachment = 0x00000200ull;
+            constexpr uint64_t kSampledLinear          = 0x00001000ull;
+            constexpr uint64_t kTransferSrc            = 0x00004000ull;
+            constexpr uint64_t kTransferDst            = 0x00008000ull;
 
             switch (pixelFormat)
             {
+                case PixelFormat::eDepth16:
+                case PixelFormat::eDepth32F:
+                case PixelFormat::eStencil8:
+                case PixelFormat::eDepth16_Stencil8:
+                case PixelFormat::eDepth24_Stencil8:
+                case PixelFormat::eDepth32F_Stencil8:
+                    // Depth/stencil formats must advertise the depth-stencil-attachment capability,
+                    // otherwise the texture builder rejects them and the depth target ends up with a
+                    // None format -- which mismatches the pipeline's depth attachment and aborts the
+                    // render pass. Depth textures are also sampled (shadows, SSAO) and blitted.
+                    return kTransferSrc | kTransferDst | kSampledImage | kDepthStencilAttachment;
                 case PixelFormat::eBC1_UNorm:
                 case PixelFormat::eBC2_UNorm:
                 case PixelFormat::eBC3_UNorm:
