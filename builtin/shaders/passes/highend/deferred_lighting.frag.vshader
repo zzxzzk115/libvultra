@@ -72,7 +72,7 @@ layout(set = 2, binding = 0) uniform ShadowData
 
 layout(set = 3, binding = 0) uniform VULTRA_GBUFFER_TEXTURE u_GBufferColor;
 layout(set = 3, binding = 1) uniform VULTRA_GBUFFER_TEXTURE u_GBufferNormal;
-layout(set = 3, binding = 2) uniform VULTRA_GBUFFER_TEXTURE u_GBufferMetallicRoughnessAO;
+layout(set = 3, binding = 2) uniform VULTRA_GBUFFER_TEXTURE u_GBufferMaterial;
 layout(set = 3, binding = 3) uniform VULTRA_GBUFFER_TEXTURE u_Depth;
 layout(set = 3, binding = 4) uniform sampler2D u_ShadowMap;
 layout(set = 3, binding = 5) uniform sampler2D u_LTCMat;
@@ -354,7 +354,7 @@ void main()
     }
 
     vec3 normalWS = decodeGBufferNormal(VULTRA_GBUFFER_SAMPLE(u_GBufferNormal, v_TexCoord).xy);
-    vec4 mraSample = VULTRA_GBUFFER_SAMPLE(u_GBufferMetallicRoughnessAO, v_TexCoord);
+    vec4 mraSample = VULTRA_GBUFFER_SAMPLE(u_GBufferMaterial, v_TexCoord);
     vec3 mra = mraSample.xyz;
     uint materialModel = decodeMaterialModel(mraSample.w);
     vec3 positionWS = worldPositionFromDepth(depth, v_TexCoord);

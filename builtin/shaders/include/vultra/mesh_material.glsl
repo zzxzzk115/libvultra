@@ -78,7 +78,7 @@ layout(location = 3) in vec4 v_TangentWS;
 
 layout(location = 0) out vec4 GBufferColor;
 layout(location = 1) out vec4 GBufferNormal;
-layout(location = 2) out vec4 GBufferMetallicRoughnessAO;
+layout(location = 2) out vec4 GBufferMaterial;
 #if WRITE_ENTITY_ID
 layout(location = 3) out vec4 GBufferEntityId;
 #endif
@@ -181,7 +181,7 @@ void vultra_write_direct_gbuffer(VultraMaterialEval eval)
 
     GBufferColor = vec4(sRGBToLinear(eval.baseColor.rgb + eval.emissive), alpha);
     GBufferNormal = vec4(vultra_encode_gbuffer_normal(eval.normalWS), 0.0, 1.0);
-    GBufferMetallicRoughnessAO = vec4(mra, vultra_encode_material_model(1.0));
+    GBufferMaterial = vec4(mra, vultra_encode_material_model(1.0));
 
 #if WRITE_ENTITY_ID
     uint id = u_VultraDraw.entityInfo.x;

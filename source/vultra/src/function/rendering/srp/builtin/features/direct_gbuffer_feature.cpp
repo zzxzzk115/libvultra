@@ -67,7 +67,7 @@ namespace vultra
         const auto prepassDepth = ctx.data.tryGet(kResKey_DepthTexture);
         auto color = m_GBufferPass->addPass(ctx, prepassDepth);
         if (!color || !ctx.data.contains(kResKey_DepthTexture) || !ctx.data.contains(kResKey_GBufferNormal) ||
-            !ctx.data.contains(kResKey_GBufferMetallicRoughnessAO))
+            !ctx.data.contains(kResKey_GBufferMaterial))
             return;
 
         const auto& settings = m_RenderService.builtinRenderSettings();
@@ -130,7 +130,7 @@ namespace vultra
         auto lit = m_LightingPass->addPass(ctx,
                                            color,
                                            ctx.data.get(kResKey_GBufferNormal),
-                                           ctx.data.get(kResKey_GBufferMetallicRoughnessAO),
+                                           ctx.data.get(kResKey_GBufferMaterial),
                                            ctx.data.get(kResKey_DepthTexture),
                                            ssao,
                                            shadow.shadowMap,

@@ -160,7 +160,7 @@ namespace vultra
                                           });
 
                 pd.material = builder.create<framegraph::FrameGraphTexture>(
-                    "ThinGBufferMetallicRoughnessAO",
+                    "ThinGBufferMaterial",
                     materialDesc);
                 pd.material = builder.write(pd.material,
                                             framegraph::Attachment {
@@ -234,7 +234,7 @@ namespace vultra
 
         ctx.data.set(kResKey_ThinGBufferColor, data.color);
         ctx.data.set(kResKey_GBufferNormal, data.normal);
-        ctx.data.set(kResKey_GBufferMetallicRoughnessAO, data.material);
+        ctx.data.set(kResKey_GBufferMaterial, data.material);
         if (data.entityId)
             ctx.data.set(kResKey_GBufferEntityId, data.entityId);
         return data.color;

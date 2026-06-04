@@ -47,7 +47,7 @@ layout(location = 3) in vec4 v_TangentWS;
 
 layout(location = 0) out vec4 GBufferColor;
 layout(location = 1) out vec4 GBufferNormal;
-layout(location = 2) out vec4 GBufferMetallicRoughnessAO;
+layout(location = 2) out vec4 GBufferMaterial;
 #if WRITE_ENTITY_ID
 layout(location = 3) out vec4 GBufferEntityId;
 #endif
@@ -105,19 +105,33 @@ void main()
     }
 #endif
     vec3 mra = u_Draw.materialMRA.xyz;
+    uint materialModel = uint(round(u_Draw.materialMRA.w));
 #if VTX_HAS_UV0
-    if (mrTex != 0u)
+    if (materialModel == 2u)
     {
-        vec4 mr = sampleBindless(mrTex, v_TexCoord0);
-        mra.x *= mr.b;
-        mra.y *= mr.g;
+        // PBR Specular-Glossiness: the specular map (mrTex slot) drives F0 (stored mono
+        // as mra.x); a separate glossiness map (roughnessTex slot) drives roughness =
+        // 1 - glossiness. Both replace the scalar fallbacks rather than multiplying.
+        if (mrTex != 0u)
+            mra.x = dot(sampleBindless(mrTex, v_TexCoord0).rgb, vec3(0.2126, 0.7152, 0.0722));
+        if (roughnessTex != 0u)
+            mra.y = 1.0 - sampleBindless(roughnessTex, v_TexCoord0).r;
     }
     else
     {
-        if (metallicTex != 0u)
-            mra.x *= sampleBindless(metallicTex, v_TexCoord0).r;
-        if (roughnessTex != 0u)
-            mra.y *= sampleBindless(roughnessTex, v_TexCoord0).r;
+        if (mrTex != 0u)
+        {
+            vec4 mr = sampleBindless(mrTex, v_TexCoord0);
+            mra.x *= mr.b;
+            mra.y *= mr.g;
+        }
+        else
+        {
+            if (metallicTex != 0u)
+                mra.x *= sampleBindless(metallicTex, v_TexCoord0).r;
+            if (roughnessTex != 0u)
+                mra.y *= sampleBindless(roughnessTex, v_TexCoord0).r;
+        }
     }
     if (occlusionTex != 0u)
         mra.z *= sampleBindless(occlusionTex, v_TexCoord0).r;
@@ -126,7 +140,7 @@ void main()
 
     GBufferColor = vec4(sRGBToLinear(baseColor.rgb), baseColor.a);
     GBufferNormal = vec4(encodeGBufferNormal(normalWS), 0.0, 1.0);
-    GBufferMetallicRoughnessAO = vec4(clamp(mra, 0.0, 1.0), encodeMaterialModel(u_Draw.materialMRA.w));
+    GBufferMaterial = vec4(clamp(mra, 0.0, 1.0), encodeMaterialModel(u_Draw.materialMRA.w));
 
 #if WRITE_ENTITY_ID
     uint id = u_Draw.entityInfo.x;

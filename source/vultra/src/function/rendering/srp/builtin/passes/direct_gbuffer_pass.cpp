@@ -76,8 +76,8 @@ namespace vultra
             float     glossinessFactor {1.0f};
             uint32_t  diffuseColorTex {0};
             uint32_t  specularGlossinessTex {0};
-            uint32_t  pad0 {0};
-            uint32_t  pad1 {0};
+            uint32_t  glossinessTex {0};
+            uint32_t  normalTex {0};
         };
 
         struct alignas(16) MaterialParamsUnlit
@@ -198,11 +198,17 @@ namespace vultra
                     const auto p = loadMaterialParams<MaterialParamsPBRSG>(resources.materialParams,
                                                                            material.blockOffsetBytes);
                     out.baseColorFactor = p.diffuseColor;
+                    // SG semantics packed into materialMRA: x = specular F0 (mono), y = roughness
+                    // (1 - glossiness), z = AO. The gbuffer shader branches on the model code (w)
+                    // and refines x/y from the specular/glossiness textures below.
                     out.materialMRA     = glm::vec4(glm::clamp(luminance(p.specularFactor), 0.0f, 1.0f),
-                                                glm::clamp(1.0f - p.glossinessFactor, 0.02f, 1.0f),
+                                                glm::clamp(1.0f - p.glossinessFactor, 0.045f, 1.0f),
                                                 1.0f,
                                                 materialModelCode(material.model));
-                    out.materialTextureInfo0.y = validTexture(p.diffuseColorTex);
+                    out.materialTextureInfo0.y = validTexture(p.diffuseColorTex);       // base color (diffuse)
+                    out.materialTextureInfo0.z = validTexture(p.normalTex);             // normal map
+                    out.materialTextureInfo0.w = validTexture(p.specularGlossinessTex); // specular (F0) map
+                    out.materialTextureInfo1.w = validTexture(p.glossinessTex);         // glossiness map
                     break;
                 }
                 case resource::GpuMaterialModel::eUnlit:
@@ -683,7 +689,7 @@ namespace vultra
                                           });
 
                 pd.material = builder.create<framegraph::FrameGraphTexture>(
-                    "DirectGBufferMetallicRoughnessAO",
+                    "DirectGBufferMaterial",
                     materialDesc);
                 pd.material = builder.write(pd.material,
                                             framegraph::Attachment {
@@ -895,7 +901,7 @@ namespace vultra
         ctx.data.set(kResKey_GBufferColor, data.color);
         ctx.data.set(kResKey_DepthTexture, data.depth);
         ctx.data.set(kResKey_GBufferNormal, data.normal);
-        ctx.data.set(kResKey_GBufferMetallicRoughnessAO, data.material);
+        ctx.data.set(kResKey_GBufferMaterial, data.material);
         if (data.entityId)
             ctx.data.set(kResKey_GBufferEntityId, data.entityId);
         return data.color;

@@ -24,7 +24,7 @@ layout(location = 0) in vec2 v_TexCoord;
 
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 GBufferNormal;
-layout(location = 2) out vec4 GBufferMetallicRoughnessAO;
+layout(location = 2) out vec4 GBufferMaterial;
 #if WRITE_ENTITY_ID
 layout(location = 3) out vec4 GBufferEntityId;
 #endif
@@ -286,7 +286,7 @@ void main()
 
     FragColor = color;
     GBufferNormal = vec4(encode_gbuffer_normal(normalWS), 0.0, 1.0);
-    GBufferMetallicRoughnessAO = vec4(clamp(mra, 0.0, 1.0), encode_material_model(material_lighting_model(d.materialIndex)));
+    GBufferMaterial = vec4(clamp(mra, 0.0, 1.0), encode_material_model(material_lighting_model(d.materialIndex)));
 #if WRITE_ENTITY_ID
     uint id = d.entityPickingId & 0x00FFFFFFu;
     GBufferEntityId = vec4(

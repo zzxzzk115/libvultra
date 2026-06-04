@@ -613,7 +613,7 @@ namespace vultra
             if (normalized == "gbuffer_normal" || normalized == "normal")
                 return kResKey_GBufferNormal;
             if (normalized == "gbuffer_material" || normalized == "material")
-                return kResKey_GBufferMetallicRoughnessAO;
+                return kResKey_GBufferMaterial;
             if (normalized == "gbuffer_entity_id" || normalized == "entity_id" || normalized == "entityid")
                 return kResKey_GBufferEntityId;
             if (normalized == "ssao" || normalized == "ao")
@@ -1813,7 +1813,7 @@ namespace vultra
                                 }
                                 if (auto res = ctx->data.tryGet(kResKey_GBufferNormal))
                                     passCtx.setOutput("normal", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GBufferMetallicRoughnessAO))
+                                if (auto res = ctx->data.tryGet(kResKey_GBufferMaterial))
                                     passCtx.setOutput("material", res);
                                 if (auto res = ctx->data.tryGet(kResKey_GBufferEntityId))
                                     passCtx.setOutput("entityId", res);
@@ -2368,7 +2368,7 @@ namespace vultra
                                     passCtx.setOutput("color", color);
                                 if (auto res = ctx->data.tryGet(kResKey_GBufferNormal))
                                     passCtx.setOutput("normal", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GBufferMetallicRoughnessAO))
+                                if (auto res = ctx->data.tryGet(kResKey_GBufferMaterial))
                                     passCtx.setOutput("material", res);
                                 passCtx.setOutput("depth", passCtx.getInput("depth"));
                                 if (auto res = ctx->data.tryGet(kResKey_GBufferEntityId))

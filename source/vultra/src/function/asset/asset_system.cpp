@@ -398,8 +398,8 @@ namespace vultra
             float     glossinessFactor {1.0f};
             uint32_t  diffuseColorTex {0};
             uint32_t  specularGlossinessTex {0};
-            uint32_t  pad0 {0};
-            uint32_t  pad1 {0};
+            uint32_t  glossinessTex {0};
+            uint32_t  normalTex {0};
         };
         static_assert(sizeof(MaterialParamsPBRSG) % 16 == 0);
 
@@ -1467,6 +1467,9 @@ namespace vultra
                 p.diffuseColorTex  = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrSG.diffuseTexture.uuid));
                 p.specularGlossinessTex =
                     resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrSG.specularGlossinessTexture.uuid));
+                p.glossinessTex =
+                    resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrSG.glossinessTexture.uuid));
+                p.normalTex = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrSG.normalTexture.uuid));
                 uploadBlock(gpuMaterial, &p, sizeof(p));
                 break;
             }
@@ -1586,6 +1589,9 @@ namespace vultra
                 p.diffuseColorTex  = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrSG.diffuseTexture.uuid));
                 p.specularGlossinessTex =
                     resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrSG.specularGlossinessTexture.uuid));
+                p.glossinessTex =
+                    resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrSG.glossinessTexture.uuid));
+                p.normalTex = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrSG.normalTexture.uuid));
                 blockOffset = allocBlock(&p, sizeof(p));
                 break;
             }

@@ -39,7 +39,7 @@ namespace vultra
 
         const bool hasDepth  = ctx.data.contains(kResKey_DepthTexture);
         const bool hasNormal = ctx.data.contains(kResKey_GBufferNormal);
-        const bool hasMrAo   = ctx.data.contains(kResKey_GBufferMetallicRoughnessAO);
+        const bool hasMrAo   = ctx.data.contains(kResKey_GBufferMaterial);
         const bool hasColor  = ctx.data.contains(kResKey_FinalCompositionSource);
         const bool hasEntityId = ctx.data.contains(kResKey_GBufferEntityId);
 
@@ -51,7 +51,7 @@ namespace vultra
                                                  ctx.data.get(kResKey_FinalCompositionSource),
                                                  ctx.data.get(kResKey_DepthTexture),
                                                  ctx.data.get(kResKey_GBufferNormal),
-                                                 ctx.data.get(kResKey_GBufferMetallicRoughnessAO),
+                                                 ctx.data.get(kResKey_GBufferMaterial),
                                                  settings.ssr);
             ctx.data.set(kResKey_SsrTexture, reflection);
             if (reflection)
