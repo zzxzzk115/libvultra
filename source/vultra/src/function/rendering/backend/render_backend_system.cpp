@@ -443,10 +443,14 @@ namespace vultra
         if (!requested)
         {
             m_XRSessionUserClosed = false;
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
             if (m_XRBackend)
                 m_XRSessionRestartPending = true;
             else
                 m_XRSessionStartDeferred = false;
+#else
+            m_XRSessionStartDeferred = false;
+#endif
         }
         else if (m_XRSessionRestartPending)
         {

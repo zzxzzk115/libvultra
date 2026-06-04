@@ -162,3 +162,9 @@ target("graphviz")
     if is_plat("android") then
         add_cflags("-fPIC")
     end
+
+    if is_plat("wasm") then
+        -- emscripten's libc only declares strdup/strndup under _GNU_SOURCE; without it the
+        -- strict c11 build treats them as implicit declarations (a hard error on clang).
+        add_defines("_GNU_SOURCE")
+    end

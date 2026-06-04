@@ -121,7 +121,9 @@ namespace vultra
             for (int i = 0; i < 4; ++i)
             {
                 alignas(16) float values[4] {};
-                _mm_storeu_ps(values, m.cols[i]);
+                // Use ozz's portable store rather than a raw SSE intrinsic: ozz's SimdFloat4 is
+                // __m128 on x86 but a scalar struct under its reference/SIMD backends (e.g. wasm).
+                ozz::math::StorePtrU(m.cols[i], values);
                 out[i] = glm::vec4(values[0], values[1], values[2], values[3]);
             }
             return out;
