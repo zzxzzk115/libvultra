@@ -2194,35 +2194,38 @@ namespace vultra_app
         tooltip("3D / 2D UI");
         if (m_ViewMode == ViewMode::Ui2D)
             ImGui::PopStyleColor(2);
-        ImGui::SameLine();
-        ImGui::BeginDisabled(m_ViewMode != ViewMode::Ui2D);
-        constexpr std::array<std::pair<const char*, glm::vec4>, 4> uiClearColorPresets {{
-            {"##Ui2DClearColorBlack", {0.0f, 0.0f, 0.0f, 1.0f}},
-            {"##Ui2DClearColorDark", {0.16f, 0.19f, 0.23f, 1.0f}},
-            {"##Ui2DClearColorLight", {0.64f, 0.72f, 0.80f, 1.0f}},
-            {"##Ui2DClearColorTransparentBlue", {0.10f, 0.16f, 0.24f, 1.0f}},
-        }};
-        for (const auto& [id, preset] : uiClearColorPresets)
+        // Clear-color controls are 2D-only (they drive m_Ui2DClearColor). In 3D the scene
+        // view follows the primary camera's clear mode, so don't draw them at all.
+        if (m_ViewMode == ViewMode::Ui2D)
         {
-            if (ImGui::ColorButton(id,
-                                   ImVec4 {preset.r, preset.g, preset.b, preset.a},
-                                   ImGuiColorEditFlags_NoAlpha | ImGuiColorEditFlags_NoTooltip,
-                                   ImVec2 {buttonSize, buttonSize}))
-                m_Ui2DClearColor = preset;
-            tooltip("Apply UI Clear Color");
             ImGui::SameLine();
+            constexpr std::array<std::pair<const char*, glm::vec4>, 4> uiClearColorPresets {{
+                {"##Ui2DClearColorBlack", {0.0f, 0.0f, 0.0f, 1.0f}},
+                {"##Ui2DClearColorDark", {0.16f, 0.19f, 0.23f, 1.0f}},
+                {"##Ui2DClearColorLight", {0.64f, 0.72f, 0.80f, 1.0f}},
+                {"##Ui2DClearColorTransparentBlue", {0.10f, 0.16f, 0.24f, 1.0f}},
+            }};
+            for (const auto& [id, preset] : uiClearColorPresets)
+            {
+                if (ImGui::ColorButton(id,
+                                       ImVec4 {preset.r, preset.g, preset.b, preset.a},
+                                       ImGuiColorEditFlags_NoAlpha | ImGuiColorEditFlags_NoTooltip,
+                                       ImVec2 {buttonSize, buttonSize}))
+                    m_Ui2DClearColor = preset;
+                tooltip("Apply UI Clear Color");
+                ImGui::SameLine();
+            }
+            if (ImGui::Button(ICON_MDI_PALETTE, ImVec2 {buttonSize, buttonSize}))
+                ImGui::OpenPopup("Ui2DClearColorPopup");
+            tooltip("Custom UI Clear Color");
+            if (ImGui::BeginPopup("Ui2DClearColorPopup"))
+            {
+                float color[3] {m_Ui2DClearColor.r, m_Ui2DClearColor.g, m_Ui2DClearColor.b};
+                if (ImGui::ColorEdit3("Clear Color", color, ImGuiColorEditFlags_NoInputs))
+                    m_Ui2DClearColor = glm::vec4 {color[0], color[1], color[2], 1.0f};
+                ImGui::EndPopup();
+            }
         }
-        if (ImGui::Button(ICON_MDI_PALETTE, ImVec2 {buttonSize, buttonSize}))
-            ImGui::OpenPopup("Ui2DClearColorPopup");
-        tooltip("Custom UI Clear Color");
-        if (ImGui::BeginPopup("Ui2DClearColorPopup"))
-        {
-            float color[3] {m_Ui2DClearColor.r, m_Ui2DClearColor.g, m_Ui2DClearColor.b};
-            if (ImGui::ColorEdit3("Clear Color", color, ImGuiColorEditFlags_NoInputs))
-                m_Ui2DClearColor = glm::vec4 {color[0], color[1], color[2], 1.0f};
-            ImGui::EndPopup();
-        }
-        ImGui::EndDisabled();
 
         ImGui::PopStyleVar(3);
         ImGui::Separator();
