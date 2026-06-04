@@ -638,7 +638,11 @@ namespace vultra_app
         const bool stepRequested = ctx.state.editorStepRequested;
 
         if (ctx.state.editorPlaying && !m_PlaybackWasPlaying)
+        {
             capturePlayModeSnapshot(ctx);
+            // Entering play mode jumps to the Game View so you immediately see the running game.
+            ctx.state.editorWindowFocusRequested = "Game View";
+        }
 
         if (!ctx.state.editorPlaying && m_PlaybackWasPlaying)
         {
