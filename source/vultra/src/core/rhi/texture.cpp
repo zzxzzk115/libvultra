@@ -7,6 +7,7 @@
 #include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
 #endif
+#include "vultra/core/rhi/deferred_deletion_queue.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/core/rhi/util.hpp"
@@ -861,33 +862,45 @@ namespace vultra
             assert(deviceHandle.value != 0);
             const auto device = vk::Device {asVkHandle<VkDevice>(deviceHandle.value)};
 
+            // Collect every Vulkan handle owned by this texture and defer their destruction until the
+            // GPU is done with them. Destroying an image/view still bound by an in-flight command
+            // buffer is a use-after-free (e.g. an editor scene switch tearing down render targets
+            // mid-frame).
+            std::vector<vk::ImageView> viewsToDestroy;
             for (auto& [_, data] : m_Aspects)
             {
                 for (const auto layer : data.layers)
-                {
-                    device.destroyImageView(toVk(layer), nullptr);
-                }
+                    viewsToDestroy.push_back(toVk(layer));
                 data.layers.clear();
                 for (const auto mipLevel : data.mipLevels)
-                {
-                    device.destroyImageView(toVk(mipLevel), nullptr);
-                }
+                    viewsToDestroy.push_back(toVk(mipLevel));
                 data.mipLevels.clear();
 
                 if (data.imageView)
                 {
-                    device.destroyImageView(toVk(data.imageView), nullptr);
+                    viewsToDestroy.push_back(toVk(data.imageView));
                     data.imageView = {};
                 }
             }
 
+            vk::Image       imageToDestroy {nullptr};
+            vma::Allocator  imageAllocator {nullptr};
+            vma::Allocation imageAllocation {nullptr};
             if (auto* const allocatedImage = std::get_if<AllocatedImage>(&m_Image); allocatedImage)
             {
                 const auto allocatorHandle = std::get<TextureAllocatorHandle>(m_DeviceOrAllocator);
-                toVmaAllocator(allocatorHandle)
-                    .destroyImage(vk::Image {asVkHandle<VkImage>(allocatedImage->handle)},
-                                  toVmaAllocation(allocatedImage->allocationHandle));
+                imageAllocator             = toVmaAllocator(allocatorHandle);
+                imageToDestroy             = vk::Image {asVkHandle<VkImage>(allocatedImage->handle)};
+                imageAllocation            = toVmaAllocation(allocatedImage->allocationHandle);
             }
+
+            DeferredDeletionQueue::get().enqueue(
+                [device, views = std::move(viewsToDestroy), imageAllocator, imageToDestroy, imageAllocation]() mutable {
+                    for (const auto view : views)
+                        device.destroyImageView(view, nullptr);
+                    if (imageToDestroy)
+                        imageAllocator.destroyImage(imageToDestroy, imageAllocation);
+                });
 
             resetState();
 #endif

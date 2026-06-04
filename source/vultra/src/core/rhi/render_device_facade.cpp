@@ -3,6 +3,7 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/base/hash.hpp"
 #include "vultra/core/base/ranges.hpp"
+#include "vultra/core/rhi/deferred_deletion_queue.hpp"
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
 #include "vultra/core/rhi/backends/vk/handle_utils.hpp"
@@ -621,6 +622,10 @@ namespace vultra
             {
                 vkBackend(m_Backend).m_Device.waitIdle();
             }
+
+            // Run any deferred resource destructions now, while the device and allocator are still
+            // alive (the queued callbacks capture allocator / device handles).
+            DeferredDeletionQueue::get().flushAll();
 
             for (auto [_, layout] : vkBackend(m_Backend).m_DescriptorSetLayouts)
             {
@@ -1490,6 +1495,8 @@ namespace vultra
 #else
             assert(vkBackend(m_Backend).m_Device);
             vkBackend(m_Backend).m_Device.waitIdle();
+            // GPU is now idle: any resources awaiting deferred destruction are safe to free now.
+            DeferredDeletionQueue::get().flushAll();
             return *this;
 #endif
         }

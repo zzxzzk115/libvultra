@@ -2,6 +2,7 @@
 
 #include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
+#include "vultra/core/rhi/deferred_deletion_queue.hpp"
 #include "vultra/core/rhi/interfaces/irender_device.hpp"
 
 #include <format>
@@ -148,7 +149,13 @@ namespace vultra::rhi
         {
             unmap();
 
-            m_MemoryAllocator.destroyBuffer(m_Handle, m_Allocation);
+            // Defer the actual VMA destroy until the GPU is done with this buffer (it may still be
+            // bound by an in-flight or currently-recording command buffer). CPU-side memory
+            // bookkeeping below stays immediate.
+            DeferredDeletionQueue::get().enqueue(
+                [allocator = m_MemoryAllocator, handle = m_Handle, allocation = m_Allocation]() mutable {
+                    allocator.destroyBuffer(handle, allocation);
+                });
             if (m_RenderDevice)
             {
                 m_RenderDevice->onMemoryResourceFreed(static_cast<uint64_t>(getHandle()));

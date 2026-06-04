@@ -7,6 +7,7 @@
 #include "vultra/core/services/timing_service.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_command_buffer_access.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/core/rhi/deferred_deletion_queue.hpp"
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/asset/builtin_assets.hpp"
 #include "vultra/function/material/material_asset.hpp"
@@ -3803,6 +3804,11 @@ namespace vultra
             m_RuntimeProfiler.endFrame();
             return;
         }
+
+        // The frame slot was just acquired (its prior GPU work is complete): advance the deferred
+        // deletion queue and free resources whose owners were released enough frames ago that the
+        // GPU can no longer reference them.
+        rhi::DeferredDeletionQueue::get().beginFrame();
 
         auto&                  cb = backendService.commandBuffer();
         RuntimeProfiler::Scope scopeRenderFrame {m_RuntimeProfiler, "RenderSystem::renderFrame"};
