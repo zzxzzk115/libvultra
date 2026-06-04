@@ -4,6 +4,7 @@
 #include "common/ui_widgets.hpp"
 #include "editor_app/editor_history.hpp"
 #include "editor_app/selection.hpp"
+#include "editor_app/ui/settings_widgets.hpp"
 
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiFileDialog/ImGuiFileDialog.h>
@@ -435,7 +436,21 @@ namespace vultra_app
         {
             std::array<char, 512> buffer {};
             copyName(buffer, value);
-            if (!ImGui::InputText(label, buffer.data(), buffer.size()))
+            // A "##"-prefixed label means the caller (e.g. a table cell) already drew the
+            // label and wants only the control; otherwise lay it out as a property row.
+            const bool hidden  = label != nullptr && label[0] == '#' && label[1] == '#';
+            bool       changed = false;
+            if (hidden)
+            {
+                changed = ImGui::InputText(label, buffer.data(), buffer.size());
+            }
+            else
+            {
+                ui::beginPropertyRow(label);
+                changed = ImGui::InputText("##value", buffer.data(), buffer.size());
+                ui::endPropertyRow();
+            }
+            if (!changed)
                 return false;
             value = buffer.data();
             return true;
@@ -532,68 +547,88 @@ namespace vultra_app
         bool drawJsonDefaultValue(nlohmann::json& value, const vultra::material_graph::ValueType type)
         {
             using enum vultra::material_graph::ValueType;
+
+            // Texture default draws its own property row via drawMaterialStringInput.
+            if (type == eTexture2D)
+            {
+                std::string v = value.is_string() ? value.get<std::string>() : std::string {};
+                if (!drawMaterialStringInput("Default URI", v))
+                    return false;
+                value = v;
+                return true;
+            }
+
+            ui::beginPropertyRow("Default");
+            bool changed = false;
             switch (type)
             {
                 case eBool: {
                     bool v = value.is_boolean() ? value.get<bool>() : false;
-                    if (!ImGui::Checkbox("Default", &v))
-                        return false;
-                    value = v;
-                    return true;
+                    if (ImGui::Checkbox("##value", &v))
+                    {
+                        value   = v;
+                        changed = true;
+                    }
+                    break;
                 }
                 case eInt: {
                     int v = value.is_number_integer() ? value.get<int>() : 0;
-                    if (!ImGui::InputInt("Default", &v))
-                        return false;
-                    value = v;
-                    return true;
+                    if (ImGui::InputInt("##value", &v))
+                    {
+                        value   = v;
+                        changed = true;
+                    }
+                    break;
                 }
                 case eVec2: {
                     glm::vec2 v {0.0f};
                     if (value.is_array() && value.size() >= 2)
                         v = {value[0].get<float>(), value[1].get<float>()};
-                    if (!ImGui::DragFloat2("Default", &v.x, 0.01f))
-                        return false;
-                    value = nlohmann::json::array({v.x, v.y});
-                    return true;
+                    if (ImGui::DragFloat2("##value", &v.x, 0.01f))
+                    {
+                        value   = nlohmann::json::array({v.x, v.y});
+                        changed = true;
+                    }
+                    break;
                 }
                 case eVec3: {
                     glm::vec3 v {0.0f};
                     if (value.is_array() && value.size() >= 3)
                         v = {value[0].get<float>(), value[1].get<float>(), value[2].get<float>()};
-                    if (!ImGui::DragFloat3("Default", &v.x, 0.01f))
-                        return false;
-                    value = nlohmann::json::array({v.x, v.y, v.z});
-                    return true;
+                    if (ImGui::DragFloat3("##value", &v.x, 0.01f))
+                    {
+                        value   = nlohmann::json::array({v.x, v.y, v.z});
+                        changed = true;
+                    }
+                    break;
                 }
                 case eVec4:
                 case eColor: {
                     glm::vec4 v = type == eColor ? glm::vec4 {1.0f} : glm::vec4 {0.0f};
                     if (value.is_array() && value.size() >= 4)
                         v = {value[0].get<float>(), value[1].get<float>(), value[2].get<float>(), value[3].get<float>()};
-                    const bool changed = type == eColor ? ImGui::ColorEdit4("Default", &v.x) :
-                                                          ImGui::DragFloat4("Default", &v.x, 0.01f);
-                    if (!changed)
-                        return false;
-                    value = nlohmann::json::array({v.x, v.y, v.z, v.w});
-                    return true;
-                }
-                case eTexture2D: {
-                    std::string v = value.is_string() ? value.get<std::string>() : std::string {};
-                    if (!drawMaterialStringInput("Default URI", v))
-                        return false;
-                    value = v;
-                    return true;
+                    const bool edited = type == eColor ? ImGui::ColorEdit4("##value", &v.x) :
+                                                         ImGui::DragFloat4("##value", &v.x, 0.01f);
+                    if (edited)
+                    {
+                        value   = nlohmann::json::array({v.x, v.y, v.z, v.w});
+                        changed = true;
+                    }
+                    break;
                 }
                 case eFloat:
                 default: {
                     float v = value.is_number() ? value.get<float>() : 0.0f;
-                    if (!ImGui::DragFloat("Default", &v, 0.01f))
-                        return false;
-                    value = v;
-                    return true;
+                    if (ImGui::DragFloat("##value", &v, 0.01f))
+                    {
+                        value   = v;
+                        changed = true;
+                    }
+                    break;
                 }
             }
+            ui::endPropertyRow();
+            return changed;
         }
 
         void drawImagePreviewPlaceholder(const std::filesystem::path& path, const char* note)
@@ -752,7 +787,8 @@ namespace vultra_app
                     preview = option.label;
 
             bool changed = false;
-            if (ImGui::BeginCombo("Target Format", preview))
+            ui::beginPropertyRow("Target Format");
+            if (ImGui::BeginCombo("##TargetFormat", preview))
             {
                 for (const auto& option : kOptions)
                 {
@@ -767,6 +803,7 @@ namespace vultra_app
                 }
                 ImGui::EndCombo();
             }
+            ui::endPropertyRow();
             return changed;
         }
 
@@ -1182,7 +1219,6 @@ namespace vultra_app
         bool drawRectTransformComponentFields(vultra::RectTransformComponent& rect)
         {
             bool changed = false;
-            ImGui::Indent();
             ImGui::PushID("RectTransformCustom");
 
             ImGui::TextDisabled("Anchors");
@@ -1194,7 +1230,9 @@ namespace vultra_app
             changed |= drawVec2Control("Anchor Min", rect.anchorMin, glm::vec2 {0.5f}, 0.01f);
             changed |= drawVec2Control("Anchor Max", rect.anchorMax, glm::vec2 {0.5f}, 0.01f);
             changed |= drawVec2Control("Pivot", rect.pivot, glm::vec2 {0.5f}, 0.01f);
-            changed |= ImGui::DragFloat("Rotation", &rect.rotationDegrees, 0.5f, 0.0f, 0.0f, "%.2f deg");
+            ui::beginPropertyRow("Rotation", 92.0f);
+            changed |= ImGui::DragFloat("##Rotation", &rect.rotationDegrees, 0.5f, 0.0f, 0.0f, "%.2f deg");
+            ui::endPropertyRow();
             changed |= drawVec2Control("Scale", rect.scale, glm::vec2 {1.0f}, 0.01f);
 
             rect.anchorMin = glm::clamp(rect.anchorMin, glm::vec2 {0.0f}, glm::vec2 {1.0f});
@@ -1203,7 +1241,6 @@ namespace vultra_app
             rect.scale     = glm::max(rect.scale, glm::vec2 {0.05f});
 
             ImGui::PopID();
-            ImGui::Unindent();
             return changed;
         }
 
@@ -1264,7 +1301,6 @@ namespace vultra_app
                                           const vultra::LightComponent* light = nullptr)
         {
             bool changed = false;
-            ImGui::Indent();
 
             changed |= drawVec3Control("Position", transform.position, glm::vec3 {0.0f}, 0.05f);
 
@@ -1284,8 +1320,6 @@ namespace vultra_app
             }
 
             changed |= drawVec3Control("Scale", transform.scale, glm::vec3 {1.0f}, 0.05f);
-
-            ImGui::Unindent();
 
             if (changed)
                 transform.dirty = true;
@@ -1314,33 +1348,55 @@ namespace vultra_app
             bool                  changed       = false;
             constexpr const char* kKindLabels[] = {"Directional", "Point", "Spot", "Rectangle Area"};
             int                   kindIndex     = static_cast<int>(std::min(light.kind, 3u));
-            if (ImGui::Combo("Kind", &kindIndex, kKindLabels, IM_ARRAYSIZE(kKindLabels)))
+            ui::beginPropertyRow("Kind");
+            if (ImGui::Combo("##Kind", &kindIndex, kKindLabels, IM_ARRAYSIZE(kKindLabels)))
             {
                 light.kind = static_cast<uint32_t>(std::clamp(kindIndex, 0, IM_ARRAYSIZE(kKindLabels) - 1));
                 changed    = true;
             }
+            ui::endPropertyRow();
 
-            changed |= ImGui::ColorEdit3("Color", &light.color.x);
-            changed |= ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 10000.0f, "%.2f");
+            ui::beginPropertyRow("Color");
+            changed |= ImGui::ColorEdit3("##Color", &light.color.x);
+            ui::endPropertyRow();
+            ui::beginPropertyRow("Intensity");
+            changed |= ImGui::DragFloat("##Intensity", &light.intensity, 0.05f, 0.0f, 10000.0f, "%.2f");
+            ui::endPropertyRow();
 
             if (light.kind == 1 || light.kind == 2)
             {
-                changed |= ImGui::DragFloat("Range", &light.range, 0.05f, 0.0f, 1000.0f, "%.2f");
-                changed |= ImGui::DragFloat("Radius", &light.radius, 0.01f, 0.0f, 100.0f, "%.3f");
+                ui::beginPropertyRow("Range");
+                changed |= ImGui::DragFloat("##Range", &light.range, 0.05f, 0.0f, 1000.0f, "%.2f");
+                ui::endPropertyRow();
+                ui::beginPropertyRow("Radius");
+                changed |= ImGui::DragFloat("##Radius", &light.radius, 0.01f, 0.0f, 100.0f, "%.3f");
+                ui::endPropertyRow();
             }
             if (light.kind == 2)
             {
-                changed |= ImGui::DragFloat("Inner Cone Degrees", &light.innerConeDegrees, 0.25f, 0.0f, 179.0f, "%.1f");
-                changed |= ImGui::DragFloat("Outer Cone Degrees", &light.outerConeDegrees, 0.25f, 0.0f, 179.0f, "%.1f");
+                ui::beginPropertyRow("Inner Cone Degrees");
+                changed |= ImGui::DragFloat("##InnerCone", &light.innerConeDegrees, 0.25f, 0.0f, 179.0f, "%.1f");
+                ui::endPropertyRow();
+                ui::beginPropertyRow("Outer Cone Degrees");
+                changed |= ImGui::DragFloat("##OuterCone", &light.outerConeDegrees, 0.25f, 0.0f, 179.0f, "%.1f");
+                ui::endPropertyRow();
                 light.outerConeDegrees = std::max(light.outerConeDegrees, light.innerConeDegrees);
             }
             if (light.kind == 3)
             {
-                changed |= ImGui::DragFloat("Width", &light.width, 0.05f, 0.0f, 100.0f, "%.2f");
-                changed |= ImGui::DragFloat("Height", &light.height, 0.05f, 0.0f, 100.0f, "%.2f");
+                ui::beginPropertyRow("Width");
+                changed |= ImGui::DragFloat("##Width", &light.width, 0.05f, 0.0f, 100.0f, "%.2f");
+                ui::endPropertyRow();
+                ui::beginPropertyRow("Height");
+                changed |= ImGui::DragFloat("##Height", &light.height, 0.05f, 0.0f, 100.0f, "%.2f");
+                ui::endPropertyRow();
             }
-            changed |= ImGui::Checkbox("Casts Shadow", &light.castsShadow);
-            changed |= ImGui::Checkbox("Two Sided", &light.twoSided);
+            ui::beginPropertyRow("Casts Shadow");
+            changed |= ImGui::Checkbox("##CastsShadow", &light.castsShadow);
+            ui::endPropertyRow();
+            ui::beginPropertyRow("Two Sided");
+            changed |= ImGui::Checkbox("##TwoSided", &light.twoSided);
+            ui::endPropertyRow();
             return changed;
         }
 
@@ -1348,25 +1404,33 @@ namespace vultra_app
         {
             bool changed = false;
 
-            changed |= ImGui::Checkbox("Enabled", &xrView.enabled);
+            ui::beginPropertyRow("Enabled");
+            changed |= ImGui::Checkbox("##Enabled", &xrView.enabled);
+            ui::endPropertyRow();
 
             int         trackingOrigin    = static_cast<int>(xrView.trackingOrigin);
             const char* trackingOrigins[] = {"Local", "Stage"};
-            if (ImGui::Combo("Tracking Origin", &trackingOrigin, trackingOrigins, IM_ARRAYSIZE(trackingOrigins)))
+            ui::beginPropertyRow("Tracking Origin");
+            if (ImGui::Combo("##TrackingOrigin", &trackingOrigin, trackingOrigins, IM_ARRAYSIZE(trackingOrigins)))
             {
                 xrView.trackingOrigin = static_cast<uint32_t>(std::clamp(trackingOrigin, 0, 1));
                 changed               = true;
             }
+            ui::endPropertyRow();
 
             int         stereoGraphMode    = static_cast<int>(xrView.stereoGraphMode);
             const char* stereoGraphModes[] = {"Single Graph Stereo"};
-            if (ImGui::Combo("Stereo Graph", &stereoGraphMode, stereoGraphModes, IM_ARRAYSIZE(stereoGraphModes)))
+            ui::beginPropertyRow("Stereo Graph");
+            if (ImGui::Combo("##StereoGraph", &stereoGraphMode, stereoGraphModes, IM_ARRAYSIZE(stereoGraphModes)))
             {
                 xrView.stereoGraphMode = 0u;
                 changed                = true;
             }
+            ui::endPropertyRow();
 
-            changed |= ImGui::Checkbox("Fallback Mono", &xrView.fallbackMono);
+            ui::beginPropertyRow("Fallback Mono");
+            changed |= ImGui::Checkbox("##FallbackMono", &xrView.fallbackMono);
+            ui::endPropertyRow();
 
             if (auto* backend = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
             {
@@ -2574,11 +2638,7 @@ namespace vultra_app
                                       const bool                   allowEmpty = false)
         {
             bool changed = false;
-            ImGui::PushID(label);
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(label);
-            ImGui::SameLine(120.0f);
-            ImGui::SetNextItemWidth(280.0f);
+            ui::beginPropertyRow(label);
             const char* preview = value[0] == '\0' ? "<none>" : value.data();
             if (ImGui::BeginCombo("##shader", preview))
             {
@@ -2600,7 +2660,7 @@ namespace vultra_app
                 }
                 ImGui::EndCombo();
             }
-            ImGui::PopID();
+            ui::endPropertyRow();
             return changed;
         }
 
@@ -2679,7 +2739,7 @@ namespace vultra_app
             ImGui::PushID(label);
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(label);
-            ImGui::SameLine(120.0f);
+            ImGui::SameLine(160.0f);
             ImGui::SetNextItemWidth(280.0f);
             const char* preview = value[0] == '\0' ? "<none>" : value.data();
             if (ImGui::BeginCombo("##shader", preview))
@@ -2712,14 +2772,13 @@ namespace vultra_app
 
         bool drawShaderLibrarySelector(const char* label, std::array<char, 128>& value)
         {
+            // Library is a closed choice ("project" or "builtin"); a combo covers every
+            // valid value, so there is no manual text entry. collectShaderIdsForLibrary
+            // treats any non-"builtin" value as "project".
             bool changed = false;
             std::array options {"project", "builtin"};
 
-            ImGui::PushID(label);
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(label);
-            ImGui::SameLine(120.0f);
-            ImGui::SetNextItemWidth(160.0f);
+            ui::beginPropertyRow(label);
             const char* preview = value[0] == '\0' ? "project" : value.data();
             if (ImGui::BeginCombo("##library", preview))
             {
@@ -2736,11 +2795,7 @@ namespace vultra_app
                 }
                 ImGui::EndCombo();
             }
-
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(160.0f);
-            changed |= ImGui::InputText("##manual", value.data(), value.size());
-            ImGui::PopID();
+            ui::endPropertyRow();
             return changed;
         }
 
@@ -2755,7 +2810,7 @@ namespace vultra_app
             ImGui::PushID("BuiltinFullscreenVertex");
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted("Vertex");
-            ImGui::SameLine(120.0f);
+            ImGui::SameLine(160.0f);
             ImGui::SetNextItemWidth(280.0f);
             ImGui::BeginDisabled();
             ImGui::InputText("##builtinVertex", vertex.data(), vertex.size());
@@ -3052,17 +3107,27 @@ namespace vultra_app
             changed |= drawUuidObjectField(&ctx, animator.animation, "animation", "Animation");
 
             ImGui::Separator();
-            changed |= ImGui::Checkbox("Play On Start", &animator.playOnStart);
-            changed |= ImGui::Checkbox("Playing", &animator.playing);
-            changed |= ImGui::Checkbox("Loop", &animator.loop);
-            changed |= ImGui::DragFloat("Speed", &animator.speed, 0.01f, -8.0f, 8.0f, "%.3f");
+            ui::beginPropertyRow("Play On Start");
+            changed |= ImGui::Checkbox("##PlayOnStart", &animator.playOnStart);
+            ui::endPropertyRow();
+            ui::beginPropertyRow("Playing");
+            changed |= ImGui::Checkbox("##Playing", &animator.playing);
+            ui::endPropertyRow();
+            ui::beginPropertyRow("Loop");
+            changed |= ImGui::Checkbox("##Loop", &animator.loop);
+            ui::endPropertyRow();
+            ui::beginPropertyRow("Speed");
+            changed |= ImGui::DragFloat("##Speed", &animator.speed, 0.01f, -8.0f, 8.0f, "%.3f");
+            ui::endPropertyRow();
 
             float time = std::max(animator.time, 0.0f);
-            if (ImGui::DragFloat("Time", &time, 0.01f, 0.0f, 0.0f, "%.3f s"))
+            ui::beginPropertyRow("Time");
+            if (ImGui::DragFloat("##Time", &time, 0.01f, 0.0f, 0.0f, "%.3f s"))
             {
                 animator.time = std::max(time, 0.0f);
                 changed       = true;
             }
+            ui::endPropertyRow();
 
             if (ImGui::Button(ICON_MDI_RESTART "  Reset Time", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
             {
@@ -3752,7 +3817,9 @@ namespace vultra_app
             }
 
             const auto typeName = field.type() ? field.type().name() : "<unknown>";
-            ImGui::TextDisabled("%s: <%s>", label, typeName ? typeName : "unregistered");
+            // Label is already drawn by the surrounding property row; show only the type.
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("<%s>", typeName ? typeName : "unregistered");
             return false;
         }
 
@@ -3918,6 +3985,23 @@ namespace vultra_app
             return changed;
         }
 
+        // Self-laid-out reflected fields draw their own label plus a multi-line picker /
+        // control grid, so they must NOT be wrapped in a single label-left/control-right
+        // property row (see ai/knowledge/editor-ui-style.md). Everything else is a single
+        // row and goes through beginPropertyRow with a hidden control label.
+        bool metaFieldDrawsOwnRow(entt::meta_any& value, const char* fieldName)
+        {
+            if (value.try_cast<vultra::CoreUUID>() != nullptr)
+                return true;
+            if (value.try_cast<std::string>() != nullptr && fieldName != nullptr &&
+                std::strcmp(fieldName, "scriptUri") == 0)
+                return true;
+            if (value.try_cast<uint32_t>() != nullptr && fieldName != nullptr &&
+                (std::strcmp(fieldName, "mask") == 0 || std::strcmp(fieldName, "cullingMask") == 0))
+                return true;
+            return false;
+        }
+
         template<typename Component>
         bool drawMetaFields(EditorContext*                          ctx,
                             ui::TextureSelectorState*               textureSelector,
@@ -3941,9 +4025,16 @@ namespace vultra_app
                 if (!value)
                     continue;
 
-                const auto label = displayFieldName(rawName);
+                const auto label  = displayFieldName(rawName);
+                const bool ownRow = metaFieldDrawsOwnRow(value, rawName);
                 ImGui::PushID(static_cast<int>(fieldId));
-                if (drawMetaValue(ctx, textureSelector, meshSelector, field, value, rawName, label.c_str()))
+                if (!ownRow)
+                    ui::beginPropertyRow(label.c_str());
+                const bool fieldChanged = drawMetaValue(
+                    ctx, textureSelector, meshSelector, field, value, rawName, ownRow ? label.c_str() : "##v");
+                if (!ownRow)
+                    ui::endPropertyRow();
+                if (fieldChanged)
                 {
                     field.set(instance, value);
                     changedAny = true;
@@ -4009,7 +4100,11 @@ namespace vultra_app
                                             property.type == vultra::MaterialPropertyBlockValueType::eTexture2D ? 2 :
                                                                                                                  0;
                             const char* typeLabels[] = {"Float", "Color", "Texture2D"};
-                            if (ImGui::Combo("Type", &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels)))
+                            ui::beginPropertyRow("Type");
+                            const bool propTypeChanged =
+                                ImGui::Combo("##Type", &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels));
+                            ui::endPropertyRow();
+                            if (propTypeChanged)
                             {
                                 property.type = typeIndex == 1 ? vultra::MaterialPropertyBlockValueType::eColor :
                                                 typeIndex == 2 ? vultra::MaterialPropertyBlockValueType::eTexture2D :
@@ -4020,8 +4115,10 @@ namespace vultra_app
                             switch (property.type)
                             {
                                 case vultra::MaterialPropertyBlockValueType::eColor:
-                                    if (ImGui::ColorEdit4("Value", &property.colorValue.x))
+                                    ui::beginPropertyRow("Value");
+                                    if (ImGui::ColorEdit4("##Value", &property.colorValue.x))
                                         changed = true;
+                                    ui::endPropertyRow();
                                     break;
                                 case vultra::MaterialPropertyBlockValueType::eTexture2D:
                                     if (ctx && textureSelector)
@@ -4032,8 +4129,10 @@ namespace vultra_app
                                     break;
                                 case vultra::MaterialPropertyBlockValueType::eFloat:
                                 default:
-                                    if (ImGui::DragFloat("Value", &property.floatValue, 0.01f))
+                                    ui::beginPropertyRow("Value");
+                                    if (ImGui::DragFloat("##Value", &property.floatValue, 0.01f))
                                         changed = true;
+                                    ui::endPropertyRow();
                                     break;
                             }
 
@@ -4081,20 +4180,32 @@ namespace vultra_app
         bool drawUiLayoutComponentFields(vultra::UiLayoutComponent& layout)
         {
             bool changed = false;
-            changed |= ImGui::Checkbox("Enabled", &layout.enabled);
+            ui::beginPropertyRow("Enabled");
+            changed |= ImGui::Checkbox("##Enabled", &layout.enabled);
+            ui::endPropertyRow();
 
             const char* labels[] = {"None", "Horizontal", "Vertical", "Grid"};
             int         index    = static_cast<int>(std::min(layout.kind, 3u));
-            if (ImGui::Combo("Layout", &index, labels, IM_ARRAYSIZE(labels)))
+            ui::beginPropertyRow("Layout");
+            if (ImGui::Combo("##Layout", &index, labels, IM_ARRAYSIZE(labels)))
             {
                 layout.kind = static_cast<uint32_t>(std::clamp(index, 0, IM_ARRAYSIZE(labels) - 1));
                 changed     = true;
             }
+            ui::endPropertyRow();
 
-            changed |= ImGui::DragFloat4("Padding Px", &layout.paddingPx.x, 0.5f);
-            changed |= ImGui::DragFloat4("Margin Px", &layout.marginPx.x, 0.5f);
-            changed |= ImGui::DragFloat("Spacing Px", &layout.spacingPx, 0.5f);
-            changed |= ImGui::DragFloat2("Cell Size Px", &layout.cellSizePx.x, 0.5f);
+            ui::beginPropertyRow("Padding Px");
+            changed |= ImGui::DragFloat4("##PaddingPx", &layout.paddingPx.x, 0.5f);
+            ui::endPropertyRow();
+            ui::beginPropertyRow("Margin Px");
+            changed |= ImGui::DragFloat4("##MarginPx", &layout.marginPx.x, 0.5f);
+            ui::endPropertyRow();
+            ui::beginPropertyRow("Spacing Px");
+            changed |= ImGui::DragFloat("##SpacingPx", &layout.spacingPx, 0.5f);
+            ui::endPropertyRow();
+            ui::beginPropertyRow("Cell Size Px");
+            changed |= ImGui::DragFloat2("##CellSizePx", &layout.cellSizePx.x, 0.5f);
+            ui::endPropertyRow();
             return changed;
         }
 
@@ -4715,7 +4826,10 @@ namespace vultra_app
             m_NameEditEntity = Selection::lastId();
             copyName(m_NameBuffer, name.name);
         }
-        if (ImGui::InputText("Name", m_NameBuffer.data(), m_NameBuffer.size()))
+        ui::beginPropertyRow("Name");
+        const bool nameChanged = ImGui::InputText("##Name", m_NameBuffer.data(), m_NameBuffer.size());
+        ui::endPropertyRow();
+        if (nameChanged)
         {
             name.name            = m_NameBuffer.data();
             ctx.state.sceneDirty = true;
@@ -4793,6 +4907,11 @@ namespace vultra_app
 
             if (!open)
                 continue;
+
+            // Indent all component field bodies uniformly so labels/controls line up
+            // across every component (see ai/knowledge/editor-ui-style.md). Individual
+            // field drawers must NOT add their own Indent.
+            ImGui::Indent();
 
             if (key == "RectTransform")
             {
@@ -5092,6 +5211,8 @@ namespace vultra_app
                         ImGui::TextWrapped("UUID: %s", prefab->prefabId.toString().c_str());
                 }
             }
+
+            ImGui::Unindent();
         }
 
         ImGui::Spacing();
@@ -5301,8 +5422,12 @@ namespace vultra_app
             m_ModelPreviewDirty = true;
         }
         bool controlsChanged = false;
-        controlsChanged |= ImGui::Checkbox("Loop", &m_ModelPreviewAnimationLoop);
-        controlsChanged |= ImGui::DragFloat("Speed", &m_ModelPreviewAnimationSpeed, 0.02f, 0.05f, 4.0f, "%.2f");
+        ui::beginPropertyRow("Loop");
+        controlsChanged |= ImGui::Checkbox("##Loop", &m_ModelPreviewAnimationLoop);
+        ui::endPropertyRow();
+        ui::beginPropertyRow("Speed");
+        controlsChanged |= ImGui::DragFloat("##Speed", &m_ModelPreviewAnimationSpeed, 0.02f, 0.05f, 4.0f, "%.2f");
+        ui::endPropertyRow();
         m_ModelPreviewAnimationSpeed = std::clamp(m_ModelPreviewAnimationSpeed, 0.05f, 4.0f);
         if (controlsChanged)
             m_ModelPreviewDirty = true;
@@ -5462,7 +5587,10 @@ namespace vultra_app
                       source.kind == vultra::material::MaterialSourceKind::eGraph  ? 2 :
                                                                                      0;
         const char* kinds[] = {"Builtin", "Shader", "Graph"};
-        if (ImGui::Combo("Source", &kind, kinds, IM_ARRAYSIZE(kinds)))
+        ui::beginPropertyRow("Source");
+        const bool sourceChanged = ImGui::Combo("##Source", &kind, kinds, IM_ARRAYSIZE(kinds));
+        ui::endPropertyRow();
+        if (sourceChanged)
         {
             source.kind = kind == 1 ? vultra::material::MaterialSourceKind::eShader :
                           kind == 2 ? vultra::material::MaterialSourceKind::eGraph :
@@ -5479,7 +5607,10 @@ namespace vultra_app
                 source.id = "builtin/pbr";
             const char* builtinIds[] = {"builtin/pbr"};
             int         builtinIndex = source.id == "builtin/pbr" ? 0 : -1;
-            if (ImGui::Combo("Builtin", &builtinIndex, builtinIds, IM_ARRAYSIZE(builtinIds)) && builtinIndex == 0)
+            ui::beginPropertyRow("Builtin");
+            const bool builtinChanged = ImGui::Combo("##Builtin", &builtinIndex, builtinIds, IM_ARRAYSIZE(builtinIds));
+            ui::endPropertyRow();
+            if (builtinChanged && builtinIndex == 0)
             {
                 source.id = "builtin/pbr";
                 materialSourceToJson(source, state.doc);
@@ -5773,10 +5904,13 @@ namespace vultra_app
                     }
                     auto type = vultra::material_graph::valueTypeFromString(pin.value("type", std::string {"float"}));
                     int  typeIndex = materialGraphValueTypeIndex(type);
-                    if (ImGui::Combo("Type",
-                                     &typeIndex,
-                                     kMaterialGraphValueTypeLabels,
-                                     IM_ARRAYSIZE(kMaterialGraphValueTypeLabels)))
+                    ui::beginPropertyRow("Type");
+                    const bool typeChanged = ImGui::Combo("##Type",
+                                                          &typeIndex,
+                                                          kMaterialGraphValueTypeLabels,
+                                                          IM_ARRAYSIZE(kMaterialGraphValueTypeLabels));
+                    ui::endPropertyRow();
+                    if (typeChanged)
                     {
                         type        = materialGraphValueTypeFromIndex(typeIndex);
                         pin["type"] = std::string(vultra::material_graph::toString(type));
@@ -5956,19 +6090,29 @@ namespace vultra_app
         ui::sectionTitle(ICON_MDI_VECTOR_POLYGON, "Render Graph Pass");
 
         bool dirty = false;
-        dirty |= ImGui::InputText("Type", editState.type.data(), editState.type.size());
+        ui::beginPropertyRow("Type");
+        dirty |= ImGui::InputText("##Type", editState.type.data(), editState.type.size());
+        ui::endPropertyRow();
 
         const char* pipelines[] = {"Graphics", "Compute", "Raytracing"};
-        dirty |= ImGui::Combo("Pipeline", &editState.pipeline, pipelines, IM_ARRAYSIZE(pipelines));
+        ui::beginPropertyRow("Pipeline");
+        dirty |= ImGui::Combo("##Pipeline", &editState.pipeline, pipelines, IM_ARRAYSIZE(pipelines));
+        ui::endPropertyRow();
 
-        dirty |= ImGui::InputText("Inputs", editState.inputs.data(), editState.inputs.size());
-        dirty |= ImGui::InputText("Outputs", editState.outputs.data(), editState.outputs.size());
+        ui::beginPropertyRow("Inputs");
+        dirty |= ImGui::InputText("##Inputs", editState.inputs.data(), editState.inputs.size());
+        ui::endPropertyRow();
+        ui::beginPropertyRow("Outputs");
+        dirty |= ImGui::InputText("##Outputs", editState.outputs.data(), editState.outputs.size());
+        ui::endPropertyRow();
 
         if (editState.pipeline == 1)
         {
             dirty |= drawShaderLibrarySelector("Library", editState.library);
             dirty |= drawLibraryShaderSelector(ctx, "Compute", "comp", editState.library, editState.compute);
-            dirty |= ImGui::Checkbox("Dispatch By Output Size", &editState.dispatchByOutputSize);
+            ui::beginPropertyRow("Dispatch By Output Size");
+            dirty |= ImGui::Checkbox("##DispatchByOutputSize", &editState.dispatchByOutputSize);
+            ui::endPropertyRow();
         }
         else if (editState.pipeline == 2)
         {
@@ -6075,7 +6219,8 @@ namespace vultra_app
             vasset::kTextureSubtypeCursor,
         };
         const auto subtypePreview = std::string(textureSubtypeLabel(edit.subtype));
-        if (ImGui::BeginCombo("Subtype", subtypePreview.c_str()))
+        ui::beginPropertyRow("Subtype");
+        if (ImGui::BeginCombo("##Subtype", subtypePreview.c_str()))
         {
             for (const auto subtype : subtypeIds)
             {
@@ -6091,45 +6236,60 @@ namespace vultra_app
             }
             ImGui::EndCombo();
         }
+        ui::endPropertyRow();
 
-        changed |= ImGui::Checkbox("Generate Mipmaps", &edit.options.generateMipmaps);
-        changed |= ImGui::Checkbox("Flip Y", &edit.options.flipY);
+        const auto checkboxRow = [&](const char* label, bool& field) {
+            ui::beginPropertyRow(label);
+            changed |= ImGui::Checkbox("##value", &field);
+            ui::endPropertyRow();
+        };
+
+        checkboxRow("Generate Mipmaps", edit.options.generateMipmaps);
+        checkboxRow("Flip Y", edit.options.flipY);
         changed |= drawTextureFileFormatCombo(edit.options.targetTextureFileFormat);
-        changed |= ImGui::Checkbox("UASTC", &edit.options.uastc);
+        checkboxRow("UASTC", edit.options.uastc);
 
         int qualityLevel = static_cast<int>(edit.options.qualityLevel);
-        if (ImGui::SliderInt("Quality Level", &qualityLevel, 1, 255))
+        ui::beginPropertyRow("Quality Level");
+        if (ImGui::SliderInt("##QualityLevel", &qualityLevel, 1, 255))
         {
             edit.options.qualityLevel = static_cast<uint32_t>(std::clamp(qualityLevel, 1, 255));
             changed = true;
         }
+        ui::endPropertyRow();
 
         int compressionLevel = static_cast<int>(edit.options.compressionLevel);
-        if (ImGui::SliderInt("Compression Level", &compressionLevel, 0, 4))
+        ui::beginPropertyRow("Compression Level");
+        if (ImGui::SliderInt("##CompressionLevel", &compressionLevel, 0, 4))
         {
             edit.options.compressionLevel = static_cast<uint32_t>(std::clamp(compressionLevel, 0, 4));
             changed = true;
         }
+        ui::endPropertyRow();
 
-        changed |= ImGui::Checkbox("Compress Only Large", &edit.options.compressOnlyLargeTextures);
-        changed |= ImGui::Checkbox("Downscale Large", &edit.options.downscaleLargeTextures);
+        checkboxRow("Compress Only Large", edit.options.compressOnlyLargeTextures);
+        checkboxRow("Downscale Large", edit.options.downscaleLargeTextures);
 
         int downscaleMin = static_cast<int>(edit.options.downscaleMinDimension);
-        if (ImGui::InputInt("Downscale Min Dimension", &downscaleMin))
+        ui::beginPropertyRow("Downscale Min Dimension");
+        if (ImGui::InputInt("##DownscaleMin", &downscaleMin))
         {
             edit.options.downscaleMinDimension = static_cast<uint32_t>(std::max(downscaleMin, 1));
             changed = true;
         }
+        ui::endPropertyRow();
 
         int downscaleTarget = static_cast<int>(edit.options.downscaleTargetDimension);
-        if (ImGui::InputInt("Downscale Target Dimension", &downscaleTarget))
+        ui::beginPropertyRow("Downscale Target Dimension");
+        if (ImGui::InputInt("##DownscaleTarget", &downscaleTarget))
         {
             edit.options.downscaleTargetDimension = static_cast<uint32_t>(std::max(downscaleTarget, 1));
             changed = true;
         }
+        ui::endPropertyRow();
 
-        changed |= ImGui::Checkbox("Bake Normal Map", &edit.options.bakeNormalMap);
-        changed |= ImGui::Checkbox("DirectX Normal Map", &edit.options.directXNormalMap);
+        checkboxRow("Bake Normal Map", edit.options.bakeNormalMap);
+        checkboxRow("DirectX Normal Map", edit.options.directXNormalMap);
         static_cast<void>(changed);
 
         const bool dirty = !textureImportParamsEqual(m_TextureImportEdit.saved, edit);

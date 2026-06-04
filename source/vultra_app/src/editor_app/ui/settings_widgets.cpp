@@ -114,7 +114,7 @@ namespace vultra_app::ui
         ImGui::Separator();
     }
 
-    bool beginSettingsRow(const char* label, const float labelWidth)
+    bool beginPropertyRow(const char* label, const float labelWidth)
     {
         ImGui::PushID(label);
         ImGui::AlignTextToFramePadding();
@@ -124,7 +124,14 @@ namespace vultra_app::ui
         return true;
     }
 
-    void endSettingsRow() { ImGui::PopID(); }
+    void endPropertyRow() { ImGui::PopID(); }
+
+    bool beginSettingsRow(const char* label, const float labelWidth)
+    {
+        return beginPropertyRow(label, labelWidth);
+    }
+
+    void endSettingsRow() { endPropertyRow(); }
 
     void drawInfoRegion(const char* text)
     {
