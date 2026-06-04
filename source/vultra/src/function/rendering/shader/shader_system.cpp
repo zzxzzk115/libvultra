@@ -128,6 +128,13 @@ namespace vultra
                 return existing;
         }
 
+        // The project shader library is an optional override. A reload retries (the asset may have
+        // appeared); otherwise honor the cached "absent" result instead of probing the VFS again.
+        if (forceReload)
+            m_MissingProjectLibraries.erase(std::string(uri));
+        else if (m_MissingProjectLibraries.contains(std::string(uri)))
+            return nullptr;
+
         auto* assetService = ctx().services.tryGet<IAssetService>();
         if (!assetService)
         {
@@ -160,8 +167,12 @@ namespace vultra
             bytes = assetService->loadBinaryAssetSync(uri);
         if (!bytes)
         {
-            VULTRA_CORE_ERROR(
-                "[ShaderSystem] Cannot load project shader library '{}': {}", uri, std::move(bytes).error());
+            // Asset simply not present: not an error. Callers fall back to the builtin library.
+            // Cache the miss so per-frame lookups don't keep probing the VFS or spamming logs.
+            VULTRA_CORE_TRACE("[ShaderSystem] Project shader library '{}' not available; using builtin shaders ({}).",
+                              uri,
+                              std::move(bytes).error());
+            m_MissingProjectLibraries.insert(std::string(uri));
             return nullptr;
         }
 

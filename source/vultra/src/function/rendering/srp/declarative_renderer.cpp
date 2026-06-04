@@ -3354,15 +3354,17 @@ namespace vultra
         if (!shaderService)
             return false;
 
-        bool ok = true;
         for (const auto& [name, uri] : m_Asset.shaderLibraries)
         {
             if (!shaderService->reloadProjectLibrary(uri))
             {
-                VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to load shader library '{}' from '{}'", name, uri);
-                ok = false;
+                // The project shader library is an optional override: when it isn't present the
+                // builtin shaders are used. A genuinely malformed library is still error-logged by
+                // the shader system, so treat a load miss here as non-fatal.
+                VULTRA_CORE_TRACE(
+                    "[DeclarativeRenderer] Shader library '{}' ('{}') not loaded; using builtin shaders.", name, uri);
             }
         }
-        return ok;
+        return true;
     }
 } // namespace vultra
