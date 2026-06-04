@@ -14,6 +14,7 @@
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/layer_component.hpp"
 #include "vultra/function/world/components/light_component.hpp"
+#include "vultra/function/world/components/particle_emitter_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/reflection_probe_component.hpp"
@@ -205,6 +206,23 @@ namespace vultra
             .data<&LightComponent::outerConeDegrees>("outerConeDegrees"_hs)
             .data<&LightComponent::castsShadow>("castsShadow"_hs)
             .data<&LightComponent::twoSided>("twoSided"_hs);
+
+        entt::meta_factory<ParticleEmitterComponent>()
+            .type("ParticleEmitterComponent"_hs)
+            .data<&ParticleEmitterComponent::playing>("playing"_hs)
+            .data<&ParticleEmitterComponent::worldSpace>("worldSpace"_hs)
+            .data<&ParticleEmitterComponent::maxParticles>("maxParticles"_hs)
+            .data<&ParticleEmitterComponent::emissionRate>("emissionRate"_hs)
+            .data<&ParticleEmitterComponent::lifetime>("lifetime"_hs)
+            .data<&ParticleEmitterComponent::lifetimeVariance>("lifetimeVariance"_hs)
+            .data<&ParticleEmitterComponent::spawnRadius>("spawnRadius"_hs)
+            .data<&ParticleEmitterComponent::startVelocity>("startVelocity"_hs)
+            .data<&ParticleEmitterComponent::velocityVariance>("velocityVariance"_hs)
+            .data<&ParticleEmitterComponent::gravity>("gravity"_hs)
+            .data<&ParticleEmitterComponent::startSize>("startSize"_hs)
+            .data<&ParticleEmitterComponent::endSize>("endSize"_hs)
+            .data<&ParticleEmitterComponent::startColor>("startColor"_hs)
+            .data<&ParticleEmitterComponent::endColor>("endColor"_hs);
 
         entt::meta_factory<ScriptComponent>()
             .type("ScriptComponent"_hs)

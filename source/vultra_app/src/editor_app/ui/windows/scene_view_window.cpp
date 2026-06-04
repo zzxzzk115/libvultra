@@ -20,6 +20,7 @@
 #include <vultra/function/world/components/capsule_shape_component.hpp>
 #include <vultra/function/world/components/entity_status_component.hpp>
 #include <vultra/function/world/components/light_component.hpp>
+#include <vultra/function/world/components/particle_emitter_component.hpp>
 #include <vultra/function/world/components/gaussian_splat_component.hpp>
 #include <vultra/function/world/components/hierarchy_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
@@ -1710,6 +1711,8 @@ namespace vultra_app
                                                   ICON_MDI_LIGHTBULB_ON;
             drawIcon(e, glyph, IM_COL32(255, 226, 120, 255));
         }
+        for (auto e : reg.view<vultra::TransformComponent, vultra::ParticleEmitterComponent>())
+            drawIcon(e, ICON_MDI_CREATION, IM_COL32(180, 220, 255, 255));
     }
 
     void SceneViewWindow::draw(EditorContext& ctx)

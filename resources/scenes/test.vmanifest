@@ -62,3 +62,23 @@ EnvironmentComponent/ambientIntensity = 1.000000
 EnvironmentComponent/enableIBL = false
 EnvironmentComponent/iblColor = (0.04, 0.045, 0.05)
 EnvironmentComponent/iblIntensity = 1.000000
+
+[node id=7 name="Sparks" parent=1]
+NameComponent/name = "Sparks"
+TransformComponent/position = (0, 2, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+ParticleEmitterComponent/playing = true
+ParticleEmitterComponent/worldSpace = true
+ParticleEmitterComponent/maxParticles = 160
+ParticleEmitterComponent/emissionRate = 48.000000
+ParticleEmitterComponent/lifetime = 2.500000
+ParticleEmitterComponent/lifetimeVariance = 0.300000
+ParticleEmitterComponent/spawnRadius = 0.150000
+ParticleEmitterComponent/startVelocity = (0, 3, 0)
+ParticleEmitterComponent/velocityVariance = 1.500000
+ParticleEmitterComponent/gravity = (0, -3, 0)
+ParticleEmitterComponent/startSize = 0.150000
+ParticleEmitterComponent/endSize = 0.000000
+ParticleEmitterComponent/startColor = (1, 0.8, 0.3, 1)
+ParticleEmitterComponent/endColor = (1, 0.2, 0, 0)

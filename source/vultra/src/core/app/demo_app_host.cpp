@@ -15,6 +15,7 @@
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
 #include "vultra/function/openxr/xr_runtime_system.hpp"
 #endif
+#include "vultra/function/particle/particle_system.hpp"
 #include "vultra/function/physics/physics_system.hpp"
 #include "vultra/function/plugin/plugin_system.hpp"
 #include "vultra/function/rendering/backend/render_backend_system.hpp"
@@ -442,6 +443,8 @@ namespace vultra
             engine.emplaceSubsystem<AnimationSystem>();
             // After ScriptSystem so plugins can use the shared Lua state and the asset/scene services.
             engine.emplaceSubsystem<PluginSystem>();
+            // Before RenderSystem so emitted particles queue their debug-draw preview for this frame.
+            engine.emplaceSubsystem<ParticleSystem>();
 
             auto& renderSystem = engine.emplaceSubsystem<RenderSystem>();
             renderSystem.registerRenderer(renderer);

@@ -23,6 +23,7 @@
 #include "vultra/function/world/components/layer_component.hpp"
 #include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
+#include "vultra/function/world/components/particle_emitter_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/prefab_instance_component.hpp"
 #include "vultra/function/world/components/animator_component.hpp"
@@ -722,6 +723,21 @@ namespace vultra
                                                                "outerConeDegrees",
                                                                "castsShadow",
                                                                "twoSided"});
+        m_ComponentRegistry.registerComponent<ParticleEmitterComponent>("ParticleEmitterComponent",
+                                                                        {"playing",
+                                                                         "worldSpace",
+                                                                         "maxParticles",
+                                                                         "emissionRate",
+                                                                         "lifetime",
+                                                                         "lifetimeVariance",
+                                                                         "spawnRadius",
+                                                                         "startVelocity",
+                                                                         "velocityVariance",
+                                                                         "gravity",
+                                                                         "startSize",
+                                                                         "endSize",
+                                                                         "startColor",
+                                                                         "endColor"});
         m_ComponentRegistry.registerComponent<ScriptComponent>("ScriptComponent", {"scriptUri", "enabled"});
         m_ComponentRegistry.registerComponent<CanvasComponent>(
             "CanvasComponent",

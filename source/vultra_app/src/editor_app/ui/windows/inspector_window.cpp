@@ -35,6 +35,7 @@
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
+#include <vultra/function/world/components/particle_emitter_component.hpp>
 #include <vultra/function/world/components/prefab_instance_component.hpp>
 #include <vultra/function/world/components/reflection_probe_component.hpp>
 #include <vultra/function/world/components/rigid_body_component.hpp>
@@ -863,6 +864,8 @@ namespace vultra_app
                 return "Reflection Probe";
             if (std::strcmp(metaName, "LightComponent") == 0)
                 return "Light";
+            if (std::strcmp(metaName, "ParticleEmitterComponent") == 0)
+                return "Particle Emitter";
             if (std::strcmp(metaName, "RigidBodyComponent") == 0)
                 return "Rigid Body";
             if (std::strcmp(metaName, "BoxShapeComponent") == 0)
@@ -4560,6 +4563,8 @@ namespace vultra_app
                 addComponentDescriptor<vultra::ReflectionProbeComponent>(
                     "ReflectionProbe", "Reflection Probe", "Lighting"),
                 addComponentDescriptor<vultra::LightComponent>("Light", "Light", "Lighting"),
+                addComponentDescriptor<vultra::ParticleEmitterComponent>(
+                    "ParticleEmitter", "Particle Emitter", "Rendering"),
                 addComponentDescriptor<vultra::RigidBodyComponent>("RigidBody", "Rigid Body", "Physics"),
                 addPhysicsShapeComponentDescriptor<vultra::BoxShapeComponent>(
                     "BoxShape", "Box Shape", fitBoxShapeToMeshBounds),
@@ -4595,6 +4600,7 @@ namespace vultra_app
                 "Environment",
                 "ReflectionProbe",
                 "Light",
+                "ParticleEmitter",
                 "RigidBody",
                 "BoxShape",
                 "SphereShape",
