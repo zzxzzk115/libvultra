@@ -46,6 +46,7 @@
 #include <vultra/function/world/world.hpp>
 
 #include <vasset/vanimation.hpp>
+#include <vasset/vmesh.hpp>
 #include <vasset/vimport.hpp>
 
 #include <entt/meta/meta.hpp>
@@ -3099,11 +3100,160 @@ namespace vultra_app
             return changed;
         }
 
-        bool drawAnimatorComponentFields(EditorContext& ctx, vultra::AnimatorComponent& animator)
+        // The skeleton bundled inside an entity's (or a descendant's) skinned mesh asset.
+        vultra::CoreUUID meshBundledSkeleton(EditorContext& ctx, entt::registry& reg, entt::entity e)
+        {
+            if (!ctx.services)
+                return {};
+            auto* assets = ctx.services->tryGet<vultra::IAssetService>();
+            if (!assets)
+                return {};
+            const auto search = [&](auto&& self, entt::entity cursor) -> vultra::CoreUUID {
+                if (cursor == entt::null || !reg.valid(cursor))
+                    return {};
+                if (const auto* mesh = reg.try_get<vultra::MeshComponent>(cursor); mesh && mesh->mesh.valid())
+                {
+                    auto        handle = assets->loadMeshSync(mesh->mesh);
+                    const auto* cpu    = handle.cpu();
+                    if (cpu && cpu->hasSkin && vultra::CoreUUID {cpu->skeleton}.valid())
+                        return vultra::CoreUUID {cpu->skeleton};
+                }
+                const auto* hierarchy = reg.try_get<vultra::HierarchyComponent>(cursor);
+                for (auto child = hierarchy ? hierarchy->firstChild : entt::null; child != entt::null;)
+                {
+                    const auto* ch   = reg.try_get<vultra::HierarchyComponent>(child);
+                    const auto  next = ch ? ch->nextSibling : entt::null;
+                    if (auto found = self(self, child); found.valid())
+                        return found;
+                    child = next;
+                }
+                return {};
+            };
+            return search(search, e);
+        }
+
+        // Shared skeleton row for the animator: defaults to the mesh's bundled skeleton, optional override.
+        bool drawAnimatorSkeletonRow(EditorContext& ctx, entt::registry& reg, entt::entity e, vultra::CoreUUID& skeleton)
+        {
+            bool       changed  = false;
+            const auto fromMesh = meshBundledSkeleton(ctx, reg, e);
+            if (skeleton.valid())
+            {
+                changed |= drawUuidObjectField(&ctx, skeleton, "skeleton", "Skeleton");
+                if (ImGui::SmallButton(ICON_MDI_CLOSE "  Clear Skeleton Override"))
+                {
+                    skeleton = {};
+                    changed  = true;
+                }
+            }
+            else
+            {
+                ui::beginPropertyRow("Skeleton");
+                ImGui::TextDisabled(fromMesh.valid() ? ICON_MDI_BONE "  (from mesh)" :
+                                                       ICON_MDI_ALERT "  (no skinned mesh)");
+                ui::endPropertyRow();
+                if (ImGui::SmallButton(ICON_MDI_PENCIL "  Override Skeleton"))
+                {
+                    skeleton = fromMesh; // seed from the mesh, then it becomes editable
+                    changed  = true;
+                }
+            }
+            return changed;
+        }
+
+        // Merged animator inspector: a mode toggle switches between single-clip and animator-graph mode.
+        bool drawAnimatorComponentFields(EditorContext& ctx, entt::registry& reg, entt::entity e,
+                                         vultra::AnimatorComponent& animator)
         {
             bool changed = false;
 
-            changed |= drawUuidObjectField(&ctx, animator.skeleton, "skeleton", "Skeleton");
+            // --- Mode selector ---
+            static const char* kModes[] = {"Single Clip", "Graph"};
+            int                mode     = animator.mode == 1u ? 1 : 0;
+            ui::beginPropertyRow("Mode");
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::Combo("##AnimatorMode", &mode, kModes, IM_ARRAYSIZE(kModes)))
+            {
+                animator.mode = static_cast<uint32_t>(mode);
+                changed       = true;
+            }
+            ui::endPropertyRow();
+
+            ImGui::Separator();
+
+            // --- Skeleton (shared by both modes) ---
+            changed |= drawAnimatorSkeletonRow(ctx, reg, e, animator.skeleton);
+
+            ImGui::Separator();
+
+            if (animator.mode == 1u)
+            {
+                // --- Graph mode ---
+                const auto lastSegment = [](const std::string& uri) {
+                    const auto sl = uri.find_last_of('/');
+                    return sl == std::string::npos ? uri : uri.substr(sl + 1);
+                };
+                ui::beginPropertyRow("Graph");
+                const std::string preview =
+                    animator.graph.empty() ? std::string(ICON_MDI_RUN_FAST "  (none)") :
+                                             std::string(ICON_MDI_RUN_FAST "  ") + lastSegment(animator.graph);
+                ImGui::SetNextItemWidth(-1.0f);
+                if (ImGui::BeginCombo("##AnimatorGraphAsset", preview.c_str()))
+                {
+                    if (ImGui::Selectable("(none)", animator.graph.empty()))
+                    {
+                        animator.graph.clear();
+                        changed = true;
+                    }
+                    // Enumerate registered animator-graph assets (imported on startup/save), so the
+                    // list is consistent regardless of the on-disk folder layout.
+                    auto* assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
+                    bool  any    = false;
+                    if (assets)
+                        for (const auto& [uuidText, entry] : assets->registry().getRegistry())
+                        {
+                            if (entry.type != vasset::VAssetType::eAnimatorGraphJson)
+                                continue;
+                            if (!isUserSelectableAssetEntry(entry))
+                                continue;
+                            const auto uri = entrySourceUri(entry);
+                            if (uri.empty())
+                                continue;
+                            any              = true;
+                            const auto label = assetDisplayName(entry) + "##" + uuidText;
+                            if (ImGui::Selectable(label.c_str(), uri == animator.graph))
+                            {
+                                animator.graph = uri;
+                                changed        = true;
+                            }
+                            ImGui::SameLine();
+                            ImGui::TextDisabled("%s", uri.c_str());
+                        }
+                    if (!any)
+                        ImGui::TextDisabled("No animator graphs in project.");
+                    ImGui::EndCombo();
+                }
+                ui::endPropertyRow();
+
+                if (!animator.graph.empty() &&
+                    ImGui::Button(ICON_MDI_PENCIL "  Edit Graph", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+                {
+                    ctx.state.currentEditingAnimatorGraph = animator.graph;
+                    ctx.state.animatorGraphOpenRequested  = true;
+                    ctx.state.editorWindowFocusRequested  = "Animator Graph";
+                }
+
+                ImGui::Separator();
+                ui::beginPropertyRow("Play On Start");
+                changed |= ImGui::Checkbox("##ctrlPlayOnStart", &animator.playOnStart);
+                ui::endPropertyRow();
+                ui::beginPropertyRow("Speed");
+                changed |= ImGui::DragFloat("##ctrlSpeed", &animator.speed, 0.01f, -8.0f, 8.0f, "%.3f");
+                ui::endPropertyRow();
+                return changed;
+            }
+
+            // --- Single-clip mode ---
             changed |= drawUuidObjectField(&ctx, animator.animation, "animation", "Animation");
 
             ImGui::Separator();
@@ -5054,7 +5204,7 @@ namespace vultra_app
             else if (key == "Animator")
             {
                 if (auto* animator = reg.try_get<vultra::AnimatorComponent>(e))
-                    if (drawAnimatorComponentFields(ctx, *animator))
+                    if (drawAnimatorComponentFields(ctx, reg, e, *animator))
                     {
                         ctx.state.sceneDirty = true;
                         if (ctx.history)

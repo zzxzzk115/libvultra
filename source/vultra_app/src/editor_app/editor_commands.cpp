@@ -9,9 +9,13 @@
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/box_shape_component.hpp>
+#include <vultra/function/world/components/animator_component.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/components/capsule_shape_component.hpp>
+#include <vultra/function/world/components/character_controller_component.hpp>
+#include <vultra/function/world/components/cylinder_shape_component.hpp>
 #include <vultra/function/world/components/entity_status_component.hpp>
+#include <vultra/function/world/components/mesh_shape_component.hpp>
 #include <vultra/function/world/components/environment_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
 #include <vultra/function/world/components/layer_component.hpp>
@@ -433,6 +437,15 @@ namespace vultra_app
                 return "box_shape";
             if (kind == "capsuleshape")
                 return "capsule_shape";
+            if (kind == "cylindershape")
+                return "cylinder_shape";
+            if (kind == "meshshape" || kind == "meshcollider")
+                return "mesh_shape";
+            if (kind == "charactercontroller" || kind == "character" || kind == "charactercontrollercomponent")
+                return "character_controller";
+            if (kind == "animatorcomponent" || kind == "animatorcontroller" || kind == "animator_controller" ||
+                kind == "animatorcontrollercomponent" || kind == "animator_graph")
+                return "animator";
             if (kind == "xrview")
                 return "xr_view";
             if (kind == "lua_script" || kind == "luascript")
@@ -547,6 +560,10 @@ namespace vultra_app
                 "sphere_shape",
                 "box_shape",
                 "capsule_shape",
+                "cylinder_shape",
+                "mesh_shape",
+                "character_controller",
+                "animator",
                 "camera",
                 "light",
                 "environment",
@@ -699,6 +716,46 @@ namespace vultra_app
                 fields.push_back(fieldJson("halfHeightOfCylinder", "float"));
                 fields.push_back(fieldJson("radius", "float"));
             }
+            else if (k == "cylinder_shape")
+            {
+                out["cxxComponent"] = "CylinderShapeComponent";
+                fields.push_back(fieldJson("halfHeight", "float"));
+                fields.push_back(fieldJson("radius", "float"));
+            }
+            else if (k == "mesh_shape")
+            {
+                out["cxxComponent"] = "MeshShapeComponent";
+                fields.push_back(fieldJson("convex", "bool"));
+            }
+            else if (k == "character_controller")
+            {
+                out["cxxComponent"] = "CharacterControllerComponent";
+                fields.push_back(fieldJson("radius", "float"));
+                fields.push_back(fieldJson("height", "float"));
+                fields.push_back(fieldJson("maxSlopeAngleDegrees", "float"));
+                fields.push_back(fieldJson("stepHeight", "float"));
+                fields.push_back(fieldJson("gravityFactor", "float"));
+                fields.push_back(fieldJson("mass", "float"));
+                fields.push_back(fieldJson("jumpSpeed", "float"));
+                fields.push_back(fieldJson("objectLayer", "uint32"));
+                fields.push_back(fieldJson("inputMove", "vec3"));
+                fields.push_back(fieldJson("jumpRequested", "bool"));
+                fields.push_back(fieldJson("velocity", "vec3"));
+                fields.push_back(fieldJson("grounded", "bool"));
+            }
+            else if (k == "animator")
+            {
+                out["cxxComponent"] = "AnimatorComponent";
+                fields.push_back(fieldJson("mode", "uint32")); // 0 = single clip, 1 = graph
+                fields.push_back(fieldJson("skeleton", "uuid"));
+                fields.push_back(fieldJson("animation", "uuid"));
+                fields.push_back(fieldJson("playOnStart", "bool"));
+                fields.push_back(fieldJson("playing", "bool"));
+                fields.push_back(fieldJson("loop", "bool"));
+                fields.push_back(fieldJson("speed", "float"));
+                fields.push_back(fieldJson("time", "float"));
+                fields.push_back(fieldJson("graph", "string"));
+            }
             else if (k == "camera")
             {
                 out["cxxComponent"] = "CameraComponent";
@@ -761,6 +818,8 @@ namespace vultra_app
                 fields.push_back(fieldJson("sortOrder", "int", {"sort_order"}));
                 fields.push_back(fieldJson("referenceResolutionPx", "vec2", {"reference_resolution_px"}));
                 fields.push_back(fieldJson("scaleMode", "uint32", {"scale_mode"}));
+                fields.push_back(fieldJson("renderMode", "uint32", {"render_mode"}, {{"enum", {"screen", "world"}}}));
+                fields.push_back(fieldJson("pixelsPerUnit", "float", {"pixels_per_unit"}));
             }
             else if (k == "rect_transform")
             {
@@ -954,6 +1013,57 @@ namespace vultra_app
                 else
                     return {{"halfHeightOfCylinder", c->halfHeightOfCylinder}, {"radius", c->radius}};
             }
+            else if (k == "cylinder_shape")
+            {
+                const auto* c = reg.try_get<vultra::CylinderShapeComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have CylinderShapeComponent";
+                else
+                    return {{"halfHeight", c->halfHeight}, {"radius", c->radius}};
+            }
+            else if (k == "mesh_shape")
+            {
+                const auto* c = reg.try_get<vultra::MeshShapeComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have MeshShapeComponent";
+                else
+                    return {{"convex", c->convex}};
+            }
+            else if (k == "character_controller")
+            {
+                const auto* c = reg.try_get<vultra::CharacterControllerComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have CharacterControllerComponent";
+                else
+                    return {{"radius", c->radius},
+                            {"height", c->height},
+                            {"maxSlopeAngleDegrees", c->maxSlopeAngleDegrees},
+                            {"stepHeight", c->stepHeight},
+                            {"gravityFactor", c->gravityFactor},
+                            {"mass", c->mass},
+                            {"jumpSpeed", c->jumpSpeed},
+                            {"objectLayer", c->objectLayer},
+                            {"inputMove", vec3Json(c->inputMove)},
+                            {"jumpRequested", c->jumpRequested},
+                            {"velocity", vec3Json(c->velocity)},
+                            {"grounded", c->grounded}};
+            }
+            else if (k == "animator")
+            {
+                const auto* c = reg.try_get<vultra::AnimatorComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have AnimatorComponent";
+                else
+                    return {{"mode", c->mode},
+                            {"skeleton", uuidJson(c->skeleton)},
+                            {"animation", uuidJson(c->animation)},
+                            {"playOnStart", c->playOnStart},
+                            {"playing", c->playing},
+                            {"loop", c->loop},
+                            {"speed", c->speed},
+                            {"time", c->time},
+                            {"graph", c->graph}};
+            }
             else if (k == "camera")
             {
                 const auto* c = reg.try_get<vultra::CameraComponent>(entity);
@@ -1021,7 +1131,9 @@ namespace vultra_app
                     return {{"enabled", c->enabled},
                             {"sortOrder", c->sortOrder},
                             {"referenceResolutionPx", vec2Json(c->referenceResolutionPx)},
-                            {"scaleMode", c->scaleMode}};
+                            {"scaleMode", c->scaleMode},
+                            {"renderMode", c->renderMode},
+                            {"pixelsPerUnit", c->pixelsPerUnit}};
             }
             else if (k == "rect_transform")
             {
@@ -1219,6 +1331,8 @@ namespace vultra_app
                                                                 "reference_resolution_px",
                                                                 canvas.referenceResolutionPx));
                 canvas.scaleMode             = args.value("scaleMode", args.value("scale_mode", canvas.scaleMode));
+                canvas.renderMode            = args.value("renderMode", args.value("render_mode", canvas.renderMode));
+                canvas.pixelsPerUnit = args.value("pixelsPerUnit", args.value("pixels_per_unit", canvas.pixelsPerUnit));
                 (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
                 return true;
             }
@@ -1468,6 +1582,73 @@ namespace vultra_app
                 shape.radius               = args.value("radius", shape.radius);
                 return true;
             }
+            if (kind == "cylinder_shape")
+            {
+                if (requireExisting && !reg.all_of<vultra::CylinderShapeComponent>(entity))
+                {
+                    errorMessage = "entity does not have CylinderShapeComponent";
+                    return false;
+                }
+                auto& shape      = reg.get_or_emplace<vultra::CylinderShapeComponent>(entity);
+                shape.halfHeight = args.value("halfHeight", shape.halfHeight);
+                shape.radius     = args.value("radius", shape.radius);
+                return true;
+            }
+            if (kind == "mesh_shape")
+            {
+                if (requireExisting && !reg.all_of<vultra::MeshShapeComponent>(entity))
+                {
+                    errorMessage = "entity does not have MeshShapeComponent";
+                    return false;
+                }
+                auto& shape  = reg.get_or_emplace<vultra::MeshShapeComponent>(entity);
+                shape.convex = args.value("convex", shape.convex);
+                return true;
+            }
+            if (kind == "character_controller")
+            {
+                if (requireExisting && !reg.all_of<vultra::CharacterControllerComponent>(entity))
+                {
+                    errorMessage = "entity does not have CharacterControllerComponent";
+                    return false;
+                }
+                auto& cc = reg.get_or_emplace<vultra::CharacterControllerComponent>(entity);
+                cc.radius = args.value("radius", cc.radius);
+                cc.height = args.value("height", cc.height);
+                cc.maxSlopeAngleDegrees = args.value("maxSlopeAngleDegrees", cc.maxSlopeAngleDegrees);
+                cc.stepHeight = args.value("stepHeight", cc.stepHeight);
+                cc.gravityFactor = args.value("gravityFactor", cc.gravityFactor);
+                cc.mass = args.value("mass", cc.mass);
+                cc.jumpSpeed = args.value("jumpSpeed", cc.jumpSpeed);
+                cc.objectLayer = args.value("objectLayer", cc.objectLayer);
+                cc.inputMove = vec3Arg(args, "inputMove", cc.inputMove);
+                cc.jumpRequested = args.value("jumpRequested", cc.jumpRequested);
+                cc.velocity = vec3Arg(args, "velocity", cc.velocity);
+                cc.grounded = args.value("grounded", cc.grounded);
+                return true;
+            }
+            if (kind == "animator")
+            {
+                if (requireExisting && !reg.all_of<vultra::AnimatorComponent>(entity))
+                {
+                    errorMessage = "entity does not have AnimatorComponent";
+                    return false;
+                }
+                auto& ac = reg.get_or_emplace<vultra::AnimatorComponent>(entity);
+                ac.mode  = args.value("mode", ac.mode); // 0 = single clip, 1 = graph
+                // Convenience: assigning a graph without an explicit mode implies graph mode.
+                if (!args.contains("mode") && !args.value("graph", std::string {}).empty())
+                    ac.mode = 1u;
+                uuidArg(args, "skeleton", ac.skeleton);
+                uuidArg(args, "animation", ac.animation);
+                ac.graph       = args.value("graph", ac.graph);
+                ac.playOnStart = args.value("playOnStart", ac.playOnStart);
+                ac.playing     = args.value("playing", ac.playing);
+                ac.loop        = args.value("loop", ac.loop);
+                ac.speed       = args.value("speed", ac.speed);
+                ac.time        = args.value("time", ac.time);
+                return true;
+            }
             if (kind == "camera")
             {
                 if (requireExisting && !reg.all_of<vultra::CameraComponent>(entity))
@@ -1572,6 +1753,14 @@ namespace vultra_app
                 return reg.remove<vultra::BoxShapeComponent>(entity) > 0u;
             if (kind == "capsule_shape")
                 return reg.remove<vultra::CapsuleShapeComponent>(entity) > 0u;
+            if (kind == "cylinder_shape")
+                return reg.remove<vultra::CylinderShapeComponent>(entity) > 0u;
+            if (kind == "mesh_shape")
+                return reg.remove<vultra::MeshShapeComponent>(entity) > 0u;
+            if (kind == "character_controller")
+                return reg.remove<vultra::CharacterControllerComponent>(entity) > 0u;
+            if (kind == "animator")
+                return reg.remove<vultra::AnimatorComponent>(entity) > 0u;
             if (kind == "camera")
                 return reg.remove<vultra::CameraComponent>(entity) > 0u;
             if (kind == "light")
@@ -1893,6 +2082,18 @@ namespace vultra_app
             ctx.state.currentEditingMaterialGraph = uri;
             ctx.state.materialGraphOpenRequested  = true;
             ctx.state.statusMessage               = "Opening material graph: " + uri;
+            return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
+        }
+
+        if (name == "editor.open_animator_graph")
+        {
+            const auto uri = args.value("uri", std::string {});
+            if (uri.empty())
+                return error("editor.open_animator_graph requires uri");
+            ctx.state.currentEditingAnimatorGraph = uri;
+            ctx.state.animatorGraphOpenRequested  = true;
+            ctx.state.editorWindowFocusRequested  = "Animator Graph";
+            ctx.state.statusMessage               = "Opening animator graph: " + uri;
             return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
         }
 

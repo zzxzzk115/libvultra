@@ -5,6 +5,9 @@
 #include "vultra/function/world/components/box_shape_component.hpp"
 #include "vultra/function/world/components/camera_component.hpp"
 #include "vultra/function/world/components/capsule_shape_component.hpp"
+#include "vultra/function/world/components/character_controller_component.hpp"
+#include "vultra/function/world/components/cylinder_shape_component.hpp"
+#include "vultra/function/world/components/mesh_shape_component.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
@@ -101,6 +104,28 @@ namespace vultra
             .data<&CapsuleShapeComponent::halfHeightOfCylinder>("halfHeightOfCylinder"_hs)
             .data<&CapsuleShapeComponent::radius>("radius"_hs);
 
+        entt::meta_factory<CylinderShapeComponent>()
+            .type("CylinderShapeComponent"_hs)
+            .data<&CylinderShapeComponent::halfHeight>("halfHeight"_hs)
+            .data<&CylinderShapeComponent::radius>("radius"_hs);
+        entt::meta_factory<MeshShapeComponent>().type("MeshShapeComponent"_hs).data<&MeshShapeComponent::convex>(
+            "convex"_hs);
+
+        entt::meta_factory<CharacterControllerComponent>()
+            .type("CharacterControllerComponent"_hs)
+            .data<&CharacterControllerComponent::radius>("radius"_hs)
+            .data<&CharacterControllerComponent::height>("height"_hs)
+            .data<&CharacterControllerComponent::maxSlopeAngleDegrees>("maxSlopeAngleDegrees"_hs)
+            .data<&CharacterControllerComponent::stepHeight>("stepHeight"_hs)
+            .data<&CharacterControllerComponent::gravityFactor>("gravityFactor"_hs)
+            .data<&CharacterControllerComponent::mass>("mass"_hs)
+            .data<&CharacterControllerComponent::jumpSpeed>("jumpSpeed"_hs)
+            .data<&CharacterControllerComponent::objectLayer>("objectLayer"_hs)
+            .data<&CharacterControllerComponent::inputMove>("inputMove"_hs)
+            .data<&CharacterControllerComponent::jumpRequested>("jumpRequested"_hs)
+            .data<&CharacterControllerComponent::velocity>("velocity"_hs)
+            .data<&CharacterControllerComponent::grounded>("grounded"_hs);
+
         entt::meta_factory<MeshComponent>()
             .type("MeshComponent"_hs)
             .data<&MeshComponent::mesh>("mesh"_hs)
@@ -109,13 +134,16 @@ namespace vultra
             .data<&MeshComponent::materialOverrides>("materialOverrides"_hs);
         entt::meta_factory<AnimatorComponent>()
             .type("AnimatorComponent"_hs)
+            .data<&AnimatorComponent::mode>("mode"_hs)
             .data<&AnimatorComponent::skeleton>("skeleton"_hs)
             .data<&AnimatorComponent::animation>("animation"_hs)
             .data<&AnimatorComponent::playOnStart>("playOnStart"_hs)
             .data<&AnimatorComponent::playing>("playing"_hs)
             .data<&AnimatorComponent::loop>("loop"_hs)
             .data<&AnimatorComponent::speed>("speed"_hs)
-            .data<&AnimatorComponent::time>("time"_hs);
+            .data<&AnimatorComponent::time>("time"_hs)
+            .data<&AnimatorComponent::graph>("graph"_hs);
+
         entt::meta_factory<GaussianSplatComponent>()
             .type("GaussianSplatComponent"_hs)
             .data<&GaussianSplatComponent::gaussianSplat>("gaussianSplat"_hs);
@@ -188,7 +216,9 @@ namespace vultra
             .data<&CanvasComponent::enabled>("enabled"_hs)
             .data<&CanvasComponent::sortOrder>("sortOrder"_hs)
             .data<&CanvasComponent::referenceResolutionPx>("referenceResolutionPx"_hs)
-            .data<&CanvasComponent::scaleMode>("scaleMode"_hs);
+            .data<&CanvasComponent::scaleMode>("scaleMode"_hs)
+            .data<&CanvasComponent::renderMode>("renderMode"_hs)
+            .data<&CanvasComponent::pixelsPerUnit>("pixelsPerUnit"_hs);
 
         entt::meta_factory<RectTransformComponent>()
             .type("RectTransformComponent"_hs)

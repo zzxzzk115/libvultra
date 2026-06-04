@@ -12,6 +12,9 @@
 #include "vultra/function/world/components/box_shape_component.hpp"
 #include "vultra/function/world/components/camera_component.hpp"
 #include "vultra/function/world/components/capsule_shape_component.hpp"
+#include "vultra/function/world/components/character_controller_component.hpp"
+#include "vultra/function/world/components/cylinder_shape_component.hpp"
+#include "vultra/function/world/components/mesh_shape_component.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
@@ -657,10 +660,27 @@ namespace vultra
         m_ComponentRegistry.registerComponent<SphereShapeComponent>("SphereShapeComponent", {"radius"});
         m_ComponentRegistry.registerComponent<CapsuleShapeComponent>("CapsuleShapeComponent",
                                                                      {"halfHeightOfCylinder", "radius"});
+        m_ComponentRegistry.registerComponent<CylinderShapeComponent>("CylinderShapeComponent",
+                                                                      {"halfHeight", "radius"});
+        m_ComponentRegistry.registerComponent<MeshShapeComponent>("MeshShapeComponent", {"convex"});
+        m_ComponentRegistry.registerComponent<CharacterControllerComponent>("CharacterControllerComponent",
+                                                                            {"radius",
+                                                                             "height",
+                                                                             "maxSlopeAngleDegrees",
+                                                                             "stepHeight",
+                                                                             "gravityFactor",
+                                                                             "mass",
+                                                                             "jumpSpeed",
+                                                                             "objectLayer",
+                                                                             "inputMove",
+                                                                             "jumpRequested",
+                                                                             "velocity",
+                                                                             "grounded"});
         m_ComponentRegistry.registerComponent<MeshComponent>(
             "MeshComponent", {"mesh", "builtinGeometry", "materialColor", "materialOverrides"});
         m_ComponentRegistry.registerComponent<AnimatorComponent>(
-            "AnimatorComponent", {"skeleton", "animation", "playOnStart", "playing", "loop", "speed", "time"});
+            "AnimatorComponent",
+            {"mode", "skeleton", "animation", "playOnStart", "playing", "loop", "speed", "time", "graph"});
         m_ComponentRegistry.registerComponent<GaussianSplatComponent>("GaussianSplatComponent", {"gaussianSplat"});
         m_ComponentRegistry.registerComponent<CameraComponent>("CameraComponent",
                                                                {"primary",
@@ -704,7 +724,8 @@ namespace vultra
                                                                "twoSided"});
         m_ComponentRegistry.registerComponent<ScriptComponent>("ScriptComponent", {"scriptUri", "enabled"});
         m_ComponentRegistry.registerComponent<CanvasComponent>(
-            "CanvasComponent", {"enabled", "sortOrder", "referenceResolutionPx", "scaleMode"});
+            "CanvasComponent",
+            {"enabled", "sortOrder", "referenceResolutionPx", "scaleMode", "renderMode", "pixelsPerUnit"});
         m_ComponentRegistry.registerComponent<RectTransformComponent>("RectTransformComponent",
                                                                       {"anchorMin",
                                                                        "anchorMax",
