@@ -402,11 +402,50 @@ Physics table:
 - `Physics.setFixedTimeStep(seconds)`
 - `Physics.addForce(entity, force)`
 - `Physics.addImpulse(entity, impulse)`
+- `Physics.addTorque(entity, torque)`
+- `Physics.addAngularImpulse(entity, impulse)`
 - `Physics.setPosition(entity, position, activate?)`
-- `Physics.raycast(origin, direction, maxDistance, activeOnly?)`
-- `Physics.overlapSphere(center, radius, activeOnly?)`
-- `Physics.overlapBox(center, halfExtents, activeOnly?)`
+- `Physics.setRotation(entity, eulerDegrees, activate?)`
+- `Physics.gravity()` / `Physics.setGravity(vec3)`
+- `Physics.setLayerCollision(layerA, layerB, enabled)` / `Physics.layerCollision(layerA, layerB)`
+- `Physics.raycast(origin, direction, maxDistance, activeOnly?, layerMask?)`
+- `Physics.raycastAll(origin, direction, maxDistance, activeOnly?, layerMask?)` — array of hits, near→far
+- `Physics.sphereCast(origin, direction, radius, maxDistance, activeOnly?, layerMask?)` — swept sphere
+- `Physics.overlapSphere(center, radius, activeOnly?, layerMask?)`
+- `Physics.overlapBox(center, halfExtents, activeOnly?, layerMask?)`
+- `Physics.overlapCapsule(center, halfHeight, radius, activeOnly?, layerMask?)`
 - `Physics.contactPairs(activeOnly?)`
+- `Physics.contactEvents()` — drain contact/trigger events since the last call
+
+Queries now use real Jolt narrow-phase geometry (not AABB approximations) and
+return accurate hit points/normals. `layerMask` is a 32-bit mask over logical
+collision-layer indices (`RigidBodyComponent.objectLayer`): bit `i` set means
+"include bodies on layer `i`". Use it to scope shots/queries (e.g. ignore the
+player layer). `Physics.sphereCast` returns a table `{hit, entity, point, normal,
+distance, fraction, startPenetrating}`.
+
+### Character controller
+
+FPS/TPS movement uses a `CharacterControllerComponent` (Jolt `CharacterVirtual`):
+collide-and-slide, slope limits, stair stepping, and ground detection. Drive it
+through the `Character` table:
+
+```lua
+function OnFixedUpdate(self, fixedDt)
+  local e = self.entity
+  Character.move(e, vec3(Input.axisX() * 4.0, 0, Input.axisZ() * 4.0))
+  if Input.isKeyPressed("space") and Character.isGrounded(e) then
+    Character.jump(e, 6.0)
+  end
+end
+```
+
+- `Character.has(entity)`
+- `Character.move(entity, horizontalVelocity)` — desired horizontal (x,z) velocity
+- `Character.jump(entity, speed?)` — request a jump (uses component `jumpSpeed` if `speed` omitted/0)
+- `Character.isGrounded(entity)`
+- `Character.velocity(entity)` / `Character.groundNormal(entity)`
+- `Character.setPosition(entity, position)` — teleport
 
 `Physics.overlapSphere` returns a Lua array of active rigid-body entities whose
 shape overlaps the query sphere. It currently supports sphere, box, and capsule
@@ -423,6 +462,22 @@ shape components. `activeOnly` defaults to `true`.
 
 `Physics.contactPairs` returns `PhysicsContactPair` values with `a` and `b`
 entity fields. These are gameplay contact snapshots from the physics system.
+
+`Physics.contactEvents()` returns and clears the discrete contact/trigger events
+captured since the last call — an array of `{a, b, type, isSensor}` where `type`
+is `"enter"` (new contact) or `"exit"` (contact ended). When `isSensor` is true the
+event is a trigger volume enter/exit (one body has `rigidBody.isSensor = true`). Poll
+this each frame for pickups, damage zones, and hit detection. Example:
+
+```lua
+function OnUpdate(self, dt)
+  for _, e in ipairs(Physics.contactEvents()) do
+    if e.isSensor and e.type == "enter" then
+      -- something entered a trigger volume (e.a / e.b are the entities)
+    end
+  end
+end
+```
 
 For dynamic rigid bodies, prefer `OnFixedUpdate` plus forces or impulses. Avoid
 writing `Transform.position` every rendered frame on a dynamic body unless the

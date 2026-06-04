@@ -57,14 +57,35 @@ Stable facts for agents:
   These calls update the current entity/component state and do not mutate shared
   `.vmat.json` assets; Inspector-authored blocks are scene authoring data. Use
   `materialColor` only for the legacy builtin primitive color shortcut.
-- Lua exposes `Physics.overlapSphere(center, radius, activeOnly?)` through
-  `IPhysicsService`, plus `raycast`, `overlapBox`, `contactPairs`, and
-  `setPosition`. Pickup gameplay should prefer physics queries, then toggle
-  `active`/`visible`, until event callbacks are exposed.
+- Lua exposes physics queries through `IPhysicsService`, now backed by real Jolt
+  narrow-phase geometry (not AABB): `raycast`, `raycastAll`, `sphereCast`,
+  `overlapSphere/Box/Capsule`, `contactPairs`. All queries take an optional
+  `activeOnly?` and `layerMask?` (32-bit mask over `objectLayer` indices) to scope
+  hits. Plus `addForce/addImpulse/addTorque/addAngularImpulse`, `setPosition`,
+  `setRotation`, `gravity()/setGravity()`, `setLayerCollision/layerCollision`.
+  Plus `Physics.contactEvents()` which drains discrete contact/trigger events
+  (`{a, b, type=enter|exit, isSensor}`) captured via a Jolt ContactListener — use it
+  for pickups (sensor enter), damage zones, and hit detection. Sensors are
+  RigidBodyComponent with `isSensor=true`.
+- FPS/TPS movement uses `CharacterControllerComponent` (Jolt CharacterVirtual)
+  driven by the `Character` Lua table: `has`, `move(entity, horizontalVelocity)`,
+  `jump(entity, speed?)`, `isGrounded`, `velocity`, `groundNormal`, `setPosition`.
+  The component manages collide-and-slide, slope/step limits, gravity, and writes
+  back `velocity`/`grounded`. Collision shapes now also include `CylinderShapeComponent`
+  and `MeshShapeComponent` (static triangle mesh / convex hull from the entity's mesh).
 - Lua exposes `Animation` and `entity.animator` for single-clip animator
   playback: play, pause, stop, set time, set speed, set loop, state, duration,
-  and joint count. Do not invent blend tree/state-machine APIs until the engine
-  has controller data for them.
+  and joint count.
+- Animator graph (state machine) is the graph mode of `AnimatorComponent`
+  (`mode = 1`, `graph` = `.vanimgraph.json` URI + optional skeleton; a single component
+  toggles between single-clip and graph mode). Drive it from Lua through the
+  `Animation` table: `setFloat(entity, name, value)`, `setBool(entity, name, value)`,
+  `setTrigger(entity, name)`, `getFloat`/`getBool`, and `currentState(entity)` (returns
+  `{valid, currentState, nextState, transitioning, transitionProgress, normalizedTime}`).
+  The graph defines parameters (float/bool/trigger), states (each bound to a clip),
+  transitions (conditions + cross-fade duration), any-state transitions, and an entry
+  state. The AnimationSystem evaluates transitions and cross-fades clips (ozz BlendingJob).
+  Edit graphs in the Animator Graph window (imnodes) or author `.vanimgraph.json` directly.
 - Imported visual assets should usually be children of a gameplay parent entity
   that owns the rigid body, shape, and script.
 - Imported GLB embedded textures are not considered verified until rendered
