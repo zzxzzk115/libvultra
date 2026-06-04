@@ -13,7 +13,10 @@ namespace vultra
         bool      enabled {true};
         int       sortOrder {0};
         glm::vec2 referenceResolutionPx {1920.0f, 1080.0f};
-        uint32_t  scaleMode {1}; // 0: constant pixel size, 1: scale with screen.
+        uint32_t  scaleMode {1};  // 0: constant pixel size, 1: scale with screen.
+        uint32_t  renderMode {0}; // 0: screen overlay, 1: world space (3D, follows entity transform).
+        // World-space only: canvas pixels per world unit (meter). Larger = smaller canvas.
+        float pixelsPerUnit {250.0f};
     };
 
     struct RectTransformComponent

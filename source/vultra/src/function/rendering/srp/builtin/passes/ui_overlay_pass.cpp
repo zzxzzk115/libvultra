@@ -30,6 +30,8 @@ namespace vultra
             glm::vec4 color;
             glm::vec4 canvas;
             glm::uvec4 texture;
+            glm::vec4 params; // space, pixelsPerUnit, 0, 0
+            glm::mat4 worldMatrix;
         };
 
         struct UiOverlayPushConstants
@@ -38,6 +40,7 @@ namespace vultra
             uint32_t  itemCount {0u};
             uint32_t  itemIndex {0u};
             glm::vec4 previewTransform {0.0f, 0.0f, 1.0f, 0.0f};
+            glm::mat4 viewProjection {1.0f};
         };
 
         [[nodiscard]] bool sanitizeBindlessTextures(std::vector<const rhi::Texture*>& textures)
@@ -53,7 +56,7 @@ namespace vultra
         }
     } // namespace
 
-    FrameGraphResource UiOverlayPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource source)
+    FrameGraphResource UiOverlayPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource source, FrameGraphResource depth)
     {
         const auto* renderWorld = ctx.view().renderWorld;
         if (!renderWorld || renderWorld->uiDrawItems.empty())
@@ -81,7 +84,9 @@ namespace vultra
                            item.canvasReferencePx.y,
                            static_cast<float>(item.scaleMode),
                            static_cast<float>(item.fitMode)},
-                .texture = {item.textureIndex, item.flags, 0u, 0u},
+                .texture     = {item.textureIndex, item.flags, item.space, 0u},
+                .params      = {static_cast<float>(item.space), item.pixelsPerUnit, 0.0f, 0.0f},
+                .worldMatrix = item.worldMatrix,
             });
             itemTextureIndices.push_back(item.textureIndex);
             itemFlags.push_back(item.flags);
@@ -102,8 +107,16 @@ namespace vultra
 
         const auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [source](FrameGraph::Builder& builder, PassData& pd) {
+            [source, depth](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
+
+                // Read scene depth as a read-only depth attachment so world-space UI is occluded
+                // by geometry (the hardware depth test does the work; screen UI at z=0 passes).
+                if (depth)
+                    builder.read(depth,
+                                 framegraph::Attachment {
+                                     .imageAspect = rhi::ImageAspect::eDepth,
+                                 });
 
                 pd.output = builder.write(source,
                                           framegraph::Attachment {
@@ -138,7 +151,8 @@ namespace vultra
                 }
 
                 const auto colorFormat = rhi::getColorFormat(framebufferInfo, 0);
-                const auto* uiPipeline  = getPipeline(colorFormat, viewMask);
+                const auto depthFormat = rhi::getDepthFormat(framebufferInfo);
+                const auto* uiPipeline  = getPipeline(colorFormat, viewMask, depthFormat);
                 if (!uiPipeline)
                     return;
 
@@ -165,6 +179,7 @@ namespace vultra
                                                        rc.view().camera->uiOverlayScale,
                                                        1.0f} :
                                             glm::vec4 {0.0f, 0.0f, 1.0f, 0.0f},
+                    .viewProjection = rc.view().camera ? rc.view().camera->viewProjection : glm::mat4 {1.0f},
                 };
 
                 const auto scopeName = std::format("{} {} items", PASS_NAME, itemCount);
@@ -204,7 +219,8 @@ namespace vultra
     }
 
     rhi::GraphicsPipeline UiOverlayPass::createPipeline(const rhi::PixelFormat colorFormat,
-                                                        const uint32_t         viewMask) const
+                                                        const uint32_t         viewMask,
+                                                        const rhi::PixelFormat depthFormat) const
     {
         auto vertexShader = loadGeneralShader("ui_overlay.vert", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
@@ -223,16 +239,22 @@ namespace vultra
             return {};
         }
 
+        const bool useDepth = depthFormat != rhi::PixelFormat::eUndefined;
+
         auto builder = rhi::GraphicsPipeline::Builder {};
         builder
             .setColorFormats({colorFormat})
+            .setDepthFormat(depthFormat)
             .setViewMask(viewMask)
             .setInputAssembly({})
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
             .setDepthStencil({
-                .depthTest  = false,
-                .depthWrite = false,
+                // Test world-space UI against scene depth (read-only) so geometry occludes it;
+                // screen-overlay UI is emitted at z=0 and always passes (stays on top).
+                .depthTest      = useDepth,
+                .depthWrite     = false,
+                .depthCompareOp = rhi::CompareOp::eLessOrEqual,
             })
             .setRasterizer({
                 .polygonMode = rhi::PolygonMode::eFill,

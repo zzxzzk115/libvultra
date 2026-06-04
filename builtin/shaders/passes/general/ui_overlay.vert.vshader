@@ -12,6 +12,8 @@ struct UiDrawItem
     vec4 color;
     vec4 canvas;
     uvec4 texture;
+    vec4 params;       // space, pixelsPerUnit, 0, 0
+    mat4 worldMatrix;
 };
 
 layout(set = 1, binding = 31, std430) readonly buffer UiDrawItems
@@ -25,6 +27,7 @@ layout(push_constant) uniform PushConstants
     uint itemCount;
     uint itemIndex;
     vec4 previewTransform;
+    mat4 viewProjection;
 };
 
 vec2 cornerForVertex(uint vertexIndex)
@@ -44,6 +47,23 @@ void main()
 {
     v_ItemIndex = itemIndex;
     UiDrawItem item = u_Ui.items[v_ItemIndex];
+
+    vec2 corner3 = cornerForVertex(uint(gl_VertexIndex));
+
+    // World-space canvas: project the rect (in canvas pixels) through the canvas
+    // world matrix and the camera, instead of screen-space NDC.
+    if (item.params.x > 0.5)
+    {
+        vec2 reference = max(item.canvas.xy, vec2(1.0));
+        float ppu = max(item.params.y, 1.0);
+        vec2 px = mix(item.rectPx.xy, item.rectPx.zw, corner3);
+        vec2 centered = px - reference * 0.5;
+        // UI y grows downward; world y grows upward.
+        vec3 localPos = vec3(centered.x / ppu, -centered.y / ppu, 0.0);
+        v_Uv = corner3;
+        gl_Position = viewProjection * item.worldMatrix * vec4(localPos, 1.0);
+        return;
+    }
 
     vec2 scale = vec2(previewTransform.z);
     vec2 offsetPx = previewTransform.xy;

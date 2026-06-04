@@ -142,6 +142,11 @@ namespace vultra
         int       sortOrder {0};
         uint32_t  depth {0u};
         uint32_t  layerMask {kRenderLayerUiMask};
+        // World-space canvas support (space == 1): items are projected by the canvas entity
+        // world matrix and the camera, instead of screen-space NDC.
+        uint32_t  space {0u}; // 0: screen overlay, 1: world space
+        float     pixelsPerUnit {250.0f};
+        glm::mat4 worldMatrix {1.0f};
     };
 
     struct RenderGaussianSplatInstance

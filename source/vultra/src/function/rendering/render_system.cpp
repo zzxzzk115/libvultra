@@ -2014,6 +2014,7 @@ namespace vultra
                             const glm::vec2&       parentMin,
                             const glm::vec2&       parentSize,
                             const CanvasComponent& canvas,
+                            const glm::mat4&       canvasWorldMatrix,
                             const int              sortOrder,
                             const uint32_t         depth)
         {
@@ -2048,6 +2049,9 @@ namespace vultra
                 item.sortOrder         = sortOrder;
                 item.depth             = depth * 16u + localDrawOrder++;
                 item.layerMask         = entityLayerMask(reg, entity, kRenderLayerUiMask);
+                item.space             = canvas.renderMode == 1u ? 1u : 0u;
+                item.pixelsPerUnit     = canvas.pixelsPerUnit > 0.0f ? canvas.pixelsPerUnit : 250.0f;
+                item.worldMatrix       = canvasWorldMatrix;
                 out.uiDrawItems.push_back(item);
             };
             const auto pushItem = [&](const glm::vec4& color,
@@ -2190,7 +2194,8 @@ namespace vultra
                     }
                 }
 
-                cookUiChildren(world, assets, out, child, minPx, maxPx - minPx, canvas, sortOrder, depth + 1u);
+                cookUiChildren(
+                    world, assets, out, child, minPx, maxPx - minPx, canvas, canvasWorldMatrix, sortOrder, depth + 1u);
                 ++childIndex;
             }
         }
@@ -2206,8 +2211,13 @@ namespace vultra
                     continue;
 
                 const glm::vec2 canvasSize = glm::max(canvas.referenceResolutionPx, glm::vec2 {1.0f});
+                glm::mat4       canvasWorldMatrix {1.0f};
+                if (canvas.renderMode == 1u)
+                    if (const auto* tr = reg.try_get<TransformComponent>(canvasEntity))
+                        canvasWorldMatrix = tr->worldMatrix;
                 for (auto child = world.firstChild(canvasEntity); child != entt::null; child = world.nextSibling(child))
-                    cookUiChildren(world, assets, out, child, {0.0f, 0.0f}, canvasSize, canvas, canvas.sortOrder, 1u);
+                    cookUiChildren(
+                        world, assets, out, child, {0.0f, 0.0f}, canvasSize, canvas, canvasWorldMatrix, canvas.sortOrder, 1u);
             }
 
             std::sort(out.uiDrawItems.begin(), out.uiDrawItems.end(), [](const RenderUiDrawItem& a, const RenderUiDrawItem& b) {

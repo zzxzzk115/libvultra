@@ -2258,7 +2258,11 @@ namespace vultra
                                     passCtx.setOutput("color", passCtx.getInput("source"));
                                     return;
                                 }
-                                auto color = m_UiOverlayPass.addPass(*ctx, passCtx.getInput("source"));
+                                // Pull scene depth from the frame data registry (published by the
+                                // depth/gbuffer pass) so world-space UI is occluded by geometry;
+                                // it is optional, so graphs without a depth pass just skip occlusion.
+                                const auto depth = ctx->data.tryGet(kResKey_DepthTexture);
+                                auto color = m_UiOverlayPass.addPass(*ctx, passCtx.getInput("source"), depth);
                                 if (color)
                                 {
                                     ctx->data.set(kResKey_FinalCompositionSource, color);
