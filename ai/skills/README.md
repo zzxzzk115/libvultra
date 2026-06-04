@@ -10,6 +10,11 @@ and optional agent metadata.
   Inspector UI, and runtime cooking.
 - `vultra-lua-render-pass`: Lua render graph passes, project render pipelines,
   shader lookup, and runtime graph integration.
+- `vultra-builtin-render-pass`: C++ builtin render passes, FrameGraph I/O,
+  builtin shaders, RenderFeature wiring, and the makeBuiltinFeature dispatch.
+- `vultra-builtin-material`: builtin material presets and source kinds —
+  `.vmat.json` assets, source schema, GPU params, render-system packing, and
+  content-browser creators.
 
 ## Planned Skills
 

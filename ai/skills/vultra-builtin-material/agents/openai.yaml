@@ -1,0 +1,29 @@
+interface:
+  display_name: "Vultra Builtin Material"
+  short_description: "Add a builtin material preset or a new builtin material source kind."
+  default_prompt: "Use this skill when adding or changing a builtin material: a new .vmat.json preset on builtin/pbr, or a brand-new builtin source kind with its own schema, GPU params, loader, and shader."
+
+metadata:
+  skill: vultra-builtin-material
+  prerequisites:
+    - "Read ai/specs/unified-material-assets.md and ai/knowledge/harness-config.md."
+    - "Read builtin/materials/default.vmat.json and builtinPbrMaterialSchema() end-to-end."
+  in_scope:
+    - "MaterialAsset model and resolveMaterialSourceSchema in material_asset.hpp."
+    - "GPU params (MaterialParamsPBRMR) in material_params.hpp."
+    - "render_system.cpp builtin material parameter packing/loaders."
+    - "Content-browser creators in content_asset_registry.cpp."
+    - "Inspector material panel and builtin/materials/*.vmat.json assets."
+  out_of_scope:
+    - "Material-graph node authoring (material_graph subsystem)."
+    - "Render pass authoring (use vultra-builtin-render-pass)."
+  linked_knowledge:
+    - ai/knowledge/mcp-tools.md
+    - ai/knowledge/vultra-formats.md
+    - ai/knowledge/harness-config.md
+  linked_tasks:
+    - ai/tasks/unified-material-assets.md
+  verification:
+    - "xmake build -y vultra-app (and test-material-asset if parsing/schema changed)."
+    - "Content browser creates the material; inspector edits round-trip to properties."
+    - "Material assigned to a mesh renders correctly via Runtime MCP capture_rgb."

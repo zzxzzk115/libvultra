@@ -10,6 +10,10 @@ the relevant knowledge file in the same task.
 
 - `harness-config.md`: single source for MCP host/port, build target, tool-arg
   casing, the fresh-agent decision tree, and the canonical smoke command set.
+- `mcp-tools.md`: agent-facing Runtime MCP manual — every registered tool, its
+  arguments, call semantics, and deferred/deadline behavior.
+- `editor-ui-style.md`: editor UI convention — label-left/control-right property
+  rows and the canonical `beginPropertyRow`/table helpers.
 - `cpp-conventions.md`: assert-vs-error-handling, RAII/ownership, and god-file rules.
 - `ai-runtime-rpc.md`: Runtime MCP/RPC facts (implemented today vs planned direction).
 - `packaged-runtime.md`: packaged runtime (VPK) discovery and mounting rules.

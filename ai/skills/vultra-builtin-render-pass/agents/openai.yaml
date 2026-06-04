@@ -1,0 +1,28 @@
+interface:
+  display_name: "Vultra Builtin Render Pass"
+  short_description: "Add or update a C++ builtin render pass and its feature wiring."
+  default_prompt: "Use this skill when adding or changing a builtin (C++) render pass, its FrameGraph I/O, builtin shaders, RenderFeature, or the makeBuiltinFeature dispatch id."
+
+metadata:
+  skill: vultra-builtin-render-pass
+  prerequisites:
+    - "Read ai/knowledge/harness-config.md."
+    - "Read an existing pass + feature pair end-to-end (e.g. depth_pre_pass + depth_hzb_feature, or fxaa_pass + builtin_screen_space_feature)."
+  in_scope:
+    - "Pass classes under source/vultra/.../srp/builtin/passes/ (RenderPass/ComputePass)."
+    - "FrameGraph setup/execute callbacks and resource_keys.hpp keys."
+    - "Builtin shaders under builtin/shaders/passes/{general,highend,compatibility}/."
+    - "RenderFeature classes and the makeBuiltinFeature dispatch in declarative_renderer.cpp."
+    - "Render pipeline assets that reference the feature.builtin id."
+  out_of_scope:
+    - "Lua/project render-graph pass authoring (use vultra-lua-render-pass)."
+    - "Material authoring (use vultra-builtin-material)."
+  linked_knowledge:
+    - ai/knowledge/mcp-tools.md
+    - ai/knowledge/harness-config.md
+  linked_tasks: []
+  verification:
+    - "xmake build -y vultra-app."
+    - "Feature id resolves in makeBuiltinFeature; referencing pipeline asset loads."
+    - "Runtime MCP framegraph_snapshot lists the pass; frame_resources shows its output."
+    - "No missing-shader-blob log spam for the pass stages/variants."

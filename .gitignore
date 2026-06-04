@@ -72,3 +72,6 @@ tracky*.csv
 # Vultra
 .vultra/
 *.vpk
+
+# AI Agents
+.claude/
