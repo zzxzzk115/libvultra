@@ -109,6 +109,7 @@ namespace vultra_app
         program.add_argument("--project").default_value(std::string {});
         program.add_argument("--vpk").default_value(std::string {});
         program.add_argument("--scene").default_value(std::string {});
+        program.add_argument("--plugins-dir").default_value(std::string {});
         program.add_argument("--backend", "--render-backend").default_value(std::string {});
         program.add_argument("--render-profile").default_value(std::string {});
         program.add_argument("--validation").flag();
@@ -136,6 +137,7 @@ namespace vultra_app
             options.projectPath = program.get<std::string>("--project");
             options.vpkPath     = program.get<std::string>("--vpk");
             options.sceneUri    = program.get<std::string>("--scene");
+            options.pluginsDir  = program.get<std::string>("--plugins-dir");
             if (const auto mcpHost = program.get<std::string>("--mcp-host"); !mcpHost.empty())
                 options.mcpHost = mcpHost;
             if (const auto mcpPort = program.get<int>("--mcp-port"); mcpPort > 0)

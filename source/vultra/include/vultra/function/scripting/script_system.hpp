@@ -28,7 +28,8 @@ namespace vultra
         void onPhysics(fsec dt) override;
         void onPostUpdate(fsec dt) override;
 
-        bool reloadEntityScript(entt::entity e) override;
+        lua_State* luaState() override;
+        bool       reloadEntityScript(entt::entity e) override;
         bool reloadAllScripts() override;
         bool hasScriptInstance(entt::entity e) const override;
         void destroyScriptInstance(entt::entity e) override;

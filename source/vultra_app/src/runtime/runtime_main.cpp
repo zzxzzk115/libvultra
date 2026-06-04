@@ -126,6 +126,9 @@ namespace
         {
             auto& config = engine.ctx().config;
 
+            if (!m_Options.pluginsDir.empty())
+                config.plugin.directory = m_Options.pluginsDir;
+
             if (config.render.backendApi == vultra::rhi::RenderBackendApi::eVulkan)
             {
                 config.render.renderDeviceFeatureFlag = vultra::rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline;

@@ -111,6 +111,13 @@ namespace vultra
                 std::string imguiIniFile {"imgui.ini"};
             } imgui;
 
+            struct PluginConfig
+            {
+                // Directory scanned at startup for `<name>/plugin.lua` manifests. Empty disables
+                // auto-loading; plugins can still be loaded explicitly via IPluginService.
+                std::string directory {};
+            } plugin;
+
             // Writable app-private directory used for runtime debug outputs and persisted UI state.
             // On Android this should point at internalDataPath.
             std::string writableRoot {};

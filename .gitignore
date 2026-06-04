@@ -75,3 +75,11 @@ tracky*.csv
 
 # AI Agents
 .claude/
+
+# Native plugin build artifacts (emitted next to their plugin.lua manifest)
+examples/plugins/**/*.dll
+examples/plugins/**/*.so
+examples/plugins/**/*.dylib
+examples/plugins/**/*.pdb
+examples/plugins/**/*.exp
+examples/plugins/**/*.lib

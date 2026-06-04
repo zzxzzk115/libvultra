@@ -59,6 +59,7 @@ else
     -- includes("debug_draw")
     includes("gaussian_splatting")
     includes("demo_app")
+    includes("plugins/native_math")
     if is_plat("android") then
         includes("android_app")
     end

@@ -377,6 +377,8 @@ namespace vultra
         clearScriptUiSignalConnections();
     }
 
+    lua_State* ScriptSystem::luaState() { return m_Engine.lua().lua_state(); }
+
     bool ScriptSystem::runString(std::string_view code)
     {
         auto result = m_Engine.lua().safe_script(std::string(code), &sol::script_pass_on_error);

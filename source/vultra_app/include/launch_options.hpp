@@ -19,6 +19,7 @@ namespace vultra_app
         std::string projectPath;
         std::string vpkPath;
         std::string sceneUri;
+        std::string pluginsDir;
         std::optional<bool> validation;
         std::optional<bool> debugMarkers;
         std::optional<bool> renderDoc;

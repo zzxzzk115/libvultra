@@ -16,6 +16,7 @@
 #include "vultra/function/openxr/xr_runtime_system.hpp"
 #endif
 #include "vultra/function/physics/physics_system.hpp"
+#include "vultra/function/plugin/plugin_system.hpp"
 #include "vultra/function/rendering/backend/render_backend_system.hpp"
 #include "vultra/function/rendering/render_system.hpp"
 #include "vultra/function/rendering/shader_system.hpp"
@@ -439,6 +440,8 @@ namespace vultra
             engine.emplaceSubsystem<SceneSystem>();
             engine.emplaceSubsystem<ScriptSystem>();
             engine.emplaceSubsystem<AnimationSystem>();
+            // After ScriptSystem so plugins can use the shared Lua state and the asset/scene services.
+            engine.emplaceSubsystem<PluginSystem>();
 
             auto& renderSystem = engine.emplaceSubsystem<RenderSystem>();
             renderSystem.registerRenderer(renderer);

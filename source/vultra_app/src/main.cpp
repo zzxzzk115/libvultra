@@ -520,6 +520,9 @@ namespace
 
         void onConfigureDemo(vultra::Engine& engine) override
         {
+            if (!m_Options.pluginsDir.empty())
+                engine.ctx().config.plugin.directory = m_Options.pluginsDir;
+
             if (engine.ctx().config.render.backendApi == vultra::rhi::RenderBackendApi::eVulkan)
             {
                 engine.ctx().config.render.renderDeviceFeatureFlag =

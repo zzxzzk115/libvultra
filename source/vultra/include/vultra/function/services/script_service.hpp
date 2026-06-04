@@ -6,6 +6,8 @@
 
 #include <string_view>
 
+struct lua_State;
+
 namespace vultra
 {
     class IScriptService
@@ -13,6 +15,10 @@ namespace vultra
     public:
         SERVICE_REGISTER(IScriptService)
         virtual ~IScriptService() = default;
+
+        // Raw Lua state shared by the scripting runtime. Native plugins can wrap this in a
+        // sol::state_view to register glue bindings that Lua plugins/scripts then consume.
+        virtual lua_State* luaState() = 0;
 
         virtual bool reloadEntityScript(entt::entity e) = 0;
         virtual bool reloadAllScripts()                 = 0;
