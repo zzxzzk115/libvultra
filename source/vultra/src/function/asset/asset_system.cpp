@@ -953,8 +953,11 @@ namespace vultra
                         rec->gpuIndex.store(meshIndex, std::memory_order_release);
                         rec->state.store(AssetState::eReady, std::memory_order_release);
 
-                        // release CPU copy if not requested
-                        if (!m_Desc.keepCpuCopy)
+                        // Release CPU copy if not requested — but keep it for skinned meshes so the
+                        // animation system can resolve the mesh's bundled skeleton (resolveSkeletonFor
+                        // reads cpu->skeleton) in packaged builds, which otherwise drop CPU mesh data
+                        // after GPU upload (keepCpuCopy defaults to false outside the editor).
+                        if (!m_Desc.keepCpuCopy && !(rec->cpu && rec->cpu->hasSkin))
                             rec->cpu.reset();
                     }
                     else
