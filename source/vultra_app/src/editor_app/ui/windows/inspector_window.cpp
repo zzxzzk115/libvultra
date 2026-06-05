@@ -4652,6 +4652,8 @@ namespace vultra_app
                 return reg.all_of<vultra::ReflectionProbeComponent>(entity);
             if (key == "Light")
                 return reg.all_of<vultra::LightComponent>(entity);
+            if (key == "ParticleEmitter")
+                return reg.all_of<vultra::ParticleEmitterComponent>(entity);
             if (key == "RigidBody")
                 return reg.all_of<vultra::RigidBodyComponent>(entity);
             if (key == "BoxShape")
@@ -4726,6 +4728,8 @@ namespace vultra_app
                 return "Reflection Probe";
             if (key == "Light")
                 return "Light";
+            if (key == "ParticleEmitter")
+                return "Particle Emitter";
             if (key == "RigidBody")
                 return "Rigid Body";
             if (key == "BoxShape")
