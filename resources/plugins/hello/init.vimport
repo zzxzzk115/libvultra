@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="script_lua"
+uid="05af6daad64f08f99aa4088f787c7cfe"
+
+[source]
+file="plugins/hello/init.lua"
+
+[output]
+file="imported/script_lua/plugins/hello/init.lua"
+
+[params]

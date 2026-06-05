@@ -444,10 +444,10 @@ namespace vultra_app
             engine.ctx().config.asset.enableImportScan = false;
             engine.ctx().config.render.renderPipelineAsset = project->editingRenderGraph;
             engine.ctx().config.render.renderPipelineRendererKey.clear();
-            // Plugins live in <project>/plugins and are off by default; only the project's enabled
-            // ids are loaded (see the Plugins tab in Project Settings).
+            // Plugins live in <asset-root>/plugins (so they pack into the project VPK) and are off
+            // by default; only the project's enabled ids are loaded (Project Settings -> Plugins).
             engine.ctx().config.plugin.directory =
-                (project->projectDir / "plugins").lexically_normal().generic_string();
+                (project->projectDir / project->assetRoot / "plugins").lexically_normal().generic_string();
             engine.ctx().config.plugin.enabled = project->enabledPlugins;
             return;
         }

@@ -114,18 +114,22 @@ namespace vultra
                 ++i;
             }
 
-            // Preview render: a small box per particle, size/colour interpolated over its lifetime.
+            // Preview render: one short velocity-aligned streak per particle (a single debug line,
+            // not a 12-line box) so the debug-draw cost stays low. This CPU preview is a stopgap;
+            // the GPU compute + instanced-billboard backend is the real renderer (see TODO above).
             if (m_Render != nullptr)
             {
                 for (const Particle& p : state.particles)
                 {
-                    const float t     = glm::clamp(p.age / p.lifetime, 0.0f, 1.0f);
-                    const float size  = glm::mix(emitter.startSize, emitter.endSize, t);
-                    const auto  color = glm::mix(emitter.startColor, emitter.endColor, t);
+                    const float t    = glm::clamp(p.age / p.lifetime, 0.0f, 1.0f);
+                    const float size = glm::mix(emitter.startSize, emitter.endSize, t);
                     if (size <= 0.0f)
                         continue;
-                    const glm::mat4 world = glm::translate(glm::mat4 {1.0f}, p.position);
-                    m_Render->debugDrawBox(world, glm::vec3 {size * 0.5f}, glm::vec3 {color});
+                    const auto      color = glm::mix(emitter.startColor, emitter.endColor, t);
+                    const glm::vec3 dir =
+                        glm::length(p.velocity) > 1e-4f ? glm::normalize(p.velocity) : glm::vec3 {0.0f, 1.0f, 0.0f};
+                    m_Render->debugDrawLine(p.position - dir * (size * 0.5f), p.position + dir * (size * 0.5f),
+                                            glm::vec3 {color});
                 }
             }
         }
