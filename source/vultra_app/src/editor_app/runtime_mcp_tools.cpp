@@ -2,6 +2,7 @@
 #include "editor_app/runtime_mcp_server_internal.hpp"
 #include "editor_app/runtime_mcp_tool_registry.hpp"
 
+#include "app_state.hpp"
 #include "editor_app/editor_app.hpp"
 
 #include <nlohmann/json.hpp>
@@ -13,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace vultra_app
@@ -171,6 +173,83 @@ namespace vultra_app
             return message;
         }
 
+        // Capability gating. The agent reaches these tools autonomously (Claude -> stdio bridge ->
+        // HTTP), so the real guard for state-changing tools lives here at the execution layer, keyed
+        // off the user's EditorSettings switches. Read-only tools (status/list/get/capture/raycast/
+        // profiler/...) are intentionally NOT listed and are always permitted. Anything that mutates
+        // the simulation/scene/editor session is an engine op; anything that writes the project/assets
+        // on disk is a project op. The arbitrary command executors are gated as engine ops (strict).
+        enum class ToolCategory
+        {
+            ReadOnly,
+            EngineOp,
+            ProjectOp,
+        };
+
+        ToolCategory categorizeTool(std::string_view name)
+        {
+            static const std::unordered_set<std::string_view> kProjectOps {
+                "vultra.project.create_empty",
+                "vultra.scene.save",
+                "vultra.assets.write",
+                "vultra.assets.import",
+                "vultra.assets.import_from_web",
+                "vultra.assets.import_package",
+                "vultra.material_graph.compile",
+            };
+            static const std::unordered_set<std::string_view> kEngineOps {
+                "vultra.sim.reset",
+                "vultra.sim.step",
+                "vultra.sim.set_state_batch",
+                "vultra.sim.apply_actions_batch",
+                "vultra.animator.set_param",
+                "vultra.editor.command",
+                "vultra.editor.command_batch",
+                "vultra.editor.back_to_launcher",
+                "vultra.editor.recording",
+                "vultra.editor.input",
+                "vultra.editor.quit",
+                "vultra.scene.new",
+                "vultra.scene.add_entity",
+                "vultra.scene.remove_entity",
+                "vultra.scene.add_component",
+                "vultra.scene.update_component",
+                "vultra.scene.remove_component",
+                "vultra.scene.move_entity",
+                "vultra.scene.instantiate_asset",
+                "vultra.runtime.playback",
+                "vultra.runtime.reload_pipeline",
+            };
+            if (kProjectOps.contains(name))
+                return ToolCategory::ProjectOp;
+            if (kEngineOps.contains(name))
+                return ToolCategory::EngineOp;
+            return ToolCategory::ReadOnly;
+        }
+
+        std::optional<std::string> agentCapabilityDenial(std::string_view name,
+                                                         const AppState::EditorSettings& settings)
+        {
+            switch (categorizeTool(name))
+            {
+                case ToolCategory::EngineOp:
+                    if (!settings.allowAgentEngineOperations)
+                        return "engine operations are disabled for the agent; enable 'Allow Engine "
+                               "Operations' in Editor Settings to run " +
+                               std::string(name);
+                    break;
+                case ToolCategory::ProjectOp:
+                    if (!settings.allowAgentProjectOperations)
+                        return "project operations are disabled for the agent; enable 'Allow Project "
+                               "Operations' in Editor Settings to run " +
+                               std::string(name);
+                    break;
+                case ToolCategory::ReadOnly:
+                    break;
+            }
+            return std::nullopt;
+        }
+
     } // namespace
 
     nlohmann::json RuntimeMcpServer::handleMcpRequest(const nlohmann::json& request)
@@ -217,6 +296,10 @@ namespace vultra_app
                                                                 EditorContext& ctx,
                                                                 PendingCall* call)
     {
+        // Enforce the agent capability switches before any tool runs (see categorizeTool).
+        if (auto denial = agentCapabilityDenial(name, ctx.state.editorSettings))
+            return toolError(std::move(*denial));
+
         if (auto result = handleRuntimeTool(name, args, ctx, call); !result.is_null())
             return result;
 

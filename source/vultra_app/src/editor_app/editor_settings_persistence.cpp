@@ -134,6 +134,7 @@ namespace vultra_app
             loaded.mcpPort                  = jsonInt(json, "mcpPort", loaded.mcpPort);
             loaded.agentEndpoint            = jsonString(json, "agentEndpoint", loaded.agentEndpoint);
             loaded.agentModel               = jsonString(json, "agentModel", loaded.agentModel);
+            loaded.agentCliPath             = jsonString(json, "agentCliPath", loaded.agentCliPath);
             loaded.allowAgentEngineOperations =
                 jsonBool(json, "allowAgentEngineOperations", loaded.allowAgentEngineOperations);
             loaded.allowAgentProjectOperations =
@@ -193,6 +194,7 @@ namespace vultra_app
             {"mcpPort", normalized.mcpPort},
             {"agentEndpoint", normalized.agentEndpoint},
             {"agentModel", normalized.agentModel},
+            {"agentCliPath", normalized.agentCliPath},
             {"allowAgentEngineOperations", normalized.allowAgentEngineOperations},
             {"allowAgentProjectOperations", normalized.allowAgentProjectOperations},
             {"requireAgentConfirmation", normalized.requireAgentConfirmation},

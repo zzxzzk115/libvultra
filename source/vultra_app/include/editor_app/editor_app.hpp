@@ -203,6 +203,7 @@ namespace vultra_app
         std::array<char, 128>               m_AgentMcpHostBuffer {};
         std::array<char, 512>               m_AgentEndpointBuffer {};
         std::array<char, 128>               m_AgentModelBuffer {};
+        std::array<char, 512>               m_AgentCliPathBuffer {};
         RuntimeMcpServer                    m_RuntimeMcpServer;
         std::optional<vultra::SceneDocument> m_PlayModeSnapshot;
         bool                m_PlayModeSceneDirtySnapshot {false};

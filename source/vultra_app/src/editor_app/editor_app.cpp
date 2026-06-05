@@ -12,6 +12,7 @@
 #include "editor_app/ui/windows/game_view_window.hpp"
 #include "editor_app/ui/windows/history_window.hpp"
 #include "editor_app/ui/windows/inspector_window.hpp"
+#include "editor_app/ui/windows/ai_chat_window.hpp"
 #include "editor_app/ui/windows/animator_graph_window.hpp"
 #include "editor_app/ui/windows/material_graph_window.hpp"
 #include "editor_app/ui/windows/profiler_window.hpp"
@@ -1030,6 +1031,7 @@ namespace vultra_app
         m_WindowManager.addWindow<InspectorWindow>();
         m_WindowManager.addWindow<HistoryWindow>();
         m_WindowManager.addWindow<WorldViewerWindow>();
+        m_WindowManager.addWindow<AiChatWindow>();
         m_Initialized = true;
     }
 
@@ -1972,6 +1974,7 @@ namespace vultra_app
             dockWindow("Material Graph", mainId);
             dockWindow("Animator Graph", mainId);
             dockWindow("Inspector", rightId);
+            dockWindow("AI Chat", rightId);
             dockWindow("History", historyId);
             dockWindow("Content Browser", bottomId);
             dockWindow("Console", bottomId);

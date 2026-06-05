@@ -1,6 +1,7 @@
 #include "app_state.hpp"
 #include "editor_app/editor_app.hpp"
 #include "editor_app/editor_settings_persistence.hpp"
+#include "editor_app/mcp_stdio_bridge.hpp"
 #include "launch_options.hpp"
 #include "project_launcher/project_launcher.hpp"
 #include "vproject.hpp"
@@ -49,6 +50,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <optional>
 #include <thread>
@@ -86,6 +89,22 @@ namespace
         if (command == "shader" || command == "vshaderc")
         {
             exitCode = vshadersystem::tool::run_vshaderc(argc - 1, argv + 1);
+            return true;
+        }
+        if (command == "mcp-stdio-bridge")
+        {
+            // Launched by an MCP client (e.g. claude) to reach the editor's HTTP MCP server.
+            std::string   host {"127.0.0.1"};
+            std::uint16_t port {8848};
+            for (int i = 2; i < argc; ++i)
+            {
+                const std::string_view arg {argv[i]};
+                if (arg == "--host" && i + 1 < argc)
+                    host = argv[++i];
+                else if (arg == "--port" && i + 1 < argc)
+                    port = static_cast<std::uint16_t>(std::atoi(argv[++i]));
+            }
+            exitCode = vultra_app::runMcpStdioBridge(host, port);
             return true;
         }
 

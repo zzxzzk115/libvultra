@@ -607,6 +607,7 @@ namespace vultra_app
             setBuffer(m_AgentMcpHostBuffer, ctx.state.editorSettings.mcpHost);
             setBuffer(m_AgentEndpointBuffer, ctx.state.editorSettings.agentEndpoint);
             setBuffer(m_AgentModelBuffer, ctx.state.editorSettings.agentModel);
+            setBuffer(m_AgentCliPathBuffer, ctx.state.editorSettings.agentCliPath);
             ImGui::OpenPopup("Editor Settings");
             ctx.state.editorSettingsOpen = false;
         }
@@ -748,6 +749,11 @@ namespace vultra_app
             if (ImGui::InputText("##AgentModel", m_AgentModelBuffer.data(), m_AgentModelBuffer.size()))
                 settings.agentModel = bufferString(m_AgentModelBuffer);
             ui::endSettingsRow();
+            ui::beginSettingsRow("CLI Path");
+            if (ImGui::InputText("##AgentCliPath", m_AgentCliPathBuffer.data(), m_AgentCliPathBuffer.size()))
+                settings.agentCliPath = bufferString(m_AgentCliPathBuffer);
+            ui::endSettingsRow();
+            ui::drawInfoRegion("Path to the agent CLI (e.g. claude). Leave empty to resolve 'claude' on PATH.");
             ImGui::Spacing();
             ui::drawSettingsSectionHeader("Operation Guardrails");
             ImGui::Checkbox("Allow Project Operations", &settings.allowAgentProjectOperations);
@@ -766,6 +772,7 @@ namespace vultra_app
             setBuffer(m_AgentMcpHostBuffer, ctx.state.editorSettings.mcpHost);
             setBuffer(m_AgentEndpointBuffer, {});
             setBuffer(m_AgentModelBuffer, {});
+            setBuffer(m_AgentCliPathBuffer, {});
             ctx.state.statusMessage = "Editor settings reset.";
         }
         ui::alignSettingsButtonGroup(2);
@@ -776,6 +783,7 @@ namespace vultra_app
             ctx.state.editorSettings.mcpHost        = bufferString(m_AgentMcpHostBuffer);
             ctx.state.editorSettings.agentEndpoint  = bufferString(m_AgentEndpointBuffer);
             ctx.state.editorSettings.agentModel     = bufferString(m_AgentModelBuffer);
+            ctx.state.editorSettings.agentCliPath   = bufferString(m_AgentCliPathBuffer);
             std::string error;
             if (saveEditorSettings(ctx.state.editorSettingsFile, ctx.state.editorSettings, &error))
                 ctx.state.statusMessage = "Saved editor settings.";

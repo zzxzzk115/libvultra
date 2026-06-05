@@ -83,6 +83,7 @@ namespace vultra_app
             int         mcpPort {8848};
             std::string agentEndpoint;
             std::string agentModel;
+            std::string agentCliPath; // path to the agent CLI (e.g. claude); empty = resolve "claude" on PATH
             bool        allowAgentEngineOperations {false};
             bool        allowAgentProjectOperations {true};
             bool        requireAgentConfirmation {true};
