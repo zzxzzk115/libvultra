@@ -1,7 +1,11 @@
 #include "editor_app/agent/claude_cli_backend.hpp"
 
 #include <chrono>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <utility>
+#include <vector>
 
 namespace vultra_app::agent
 {
@@ -37,14 +41,34 @@ namespace vultra_app::agent
             }
             return out;
         }
+        // Writes a temp MCP config pointing Claude at the editor's HTTP endpoint. `alwaysLoad` makes
+        // the tools eagerly visible to the model instead of behind a tool-search step (which is the
+        // piece `claude mcp add` cannot set). Returns the path, or empty on failure.
+        std::filesystem::path writeTempMcpConfig(const std::string& name, const std::string& url)
+        {
+            const nlohmann::json config = {
+                {"mcpServers", {{name, {{"type", "http"}, {"url", url}, {"alwaysLoad", true}}}}}};
+            std::error_code ec;
+            auto            path = std::filesystem::temp_directory_path(ec);
+            if (ec)
+                return {};
+            path /= "vultra_mcp_" + name + ".json";
+            std::ofstream out {path, std::ios::trunc};
+            if (!out)
+                return {};
+            out << config.dump(2);
+            return out ? path : std::filesystem::path {};
+        }
     } // namespace
 
     ClaudeCliBackend::~ClaudeCliBackend() { shutdown(); }
 
     bool ClaudeCliBackend::start(const AgentBackendConfig& config, std::string* error)
     {
+        const std::string exe = config.executable.empty() ? "claude" : config.executable;
+
         SubprocessOptions options;
-        options.executable = config.executable.empty() ? "claude" : config.executable;
+        options.executable = exe;
         options.args       = {
             "-p",
             "--input-format",
@@ -58,10 +82,21 @@ namespace vultra_app::agent
             options.args.emplace_back("--model");
             options.args.push_back(config.model);
         }
-        if (!config.mcpConfigPath.empty())
+        if (!config.systemPromptAppend.empty())
         {
-            options.args.emplace_back("--mcp-config");
-            options.args.push_back(config.mcpConfigPath.string());
+            options.args.emplace_back("--append-system-prompt");
+            options.args.push_back(config.systemPromptAppend);
+        }
+        // Wire the editor's MCP tools in via a temp HTTP config (alwaysLoad => eager tool visibility),
+        // so the agent gets them with zero manual setup. strict => ignore the user's other servers.
+        if (!config.mcpServerName.empty() && !config.mcpUrl.empty())
+        {
+            if (const auto cfgPath = writeTempMcpConfig(config.mcpServerName, config.mcpUrl); !cfgPath.empty())
+            {
+                options.args.emplace_back("--mcp-config");
+                options.args.push_back(cfgPath.string());
+                options.args.emplace_back("--strict-mcp-config");
+            }
         }
         if (!config.allowedToolsGlob.empty())
         {
@@ -75,6 +110,16 @@ namespace vultra_app::agent
         }
         if (!config.workingDir.empty())
             options.workingDir = config.workingDir;
+
+        // By default Claude Code DEFERS MCP tools behind a tool-search step (the model must search
+        // to discover them). That deferral silently yields no MCP tools on models/proxies that do
+        // not support tool_reference blocks. Force every MCP tool to load upfront so the agent can
+        // call our editor tools directly. The child inherits this from our process environment.
+#if defined(_WIN32)
+        _putenv_s("ENABLE_TOOL_SEARCH", "false");
+#else
+        ::setenv("ENABLE_TOOL_SEARCH", "false", 1);
+#endif
 
         if (!m_Proc.start(options, error))
             return false;
@@ -266,6 +311,37 @@ namespace vultra_app::agent
                                       : json.value("message", "agent error");
             pushEvent(BackendError {.message = std::move(message), .fatal = false});
         }
-        // Unknown types (e.g. "system"/"init") are intentionally ignored.
+        else if (type == "system" && json.value("subtype", "") == "init")
+        {
+            // Surface what MCP servers/tools the session actually loaded — the ground truth for
+            // diagnosing "tools didn't appear". Field names vary across versions, so probe a few.
+            std::string note = "MCP init:";
+            for (const char* key : {"mcp_servers", "mcpServers"})
+            {
+                if (json.contains(key) && json[key].is_array())
+                {
+                    for (const auto& s : json[key])
+                    {
+                        if (s.is_object())
+                            note += " [" + s.value("name", std::string {"?"}) + "=" +
+                                    s.value("status", s.value("state", std::string {"?"})) + "]";
+                        else if (s.is_string())
+                            note += " [" + s.get<std::string>() + "]";
+                    }
+                }
+            }
+            int mcpToolCount = 0;
+            if (json.contains("tools") && json["tools"].is_array())
+            {
+                for (const auto& t : json["tools"])
+                {
+                    if (t.is_string() && t.get<std::string>().rfind("mcp__", 0) == 0)
+                        ++mcpToolCount;
+                }
+            }
+            note += "  (mcp tools loaded: " + std::to_string(mcpToolCount) + ")";
+            pushEvent(BackendError {.message = std::move(note), .fatal = false});
+        }
+        // Other unknown types are intentionally ignored.
     }
 } // namespace vultra_app::agent

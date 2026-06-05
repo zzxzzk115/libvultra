@@ -12,8 +12,8 @@ and durable knowledge. The editor agent is a runtime feature inside Vultra.
 ## Architecture
 
 - Editor Settings stores agent and MCP preferences under `.vultra/`.
-- A future agent service owns MCP server startup, client connection state,
-  conversation state, and operation dispatch.
+- The agent backend owns the agent process and conversation; the editor's
+  `RuntimeMcpServer` owns MCP server startup and connection state.
 - UI windows only present state and user actions. They must not directly own
   long-running MCP or agent processes.
 - Engine and project operations must remain guarded by explicit capability
@@ -56,3 +56,57 @@ AI Auto Layout should be a closed-loop editor operation:
   settings file format.
 - AI Auto Layout can be implemented as an operation on top of screenshot,
   graph JSON, and editor-position patches.
+
+## Implementation (shipped)
+
+The editor `AI Chat` panel (`AiChatWindow`) owns an `IAgentBackend`. v1 ships
+`ClaudeCliBackend`, which spawns the Claude CLI headless
+(`claude -p --input-format stream-json --output-format stream-json --verbose`),
+keeps one persistent process per conversation, and parses stdout NDJSON into
+events on a reader thread. Only the main thread touches ImGui / message state.
+
+Tools reach the agent over the editor's own MCP server:
+
+- `RuntimeMcpServer` is a Streamable-HTTP MCP server on `127.0.0.1:<mcpPort>/mcp`
+  (auto-started when `enableAgent` + `autoStartMcp`). The status bar shows
+  `MCP listening on <endpoint>`.
+- The backend wires it into the session with `--mcp-config <temp> --strict-mcp-config`,
+  where the temp config is `{ "type": "http", "url": ".../mcp", "alwaysLoad": true }`,
+  and sets `ENABLE_TOOL_SEARCH=false` in the child environment.
+- Why: Claude defers MCP tools behind a tool-search step by default; `alwaysLoad`
+  + `ENABLE_TOOL_SEARCH=false` force them to load eagerly so the model can call
+  them directly (this also avoids tool-search being silently disabled on models
+  or proxies without `tool_reference`).
+
+Hard requirements for tools to actually surface — if any is violated, Claude
+drops **all** of the server's tools while `claude mcp list` still reports the
+server "✓ Connected":
+
+- Every tool's `inputSchema` must be valid JSON Schema. A property whose value is
+  `null` is invalid (watch for the `nlohmann::json` `{}` → `null` trap; use
+  `nlohmann::json::object()` for an empty schema) and rejects the whole server.
+- Tool names must match `^[A-Za-z0-9_-]+$`. The registry's dotted names
+  (`vultra.scene.add_entity`) are sanitized to underscores in `tools/list` and
+  mapped back to the dotted form on `tools/call`.
+
+Permissions and guardrails:
+
+- `--permission-mode acceptEdits` (file read/edit allowed; arbitrary shell/network
+  is not auto-approved). The real guard for engine/project mutations is the
+  capability flags (`allowAgentEngineOperations` / `allowAgentProjectOperations`)
+  enforced at the MCP tool-execution layer (`handleToolCallOnMainThread`).
+- `--append-system-prompt` tells the agent it is the in-editor assistant: drive
+  the live scene/engine through the `vultra_*` MCP tools, discover valid kinds via
+  the `*_list_*` tools before specifying them, and treat entity references as the
+  UUID returned by scene tools (not the numeric runtime instance id).
+
+Diagnostics:
+
+- The panel surfaces a `MCP init: [vultra=connected] (mcp tools loaded: N)` line,
+  read from the session's `system/init` event — the ground truth for "did the
+  tools load".
+- Set `VULTRA_MCP_LOG` (server) / `VULTRA_BRIDGE_LOG` (bridge) to a file path for
+  full request/response logs.
+
+A self-contained `mcp-stdio-bridge` subcommand (stdio↔HTTP) is also available for
+stdio-only MCP clients, though the editor uses the HTTP transport directly.

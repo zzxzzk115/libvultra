@@ -10,12 +10,17 @@ namespace vultra_app::agent
 {
     struct AgentBackendConfig
     {
-        std::string           executable {"claude"};   // CLI to launch (resolved via PATH)
-        std::string           model;                    // optional model override
-        std::filesystem::path mcpConfigPath;            // optional --mcp-config path (empty = no tools)
-        std::string           allowedToolsGlob;         // optional --allowedTools value
-        std::string           permissionMode;           // optional --permission-mode value
-        std::filesystem::path workingDir;               // optional cwd for the child
+        std::string           executable {"claude"}; // CLI to launch (resolved via PATH)
+        std::string           model;                 // optional model override
+        // The agent reaches the editor's tools through an MCP server the backend registers for the
+        // user (pre-trusted scope) before the session starts, so the user never configures anything.
+        // Both empty -> tool-less chat.
+        std::string           mcpServerName; // e.g. "vultra"
+        std::string           mcpUrl;        // e.g. "http://127.0.0.1:8848/mcp"
+        std::string           allowedToolsGlob;  // optional --allowedTools value
+        std::string           permissionMode;    // optional --permission-mode value
+        std::string           systemPromptAppend; // optional --append-system-prompt text (agent role)
+        std::filesystem::path workingDir;         // optional cwd for the child
     };
 
     // Abstraction over an "agent brain" the chat panel talks to. v1 ships ClaudeCliBackend;

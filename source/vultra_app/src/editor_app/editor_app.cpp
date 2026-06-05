@@ -1786,13 +1786,18 @@ namespace vultra_app
         if (!viewport)
             return;
 
-        constexpr float barHeight = 26.0f;
+        // Two rows tall: row 1 = performance/status, row 2 = runtime MCP / agent status.
+        constexpr float barHeight = 52.0f;
         ImGuiWindowFlags flags    = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings |
                                  ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove |
                                  ImGuiWindowFlags_NoDocking;
 
         if (!ImGui::BeginViewportSideBar("##VultraEditorTaskBar", viewport, ImGuiDir_Down, barHeight, flags))
             return;
+
+        const float rowHeight = barHeight * 0.5f;
+        const float row1Y     = (rowHeight - ImGui::GetTextLineHeight()) * 0.5f;
+        const float row2Y     = rowHeight + (rowHeight - ImGui::GetTextLineHeight()) * 0.5f;
 
         auto* renderService        = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr;
         auto* renderBackendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
@@ -1853,7 +1858,7 @@ namespace vultra_app
                 totalWidth += separatorWidth;
         }
 
-        ImGui::SetCursorPosY((barHeight - ImGui::GetTextLineHeight()) * 0.5f);
+        ImGui::SetCursorPosY(row1Y);
         if (!jobSnapshots.empty())
         {
             const auto& job = jobSnapshots.front();
@@ -1884,7 +1889,7 @@ namespace vultra_app
             ImGui::TextDisabled("%s", ctx.state.statusMessage.c_str());
         }
 
-        ImGui::SetCursorPosY((barHeight - ImGui::GetTextLineHeight()) * 0.5f);
+        ImGui::SetCursorPosY(row1Y);
         ImGui::SetCursorPosX(std::max(8.0f, ImGui::GetWindowWidth() - totalWidth - 12.0f));
         for (size_t i = 0; i < labels.size(); ++i)
         {
@@ -1895,6 +1900,37 @@ namespace vultra_app
                 ImGui::SameLine(0.0f, 8.0f);
             }
             ImGui::TextDisabled("%s", labels[i].c_str());
+        }
+
+        // Row 2: runtime MCP / agent status, so it is obvious whether the agent's tool server is up.
+        ImGui::SetCursorPosY(row2Y);
+        ImGui::SetCursorPosX(8.0f);
+        if (m_RuntimeMcpServer.isRunning())
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.42f, 0.85f, 0.45f, 1.0f));
+            ImGui::TextUnformatted(ICON_MDI_CIRCLE);
+            ImGui::PopStyleColor();
+            ImGui::SameLine(0.0f, 6.0f);
+            ImGui::TextDisabled("MCP listening on %s", m_RuntimeMcpServer.endpoint().c_str());
+        }
+        else if (ctx.state.editorSettings.enableAgent)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.70f, 0.30f, 1.0f));
+            ImGui::TextUnformatted(ICON_MDI_CIRCLE_OUTLINE);
+            ImGui::PopStyleColor();
+            ImGui::SameLine(0.0f, 6.0f);
+            if (const auto err = m_RuntimeMcpServer.lastError(); !err.empty())
+                ImGui::TextDisabled("MCP not running: %s", err.c_str());
+            else
+                ImGui::TextDisabled("MCP not running (enable Auto-start MCP in Editor Settings)");
+        }
+        else
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.57f, 0.62f, 1.0f));
+            ImGui::TextUnformatted(ICON_MDI_CIRCLE_OUTLINE);
+            ImGui::PopStyleColor();
+            ImGui::SameLine(0.0f, 6.0f);
+            ImGui::TextDisabled("Agent disabled");
         }
 
         ImGui::End();

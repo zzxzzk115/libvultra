@@ -3,10 +3,12 @@
 #include <nlohmann/json.hpp>
 
 #include <array>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <string>
-#include <string_view>
+#include <unordered_map>
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -163,6 +165,35 @@ namespace vultra_app
             return true;
         }
 
+        // Optional diagnostics: when VULTRA_BRIDGE_LOG names a file, append a line per event.
+        // Silent in normal operation; used to debug how an MCP client drives the bridge.
+        void bridgeLog(const std::string& message)
+        {
+            const char* path = std::getenv("VULTRA_BRIDGE_LOG");
+            if (!path || !*path)
+                return;
+            std::ofstream out {path, std::ios::app};
+            out << message << '\n';
+        }
+
+        // Anthropic tool names must match ^[a-zA-Z0-9_-]+$, but the editor advertises dotted names
+        // like "vultra.runtime.status". Claude reads such tools but cannot expose them to the model,
+        // so it never calls them. The bridge therefore presents underscore names to the client and
+        // maps them back to the original dotted names on tools/call. The reverse mapping is stored
+        // (not derived) because the original may itself contain underscores.
+        std::string sanitizeToolName(const std::string& name)
+        {
+            std::string out = name;
+            for (char& c : out)
+            {
+                const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                                c == '_' || c == '-';
+                if (!ok)
+                    c = '_';
+            }
+            return out;
+        }
+
         std::string jsonRpcError(const nlohmann::json& id, int code, const std::string& message)
         {
             const nlohmann::json error = {
@@ -185,6 +216,10 @@ namespace vultra_app
         _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
+        bridgeLog("[bridge] start host=" + host + " port=" + std::to_string(port));
+
+        std::unordered_map<std::string, std::string> sanitizedToOriginal; // client name -> server name
+
         std::string line;
         while (std::getline(std::cin, line))
         {
@@ -192,17 +227,35 @@ namespace vultra_app
                 line.pop_back();
             if (line.empty())
                 continue;
+            bridgeLog("[bridge] recv: " + line.substr(0, 200));
 
-            // Determine whether this is a request (has "id") or a notification (no reply expected).
-            nlohmann::json id            = nullptr;
+            // Determine request vs notification, capture the method, and (for tools/call) map the
+            // sanitized tool name the client uses back to the server's original dotted name.
+            nlohmann::json id             = nullptr;
             bool           isNotification = false;
+            std::string    method;
+            std::string    requestedProtocol;
             try
             {
-                const auto parsed = nlohmann::json::parse(line);
+                auto parsed = nlohmann::json::parse(line);
                 if (parsed.is_object() && parsed.contains("id"))
                     id = parsed["id"];
                 else
                     isNotification = true;
+                if (parsed.is_object())
+                    method = parsed.value("method", "");
+                if (method == "initialize" && parsed.contains("params") && parsed["params"].is_object())
+                    requestedProtocol = parsed["params"].value("protocolVersion", "");
+                if (method == "tools/call" && parsed.contains("params") && parsed["params"].is_object() &&
+                    parsed["params"].contains("name") && parsed["params"]["name"].is_string())
+                {
+                    const auto requested = parsed["params"]["name"].get<std::string>();
+                    if (const auto it = sanitizedToOriginal.find(requested); it != sanitizedToOriginal.end())
+                    {
+                        parsed["params"]["name"] = it->second;
+                        line                     = parsed.dump(); // forward the remapped request
+                    }
+                }
             }
             catch (const std::exception&)
             {
@@ -218,14 +271,65 @@ namespace vultra_app
 
             if (ok)
             {
+                // Echo the client's requested protocol version on initialize, so a client that
+                // offers a newer version than the editor's server hardcodes does not drop the
+                // connection over a version mismatch.
+                if (method == "initialize" && !requestedProtocol.empty())
+                {
+                    try
+                    {
+                        auto response = nlohmann::json::parse(responseBody);
+                        if (response.contains("result") && response["result"].is_object())
+                        {
+                            response["result"]["protocolVersion"] = requestedProtocol;
+                            responseBody                          = response.dump();
+                        }
+                    }
+                    catch (const std::exception&)
+                    {
+                    }
+                }
+                // Rewrite advertised tool names to client-safe (underscore) form and remember the
+                // reverse mapping so tools/call can be translated back.
+                if (method == "tools/list")
+                {
+                    try
+                    {
+                        auto response = nlohmann::json::parse(responseBody);
+                        if (response.contains("result") && response["result"].contains("tools") &&
+                            response["result"]["tools"].is_array())
+                        {
+                            for (auto& tool : response["result"]["tools"])
+                            {
+                                if (!tool.is_object() || !tool.contains("name") || !tool["name"].is_string())
+                                    continue;
+                                const auto original  = tool["name"].get<std::string>();
+                                const auto sanitized = sanitizeToolName(original);
+                                if (sanitized != original)
+                                {
+                                    sanitizedToOriginal[sanitized] = original;
+                                    tool["name"]                   = sanitized;
+                                }
+                            }
+                            responseBody = response.dump();
+                        }
+                    }
+                    catch (const std::exception&)
+                    {
+                        // leave responseBody untouched on parse failure
+                    }
+                }
+                bridgeLog("[bridge] ok -> " + responseBody.substr(0, 200));
                 std::cout << responseBody << '\n';
             }
             else
             {
+                bridgeLog("[bridge] ERROR: " + error);
                 std::cout << jsonRpcError(id, -32000, "runtime MCP bridge: " + error) << '\n';
             }
             std::cout.flush();
         }
+        bridgeLog("[bridge] stdin EOF, exiting");
 
 #if defined(_WIN32)
         WSACleanup();

@@ -6,7 +6,6 @@
 #include <nlohmann/json.hpp>
 
 #include <array>
-#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -66,6 +65,7 @@ namespace vultra_app
         };
 
         bool ensureBackend(EditorContext& ctx); // lazy spawn; false + sets m_Status on failure
+        void submitMessage(EditorContext& ctx, std::string text); // spawn if needed + send a user turn
         void clearConversation();
         ChatMessage& currentAssistantMessage(); // streaming assistant message, creating if needed
 
@@ -75,7 +75,6 @@ namespace vultra_app
         void drawComposer(EditorContext& ctx);
 
         std::unique_ptr<agent::IAgentBackend> m_Backend;
-        std::filesystem::path                 m_McpConfigPath; // temp file, deleted on shutdown
         std::vector<ChatMessage>              m_Messages;
         std::array<char, 8192>                m_InputBuffer {};
         Status                                m_Status {Status::NotStarted};
@@ -83,5 +82,6 @@ namespace vultra_app
         bool                                  m_AutoScroll {true};
         bool                                  m_RequestScrollToBottom {false};
         bool                                  m_AwaitingReply {false};
+        bool                                  m_AutoPromptChecked {false}; // VULTRA_AI_CHAT_PROMPT seeded once
     };
 } // namespace vultra_app
