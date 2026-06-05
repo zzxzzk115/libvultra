@@ -15,6 +15,8 @@
 #endif
 
 #include <font_headers/materialdesignicons_webfont.ttf.binfont.h>
+#include <font_headers/color_emoji.ttf.binfont.h>  // bundled colour-emoji font (builtin/fonts)
+#include <font_headers/wqy_microhei.ttf.binfont.h>  // bundled Simplified-Chinese font (WenQuanYi Micro Hei)
 
 #include <vbase/core/exe_path.hpp>
 
@@ -31,6 +33,12 @@
 #include <imgui_internal.h>
 #include <imnodes/imnodes.h>
 #include <implot/implot.h>
+
+#ifdef IMGUI_ENABLE_FREETYPE
+#include <imgui_freetype.h> // ImGuiFreeTypeLoaderFlags_LoadColor (colorful emoji)
+#endif
+
+#include <lz4.h> // decompress lz4-block-compressed embedded fonts (builtin font_task)
 
 namespace
 {
@@ -53,6 +61,61 @@ namespace
             .addressModeT = vultra::rhi::SamplerAddressMode::eClampToEdge,
             .addressModeR = vultra::rhi::SamplerAddressMode::eClampToEdge,
         });
+    }
+
+    // Merge the bundled colour-emoji font into the current default font so the UI (notably the AI
+    // Decompress an lz4-block-compressed TTF (a `<sym>_lz4` / `<sym>_lz4_size` / `<sym>_size` blob
+    // emitted by builtin/xmake.lua's font_task) and hand it to the atlas. ImGui takes ownership of
+    // the decompressed buffer (allocated with ImGui::MemAlloc) and frees it with the atlas.
+    ImFont* addCompressedFontTTF(ImGuiIO&             io,
+                                 const unsigned char* compressed,
+                                 int                  compressedSize,
+                                 int                  rawSize,
+                                 float                sizePixels,
+                                 const ImFontConfig*  cfgIn,
+                                 const ImWchar*       ranges = nullptr)
+    {
+        void* raw = ImGui::MemAlloc(static_cast<std::size_t>(rawSize));
+        if (!raw)
+            return nullptr;
+        const int n = LZ4_decompress_safe(
+            reinterpret_cast<const char*>(compressed), static_cast<char*>(raw), compressedSize, rawSize);
+        if (n != rawSize) // corrupt blob / size mismatch: don't hand a bad buffer to the atlas
+        {
+            ImGui::MemFree(raw);
+            return nullptr;
+        }
+        ImFontConfig cfg         = cfgIn ? *cfgIn : ImFontConfig {};
+        cfg.FontDataOwnedByAtlas = true; // ImGui frees `raw` (ImGui::MemAlloc) when the atlas dies
+        return io.Fonts->AddFontFromMemoryTTF(raw, rawSize, sizePixels, &cfg, ranges);
+    }
+
+    // chat) renders emoji instead of tofu boxes. Same compiled-in font on every platform — FreeType
+    // rasterises the COLR/CPAL colour glyphs identically on Windows/Linux/macOS/Android/web, so no
+    // per-platform system font is needed. Requires the FreeType loader (IMGUI_ENABLE_FREETYPE) and a
+    // 32-bit ImWchar (IMGUI_USE_WCHAR32 — emoji live above U+FFFF); a no-op otherwise.
+    //
+    // Font: builtin/fonts/color_emoji.ttf = Twemoji Mozilla, a COLRv0 colour font (CC-BY 4.0 /
+    // redistributable, ~1.4MB). It MUST be COLRv0 (or a bitmap CBDT/sbix font): imgui_freetype only
+    // rasterises COLRv0 layers and colour bitmaps via FT_LOAD_COLOR — it does NOT composite COLRv1
+    // paint graphs, so a COLRv1 font (e.g. Noto-COLRv1) renders blank. To change emoji set, keep to
+    // a COLRv0/bitmap .ttf, drop it in builtin/fonts, and point this at the regenerated symbol.
+    bool tryMergeColorEmoji([[maybe_unused]] ImGuiIO& io, [[maybe_unused]] float sizePixels)
+    {
+#ifdef IMGUI_ENABLE_FREETYPE
+        ImFontConfig cfg {};
+        cfg.MergeMode = true; // fold emoji glyphs into the preceding (default) font
+        cfg.FontLoaderFlags |= ImGuiFreeTypeLoaderFlags_LoadColor;
+        // 1.92 dynamic fonts load glyphs on demand, so no explicit emoji glyph range is needed.
+        return addCompressedFontTTF(io,
+                                    color_emoji_ttf_lz4,
+                                    static_cast<int>(color_emoji_ttf_lz4_size),
+                                    static_cast<int>(color_emoji_ttf_size),
+                                    sizePixels,
+                                    &cfg) != nullptr;
+#else
+        return false;
+#endif
     }
 
     template<typename T>
@@ -358,16 +421,33 @@ namespace vultra
         // https://github.com/ocornut/imgui/issues/3247
         static const ImWchar iconsRanges[] = {ICON_MIN_MDI, ICON_MAX_MDI, 0};
         ImFontConfig         iconsConfig {};
-        iconsConfig.MergeMode            = true;
-        iconsConfig.PixelSnapH           = true;
-        iconsConfig.FontDataOwnedByAtlas = false;
-        // NOLINTBEGIN
-        io.Fonts->AddFontFromMemoryTTF((void*)materialdesignicons_webfont_ttf_data,
-                                       materialdesignicons_webfont_ttf_size,
-                                       16.0f,
-                                       &iconsConfig,
-                                       iconsRanges);
-        // NOLINTEND
+        iconsConfig.MergeMode  = true;
+        iconsConfig.PixelSnapH = true;
+        addCompressedFontTTF(io,
+                             materialdesignicons_webfont_ttf_lz4,
+                             static_cast<int>(materialdesignicons_webfont_ttf_lz4_size),
+                             static_cast<int>(materialdesignicons_webfont_ttf_size),
+                             16.0f,
+                             &iconsConfig,
+                             iconsRanges);
+
+        // Colour emoji folded into the default font (after icons, before the other faces) so chat
+        // and UI text render emoji rather than tofu. Requires the FreeType-enabled imgui package.
+        tryMergeColorEmoji(io, 16.0f);
+
+        // Simplified-Chinese glyphs folded into the default font so CJK text (UI + AI chat) renders.
+        // WenQuanYi Micro Hei is a compact smooth hei-ti (GB2312 subset ~1.3MB) that harmonises with
+        // Roboto. No glyph ranges needed (1.92 loads glyphs on demand).
+        {
+            ImFontConfig cnConfig {};
+            cnConfig.MergeMode = true;
+            addCompressedFontTTF(io,
+                                 wqy_microhei_ttf_lz4,
+                                 static_cast<int>(wqy_microhei_ttf_lz4_size),
+                                 static_cast<int>(wqy_microhei_ttf_size),
+                                 fontSize,
+                                 &cnConfig);
+        }
 
         io.Fonts->AddFontFromMemoryCompressedTTF(
             RobotoBold_compressed_data, RobotoBold_compressed_size, fontSize + 2.0f, &fontConfig, ranges);

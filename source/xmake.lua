@@ -78,6 +78,7 @@ option_end()
 -- add requirements
 add_requires("fmt", { system = false })
 add_requires("spdlog", "magic_enum", "entt", "cereal", "sol2", "argparse")
+add_requires("lz4") -- runtime decompression of lz4-block-compressed builtin blobs (embedded fonts)
 local jolt_configs = {debug = is_mode("debug"), shared = false, object_layer_bits = "16"}
 if is_plat("wasm") then
     -- physics_system.cpp subclasses JPH::JobSystemWithBarrier; under clang/Itanium the derived
@@ -181,6 +182,7 @@ target("vultra")
 
     -- add packages
     add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vrendergraph", "sol2", "joltphysics", "ozz-animation", { public = true })
+    add_packages("lz4") -- private: only imgui_system.cpp decompresses embedded fonts
     if not is_plat("wasm") then
         add_packages("vulkan-headers", "vulkan-memory-allocator-hpp", { public = true })
     else

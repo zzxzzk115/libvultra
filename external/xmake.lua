@@ -1,10 +1,12 @@
+-- freetype: required for colorful glyphs / emoji (color font loading + LoadColor flag).
+-- wchar32: emoji live above U+FFFF, so ImWchar must be 32-bit.
 if is_plat("android") then
-    add_requires("imgui v1.92.5-docking", {configs = { vulkan = true, android = true, wchar32 = true}})
+    add_requires("imgui v1.92.5-docking", {configs = { vulkan = true, android = true, wchar32 = true, freetype = true}})
 elseif is_plat("wasm") then
-    add_requires("imgui v1.92.5-docking", {configs = { wgpu = true, wgpu_backend = "webgpu-sdk", wchar32 = true}})
+    add_requires("imgui v1.92.5-docking", {configs = { wgpu = true, wgpu_backend = "webgpu-sdk", wchar32 = true, freetype = true}})
 else
     add_requires("imgui v1.92.5-docking",
-                 {configs = { vulkan = true, sdl3 = true, glfw = true, wgpu = true, wgpu_backend = "webgpu-sdk", wchar32 = true}})
+                 {configs = { vulkan = true, sdl3 = true, glfw = true, wgpu = true, wgpu_backend = "webgpu-sdk", wchar32 = true, freetype = true}})
 end
 
 add_requires("zlib")

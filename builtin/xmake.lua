@@ -590,15 +590,41 @@ task("texture_task")
             table.join2(files, os.files(pattern))
         end
 
+        -- Tree-shake: only embed textures actually referenced by source via
+        -- '#include <texture_headers/<rel>.bintex.h>'. Unused art (e.g. most of the Kenney cursor
+        -- pack) is neither converted nor left behind as a stale header. A header must be #included
+        -- to be usable (it is a C array), so the include scan is the exact usage set.
+        local referenced = {}
+        for _, code_root in ipairs({"source", "examples", "tests"}) do
+            for _, pat in ipairs({"**.cpp", "**.hpp", "**.h", "**.inl"}) do
+                for _, src in ipairs(os.files(path.join(projectdir, code_root, pat))) do
+                    local content = io.readfile(src)
+                    if content then
+                        for cap in content:gmatch('texture_headers/([^>"]-)%.bintex%.h') do
+                            referenced[cap:gsub("\\", "/")] = true
+                        end
+                    end
+                end
+            end
+        end
+
         local converted = 0
         local skipped = 0
+        local pruned = 0
         local samples = {}
 
         for _, f in ipairs(files) do
             local rel = path.relative(f, texture_root)
+            local relkey = rel:gsub("\\", "/")
             -- read texture binary and write to header file
             local header_path = path.join(texture_header_root, rel .. ".bintex.h")
-            if os.exists(header_path) and os.mtime(header_path) >= os.mtime(f) then
+            if not referenced[relkey] then
+                -- not used by any source file: skip embedding, drop a stale header if present
+                if os.exists(header_path) then
+                    os.rm(header_path)
+                    pruned = pruned + 1
+                end
+            elseif os.exists(header_path) and os.mtime(header_path) >= os.mtime(f) then
                 skipped = skipped + 1
             else
                 converted = converted + 1
@@ -631,6 +657,9 @@ task("texture_task")
                 header_file:close()
             end
 		end
+        if pruned > 0 then
+            cprint("${color.warning}  - pruned %d unused texture header(s)${clear}", pruned)
+        end
         emit_summary("builtin textures", converted, skipped, samples)
 	end)
 task_end()
@@ -656,7 +685,10 @@ task("font_task")
             end
         end
 
+        import("core.compress.lz4")
+
         local projectdir = get_config("project_dir")
+        local build_script = path.join(projectdir, "builtin/xmake.lua")
 
         local font_root = path.join(projectdir, "builtin/fonts")
         local font_header_root = path.join(projectdir, "builtin/generated/include/font_headers")
@@ -679,8 +711,9 @@ task("font_task")
             local rel = path.relative(f, font_root)
             local header_path = path.join(font_header_root, rel .. ".binfont.h")
 
-            -- check timestamp
-            if os.exists(header_path) and os.mtime(header_path) >= os.mtime(f) then
+            -- check timestamp (also regenerate when this build script changes, e.g. the embed format)
+            if os.exists(header_path) and os.mtime(header_path) >= os.mtime(f)
+               and os.mtime(header_path) >= os.mtime(build_script) then
                 skipped = skipped + 1
             else
                 converted = converted + 1
@@ -690,27 +723,35 @@ task("font_task")
                 os.mkdir(path.directory(header_path))
 
                 local font_data = io.readfile(f, {encoding = "binary"})
-                local base = path.basename(rel):gsub("%.", "_")
-                local ext  = path.extension(rel):sub(2)
-                local symbol = base .. "_" .. ext  -- e.g. roboto_ttf
+                local raw_size  = #font_data
+                -- lz4 block-compress so the embedded blob (and the executable) stays small; the
+                -- engine decompresses it from memory at startup (see imgui_system.cpp). A TTF
+                -- shrinks ~50%, which also halves the x5 hex-array header bloat.
+                local comp      = lz4.block_compress(font_data)
+                local comp_size = comp:size()
+                local base   = path.basename(rel)
+                local ext    = path.extension(rel):sub(2)
+                -- sanitise to a valid C identifier: hyphens/dots/etc. -> '_'
+                -- (e.g. VonwaonBitmap-16px.ttf -> VonwaonBitmap_16px_ttf)
+                local symbol = (base .. "_" .. ext):gsub("[^%w_]", "_")
+                if symbol:find("^%d") then symbol = "_" .. symbol end
 
                 local header_file = io.open(header_path, "w")
-                header_file:write("// Auto-generated from " .. rel .. "\n")
+                header_file:write("// Auto-generated from " .. rel .. " (lz4 block-compressed)\n")
                 header_file:write("#pragma once\n\n")
                 header_file:write("#include <cstddef>\n")
                 header_file:write("#include <cstdint>\n\n")
 
-                header_file:write("inline constexpr unsigned char " .. symbol .. "_data[] = {\n")
-
-                for i = 1, #font_data do
+                header_file:write("inline constexpr unsigned char " .. symbol .. "_lz4[] = {\n")
+                for i = 1, comp_size do
                     if (i - 1) % 12 == 0 then header_file:write("    ") end
-                    header_file:write(string.format("0x%02X", font_data:byte(i)))
-                    if i < #font_data then header_file:write(",") end
+                    header_file:write(string.format("0x%02X", comp[i]))
+                    if i < comp_size then header_file:write(",") end
                     if i % 12 == 0 then header_file:write("\n") end
                 end
-
                 header_file:write("\n};\n")
-                header_file:write("inline constexpr size_t " .. symbol .. "_size = sizeof(" .. symbol .. "_data);\n")
+                header_file:write("inline constexpr size_t " .. symbol .. "_lz4_size = sizeof(" .. symbol .. "_lz4);\n")
+                header_file:write("inline constexpr size_t " .. symbol .. "_size = " .. raw_size .. "; // uncompressed\n")
 
                 header_file:close()
             end
