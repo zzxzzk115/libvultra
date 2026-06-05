@@ -2869,6 +2869,30 @@ namespace vultra
         }
 
         {
+            RuntimeProfiler::ExternalScope emitterScope {"RenderWorldCooker::cook/particleEmitters"};
+            auto emitterView = reg.view<IDComponent, TransformComponent, ParticleEmitterComponent>();
+            out.emitters.reserve(emitterView.size_hint());
+            for (auto e : emitterView)
+            {
+                const auto& ec = emitterView.get<ParticleEmitterComponent>(e);
+                if (!ec.gpu)
+                    continue; // CPU-backed emitters are previewed by ParticleSystem.
+                if (!isEntityRenderable(world, reg, e))
+                    continue;
+
+                const auto& id = emitterView.get<IDComponent>(e);
+                const auto& tr = emitterView.get<TransformComponent>(e);
+
+                RenderParticleEmitter inst {};
+                inst.entity    = id.uuid;
+                inst.origin    = glm::vec3(tr.worldMatrix[3]);
+                inst.emitter   = ec;
+                inst.layerMask = entityLayerMask(reg, e, kRenderLayerDefaultMask);
+                out.emitters.push_back(inst);
+            }
+        }
+
+        {
             RuntimeProfiler::ExternalScope lightScope {"RenderWorldCooker::cook/lights"};
             auto lightView = reg.view<IDComponent, TransformComponent, LightComponent>();
             out.lights.reserve(lightView.size_hint());
@@ -4496,6 +4520,14 @@ namespace vultra
             buildCpuDrivenGpuSceneForRenderWorld(
                 slot.renderWorld, slot.gpuSceneDatabase, slot.gpuSceneView, pool, rd, cb);
         }
+
+        // Advance GPU particle pools once per frame and publish their per-emitter draw records onto
+        // each render world's GpuSceneView for the render-graph particle passes to consume. Emission
+        // is advanced at most once per emitter per frame, so the editor scene view (main world) and
+        // game view (an override world wrapping the same World) both render the same simulation.
+        m_ParticleManager.update(m_RenderWorldFront, rd, renderDeltaSeconds, m_FrameCounter);
+        for (auto& particleSlot : m_OverrideRenderWorlds)
+            m_ParticleManager.update(particleSlot.renderWorld, rd, renderDeltaSeconds, m_FrameCounter);
 
         m_FrameResources.beginFrame(m_FrameCounter);
         {

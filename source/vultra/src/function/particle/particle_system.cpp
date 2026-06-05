@@ -60,10 +60,12 @@ namespace vultra
 
         auto& reg = m_World->world().registry();
 
-        // Drop simulation state for emitters that no longer exist.
+        // Drop simulation state for emitters that no longer exist or have switched to the GPU backend.
         for (auto it = m_States.begin(); it != m_States.end();)
         {
-            if (!reg.valid(it->first) || !reg.any_of<ParticleEmitterComponent>(it->first))
+            const auto* emitter =
+                reg.valid(it->first) ? reg.try_get<ParticleEmitterComponent>(it->first) : nullptr;
+            if (emitter == nullptr || emitter->gpu)
                 it = m_States.erase(it);
             else
                 ++it;
@@ -72,7 +74,10 @@ namespace vultra
         const auto view = reg.view<ParticleEmitterComponent, TransformComponent>();
         for (const auto e : view)
         {
-            const auto& emitter   = view.get<ParticleEmitterComponent>(e);
+            const auto& emitter = view.get<ParticleEmitterComponent>(e);
+            // GPU-backed emitters are simulated and rendered by the render-graph particle passes.
+            if (emitter.gpu)
+                continue;
             const auto& transform = view.get<TransformComponent>(e);
             auto&       state     = m_States[e];
 

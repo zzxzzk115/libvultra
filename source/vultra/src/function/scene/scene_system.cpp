@@ -726,6 +726,7 @@ namespace vultra
         m_ComponentRegistry.registerComponent<ParticleEmitterComponent>("ParticleEmitterComponent",
                                                                         {"playing",
                                                                          "worldSpace",
+                                                                         "gpu",
                                                                          "maxParticles",
                                                                          "emissionRate",
                                                                          "lifetime",

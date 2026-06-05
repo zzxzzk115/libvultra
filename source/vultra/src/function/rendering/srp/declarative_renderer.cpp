@@ -32,6 +32,8 @@
 #include "vultra/function/rendering/srp/builtin/passes/hzb_generate_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/meshlet_cull_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/meshlet_hiz_cull_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/particle_render_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/particle_simulate_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/raytracing_primary_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/selection_outline_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/shadow_map_pass.hpp"
@@ -863,6 +865,7 @@ namespace vultra
         pass("GeneralGaussianSplatRender", {}, {"color"});
         pass("GeneralGaussianSplatComposite", {"source"}, {"color"});
         pass("GeneralGaussianSplatFoveatedComposite", {"fovea", "mid", "outer", "base"}, {"color"});
+        pass("ParticleRender", {"source", "depth"}, {"color"});
     }
 
     class DeclarativeRenderer::FullscreenPassRuntime
@@ -2702,6 +2705,43 @@ namespace vultra
                                     passCtx.setOutput("color", color);
                                 }
                             });
+
+            registerBuiltin("ParticleRender",
+                            {"source", "depth"},
+                            {"color"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+
+                                const auto source = passCtx.getInput("source");
+                                const auto depth  = passCtx.getInput("depth");
+
+                                auto* gpuSceneView = ctx->view().gpuSceneView;
+                                if (!gpuSceneView || gpuSceneView->particleEmitters.empty())
+                                {
+                                    passCtx.setOutput("color", source);
+                                    return;
+                                }
+
+                                // Simulate (compute) then draw (billboards). The simulate pass returns
+                                // the per-emitter pool handles so the render pass reads them with a
+                                // correct compute-write -> vertex-read barrier.
+                                auto particleBuffers = m_ParticleSimulatePass.addPass(*ctx);
+                                auto color = m_ParticleRenderPass.addPass(*ctx, source, depth, particleBuffers);
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                                else
+                                {
+                                    passCtx.setOutput("color", source);
+                                }
+                            });
         }
 
         void registerResources()
@@ -2774,6 +2814,8 @@ namespace vultra
         GeneralGaussianSplatPreprocessPass                                      m_GaussianPreprocessPass;
         GeneralGaussianSplatRenderPass                                          m_GaussianRenderPass;
         GeneralGaussianSplatFoveatedCompositePass                               m_GaussianFoveatedCompositePass;
+        ParticleSimulatePass                                                    m_ParticleSimulatePass;
+        ParticleRenderPass                                                      m_ParticleRenderPass;
         XrGeometryWarpPass                                                      m_XrGeometryWarpPass;
         XrPullPushInpaintPass                                                   m_XrPullPushInpaintPass;
     };

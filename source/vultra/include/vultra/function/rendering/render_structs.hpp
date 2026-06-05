@@ -2,6 +2,7 @@
 
 #include "vultra/core/base/uuid.hpp"
 #include "vultra/function/world/components/layer_component.hpp"
+#include "vultra/function/world/components/particle_emitter_component.hpp"
 #include "vultra/function/resource/gpu_scene_database.hpp"
 #include "vultra/function/resource/gpu_scene_view.hpp"
 
@@ -155,6 +156,17 @@ namespace vultra
         uint32_t  splatIndex {0};
         glm::mat4 worldMatrix {1.0f};
         uint32_t  layerMask {kRenderLayerDefaultMask};
+    };
+
+    // Cooked GPU particle emitter (gpu == true). Carries the emitter's world origin and a value copy
+    // of its authoring component so GpuParticleManager can drive the GPU simulation without touching
+    // the ECS world.
+    struct RenderParticleEmitter
+    {
+        CoreUUID                 entity;
+        glm::vec3                origin {0.0f};
+        ParticleEmitterComponent emitter;
+        uint32_t                 layerMask {kRenderLayerDefaultMask};
     };
 
     [[nodiscard]] inline bool renderLayerVisible(const RenderCamera* camera, const uint32_t layerMask)
@@ -471,6 +483,7 @@ namespace vultra
         std::vector<RenderInstance> instances;
         std::vector<RenderUiDrawItem> uiDrawItems;
         std::vector<RenderGaussianSplatInstance> gaussianSplats;
+        std::vector<RenderParticleEmitter> emitters;
         std::vector<RenderLight>    lights;
         RenderEnvironment           environment;
         std::vector<RenderReflectionProbe> reflectionProbes;
@@ -487,6 +500,7 @@ namespace vultra
             instances.clear();
             uiDrawItems.clear();
             gaussianSplats.clear();
+            emitters.clear();
             lights.clear();
             environment = {};
             reflectionProbes.clear();

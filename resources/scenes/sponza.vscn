@@ -1632,3 +1632,28 @@ AnimatorComponent/speed = 1.000000
 AnimatorComponent/time = 0.000000
 AnimatorComponent/graph = "res://animation/gangnam_style.vanimgraph.json"
 
+[node id=114 name="Particle Emitter" parent=0 uuid="ad1926cdfdc3d19af692826dffb61804"]
+NameComponent/name = "Particle Emitter"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 1.5, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+ParticleEmitterComponent/playing = true
+ParticleEmitterComponent/worldSpace = true
+ParticleEmitterComponent/gpu = true
+ParticleEmitterComponent/maxParticles = 128
+ParticleEmitterComponent/emissionRate = 32.000000
+ParticleEmitterComponent/lifetime = 2.000000
+ParticleEmitterComponent/lifetimeVariance = 0.400000
+ParticleEmitterComponent/spawnRadius = 0.100000
+ParticleEmitterComponent/startVelocity = (0, 2, 0)
+ParticleEmitterComponent/velocityVariance = 1.000000
+ParticleEmitterComponent/gravity = (0, -2, 0)
+ParticleEmitterComponent/startSize = 0.120000
+ParticleEmitterComponent/endSize = 0.000000
+ParticleEmitterComponent/startColor = (1, 0.8, 0.35, 1)
+ParticleEmitterComponent/endColor = (1, 0.2, 0, 0)
+

@@ -1,10 +1,11 @@
 # Particle system
 
-A lightweight particle system driven by a `ParticleEmitterComponent`.
+A particle system driven by a `ParticleEmitterComponent`, with two interchangeable backends.
 
-> **Status:** v1 simulates particles on the **CPU** and previews them through the **debug-draw**
-> path (a small box per particle). The component data is backend-agnostic; a **GPU compute +
-> instanced billboard** backend is the planned upgrade (see Roadmap).
+> **Status:** the default backend simulates particles in a **GPU compute shader** and renders them as
+> instanced, camera-facing **additive billboards** (soft, depth-faded) via builtin render-graph
+> passes. A **CPU** backend (debug-draw preview) remains as a fallback. The `gpu` field on the
+> component selects the backend (default `true` = GPU).
 
 ## Component
 
@@ -16,7 +17,8 @@ world position.
 |-------|---------|
 | `playing` | emit or pause |
 | `worldSpace` | simulate in world space (vs local to the emitter) |
-| `maxParticles` | hard cap on live particles |
+| `gpu` | backend select: GPU compute + billboards (`true`, default) or CPU debug-draw (`false`) |
+| `maxParticles` | hard cap on live particles (GPU: fixed pool size) |
 | `emissionRate` | particles spawned per second |
 | `lifetime` / `lifetimeVariance` | seconds, ± fraction |
 | `spawnRadius` | random spawn offset around the emitter |
@@ -29,17 +31,33 @@ The component is registered for reflection, scene (de)serialization, the scene c
 the editor inspector, and the add-component menu, so it round-trips in `.vscn`/`.vmanifest` and is
 fully editable in the editor.
 
-## System
+## GPU backend (default)
 
-[`ParticleSystem`](../source/vultra/include/vultra/function/particle/particle_system.hpp) is an
-engine subsystem emplaced **before** `RenderSystem` so the particles it spawns queue their
-debug-draw preview for the same frame. Each frame it: GCs dead emitters, spawns at the emission
-rate (capped), integrates `velocity += gravity·dt; position += velocity·dt`, ages particles out,
-and previews each live particle via `IRenderService::debugDrawBox`.
+When `gpu == true` the emitter is driven entirely on the GPU:
 
-It is wired into the standard subsystem set in
-[demo_app_host.cpp](../source/vultra/src/core/app/demo_app_host.cpp), so every app built on
-`DemoAppHost` (examples, the runtime player) gets it.
+1. **Gather + manage** — `RenderWorldCooker::cook` collects GPU emitters into `RenderWorld::emitters`.
+   [`GpuParticleManager`](../source/vultra/include/vultra/function/particle/gpu_particle_manager.hpp)
+   (owned by `RenderSystem`) keeps a persistent particle SSBO per emitter (a fixed pool of
+   `maxParticles` [`GpuParticle`](../source/vultra/include/vultra/function/particle/gpu_particle.hpp)),
+   advances a CPU emission accumulator + round-robin spawn cursor each frame, and publishes a
+   per-emitter draw list onto the active `GpuSceneView`.
+2. **Simulate** — `ParticleSimulatePass` (compute) respawns the round-robin spawn window and
+   integrates the rest (`velocity += gravity·dt; position += velocity·dt`), ageing particles out.
+   Dead slots collapse to a degenerate billboard.
+3. **Render** — `ParticleRenderPass` (graphics) draws one instanced, camera-facing billboard per
+   pool slot with additive blending and a soft circular sprite + soft-depth fade against the scene
+   depth, in HDR before tone mapping.
+
+Both passes are builtin render-graph passes wired into `universal.vrg.json` (and the project
+`default.vrg.json`) between `GeneralGaussianSplatComposite` and `Ssr`.
+
+## CPU backend (fallback)
+
+When `gpu == false`,
+[`ParticleSystem`](../source/vultra/include/vultra/function/particle/particle_system.hpp) — an engine
+subsystem emplaced **before** `RenderSystem` — simulates on the CPU and previews each live particle
+through the debug-draw path. It skips emitters whose `gpu == true`. It is wired into the standard
+subsystem set in [demo_app_host.cpp](../source/vultra/src/core/app/demo_app_host.cpp).
 
 ## Editor
 
@@ -49,13 +67,18 @@ It is wired into the standard subsystem set in
 - The sample scene [resources/scenes/test.vmanifest](../resources/scenes/test.vmanifest) has a
   "Sparks" emitter for reference.
 
-## Roadmap (GPU backend)
+## Implementation notes
 
-The CPU path is intentionally a thin, correct foundation. A GPU upgrade would:
+- The GPU pool is a **fixed-size, round-robin** ring (`maxParticles` slots). The CPU advances an
+  emission accumulator and a spawn cursor; the compute shader respawns the `[cursor, cursor+emitCount)`
+  window and integrates the rest. A freshly created/resized pool sets a reset bit so the shader seeds
+  it without a host clear. There is no GPU dead/alive list, indirect dispatch, or back-to-front sort
+  yet — overlapping translucent particles use additive blending (order-independent).
+- Pools are keyed per emitter entity and persist across frames; emission is advanced at most once per
+  frame even when an emitter is rendered by multiple views (e.g. the editor scene + game views).
 
-1. Store particles in a GPU buffer; spawn + integrate in a **compute pass** (the RHI already has
-   compute pipelines and a radix sorter for back-to-front sorting).
-2. Render as **instanced camera-facing billboards** with a soft particle / additive material,
-   added as a builtin render-graph pass.
-3. Keep `ParticleEmitterComponent` as the authoring front-end; add texture/atlas, emission shapes,
-   curves, and sub-emitters.
+## Roadmap
+
+- Texture/atlas sprites, emission shapes, color/size-over-life curves, and sub-emitters.
+- Alive/dead-list recycling + indirect dispatch/draw and optional depth sorting (the RHI already has
+  a radix sorter) for large alpha-blended systems.

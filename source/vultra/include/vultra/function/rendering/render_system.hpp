@@ -3,6 +3,7 @@
 #include "vultra/core/engine/engine_subsystem.hpp"
 #include "vultra/core/rhi/graphics_pipeline.hpp"
 #include "vultra/function/framegraph/transient_resources.hpp"
+#include "vultra/function/particle/gpu_particle_manager.hpp"
 #include "vultra/function/rendering/gpu_scene_dirty_tracker.hpp"
 #include "vultra/function/rendering/framework/prepared_render_data.hpp"
 #include "vultra/function/rendering/framework/render_frame_resources.hpp"
@@ -161,6 +162,8 @@ namespace vultra
 
         resource::GpuSceneView m_GpuSceneViewFront {};
         resource::GpuSceneView m_GpuSceneViewBack {};
+
+        GpuParticleManager m_ParticleManager {};
 
         uint64_t m_FrameCounter {0};
 

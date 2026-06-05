@@ -50,6 +50,12 @@
             -92.0
           ]
         },
+        "ParticleRender": {
+          "pos": [
+            1803.0,
+            -23.0
+          ]
+        },
         "Pixelate": {
           "pos": [
             2622.0,
@@ -187,9 +193,18 @@
     },
     {
       "enabled": true,
+      "id": "ParticleRender",
+      "inputs": {
+        "depth": "DirectGBuffer.depth",
+        "source": "GeneralGaussianSplatComposite.color"
+      },
+      "type": "ParticleRender"
+    },
+    {
+      "enabled": true,
       "id": "Ssr",
       "inputs": {
-        "color": "GeneralGaussianSplatComposite.color",
+        "color": "ParticleRender.color",
         "depth": "DirectGBuffer.depth",
         "material": "DirectGBuffer.material",
         "normal": "DirectGBuffer.normal"
@@ -209,7 +224,7 @@
       "id": "SsrComposite",
       "inputs": {
         "reflection": "Ssr.reflection",
-        "source": "GeneralGaussianSplatComposite.color"
+        "source": "ParticleRender.color"
       },
       "params": {
         "enabled": true

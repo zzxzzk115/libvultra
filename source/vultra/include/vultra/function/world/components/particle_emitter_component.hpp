@@ -7,16 +7,19 @@
 
 namespace vultra
 {
-    // CPU-simulated particle emitter. Attached to an entity with a TransformComponent; the
-    // ParticleSystem spawns and integrates particles from the entity's world position.
+    // Particle emitter. Attached to an entity with a TransformComponent; particles spawn from the
+    // entity's world position.
     //
-    // (v1 simulates on the CPU and previews particles via the debug-draw path. A GPU compute
-    // backend + instanced billboard rendering is the planned upgrade — the component data is
-    // backend-agnostic.)
+    // Two backends share this authoring data:
+    //  - GPU (default, gpu == true): the simulation runs in a compute shader and particles render as
+    //    instanced, camera-facing, additive billboards via builtin render-graph passes.
+    //  - CPU (gpu == false): the ParticleSystem subsystem simulates on the CPU and previews particles
+    //    through the debug-draw path. Kept as a fallback / debugging aid.
     struct ParticleEmitterComponent
     {
         bool playing {true};
         bool worldSpace {true}; // simulate in world space (true) or local to the emitter (false)
+        bool gpu {true};        // GPU compute backend (true) or CPU debug-draw fallback (false)
 
         uint32_t maxParticles {128};
         float    emissionRate {32.0f}; // particles spawned per second

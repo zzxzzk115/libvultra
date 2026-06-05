@@ -8,6 +8,7 @@
 #include "vultra/core/rhi/radix_sorter.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/storage_buffer.hpp"
+#include "vultra/function/particle/gpu_particle.hpp"
 #include "vultra/function/resource/gpu_draw.hpp"
 #include "vultra/function/resource/gpu_scene_database.hpp"
 #include "vultra/function/resource/gpu_visible_meshlet.hpp"
@@ -59,6 +60,11 @@ namespace vultra::resource
 
         // Optional CPU mirror for GPU-driven intermediate visibility.
         std::vector<GpuVisibleMeshlet> visibleMeshlets;
+
+        // GPU particle emitters to simulate + render this frame. Buffers are owned by
+        // GpuParticleManager (stable across frames); these records are non-owning views, refreshed
+        // every frame before the camera loop.
+        std::vector<GpuParticleEmitterDraw> particleEmitters;
 
         // GPU buffers (per-view/per-frame)
         // Meshlet path
@@ -125,6 +131,7 @@ namespace vultra::resource
             generalGaussianSplatPackedSources.clear();
             generalGaussianSplatSelectedSources.clear();
             visibleMeshlets.clear();
+            particleEmitters.clear();
             visibleInstanceBuffer         = nullptr;
             visibleInstanceCountBuffer    = nullptr;
             meshletCullDispatchArgsBuffer = nullptr;
@@ -177,6 +184,7 @@ namespace vultra::resource
             generalGaussianSplatPackedSources.clear();
             generalGaussianSplatSelectedSources.clear();
             visibleMeshlets.clear();
+            particleEmitters.clear();
             maxVisibleInstances          = 0;
             maxVisibleMeshlets           = 0;
             maxDraws                     = 0;

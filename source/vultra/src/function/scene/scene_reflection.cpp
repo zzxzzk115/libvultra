@@ -211,6 +211,7 @@ namespace vultra
             .type("ParticleEmitterComponent"_hs)
             .data<&ParticleEmitterComponent::playing>("playing"_hs)
             .data<&ParticleEmitterComponent::worldSpace>("worldSpace"_hs)
+            .data<&ParticleEmitterComponent::gpu>("gpu"_hs)
             .data<&ParticleEmitterComponent::maxParticles>("maxParticles"_hs)
             .data<&ParticleEmitterComponent::emissionRate>("emissionRate"_hs)
             .data<&ParticleEmitterComponent::lifetime>("lifetime"_hs)
