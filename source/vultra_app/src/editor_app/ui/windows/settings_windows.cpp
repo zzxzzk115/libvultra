@@ -6,7 +6,11 @@
 #include "vproject.hpp"
 
 #include <vultra/function/rendering/render_structs.hpp>
+#include <vultra/function/plugin/plugin_manifest.hpp>
+#include <vultra/function/services/plugin_service.hpp>
 #include <vultra/function/services/render_service.hpp>
+
+#include <algorithm>
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -160,13 +164,17 @@ namespace vultra_app
 
     void EditorApp::drawProjectSettingsPopup(EditorContext& ctx)
     {
-        static int selectedPage = 0;
+        static int                      selectedPage = 0;
+        static std::vector<std::string> s_EnabledPlugins;
         if (ctx.state.projectSettingsOpen)
         {
             setBuffer(m_ProjectNameBuffer, ctx.state.currentProjectName);
             setBuffer(m_ProjectAssetRootBuffer, ctx.state.currentAssetRoot);
             setBuffer(m_ProjectDefaultSceneBuffer, ctx.state.currentDefaultScene);
             setBuffer(m_ProjectEditingRenderGraphBuffer, ctx.state.currentEditingRenderGraph);
+            s_EnabledPlugins.clear();
+            if (auto project = loadVProject(ctx.state.currentProject); project.has_value())
+                s_EnabledPlugins = project->enabledPlugins;
             ImGui::OpenPopup("Project Settings");
             ctx.state.projectSettingsOpen = false;
         }
@@ -198,6 +206,8 @@ namespace vultra_app
             selectedPage = 2;
         if (ui::settingsNavItem("Packaging", selectedPage == 3))
             selectedPage = 3;
+        if (ui::settingsNavItem("Plugins", selectedPage == 4))
+            selectedPage = 4;
         ImGui::Spacing();
         ImGui::TextUnformatted("Engine");
         ImGui::BeginDisabled();
@@ -461,7 +471,7 @@ namespace vultra_app
             }
             ui::drawInfoRegion("Enabled build scenes are exported as dependency roots in scene-index order.");
         }
-        else
+        else if (selectedPage == 3)
         {
             ui::drawSettingsSectionHeader("Packaging");
             ui::beginSettingsRow("Package Name");
@@ -471,6 +481,71 @@ namespace vultra_app
             ImGui::TextUnformatted(kVPackageManifestPath);
             ui::endSettingsRow();
             ui::drawInfoRegion("Runtime packages use a same-name executable and VPK.");
+        }
+        else if (selectedPage == 4)
+        {
+            ui::drawSettingsSectionHeader("Plugins");
+            const auto pluginsDir = (ctx.state.currentProject / "plugins").lexically_normal();
+            ui::drawInfoRegion("Plugins live in <project>/plugins and are off by default. Enable one to "
+                               "load it now and on the next launch. Native plugins are desktop-only.");
+
+            const auto manifests = vultra::discoverPlugins(pluginsDir);
+            if (manifests.empty())
+                ImGui::TextDisabled("No plugins found in %s", pluginsDir.generic_string().c_str());
+
+            for (const auto& manifest : manifests)
+            {
+                ImGui::PushID(manifest.id.c_str());
+                const bool wasEnabled =
+                    std::find(s_EnabledPlugins.begin(), s_EnabledPlugins.end(), manifest.id) != s_EnabledPlugins.end();
+                const bool supported = manifest.supportsCurrentPlatform();
+
+                bool enabled = wasEnabled;
+                if (!supported)
+                    ImGui::BeginDisabled();
+                if (ImGui::Checkbox(manifest.name.empty() ? manifest.id.c_str() : manifest.name.c_str(), &enabled))
+                {
+                    if (enabled && !wasEnabled)
+                    {
+                        s_EnabledPlugins.push_back(manifest.id);
+                        if (auto* plugins = ctx.services ? ctx.services->tryGet<vultra::IPluginService>() : nullptr)
+                            plugins->loadPlugin(manifest);
+                    }
+                    else if (!enabled && wasEnabled)
+                        s_EnabledPlugins.erase(
+                            std::remove(s_EnabledPlugins.begin(), s_EnabledPlugins.end(), manifest.id),
+                            s_EnabledPlugins.end());
+                }
+                if (!supported)
+                    ImGui::EndDisabled();
+
+                ImGui::SameLine();
+                ImGui::TextDisabled("v%s%s%s",
+                                    manifest.version.empty() ? "?" : manifest.version.c_str(),
+                                    manifest.author.empty() ? "" : "  \xc2\xb7  ",
+                                    manifest.author.c_str());
+
+                ImGui::Indent();
+                ImGui::TextDisabled("%s", manifest.id.c_str());
+                if (!manifest.description.empty())
+                    ImGui::TextWrapped("%s", manifest.description.c_str());
+                if (!manifest.repository.empty())
+                    ImGui::TextDisabled("%s", manifest.repository.c_str());
+                std::string capabilities;
+                if (!manifest.native.empty())
+                    capabilities += "native ";
+                if (!manifest.entry.empty())
+                    capabilities += "lua";
+                if (!capabilities.empty())
+                    ImGui::TextDisabled("provides: %s", capabilities.c_str());
+                if (!supported)
+                    ImGui::TextColored(ImVec4 {1.0f, 0.7f, 0.2f, 1.0f},
+                                       "Not supported on this platform (%s).",
+                                       std::string(vultra::currentPluginPlatform()).c_str());
+                ImGui::Unindent();
+                ImGui::Separator();
+                ImGui::PopID();
+            }
         }
         ImGui::EndChild();
         if (projectSettingsChanged)
@@ -506,6 +581,7 @@ namespace vultra_app
                 .defaultScene       = ctx.state.currentDefaultScene,
                 .buildScenes        = normalizedBuildScenes(ctx.state.currentDefaultScene, ctx.state.currentBuildScenes),
                 .editingRenderGraph = ctx.state.currentEditingRenderGraph,
+                .enabledPlugins     = s_EnabledPlugins,
             };
             std::string error;
             if (saveVProject(project, &error))

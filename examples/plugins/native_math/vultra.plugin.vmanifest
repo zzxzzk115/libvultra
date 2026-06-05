@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "com.vultra.examples.native_math",
+  "name": "Native Math",
+  "version": "1.0.0",
+  "author": "Vultra",
+  "description": "A native C++ plugin that registers a math helper into Lua, with a Lua glue layer on top.",
+  "readme": "README.md",
+  "repository": "https://github.com/zzxzzk115/libvultra",
+  "platforms": ["windows", "linux", "macos"],
+  "native": "native_math",
+  "entry": "init.lua"
+}

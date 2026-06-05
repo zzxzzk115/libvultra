@@ -21,6 +21,7 @@
 #include <vultra/function/animation/animation_system.hpp>
 #include <vultra/function/jobs/job_system.hpp>
 #include <vultra/function/physics/physics_system.hpp>
+#include <vultra/function/plugin/plugin_manifest.hpp>
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
@@ -520,8 +521,14 @@ namespace
 
         void onConfigureDemo(vultra::Engine& engine) override
         {
-            if (!m_Options.pluginsDir.empty())
+            if (!m_Options.pluginsDir.empty() && !m_Options.editorMode)
+            {
+                // Runtime opt-in: discover and enable every plugin in --plugins-dir. (In editor mode
+                // the project's enabled list drives plugin loading; see EditorApp::configureProject.)
                 engine.ctx().config.plugin.directory = m_Options.pluginsDir;
+                for (const auto& manifest : vultra::discoverPlugins(m_Options.pluginsDir))
+                    engine.ctx().config.plugin.enabled.push_back(manifest.id);
+            }
 
             if (engine.ctx().config.render.backendApi == vultra::rhi::RenderBackendApi::eVulkan)
             {

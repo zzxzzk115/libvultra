@@ -87,6 +87,18 @@ namespace vultra_app
                 project.defaultScene = value;
             else if (key == "editing_rendergraph")
                 project.editingRenderGraph = value;
+            else if (key == "enabled_plugins")
+            {
+                project.enabledPlugins.clear();
+                std::string item;
+                std::istringstream stream(value);
+                while (std::getline(stream, item, ','))
+                {
+                    item = trim(std::move(item));
+                    if (!item.empty())
+                        project.enabledPlugins.push_back(item);
+                }
+            }
             else if (auto index = parseIndexedKey(key, "build_scene."))
                 ensureBuildScene(project.buildScenes, *index).uri = value;
             else if (auto index = parseIndexedKey(key, "build_scene_alias."))
@@ -348,6 +360,13 @@ namespace vultra_app
         file << "asset_root = \"" << project.assetRoot << "\"\n";
         file << "default_scene = \"" << project.defaultScene << "\"\n";
         file << "editing_rendergraph = \"" << project.editingRenderGraph << "\"\n";
+        if (!project.enabledPlugins.empty())
+        {
+            std::string joined;
+            for (std::size_t i = 0; i < project.enabledPlugins.size(); ++i)
+                joined += (i == 0 ? "" : ",") + project.enabledPlugins[i];
+            file << "enabled_plugins = " << quote(joined) << "\n";
+        }
         const auto buildScenes = normalizedBuildScenes(project.defaultScene, project.buildScenes);
         for (const auto& scene : buildScenes)
         {

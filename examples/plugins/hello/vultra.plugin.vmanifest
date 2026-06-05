@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "com.vultra.examples.hello",
+  "name": "Hello",
+  "version": "1.0.0",
+  "author": "Vultra",
+  "description": "A pure-Lua example plugin that exposes a greeting helper into the shared Lua state.",
+  "readme": "README.md",
+  "repository": "https://github.com/zzxzzk115/libvultra",
+  "platforms": ["windows", "linux", "macos"],
+  "entry": "init.lua"
+}

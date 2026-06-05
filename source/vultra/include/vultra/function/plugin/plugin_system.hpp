@@ -12,17 +12,9 @@ namespace vultra
 {
     class IScriptService;
 
-    // Orchestrates plugin loading on top of the core (native) PluginManager and the Lua scripting
-    // runtime. Each plugin is described by a `plugin.lua` manifest that returns a table:
-    //
-    //   return {
-    //     name   = "my_plugin",          -- optional, defaults to the folder name
-    //     native = "libmy_plugin.dll",   -- optional native shared library (relative to manifest)
-    //     entry  = "init.lua",           -- optional Lua entry script (relative to manifest)
-    //   }
-    //
-    // The native library (if any) is loaded first so its install() can register glue bindings into
-    // the shared Lua state; the Lua entry script is then run and its optional on_install() called.
+    // Orchestrates plugin discovery and loading on top of the core (native) PluginManager and the
+    // Lua scripting runtime. At init it discovers plugins under config.plugin.directory and loads
+    // only those whose id is in config.plugin.enabled and that support the current platform.
     class PluginSystem final : public EngineSubsystem, public IPluginService
     {
     public:
@@ -34,15 +26,16 @@ namespace vultra
         bool onInit() override;
         void onShutdown() override;
 
-        bool        loadPlugin(const std::filesystem::path& manifestOrDir) override;
-        std::size_t loadPluginsFromDirectory(const std::filesystem::path& dir) override;
-        std::vector<std::string> loadedPlugins() const override;
+        std::vector<PluginManifest> discover(const std::filesystem::path& dir) const override;
+        bool                        loadPlugin(const PluginManifest& manifest) override;
+        std::vector<std::string>    loadedPlugins() const override;
+        bool                        isLoaded(const std::string& id) const override;
 
     private:
         struct LuaPlugin; // defined in the .cpp (holds sol objects)
 
         IScriptService*                         m_Script {nullptr};
-        std::vector<std::string>                m_Names;
+        std::vector<std::string>                m_LoadedIds;
         std::vector<std::unique_ptr<LuaPlugin>> m_LuaPlugins;
     };
 } // namespace vultra

@@ -38,6 +38,9 @@ namespace vultra_app
         std::string           defaultScene;
         std::vector<VBuildScene> buildScenes;
         std::string           editingRenderGraph {"res://render/default.vrg.json"};
+        // Ids of plugins enabled for this project (plugins are off by default). Loaded from
+        // <project>/plugins; see the Plugins tab in Project Settings.
+        std::vector<std::string> enabledPlugins;
     };
 
     struct VPackageManifest

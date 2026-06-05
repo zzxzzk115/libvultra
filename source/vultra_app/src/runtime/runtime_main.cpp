@@ -15,6 +15,7 @@
 #include <vultra/core/app/demo_app_entry.hpp>
 #include <vultra/core/app/demo_app_host.hpp>
 #include <vultra/core/base/common_context.hpp>
+#include <vultra/function/plugin/plugin_manifest.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/render_service.hpp>
@@ -127,7 +128,12 @@ namespace
             auto& config = engine.ctx().config;
 
             if (!m_Options.pluginsDir.empty())
+            {
+                // Explicit --plugins-dir is an opt-in: discover and enable every plugin there.
                 config.plugin.directory = m_Options.pluginsDir;
+                for (const auto& manifest : vultra::discoverPlugins(m_Options.pluginsDir))
+                    config.plugin.enabled.push_back(manifest.id);
+            }
 
             if (config.render.backendApi == vultra::rhi::RenderBackendApi::eVulkan)
             {

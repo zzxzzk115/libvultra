@@ -10,6 +10,8 @@
 #include <vbase/service/service_registry.hpp>
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #if defined(__ANDROID__)
 struct ANativeWindow;
@@ -113,9 +115,12 @@ namespace vultra
 
             struct PluginConfig
             {
-                // Directory scanned at startup for `<name>/plugin.lua` manifests. Empty disables
-                // auto-loading; plugins can still be loaded explicitly via IPluginService.
+                // Directory scanned at startup for `<name>/vultra.plugin.vmanifest` manifests.
+                // Empty disables discovery.
                 std::string directory {};
+                // Ids of plugins to load. Plugins are OFF by default; only ids listed here (and
+                // supporting the current platform) are loaded. Sourced from the project settings.
+                std::vector<std::string> enabled {};
             } plugin;
 
             // Writable app-private directory used for runtime debug outputs and persisted UI state.
