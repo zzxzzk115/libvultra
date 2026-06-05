@@ -2116,6 +2116,36 @@ namespace vultra_app
             if (is("cellSizePx"))
                 return "cellSizePx";
 
+            // ParticleEmitterComponent
+            if (is("playing"))
+                return "playing";
+            if (is("worldSpace"))
+                return "worldSpace";
+            if (is("maxParticles"))
+                return "maxParticles";
+            if (is("emissionRate"))
+                return "emissionRate";
+            if (is("lifetime"))
+                return "lifetime";
+            if (is("lifetimeVariance"))
+                return "lifetimeVariance";
+            if (is("spawnRadius"))
+                return "spawnRadius";
+            if (is("startVelocity"))
+                return "startVelocity";
+            if (is("velocityVariance"))
+                return "velocityVariance";
+            if (is("gravity"))
+                return "gravity";
+            if (is("startSize"))
+                return "startSize";
+            if (is("endSize"))
+                return "endSize";
+            if (is("startColor"))
+                return "startColor";
+            if (is("endColor"))
+                return "endColor";
+
             return nullptr;
         }
 
@@ -4787,6 +4817,8 @@ namespace vultra_app
                 reg.remove<vultra::ReflectionProbeComponent>(entity);
             else if (key == "Light")
                 reg.remove<vultra::LightComponent>(entity);
+            else if (key == "ParticleEmitter")
+                reg.remove<vultra::ParticleEmitterComponent>(entity);
             else if (key == "RigidBody")
                 reg.remove<vultra::RigidBodyComponent>(entity);
             else if (key == "BoxShape")
