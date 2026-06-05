@@ -3130,6 +3130,9 @@ namespace vultra
         m_GpuSceneDatabaseFront.clear();
         m_GpuSceneDirtyTracker.reset();
 
+        // Release persistent GPU particle pools while the device is still alive (after waitIdle).
+        m_ParticleManager.clear();
+
         for (auto& [key, renderer] : m_Renderers)
             renderer = nullptr;
         m_Renderers.clear();
@@ -3227,6 +3230,7 @@ namespace vultra
         m_GpuSceneDirtyTracker.reset();
         m_OverrideRenderWorlds.clear();
         m_GeometryFactory.clear();
+        m_ParticleManager.clear();
     }
 
     bool RenderSystem::reloadRenderPipeline()
