@@ -5257,6 +5257,16 @@ namespace vultra_app
                             ctx.history->setNextLabel("Edit Light");
                     }
             }
+            else if (key == "ParticleEmitter")
+            {
+                if (auto* emitter = reg.try_get<vultra::ParticleEmitterComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *emitter))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Particle Emitter");
+                    }
+            }
             else if (key == "RigidBody")
             {
                 if (auto* body = reg.try_get<vultra::RigidBodyComponent>(e))

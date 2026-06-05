@@ -108,6 +108,7 @@ namespace vultra_app
             Camera,
             XRCamera,
             Environment,
+            ParticleEmitter,
             UiCanvas,
             UiPanel,
             UiText,
@@ -149,6 +150,8 @@ namespace vultra_app
                     return "xr_camera";
                 case SceneCreateKind::Environment:
                     return "environment";
+                case SceneCreateKind::ParticleEmitter:
+                    return "particle_emitter";
                 case SceneCreateKind::UiCanvas:
                     return "ui_canvas";
                 case SceneCreateKind::UiPanel:
@@ -275,6 +278,13 @@ namespace vultra_app
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::SpotLight);
                 if (ImGui::MenuItem("Area Light"))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::AreaLight);
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu(ICON_MDI_CREATION " Rendering"))
+            {
+                if (ImGui::MenuItem(ICON_MDI_CREATION " Particle Emitter"))
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::ParticleEmitter);
                 ImGui::EndMenu();
             }
 

@@ -22,6 +22,7 @@
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
+#include <vultra/function/world/components/particle_emitter_component.hpp>
 #include <vultra/function/world/components/rigid_body_component.hpp>
 #include <vultra/function/world/components/script_component.hpp>
 #include <vultra/function/world/components/sphere_shape_component.hpp>
@@ -431,6 +432,8 @@ namespace vultra_app
                 return "entity_status";
             if (kind == "rigidbody")
                 return "rigid_body";
+            if (kind == "particleemitter" || kind == "particleemittercomponent" || kind == "particles")
+                return "particle_emitter";
             if (kind == "sphereshape")
                 return "sphere_shape";
             if (kind == "boxshape")
@@ -556,6 +559,7 @@ namespace vultra_app
                 "name",
                 "entity_status",
                 "mesh",
+                "particle_emitter",
                 "rigid_body",
                 "sphere_shape",
                 "box_shape",
@@ -678,6 +682,24 @@ namespace vultra_app
                                                       {{"asset", ".vmatgraph.json"}, {"legacy", true}}),
                                             fieldJson("properties", "array", {}, {{"items", propertyEntry}})})}};
                 fields.push_back(fieldJson("materialOverrides", "array", {}, {{"items", slotEntry}}));
+            }
+            else if (k == "particle_emitter")
+            {
+                out["cxxComponent"] = "ParticleEmitterComponent";
+                fields.push_back(fieldJson("playing", "bool"));
+                fields.push_back(fieldJson("worldSpace", "bool"));
+                fields.push_back(fieldJson("maxParticles", "uint32"));
+                fields.push_back(fieldJson("emissionRate", "float"));
+                fields.push_back(fieldJson("lifetime", "float"));
+                fields.push_back(fieldJson("lifetimeVariance", "float"));
+                fields.push_back(fieldJson("spawnRadius", "float"));
+                fields.push_back(fieldJson("startVelocity", "vec3"));
+                fields.push_back(fieldJson("velocityVariance", "float"));
+                fields.push_back(fieldJson("gravity", "vec3"));
+                fields.push_back(fieldJson("startSize", "float"));
+                fields.push_back(fieldJson("endSize", "float"));
+                fields.push_back(fieldJson("startColor", "vec4/color"));
+                fields.push_back(fieldJson("endColor", "vec4/color"));
             }
             else if (k == "rigid_body")
             {
@@ -965,6 +987,27 @@ namespace vultra_app
                             {"materialColor", vec4Json(c->materialColor)},
                             {"materialOverrides", std::move(overrides)}};
                 }
+            }
+            else if (k == "particle_emitter")
+            {
+                const auto* c = reg.try_get<vultra::ParticleEmitterComponent>(entity);
+                if (!c)
+                    errorMessage = "entity does not have ParticleEmitterComponent";
+                else
+                    return {{"playing", c->playing},
+                            {"worldSpace", c->worldSpace},
+                            {"maxParticles", c->maxParticles},
+                            {"emissionRate", c->emissionRate},
+                            {"lifetime", c->lifetime},
+                            {"lifetimeVariance", c->lifetimeVariance},
+                            {"spawnRadius", c->spawnRadius},
+                            {"startVelocity", vec3Json(c->startVelocity)},
+                            {"velocityVariance", c->velocityVariance},
+                            {"gravity", vec3Json(c->gravity)},
+                            {"startSize", c->startSize},
+                            {"endSize", c->endSize},
+                            {"startColor", vec4Json(c->startColor)},
+                            {"endColor", vec4Json(c->endColor)}};
             }
             else if (k == "rigid_body")
             {
@@ -1522,6 +1565,30 @@ namespace vultra_app
                 mesh.materialOverrides = materialSlotOverridesArg(args, mesh.materialOverrides);
                 return true;
             }
+            if (kind == "particle_emitter")
+            {
+                if (requireExisting && !reg.all_of<vultra::ParticleEmitterComponent>(entity))
+                {
+                    errorMessage = "entity does not have ParticleEmitterComponent";
+                    return false;
+                }
+                auto& emitter            = reg.get_or_emplace<vultra::ParticleEmitterComponent>(entity);
+                emitter.playing          = args.value("playing", emitter.playing);
+                emitter.worldSpace       = args.value("worldSpace", emitter.worldSpace);
+                emitter.maxParticles     = args.value("maxParticles", emitter.maxParticles);
+                emitter.emissionRate     = args.value("emissionRate", emitter.emissionRate);
+                emitter.lifetime         = args.value("lifetime", emitter.lifetime);
+                emitter.lifetimeVariance = args.value("lifetimeVariance", emitter.lifetimeVariance);
+                emitter.spawnRadius      = args.value("spawnRadius", emitter.spawnRadius);
+                emitter.startVelocity    = vec3Arg(args, "startVelocity", emitter.startVelocity);
+                emitter.velocityVariance = args.value("velocityVariance", emitter.velocityVariance);
+                emitter.gravity          = vec3Arg(args, "gravity", emitter.gravity);
+                emitter.startSize        = args.value("startSize", emitter.startSize);
+                emitter.endSize          = args.value("endSize", emitter.endSize);
+                emitter.startColor       = vec4Arg(args, "startColor", emitter.startColor);
+                emitter.endColor         = vec4Arg(args, "endColor", emitter.endColor);
+                return true;
+            }
             if (kind == "rigid_body")
             {
                 if (requireExisting && !reg.all_of<vultra::RigidBodyComponent>(entity))
@@ -1745,6 +1812,8 @@ namespace vultra_app
                 return reg.remove<vultra::EntityStatusComponent>(entity) > 0u;
             if (kind == "mesh")
                 return reg.remove<vultra::MeshComponent>(entity) > 0u;
+            if (kind == "particle_emitter")
+                return reg.remove<vultra::ParticleEmitterComponent>(entity) > 0u;
             if (kind == "rigid_body")
                 return reg.remove<vultra::RigidBodyComponent>(entity) > 0u;
             if (kind == "sphere_shape")
@@ -1897,6 +1966,13 @@ namespace vultra_app
 
             if (normalized == "empty")
                 setName(parent == entt::null ? "Empty Entity" : "Child Entity");
+            else if (normalized == "particle_emitter" || normalized == "particleemitter")
+            {
+                setName("Particle Emitter");
+                reg.emplace_or_replace<vultra::ParticleEmitterComponent>(entity);
+                transform.position = glm::vec3 {0.0f, 1.0f, 0.0f};
+                transform.dirty    = true;
+            }
             else if (normalized == "ui_canvas" || normalized == "uicanvas")
             {
                 auto& rect       = addUiBase("Canvas", {1920.0f, 1080.0f});
