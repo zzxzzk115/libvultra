@@ -14,7 +14,7 @@ namespace vultra_app
 {
     // Single source of truth for an MCP tool-call deadline. The HTTP worker stops waiting for a
     // result after this, and the main thread must likewise stop running/mutating on behalf of a
-    // (possibly deferred) call once the same deadline passes — otherwise a client that already gave
+    // (possibly deferred) call once the same deadline passes - otherwise a client that already gave
     // up at the timeout could still observe orphaned scene/asset mutations, and a deferred condition
     // that never resolves would spin every frame forever.
     inline constexpr auto kMcpToolDeadline = std::chrono::seconds(5);

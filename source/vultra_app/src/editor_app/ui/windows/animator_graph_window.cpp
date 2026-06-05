@@ -92,7 +92,7 @@ namespace vultra_app
         // Friendly label for an animation asset's source path. The model/file name is the
         // descriptive part (single-clip FBX/mixamo exports often have a generic embedded clip
         // name like "mixamo_com"), so show it first; the clip name follows for files that pack
-        // multiple animations. e.g. "models/Char.gltf#animation/0_Walk" -> "Char · 0_Walk".
+        // multiple animations. e.g. "models/Char.gltf#animation/0_Walk" -> "Char - 0_Walk".
         std::string clipDisplayName(const std::string& sourcePath)
         {
             const auto stripDirExt = [](std::string s) {
@@ -750,7 +750,7 @@ namespace vultra_app
             }
         }
 
-        // Clip selector — pick an animation asset from the project registry (no manual UUIDs).
+        // Clip selector - pick an animation asset from the project registry (no manual UUIDs).
         {
             auto*             assets     = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
             const std::string currentKey = state.animation.valid() ? state.animation.toString() : std::string {};

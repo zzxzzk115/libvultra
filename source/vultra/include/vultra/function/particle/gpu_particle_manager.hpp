@@ -29,7 +29,7 @@ namespace vultra
     {
     public:
         // Refreshes per-emitter pools and publishes world.gpuSceneView->particleEmitters. May be
-        // called multiple times per frame (once per render world being rendered — main + overrides);
+        // called multiple times per frame (once per render world being rendered - main + overrides);
         // emission for a given emitter is advanced at most once per `frameIndex`, so calling it for
         // several worlds that share emitters does not multiply the spawn rate. Pass the real frame
         // delta and the monotonically increasing render frame index.

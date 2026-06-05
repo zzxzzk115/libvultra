@@ -352,7 +352,7 @@ namespace vultra
             return;
 
         // During a single-step (paused + step requested) the real frame delta is tiny/erratic
-        // — advance by the fixed timestep instead so headless stepping is deterministic.
+        // - advance by the fixed timestep instead so headless stepping is deterministic.
         fsec stepDt = dt;
         if (m_PlaybackPaused && m_SingleStepRequests > 0u)
         {
@@ -471,7 +471,7 @@ namespace vultra
             else
             {
                 // Surface the read failure instead of silently leaving an empty graph (which
-                // would just make the entity stand still — e.g. an unpacked graph in a VPK build).
+                // would just make the entity stand still - e.g. an unpacked graph in a VPK build).
                 VULTRA_CORE_WARN("[AnimationSystem] Failed to read animator graph '{}': {}", cc->graph,
                                  text.error());
             }

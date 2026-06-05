@@ -413,7 +413,7 @@ namespace vultra_app
             for (const auto& renderGraph : collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vrg.json"))
                 appendPackRoot(packArgs, packRoots, renderGraph);
             // Graph assets are tiny and may be referenced indirectly (e.g. an animator graph
-            // assigned to a component, a material graph used as an override) — pack every one
+            // assigned to a component, a material graph used as an override) - pack every one
             // unconditionally so a stale/incomplete dependency edge can never drop them.
             for (const auto& animatorGraph :
                  collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vanimgraph.json"))

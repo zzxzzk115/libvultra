@@ -1295,13 +1295,13 @@ namespace
 		if( !event )
 			std::fprintf( stderr, "ERROR: tracky: unable to open '%s' for writing\n", kOutputEvents_ );
 		else
-			std::fprintf( event, "\"Event Name\",\"TimeStamp (µs)\",\"Duration (µs)\",\"GPU (µs)\",\"Parent Name\"\n" );
+			std::fprintf( event, "\"Event Name\",\"TimeStamp (\xc2\xb5s)\",\"Duration (\xc2\xb5s)\",\"GPU (\xc2\xb5s)\",\"Parent Name\"\n" );
 
 		FILE* agg = std::fopen( kOutputAggregates_, "wb" );
 		if( !agg )
 			std::fprintf( stderr, "ERROR: tracky: unable to open '%s' for writing\n", kOutputAggregates_ );
 		else
-			std::fprintf( agg, "\"Frame\",\"Name\",\"Duration (µs)\"\n" );
+			std::fprintf( agg, "\"Frame\",\"Name\",\"Duration (\xc2\xb5s)\"\n" );
 
 		FILE* count = std::fopen( kOutputCounters_, "wb" );
 		if( !count )

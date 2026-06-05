@@ -11,7 +11,7 @@
 namespace vultra
 {
     // Service for discovering and loading runtime plugins. A plugin can ship a native C++ shared
-    // library, a Lua script, or both — the native side typically registers glue bindings (wrapping
+    // library, a Lua script, or both - the native side typically registers glue bindings (wrapping
     // a third-party library) that the Lua side, or ordinary entity scripts, then drive.
     //
     // Plugins are OFF by default: the engine only loads the ones whose id is in the enabled set
