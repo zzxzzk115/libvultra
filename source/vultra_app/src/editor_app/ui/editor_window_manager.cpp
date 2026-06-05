@@ -87,6 +87,11 @@ namespace vultra_app
                 window->open() = true;
                 focusRequested = true;
             }
+            if (ctx.state.animatorGraphOpenRequested && window->name() == "Animator Graph")
+            {
+                window->open() = true;
+                focusRequested = true;
+            }
             if (!ctx.state.editorWindowFocusRequested.empty() &&
                 window->name() == ctx.state.editorWindowFocusRequested)
             {

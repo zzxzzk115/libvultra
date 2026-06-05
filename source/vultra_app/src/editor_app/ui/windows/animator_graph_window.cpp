@@ -125,6 +125,9 @@ namespace vultra_app
 
     AnimatorGraphWindow::AnimatorGraphWindow() : EditorWindow("Animator Graph", ICON_MDI_RUN_FAST)
     {
+        // Hidden by default: only shown when an animator graph is double-clicked in the content
+        // browser, or toggled on from the top bar's "Window" menu.
+        m_Open       = false;
         m_NodeEditor = ImNodes::EditorContextCreate();
         std::snprintf(m_UriBuffer.data(), m_UriBuffer.size(), "%s", m_CurrentUri.c_str());
     }
