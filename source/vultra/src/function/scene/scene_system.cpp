@@ -678,7 +678,7 @@ namespace vultra
                                                                              "velocity",
                                                                              "grounded"});
         m_ComponentRegistry.registerComponent<MeshComponent>(
-            "MeshComponent", {"mesh", "builtinGeometry", "materialColor", "materialOverrides"});
+            "MeshComponent", {"mesh", "builtinGeometry", "materialOverrides"});
         m_ComponentRegistry.registerComponent<AnimatorComponent>(
             "AnimatorComponent",
             {"mode", "skeleton", "animation", "playOnStart", "playing", "loop", "speed", "time", "graph"});

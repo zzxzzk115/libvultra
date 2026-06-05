@@ -44,7 +44,8 @@ namespace vultra
         // UINT32_MAX = external/imported mesh UUID in `mesh`.
         // 0 = quad, 1 = cube, 2 = sphere, 3 = capsule.
         uint32_t builtinGeometry {UINT32_MAX};
-        glm::vec4 materialColor {1.0f};
+        // Material/colour is driven entirely by materialOverrides. To tint a builtin primitive, add a
+        // slot-0 override using the builtin default material with a "baseColor" colour property.
         std::vector<MaterialSlotOverride> materialOverrides;
     };
 } // namespace vultra

@@ -2820,11 +2820,6 @@ namespace vultra
                         });
                     }
                 }
-                if (mesh.builtinGeometry != UINT32_MAX && mesh.materialOverrides.empty())
-                {
-                    inst.baseColorOverride    = mesh.materialColor;
-                    inst.hasBaseColorOverride = true;
-                }
                 out.instances.push_back(inst);
 
                 if (meshIndex < pool.meshes.size())

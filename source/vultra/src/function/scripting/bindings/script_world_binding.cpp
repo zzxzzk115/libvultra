@@ -375,14 +375,6 @@ namespace vultra
                 [&ctx](const ScriptMeshRef& self, uint32_t value) {
                     requireComponent<MeshComponent>(ctx, self.entity, "MeshComponent").builtinGeometry = value;
                 }),
-            "materialColor",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptMeshRef& self) {
-                    return toScriptVec4(requireComponent<MeshComponent>(ctx, self.entity, "MeshComponent").materialColor);
-                },
-                [&ctx](const ScriptMeshRef& self, const ScriptVec4& value) {
-                    requireComponent<MeshComponent>(ctx, self.entity, "MeshComponent").materialColor = toGlmVec4(value);
-                }),
             "setMaterial",
             [&ctx](const ScriptMeshRef& self, uint32_t slot, const std::string& uri) {
                 setMeshMaterial(ctx, self, slot, uri);

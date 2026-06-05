@@ -131,7 +131,6 @@ namespace vultra
             .type("MeshComponent"_hs)
             .data<&MeshComponent::mesh>("mesh"_hs)
             .data<&MeshComponent::builtinGeometry>("builtinGeometry"_hs)
-            .data<&MeshComponent::materialColor>("materialColor"_hs)
             .data<&MeshComponent::materialOverrides>("materialOverrides"_hs);
         entt::meta_factory<AnimatorComponent>()
             .type("AnimatorComponent"_hs)

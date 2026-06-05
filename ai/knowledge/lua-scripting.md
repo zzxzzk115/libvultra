@@ -55,8 +55,11 @@ Stable facts for agents:
   `setMaterialTexture`, `clearMaterialProperty`, and
   `clearMaterialProperties` for per-entity MaterialPropertyBlock overrides.
   These calls update the current entity/component state and do not mutate shared
-  `.vmat.json` assets; Inspector-authored blocks are scene authoring data. Use
-  `materialColor` only for the legacy builtin primitive color shortcut.
+  `.vmat.json` assets; Inspector-authored blocks are scene authoring data. Colour is
+  driven entirely by material overrides — the legacy `MeshComponent.materialColor`
+  shortcut has been removed; tint a builtin primitive with a slot-0 `baseColor`
+  override (e.g. `setMaterial(0, 'builtin://materials/default.vmat.json')` then
+  `setMaterialColor`).
 - Lua exposes physics queries through `IPhysicsService`, now backed by real Jolt
   narrow-phase geometry (not AABB): `raycast`, `raycastAll`, `sphereCast`,
   `overlapSphere/Box/Capsule`, `contactPairs`. All queries take an optional

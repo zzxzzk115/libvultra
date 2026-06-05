@@ -658,7 +658,6 @@ namespace vultra_app
                                                                    {{"value", 2}, {"name", "sphere"}},
                                                                    {{"value", 3}, {"name", "capsule"}},
                                                                    {{"value", 4294967295u}, {"name", "external_mesh"}}})}}));
-                fields.push_back(fieldJson("materialColor", "vec4/color", {"color"}));
                 nlohmann::json propertyEntry {
                     {"type", "object"},
                     {"fields",
@@ -681,7 +680,15 @@ namespace vultra_app
                                                       {"graph"},
                                                       {{"asset", ".vmatgraph.json"}, {"legacy", true}}),
                                             fieldJson("properties", "array", {}, {{"items", propertyEntry}})})}};
-                fields.push_back(fieldJson("materialOverrides", "array", {}, {{"items", slotEntry}}));
+                fields.push_back(fieldJson(
+                    "materialOverrides",
+                    "array",
+                    {},
+                    {{"items", slotEntry},
+                     {"hint",
+                      "Material and colour are driven entirely by overrides. To tint a builtin primitive, set "
+                      "one slot-0 override with material=\"builtin://materials/default.vmat.json\" and a "
+                      "properties entry {name:\"baseColor\", type:\"color\", color:[r,g,b,a]}."}}));
             }
             else if (k == "particle_emitter")
             {
@@ -984,7 +991,6 @@ namespace vultra_app
                         overrides.push_back(materialSlotOverrideJson(entry));
                     return {{"mesh", uuidJson(c->mesh)},
                             {"builtinGeometry", c->builtinGeometry},
-                            {"materialColor", vec4Json(c->materialColor)},
                             {"materialOverrides", std::move(overrides)}};
                 }
             }
@@ -1560,8 +1566,7 @@ namespace vultra_app
                     return false;
                 }
                 auto& mesh = reg.get_or_emplace<vultra::MeshComponent>(entity);
-                mesh.builtinGeometry = builtinGeometryArg(args, mesh.builtinGeometry);
-                mesh.materialColor   = vec4Arg(args, "materialColor", vec4Arg(args, "color", mesh.materialColor));
+                mesh.builtinGeometry   = builtinGeometryArg(args, mesh.builtinGeometry);
                 mesh.materialOverrides = materialSlotOverridesArg(args, mesh.materialOverrides);
                 return true;
             }
