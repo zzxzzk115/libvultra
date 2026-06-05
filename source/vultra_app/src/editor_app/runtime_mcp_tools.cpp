@@ -250,6 +250,68 @@ namespace vultra_app
             return std::nullopt;
         }
 
+        // Anthropic tool names must match ^[a-zA-Z0-9_-]+$, but tools are registered with dotted
+        // names like "vultra.runtime.status". When a client connects directly over HTTP (no stdio
+        // bridge to translate), the server must therefore advertise underscore names and map them
+        // back to the dotted originals on tools/call. The dispatch layer keeps using dotted names.
+        std::string sanitizeToolName(const std::string& name)
+        {
+            std::string out = name;
+            for (char& c : out)
+            {
+                const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                                c == '_' || c == '-';
+                if (!ok)
+                    c = '_';
+            }
+            return out;
+        }
+
+        // sanitized name -> original dotted name, built once from the registry.
+        const std::unordered_map<std::string, std::string>& sanitizedToOriginalNames()
+        {
+            static const std::unordered_map<std::string, std::string> map = [] {
+                std::unordered_map<std::string, std::string> m;
+                const auto list = runtime_mcp::toolsList();
+                if (list.contains("tools") && list["tools"].is_array())
+                {
+                    for (const auto& tool : list["tools"])
+                    {
+                        if (tool.contains("name") && tool["name"].is_string())
+                        {
+                            auto original = tool["name"].get<std::string>();
+                            m.emplace(sanitizeToolName(original), std::move(original));
+                        }
+                    }
+                }
+                return m;
+            }();
+            return map;
+        }
+
+        // tools/list with every advertised name sanitized to a client-safe form.
+        nlohmann::json sanitizedToolsList()
+        {
+            auto list = runtime_mcp::toolsList();
+            if (list.contains("tools") && list["tools"].is_array())
+            {
+                for (auto& tool : list["tools"])
+                {
+                    if (tool.contains("name") && tool["name"].is_string())
+                        tool["name"] = sanitizeToolName(tool["name"].get<std::string>());
+                }
+            }
+            return list;
+        }
+
+        std::string originalToolName(const std::string& name)
+        {
+            const auto& map = sanitizedToOriginalNames();
+            if (const auto it = map.find(name); it != map.end())
+                return it->second;
+            return name; // already an original (dotted) name, or unknown: pass through
+        }
+
     } // namespace
 
     nlohmann::json RuntimeMcpServer::handleMcpRequest(const nlohmann::json& request)
@@ -261,13 +323,19 @@ namespace vultra_app
         const auto method = request["method"].get<std::string>();
         if (method == "initialize")
         {
+            // Echo the client's requested protocol version so a newer client does not reject the
+            // connection over a version mismatch.
+            const auto initParams = request.value("params", nlohmann::json::object());
+            const auto protocol   = initParams.is_object()
+                                        ? initParams.value("protocolVersion", std::string {kProtocolVersion})
+                                        : std::string {kProtocolVersion};
             return jsonRpcResult(id,
-                                 {{"protocolVersion", kProtocolVersion},
+                                 {{"protocolVersion", protocol},
                                   {"capabilities", {{"tools", nlohmann::json::object()}}},
                                   {"serverInfo", {{"name", "vultra-runtime-mcp"}, {"version", "0.1.0"}}}});
         }
         if (method == "tools/list")
-            return jsonRpcResult(id, runtime_mcp::toolsList());
+            return jsonRpcResult(id, sanitizedToolsList());
         if (method != "tools/call")
             return jsonRpcError(id, -32601, "method not found: " + method);
 
@@ -276,7 +344,8 @@ namespace vultra_app
             return jsonRpcError(id, -32602, "tools/call requires a string name");
 
         auto call  = std::make_shared<PendingCall>();
-        call->name = params["name"].get<std::string>();
+        // Map the client-safe (underscore) name back to the registered dotted name for dispatch.
+        call->name = originalToolName(params["name"].get<std::string>());
         call->args = params.value("arguments", nlohmann::json::object());
 
         // Fail fast with an actionable message before occupying the main thread.

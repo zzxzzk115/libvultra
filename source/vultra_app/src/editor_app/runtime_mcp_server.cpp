@@ -458,8 +458,24 @@ namespace vultra_app
         }
     }
 
+    namespace
+    {
+        // Env-gated request/response diagnostics: when VULTRA_MCP_LOG names a file, append per-request
+        // detail. Silent in normal operation; used to inspect the exact MCP exchange when debugging.
+        void mcpHttpLog(const std::string& message)
+        {
+            const char* path = std::getenv("VULTRA_MCP_LOG");
+            if (!path || !*path)
+                return;
+            std::ofstream out {path, std::ios::app};
+            out << message << '\n';
+        }
+    } // namespace
+
     std::string RuntimeMcpServer::handleHttpRequest(std::string_view requestText)
     {
+        // Log the full request (headers + body) so we can see exactly what the MCP client expects.
+        mcpHttpLog("\n>>> REQ:\n" + std::string(requestText.substr(0, std::min<std::size_t>(requestText.size(), 700))));
         const auto headerEnd = requestText.find("\r\n\r\n");
         if (headerEnd == std::string_view::npos)
             return httpResponse(400, "Bad Request", jsonRpcError(nullptr, -32600, "missing HTTP headers").dump());
@@ -479,12 +495,23 @@ namespace vultra_app
 
         try
         {
-            const auto body = requestText.substr(bodyStart, *length);
+            const auto body    = requestText.substr(bodyStart, *length);
             const auto request = nlohmann::json::parse(body.begin(), body.end());
-            return httpResponse(200, "OK", handleMcpRequest(request).dump());
+            // Streamable HTTP: a JSON-RPC notification (no "id") expects no response body.
+            if (request.is_object() && !request.contains("id"))
+            {
+                mcpHttpLog("<<< 202 Accepted (notification)");
+                return httpResponse(202, "Accepted", "");
+            }
+            const std::string method = request.is_object() ? request.value("method", std::string {}) : std::string {};
+            const auto        result = handleMcpRequest(request).dump();
+            mcpHttpLog("<<< RESP (method=" + method + "):\n" +
+                       result.substr(0, std::min<std::size_t>(result.size(), method == "tools/list" ? 8000u : 500u)));
+            return httpResponse(200, "OK", result);
         }
         catch (const std::exception& e)
         {
+            mcpHttpLog(std::string {"<<< parse error: "} + e.what());
             return httpResponse(200, "OK", jsonRpcError(nullptr, -32700, e.what()).dump());
         }
     }
@@ -638,13 +665,24 @@ namespace vultra_app
                 }
             }
 
+            {
+                const auto fl = request.find("\r\n");
+                mcpHttpLog("--- CONN: " + request.substr(0, std::min<std::size_t>(fl, 160)));
+            }
+
             if (isGetRequest(request))
             {
                 const auto target = requestTarget(request);
                 constexpr std::string_view kStreamPrefix {"/stream/"};
                 if (!target.starts_with(kStreamPrefix))
                 {
-                    (void)sendAll(client, httpTextResponse(404, "Not Found", "text/plain", "not found"));
+                    // Streamable HTTP clients open GET /mcp for a server-initiated SSE stream. We do
+                    // not push server-initiated messages, so 405 tells the client to proceed without
+                    // it (rather than 404, which reads as "wrong endpoint").
+                    if (target == "/mcp")
+                        (void)sendAll(client, httpTextResponse(405, "Method Not Allowed", "text/plain", "no server stream"));
+                    else
+                        (void)sendAll(client, httpTextResponse(404, "Not Found", "text/plain", "not found"));
                     closeSocket(client);
                     continue;
                 }
