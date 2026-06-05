@@ -2009,8 +2009,10 @@ namespace vultra_app
             dockWindow("Render Graph", mainId);
             dockWindow("Material Graph", mainId);
             dockWindow("Animator Graph", mainId);
-            dockWindow("Inspector", rightId);
+            // Dock AI Chat first so Inspector (docked last) wins the node's selected tab - the
+            // Inspector should be the panel facing the user on a fresh layout, not the chat.
             dockWindow("AI Chat", rightId);
+            dockWindow("Inspector", rightId);
             dockWindow("History", historyId);
             dockWindow("Content Browser", bottomId);
             dockWindow("Console", bottomId);

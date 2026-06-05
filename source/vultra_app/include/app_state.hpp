@@ -84,7 +84,7 @@ namespace vultra_app
             std::string agentEndpoint;
             std::string agentModel;
             std::string agentCliPath; // path to the agent CLI (e.g. claude); empty = resolve "claude" on PATH
-            bool        allowAgentEngineOperations {false};
+            bool        allowAgentEngineOperations {true};
             bool        allowAgentProjectOperations {true};
             bool        requireAgentConfirmation {true};
         };
