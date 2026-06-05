@@ -3,6 +3,7 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
 #include "vultra/core/plugin/plugin_manager.hpp"
+#include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/script_service.hpp"
 
 #include <nlohmann/json.hpp>
@@ -10,6 +11,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <sstream>
 #include <system_error>
 
 namespace vultra
@@ -40,7 +42,9 @@ namespace vultra
 
     bool PluginManifest::supportsCurrentPlatform() const { return supportsPlatform(currentPluginPlatform()); }
 
-    std::optional<PluginManifest> loadPluginManifest(const std::filesystem::path& manifestPath, std::string* error)
+    // Parse manifest fields from JSON text. Does not set directory/manifestPath or apply id/name
+    // fallbacks (the caller does, since those depend on the source location: a disk path or a uri).
+    std::optional<PluginManifest> parsePluginManifestText(const std::string& text, std::string* error)
     {
         const auto setError = [&](std::string message) {
             if (error != nullptr)
@@ -48,31 +52,25 @@ namespace vultra
             return std::nullopt;
         };
 
-        std::ifstream file(manifestPath);
-        if (!file)
-            return setError("cannot open manifest: " + manifestPath.generic_string());
-
         nlohmann::json json;
         try
         {
-            file >> json;
+            json = nlohmann::json::parse(text);
         }
         catch (const std::exception& e)
         {
-            return setError("invalid JSON in " + manifestPath.generic_string() + ": " + e.what());
+            return setError(std::string {"invalid JSON: "} + e.what());
         }
         if (!json.is_object())
-            return setError("manifest must be a JSON object: " + manifestPath.generic_string());
+            return setError("manifest must be a JSON object");
 
         PluginManifest manifest;
-        manifest.manifestPath = manifestPath;
-        manifest.directory    = manifestPath.parent_path();
-        manifest.id           = json.value("id", std::string {});
-        manifest.name         = json.value("name", std::string {});
-        manifest.version      = json.value("version", std::string {});
-        manifest.author       = json.value("author", std::string {});
-        manifest.description  = json.value("description", std::string {});
-        manifest.readme       = json.value("readme", std::string {});
+        manifest.id          = json.value("id", std::string {});
+        manifest.name        = json.value("name", std::string {});
+        manifest.version     = json.value("version", std::string {});
+        manifest.author      = json.value("author", std::string {});
+        manifest.description = json.value("description", std::string {});
+        manifest.readme      = json.value("readme", std::string {});
         manifest.repository   = json.value("repository", std::string {});
         manifest.native       = json.value("native", std::string {});
         manifest.entry        = json.value("entry", std::string {});
@@ -82,11 +80,36 @@ namespace vultra
                 if (p.is_string())
                     manifest.platforms.push_back(p.get<std::string>());
         }
+        return manifest;
+    }
 
-        if (manifest.id.empty())
-            manifest.id = manifest.directory.filename().generic_string();
-        if (manifest.name.empty())
-            manifest.name = manifest.id;
+    std::optional<PluginManifest> loadPluginManifest(const std::filesystem::path& manifestPath, std::string* error)
+    {
+        std::ifstream file(manifestPath);
+        if (!file)
+        {
+            if (error != nullptr)
+                *error = "cannot open manifest: " + manifestPath.generic_string();
+            return std::nullopt;
+        }
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+
+        std::string parseError;
+        auto        manifest = parsePluginManifestText(buffer.str(), &parseError);
+        if (!manifest.has_value())
+        {
+            if (error != nullptr)
+                *error = parseError + " (" + manifestPath.generic_string() + ")";
+            return std::nullopt;
+        }
+
+        manifest->manifestPath = manifestPath;
+        manifest->directory    = manifestPath.parent_path();
+        if (manifest->id.empty())
+            manifest->id = manifest->directory.filename().generic_string();
+        if (manifest->name.empty())
+            manifest->name = manifest->id;
         return manifest;
     }
 
@@ -123,17 +146,38 @@ namespace vultra
 
     namespace
     {
+        std::string nativeLibrarySuffix()
+        {
+#if defined(_WIN32)
+            return ".dll";
+#elif defined(__APPLE__)
+            return ".dylib";
+#else
+            return ".so";
+#endif
+        }
+
         std::filesystem::path resolveNativeLibrary(const std::filesystem::path& path)
         {
             if (path.has_extension())
                 return path;
-#if defined(_WIN32)
-            return std::filesystem::path {path}.replace_extension(".dll");
-#elif defined(__APPLE__)
-            return std::filesystem::path {path}.replace_extension(".dylib");
-#else
-            return std::filesystem::path {path}.replace_extension(".so");
-#endif
+            return std::filesystem::path {path}.replace_extension(nativeLibrarySuffix());
+        }
+
+        // Last path segment of a uri/dir (e.g. "res://plugins/hello" -> "hello").
+        std::string lastPathSegment(const std::string& uri)
+        {
+            const auto pos = uri.find_last_of('/');
+            return pos == std::string::npos ? uri : uri.substr(pos + 1);
+        }
+
+        // Writable directory used to extract bundled native libraries before loading them.
+        std::filesystem::path pluginExtractionDir(const std::string& writableRoot)
+        {
+            std::error_code     ec;
+            std::filesystem::path base =
+                !writableRoot.empty() ? std::filesystem::path {writableRoot} : std::filesystem::temp_directory_path(ec);
+            return (base / "vultra_plugins").lexically_normal();
         }
     } // namespace
 
@@ -150,6 +194,57 @@ namespace vultra
     {
         ctx().services.provide<IPluginService>(this);
         m_Script = ctx().services.tryGet<IScriptService>();
+
+        // Packaged mode: load plugins bundled into the asset VPK (read via the mounted res:// VFS).
+        // The `packaged` dir uris were pre-filtered to the project's enabled set at export time.
+        if (ctx().config.plugin.loadFromVPK)
+        {
+            const auto& packaged = ctx().config.plugin.packaged;
+            if (packaged.empty())
+            {
+                VULTRA_CORE_INFO("[PluginSystem] No bundled plugins.");
+                return true;
+            }
+            auto* assetService = ctx().services.tryGet<IAssetService>();
+            if (assetService == nullptr)
+            {
+                VULTRA_CORE_WARN("[PluginSystem] Asset service unavailable; cannot load bundled plugins.");
+                return true;
+            }
+
+            std::size_t loaded = 0;
+            for (const auto& dirUri : packaged)
+            {
+                const std::string manifestUri = dirUri + "/" + kPluginManifestFile;
+                auto              text        = assetService->loadTextAssetSync(manifestUri);
+                if (!text)
+                {
+                    VULTRA_CORE_WARN("[PluginSystem] Cannot read bundled manifest '{}'", manifestUri);
+                    continue;
+                }
+                std::string parseError;
+                auto        manifest = parsePluginManifestText(text.value(), &parseError);
+                if (!manifest.has_value())
+                {
+                    VULTRA_CORE_WARN("[PluginSystem] Invalid bundled manifest '{}': {}", manifestUri, parseError);
+                    continue;
+                }
+                if (manifest->id.empty())
+                    manifest->id = lastPathSegment(dirUri);
+                if (manifest->name.empty())
+                    manifest->name = manifest->id;
+                if (!manifest->supportsCurrentPlatform())
+                {
+                    VULTRA_CORE_WARN("[PluginSystem] Plugin '{}' does not support platform '{}'; skipping.",
+                                     manifest->id, currentPluginPlatform());
+                    continue;
+                }
+                if (loadPluginFromVfs(*manifest, dirUri))
+                    ++loaded;
+            }
+            VULTRA_CORE_INFO("[PluginSystem] Loaded {} of {} bundled plugin(s).", loaded, packaged.size());
+            return true;
+        }
 
         const std::filesystem::path dir = ctx().config.plugin.directory;
         const auto&                 enabled = ctx().config.plugin.enabled;
@@ -234,41 +329,131 @@ namespace vultra
         // --- Lua entry script -----------------------------------------------------------------
         if (!manifest.entry.empty())
         {
-            if (m_Script == nullptr || m_Script->luaState() == nullptr)
+            const auto    entryPath = (manifest.directory / manifest.entry).lexically_normal();
+            std::ifstream file(entryPath);
+            if (!file)
             {
-                VULTRA_CORE_ERROR("[PluginSystem] '{}': scripting runtime unavailable for Lua entry.", manifest.id);
+                VULTRA_CORE_ERROR(
+                    "[PluginSystem] '{}': cannot open Lua entry '{}'", manifest.id, entryPath.generic_string());
                 return false;
             }
-            sol::state_view lua(m_Script->luaState());
-            const auto      entryPath = (manifest.directory / manifest.entry).lexically_normal();
-            auto            result    = lua.safe_script_file(entryPath.generic_string(), &sol::script_pass_on_error);
-            if (!result.valid())
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            if (!installLuaEntry(manifest, buffer.str(), entryPath.generic_string()))
+                return false;
+            VULTRA_CORE_INFO("[PluginSystem] '{}': Lua entry loaded ({})", manifest.id, manifest.entry);
+        }
+
+        m_LoadedIds.push_back(manifest.id);
+        VULTRA_CORE_INFO("[PluginSystem] Plugin '{}' ({}) installed.", manifest.name, manifest.id);
+        return true;
+    }
+
+    bool PluginSystem::installLuaEntry(const PluginManifest& manifest,
+                                       const std::string_view source,
+                                       const std::string_view debugName)
+    {
+        if (m_Script == nullptr || m_Script->luaState() == nullptr)
+        {
+            VULTRA_CORE_ERROR("[PluginSystem] '{}': scripting runtime unavailable for Lua entry.", manifest.id);
+            return false;
+        }
+        sol::state_view lua(m_Script->luaState());
+        auto            result = lua.safe_script(source, &sol::script_pass_on_error);
+        if (!result.valid())
+        {
+            sol::error err = result;
+            VULTRA_CORE_ERROR("[PluginSystem] '{}': entry error in '{}': {}", manifest.id, debugName, err.what());
+            return false;
+        }
+
+        auto        plugin = std::make_unique<LuaPlugin>();
+        plugin->name       = manifest.name;
+        sol::object obj    = result;
+        if (obj.is<sol::table>())
+        {
+            plugin->module                    = obj.as<sol::table>();
+            sol::protected_function onInstall = plugin->module["on_install"];
+            if (onInstall.valid())
             {
-                sol::error err = result;
+                auto r = onInstall();
+                if (!r.valid())
+                {
+                    sol::error err = r;
+                    VULTRA_CORE_ERROR("[PluginSystem] '{}': on_install error: {}", manifest.id, err.what());
+                }
+            }
+        }
+        m_LuaPlugins.push_back(std::move(plugin));
+        return true;
+    }
+
+    bool PluginSystem::loadPluginFromVfs(const PluginManifest& manifest, const std::string& dirUri)
+    {
+        if (isLoaded(manifest.id))
+            return true;
+
+        auto* assetService = ctx().services.tryGet<IAssetService>();
+        if (assetService == nullptr)
+        {
+            VULTRA_CORE_ERROR("[PluginSystem] '{}': asset service unavailable.", manifest.id);
+            return false;
+        }
+
+        // --- Native library first: extract to a writable dir, then load -------------------------
+        if (!manifest.native.empty())
+        {
+            std::string nativeFile = manifest.native;
+            if (std::filesystem::path {nativeFile}.extension().empty())
+                nativeFile += nativeLibrarySuffix();
+            const std::string nativeUri = dirUri + "/" + nativeFile;
+
+            auto bytes = assetService->loadBinaryAssetSync(nativeUri);
+            if (!bytes)
+            {
                 VULTRA_CORE_ERROR(
-                    "[PluginSystem] '{}': entry error in '{}': {}", manifest.id, entryPath.generic_string(), err.what());
+                    "[PluginSystem] '{}': cannot read native library '{}' from package.", manifest.id, nativeUri);
                 return false;
             }
 
-            auto        plugin = std::make_unique<LuaPlugin>();
-            plugin->name       = manifest.name;
-            sol::object obj    = result;
-            if (obj.is<sol::table>())
+            const auto      outPath = pluginExtractionDir(ctx().config.writableRoot) / manifest.id / nativeFile;
+            std::error_code ec;
+            std::filesystem::create_directories(outPath.parent_path(), ec);
             {
-                plugin->module                    = obj.as<sol::table>();
-                sol::protected_function onInstall = plugin->module["on_install"];
-                if (onInstall.valid())
+                std::ofstream out(outPath, std::ios::binary | std::ios::trunc);
+                if (!out)
                 {
-                    auto r = onInstall();
-                    if (!r.valid())
-                    {
-                        sol::error err = r;
-                        VULTRA_CORE_ERROR("[PluginSystem] '{}': on_install error: {}", manifest.id, err.what());
-                    }
+                    VULTRA_CORE_ERROR("[PluginSystem] '{}': cannot write extracted native library '{}'.",
+                                      manifest.id, outPath.generic_string());
+                    return false;
                 }
+                out.write(reinterpret_cast<const char*>(bytes.value().data()),
+                          static_cast<std::streamsize>(bytes.value().size()));
             }
-            m_LuaPlugins.push_back(std::move(plugin));
-            VULTRA_CORE_INFO("[PluginSystem] '{}': Lua entry loaded ({})", manifest.id, manifest.entry);
+
+            if (ctx().pluginManager == nullptr || !ctx().pluginManager->load(outPath.generic_string(), ctx()))
+            {
+                VULTRA_CORE_ERROR("[PluginSystem] '{}': failed to load extracted native library '{}'.",
+                                  manifest.id, outPath.generic_string());
+                return false;
+            }
+            VULTRA_CORE_INFO("[PluginSystem] '{}': native library loaded (extracted {}).", manifest.id, nativeFile);
+        }
+
+        // --- Lua entry script, read from the asset VFS ------------------------------------------
+        if (!manifest.entry.empty())
+        {
+            const std::string entryUri = dirUri + "/" + manifest.entry;
+            auto              text     = assetService->loadTextAssetSync(entryUri);
+            if (!text)
+            {
+                VULTRA_CORE_ERROR(
+                    "[PluginSystem] '{}': cannot read Lua entry '{}' from package.", manifest.id, entryUri);
+                return false;
+            }
+            if (!installLuaEntry(manifest, text.value(), entryUri))
+                return false;
+            VULTRA_CORE_INFO("[PluginSystem] '{}': Lua entry loaded ({}).", manifest.id, manifest.entry);
         }
 
         m_LoadedIds.push_back(manifest.id);

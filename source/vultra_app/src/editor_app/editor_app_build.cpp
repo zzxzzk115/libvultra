@@ -2,9 +2,11 @@
 
 #include "editor_app/project_asset_utils.hpp"
 #include "editor_app/ui/settings_widgets.hpp"
+#include "launch_options.hpp"
 #include "vproject.hpp"
 
 #include <vultra/core/base/common_context.hpp>
+#include <vultra/function/plugin/plugin_manifest.hpp>
 #include <vultra/function/services/scene_service.hpp>
 
 #ifdef VULTRA_HAS_VASSET_IMPORT
@@ -22,6 +24,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <future>
+#include <iostream>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -339,10 +342,43 @@ namespace vultra_app
                 return {.ok = false, .message = "Export failed: missing asset root " + assetRootPath.generic_string()};
 
             setBuildRunProgress(progress, 0.15f, "Writing package manifest...");
-            auto buildScenes = normalizedBuildScenes(sceneUri, {});
+            auto                     buildScenes = normalizedBuildScenes(sceneUri, {});
+            std::vector<std::string> enabledPluginIds;
             if (auto project = loadVProject(projectRoot); project.has_value())
+            {
                 buildScenes = normalizedBuildScenes(project->defaultScene.empty() ? sceneUri : project->defaultScene,
                                                     project->buildScenes);
+                enabledPluginIds = project->enabledPlugins;
+            }
+
+            // Bundle the project's enabled plugins (pure-Lua and native + Lua helper) into the VPK so
+            // the exported runtime can load them: pack every file in each plugin's directory and
+            // record the plugin dirs in the package manifest. Native libs are extracted to a writable
+            // dir and loaded at runtime (a .dll cannot be loaded from inside the VPK in place).
+            std::vector<std::string> pluginDirUris;
+            std::vector<std::string> pluginFileUris;
+            if (!enabledPluginIds.empty())
+            {
+                for (const auto& manifest : vultra::discoverPlugins(assetRootPath / "plugins"))
+                {
+                    if (std::find(enabledPluginIds.begin(), enabledPluginIds.end(), manifest.id) ==
+                        enabledPluginIds.end())
+                        continue;
+                    pluginDirUris.push_back("res://plugins/" + manifest.directory.filename().generic_string());
+                    std::error_code fec;
+                    for (const auto& file : fs::recursive_directory_iterator(manifest.directory, fec))
+                    {
+                        if (fec)
+                            break;
+                        if (!file.is_regular_file())
+                            continue;
+                        const auto rel = fs::relative(file.path(), assetRootPath, fec).generic_string();
+                        if (fec || rel.empty() || rel.starts_with(".."))
+                            continue;
+                        pluginFileUris.push_back("res://" + rel);
+                    }
+                }
+            }
 
             std::string manifestError;
             if (!saveVPackageManifest(assetRootPath,
@@ -350,6 +386,7 @@ namespace vultra_app
                                           .name        = projectName,
                                           .entryScene  = sceneUri,
                                           .buildScenes = buildScenes,
+                                          .pluginDirs  = pluginDirUris,
                                       },
                                       &manifestError))
             {
@@ -397,6 +434,9 @@ namespace vultra_app
                     continue;
                 appendPackRoot(packArgs, packRoots, renderLua);
             }
+            // Bundled plugin files (manifest + Lua + native lib) collected above.
+            for (const auto& pluginFile : pluginFileUris)
+                appendPackRoot(packArgs, packRoots, pluginFile);
 
             const int packResult = runAssetTool(packArgs);
             if (packResult != 0)
@@ -752,6 +792,59 @@ namespace vultra_app
                                  progress);
         }
     } // namespace
+
+    int runHeadlessExport(const LaunchOptions& options)
+    {
+        namespace fs = std::filesystem;
+
+        if (options.projectPath.empty())
+        {
+            std::cerr << "[export] --export requires --project <project-dir>.\n";
+            return 2;
+        }
+        const fs::path projectRoot = fs::path {options.projectPath}.lexically_normal();
+
+        auto project = loadVProject(projectRoot);
+        if (!project.has_value())
+        {
+            std::cerr << "[export] Failed to load a project at " << projectRoot.generic_string() << "\n";
+            return 1;
+        }
+
+        const std::string assetRoot   = project->assetRoot.empty() ? std::string {"resources"} : project->assetRoot;
+        const std::string projectName = project->name.empty() ? projectRoot.filename().generic_string() : project->name;
+        std::string       sceneUri    = options.sceneUri.empty() ? project->defaultScene : options.sceneUri;
+        if (sceneUri.empty() && !project->buildScenes.empty())
+            sceneUri = project->buildScenes.front().uri;
+        if (sceneUri.empty())
+        {
+            std::cerr << "[export] Project has no default/build scene; pass --scene <res://...>.\n";
+            return 1;
+        }
+
+        const fs::path outputFolder = options.exportOutput.empty() ?
+                                          (projectRoot / "export").lexically_normal() :
+                                          fs::path {options.exportOutput}.lexically_normal();
+        const std::string targetPlatform =
+            options.exportPlatform.empty() ? currentHostPlatform() : options.exportPlatform;
+
+        std::cout << "[export] project=" << projectName << " scene=" << sceneUri << " platform=" << targetPlatform
+                  << " output=" << outputFolder.generic_string() << (options.exportRun ? " (run)" : "") << "\n";
+
+        auto       progress = std::make_shared<BuildRunTaskProgress>();
+        const auto result   = runBuildAndLaunch(projectRoot,
+                                              assetRoot,
+                                              projectName,
+                                              sceneUri,
+                                              outputFolder,
+                                              targetPlatform,
+                                              std::string {},
+                                              options.exportRun,
+                                              progress);
+
+        std::cout << "[export] " << (result.ok ? "OK: " : "FAILED: ") << result.message << "\n";
+        return result.ok ? 0 : 1;
+    }
 
     void EditorApp::drawBuildRunPopup()
     {

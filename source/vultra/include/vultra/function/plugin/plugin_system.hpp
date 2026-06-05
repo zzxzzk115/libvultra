@@ -34,6 +34,14 @@ namespace vultra
     private:
         struct LuaPlugin; // defined in the .cpp (holds sol objects)
 
+        // Load a plugin whose files live in the mounted asset VFS at `dirUri` (e.g.
+        // "res://plugins/hello"): the Lua entry is read and run from the VFS, and a native library is
+        // extracted to a writable dir before being loaded (a shared library cannot be loaded from
+        // inside the VPK in place).
+        bool loadPluginFromVfs(const PluginManifest& manifest, const std::string& dirUri);
+        // Run a plugin's Lua entry from already-loaded source text and register its module.
+        bool installLuaEntry(const PluginManifest& manifest, std::string_view source, std::string_view debugName);
+
         IScriptService*                         m_Script {nullptr};
         std::vector<std::string>                m_LoadedIds;
         std::vector<std::unique_ptr<LuaPlugin>> m_LuaPlugins;

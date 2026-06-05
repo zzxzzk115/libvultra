@@ -20,6 +20,11 @@ namespace vultra_app
         std::string vpkPath;
         std::string sceneUri;
         std::string pluginsDir;
+        // Headless export: `--export --project <dir> --export-output <dir> [--export-run]`.
+        bool        exportMode {false};
+        std::string exportOutput;
+        std::string exportPlatform; // empty -> host desktop platform
+        bool        exportRun {false};
         std::optional<bool> validation;
         std::optional<bool> debugMarkers;
         std::optional<bool> renderDoc;
@@ -33,4 +38,7 @@ namespace vultra_app
     std::optional<std::filesystem::path> findDefaultVpk(const LaunchOptions& options);
     void printUsage();
     int  runCliOnly(const LaunchOptions& options);
+    // Headless desktop export (no editor window): packages the project into <output>/<name>.exe +
+    // <name>.vpk (plugins bundled), optionally launching it when options.exportRun is set.
+    int  runHeadlessExport(const LaunchOptions& options);
 } // namespace vultra_app

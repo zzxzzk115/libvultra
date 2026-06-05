@@ -606,6 +606,12 @@ namespace
                         engine.ctx().config.window.title = manifest->name;
                     if (m_Options.sceneUri.empty())
                         m_Options.sceneUri = manifest->entryScene;
+                    // Load plugins bundled into the package from the mounted res:// VFS.
+                    if (!manifest->pluginDirs.empty())
+                    {
+                        engine.ctx().config.plugin.loadFromVPK = true;
+                        engine.ctx().config.plugin.packaged    = manifest->pluginDirs;
+                    }
                 }
                 else
                 {
@@ -836,6 +842,9 @@ int main(int argc, char** argv)
     }
     if (options.cliOnly)
         return vultra_app::runCliOnly(options);
+
+    if (options.exportMode)
+        return vultra_app::runHeadlessExport(options);
 
     if (!options.editorMode && options.renderMode == "none")
     {

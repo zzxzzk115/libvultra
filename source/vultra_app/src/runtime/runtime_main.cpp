@@ -185,6 +185,12 @@ namespace
                         config.window.title = manifest->name;
                     if (m_Options.sceneUri.empty())
                         m_Options.sceneUri = manifest->entryScene;
+                    // Load plugins bundled into the package from the mounted res:// VFS.
+                    if (!manifest->pluginDirs.empty())
+                    {
+                        config.plugin.loadFromVPK = true;
+                        config.plugin.packaged    = manifest->pluginDirs;
+                    }
                 }
                 else
                 {

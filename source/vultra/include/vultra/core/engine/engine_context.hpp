@@ -116,11 +116,17 @@ namespace vultra
             struct PluginConfig
             {
                 // Directory scanned at startup for `<name>/vultra.plugin.vmanifest` manifests.
-                // Empty disables discovery.
+                // Empty disables discovery. Used in disk mode (editor / loose project).
                 std::string directory {};
                 // Ids of plugins to load. Plugins are OFF by default; only ids listed here (and
                 // supporting the current platform) are loaded. Sourced from the project settings.
                 std::vector<std::string> enabled {};
+                // Packaged mode: when true, plugins are read from the mounted asset VFS (res://)
+                // instead of disk. `packaged` holds the res:// directory uri of each bundled plugin
+                // (e.g. "res://plugins/hello"); each is loaded directly (already filtered to the
+                // project's enabled set at export time). Native libs are extracted to writableRoot.
+                bool                     loadFromVPK {false};
+                std::vector<std::string> packaged {};
             } plugin;
 
             // Writable app-private directory used for runtime debug outputs and persisted UI state.

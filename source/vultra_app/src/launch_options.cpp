@@ -110,6 +110,10 @@ namespace vultra_app
         program.add_argument("--vpk").default_value(std::string {});
         program.add_argument("--scene").default_value(std::string {});
         program.add_argument("--plugins-dir").default_value(std::string {});
+        program.add_argument("--export").flag();
+        program.add_argument("--export-output", "--out").default_value(std::string {});
+        program.add_argument("--export-platform").default_value(std::string {});
+        program.add_argument("--export-run").flag();
         program.add_argument("--backend", "--render-backend").default_value(std::string {});
         program.add_argument("--render-profile").default_value(std::string {});
         program.add_argument("--validation").flag();
@@ -138,6 +142,10 @@ namespace vultra_app
             options.vpkPath     = program.get<std::string>("--vpk");
             options.sceneUri    = program.get<std::string>("--scene");
             options.pluginsDir  = program.get<std::string>("--plugins-dir");
+            options.exportMode     = program.get<bool>("--export");
+            options.exportOutput   = program.get<std::string>("--export-output");
+            options.exportPlatform = program.get<std::string>("--export-platform");
+            options.exportRun      = program.get<bool>("--export-run");
             if (const auto mcpHost = program.get<std::string>("--mcp-host"); !mcpHost.empty())
                 options.mcpHost = mcpHost;
             if (const auto mcpPort = program.get<int>("--mcp-port"); mcpPort > 0)
@@ -253,6 +261,7 @@ namespace vultra_app
                   << "  vultra [--validation|--no-validation] [--debug-markers|--no-debug-markers] "
                      "[--renderdoc|--no-renderdoc]\n"
                   << "  vultra --project <project-dir>\n"
+                  << "  vultra --export --project <project-dir> [--export-output <dir>] [--scene res://...] [--export-run]\n"
                   << "  vultra help\n\n"
                   << "Notes:\n"
                   << "  Without --vpk, Vultra first tries <executable-name>.vpk next to the executable.\n"

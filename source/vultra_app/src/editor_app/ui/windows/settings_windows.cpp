@@ -485,9 +485,11 @@ namespace vultra_app
         else if (selectedPage == 4)
         {
             ui::drawSettingsSectionHeader("Plugins");
-            const auto pluginsDir = (ctx.state.currentProject / "plugins").lexically_normal();
-            ui::drawInfoRegion("Plugins live in <project>/plugins and are off by default. Enable one to "
-                               "load it now and on the next launch. Native plugins are desktop-only.");
+            const auto pluginsDir =
+                (ctx.state.currentProject / ctx.state.currentAssetRoot / "plugins").lexically_normal();
+            ui::drawInfoRegion("Plugins live in <asset-root>/plugins (e.g. resources/plugins) so they pack into "
+                               "the project VPK, and are off by default. Enable one to load it now and on the "
+                               "next launch. Native plugins are desktop-only.");
 
             const auto manifests = vultra::discoverPlugins(pluginsDir);
             if (manifests.empty())

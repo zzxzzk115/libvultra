@@ -128,6 +128,18 @@ namespace vultra_app
                 ensureBuildScene(manifest.buildScenes, *index).alias = value;
             else if (auto index = parseIndexedKey(key, "build_scene_enabled."))
                 ensureBuildScene(manifest.buildScenes, *index).enabled = parseBool(value);
+            else if (key == "plugin_dirs")
+            {
+                manifest.pluginDirs.clear();
+                std::istringstream stream(value);
+                std::string        item;
+                while (std::getline(stream, item, ','))
+                {
+                    item = trim(std::move(item));
+                    if (!item.empty())
+                        manifest.pluginDirs.push_back(item);
+                }
+            }
         }
 
         std::string quote(std::string_view value)
@@ -413,6 +425,13 @@ namespace vultra_app
             if (!scene.alias.empty())
                 file << "build_scene_alias." << scene.index << " = " << quote(scene.alias) << "\n";
             file << "build_scene_enabled." << scene.index << " = " << (scene.enabled ? "true" : "false") << "\n";
+        }
+        if (!manifest.pluginDirs.empty())
+        {
+            std::string joined;
+            for (std::size_t i = 0; i < manifest.pluginDirs.size(); ++i)
+                joined += (i == 0 ? "" : ",") + manifest.pluginDirs[i];
+            file << "plugin_dirs = " << quote(joined) << "\n";
         }
         return true;
     }
