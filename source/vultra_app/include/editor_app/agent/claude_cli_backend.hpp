@@ -25,6 +25,7 @@ namespace vultra_app::agent
         void                    sendUserMessage(std::string text) override;
         std::vector<AgentEvent> drainEvents() override;
         void                    interrupt() override;
+        void                    setPermissionMode(const std::string& mode) override;
         void                    shutdown() override;
         [[nodiscard]] bool      isReady() const override;
 

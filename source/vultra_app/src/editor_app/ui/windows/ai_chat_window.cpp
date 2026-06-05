@@ -5,7 +5,10 @@
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <string>
 #include <variant>
@@ -32,43 +35,113 @@ namespace vultra_app
             ImGui::PopStyleColor();
         }
 
-        // Render one line's inline content with manual word-wrapping. `inline code` gets a boxed
+        // Decode one UTF-8 code point at byte `i`; returns its byte length (>=1).
+        std::size_t decodeUtf8(const std::string& s, std::size_t i, std::uint32_t& cp)
+        {
+            const unsigned char c = static_cast<unsigned char>(s[i]);
+            if (c < 0x80) { cp = c; return 1; }
+            if ((c >> 5) == 0x6 && i + 1 < s.size())
+            {
+                cp = ((c & 0x1Fu) << 6) | (static_cast<unsigned char>(s[i + 1]) & 0x3Fu);
+                return 2;
+            }
+            if ((c >> 4) == 0xE && i + 2 < s.size())
+            {
+                cp = ((c & 0x0Fu) << 12) | ((static_cast<unsigned char>(s[i + 1]) & 0x3Fu) << 6) |
+                     (static_cast<unsigned char>(s[i + 2]) & 0x3Fu);
+                return 3;
+            }
+            if ((c >> 3) == 0x1E && i + 3 < s.size())
+            {
+                cp = ((c & 0x07u) << 18) | ((static_cast<unsigned char>(s[i + 1]) & 0x3Fu) << 12) |
+                     ((static_cast<unsigned char>(s[i + 2]) & 0x3Fu) << 6) |
+                     (static_cast<unsigned char>(s[i + 3]) & 0x3Fu);
+                return 4;
+            }
+            cp = c; // malformed lead byte - consume one byte so we always make progress
+            return 1;
+        }
+
+        // Wide / CJK code points wrap between any two characters (no spaces to break on). Covers
+        // Han, Kana, Hangul, and the CJK symbol/fullwidth blocks.
+        bool isCjkWide(std::uint32_t cp)
+        {
+            return (cp >= 0x1100 && cp <= 0x115F) || (cp >= 0x2E80 && cp <= 0x303E) ||
+                   (cp >= 0x3041 && cp <= 0x33FF) || (cp >= 0x3400 && cp <= 0x4DBF) ||
+                   (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0xA000 && cp <= 0xA4CF) ||
+                   (cp >= 0xAC00 && cp <= 0xD7A3) || (cp >= 0xF900 && cp <= 0xFAFF) ||
+                   (cp >= 0xFE30 && cp <= 0xFE4F) || (cp >= 0xFF00 && cp <= 0xFF60) ||
+                   (cp >= 0xFFE0 && cp <= 0xFFE6);
+        }
+
+        // Render one line's inline content with manual wrapping. `inline code` gets a boxed
         // background, **bold** is brightened (no bold font is loaded, so emphasis reads via colour).
+        // Wrapping breaks on spaces between Latin words AND between CJK characters, so Chinese /
+        // Japanese / Korean prose (which has no spaces) folds instead of running off the edge.
         void renderInline(const std::string& line, const ImVec4& baseColor)
         {
-            struct Run
+            // A piece is the smallest unit that may begin a new visual line: a run of Latin word
+            // characters, or a single CJK glyph. `gap` marks a space that precedes it on the line.
+            struct Piece
             {
                 std::string text;
                 bool        code {false};
                 bool        bold {false};
+                bool        gap {false};
             };
-            std::vector<Run> runs;
+            std::vector<Piece> pieces;
+
+            bool code = false;
+            bool bold = false;
+            bool pendingGap = false;
+            for (std::size_t i = 0; i < line.size();)
             {
-                std::string cur;
-                bool        code = false;
-                bool        bold = false;
-                for (std::size_t i = 0; i < line.size();)
+                const char ch = line[i];
+                if (ch == '`')
                 {
-                    if (line[i] == '`')
-                    {
-                        if (!cur.empty()) { runs.push_back({cur, code, bold}); cur.clear(); }
-                        code = !code;
-                        ++i;
-                    }
-                    else if (!code && i + 1 < line.size() && line[i] == '*' && line[i + 1] == '*')
-                    {
-                        if (!cur.empty()) { runs.push_back({cur, code, bold}); cur.clear(); }
-                        bold = !bold;
-                        i += 2;
-                    }
-                    else
-                    {
-                        cur.push_back(line[i]);
-                        ++i;
-                    }
+                    code = !code;
+                    ++i;
+                    continue;
                 }
-                if (!cur.empty())
-                    runs.push_back({cur, code, bold});
+                if (!code && i + 1 < line.size() && ch == '*' && line[i + 1] == '*')
+                {
+                    bold = !bold;
+                    i += 2;
+                    continue;
+                }
+                if (ch == ' ' || ch == '\t')
+                {
+                    pendingGap = true;
+                    ++i;
+                    continue;
+                }
+
+                std::uint32_t     cp  = 0;
+                const std::size_t len = decodeUtf8(line, i, cp);
+                if (isCjkWide(cp))
+                {
+                    pieces.push_back({line.substr(i, len), code, bold, pendingGap});
+                    pendingGap = false;
+                    i += len;
+                    continue;
+                }
+                // Accumulate a Latin/ASCII word up to the next space, CJK glyph, or style marker.
+                const std::size_t start = i;
+                while (i < line.size())
+                {
+                    const char wc = line[i];
+                    if (wc == ' ' || wc == '\t' || wc == '`')
+                        break;
+                    if (!code && i + 1 < line.size() && wc == '*' && line[i + 1] == '*')
+                        break;
+                    std::uint32_t     wcp  = 0;
+                    const std::size_t wlen = decodeUtf8(line, i, wcp);
+                    if (isCjkWide(wcp))
+                        break;
+                    i += wlen;
+                }
+                pieces.push_back({line.substr(start, i - start), code, bold, pendingGap});
+                pendingGap = false;
             }
 
             const float wrapX  = ImGui::GetContentRegionAvail().x;
@@ -77,37 +150,32 @@ namespace vultra_app
             float       used    = 0.0f;
             bool        atStart = true;
 
-            auto emitWord = [&](const std::string& w, bool code, bool bold) {
-                const float ww = ImGui::CalcTextSize(w.c_str()).x;
+            for (const auto& piece : pieces)
+            {
+                const float ww  = ImGui::CalcTextSize(piece.text.c_str()).x;
+                float       gap = (piece.gap && !atStart) ? spaceW : 0.0f;
+                if (!atStart && used + gap + ww > wrapX)
+                {
+                    atStart = true;
+                    used    = 0.0f;
+                    gap     = 0.0f;
+                }
                 if (!atStart)
                 {
-                    if (used + spaceW + ww > wrapX) { atStart = true; used = 0.0f; }
-                    else { ImGui::SameLine(0.0f, spaceW); used += spaceW; }
+                    ImGui::SameLine(0.0f, gap);
+                    used += gap;
                 }
                 const ImVec2 p = ImGui::GetCursorScreenPos();
-                if (code)
+                if (piece.code)
                     ImGui::GetWindowDrawList()->AddRectFilled(
                         ImVec2(p.x - 2.0f, p.y), ImVec2(p.x + ww + 2.0f, p.y + lineH), IM_COL32(46, 52, 64, 210), 3.0f);
-                ImGui::PushStyleColor(ImGuiCol_Text, code ? kInlineCodeColor : (bold ? ImVec4(1.0f, 1.0f, 1.0f, 1.0f) : baseColor));
-                ImGui::TextUnformatted(w.c_str());
+                ImGui::PushStyleColor(ImGuiCol_Text,
+                                      piece.code ? kInlineCodeColor
+                                                 : (piece.bold ? ImVec4(1.0f, 1.0f, 1.0f, 1.0f) : baseColor));
+                ImGui::TextUnformatted(piece.text.c_str());
                 ImGui::PopStyleColor();
                 used += ww;
                 atStart = false;
-            };
-
-            for (const auto& run : runs)
-            {
-                std::size_t s = 0;
-                while (s < run.text.size())
-                {
-                    const std::size_t e = run.text.find(' ', s);
-                    const std::string w = run.text.substr(s, e == std::string::npos ? std::string::npos : e - s);
-                    if (!w.empty())
-                        emitWord(w, run.code, run.bold);
-                    if (e == std::string::npos)
-                        break;
-                    s = e + 1;
-                }
             }
         }
 
@@ -139,7 +207,7 @@ namespace vultra_app
                 {
                     const float ind = static_cast<float>(indent == std::string::npos ? 0 : indent / 2) * 14.0f + 4.0f;
                     ImGui::Indent(ind);
-                    renderInline("\xe2\x80\xa2  " + trimmed.substr(2), baseColor); // "• " bullet
+                    renderInline("\xe2\x80\xa2  " + trimmed.substr(2), baseColor); // leading bullet glyph
                     ImGui::Unindent(ind);
                 }
                 else
@@ -215,7 +283,62 @@ namespace vultra_app
         std::string animatedThinking()
         {
             const auto dots = static_cast<std::size_t>(ImGui::GetTime() * 2.0) % 4;
-            return std::string(ICON_MDI_TIMER_SAND " Thinking") + std::string(dots, '.');
+            return std::string("Thinking") + std::string(dots, '.');
+        }
+
+        // A small rotating arc spinner drawn at the cursor; advances Y like a one-line widget.
+        void spinner(float radius, float thickness, ImU32 color)
+        {
+            const ImVec2 pos    = ImGui::GetCursorScreenPos();
+            const float  pad    = ImGui::GetStyle().FramePadding.y;
+            const ImVec2 center = ImVec2(pos.x + radius, pos.y + radius + pad);
+            const auto   t      = static_cast<float>(ImGui::GetTime());
+            const float  start  = std::fmod(t * 5.5f, 6.2831853f);
+            constexpr int kSegs = 24;
+            constexpr int kArc  = 16; // ~2/3 of a circle so the gap reads as motion
+            ImDrawList*  dl     = ImGui::GetWindowDrawList();
+            dl->PathClear();
+            for (int i = 0; i <= kArc; ++i)
+            {
+                const float a = start + (static_cast<float>(i) / kSegs) * 6.2831853f;
+                dl->PathLineTo(ImVec2(center.x + std::cos(a) * radius, center.y + std::sin(a) * radius));
+            }
+            dl->PathStroke(color, 0, thickness);
+            ImGui::Dummy(ImVec2(radius * 2.0f, radius * 2.0f + pad));
+        }
+
+        // Spinner + "Thinking..." on one baseline; the live "AI is working" indicator.
+        void thinkingIndicator()
+        {
+            spinner(7.0f, 2.5f, ImGui::GetColorU32(kSystemColor));
+            ImGui::SameLine(0.0f, 8.0f);
+            ImGui::AlignTextToFramePadding();
+            ImGui::PushStyleColor(ImGuiCol_Text, kSystemColor);
+            ImGui::TextUnformatted(animatedThinking().c_str());
+            ImGui::PopStyleColor();
+        }
+
+        // The Claude permission modes offered by the composer picker, in escalating-trust order.
+        struct PermissionOption
+        {
+            const char* mode;  // value passed to the CLI (--permission-mode)
+            const char* label; // short menu label
+            const char* icon;  // leading glyph
+            const char* hint;  // tooltip
+        };
+        constexpr PermissionOption kPermissionOptions[] = {
+            {"default", "Ask", ICON_MDI_SHIELD_CHECK, "Ask before each edit or command."},
+            {"acceptEdits", "Accept Edits", ICON_MDI_PENCIL_OUTLINE, "Auto-accept file edits; still gates the rest."},
+            {"plan", "Plan", ICON_MDI_MAP_OUTLINE, "Plan only - no edits or commands are run."},
+            {"bypassPermissions", "Bypass", ICON_MDI_FLASH_OUTLINE, "Run everything without prompting (use with care)."},
+        };
+
+        const PermissionOption& permissionOptionFor(const std::string& mode)
+        {
+            for (const auto& option : kPermissionOptions)
+                if (mode == option.mode)
+                    return option;
+            return kPermissionOptions[1]; // acceptEdits fallback
         }
 
     } // namespace
@@ -273,8 +396,9 @@ namespace vultra_app
             // (and basic mkdir/touch/mv/cp) without a prompt. Our MCP tools are allowed via
             // allowedTools; arbitrary shell/network still isn't auto-approved. It also never blocks
             // on a TTY prompt (headless-safe). The real guard for engine/project mutations is the
-            // capability flags enforced at the editor MCP tool layer.
-            config.permissionMode = "acceptEdits";
+            // capability flags enforced at the editor MCP tool layer. The concrete mode is the
+            // one chosen in the composer's permission picker (defaults to acceptEdits).
+            config.permissionMode = m_PermissionMode;
         }
 
         std::string error;
@@ -283,7 +407,7 @@ namespace vultra_app
             m_Backend.reset();
             m_Status       = Status::Error;
             m_StatusDetail = error.empty() ? "Failed to launch 'claude'. Is the Claude CLI installed and on PATH?"
-                                           : error + " — is the Claude CLI installed and on PATH?";
+                                           : error + " - is the Claude CLI installed and on PATH?";
             return false;
         }
 
@@ -302,7 +426,7 @@ namespace vultra_app
         m_Messages.clear();
         m_Status       = Status::NotStarted;
         m_StatusDetail.clear();
-        m_AwaitingReply = false;
+        m_TurnActive = false;
     }
 
     void AiChatWindow::submitMessage(EditorContext& ctx, std::string text)
@@ -321,7 +445,7 @@ namespace vultra_app
         userMessage.text = text;
         m_Messages.push_back(std::move(userMessage));
         m_Backend->sendUserMessage(std::move(text));
-        m_AwaitingReply         = true;
+        m_TurnActive            = true;
         m_RequestScrollToBottom = true;
     }
 
@@ -352,6 +476,10 @@ namespace vultra_app
             }
         }
 
+        // Keep typing out any in-flight reply even with no backend (e.g. panel closed mid-reveal),
+        // so reopening shows the message fully instead of stuck at a partial prefix.
+        advanceReveal();
+
         if (!m_Backend)
             return;
 
@@ -363,7 +491,6 @@ namespace vultra_app
                     if constexpr (std::is_same_v<T, agent::TextDelta>)
                     {
                         currentAssistantMessage().text += ev.text;
-                        m_AwaitingReply = false;
                     }
                     else if constexpr (std::is_same_v<T, agent::Thinking>)
                     {
@@ -376,7 +503,6 @@ namespace vultra_app
                                                                 .name  = ev.toolName,
                                                                 .input = ev.input,
                                                                 .state = ToolInvocation::State::Running});
-                        m_AwaitingReply = false;
                     }
                     else if constexpr (std::is_same_v<T, agent::ToolResult>)
                     {
@@ -401,7 +527,7 @@ namespace vultra_app
                     {
                         if (!m_Messages.empty() && m_Messages.back().role == ChatMessage::Role::Assistant)
                             m_Messages.back().streaming = false;
-                        m_AwaitingReply = false;
+                        m_TurnActive = false;
                     }
                     else if constexpr (std::is_same_v<T, agent::BackendError>)
                     {
@@ -409,9 +535,11 @@ namespace vultra_app
                         message.role = ChatMessage::Role::System;
                         message.text = ev.message;
                         m_Messages.push_back(std::move(message));
-                        m_AwaitingReply = false;
+                        // A non-fatal notice (e.g. a transient tool warning) does NOT end the turn -
+                        // leave m_TurnActive so the Stop button and Thinking indicator persist.
                         if (ev.fatal)
                         {
+                            m_TurnActive   = false;
                             m_Status       = Status::Error;
                             m_StatusDetail = ev.message;
                             if (!m_Messages.empty() && m_Messages.front().role == ChatMessage::Role::Assistant)
@@ -421,9 +549,35 @@ namespace vultra_app
                 },
                 event);
         }
-        // NOTE: do not force scroll-to-bottom here every frame — that would lock the view to the
+        // NOTE: do not force scroll-to-bottom here every frame - that would lock the view to the
         // bottom and prevent scrolling up through history. draw() follows new content only while the
         // user is already at the bottom.
+    }
+
+    void AiChatWindow::advanceReveal()
+    {
+        // Type the assistant text out: walk each message's `revealed` byte count toward its full
+        // length. The rate scales with how far behind we are so a long reply never lags for seconds,
+        // yet a steadily streamed one still reads like a typewriter. Runs every tick (window-visible
+        // or not) so a reply that finished while hidden is already fully revealed on return.
+        const float dt = ImGui::GetIO().DeltaTime;
+        if (dt <= 0.0f)
+            return;
+        for (auto& message : m_Messages)
+        {
+            if (message.role != ChatMessage::Role::Assistant)
+                continue;
+            const double target = static_cast<double>(message.text.size());
+            if (message.revealed >= target)
+            {
+                message.revealed = target;
+                continue;
+            }
+            const double remaining = target - message.revealed;
+            // ~90 bytes/s floor, but always finish the current backlog within ~0.35s.
+            const double cps = std::max(90.0, remaining / 0.35);
+            message.revealed = std::min(target, message.revealed + cps * static_cast<double>(dt));
+        }
     }
 
     void AiChatWindow::drawStatusBanner(EditorContext& ctx)
@@ -493,34 +647,97 @@ namespace vultra_app
         }
     }
 
-    void AiChatWindow::drawMessage(const ChatMessage& message)
+    void AiChatWindow::drawMessage(const ChatMessage& message, std::size_t index)
     {
-        switch (message.role)
+        // System notices are slim inline lines, not bubbles - they are diagnostics, not turns.
+        if (message.role == ChatMessage::Role::System)
         {
-            case ChatMessage::Role::User:
-                ImGui::PushStyleColor(ImGuiCol_Text, kUserColor);
-                ImGui::TextUnformatted(ICON_MDI_ACCOUNT " You");
-                ImGui::PopStyleColor();
-                wrappedText(message.text, kUserColor);
-                break;
-            case ChatMessage::Role::Assistant:
-                ImGui::PushStyleColor(ImGuiCol_Text, kAssistantColor);
-                ImGui::TextUnformatted(ICON_MDI_ROBOT " Claude");
-                ImGui::PopStyleColor();
+            wrappedText(std::string(ICON_MDI_INFORMATION_OUTLINE " ") + message.text, kSystemColor);
+            ImGui::Spacing();
+            return;
+        }
+
+        const bool   isUser = message.role == ChatMessage::Role::User;
+        const ImVec4 accent = isUser ? kUserColor : kAssistantColor;
+
+        // Avatar + name header, so every turn is unmistakably one speaker.
+        ImGui::PushStyleColor(ImGuiCol_Text, accent);
+        ImGui::TextUnformatted(isUser ? ICON_MDI_ACCOUNT " You" : ICON_MDI_ROBOT " Claude");
+        ImGui::PopStyleColor();
+
+        // The turn's body sits in a rounded, tinted bubble so replies read as distinct cards
+        // instead of a wall of text. Auto-resizes to its content height.
+        ImGui::PushStyleColor(ImGuiCol_ChildBg,
+                              isUser ? ImVec4(0.13f, 0.17f, 0.24f, 0.55f) : ImVec4(0.11f, 0.13f, 0.17f, 0.70f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 7.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(9.0f, 7.0f));
+        const std::string childId = "##bubble" + std::to_string(index);
+        if (ImGui::BeginChild(childId.c_str(), ImVec2(0.0f, 0.0f), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders))
+        {
+            if (isUser)
+            {
+                renderProse(message.text, kUserColor);
+            }
+            else
+            {
                 if (!message.thinking.empty())
                     wrappedText(message.thinking, ImVec4(0.55f, 0.58f, 0.64f, 1.0f));
                 for (const auto& tool : message.tools)
                     drawToolCard(tool);
-                if (!message.text.empty())
-                    renderRichText(message.text, kAssistantColor);
-                if (message.streaming)
+
+                // Typewriter: render only the revealed prefix while it streams/catches up. The
+                // markdown renderer already tolerates a mid-token cut, so a brief partial glyph is fine.
+                const std::size_t shown =
+                    std::min(message.text.size(), static_cast<std::size_t>(message.revealed));
+                const bool stillTyping = message.streaming || shown < message.text.size();
+                if (shown > 0)
+                    renderRichText(message.text.substr(0, shown), kAssistantColor);
+                // While a fresh reply is still empty (only the header so far), show the spinner
+                // inside the bubble; the caret takes over once text starts flowing.
+                if (shown == 0 && message.streaming && message.tools.empty() && message.thinking.empty())
+                    thinkingIndicator();
+                else if (stillTyping)
                     blinkingCaret();
-                break;
-            case ChatMessage::Role::System:
-                wrappedText(std::string(ICON_MDI_INFORMATION_OUTLINE " ") + message.text, kSystemColor);
-                break;
+            }
         }
+        ImGui::EndChild();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor();
         ImGui::Spacing();
+    }
+
+    void AiChatWindow::drawPermissionPicker(EditorContext& ctx, const ImVec2& size)
+    {
+        const PermissionOption& current = permissionOptionFor(m_PermissionMode);
+        const std::string       label =
+            std::string(current.icon) + " " + current.label + " " ICON_MDI_MENU_DOWN "##aiPermPicker";
+        if (ImGui::Button(label.c_str(), size))
+            ImGui::OpenPopup("##aiPermPopup");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Agent permission mode");
+
+        if (ImGui::BeginPopup("##aiPermPopup"))
+        {
+            ImGui::TextDisabled("Permission mode");
+            ImGui::Separator();
+            for (const auto& option : kPermissionOptions)
+            {
+                const bool        selected = m_PermissionMode == option.mode;
+                const std::string item     = std::string(option.icon) + "   " + option.label;
+                if (ImGui::MenuItem(item.c_str(), nullptr, selected) && !selected)
+                {
+                    m_PermissionMode = option.mode;
+                    // Push it onto the live session if one is running; otherwise it is applied when
+                    // the backend next starts (ensureBackend reads m_PermissionMode).
+                    if (m_Backend)
+                        m_Backend->setPermissionMode(m_PermissionMode);
+                    ctx.state.statusMessage = std::string("AI permission mode: ") + option.label;
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s", option.hint);
+            }
+            ImGui::EndPopup();
+        }
     }
 
     void AiChatWindow::drawComposer(EditorContext& ctx)
@@ -535,8 +752,8 @@ namespace vultra_app
         if (!agentEnabled)
             ImGui::BeginDisabled();
 
-        const float buttonsWidth = 132.0f;
-        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - buttonsWidth);
+        // Full-width prompt box; Enter sends, Ctrl+Enter inserts a newline.
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
         const bool entered = ImGui::InputTextMultiline("##AiChatInput",
                                                        m_InputBuffer.data(),
                                                        m_InputBuffer.size(),
@@ -546,25 +763,51 @@ namespace vultra_app
         if (entered)
             submit();
 
-        ImGui::SameLine();
-        ImGui::BeginGroup();
-        if (ImGui::Button(ICON_MDI_SEND " Send", ImVec2(buttonsWidth - ImGui::GetStyle().ItemSpacing.x, 0.0f)))
-            submit();
-        if (m_AwaitingReply && m_Backend)
-        {
-            if (ImGui::Button(ICON_MDI_STOP " Stop", ImVec2(buttonsWidth - ImGui::GetStyle().ItemSpacing.x, 0.0f)))
-                m_Backend->interrupt();
-        }
-        else if (ImGui::Button(ICON_MDI_DELETE_SWEEP " Clear", ImVec2(buttonsWidth - ImGui::GetStyle().ItemSpacing.x, 0.0f)))
-        {
+        // Control row below the box: [new chat] ........ [permission picker][send/stop].
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const float       rowH  = ImGui::GetFrameHeight();
+        const float       sendW = rowH;    // square icon button
+        const float       permW = 170.0f;  // fits "Accept Edits  v"
+        const bool        busy  = m_TurnActive && m_Backend;
+
+        if (ImGui::Button(ICON_MDI_BROOM "##aiNewChat", ImVec2(rowH, rowH)))
             clearConversation();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("New chat (clear history)");
+
+        // Right-align the permission picker + send/stop cluster.
+        const float clusterW = permW + style.ItemSpacing.x + sendW;
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - clusterW);
+
+        drawPermissionPicker(ctx, ImVec2(permW, rowH));
+        ImGui::SameLine();
+
+        // One button that flips between Send and a red Stop while the agent works.
+        if (busy)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.78f, 0.22f, 0.20f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.90f, 0.30f, 0.27f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.68f, 0.16f, 0.15f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+            if (ImGui::Button(ICON_MDI_STOP "##aiStop", ImVec2(sendW, rowH)))
+                m_Backend->interrupt();
+            ImGui::PopStyleColor(4);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Stop");
         }
-        ImGui::EndGroup();
+        else
+        {
+            if (ImGui::Button(ICON_MDI_SEND "##aiSend", ImVec2(sendW, rowH)))
+                submit();
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Send (Enter)");
+        }
 
         if (!agentEnabled)
             ImGui::EndDisabled();
 
-        ImGui::TextDisabled("Enter to send, Ctrl+Enter for newline.");
+        ImGui::TextDisabled("Enter to send \xc2\xb7 Ctrl+Enter for newline");
     }
 
     void AiChatWindow::draw(EditorContext& ctx)
@@ -577,7 +820,10 @@ namespace vultra_app
 
         drawStatusBanner(ctx);
 
-        const float composerHeight = ImGui::GetTextLineHeightWithSpacing() * 4.5f;
+        // Reserve exactly the composer's stack: 3-line input + control-button row + hint line.
+        const ImGuiStyle& style          = ImGui::GetStyle();
+        const float       composerHeight = ImGui::GetTextLineHeight() * 3.0f + ImGui::GetFrameHeight() +
+                                     ImGui::GetTextLineHeightWithSpacing() + style.ItemSpacing.y * 3.0f;
         if (ImGui::BeginChild("##AiChatScroll", ImVec2(0.0f, -composerHeight), ImGuiChildFlags_Borders))
         {
             // Capture before adding content: was the user already parked at the bottom last frame?
@@ -587,16 +833,16 @@ namespace vultra_app
             for (std::size_t i = 0; i < m_Messages.size(); ++i)
             {
                 if (i > 0)
-                {
-                    ImGui::Dummy(ImVec2(0.0f, 3.0f));
-                    ImGui::Separator();
-                    ImGui::Dummy(ImVec2(0.0f, 5.0f));
-                }
-                drawMessage(m_Messages[i]);
+                    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+                drawMessage(m_Messages[i], i);
             }
             ImGui::PopTextWrapPos();
-            if (m_AwaitingReply)
-                ImGui::TextDisabled("%s", animatedThinking().c_str());
+            // Spinner sits after the user's bubble until the assistant bubble appears; once it does,
+            // that bubble carries its own caret/spinner, so this avoids a duplicate indicator.
+            const bool assistantBubbleLive =
+                !m_Messages.empty() && m_Messages.back().role == ChatMessage::Role::Assistant;
+            if (m_TurnActive && !assistantBubbleLive)
+                thinkingIndicator();
 
             // Follow new content only while the user is at the bottom (or right after they send),
             // so scrolling up to read history is not yanked back down.
@@ -620,7 +866,7 @@ namespace vultra_app
             m_Backend.reset();
         }
         m_Status = Status::NotStarted;
-        m_AwaitingReply = false;
+        m_TurnActive = false;
     }
 
     void AiChatWindow::onDestroy(EditorContext& /*ctx*/)

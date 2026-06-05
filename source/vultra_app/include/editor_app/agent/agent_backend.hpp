@@ -44,6 +44,11 @@ namespace vultra_app::agent
         // Best-effort cancel of the in-flight turn.
         virtual void interrupt() = 0;
 
+        // Best-effort switch of the agent's permission mode on the live session (e.g. "plan",
+        // "acceptEdits"). Default no-op; backends that cannot change it at runtime apply the mode
+        // only on the next start(). Safe to call from the main thread.
+        virtual void setPermissionMode(const std::string& /*mode*/) {}
+
         // Kills the child, joins the reader, clears queues. Idempotent.
         virtual void shutdown() = 0;
 

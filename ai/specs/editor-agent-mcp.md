@@ -91,10 +91,13 @@ server "✓ Connected":
 
 Permissions and guardrails:
 
-- `--permission-mode acceptEdits` (file read/edit allowed; arbitrary shell/network
-  is not auto-approved). The real guard for engine/project mutations is the
-  capability flags (`allowAgentEngineOperations` / `allowAgentProjectOperations`)
-  enforced at the MCP tool-execution layer (`handleToolCallOnMainThread`).
+- `--permission-mode` is chosen in the chat composer's permission picker (default
+  `acceptEdits`: file read/edit allowed, arbitrary shell/network not auto-approved).
+  Changing it pushes a best-effort `set_permission_mode` control request to the live
+  session and applies on the next start. The real guard for engine/project mutations
+  is the capability flags (`allowAgentEngineOperations`, default on /
+  `allowAgentProjectOperations`) enforced at the MCP tool-execution layer
+  (`handleToolCallOnMainThread`).
 - `--append-system-prompt` tells the agent it is the in-editor assistant: drive
   the live scene/engine through the `vultra_*` MCP tools, discover valid kinds via
   the `*_list_*` tools before specifying them, and treat entity references as the
@@ -102,11 +105,9 @@ Permissions and guardrails:
 
 Diagnostics:
 
-- The panel surfaces a `MCP init: [vultra=connected] (mcp tools loaded: N)` line,
-  read from the session's `system/init` event — the ground truth for "did the
-  tools load".
 - Set `VULTRA_MCP_LOG` (server) / `VULTRA_BRIDGE_LOG` (bridge) to a file path for
-  full request/response logs.
+  full request/response logs. (The chat panel no longer surfaces the `system/init`
+  MCP-tool-count line; it was a bring-up diagnostic.)
 
 A self-contained `mcp-stdio-bridge` subcommand (stdio↔HTTP) is also available for
 stdio-only MCP clients, though the editor uses the HTTP transport directly.

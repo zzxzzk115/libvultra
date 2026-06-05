@@ -167,6 +167,19 @@ namespace vultra_app::agent
         m_Proc.writeLine(control.dump());
     }
 
+    void ClaudeCliBackend::setPermissionMode(const std::string& mode)
+    {
+        if (!m_Ready || mode.empty())
+            return;
+        // Control request understood by the Claude Code stream-json input protocol; harmless
+        // (ignored) on backends/versions that do not implement it, mirroring interrupt().
+        const nlohmann::json control = {
+            {"type", "control_request"},
+            {"request", {{"subtype", "set_permission_mode"}, {"mode", mode}}},
+        };
+        m_Proc.writeLine(control.dump());
+    }
+
     void ClaudeCliBackend::shutdown()
     {
         m_Ready = false;
@@ -311,37 +324,7 @@ namespace vultra_app::agent
                                       : json.value("message", "agent error");
             pushEvent(BackendError {.message = std::move(message), .fatal = false});
         }
-        else if (type == "system" && json.value("subtype", "") == "init")
-        {
-            // Surface what MCP servers/tools the session actually loaded — the ground truth for
-            // diagnosing "tools didn't appear". Field names vary across versions, so probe a few.
-            std::string note = "MCP init:";
-            for (const char* key : {"mcp_servers", "mcpServers"})
-            {
-                if (json.contains(key) && json[key].is_array())
-                {
-                    for (const auto& s : json[key])
-                    {
-                        if (s.is_object())
-                            note += " [" + s.value("name", std::string {"?"}) + "=" +
-                                    s.value("status", s.value("state", std::string {"?"})) + "]";
-                        else if (s.is_string())
-                            note += " [" + s.get<std::string>() + "]";
-                    }
-                }
-            }
-            int mcpToolCount = 0;
-            if (json.contains("tools") && json["tools"].is_array())
-            {
-                for (const auto& t : json["tools"])
-                {
-                    if (t.is_string() && t.get<std::string>().rfind("mcp__", 0) == 0)
-                        ++mcpToolCount;
-                }
-            }
-            note += "  (mcp tools loaded: " + std::to_string(mcpToolCount) + ")";
-            pushEvent(BackendError {.message = std::move(note), .fatal = false});
-        }
-        // Other unknown types are intentionally ignored.
+        // The "system/init" record (which MCP servers/tools loaded) was only a bring-up diagnostic;
+        // it is intentionally not surfaced to the chat. Other unknown types are ignored too.
     }
 } // namespace vultra_app::agent

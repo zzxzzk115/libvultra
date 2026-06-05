@@ -6,9 +6,12 @@
 #include <nlohmann/json.hpp>
 
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
+
+struct ImVec2;
 
 namespace vultra_app
 {
@@ -62,6 +65,9 @@ namespace vultra_app
             std::string                 thinking;
             std::vector<ToolInvocation> tools;
             bool                        streaming {false};
+            // Typewriter reveal: how many bytes of `text` are currently shown. Advances toward
+            // text.size() each frame so streamed replies type out instead of popping in whole.
+            double                      revealed {0.0};
         };
 
         bool ensureBackend(EditorContext& ctx); // lazy spawn; false + sets m_Status on failure
@@ -70,9 +76,11 @@ namespace vultra_app
         ChatMessage& currentAssistantMessage(); // streaming assistant message, creating if needed
 
         void drawStatusBanner(EditorContext& ctx);
-        void drawMessage(const ChatMessage& message);
+        void drawMessage(const ChatMessage& message, std::size_t index);
         void drawToolCard(const ToolInvocation& tool);
         void drawComposer(EditorContext& ctx);
+        void drawPermissionPicker(EditorContext& ctx, const ImVec2& size); // popup left of Send
+        void advanceReveal();                                        // typewriter tick
 
         std::unique_ptr<agent::IAgentBackend> m_Backend;
         std::vector<ChatMessage>              m_Messages;
@@ -81,7 +89,13 @@ namespace vultra_app
         std::string                           m_StatusDetail;
         bool                                  m_AutoScroll {true};
         bool                                  m_RequestScrollToBottom {false};
-        bool                                  m_AwaitingReply {false};
+        // True from the moment a turn is sent until the agent reports the turn finished (or a fatal
+        // error). Drives the Send/Stop toggle and the "Thinking" indicator; intermediate events
+        // (text deltas, tool calls, diagnostics) must NOT clear it.
+        bool                                  m_TurnActive {false};
         bool                                  m_AutoPromptChecked {false}; // VULTRA_AI_CHAT_PROMPT seeded once
+        // Claude permission mode for the session: "default" | "acceptEdits" | "plan" | "bypassPermissions".
+        // Chosen via the composer popup; applied on backend start and pushed live when it changes.
+        std::string                           m_PermissionMode {"acceptEdits"};
     };
 } // namespace vultra_app
