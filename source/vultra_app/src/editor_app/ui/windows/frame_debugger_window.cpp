@@ -3,11 +3,14 @@
 #include "editor_app/ui/texture_preview_utils.hpp"
 #include "common/ui_widgets.hpp"
 
+#include <vultra/core/i18n/i18n.hpp>
 #include <vultra/core/rhi/structs/pixel_format.hpp>
 #include <vultra/function/services/frame_debugger_service.hpp>
 #include <vultra/function/services/imgui_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
+
+#include <vultra/function/imgui/imgui_dpi.hpp>
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -142,11 +145,11 @@ namespace vultra_app
                 return;
             }
 
-            ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthFixed, 88.0f);
-            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("Id", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("State", ImGuiTableColumnFlags_WidthFixed, 96.0f);
-            ImGui::TableSetupColumn("Refs", ImGuiTableColumnFlags_WidthFixed, 54.0f);
+            ImGui::TableSetupColumn(vultra::tr("frameDebugger.column.kind"), ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(88.0f));
+            ImGui::TableSetupColumn(vultra::tr("frameDebugger.column.label"), ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(vultra::tr("frameDebugger.column.id"), ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(vultra::tr("frameDebugger.column.state"), ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(96.0f));
+            ImGui::TableSetupColumn(vultra::tr("frameDebugger.column.refs"), ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(54.0f));
             ImGui::TableHeadersRow();
 
             for (const auto& node : nodes)
@@ -175,13 +178,17 @@ namespace vultra_app
                 {
                     const bool imported = node.value("imported", false);
                     const int  version  = node.value("version", 0);
-                    ImGui::Text("%s v%d", imported ? "import" : "runtime", version);
+                    ImGui::Text("%s v%d",
+                                imported ? vultra::tr("frameDebugger.import") : vultra::tr("frameDebugger.runtime"),
+                                version);
                 }
                 else
                 {
                     const bool active     = node.value("active", true);
                     const bool sideEffect = node.value("sideEffect", false);
-                    ImGui::TextUnformatted(!active ? "inactive" : sideEffect ? "side" : "active");
+                    ImGui::TextUnformatted(!active     ? vultra::tr("frameDebugger.state.inactive") :
+                                           sideEffect ? vultra::tr("frameDebugger.state.side") :
+                                                        vultra::tr("frameDebugger.state.active"));
                 }
                 ImGui::TableSetColumnIndex(4);
                 ImGui::Text("%d", node.value("refCount", 0));
@@ -201,9 +208,9 @@ namespace vultra_app
                 return;
             }
 
-            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 88.0f);
-            ImGui::TableSetupColumn("From", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("To", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(vultra::tr("frameDebugger.column.label"), ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(88.0f));
+            ImGui::TableSetupColumn(vultra::tr("frameDebugger.column.from"), ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(vultra::tr("frameDebugger.column.to"), ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableHeadersRow();
 
             for (const auto& edge : edges)
@@ -263,7 +270,7 @@ namespace vultra_app
             ImGui::TextUnformatted(title);
             if (resourceIds.empty())
             {
-                ImGui::TextDisabled("None");
+                ImGui::TextDisabled("%s", vultra::tr("common.none"));
                 return;
             }
 
@@ -274,8 +281,8 @@ namespace vultra_app
             {
                 return;
             }
-            ImGui::TableSetupColumn("Resource", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("Id", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(vultra::tr("frameDebugger.column.resource"), ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(vultra::tr("frameDebugger.column.id"), ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableHeadersRow();
             for (const auto& id : resourceIds)
             {
@@ -294,9 +301,9 @@ namespace vultra_app
             if (!passExists(graph, selectedPassId))
                 selectedPassId = firstPassId(graph);
 
-            const float listWidth = std::min(360.0f, ImGui::GetContentRegionAvail().x * 0.42f);
+            const float listWidth = std::min(vultra::ui::dp(360.0f), ImGui::GetContentRegionAvail().x * 0.42f);
             ImGui::BeginChild("##FrameDebuggerPassList", ImVec2 {listWidth, 0.0f}, true);
-            ImGui::TextUnformatted("Passes");
+            ImGui::TextUnformatted(vultra::tr("frameDebugger.passes"));
             ImGui::Separator();
 
             for (const auto& node : graph.value("nodes", nlohmann::json::array()))
@@ -319,7 +326,7 @@ namespace vultra_app
             ImGui::BeginChild("##FrameDebuggerPassDetails", ImVec2 {0.0f, 0.0f}, true);
             if (selectedPassId.empty())
             {
-                ImGui::TextDisabled("No pass selected.");
+                ImGui::TextDisabled("%s", vultra::tr("frameDebugger.noPassSelected"));
                 ImGui::EndChild();
                 return;
             }
@@ -342,9 +349,9 @@ namespace vultra_app
                     outputs.push_back(to);
             }
 
-            drawPassResourceList("Inputs", graph, inputs);
+            drawPassResourceList(vultra::tr("frameDebugger.inputs"), graph, inputs);
             ImGui::Spacing();
-            drawPassResourceList("Outputs", graph, outputs);
+            drawPassResourceList(vultra::tr("frameDebugger.outputs"), graph, outputs);
             ImGui::EndChild();
         }
 
@@ -393,7 +400,7 @@ namespace vultra_app
         }
     } // namespace
 
-    FrameDebuggerWindow::FrameDebuggerWindow() : EditorWindow("Frame Debugger", ICON_MDI_BUG) {}
+    FrameDebuggerWindow::FrameDebuggerWindow() : EditorWindow("Frame Debugger", ICON_MDI_BUG, "window.frameDebugger") {}
 
     void FrameDebuggerWindow::onDestroy(EditorContext& ctx)
     {
@@ -460,10 +467,11 @@ namespace vultra_app
 
         if (!renderDocAvailable || capturing)
             ImGui::BeginDisabled();
-        if (ImGui::Button(ICON_MDI_CAMERA " Capture Frame") && frameDebugger)
+        if (ImGui::Button((std::string {ICON_MDI_CAMERA " "} + vultra::tr("frameDebugger.captureFrame")).c_str()) &&
+            frameDebugger)
         {
             frameDebugger->captureSingleFrame();
-            ctx.state.statusMessage = "RenderDoc capture requested.";
+            ctx.state.statusMessage = vultra::tr("frameDebugger.captureRequested");
         }
         if (!renderDocAvailable || capturing)
             ImGui::EndDisabled();
@@ -471,7 +479,8 @@ namespace vultra_app
         ImGui::SameLine();
         if (!renderDocAvailable || !frameDebugger || frameDebugger->getCaptureCount() == 0)
             ImGui::BeginDisabled();
-        if (ImGui::Button(ICON_MDI_OPEN_IN_NEW " Open RenderDoc") && frameDebugger)
+        if (ImGui::Button((std::string {ICON_MDI_OPEN_IN_NEW " "} + vultra::tr("frameDebugger.openRenderDoc")).c_str()) &&
+            frameDebugger)
             frameDebugger->showReplayUI();
         if (!renderDocAvailable || !frameDebugger || frameDebugger->getCaptureCount() == 0)
             ImGui::EndDisabled();
@@ -479,8 +488,11 @@ namespace vultra_app
         ImGui::SameLine();
         drawStatusChip("RenderDoc", renderDocAvailable);
         ImGui::SameLine();
-        ImGui::TextDisabled(
-            "captures=%u%s", frameDebugger ? frameDebugger->getCaptureCount() : 0, capturing ? ", capturing" : "");
+        ImGui::TextDisabled("%s",
+                            vultra::trf("frameDebugger.captures",
+                                        frameDebugger ? frameDebugger->getCaptureCount() : 0,
+                                        capturing ? vultra::tr("frameDebugger.capturingSuffix") : "")
+                                .c_str());
 
         const std::string liveSnapshot =
             renderService ? std::string(renderService->lastFrameGraphSnapshot()) : std::string {};
@@ -488,18 +500,18 @@ namespace vultra_app
         ImGui::Separator();
         if (m_UseFrozenSnapshot)
         {
-            ImGui::TextColored(ImVec4 {0.46f, 0.74f, 1.0f, 1.0f}, "%s Frozen Frame", ICON_MDI_PAUSE);
+            ImGui::TextColored(ImVec4 {0.46f, 0.74f, 1.0f, 1.0f}, "%s %s", ICON_MDI_PAUSE, vultra::tr("frameDebugger.frozenFrame"));
             ImGui::SameLine();
-            if (ImGui::Button(ICON_MDI_PLAY " Live"))
+            if (ImGui::Button((std::string {ICON_MDI_PLAY " "} + vultra::tr("frameDebugger.live")).c_str()))
                 m_UseFrozenSnapshot = false;
         }
         else
         {
-            ImGui::TextColored(ImVec4 {0.46f, 0.86f, 0.42f, 1.0f}, "%s Live", ICON_MDI_PLAY);
+            ImGui::TextColored(ImVec4 {0.46f, 0.86f, 0.42f, 1.0f}, "%s %s", ICON_MDI_PLAY, vultra::tr("frameDebugger.live"));
             ImGui::SameLine();
             if (liveSnapshot.empty())
                 ImGui::BeginDisabled();
-            if (ImGui::Button(ICON_MDI_PAUSE " Freeze Frame"))
+            if (ImGui::Button((std::string {ICON_MDI_PAUSE " "} + vultra::tr("frameDebugger.freezeFrame")).c_str()))
             {
                 m_FrozenSnapshot    = liveSnapshot;
                 m_UseFrozenSnapshot = !m_FrozenSnapshot.empty();
@@ -513,8 +525,8 @@ namespace vultra_app
         if (entries.empty())
         {
             ImGui::TextDisabled("%s",
-                                snapshot.empty() ? "No frame graph has been compiled yet." :
-                                                   "Frame graph snapshot is not parseable.");
+                                snapshot.empty() ? vultra::tr("frameDebugger.noGraph") :
+                                                   vultra::tr("frameDebugger.notParseable"));
             ImGui::End();
             return;
         }
@@ -527,8 +539,8 @@ namespace vultra_app
             m_SelectedGraphIndex = std::clamp(m_SelectedGraphIndex, 0, static_cast<int>(entries.size()) - 1);
         m_SelectedGraphKey = entries[static_cast<size_t>(m_SelectedGraphIndex)].key;
 
-        ImGui::SetNextItemWidth(280.0f);
-        if (ImGui::BeginCombo("Frame Graph", entries[static_cast<size_t>(m_SelectedGraphIndex)].label.c_str()))
+        ImGui::SetNextItemWidth(vultra::ui::dp(280.0f));
+        if (ImGui::BeginCombo(vultra::tr("frameDebugger.frameGraph"), entries[static_cast<size_t>(m_SelectedGraphIndex)].label.c_str()))
         {
             for (int i = 0; i < static_cast<int>(entries.size()); ++i)
             {
@@ -558,7 +570,7 @@ namespace vultra_app
         }
 
         ImGui::SameLine();
-        ImGui::TextDisabled("passes=%zu resources=%zu edges=%zu", passCount, resourceCount, edges.size());
+        ImGui::TextDisabled("%s", vultra::trf("frameDebugger.counts", passCount, resourceCount, edges.size()).c_str());
 
         ImGui::Spacing();
         drawStatusChip("GBufferEntityId", graphHasText(graph, "GBufferEntityId"));
@@ -573,18 +585,19 @@ namespace vultra_app
         drawStatusChip("FinalComposition", graphHasText(graph, "FinalComposition"));
 
         ImGui::Spacing();
-        ImGui::SetNextItemWidth(260.0f);
-        ImGui::InputTextWithHint("Filter", "pass/resource/edge", m_Filter.data(), m_Filter.size());
+        ImGui::SetNextItemWidth(vultra::ui::dp(260.0f));
+        ImGui::InputTextWithHint(
+            vultra::tr("frameDebugger.filter"), vultra::tr("frameDebugger.filterHint"), m_Filter.data(), m_Filter.size());
         const std::string_view filter {m_Filter.data()};
 
         if (ImGui::BeginTabBar("##FrameDebuggerTabs"))
         {
-            if (ImGui::BeginTabItem(ICON_MDI_TIMELINE_TEXT " Pass IO"))
+            if (ImGui::BeginTabItem((std::string {ICON_MDI_TIMELINE_TEXT " "} + vultra::tr("frameDebugger.tab.passIo")).c_str()))
             {
                 drawPassAnalyzer(graph, filter, m_SelectedPassId);
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem(ICON_MDI_IMAGE_MULTIPLE " Textures"))
+            if (ImGui::BeginTabItem((std::string {ICON_MDI_IMAGE_MULTIPLE " "} + vultra::tr("frameDebugger.tab.textures")).c_str()))
             {
                 if (renderService)
                 {
@@ -629,9 +642,9 @@ namespace vultra_app
                     }
                 }
 
-                const float listWidth = std::min(360.0f, ImGui::GetContentRegionAvail().x * 0.36f);
+                const float listWidth = std::min(vultra::ui::dp(360.0f), ImGui::GetContentRegionAvail().x * 0.36f);
                 ImGui::BeginChild("##FrameDebuggerTextureList", ImVec2 {listWidth, 0.0f}, true);
-                ImGui::TextUnformatted("Frame Graph Textures");
+                ImGui::TextUnformatted(vultra::tr("frameDebugger.frameGraphTextures"));
                 ImGui::Separator();
                 for (const auto& texture : textures)
                 {
@@ -664,7 +677,7 @@ namespace vultra_app
 
                 if (selectedTextureIt == textures.end())
                 {
-                    ImGui::TextDisabled("No captured frame graph textures yet.");
+                    ImGui::TextDisabled("%s", vultra::tr("frameDebugger.noTextures"));
                 }
                 else
                 {
@@ -729,24 +742,29 @@ namespace vultra_app
                     }
                     if (texture.layerCount > 1u)
                     {
-                        const char* eye = texture.layer == 0u ? "Left Eye" :
-                                          texture.layer == 1u ? "Right Eye" :
-                                                                "Array Layer";
-                        ImGui::TextDisabled("%s  layer %u / %u", eye, texture.layer, texture.layerCount);
+                        const char* eye = texture.layer == 0u ? vultra::tr("frameDebugger.leftEye") :
+                                          texture.layer == 1u ? vultra::tr("frameDebugger.rightEye") :
+                                                                vultra::tr("frameDebugger.arrayLayer");
+                        ImGui::TextDisabled("%s",
+                                            vultra::trf("frameDebugger.layer", eye, texture.layer, texture.layerCount).c_str());
                     }
                     if (texture.imported)
-                        ImGui::TextDisabled("Imported frame graph texture");
+                        ImGui::TextDisabled("%s", vultra::tr("frameDebugger.importedTexture"));
                     if (!texture.capturable)
-                        ImGui::TextDisabled(
-                            "Preview unavailable: texture is not sampleable by the debug preview pass.");
-                    ImGui::SetNextItemWidth(180.0f);
-                    ImGui::Combo("Mode",
-                                 &m_TexturePreviewMode,
-                                 "Color\0Raw Depth\0Linear Depth\0Inverted Linear Depth\0Alpha\0Normal\0");
+                        ImGui::TextDisabled("%s", vultra::tr("frameDebugger.previewUnavailableSample"));
+                    ImGui::SetNextItemWidth(vultra::ui::dp(180.0f));
+                    const std::string modeItems = std::string {vultra::tr("frameDebugger.mode.color")} + '\0' +
+                                                  vultra::tr("frameDebugger.mode.rawDepth") + '\0' +
+                                                  vultra::tr("frameDebugger.mode.linearDepth") + '\0' +
+                                                  vultra::tr("frameDebugger.mode.invertedLinearDepth") + '\0' +
+                                                  vultra::tr("frameDebugger.mode.alpha") + '\0' +
+                                                  vultra::tr("frameDebugger.mode.normal") + '\0';
+                    ImGui::Combo(vultra::tr("frameDebugger.mode.label"), &m_TexturePreviewMode, modeItems.c_str());
                     if (m_TexturePreviewMode == 2 || m_TexturePreviewMode == 3)
                     {
                         ImGui::TextDisabled(
-                            "Camera z: %.4f - %.1f", m_TexturePreviewDepthNear, m_TexturePreviewDepthFar);
+                            "%s",
+                            vultra::trf("frameDebugger.cameraZ", m_TexturePreviewDepthNear, m_TexturePreviewDepthFar).c_str());
                     }
                     auto autoFitClamp = [&]() {
                         if (!backendService || !texture.texture)
@@ -839,7 +857,7 @@ namespace vultra_app
                             autoFitClamp();
                         }
                         if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("Auto fit clamp from preview");
+                            ImGui::SetTooltip("%s", vultra::tr("frameDebugger.autoFitClamp"));
                         ImGui::SameLine();
                     }
                     if (ImGui::SmallButton(ICON_MDI_RESTORE "##FrameDebuggerClampReset"))
@@ -848,15 +866,15 @@ namespace vultra_app
                         m_TexturePreviewClampMax = 1.0f;
                     }
                     if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Reset clamp to 0..1");
+                        ImGui::SetTooltip("%s", vultra::tr("frameDebugger.resetClamp"));
                     ImGui::SameLine();
-                    ImGui::SetNextItemWidth(120.0f);
-                    ImGui::DragFloat("Clamp Min", &m_TexturePreviewClampMin, 0.001f, 0.0f, 1.0f, "%.4f");
+                    ImGui::SetNextItemWidth(vultra::ui::dp(120.0f));
+                    ImGui::DragFloat(vultra::tr("frameDebugger.clampMin"), &m_TexturePreviewClampMin, 0.001f, 0.0f, 1.0f, "%.4f");
                     ImGui::SameLine();
-                    ImGui::SetNextItemWidth(120.0f);
-                    ImGui::DragFloat("Clamp Max", &m_TexturePreviewClampMax, 0.001f, 0.0f, 1.0f, "%.4f");
+                    ImGui::SetNextItemWidth(vultra::ui::dp(120.0f));
+                    ImGui::DragFloat(vultra::tr("frameDebugger.clampMax"), &m_TexturePreviewClampMax, 0.001f, 0.0f, 1.0f, "%.4f");
                     ui::normalizePreviewClamp(m_TexturePreviewClampMin, m_TexturePreviewClampMax);
-                    ImGui::Checkbox("Gamma", &m_TexturePreviewGammaCorrect);
+                    ImGui::Checkbox(vultra::tr("frameDebugger.gamma"), &m_TexturePreviewGammaCorrect);
                     ImGui::SameLine();
                     ImGui::Checkbox("R", &m_TexturePreviewChannels[0]);
                     ImGui::SameLine();
@@ -882,27 +900,28 @@ namespace vultra_app
                         (m_TexturePreviewChannels[0] ? 1 : 0) + (m_TexturePreviewChannels[1] ? 1 : 0) +
                         (m_TexturePreviewChannels[2] ? 1 : 0) + (m_TexturePreviewChannels[3] ? 1 : 0);
                     if (m_TexturePreviewMode == 0 && enabledChannelCount == 0)
-                        ImGui::TextDisabled("No channels selected; preview renders black.");
+                        ImGui::TextDisabled("%s", vultra::tr("frameDebugger.noChannels"));
                     ImGui::Separator();
 
                     if (!imguiService)
                     {
-                        ImGui::TextDisabled("Texture preview unavailable.");
+                        ImGui::TextDisabled("%s", vultra::tr("frameDebugger.previewUnavailable"));
                     }
                     else if (!texture.texture)
                     {
-                        ImGui::TextDisabled(texture.capturable ? "Texture preview will update next frame." :
-                                                                 "Texture preview is unavailable for this resource.");
+                        ImGui::TextDisabled("%s",
+                                            texture.capturable ? vultra::tr("frameDebugger.previewNextFrame") :
+                                                                 vultra::tr("frameDebugger.previewUnavailableResource"));
                     }
                     else
                     {
                         ui::drawSaveFrameGraphTexturePreviewButton(ctx, texture, "FrameDebuggerSaveTexturePreview");
 
-                        ImGui::SameLine(0.0f, 14.0f);
+                        ImGui::SameLine(0.0f, vultra::ui::dp(14.0f));
                         if (ImGui::SmallButton(ICON_MDI_FIT_TO_SCREEN "##FrameDebuggerTextureFitView"))
                             m_TexturePreviewFitToView = true;
                         if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("Fit to view");
+                            ImGui::SetTooltip("%s", vultra::tr("frameDebugger.fitToView"));
                         ImGui::SameLine();
                         if (ImGui::SmallButton("1:1##FrameDebuggerTextureOneToOne"))
                         {
@@ -910,11 +929,11 @@ namespace vultra_app
                             m_TexturePreviewScale     = 1.0f;
                         }
                         if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("View at native resolution");
+                            ImGui::SetTooltip("%s", vultra::tr("frameDebugger.nativeResolution"));
                         ImGui::SameLine();
                         ImGui::TextUnformatted(ICON_MDI_MAGNIFY);
                         ImGui::SameLine();
-                        ImGui::SetNextItemWidth(120.0f);
+                        ImGui::SetNextItemWidth(vultra::ui::dp(120.0f));
                         if (ImGui::SliderFloat("##FrameDebuggerTextureScale",
                                                &m_TexturePreviewScale,
                                                0.01f,
@@ -969,17 +988,17 @@ namespace vultra_app
                 ImGui::EndChild();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem(ICON_MDI_FORMAT_LIST_BULLETED " Nodes"))
+            if (ImGui::BeginTabItem((std::string {ICON_MDI_FORMAT_LIST_BULLETED " "} + vultra::tr("frameDebugger.tab.nodes")).c_str()))
             {
                 drawNodeTable(graph, filter);
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem(ICON_MDI_SOURCE_BRANCH " Edges"))
+            if (ImGui::BeginTabItem((std::string {ICON_MDI_SOURCE_BRANCH " "} + vultra::tr("frameDebugger.tab.edges")).c_str()))
             {
                 drawEdgeTable(graph, filter);
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem(ICON_MDI_CODE_JSON " Raw"))
+            if (ImGui::BeginTabItem((std::string {ICON_MDI_CODE_JSON " "} + vultra::tr("frameDebugger.tab.raw")).c_str()))
             {
                 std::vector<char> raw(snapshot.begin(), snapshot.end());
                 raw.push_back('\0');

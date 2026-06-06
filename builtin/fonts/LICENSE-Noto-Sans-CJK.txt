@@ -1,0 +1,23 @@
+noto_sans_cjk.otf
+=================
+
+This is a SUBSET of Noto Sans CJK SC (Regular), reduced to the GB2312, JIS X 0208
+and KS X 1001 character sets plus kana, Latin, common punctuation and the
+characters used by this application's localization catalogs. It provides Chinese,
+Japanese and Korean glyph coverage for the editor UI.
+
+Copyright (c) 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name
+"Noto Sans CJK".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This Font Software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the SIL Open Font License
+for the specific language, permissions and limitations governing your use of this
+Font Software.
+
+SIL Open Font License, Version 1.1: https://scripts.sil.org/OFL
+Noto fonts project: https://github.com/notofonts/noto-cjk
+
+The OFL permits redistribution and bundling (including in commercial software)
+provided this notice and the license are retained and the font is not sold by
+itself. Subsetting is explicitly permitted by the license.

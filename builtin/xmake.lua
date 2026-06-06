@@ -760,6 +760,93 @@ task("font_task")
     end)
 task_end()
 
+
+task("i18n_task")
+    on_run(function ()
+        import("core.project.config")
+        import("core.base.option")
+
+        local function emit_summary(label, converted, skipped, samples)
+            if converted == 0 then
+                cprint("${cyan}[OK]${clear} %s up to date (%d items)", label, skipped)
+                return
+            end
+
+            cprint("${green}[CONVERT]${clear} %s updated (%d changed, %d unchanged)", label, converted, skipped)
+            for _, sample in ipairs(samples) do
+                cprint("  - %s", sample)
+            end
+            if converted > #samples then
+                cprint("  - ... and %d more", converted - #samples)
+            end
+        end
+
+        import("core.compress.lz4")
+
+        local projectdir = get_config("project_dir")
+        local build_script = path.join(projectdir, "builtin/xmake.lua")
+
+        local i18n_root = path.join(projectdir, "builtin/i18n")
+        local i18n_header_root = path.join(projectdir, "builtin/generated/include/i18n_headers")
+        os.mkdir(i18n_header_root)
+
+        local files = os.files(path.join(i18n_root, "**.json"))
+
+        local converted = 0
+        local skipped = 0
+        local samples = {}
+
+        for _, f in ipairs(files) do
+            local rel = path.relative(f, i18n_root)
+            local header_path = path.join(i18n_header_root, rel .. ".binjson.h")
+
+            -- check timestamp (also regenerate when this build script changes, e.g. the embed format)
+            if os.exists(header_path) and os.mtime(header_path) >= os.mtime(f)
+               and os.mtime(header_path) >= os.mtime(build_script) then
+                skipped = skipped + 1
+            else
+                converted = converted + 1
+                if #samples < 4 then
+                    table.insert(samples, rel)
+                end
+                os.mkdir(path.directory(header_path))
+
+                local json_data = io.readfile(f, {encoding = "binary"})
+                local raw_size  = #json_data
+                -- lz4 block-compress so the embedded catalog (and the executable) stays small; the
+                -- editor decompresses it from memory at startup and registers it with II18nService.
+                local comp      = lz4.block_compress(json_data)
+                local comp_size = comp:size()
+                local base   = path.basename(rel)
+                local ext    = path.extension(rel):sub(2)
+                -- sanitise to a valid C identifier: hyphens/dots/etc. -> '_' (e.g. zh-CN.json -> zh_CN_json)
+                local symbol = (base .. "_" .. ext):gsub("[^%w_]", "_")
+                if symbol:find("^%d") then symbol = "_" .. symbol end
+
+                local header_file = io.open(header_path, "w")
+                header_file:write("// Auto-generated from " .. rel .. " (lz4 block-compressed)\n")
+                header_file:write("#pragma once\n\n")
+                header_file:write("#include <cstddef>\n")
+                header_file:write("#include <cstdint>\n\n")
+
+                header_file:write("inline constexpr unsigned char " .. symbol .. "_lz4[] = {\n")
+                for i = 1, comp_size do
+                    if (i - 1) % 12 == 0 then header_file:write("    ") end
+                    header_file:write(string.format("0x%02X", comp[i]))
+                    if i < comp_size then header_file:write(",") end
+                    if i % 12 == 0 then header_file:write("\n") end
+                end
+                header_file:write("\n};\n")
+                header_file:write("inline constexpr size_t " .. symbol .. "_lz4_size = sizeof(" .. symbol .. "_lz4);\n")
+                header_file:write("inline constexpr size_t " .. symbol .. "_size = " .. raw_size .. "; // uncompressed\n")
+
+                header_file:close()
+            end
+        end
+        emit_summary("builtin i18n catalogs", converted, skipped, samples)
+    end)
+task_end()
+
 local vshadersystem_configs = { debug = is_mode("debug") }
 if is_host("windows") then
     vshadersystem_configs.runtimes = is_mode("debug") and "MTd" or "MT"
@@ -791,4 +878,5 @@ target("vultra_builtin_assets")
         task.run("rendergraph_task")
         task.run("texture_task")
         task.run("font_task")
+        task.run("i18n_task")
     end)

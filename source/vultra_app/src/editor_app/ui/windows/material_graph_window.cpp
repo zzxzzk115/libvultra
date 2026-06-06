@@ -4,7 +4,9 @@
 #include "editor_app/ui/graph_layout.hpp"
 #include "common/ui_widgets.hpp"
 
+#include <vultra/core/i18n/i18n.hpp>
 #include <vultra/core/rhi/structs/render_device_structs.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/imgui_service.hpp>
@@ -156,14 +158,14 @@ namespace vultra_app
             {
                 case eBool: {
                     bool value = param.defaultValue.is_boolean() ? param.defaultValue.get<bool>() : false;
-                    if (!ImGui::Checkbox("Default", &value))
+                    if (!ImGui::Checkbox(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), &value))
                         return false;
                     param.defaultValue = value;
                     return true;
                 }
                 case eInt: {
                     int value = param.defaultValue.is_number_integer() ? param.defaultValue.get<int>() : 0;
-                    if (!ImGui::InputInt("Default", &value))
+                    if (!ImGui::InputInt(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), &value))
                         return false;
                     param.defaultValue = value;
                     return true;
@@ -173,7 +175,7 @@ namespace vultra_app
                         param.defaultValue.is_array() && param.defaultValue.size() > 0 ? param.defaultValue[0].get<float>() : 0.0f,
                         param.defaultValue.is_array() && param.defaultValue.size() > 1 ? param.defaultValue[1].get<float>() : 0.0f,
                     };
-                    if (!ImGui::DragFloat2("Default", value, 0.01f))
+                    if (!ImGui::DragFloat2(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), value, 0.01f))
                         return false;
                     param.defaultValue = nlohmann::json::array({value[0], value[1]});
                     return true;
@@ -184,7 +186,7 @@ namespace vultra_app
                         param.defaultValue.is_array() && param.defaultValue.size() > 1 ? param.defaultValue[1].get<float>() : 0.0f,
                         param.defaultValue.is_array() && param.defaultValue.size() > 2 ? param.defaultValue[2].get<float>() : 0.0f,
                     };
-                    if (!ImGui::DragFloat3("Default", value, 0.01f))
+                    if (!ImGui::DragFloat3(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), value, 0.01f))
                         return false;
                     param.defaultValue = nlohmann::json::array({value[0], value[1], value[2]});
                     return true;
@@ -198,7 +200,8 @@ namespace vultra_app
                         param.defaultValue.is_array() && param.defaultValue.size() > 3 ? param.defaultValue[3].get<float>() : 1.0f,
                     };
                     const bool changed =
-                        param.type == eColor ? ImGui::ColorEdit4("Default", value) : ImGui::DragFloat4("Default", value, 0.01f);
+                        param.type == eColor ? ImGui::ColorEdit4(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), value) :
+                                               ImGui::DragFloat4(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), value, 0.01f);
                     if (!changed)
                         return false;
                     param.defaultValue = nlohmann::json::array({value[0], value[1], value[2], value[3]});
@@ -206,7 +209,7 @@ namespace vultra_app
                 }
                 case eTexture2D: {
                     std::string value = param.defaultValue.is_string() ? param.defaultValue.get<std::string>() : std::string {};
-                    if (!inputStringField("Default URI", value))
+                    if (!inputStringField(vultra::trId("materialGraph.blackboard.defaultUri", "Default URI"), value))
                         return false;
                     param.defaultValue = value;
                     return true;
@@ -214,8 +217,8 @@ namespace vultra_app
                 case eFloat:
                 default: {
                     float value = param.defaultValue.is_number() ? param.defaultValue.get<float>() : 0.0f;
-                    const bool changed = param.hasUiRange ? ImGui::SliderFloat("Default", &value, param.uiMin, param.uiMax) :
-                                                            ImGui::DragFloat("Default", &value, 0.01f);
+                    const bool changed = param.hasUiRange ? ImGui::SliderFloat(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), &value, param.uiMin, param.uiMax) :
+                                                            ImGui::DragFloat(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), &value, 0.01f);
                     if (!changed)
                         return false;
                     param.defaultValue = value;
@@ -437,7 +440,7 @@ namespace vultra_app
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(label);
             ImGui::SameLine();
-            ImGui::SetCursorPosX(startX + kPropertyLabelWidth);
+            ImGui::SetCursorPosX(startX + vultra::ui::dp(kPropertyLabelWidth));
         }
 
         bool drawJsonValue(EditorContext&                    ctx,
@@ -461,7 +464,7 @@ namespace vultra_app
                 case vultra::material_graph::ValueType::eInt: {
                     int v = value.is_number_integer() ? value.get<int>() : 0;
                     drawControlLabel(label);
-                    ImGui::SetNextItemWidth(92.0f);
+                    ImGui::SetNextItemWidth(vultra::ui::dp(92.0f));
                     if (ImGui::InputInt("##value", &v))
                     {
                         value = v;
@@ -472,7 +475,7 @@ namespace vultra_app
                 case vultra::material_graph::ValueType::eFloat: {
                     float v = jsonFloat(value, 0.0f);
                     drawControlLabel(label);
-                    ImGui::SetNextItemWidth(104.0f);
+                    ImGui::SetNextItemWidth(vultra::ui::dp(104.0f));
                     if (ImGui::DragFloat("##value", &v, 0.01f))
                     {
                         value = v;
@@ -486,7 +489,7 @@ namespace vultra_app
                         for (int i = 0; i < 2 && i < static_cast<int>(value.size()); ++i)
                             v[i] = jsonFloat(value[i], 0.0f);
                     drawControlLabel(label);
-                    ImGui::SetNextItemWidth(136.0f);
+                    ImGui::SetNextItemWidth(vultra::ui::dp(136.0f));
                     if (ImGui::DragFloat2("##value", v, 0.01f))
                     {
                         setJsonVec(value, v, 2);
@@ -500,7 +503,7 @@ namespace vultra_app
                         for (int i = 0; i < 3 && i < static_cast<int>(value.size()); ++i)
                             v[i] = jsonFloat(value[i], 0.0f);
                     drawControlLabel(label);
-                    ImGui::SetNextItemWidth(164.0f);
+                    ImGui::SetNextItemWidth(vultra::ui::dp(164.0f));
                     if (ImGui::DragFloat3("##value", v, 0.01f))
                     {
                         setJsonVec(value, v, 3);
@@ -515,7 +518,7 @@ namespace vultra_app
                         for (int i = 0; i < 4 && i < static_cast<int>(value.size()); ++i)
                             v[i] = jsonFloat(value[i], 1.0f);
                     drawControlLabel(label);
-                    ImGui::SetNextItemWidth(type == vultra::material_graph::ValueType::eColor ? 92.0f : 188.0f);
+                    ImGui::SetNextItemWidth(type == vultra::material_graph::ValueType::eColor ? vultra::ui::dp(92.0f) : vultra::ui::dp(188.0f));
                     const bool changed =
                         type == vultra::material_graph::ValueType::eColor ?
                             ImGui::ColorEdit4(
@@ -532,7 +535,7 @@ namespace vultra_app
                     std::string uri = value.is_string() ? value.get<std::string>() : std::string {};
                     drawControlLabel(label);
                     if (ui::drawTextureUriSelector(
-                            ctx, "TextureSelectorPopup", uri, textureSelector, ImVec2(184.0f, 40.0f)))
+                            ctx, "TextureSelectorPopup", uri, textureSelector, ImVec2(vultra::ui::dp(184.0f), vultra::ui::dp(40.0f))))
                     {
                         value = uri;
                         return true;
@@ -544,7 +547,7 @@ namespace vultra_app
                     if (value.is_string())
                         std::snprintf(buffer.data(), buffer.size(), "%s", value.get<std::string>().c_str());
                     drawControlLabel(label);
-                    ImGui::SetNextItemWidth(180.0f);
+                    ImGui::SetNextItemWidth(vultra::ui::dp(180.0f));
                     if (ImGui::InputText("##value", buffer.data(), buffer.size()))
                     {
                         value = std::string(buffer.data());
@@ -564,7 +567,7 @@ namespace vultra_app
                 value.is_string() ? value.get<std::string>() : std::string(options.empty() ? "" : options.front());
             bool changed = false;
             drawControlLabel(label);
-            ImGui::SetNextItemWidth(156.0f);
+            ImGui::SetNextItemWidth(vultra::ui::dp(156.0f));
             if (ImGui::BeginCombo("##value", current.c_str()))
             {
                 for (const char* option : options)
@@ -666,6 +669,37 @@ namespace vultra_app
             return {};
         }
 
+        // Localized (plain, no "###id") category/subcategory text. Node search matches BOTH the
+        // English identifier (which users often remember) AND the label shown in the active language,
+        // so a query works whether typed as "Math" or as the translated category.
+        std::string_view localizedCategoryText(std::string_view english)
+        {
+            if (english == "Inputs")
+                return vultra::tr("materialGraph.category.inputs");
+            if (english == "Parameters")
+                return vultra::tr("materialGraph.category.parameters");
+            if (english == "Math")
+                return vultra::tr("materialGraph.category.math");
+            if (english == "Logic")
+                return vultra::tr("materialGraph.category.logic");
+            if (english == "Texture")
+                return vultra::tr("materialGraph.category.texture");
+            if (english == "Shading")
+                return vultra::tr("materialGraph.category.shading");
+            if (english == "Output")
+                return vultra::tr("materialGraph.category.output");
+            return vultra::tr("materialGraph.category.other");
+        }
+
+        std::string_view localizedSubcategoryText(std::string_view english)
+        {
+            if (english == "Vertex Attributes")
+                return vultra::tr("materialGraph.subcategory.vertexAttributes");
+            if (english == "Textures")
+                return vultra::tr("materialGraph.subcategory.textures");
+            return english;
+        }
+
         std::string lowerAscii(std::string_view text)
         {
             std::string out(text);
@@ -681,11 +715,14 @@ namespace vultra_app
                 return true;
 
             const auto lowerQuery = lowerAscii(query);
-            const auto matches = [&](std::string_view value) {
-                return lowerAscii(value).find(lowerQuery) != std::string::npos;
+            const auto matches    = [&](std::string_view value) {
+                return !value.empty() && lowerAscii(value).find(lowerQuery) != std::string::npos;
             };
-            return matches(desc.displayName) || matches(desc.typeId) || matches(nodeMenuCategory(desc.typeId)) ||
-                   matches(nodeMenuSubcategory(desc.typeId));
+            const auto category    = nodeMenuCategory(desc.typeId);
+            const auto subcategory = nodeMenuSubcategory(desc.typeId);
+            return matches(desc.displayName) || matches(desc.typeId) || matches(category) ||
+                   matches(localizedCategoryText(category)) || matches(subcategory) ||
+                   matches(localizedSubcategoryText(subcategory));
         }
 
         bool hasInputLink(const vultra::material_graph::Graph& graph, std::string_view node, std::string_view pin)
@@ -761,7 +798,8 @@ namespace vultra_app
     } // namespace
 
     MaterialGraphWindow::MaterialGraphWindow() :
-        EditorWindow("Material Graph", ICON_MDI_MOLECULE), m_Registry(vultra::material_graph::makeBuiltinNodeRegistry())
+        EditorWindow("Material Graph", ICON_MDI_MOLECULE, "window.materialGraph"),
+        m_Registry(vultra::material_graph::makeBuiltinNodeRegistry())
     {
         m_NodeEditor = ImNodes::EditorContextCreate();
         m_PreviewWorld.setDebugName("Material Preview");
@@ -792,9 +830,9 @@ namespace vultra_app
         drawToolbar(ctx);
         ImGui::Separator();
 
-        const float rightWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.30f, 320.0f, 460.0f);
+        const float rightWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.30f, vultra::ui::dp(320.0f), vultra::ui::dp(460.0f));
         const float leftWidth =
-            std::max(240.0f, ImGui::GetContentRegionAvail().x - rightWidth - ImGui::GetStyle().ItemSpacing.x);
+            std::max(vultra::ui::dp(240.0f), ImGui::GetContentRegionAvail().x - rightWidth - ImGui::GetStyle().ItemSpacing.x);
         ImGui::BeginChild("##MaterialGraphCanvas",
                           ImVec2(leftWidth, 0.0f),
                           true,
@@ -881,9 +919,9 @@ namespace vultra_app
             ensureNodePorts(node);
 
         if (failed > 0)
-            m_Status = "Loaded " + std::to_string(loaded) + " custom node(s), skipped " + std::to_string(failed);
+            m_Status = vultra::trf("materialGraph.status.loadedCustomNodesSkipped", loaded, failed);
         else if (loaded > 0)
-            m_Status = "Loaded " + std::to_string(loaded) + " custom node(s)";
+            m_Status = vultra::trf("materialGraph.status.loadedCustomNodes", loaded);
     }
 
     void MaterialGraphWindow::ensureLoaded(EditorContext& ctx)
@@ -894,7 +932,7 @@ namespace vultra_app
             if (m_LoadedAssetGeneration != ctx.state.assetFileGeneration && currentStamp != m_LoadedWriteStamp)
             {
                 if (loadGraph(ctx, m_CurrentUri))
-                    m_Status = "Reloaded";
+                    m_Status = vultra::tr("materialGraph.status.reloaded");
             }
             return;
         }
@@ -915,20 +953,20 @@ namespace vultra_app
 
         if (uri == m_CurrentUri && m_Loaded)
         {
-            m_Status = "Already open";
-            ctx.state.statusMessage = "Material graph already open: " + uri;
+            m_Status = vultra::tr("materialGraph.status.alreadyOpen");
+            ctx.state.statusMessage = vultra::trf("materialGraph.status.alreadyOpenMessage", uri);
             return;
         }
 
         m_Loaded = true;
         if (loadGraph(ctx, uri))
         {
-            ctx.state.statusMessage = "Opened material graph: " + uri;
+            ctx.state.statusMessage = vultra::trf("materialGraph.status.openedMessage", uri);
         }
         else
         {
-            ctx.state.statusMessage = "Open material graph failed: " + uri;
-            m_Status                = "Load failed";
+            ctx.state.statusMessage = vultra::trf("materialGraph.status.openFailedMessage", uri);
+            m_Status                = vultra::tr("materialGraph.status.loadFailed");
         }
     }
 
@@ -967,7 +1005,7 @@ namespace vultra_app
             ensureNodePorts(node);
         m_CurrentUri = std::move(uri);
         m_Dirty      = false;
-        m_Status     = "Loaded";
+        m_Status     = vultra::tr("materialGraph.status.loaded");
         m_LoadedAssetGeneration = ctx.state.assetFileGeneration;
         m_LoadedWriteStamp      = fileWriteStamp(pathForUri(ctx, m_CurrentUri));
         return true;
@@ -982,7 +1020,7 @@ namespace vultra_app
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         if (!file)
         {
-            m_Status = "Save failed";
+            m_Status = vultra::tr("materialGraph.status.saveFailed");
             return false;
         }
         file << vultra::material_graph::saveGraphToText(m_Graph);
@@ -993,7 +1031,7 @@ namespace vultra_app
             assets->reimportAsset(m_CurrentUri, true);
         }
         m_Dirty  = false;
-        m_Status = "Saved";
+        m_Status = vultra::tr("materialGraph.status.saved");
         m_LoadedAssetGeneration = ctx.state.assetFileGeneration;
         m_LoadedWriteStamp      = fileWriteStamp(path);
         (void)saveThumbnail(ctx, path);
@@ -1039,7 +1077,7 @@ namespace vultra_app
         if (!result)
         {
             m_Diagnostics = result.error();
-            m_Status      = "Compile failed";
+            m_Status      = vultra::tr("materialGraph.status.compileFailed");
             return false;
         }
         m_Diagnostics = result->diagnostics;
@@ -1050,7 +1088,7 @@ namespace vultra_app
         std::ofstream file(outPath, std::ios::binary | std::ios::trunc);
         if (!file)
         {
-            m_Status = "Failed to write generated shader";
+            m_Status = vultra::tr("materialGraph.status.writeShaderFailed");
             return false;
         }
         file << "[vshader]\nlanguage = glsl\nversion = 460\n\n[frag]\n";
@@ -1071,14 +1109,14 @@ namespace vultra_app
             assets->reimportAsset("res://shaders/project.vshaderlib.lua", true);
         if (auto* shaders = ctx.services ? ctx.services->tryGet<vultra::IShaderService>() : nullptr)
             (void)shaders->reloadProjectLibrary("res://shaders/project.vshaderlib.lua");
-        m_Status = "Compiled: " + outPath.generic_string();
+        m_Status = vultra::trf("materialGraph.status.compiled", outPath.generic_string());
         return true;
     }
 
     void MaterialGraphWindow::drawToolbar(EditorContext& ctx)
     {
-        ImGui::SetNextItemWidth(330.0f);
-        if (ImGui::BeginCombo("Graph", m_CurrentUri.c_str()))
+        ImGui::SetNextItemWidth(vultra::ui::dp(330.0f));
+        if (ImGui::BeginCombo(vultra::trId("materialGraph.toolbar.graph", "Graph"), m_CurrentUri.c_str()))
         {
             for (const auto& uri : collectGraphs(ctx))
                 if (ImGui::Selectable(uri.c_str(), uri == m_CurrentUri))
@@ -1086,23 +1124,23 @@ namespace vultra_app
             ImGui::EndCombo();
         }
         ImGui::SameLine();
-        if (ImGui::Button(ICON_MDI_FILE_PLUS " New"))
+        if (ImGui::Button((std::string {ICON_MDI_FILE_PLUS " "} + vultra::tr("materialGraph.toolbar.new")).c_str()))
             newGraph(ctx);
         ImGui::SameLine();
-        if (ImGui::Button(ICON_MDI_CONTENT_SAVE " Save"))
+        if (ImGui::Button((std::string {ICON_MDI_CONTENT_SAVE " "} + vultra::tr("common.save")).c_str()))
             saveGraph(ctx);
         ImGui::SameLine();
-        if (ImGui::Button(ICON_MDI_COG_PLAY " Compile"))
+        if (ImGui::Button((std::string {ICON_MDI_COG_PLAY " "} + vultra::tr("materialGraph.toolbar.compile")).c_str()))
             compileGraph(ctx);
         ImGui::SameLine();
-        if (ImGui::Button(ICON_MDI_GRAPH " Auto Layout"))
+        if (ImGui::Button((std::string {ICON_MDI_GRAPH " "} + vultra::tr("materialGraph.toolbar.autoLayout")).c_str()))
         {
             applyMaterialGraphAutoLayout(m_Graph);
             markDirty(ctx);
-            m_Status = "Auto layout applied";
+            m_Status = vultra::tr("materialGraph.status.autoLayoutApplied");
         }
         ImGui::SameLine();
-        ImGui::Checkbox("Live Apply", &m_LiveApply);
+        ImGui::Checkbox(vultra::tr("materialGraph.toolbar.liveApply"), &m_LiveApply);
         if (!m_Status.empty())
         {
             ImGui::SameLine();
@@ -1284,7 +1322,7 @@ namespace vultra_app
         if (ImGui::BeginPopup("MaterialGraphNodeMenu"))
         {
             const std::string node = contextNodeId();
-            if (ImGui::MenuItem(ICON_MDI_NOTE_EDIT " Edit Note..."))
+            if (ImGui::MenuItem((std::string {ICON_MDI_NOTE_EDIT " "} + vultra::tr("materialGraph.nodeMenu.editNote")).c_str()))
             {
                 m_NoteEditNode = node;
                 m_NoteEditBuffer.fill('\0');
@@ -1297,7 +1335,7 @@ namespace vultra_app
             }
             if (auto* n = findNode(node); n && (!n->note.empty() || !n->displayName.empty()))
             {
-                if (ImGui::MenuItem(ICON_MDI_NOTE_OFF " Clear Note"))
+                if (ImGui::MenuItem((std::string {ICON_MDI_NOTE_OFF " "} + vultra::tr("materialGraph.nodeMenu.clearNote")).c_str()))
                 {
                     n->note.clear();
                     n->displayName.clear();
@@ -1305,7 +1343,7 @@ namespace vultra_app
                 }
             }
             ImGui::Separator();
-            if (ImGui::MenuItem(ICON_MDI_DELETE " Delete"))
+            if (ImGui::MenuItem((std::string {ICON_MDI_DELETE " "} + vultra::tr("common.delete")).c_str()))
             {
                 if (!node.empty() && node != "Surface")
                 {
@@ -1325,15 +1363,15 @@ namespace vultra_app
         }
         if (ImGui::BeginPopup("MaterialGraphEditNote"))
         {
-            ImGui::TextUnformatted("Note");
-            ImGui::SetNextItemWidth(240.0f);
+            ImGui::TextUnformatted(vultra::tr("materialGraph.nodeMenu.note"));
+            ImGui::SetNextItemWidth(vultra::ui::dp(240.0f));
             const bool entered = ImGui::InputText("##note",
                                                   m_NoteEditBuffer.data(),
                                                   m_NoteEditBuffer.size(),
                                                   ImGuiInputTextFlags_EnterReturnsTrue);
-            const bool apply = ImGui::Button("OK") || entered;
+            const bool apply = ImGui::Button(vultra::tr("common.ok")) || entered;
             ImGui::SameLine();
-            const bool cancel = ImGui::Button("Cancel");
+            const bool cancel = ImGui::Button(vultra::tr("common.cancel"));
             if (apply)
             {
                 if (auto* n = findNode(m_NoteEditNode))
@@ -1356,8 +1394,8 @@ namespace vultra_app
 
     void MaterialGraphWindow::drawInspector(EditorContext& ctx)
     {
-        ImGui::TextUnformatted("Blackboard");
-        if (ImGui::SmallButton(ICON_MDI_PLUS " Add Parameter"))
+        ImGui::TextUnformatted(vultra::tr("materialGraph.inspector.blackboard"));
+        if (ImGui::SmallButton((std::string {ICON_MDI_PLUS " "} + vultra::tr("materialGraph.inspector.addParameter")).c_str()))
         {
             std::string name = "param";
             int         suffix = 1;
@@ -1383,7 +1421,7 @@ namespace vultra_app
 
         if (m_Graph.blackboard.empty())
         {
-            ImGui::TextDisabled("No exposed parameters.");
+            ImGui::TextDisabled("%s", vultra::tr("materialGraph.inspector.noExposedParameters"));
         }
         else
         {
@@ -1395,13 +1433,13 @@ namespace vultra_app
                 const auto header = param.displayName.empty() ? param.name : param.displayName;
                 if (ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    if (inputStringField("Name", param.name))
+                    if (inputStringField(vultra::trId("common.name", "Name"), param.name))
                         markDirty(ctx);
-                    if (inputStringField("Display Name", param.displayName))
+                    if (inputStringField(vultra::trId("materialGraph.inspector.displayName", "Display Name"), param.displayName))
                         markDirty(ctx);
 
                     int typeIndex = blackboardTypeIndex(param.type);
-                    if (ImGui::Combo("Type", &typeIndex, kBlackboardTypeLabels, IM_ARRAYSIZE(kBlackboardTypeLabels)))
+                    if (ImGui::Combo(vultra::trId("common.type", "Type"), &typeIndex, kBlackboardTypeLabels, IM_ARRAYSIZE(kBlackboardTypeLabels)))
                     {
                         param.type         = blackboardTypeFromIndex(typeIndex);
                         param.defaultValue = defaultBlackboardValue(param.type);
@@ -1415,20 +1453,20 @@ namespace vultra_app
 
                     const bool rangeSupported = param.type == vultra::material_graph::ValueType::eFloat;
                     ImGui::BeginDisabled(!rangeSupported);
-                    if (ImGui::Checkbox("UI Range", &param.hasUiRange))
+                    if (ImGui::Checkbox(vultra::trId("materialGraph.inspector.uiRange", "UI Range"), &param.hasUiRange))
                         markDirty(ctx);
                     if (param.hasUiRange)
                     {
-                        if (ImGui::DragFloat("Min", &param.uiMin, 0.01f))
+                        if (ImGui::DragFloat(vultra::trId("materialGraph.inspector.min", "Min"), &param.uiMin, 0.01f))
                             markDirty(ctx);
-                        if (ImGui::DragFloat("Max", &param.uiMax, 0.01f))
+                        if (ImGui::DragFloat(vultra::trId("materialGraph.inspector.max", "Max"), &param.uiMax, 0.01f))
                             markDirty(ctx);
                         if (param.uiMax < param.uiMin)
                             param.uiMax = param.uiMin;
                     }
                     ImGui::EndDisabled();
 
-                    if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE " Remove"))
+                    if (ImGui::SmallButton((std::string {ICON_MDI_DELETE_OUTLINE " "} + vultra::tr("common.remove")).c_str()))
                         removeIndex = i;
                 }
                 ImGui::PopID();
@@ -1441,9 +1479,9 @@ namespace vultra_app
         }
 
         ImGui::Separator();
-        ImGui::TextUnformatted("Diagnostics");
+        ImGui::TextUnformatted(vultra::tr("materialGraph.inspector.diagnostics"));
         if (m_Diagnostics.empty())
-            ImGui::TextDisabled("No diagnostics.");
+            ImGui::TextDisabled("%s", vultra::tr("materialGraph.inspector.noDiagnostics"));
         for (const auto& diag : m_Diagnostics)
         {
             const ImVec4 color = diag.severity == vultra::material_graph::Diagnostic::Severity::eError ?
@@ -1545,7 +1583,7 @@ namespace vultra_app
                 }
             }
         }
-        const float size   = std::min(ImGui::GetContentRegionAvail().x, 260.0f);
+        const float size   = std::min(ImGui::GetContentRegionAvail().x, vultra::ui::dp(260.0f));
         const float aspect = 1.0f;
         if (m_LastPreviewMesh != m_PreviewMesh)
         {
@@ -1635,31 +1673,34 @@ namespace vultra_app
                 m_PreviewDistanceScale = std::clamp(m_PreviewDistanceScale * std::exp(-wheel * 0.16f), 0.08f, 8.0f);
             }
         }
-        if (ui::drawMeshUuidField(ctx, "Preview Mesh", m_PreviewMesh, m_MeshSelector))
+        if (ui::drawMeshUuidField(ctx, vultra::tr("materialGraph.preview.mesh"), m_PreviewMesh, m_MeshSelector))
         {
-            m_Status = m_PreviewMesh.valid() ? "Preview mesh changed" : "Preview mesh reset to sphere";
+            m_Status = m_PreviewMesh.valid() ? vultra::tr("materialGraph.status.previewMeshChanged") :
+                                               vultra::tr("materialGraph.status.previewMeshReset");
             focusPreviewMesh(ctx, aspect, true);
         }
-        if (ui::drawTextureUuidField(ctx, "Skybox", m_PreviewSkybox, m_TextureSelector))
-            m_Status = m_PreviewSkybox.valid() ? "Preview skybox changed" : "Preview skybox cleared";
+        if (ui::drawTextureUuidField(ctx, vultra::tr("materialGraph.preview.skybox"), m_PreviewSkybox, m_TextureSelector))
+            m_Status = m_PreviewSkybox.valid() ? vultra::tr("materialGraph.status.previewSkyboxChanged") :
+                                                 vultra::tr("materialGraph.status.previewSkyboxCleared");
 
-        ImGui::SeparatorText("Time");
+        ImGui::SeparatorText(vultra::tr("materialGraph.preview.time"));
         if (ImGui::SmallButton(m_PreviewTimePlaying ? ICON_MDI_PAUSE : ICON_MDI_PLAY))
             m_PreviewTimePlaying = !m_PreviewTimePlaying;
         ImGui::SameLine();
         if (ImGui::SmallButton(ICON_MDI_RESTART))
             m_PreviewTimeSeconds = 0.0f; // replay from the start, keep playing
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(std::max(120.0f, size - 82.0f));
+        ImGui::SetNextItemWidth(std::max(vultra::ui::dp(120.0f), size - vultra::ui::dp(82.0f)));
         if (ImGui::SliderFloat("##MaterialGraphPreviewTime", &m_PreviewTimeSeconds, 0.0f, 60.0f, "%.2f s"))
         {
             m_PreviewTimeSeconds = std::max(0.0f, m_PreviewTimeSeconds);
             m_PreviewTimePlaying = false;
         }
 
-        ImGui::TextDisabled(m_PreviewMesh.valid() ? "Preview: selected mesh using slot 0 override" :
-                                                    "Preview: sphere using slot 0 override");
-        ImGui::TextDisabled("Left drag: rotate preview  Wheel: zoom  F: frame");
+        ImGui::TextDisabled("%s",
+                            m_PreviewMesh.valid() ? vultra::tr("materialGraph.preview.usingSelectedMesh") :
+                                                    vultra::tr("materialGraph.preview.usingSphere"));
+        ImGui::TextDisabled("%s", vultra::tr("materialGraph.preview.controlsHint"));
     }
 
     void MaterialGraphWindow::drawAddNodePopup(EditorContext& ctx)
@@ -1668,8 +1709,8 @@ namespace vultra_app
             return;
 
         static std::array<char, 128> search {};
-        ImGui::SetNextItemWidth(260.0f);
-        ImGui::InputTextWithHint("##NodeSearch", "Search nodes", search.data(), search.size());
+        ImGui::SetNextItemWidth(vultra::ui::dp(260.0f));
+        ImGui::InputTextWithHint("##NodeSearch", vultra::tr("materialGraph.addNode.searchHint"), search.data(), search.size());
         ImGui::Separator();
 
         const auto addNodeItem = [&](const vultra::material_graph::NodeDescriptor& desc) {
@@ -1714,6 +1755,33 @@ namespace vultra_app
             "Output",
             "Other",
         };
+        const auto categoryLabel = [](const char* category) -> const char* {
+            const std::string_view name {category};
+            if (name == "Inputs")
+                return vultra::trId("materialGraph.category.inputs", "Inputs");
+            if (name == "Parameters")
+                return vultra::trId("materialGraph.category.parameters", "Parameters");
+            if (name == "Math")
+                return vultra::trId("materialGraph.category.math", "Math");
+            if (name == "Logic")
+                return vultra::trId("materialGraph.category.logic", "Logic");
+            if (name == "Texture")
+                return vultra::trId("materialGraph.category.texture", "Texture");
+            if (name == "Shading")
+                return vultra::trId("materialGraph.category.shading", "Shading");
+            if (name == "Output")
+                return vultra::trId("materialGraph.category.output", "Output");
+            return vultra::trId("materialGraph.category.other", "Other");
+        };
+        const auto subcategoryLabel = [](const char* subcategory) -> const char* {
+            const std::string_view name {subcategory};
+            if (name == "Vertex Attributes")
+                return vultra::trId("materialGraph.subcategory.vertexAttributes", "Vertex Attributes");
+            if (name == "Textures")
+                return vultra::trId("materialGraph.subcategory.textures", "Textures");
+            return subcategory;
+        };
+
         const auto typeIds = m_Registry.typeIds();
         if (search[0] != '\0')
         {
@@ -1728,7 +1796,7 @@ namespace vultra_app
                 drawNodeTypeItem(typeId);
             }
             if (matched == 0)
-                ImGui::TextDisabled("No matching nodes.");
+                ImGui::TextDisabled("%s", vultra::tr("materialGraph.addNode.noMatchingNodes"));
             ImGui::EndPopup();
             return;
         }
@@ -1747,7 +1815,7 @@ namespace vultra_app
             if (!hasItems)
                 continue;
 
-            if (ImGui::BeginMenu(category))
+            if (ImGui::BeginMenu(categoryLabel(category)))
             {
                 if (std::string_view(category) == "Inputs")
                 {
@@ -1768,7 +1836,7 @@ namespace vultra_app
                         }
                         if (!hasSubItems)
                             continue;
-                        if (ImGui::BeginMenu(subcategory))
+                        if (ImGui::BeginMenu(subcategoryLabel(subcategory)))
                         {
                             for (const auto& typeId : typeIds)
                             {
@@ -1798,7 +1866,7 @@ namespace vultra_app
         m_Dirty = true;
         if (auto* assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
             assets->setTextAssetOverride(m_CurrentUri, vultra::material_graph::saveGraphToText(m_Graph));
-        m_Status = m_LiveApply ? "Live preview updated" : "Edited";
+        m_Status = m_LiveApply ? vultra::tr("materialGraph.status.livePreviewUpdated") : vultra::tr("materialGraph.status.edited");
     }
 
     void MaterialGraphWindow::ensurePreviewWorld(EditorContext&)

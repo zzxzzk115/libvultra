@@ -3,6 +3,7 @@
 #include "editor_app/ui/windows/render_graph_window.hpp"
 #include "editor_app/ui/windows/scene_view_window.hpp"
 
+#include <vultra/core/services/i18n_service.hpp>
 #include <vultra/function/rendering/runtime_profiler.hpp>
 
 #include <imgui.h>
@@ -27,6 +28,19 @@ namespace vultra_app
     void EditorWindowManager::draw(EditorContext& ctx)
     {
         vultra::RuntimeProfiler::ExternalScope perf {"EditorWindowManager::draw"};
+
+        // Re-localize window titles when the UI language changes (keeps the "###id" stable so docking
+        // is preserved). Cheap string compare per frame; only rebuilds on an actual switch.
+        if (auto* i18n = ctx.services ? ctx.services->tryGet<vultra::II18nService>() : nullptr)
+        {
+            if (i18n->currentLanguage() != m_LastLanguage)
+            {
+                m_LastLanguage.assign(i18n->currentLanguage());
+                for (auto& window : m_Windows)
+                    window->refreshLocalization();
+            }
+        }
+
         if (m_WasOpen.size() != m_Windows.size())
         {
             m_WasOpen.resize(m_Windows.size(), false);

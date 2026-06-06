@@ -2,12 +2,14 @@
 
 #include "editor_app/editor_history.hpp"
 
+#include <vultra/core/i18n/i18n.hpp>
+
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 
 namespace vultra_app
 {
-    HistoryWindow::HistoryWindow() : EditorWindow("History", ICON_MDI_BACKUP_RESTORE) {}
+    HistoryWindow::HistoryWindow() : EditorWindow("History", ICON_MDI_BACKUP_RESTORE, "window.history") {}
 
     void HistoryWindow::draw(EditorContext& ctx)
     {
@@ -20,7 +22,7 @@ namespace vultra_app
         auto* history = ctx.history;
         if (!history)
         {
-            ImGui::TextDisabled("History is unavailable.");
+            ImGui::TextDisabled("%s", vultra::tr("history.unavailable"));
             ImGui::End();
             return;
         }
@@ -34,7 +36,7 @@ namespace vultra_app
         if (!canUndo)
             ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("Undo (Ctrl+Z)");
+            ImGui::SetTooltip("%s", vultra::tr("history.undo"));
 
         ImGui::SameLine();
         if (!canRedo)
@@ -44,14 +46,14 @@ namespace vultra_app
         if (!canRedo)
             ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("Redo (Ctrl+Shift+Z)");
+            ImGui::SetTooltip("%s", vultra::tr("history.redo"));
 
         ImGui::Separator();
 
         const auto& entries = history->entries();
         if (entries.empty())
         {
-            ImGui::TextDisabled("No scene history yet.");
+            ImGui::TextDisabled("%s", vultra::tr("history.empty"));
             ImGui::End();
             return;
         }

@@ -1,0 +1,1931 @@
+{
+  "inspector": {
+    "field": {
+      "active": "アクティブ",
+      "allowSleeping": "スリープを許可",
+      "ambientColor": "アンビエントカラー",
+      "ambientIntensity": "アンビエント強度",
+      "anchorMax": "アンカー最大",
+      "anchorMin": "アンカー最小",
+      "anchoredPositionPx": "アンカー位置 (px)",
+      "angularDamping": "角度減衰",
+      "angularVelocity": "角速度",
+      "animation": "アニメーション",
+      "blendDistance": "ブレンド距離",
+      "borderRadiusPx": "境界半径 (px)",
+      "boxSize": "ボックスサイズ",
+      "builtinGeometry": "組み込みジオメトリ",
+      "castsShadow": "影を落とす",
+      "cellSizePx": "セルサイズ (px)",
+      "checkColor": "チェック色",
+      "checked": "チェック済み",
+      "clearColor": "クリアカラー",
+      "clearMode": "クリアモード",
+      "color": "色",
+      "colorValue": "色の値",
+      "cullingMask": "カリングマスク",
+      "emissionRate": "放出レート",
+      "enableIBL": "IBLを有効化",
+      "enabled": "有効",
+      "endColor": "終了色",
+      "endSize": "終了サイズ",
+      "environmentMap": "環境マップ",
+      "fallbackMono": "フォールバックモノ",
+      "fillColor": "塗りつぶし色",
+      "fitMode": "フィットモード",
+      "floatValue": "Float値",
+      "fontSizePx": "フォントサイズ (px)",
+      "fovYDegrees": "FOV Y 度",
+      "friction": "摩擦",
+      "gaussianSplat": "ガウシアンスプラット",
+      "gpu": "GPU",
+      "graph": "グラフ",
+      "gravity": "重力",
+      "gravityFactor": "重力係数",
+      "grounded": "接地",
+      "halfHeight": "半分の高さ",
+      "halfHeightOfCylinder": "シリンダーの半分の高さ",
+      "handleColor": "ハンドル色",
+      "height": "高さ",
+      "horizontalAlign": "水平方向の整列",
+      "hoveredColor": "ホバー時の色",
+      "iblColor": "IBLカラー",
+      "iblIntensity": "IBL強度",
+      "innerConeDegrees": "内側コーン角度",
+      "inputMove": "入力移動",
+      "intensity": "強度",
+      "interactable": "操作可能",
+      "isSensor": "センサー",
+      "jumpRequested": "ジャンプ要求",
+      "jumpSpeed": "ジャンプ速度",
+      "kind": "種別",
+      "lifetime": "寿命",
+      "lifetimeVariance": "寿命のばらつき",
+      "linearDamping": "直線減衰",
+      "linearVelocity": "直線速度",
+      "locked": "ロック",
+      "loop": "ループ",
+      "marginPx": "マージン (px)",
+      "mask": "マスク",
+      "mass": "質量",
+      "material": "マテリアル",
+      "materialGraph": "マテリアルグラフ",
+      "materialOverrides": "マテリアルオーバーライド",
+      "maxAngularVelocity": "最大角速度",
+      "maxLinearVelocity": "最大直線速度",
+      "maxParticles": "最大パーティクル数",
+      "maxSlopeAngleDegrees": "最大傾斜角度",
+      "maxValue": "最大値",
+      "mesh": "メッシュ",
+      "minValue": "最小値",
+      "mode": "モード",
+      "motionQuality": "モーション品質",
+      "motionType": "モーションタイプ",
+      "name": "名前",
+      "normalColor": "通常色",
+      "objectLayer": "オブジェクトレイヤー",
+      "offColor": "オフ色",
+      "onColor": "オン色",
+      "orthographicHeight": "正射影の高さ",
+      "outerConeDegrees": "外側コーン角度",
+      "overrideMass": "質量を上書き",
+      "paddingPx": "パディング (px)",
+      "parallaxCorrection": "視差補正",
+      "pivot": "ピボット",
+      "pixelsPerUnit": "ユニットあたりのピクセル",
+      "playOnStart": "開始時に再生",
+      "playing": "再生中",
+      "position": "位置",
+      "pressedColor": "押下時の色",
+      "primary": "プライマリ",
+      "priority": "優先度",
+      "projection": "投影",
+      "properties": "プロパティ",
+      "radius": "半径",
+      "range": "範囲",
+      "referenceResolutionPx": "基準解像度 (px)",
+      "renderMode": "レンダーモード",
+      "rendererKey": "レンダラーキー",
+      "restitution": "反発係数",
+      "rotation": "回転",
+      "rotationDegrees": "回転角度 (度)",
+      "scale": "スケール",
+      "scaleMode": "スケールモード",
+      "scriptUri": "スクリプト URI",
+      "selectable": "選択可能",
+      "shape": "形状",
+      "sizeDeltaPx": "サイズデルタ (px)",
+      "skeleton": "スケルトン",
+      "skybox": "スカイボックス",
+      "slot": "スロット",
+      "sortOrder": "ソート順",
+      "spacingPx": "間隔 (px)",
+      "spawnRadius": "スポーン半径",
+      "speed": "速度",
+      "startColor": "開始色",
+      "startSize": "開始サイズ",
+      "startVelocity": "初速度",
+      "stepHeight": "ステップの高さ",
+      "stereoGraphMode": "ステレオグラフモード",
+      "targetGraphic": "ターゲットグラフィック",
+      "text": "テキスト",
+      "texture": "テクスチャ",
+      "textureUri": "テクスチャ URI",
+      "time": "時間",
+      "tint": "色合い",
+      "trackColor": "トラックの色",
+      "trackingOrigin": "トラッキング原点",
+      "twoSided": "両面",
+      "type": "種類",
+      "uuid": "UUID",
+      "value": "値",
+      "velocity": "速度",
+      "velocityVariance": "速度のばらつき",
+      "verticalAlign": "垂直方向の整列",
+      "visible": "表示",
+      "width": "幅",
+      "worldSpace": "ワールド空間",
+      "zFar": "Z 遠",
+      "zNear": "Z 近"
+    },
+    "preview": "プレビュー",
+    "unsaved": "未保存",
+    "reload": "再読み込み",
+    "clear": "クリア",
+    "diagnostics": "診断",
+    "noneAngle": "<なし>",
+    "selectAngle": "<選択>",
+    "noneParen": "(なし)",
+    "addComponent": "コンポーネントを追加",
+    "allComponentsPresent": "追加可能なコンポーネントはすべて存在します。",
+    "fitToMeshBoundsSuffix": " (利用可能な場合はメッシュの境界に合わせる)",
+    "xrViewRequiresCamera": "XR View は Camera コンポーネントを持つエンティティにのみ追加できます。",
+    "servicesUnavailable": "サービスを利用できません。",
+    "worldServiceUnavailable": "World サービスを利用できません。",
+    "assetServiceUnavailable": "Asset サービスを利用できません。",
+    "entityGone": "選択中のエンティティは存在しなくなりました。",
+    "componentAdded": "コンポーネントを追加しました: {}",
+    "componentRemoved": "コンポーネントを削除しました: {}",
+    "componentMovedUp": "コンポーネントを上に移動しました: {}",
+    "componentMovedDown": "コンポーネントを下に移動しました: {}",
+    "component": {
+      "generic": "コンポーネント",
+      "transform": "トランスフォーム",
+      "rectTransform": "Rect Transform",
+      "layer": "レイヤー",
+      "canvas": "キャンバス",
+      "uiPanel": "UI パネル",
+      "uiImage": "UI イメージ",
+      "uiText": "UI テキスト",
+      "uiButton": "UI ボタン",
+      "uiToggle": "UI トグル",
+      "uiSlider": "UI スライダー",
+      "uiProgressBar": "UI プログレスバー",
+      "uiLayout": "UI レイアウト",
+      "status": "ステータス",
+      "hierarchy": "階層",
+      "mesh": "メッシュ",
+      "animator": "アニメーター",
+      "gaussianSplat": "Gaussian Splat",
+      "camera": "カメラ",
+      "xrView": "XR View",
+      "environment": "環境",
+      "reflectionProbe": "リフレクションプローブ",
+      "light": "ライト",
+      "particleEmitter": "パーティクルエミッター",
+      "rigidBody": "リジッドボディ",
+      "boxShape": "ボックスシェイプ",
+      "sphereShape": "スフィアシェイプ",
+      "capsuleShape": "カプセルシェイプ",
+      "script": "スクリプト",
+      "prefab": "プレハブ",
+      "material": "マテリアル"
+    },
+    "category": {
+      "core": "コア",
+      "ui": "UI",
+      "rendering": "レンダリング",
+      "animation": "アニメーション",
+      "lighting": "ライティング",
+      "physics": "物理",
+      "camera": "カメラ",
+      "scripting": "スクリプティング"
+    },
+    "project": {
+      "title": "プロジェクト",
+      "name": "名前: {}",
+      "root": "ルート: {}",
+      "assetRoot": "アセットルート: {}",
+      "defaultScene": "デフォルトシーン: {}",
+      "noProject": "(プロジェクトなし)"
+    },
+    "entity": {
+      "title": "エンティティ",
+      "uuid": "UUID: {}"
+    },
+    "hierarchy": {
+      "children": "子: {}",
+      "parentUuid": "親UUID: {}",
+      "parentSceneRoot": "親: <シーンルート>"
+    },
+    "transform": {
+      "direction": "方向"
+    },
+    "rectTransform": {
+      "anchors": "アンカー",
+      "size": "サイズ",
+      "anchorMin": "アンカー最小",
+      "anchorMax": "アンカー最大",
+      "pivot": "ピボット"
+    },
+    "light": {
+      "kindLabel": "種類",
+      "kind": {
+        "directional": "ディレクショナル",
+        "point": "ポイント",
+        "spot": "スポット",
+        "rectangleArea": "矩形エリア"
+      },
+      "color": "色",
+      "intensity": "強度",
+      "range": "範囲",
+      "radius": "半径",
+      "innerCone": "内側コーン角度",
+      "outerCone": "外側コーン角度",
+      "width": "幅",
+      "height": "高さ",
+      "castsShadow": "影を落とす",
+      "twoSided": "両面"
+    },
+    "xrView": {
+      "trackingOriginLabel": "トラッキング原点",
+      "trackingOrigin": {
+        "local": "ローカル",
+        "stage": "ステージ"
+      },
+      "stereoGraphLabel": "ステレオグラフ",
+      "stereoGraph": {
+        "singleGraphStereo": "シングルグラフステレオ"
+      },
+      "fallbackMono": "フォールバックモノ",
+      "runtime": "ランタイム",
+      "openxr": "OpenXR: {}",
+      "mirror": "ミラー: {}",
+      "requestSession": "XRセッションを要求",
+      "sessionHint": "有効なXRカメラがアクティブになるとセッションが開始します。"
+    },
+    "uiLayout": {
+      "layout": "レイアウト",
+      "paddingPx": "パディング Px",
+      "marginPx": "マージン Px",
+      "spacingPx": "間隔 Px",
+      "cellSizePx": "セルサイズ Px",
+      "kind": {
+        "horizontal": "水平",
+        "vertical": "垂直",
+        "grid": "グリッド"
+      }
+    },
+    "animator": {
+      "modeLabel": "モード",
+      "skeleton": "スケルトン",
+      "graph": "グラフ",
+      "animation": "アニメーション",
+      "playOnStart": "開始時に再生",
+      "playing": "再生中",
+      "loop": "ループ",
+      "speed": "速度",
+      "time": "時間",
+      "resetTime": "時間をリセット",
+      "editGraph": "グラフを編集",
+      "clearSkeletonOverride": "スケルトンのオーバーライドをクリア",
+      "overrideSkeleton": "スケルトンをオーバーライド",
+      "fromMesh": "(メッシュから)",
+      "noSkinnedMesh": "(スキンメッシュなし)",
+      "noGraphs": "プロジェクトにアニメーターグラフがありません。",
+      "mode": {
+        "singleClip": "シングルクリップ",
+        "graph": "グラフ"
+      }
+    },
+    "script": {
+      "none": "なし (Luaスクリプト)",
+      "dialogTitle": "Luaスクリプトを選択",
+      "chooseTip": "クリックして.luaスクリプトを選択するか、Luaスクリプトアセットをここにドロップします。",
+      "selectTip": "Luaスクリプトを選択。",
+      "dropNotLua": "ドロップされたアセットはLuaスクリプトではありません。",
+      "mustBeInRoot": "スクリプトはプロジェクトのアセットルート内にある必要があります。"
+    },
+    "assetType": {
+      "mesh": "メッシュ",
+      "skeleton": "スケルトン",
+      "animation": "アニメーション",
+      "gaussianSplat": "ガウシアンスプラット",
+      "texture": "テクスチャ",
+      "asset": "アセット"
+    },
+    "assetField": {
+      "none": "なし ({})",
+      "dropTip": "{} アセットをここにドロップします。",
+      "selectTip": "{} アセットを選択します。",
+      "clearTip": "参照をクリアします。",
+      "dropRejected": "ドロップしたアセットの種類はこのフィールドでは受け付けられません。"
+    },
+    "assetPicker": {
+      "select": "{} を選択",
+      "noAssets": "この種類のソースアセットがありません。"
+    },
+    "material": {
+      "source": "ソース",
+      "graph": "グラフ",
+      "material": "マテリアル",
+      "texture": "テクスチャ",
+      "textureUri": "テクスチャ URI",
+      "overrides": "マテリアルオーバーライド",
+      "addOverride": "マテリアルオーバーライドを追加",
+      "forkBuiltin": "ビルトインをフォーク",
+      "forkBuiltinTip": "ビルトイン PBR マテリアルから編集可能なプロジェクト .vmat.json を作成します。",
+      "propertyBlock": "プロパティブロック",
+      "addProperty": "プロパティを追加",
+      "removeProperty": "プロパティを削除",
+      "addSourceProperty": "ソースプロパティを追加",
+      "customBuiltinId": "カスタムビルトイン ID",
+      "properties": "プロパティ",
+      "save": "マテリアルを保存",
+      "saved": "マテリアルを保存しました: {}",
+      "saveFailed": "マテリアルの保存に失敗しました: {}",
+      "parseFailed": "マテリアルアセットの解析に失敗しました: {}",
+      "noShaderParams": "このシェーダーで編集可能なマテリアルパラメーターが見つかりませんでした。シェーダーライブラリが読み込まれ、シェーダーがマテリアルパラメーターを宣言しているか確認してください。",
+      "noExposedParams": "このソースには公開されたパラメーターがまだありません。",
+      "unsupportedType": "サポートされていないプロパティの種類",
+      "kind": {
+        "builtin": "ビルトイン",
+        "shader": "シェーダー",
+        "graph": "グラフ"
+      },
+      "propType": {
+        "float": "Float",
+        "color": "色",
+        "texture2D": "Texture2D"
+      }
+    },
+    "materialSlot": {
+      "slot": "スロット",
+      "slot0Default": "スロット 0 - デフォルトマテリアル",
+      "slot0Loading": "スロット 0 - メッシュマテリアルを読み込み中",
+      "materialN": "マテリアル {}",
+      "slotLabel": "スロット {} - {}",
+      "slotUnknown": "スロット {} - 不明なマテリアル",
+      "keepSlot": "スロット {} を保持",
+      "usedBySubmesh": "サブメッシュで使用中: {}",
+      "tip": "マテリアルグラフのオーバーライドはメッシュマテリアルスロットを1つ置き換えます。保存される値は引き続き数値のスロットです。"
+    },
+    "shader": {
+      "library": "ライブラリ",
+      "shader": "シェーダー",
+      "vertex": "頂点",
+      "fragment": "フラグメント",
+      "vertexLibrary": "頂点ライブラリ",
+      "fragmentLibrary": "フラグメントライブラリ",
+      "compute": "コンピュート",
+      "raygen": "Raygen",
+      "miss": "Miss",
+      "closestHit": "Closest Hit",
+      "anyHit": "Any Hit"
+    },
+    "renderPass": {
+      "title": "レンダーグラフパス",
+      "pipelineLabel": "パイプライン",
+      "inputs": "入力",
+      "outputs": "出力",
+      "dispatchByOutputSize": "出力サイズでディスパッチ",
+      "save": "パスを保存",
+      "saved": "レンダーグラフパスを保存しました。",
+      "saveFailedOpen": "レンダーパスの保存に失敗しました: ファイルを開けません。",
+      "saveFailedWrite": "レンダーパスの保存に失敗しました: ファイルを書き込めません。",
+      "pipeline": {
+        "graphics": "グラフィックス",
+        "compute": "コンピュート",
+        "raytracing": "レイトレーシング"
+      }
+    },
+    "rendererKey": {
+      "rayTracingUnavailable": "現在のレンダーデバイスではレイトレーシングを利用できません。"
+    },
+    "graphNode": {
+      "title": "マテリアルグラフノード",
+      "typeId": "タイプ ID",
+      "displayName": "表示名",
+      "inputs": "入力",
+      "outputs": "出力",
+      "removePin": "ピンを削除",
+      "addPin": "ピンを追加",
+      "defaultParams": "デフォルトパラメーター",
+      "addParam": "パラメーターを追加",
+      "paramNameHint": "パラメーター名",
+      "defaultUri": "デフォルト URI",
+      "glslOutputExpressions": "GLSL 出力式",
+      "save": "ノードを保存",
+      "saved": "マテリアルグラフノードを保存しました: {}",
+      "saveFailed": "マテリアルグラフノードの保存に失敗しました: {}",
+      "parseFailed": "マテリアルグラフノードの解析に失敗しました: {}"
+    },
+    "asset": {
+      "title": "アセット",
+      "uuid": "UUID: {}",
+      "type": "種類: {}",
+      "source": "ソース: {}",
+      "imported": "インポート: {}"
+    },
+    "skeleton": {
+      "title": "スケルトン",
+      "name": "名前: {}",
+      "joints": "ジョイント: {}",
+      "payload": "ペイロード: {}",
+      "unavailable": "スケルトンのメタデータを利用できません。"
+    },
+    "animation": {
+      "title": "アニメーション",
+      "name": "名前: {}",
+      "duration": "長さ: {:.3f} s",
+      "payload": "ペイロード: {}",
+      "unavailable": "アニメーションのメタデータを利用できません。"
+    },
+    "sourceAsset": {
+      "title": "ソースアセット",
+      "name": "名前: {}",
+      "type": "種類: {}",
+      "path": "パス: {}",
+      "size": "サイズ: {}",
+      "folder": "フォルダー",
+      "editAsSource": "ソースとして編集",
+      "openLuaSource": "Lua ソースを開く",
+      "openInCodeEditor": "コードエディターで開く",
+      "editingScene": "シーンソースを編集中: {}",
+      "openedInEditor": "コードエディターで開きました: {}"
+    },
+    "sceneSource": {
+      "title": "シーンソース",
+      "setAsDefault": "デフォルトシーンに設定",
+      "defaultSet": "デフォルトシーンを設定しました: {}"
+    },
+    "prefab": {
+      "uri": "URI: {}",
+      "uuid": "UUID: {}"
+    },
+    "camera": {
+      "alignWithSceneView": "シーンビューに合わせる",
+      "alignWithSceneViewTip": "このカメラエンティティを現在のシーンビューのカメラ姿勢に移動します。",
+      "alignSceneViewWithCamera": "シーンビューをカメラに合わせる",
+      "alignSceneViewWithCameraTip": "シーンビューのエディターカメラをこのカメラエンティティに移動します。",
+      "sceneViewUnavailable": "シーンビューのカメラはまだ利用できません。",
+      "alignedToSceneView": "カメラをシーンビューに合わせました。",
+      "sceneViewAligned": "シーンビューをカメラに合わせました。"
+    },
+    "forkMaterial": {
+      "noAssetRoot": "マテリアルのフォークに失敗しました: プロジェクトのアセットルートがありません。",
+      "failed": "マテリアルのフォークに失敗しました: {}",
+      "noFileName": "マテリアルのフォークに失敗しました: 利用可能なファイル名がありません。",
+      "outsideAssets": "マテリアルのフォークに失敗しました: 対象がプロジェクトアセットの外にあります。",
+      "forked": "組み込みマテリアルをフォークしました: {}",
+      "forkedNoImport": "組み込みマテリアルをフォークしましたが、アセットレジストリのインポートは実行されませんでした。"
+    },
+    "texture": {
+      "targetFormat": "ターゲットフォーマット",
+      "subtype": {
+        "uiSprite": "UI / スプライト",
+        "normalMap": "ノーマルマップ",
+        "cursor": "カーソル"
+      }
+    },
+    "textureImport": {
+      "title": "テクスチャインポート",
+      "subtype": "サブタイプ",
+      "sourceSize": "ソースサイズ: {}",
+      "importedSize": "インポート後のサイズ: {}",
+      "missing": "見つかりません",
+      "notImported": "未インポート",
+      "generateMipmaps": "ミップマップを生成",
+      "flipY": "Y を反転",
+      "qualityLevel": "品質レベル",
+      "compressionLevel": "圧縮レベル",
+      "compressOnlyLarge": "大きいもののみ圧縮",
+      "downscaleLarge": "大きいものを縮小",
+      "downscaleMinDimension": "縮小の最小サイズ",
+      "downscaleTargetDimension": "縮小の目標サイズ",
+      "bakeNormalMap": "ノーマルマップをベイク",
+      "directXNormalMap": "DirectX ノーマルマップ",
+      "revert": "元に戻す",
+      "saveFailed": "テクスチャインポート設定の保存に失敗しました。",
+      "applied": "テクスチャインポート設定を適用し、再インポートをキューに追加しました: {}"
+    },
+    "modelPreview": {
+      "servicesUnavailable": "プレビューサービスを利用できません。",
+      "empty": "プレビューシーンが空です。"
+    },
+    "layerMask": {
+      "all": "すべて"
+    },
+    "removeBlock": {
+      "prefab": "プレハブデータはプレハブインスタンスによって管理されています。",
+      "uiButtonTargetGraphic": "UI ボタンの targetGraphic がこの Image を使用しています。削除する前に targetGraphic をクリアするか再設定してください。"
+    },
+    "enum": {
+      "projection": {
+        "perspective": "透視投影",
+        "orthographic": "平行投影"
+      },
+      "clearMode": {
+        "color": "色",
+        "skybox": "スカイボックス"
+      },
+      "motionType": {
+        "static": "静的",
+        "kinematic": "キネマティック",
+        "dynamic": "動的"
+      },
+      "objectLayer": {
+        "nonMoving": "非移動",
+        "moving": "移動"
+      },
+      "motionQuality": {
+        "discrete": "離散",
+        "linearCast": "リニアキャスト"
+      },
+      "geometry": {
+        "externalMesh": "外部メッシュ",
+        "quad": "クアッド",
+        "cube": "キューブ",
+        "sphere": "スフィア",
+        "capsule": "カプセル"
+      },
+      "scaleMode": {
+        "constantPixels": "固定ピクセル",
+        "scaleWithScreen": "画面に合わせてスケール"
+      },
+      "fitMode": {
+        "stretch": "ストレッチ",
+        "contain": "収める",
+        "cover": "覆う"
+      },
+      "hAlign": {
+        "left": "左",
+        "center": "中央",
+        "right": "右"
+      },
+      "vAlign": {
+        "top": "上",
+        "middle": "中央",
+        "bottom": "下"
+      },
+      "shape": {
+        "box": "ボックス",
+        "sphere": "スフィア"
+      }
+    }
+  },
+  "renderGraph": {
+    "selector": {
+      "graph": "グラフ",
+      "noneSelected": "<なし>"
+    },
+    "toolbar": {
+      "reload": "再読み込み",
+      "liveApply": "ライブ適用",
+      "topoOrder": "トポロジー順",
+      "autoLayout": "自動レイアウト",
+      "deleteSelected": "選択項目を削除",
+      "pipeline": "パイプライン",
+      "editing": "編集中 {}",
+      "noGraphSelected": "レンダーグラフが選択されていません",
+      "builtinReadOnlySuffix": " (組み込み、読み取り専用)",
+      "openAssetHint": ".vrg.json レンダーグラフアセットを開きます。"
+    },
+    "export": {
+      "title": "組み込みレンダーグラフをエクスポート",
+      "readOnlyHint": "組み込みグラフは読み取り専用です。エクスポート先を選択してください。",
+      "suggestedFile": "推奨ファイル: {}",
+      "target": "ターゲット"
+    },
+    "addMenu": {
+      "projectPass": "プロジェクトパス",
+      "builtinPass": "組み込みパス"
+    },
+    "menu": {
+      "editInternals": "内部を編集",
+      "deleteFeature": "機能を削除",
+      "deleteLink": "リンクを削除",
+      "deletePass": "パスを削除",
+      "enabled": "有効"
+    },
+    "pipeline": {
+      "customRenderGraph": "カスタムレンダーグラフ",
+      "builtinFeature": "組み込み機能",
+      "passCount": "{} パス",
+      "doubleClickEdit": "ダブルクリックで内部を編集"
+    },
+    "pin": {
+      "in": "入力",
+      "out": "出力"
+    },
+    "canvas": {
+      "importedResource": "インポート済みリソース",
+      "shader": "シェーダー: {}"
+    },
+    "param": {
+      "unknown": "不明"
+    },
+    "banner": {
+      "graphInvalid": "グラフが無効です: {}"
+    },
+    "camera": {
+      "editorCamera": "エディターカメラ",
+      "gameCamera": "ゲームカメラ",
+      "gameCameraNamed": "ゲームカメラ: {}"
+    },
+    "runtime": {
+      "viewerTitle": "ランタイムフレームグラフビューア",
+      "captureStats": "テクスチャ: {}/{} キャプチャ済み、グラフ: {}/{}",
+      "autoFit": "自動フィット",
+      "scale": "スケール",
+      "noFrameGraph": "フレームグラフはまだコンパイルされていません。",
+      "copyDot": "DOT をコピー",
+      "copyDotFallbackTip": "再構築した Graphviz DOT フォールバックをコピー",
+      "copyDotTip": "FrameGraph が出力した選択中のランタイムグラフ DOT をコピー",
+      "graphLabel": "{} - {} ({} ノード)",
+      "pinImport": "インポート",
+      "pinRead": "読み取り",
+      "pinInSideEffect": "入力\n副作用",
+      "pinIn": "入力",
+      "pinUse": "使用",
+      "pinSide": "副作用",
+      "pinOut": "出力"
+    },
+    "texture": {
+      "nameSize": "{} | {}x{}",
+      "nameSizeFormat": "{} | {}x{} | {}",
+      "capturing": "選択したテクスチャのプレビューをキャプチャ中...",
+      "modeColor": "色",
+      "modeRawDepth": "生の深度",
+      "modeLinearDepth": "リニア深度",
+      "modeInvertedLinearDepth": "反転リニア深度",
+      "modeAlpha": "アルファ",
+      "modeNormal": "法線",
+      "modeTooltip": "テクスチャ表示モード",
+      "mode": "モード",
+      "gamma": "ガンマ",
+      "resetTooltip": "プレビュー設定をリセット",
+      "fitRange": "範囲をフィット",
+      "fitRangeTooltip": "プレビュー画像から深度範囲を自動フィット",
+      "clampMin": "クランプ最小",
+      "clampMax": "クランプ最大",
+      "cameraZ": "カメラ z: {:.4f} - {:.1f}",
+      "leftEye": "左目",
+      "rightEye": "右目"
+    },
+    "overlay": {
+      "preview": "プレビュー",
+      "preparingPreview": "プレビューを準備中",
+      "noPrimaryCamera": "プライマリカメラがありません"
+    },
+    "status": {
+      "switched": "レンダーグラフを切り替えました",
+      "rendererInfo": "レンダラー '{}': {}",
+      "switchFailed": "レンダーグラフの切り替えに失敗しました",
+      "featureOrderUpdated": "機能の順序を更新しました",
+      "linkRemoved": "パス入力リンクを削除しました",
+      "readOnlyEdge": "これは読み取り専用の依存エッジです。",
+      "passDeleted": "パスを削除しました",
+      "nodeReadOnly": "このノードは読み取り専用です。",
+      "resourceDeleted": "リソースを削除しました",
+      "nothingSelected": "何も選択されていません",
+      "exported": "エクスポートしました",
+      "exportedDetail": "組み込みレンダーグラフをエクスポートしました: {}",
+      "topoApplied": "トポロジー順を適用しました",
+      "autoLayoutApplied": "自動レイアウトを適用しました",
+      "repairedLinks": "古いレンダーグラフリンクを修復しました",
+      "loadedBuiltin": "組み込みグラフを読み込みました",
+      "loadBuiltinFailed": "組み込みグラフの読み込みに失敗しました: {}",
+      "loaded": "読み込みました",
+      "loadFailed": "グラフの読み込みに失敗しました: {}",
+      "connectToReorder": "機能の出力を別の機能の入力に接続してパイプラインを並べ替えます。",
+      "featureDeleted": "パイプライン機能を削除しました",
+      "passLinkUpdated": "パス入力リンクを更新しました",
+      "validationFailed": "検証に失敗しました: {}",
+      "runtimeApplyUnavailable": "ランタイム適用に失敗しました: レンダー/アセットサービスが利用できません。",
+      "appliedInMemory": "メモリに適用済み",
+      "appliedInMemoryDetail": "レンダーグラフをメモリに適用しました: {}",
+      "builtinReadOnly": "組み込みグラフは読み取り専用です。エクスポートを使用してください。",
+      "saved": "保存しました",
+      "savedDetail": "レンダーグラフを保存しました: {}"
+    }
+  },
+  "sceneView": {
+    "tool": {
+      "select": "選択 (Q)",
+      "move": "移動 (W)",
+      "rotate": "回転 (E)",
+      "scale": "スケール (R)",
+      "rect": "矩形ツール (T)",
+      "transform": "トランスフォームツール (Y)"
+    },
+    "coord": {
+      "local": "ローカル",
+      "localTooltip": "ローカル座標空間",
+      "global": "グローバル",
+      "globalTooltip": "グローバル座標空間"
+    },
+    "toolbar": {
+      "grid": "グリッド",
+      "uiSnap": "UI スナップ",
+      "viewModeTooltip": "3D / 2D UI"
+    },
+    "gizmos": {
+      "popupTitle": "エディターギズモ",
+      "tooltip": "エディターギズモ（アイコン、境界、コライダー、ライト）",
+      "header": "エディターギズモ",
+      "icons": "アイコン",
+      "iconSize": "アイコンサイズ",
+      "selectionBounds": "選択範囲の境界",
+      "colliders": "コライダー",
+      "lightCameraGizmos": "ライト＆カメラギズモ",
+      "showAll": "すべて表示",
+      "hideAll": "すべて非表示"
+    },
+    "clearColor": {
+      "applyTooltip": "UI クリアカラーを適用",
+      "popupTitle": "カスタム UI クリアカラー",
+      "customTooltip": "カスタム UI クリアカラー",
+      "label": "クリアカラー"
+    },
+    "gameView": {
+      "title": "ゲームビュー",
+      "preparingPreview": "プレビューを準備中",
+      "noPrimaryCamera": "プライマリカメラがありません"
+    },
+    "overlay": {
+      "canvas": "キャンバス"
+    },
+    "history": {
+      "moveUiRect": "UI 矩形を移動",
+      "rotateUiRect": "UI 矩形を回転",
+      "resizeUiRect": "UI 矩形をリサイズ",
+      "scaleUiRect": "UI 矩形をスケール",
+      "transformEntity": "エンティティをトランスフォーム"
+    }
+  },
+  "materialGraph": {
+    "toolbar": {
+      "graph": "グラフ",
+      "new": "新規",
+      "compile": "コンパイル",
+      "autoLayout": "自動レイアウト",
+      "liveApply": "ライブ適用"
+    },
+    "nodeMenu": {
+      "editNote": "ノートを編集...",
+      "clearNote": "ノートをクリア",
+      "note": "ノート"
+    },
+    "blackboard": {
+      "defaultValue": "デフォルト",
+      "defaultUri": "デフォルト URI"
+    },
+    "inspector": {
+      "blackboard": "ブラックボード",
+      "addParameter": "パラメーターを追加",
+      "noExposedParameters": "公開パラメーターがありません。",
+      "displayName": "表示名",
+      "uiRange": "UI 範囲",
+      "min": "最小",
+      "max": "最大",
+      "diagnostics": "診断",
+      "noDiagnostics": "診断はありません。"
+    },
+    "preview": {
+      "mesh": "プレビューメッシュ",
+      "skybox": "スカイボックス",
+      "time": "時間",
+      "usingSelectedMesh": "プレビュー: スロット 0 のオーバーライドを使用した選択メッシュ",
+      "usingSphere": "プレビュー: スロット 0 のオーバーライドを使用した球体",
+      "controlsHint": "左ドラッグ: プレビュー回転  ホイール: ズーム  F: フレーム"
+    },
+    "addNode": {
+      "searchHint": "ノードを検索",
+      "noMatchingNodes": "一致するノードがありません。"
+    },
+    "category": {
+      "inputs": "入力",
+      "parameters": "パラメーター",
+      "math": "数学",
+      "logic": "論理",
+      "texture": "テクスチャ",
+      "shading": "シェーディング",
+      "output": "出力",
+      "other": "その他"
+    },
+    "subcategory": {
+      "vertexAttributes": "頂点属性",
+      "textures": "テクスチャ"
+    },
+    "status": {
+      "loadedCustomNodes": "{} 個のカスタムノードを読み込みました",
+      "loadedCustomNodesSkipped": "{} 個のカスタムノードを読み込み、{} 個をスキップしました",
+      "reloaded": "再読み込みしました",
+      "alreadyOpen": "すでに開いています",
+      "alreadyOpenMessage": "マテリアルグラフはすでに開いています: {}",
+      "openedMessage": "マテリアルグラフを開きました: {}",
+      "openFailedMessage": "マテリアルグラフを開けませんでした: {}",
+      "loadFailed": "読み込みに失敗しました",
+      "loaded": "読み込みました",
+      "saveFailed": "保存に失敗しました",
+      "saved": "保存しました",
+      "compileFailed": "コンパイルに失敗しました",
+      "writeShaderFailed": "生成されたシェーダーの書き込みに失敗しました",
+      "compiled": "コンパイルしました: {}",
+      "autoLayoutApplied": "自動レイアウトを適用しました",
+      "livePreviewUpdated": "ライブプレビューを更新しました",
+      "edited": "編集しました",
+      "previewMeshChanged": "プレビューメッシュを変更しました",
+      "previewMeshReset": "プレビューメッシュを球体にリセットしました",
+      "previewSkyboxChanged": "プレビュースカイボックスを変更しました",
+      "previewSkyboxCleared": "プレビュースカイボックスをクリアしました"
+    }
+  },
+  "animatorGraph": {
+    "toolbar": {
+      "new": "新規",
+      "addState": "ステートを追加"
+    },
+    "status": {
+      "opened": "アニメーターグラフを開きました: {}",
+      "new": "新規アニメーターグラフ: {}",
+      "loaded": "読み込み完了",
+      "saved": "保存しました",
+      "saveFailed": "保存に失敗しました",
+      "saveFailedBadUri": "保存に失敗しました: 不正なuri"
+    },
+    "paramType": {
+      "bool": "Bool",
+      "trigger": "Trigger",
+      "float": "Float"
+    },
+    "condType": {
+      "greater": "> 大なり",
+      "less": "< 小なり",
+      "equal": "== 等しい",
+      "notEqual": "!= 等しくない",
+      "isTrue": "true である",
+      "isFalse": "false である",
+      "triggerSet": "トリガーがセット済み"
+    },
+    "node": {
+      "anyState": "Any State",
+      "anyOut": "any ->",
+      "in": "-> in",
+      "out": "out ->",
+      "clip": "クリップ {}",
+      "speed": "速度 {:.2f}{}",
+      "loopSuffix": "  ループ"
+    },
+    "menu": {
+      "setAsEntry": "エントリに設定",
+      "addTransitionFromHere": "ここからトランジションを追加",
+      "deleteState": "ステートを削除",
+      "deleteTransition": "トランジションを削除"
+    },
+    "section": {
+      "graph": "グラフ",
+      "parameters": "パラメーター",
+      "state": "ステート",
+      "transition": "トランジション"
+    },
+    "field": {
+      "entry": "エントリ",
+      "clip": "クリップ",
+      "speed": "速度",
+      "loop": "ループ",
+      "noAnimationAssets": "(アニメーションアセットが未インポート)"
+    },
+    "param": {
+      "add": "パラメーターを追加",
+      "triggerHint": "(トリガー)"
+    },
+    "transition": {
+      "route": "{}  ->  {}",
+      "duration": "継続時間",
+      "durationFormat": "%.2f s",
+      "hasExitTime": "終了時間あり",
+      "exitTime": "終了時間",
+      "conditionsHint": "条件 (すべて満たす必要あり)",
+      "paramPlaceholder": "(パラメーター)",
+      "addCondition": "条件を追加"
+    }
+  },
+  "codeEditor": {
+    "status": {
+      "openFailed": "ファイルを開けませんでした。",
+      "opened": "ソースを開きました: {}",
+      "saveFailed": "ファイルの保存に失敗しました。",
+      "saved": "ソースを保存しました: {}",
+      "pipelineReloaded": "レンダーパイプラインを保存して再読み込みしました。",
+      "shaderReloaded": "シェーダーライブラリを保存して再読み込みしました。",
+      "reimported": "ソースアセットを再インポートしました。",
+      "noImportTarget": "このファイルに対して更新されたインポート対象はありません。"
+    },
+    "diagnostics": {
+      "title": "診断",
+      "none": "診断はありません。",
+      "lineLabel": "行 {}: {}"
+    },
+    "toolbar": {
+      "reload": "再読み込み",
+      "reimport": "再インポート"
+    },
+    "hint": {
+      "openFromContentBrowser": "Content Browser からスクリプトまたはシェーダーを開いてください。",
+      "noSourceSelected": "ソースファイルが選択されていません。"
+    }
+  },
+  "aiChat": {
+    "thinking": "思考中",
+    "you": "あなた",
+    "restart": "再起動",
+    "newChat": {
+      "tooltip": "新しいチャット (履歴をクリア)"
+    },
+    "stop": {
+      "tooltip": "停止"
+    },
+    "send": {
+      "tooltip": "送信 (Enter)"
+    },
+    "composer": {
+      "hint": "Enter で送信 · Ctrl+Enter で改行"
+    },
+    "banner": {
+      "agentDisabled": "エージェント機能は無効です。チャットするには Editor Settings でエージェントを有効にしてください。"
+    },
+    "status": {
+      "launchFailed": "'claude' の起動に失敗しました。Claude CLI がインストールされ、PATH に含まれていますか?",
+      "launchFailedSuffix": " - Claude CLI がインストールされ、PATH に含まれていますか?"
+    },
+    "tool": {
+      "fallbackName": "ツール",
+      "inputPrefix": "入力: ",
+      "resultPrefix": "結果: "
+    },
+    "permission": {
+      "tooltip": "エージェント権限モード",
+      "header": "権限モード",
+      "statusMessage": "AI 権限モード: {}",
+      "ask": {
+        "label": "確認",
+        "hint": "各編集またはコマンドの前に確認します。"
+      },
+      "acceptEdits": {
+        "label": "編集を承認",
+        "hint": "ファイル編集を自動承認します。その他は引き続き確認します。"
+      },
+      "plan": {
+        "label": "プラン",
+        "hint": "プランのみ - 編集やコマンドは実行しません。"
+      },
+      "bypass": {
+        "label": "バイパス",
+        "hint": "確認なしですべてを実行します (慎重に使用)。"
+      }
+    }
+  },
+  "projectSettings": {
+    "title": "プロジェクト設定",
+    "searchHint": "設定を検索...",
+    "noneParen": "(なし)",
+    "resetToDefaults": "デフォルトにリセット",
+    "nav": {
+      "project": "プロジェクト",
+      "projectInfo": "プロジェクト情報",
+      "renderSettings": "レンダー設定",
+      "buildScenes": "ビルドシーン",
+      "packaging": "パッケージング",
+      "plugins": "プラグイン",
+      "engine": "エンジン",
+      "general": "一般",
+      "rendering": "レンダリング",
+      "materials": "マテリアル",
+      "scripting": "スクリプティング"
+    },
+    "info": {
+      "header": "プロジェクト情報",
+      "projectName": "プロジェクト名",
+      "assetRoot": "アセットルート",
+      "defaultScene": "デフォルトシーン",
+      "noProjectLoaded": "プロジェクトが読み込まれていません"
+    },
+    "render": {
+      "header": "レンダー設定",
+      "editingRenderGraph": "編集中のレンダーグラフ",
+      "editorSelection": "エディター選択",
+      "selectionOutline": "選択アウトライン",
+      "outlineColor": "アウトラインの色",
+      "outlineThickness": "アウトラインの太さ",
+      "fillOpacity": "塗りの不透明度",
+      "edgeOpacity": "エッジの不透明度"
+    },
+    "buildScenes": {
+      "header": "ビルドシーン",
+      "addDefault": "デフォルトを追加",
+      "addAll": "すべて追加",
+      "noScenesInfo": "ビルドシーンが設定されていません。シーンを追加してパッケージのルートとランタイムのシーンインデックスを管理します。",
+      "alias": "エイリアス",
+      "scene": "シーン",
+      "order": "順序",
+      "exportInfo": "有効なビルドシーンはシーンインデックス順に依存関係ルートとしてエクスポートされます。"
+    },
+    "packaging": {
+      "header": "パッケージング",
+      "packageName": "パッケージ名",
+      "packageManifest": "パッケージマニフェスト",
+      "info": "ランタイムパッケージは同名の実行ファイルとVPKを使用します。"
+    },
+    "plugins": {
+      "header": "プラグイン",
+      "info": "プラグインは <asset-root>/plugins (例: resources/plugins) に配置されるため、プロジェクトのVPKにパックされ、デフォルトでは無効です。有効にすると今すぐおよび次回起動時に読み込まれます。ネイティブプラグインはデスクトップ専用です。",
+      "noneFound": "{} にプラグインが見つかりません",
+      "provides": "提供: {}",
+      "notSupported": "このプラットフォーム ({}) ではサポートされていません。"
+    },
+    "status": {
+      "changed": "プロジェクト設定が変更されました。",
+      "reset": "プロジェクト設定をリセットしました。",
+      "saved": "プロジェクト設定を保存しました。",
+      "saveFailed": "プロジェクト設定の保存に失敗しました: {}"
+    }
+  },
+  "editorSettings": {
+    "title": "エディター設定",
+    "searchHint": "設定を検索...",
+    "resetToDefaults": "デフォルトにリセット",
+    "nav": {
+      "general": "一般",
+      "appearance": "外観",
+      "fonts": "フォント",
+      "externalEditor": "外部エディター",
+      "aiAgent": "AIエージェント",
+      "advanced": "詳細",
+      "filesPaths": "ファイルとパス",
+      "console": "コンソール",
+      "privacy": "プライバシー"
+    },
+    "appearance": {
+      "header": "外観",
+      "colorTheme": "カラーテーマ",
+      "background": "背景",
+      "panel": "パネル",
+      "text": "テキスト",
+      "accent": "アクセント",
+      "applicationScale": "アプリケーションスケール",
+      "textScale": "テキストスケール",
+      "showSplash": "起動時にスプラッシュ画面を表示",
+      "enableAnimations": "アニメーションを有効化"
+    },
+    "theme": {
+      "dark": "ダーク",
+      "graphite": "グラファイト",
+      "light": "ライト",
+      "custom": "カスタム"
+    },
+    "fonts": {
+      "header": "フォント",
+      "interfaceFont": "インターフェースフォント",
+      "interfaceFontSize": "インターフェースフォントサイズ",
+      "monospaceFont": "等幅フォント",
+      "monospaceFontSize": "等幅フォントサイズ",
+      "useSystemFonts": "システムフォントを使用"
+    },
+    "externalEditor": {
+      "header": "外部エディター",
+      "executable": "実行ファイル",
+      "info": "外部エディターコマンドが利用可能な場合、ソースアセット操作で使用されます。"
+    },
+    "aiAgent": {
+      "header": "AIエージェント",
+      "enablePanel": "エージェントパネルを有効化",
+      "autoStartMcp": "MCPサーバーを自動起動",
+      "mcpServerName": "MCPサーバー名",
+      "mcpHost": "MCPホスト",
+      "mcpPort": "MCPポート",
+      "clientHeader": "エージェントクライアント",
+      "endpoint": "エンドポイント",
+      "model": "モデル",
+      "cliPath": "CLIパス",
+      "cliInfo": "エージェントCLIへのパス (例: claude)。空欄の場合はPATH上の 'claude' を解決します。",
+      "guardrailsHeader": "操作ガードレール",
+      "allowProjectOps": "プロジェクト操作を許可",
+      "allowEngineOps": "エンジン操作を許可",
+      "requireConfirmation": "書き込み前に確認を要求",
+      "guardrailsInfo": "このページはエージェントとMCPの設定のみを保存します。ランタイムの起動、チャット、ツール呼び出し、エディター操作は専用のエージェントサービスで扱うべきです。"
+    },
+    "status": {
+      "languageChanged": "言語を変更しました: {}",
+      "themeChanged": "エディターテーマを変更しました: {}",
+      "reset": "エディター設定をリセットしました。",
+      "saved": "エディター設定を保存しました。",
+      "saveFailed": "エディター設定の保存に失敗しました: {}"
+    }
+  },
+  "exportSettings": {
+    "title": "エクスポート設定",
+    "platform": "プラットフォーム",
+    "architecture": "アーキテクチャ",
+    "buildConfiguration": "ビルド構成",
+    "exportTemplate": "エクスポートテンプレート",
+    "hostExportInfo": "ホストプラットフォームへのエクスポートでは、空の場合は現在のエディター実行ファイルを使用できます。",
+    "crossExportInfo": "クロスプラットフォームエクスポートにはターゲットランタイムの実行ファイルが必要です。",
+    "outputDirectory": "出力ディレクトリ",
+    "projectName": "プロジェクト名",
+    "includeDebugSymbols": "デバッグシンボルを含める",
+    "compressContent": "コンテンツを圧縮",
+    "useVpkFiles": "VPKファイルを使用",
+    "additionalArguments": "追加の引数",
+    "export": "エクスポート",
+    "exportAndRun": "エクスポートして実行",
+    "statusHeader": "エクスポート状況",
+    "statusLine": "状況: {}",
+    "running": "実行中",
+    "lastBuild": "最終ビルド: {}",
+    "config": {
+      "development": "開発",
+      "release": "リリース"
+    },
+    "build": {
+      "header": "ビルド"
+    },
+    "block": {
+      "alreadyRunning": "エクスポートはすでに実行中です。",
+      "outputRequired": "出力ディレクトリが必要です。",
+      "noProject": "プロジェクトが読み込まれていません。",
+      "noDefaultScene": "デフォルトシーンが選択されていません。",
+      "stopPlayMode": "エクスポートの前に再生モードを停止してください。",
+      "missingTemplate": "{} のエクスポートテンプレートがありません。",
+      "templateMissing": "エクスポートテンプレートが存在しません。"
+    },
+    "status": {
+      "failedNoProject": "エクスポートに失敗しました: プロジェクトが読み込まれていません。",
+      "failedNoScene": "エクスポートに失敗しました: デフォルトシーンが選択されていません。",
+      "saveSceneFirst": "エクスポートを停止しました: 先に現在のシーンを保存してください。"
+    }
+  },
+  "editorApp": {
+    "about": {
+      "title": "Vultra Editor について",
+      "product": "Vultra Editor",
+      "version": "バージョン: {}",
+      "contributors": "コントリビューター: Lazy_V (Kexuan Zhang)",
+      "license": "ライセンス: MIT",
+      "github": "GitHub"
+    },
+    "openSceneConfirm": {
+      "title": "シーンを開く",
+      "prompt": "保存していない変更を破棄してこのシーンを開きますか?"
+    },
+    "importPopup": {
+      "title": "アセットをインポート"
+    },
+    "import": {
+      "preparing": "アセットのインポートを準備中...",
+      "importingAssets": "アセットをインポート中",
+      "item": "項目",
+      "scanningAssets": "プロジェクトアセットをスキャン中...",
+      "scanningPath": "{} をスキャン中",
+      "importingAssetsProject": "プロジェクトアセットをインポート中...",
+      "importingPath": "{} をインポート中",
+      "finalizingDatabase": "アセットデータベースを確定中...",
+      "importingChanged": "変更されたアセットをインポート中...",
+      "error": {
+        "assetImportFailed": "アセットのインポートに失敗しました",
+        "saveRegistryFailed": "アセットレジストリの保存に失敗しました",
+        "importerUnavailable": "vasset インポーターが利用できず、レジストリも存在しません"
+      }
+    },
+    "loading": {
+      "preparingWorkspace": "エディターワークスペースを準備中...",
+      "preparingProjectAssets": "プロジェクトアセットを準備中...",
+      "openingAssetDatabase": "アセットデータベースを開いています...",
+      "preparingThumbnails": "アセットのサムネイルを準備中...",
+      "renderingThumbnails": "アセットのサムネイルをレンダリング中...",
+      "preparingWindows": "エディターウィンドウを準備中...",
+      "loadingScene": "シーン {} を読み込み中...",
+      "loadingSceneAssets": "シーンアセットを読み込み中...",
+      "openingEditor": "エディターを開いています...",
+      "ready": "準備完了。"
+    },
+    "overlay": {
+      "openingEditor": "エディターを開いています...",
+      "loadingAssets": "アセットを読み込み中...",
+      "preparing": "準備中..."
+    },
+    "taskBar": {
+      "fps": "FPS {:.1f}",
+      "cpuCache": "CPU キャッシュ {}",
+      "ram": "RAM {}",
+      "ramWithAvail": "RAM {} / 利用可能 {}",
+      "vram": "VRAM {}",
+      "vramWithBudget": "VRAM {} / {}",
+      "job": "タスク",
+      "working": "処理中...",
+      "sceneLoad": "シーン読み込み",
+      "mcpListening": "MCP が {} で待機中",
+      "mcpNotRunning": "MCP は実行されていません (エディター設定で MCP の自動起動を有効にしてください)",
+      "mcpNotRunningError": "MCP は実行されていません: {}",
+      "agentDisabled": "エージェントは無効"
+    },
+    "history": {
+      "sceneOpened": "シーンを開いた",
+      "sceneLoaded": "シーンを読み込んだ"
+    },
+    "status": {
+      "openScene": {
+        "servicesUnavailable": "シーンを開けませんでした: サービスが利用できません。",
+        "stopPlayModeFirst": "別のシーンを開く前に再生モードを停止してください。",
+        "sceneWorldUnavailable": "シーンを開けませんでした: シーン/ワールドサービスが利用できません。",
+        "failed": "シーンを開けませんでした: {}",
+        "opened": "シーンを開きました: {}",
+        "cancelled": "シーンを開く操作をキャンセルしました。"
+      },
+      "saveScene": {
+        "stopPlayModeFirst": "シーンを保存する前に再生モードを停止してください。",
+        "noScenePath": "保存するシーンのパスが選択されていません。",
+        "sceneWorldUnavailable": "シーンの保存に失敗しました: scene/world サービスが利用できません。",
+        "saved": "シーンを保存しました: {}",
+        "failed": "シーンの保存に失敗しました: {}"
+      },
+      "playMode": {
+        "snapshotFailed": "再生モードのスナップショットに失敗しました: シーンにシリアライズ可能なルートがありません。",
+        "entered": "再生モードに入りました。",
+        "exited": "再生モードを終了しました。シーンの状態を復元しました。"
+      },
+      "import": {
+        "failed": "アセットのインポートに失敗しました: {}",
+        "imported": "プロジェクトアセットをインポートしました: {}"
+      },
+      "projectImport": {
+        "failed": "プロジェクトアセットのインポートに失敗しました: {}"
+      },
+      "projectLoad": {
+        "assetServiceUnavailable": "プロジェクトの読み込みに失敗しました: アセットサービスが利用できません。",
+        "loadedAssets": "プロジェクトアセットを読み込みました: {}"
+      },
+      "scene": {
+        "loadDefaultFailed": "デフォルトシーンの読み込みに失敗しました: {}",
+        "loadedDefault": "デフォルトシーンを読み込みました: {}"
+      }
+    }
+  },
+  "editorBuild": {
+    "error": {
+      "missingAssetRoot": "エクスポートに失敗しました: アセットルートが見つかりません {}",
+      "exportFailedDetail": "エクスポートに失敗しました: {}",
+      "assetImportReturned": "エクスポートに失敗しました: アセットインポート手順が {} を返しました。",
+      "assetPackReturned": "エクスポートに失敗しました: アセットパッケージ手順が {} を返しました。",
+      "vassetUnavailable": "エクスポートに失敗しました: このビルドでは vasset インポートがサポートされていません。",
+      "cannotCreateOutputFolder": "エクスポートに失敗しました: 出力フォルダーを作成できません {}",
+      "publishedRuntimeLaunchReturned": "エクスポートに失敗しました: 公開ランタイムの起動が {} を返しました。",
+      "targetMustMatchHost": "エクスポートして実行するには、ターゲットプラットフォームがホストプラットフォームと一致する必要があります。",
+      "templateRequired": "エクスポートに失敗しました: ターゲットプラットフォームにはエクスポートテンプレートの実行ファイルが必要です。",
+      "templateNotFound": "エクスポートに失敗しました: エクスポートテンプレートの実行ファイルが見つかりませんでした。",
+      "runtimeLaunchReturned": "エクスポートに成功しましたが、ランタイムの起動が {} を返しました。",
+      "webTemplateNotFound": "web エクスポートテンプレートが見つかりません: {}",
+      "webTemplateExtractFailed": "web テンプレートアーカイブの展開に失敗しました {}",
+      "webTemplateNotDirOrZip": "web エクスポートテンプレートはディレクトリでも .zip でもありません: {}",
+      "copyTemplateFileFailed": "テンプレートファイルのコピーに失敗しました {}: {}",
+      "webTemplateNoIndexHtml": "エクスポートに失敗しました: web テンプレートに index.html がありません (テンプレート: {})。",
+      "androidNotImplemented": "Android エクスポートはまだ実装されていません (予定)。",
+      "createOutputFolderFailed": "出力フォルダーの作成に失敗しました: {}",
+      "copyRuntimeFailed": "ランタイム実行ファイルのコピーに失敗しました: {}"
+    },
+    "progress": {
+      "writingManifest": "パッケージマニフェストを書き込み中...",
+      "reimportingPacking": "アセットを再インポートして VPK をパック中...",
+      "copyingRuntime": "ランタイム実行ファイルをコピー中...",
+      "launchingPublishedRuntime": "公開ランタイムを起動中...",
+      "runtimeLaunched": "ランタイムを起動しました。",
+      "exportComplete": "エクスポートが完了しました。",
+      "copyingTemplate": "エクスポートテンプレートをコピー中...",
+      "launchingRuntime": "ランタイムを起動中...",
+      "exportCompleteRuntimeLaunched": "エクスポートが完了しました。ランタイムを起動しました。",
+      "copyingWebTemplate": "web エクスポートテンプレートをコピー中...",
+      "startingWebServer": "ローカル web サーバーを起動中...",
+      "runtimeLaunchedInBrowser": "ブラウザーでランタイムを起動しました。",
+      "preparing": "準備中...",
+      "savingScenePreparing": "シーンを保存してパッケージを準備中..."
+    },
+    "status": {
+      "packedVpk": "VPK をパックしました: {}",
+      "runningPackage": "パッケージを実行中: {}",
+      "exportComplete": "エクスポート完了: {}",
+      "exportCompleteRunningPackage": "エクスポートが完了しました。パッケージを実行中: {}",
+      "exportCompleteServeOverHttp": "エクスポート完了: {} (実行するには http で配信してください)。",
+      "exportCompleteServerMessage": "エクスポートが完了しました。{}",
+      "exportCompleteWithServerMessage": "エクスポート完了: {}。{}",
+      "succeeded": "成功",
+      "failed": "失敗",
+      "thisSession": "このセッション",
+      "alreadyRunning": "エクスポートして実行は既に実行中です。",
+      "noProjectLoaded": "エクスポートして実行に失敗しました: プロジェクトが読み込まれていません。",
+      "noDefaultScene": "エクスポートして実行に失敗しました: デフォルトシーンが選択されていません。",
+      "stopPlayModeFirst": "エクスポートして実行する前に再生モードを停止してください。",
+      "saveSceneFirst": "エクスポートして実行を中止しました: まず現在のシーンを保存してください。",
+      "chooseOutputFolder": "エクスポートして実行: 出力フォルダーを選択してください。",
+      "exportRunStartedPackaging": "エクスポートして実行を開始しました: ランタイムをパッケージ中...",
+      "exportStartedPackaging": "エクスポートを開始しました: ランタイムをパッケージ中..."
+    },
+    "web": {
+      "noPythonServer": "出力フォルダーを http(s) で配信して index.html を開いてください (file:// では fetch がブロックされます)。サーバーを自動起動するための Python が見つかりませんでした。",
+      "servingAt": "{} で配信中"
+    },
+    "popup": {
+      "exportAndRun": "エクスポートして実行",
+      "exportAndRunOutput": "エクスポートして実行の出力"
+    },
+    "label": {
+      "exportAndRun": "エクスポートして実行",
+      "outputFolder": "出力フォルダー"
+    },
+    "hint": {
+      "reimportCanTakeAWhile": "アセットが再インポートされる場合、しばらく時間がかかることがあります。"
+    }
+  },
+  "launcher": {
+    "projectLauncher": "プロジェクトランチャー",
+    "subtitle": "ワークスペースを選択するか、新規作成してください。",
+    "searchHint": "プロジェクトを検索...",
+    "recentProjects": "最近のプロジェクト",
+    "workspace": "ワークスペース",
+    "addExisting": "既存を追加",
+    "importProject": "プロジェクトをインポート",
+    "window": {
+      "minimize": "最小化",
+      "maximize": "最大化",
+      "restore": "元に戻す"
+    },
+    "nav": {
+      "projects": "プロジェクト",
+      "newProject": "新規プロジェクト",
+      "openExisting": "既存を開く"
+    },
+    "empty": {
+      "title": "プロジェクトが見つかりません",
+      "hint": "プロジェクトを作成するか、既存のワークスペースを追加してください。"
+    },
+    "createDialog": {
+      "title": "Vultra プロジェクトを作成",
+      "hint": "空のフォルダーを選択してください。フォルダー名がプロジェクト名になります。",
+      "projectFolder": "プロジェクトフォルダー",
+      "template": "テンプレート",
+      "templateEmpty": "空",
+      "templateMinimal": "最小構成"
+    },
+    "existingDialog": {
+      "title": "既存の Vultra プロジェクトを追加",
+      "heading": "既存のプロジェクト",
+      "hint": ".vproject ファイルを含むプロジェクトルートを選択してください。",
+      "projectRoot": "プロジェクトルート"
+    },
+    "status": {
+      "addedProject": "プロジェクトを追加しました: {}",
+      "folderEmpty": "プロジェクトフォルダーが空です。",
+      "folderMissing": "プロジェクトフォルダーが存在しません: {}",
+      "pathNotFolder": "プロジェクトパスがフォルダーではありません: {}",
+      "inspectFailed": "プロジェクトフォルダーの検査に失敗しました: {}",
+      "folderNotEmpty": "プロジェクトフォルダーは空である必要があります: {}",
+      "invalidName": "プロジェクトフォルダー名が有効なプロジェクト名ではありません。",
+      "fileExists": "プロジェクトファイルは既に存在します: {}",
+      "createFailed": "プロジェクトの作成に失敗しました: {}",
+      "writeVprojectFailed": ".vproject の書き込みに失敗しました: {}",
+      "writeAssetsFailed": "デフォルトのプロジェクトアセットの書き込みに失敗しました: {}",
+      "createdProject": "プロジェクトを作成しました: {}",
+      "noVproject": ".vproject が見つかりません: {}",
+      "addedExisting": "既存のプロジェクトを追加しました: {}",
+      "removedProject": "ランチャーからプロジェクトを削除しました: {}",
+      "openFailed": "project.vproject を開けませんでした。",
+      "openedProject": "プロジェクトを開きました: {}"
+    },
+    "io": {
+      "createDirFailed": "ディレクトリ '{}' の作成に失敗しました: {}",
+      "openForWriteFailed": "書き込み用に '{}' を開けませんでした",
+      "writeFailed": "'{}' の書き込みに失敗しました"
+    }
+  },
+  "textureSelector": {
+    "none": "<なし>",
+    "filterHint": "テクスチャを絞り込み...",
+    "size": "サイズ",
+    "emptyState": "テクスチャアセットが見つかりません。",
+    "clear": "クリア",
+    "importFailed": "テクスチャがインポートされていないか、インポートに失敗しました: {}"
+  },
+  "fileDialog": {
+    "browse": "参照"
+  },
+  "meshSelector": {
+    "filterHint": "メッシュを絞り込み...",
+    "size": "サイズ",
+    "empty": "インポート済みのメッシュアセットが見つかりません。",
+    "clear": "クリア",
+    "field": {
+      "none": "<なし>"
+    }
+  },
+  "@meta": {
+    "name": "日本語"
+  },
+  "common": {
+    "save": "保存",
+    "cancel": "キャンセル",
+    "close": "閉じる",
+    "apply": "適用",
+    "ok": "OK",
+    "yes": "はい",
+    "no": "いいえ",
+    "delete": "削除",
+    "rename": "名前変更",
+    "create": "作成",
+    "open": "開く",
+    "add": "追加",
+    "remove": "削除",
+    "reset": "リセット",
+    "edit": "編集",
+    "copy": "コピー",
+    "paste": "貼り付け",
+    "duplicate": "複製",
+    "import": "インポート",
+    "export": "エクスポート",
+    "search": "検索",
+    "name": "名前",
+    "type": "種類",
+    "value": "値",
+    "none": "なし",
+    "default": "デフォルト",
+    "enabled": "有効",
+    "disabled": "無効",
+    "position": "位置",
+    "rotation": "回転",
+    "scale": "スケール"
+  },
+  "topbar": {
+    "title": "VultraEngine Editor"
+  },
+  "menu": {
+    "file": {
+      "title": "ファイル",
+      "newScene": "新規空シーン",
+      "saveScene": "シーンを保存",
+      "exportRun": "エクスポートして実行",
+      "exportSettings": "エクスポート設定",
+      "backToLauncher": "ランチャーに戻る"
+    },
+    "edit": {
+      "title": "編集",
+      "projectSettings": "プロジェクト設定",
+      "editorSettings": "エディター設定",
+      "resetLayout": "レイアウトをリセット"
+    },
+    "window": {
+      "title": "ウィンドウ",
+      "resetLayout": "レイアウトをリセット"
+    },
+    "tools": {
+      "title": "ツール",
+      "import": "インポート",
+      "saveAll": "すべて保存",
+      "profiler": "プロファイラーウィンドウ",
+      "frameDebugger": "フレームデバッガー",
+      "runtimeFrameGraph": "ランタイムフレームグラフビューアー",
+      "worldViewer": "ワールドビューアー"
+    },
+    "help": {
+      "title": "ヘルプ",
+      "about": "Vultra Editor について"
+    },
+    "renderdoc": {
+      "title": "RenderDoc",
+      "capture": "次のフレームをキャプチャ",
+      "available": "利用可能",
+      "unavailable": "利用不可",
+      "capturing": "キャプチャ中",
+      "idle": "アイドル",
+      "captures": "キャプチャ数: {}"
+    }
+  },
+  "playback": {
+    "resume": "再開",
+    "play": "再生",
+    "pause": "一時停止",
+    "stop": "停止",
+    "stepFrame": "フレーム送り",
+    "options": "再生オプション",
+    "resetState": "再生状態をリセット"
+  },
+  "toolbar": {
+    "contentDrawer": "コンテンツドロワー",
+    "editorTools": "エディターツール",
+    "graphTools": "グラフツール",
+    "noProject": "プロジェクトなし",
+    "noProjectLoaded": "プロジェクトが読み込まれていません",
+    "backToLauncher": "ランチャーに戻る",
+    "exportRun": "エクスポートして実行",
+    "exportRunTooltip": "パッケージをエクスポートして実行",
+    "platforms": "プラットフォーム",
+    "targetPlatform": "ターゲットプラットフォーム",
+    "settings": "設定"
+  },
+  "window": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "元のサイズに戻す",
+    "close": "閉じる",
+    "aiChat": "AI チャット",
+    "animatorGraph": "アニメーターグラフ",
+    "codeEditor": "コードエディター",
+    "console": "コンソール",
+    "contentBrowser": "コンテンツブラウザー",
+    "frameDebugger": "フレームデバッガー",
+    "gameView": "ゲームビュー",
+    "history": "履歴",
+    "inspector": "インスペクター",
+    "profiler": "プロファイラー",
+    "renderGraph": "レンダーグラフ",
+    "sceneHierarchy": "シーン階層",
+    "sceneView": "シーンビュー",
+    "worldViewer": "ワールドビューアー",
+    "materialGraph": "マテリアルグラフ"
+  },
+  "history": {
+    "unavailable": "履歴は利用できません。",
+    "undo": "元に戻す (Ctrl+Z)",
+    "redo": "やり直し (Ctrl+Shift+Z)",
+    "empty": "シーン履歴はまだありません。"
+  },
+  "console": {
+    "clear": "クリア",
+    "autoScroll": "自動スクロール",
+    "level": {
+      "trace": "トレース",
+      "info": "情報",
+      "warn": "警告",
+      "error": "エラー",
+      "critical": "重大",
+      "unknown": "不明"
+    },
+    "column": {
+      "type": "種類",
+      "message": "メッセージ"
+    }
+  },
+  "worldViewer": {
+    "liveWorlds": "アクティブなワールド: {}",
+    "entities": "エンティティ: {}",
+    "estCpu": "推定 CPU: {}",
+    "expandPools": "コンポーネントプールを展開",
+    "hint": "アクティブなワールド以外は通常、プレビューや未公開のステージングワールドを示します。",
+    "header": "{}  #{}{}  -  {} エンティティ, {} プール, {}",
+    "active": " (アクティブ)",
+    "noComponents": "  (コンポーネントなし)",
+    "column": {
+      "component": "コンポーネント",
+      "count": "数",
+      "estCpu": "推定 CPU"
+    }
+  },
+  "gameView": {
+    "noCamera": {
+      "title": "プライマリカメラなし",
+      "message": "ゲームをプレビューするには、CameraComponent を作成またはプライマリに設定してください。"
+    },
+    "createCamera": "カメラを作成",
+    "cameraCreated": "プライマリカメラエンティティを作成しました。",
+    "xrDisabled": {
+      "title": "XR 無効",
+      "message": "OpenXR を初期化できませんでした。ランタイム/ヘッドセットが利用可能か確認するか、--no-xr を付けて起動して XR を無効にしてください。"
+    },
+    "requestXr": "XR セッションを要求",
+    "xrWaiting": {
+      "title": "XR ミラーを待機中",
+      "message": "XR ランタイムがミラーテクスチャを生成すると、ヘッドセットのビューがここに表示されます。"
+    },
+    "metrics": {
+      "title": "メトリクス",
+      "fps": "FPS        {:.1f}",
+      "frame": "フレーム    {:.2f} ms",
+      "cpuFrame": "CPU フレーム {:.2f} ms",
+      "gpuFrame": "GPU フレーム {:.2f} ms",
+      "draws": "描画        {}",
+      "dispatch": "ディスパッチ {}",
+      "vramLocal": "VRAM ローカル {}",
+      "warmingUp": "プロファイラー準備中...",
+      "ramUsed": "RAM 使用    {}",
+      "ramAvail": "RAM 空き    {}",
+      "ramTotal": "RAM 合計    {}",
+      "splats": "スプラット   {} / {}"
+    },
+    "zoom": "ズーム",
+    "res": "解像度: {}x{}",
+    "gamma": "ガンマ",
+    "freeAspect": "フリーアスペクト"
+  },
+  "contentBrowser": {
+    "noRoot": {
+      "title": "アセットルートなし",
+      "message": "ソースアセットを参照するには、プロジェクトを開くか作成してください。"
+    },
+    "missingRoot": "アセットルートが見つかりません:\n{}",
+    "filterHint": "ソースアセットをフィルター...",
+    "iconSize": "アイコンサイズ:",
+    "missingDir": {
+      "title": "ディレクトリが見つかりません",
+      "message": "選択したフォルダーは既に存在しません。"
+    },
+    "importFile": "ファイルをインポート",
+    "importFolder": "フォルダーをインポート",
+    "importPackage": "パッケージをインポート",
+    "createFolder": "フォルダーを作成",
+    "exportPackage": "パッケージをエクスポート",
+    "importVultraPackage": "Vultra パッケージをインポート",
+    "exportVultraPackage": "Vultra パッケージをエクスポート",
+    "folder": "フォルダー",
+    "source": "ソース",
+    "reimportQueued": "ソースアセットの再インポートをキューに追加しました。",
+    "importingModel": "サブアセットを表示する前にモデルをインポート中...",
+    "invalidSubAssetUuid": "無効なサブアセット UUID です。",
+    "importingAsset": "ドラッグ前にアセットをインポート中...",
+    "notImported": "アセットはまだインポートされていません。",
+    "importFailed": "インポートに失敗しました: {}",
+    "copiedQueued": "アセットをコピーしました。インポートをキューに追加しました。",
+    "packageImportFailed": "パッケージのインポートに失敗しました: {}",
+    "packageImported": "パッケージをインポートしました: {} ファイル、変更なし {} 個をスキップ。",
+    "packageExportFailed": "パッケージのエクスポートに失敗しました: {}",
+    "packageValidationFailed": "パッケージの検証に失敗しました: {}",
+    "packageExported": "パッケージをエクスポートしました: {} ({} ファイル)。",
+    "renamed": "アセットの名前を変更しました。",
+    "renameFailed": "名前変更に失敗しました: {}",
+    "folderCreated": "フォルダーを作成しました。",
+    "createFolderFailed": "フォルダーの作成に失敗しました: {}",
+    "deleted": "アセットを削除しました。",
+    "deleteFailed": "削除に失敗しました: {}",
+    "column": {
+      "path": "パス"
+    },
+    "context": {
+      "inspect": "検査",
+      "editSource": "ソースを編集",
+      "reimport": "再インポート"
+    },
+    "subAsset": {
+      "mesh": "サブメッシュ",
+      "texture": "サブテクスチャ",
+      "skeleton": "サブスケルトン",
+      "animation": "サブアニメーション",
+      "asset": "サブアセット"
+    },
+    "open": {
+      "materialOutside": "マテリアルグラフを開けませんでした: グラフがアセットルートの外にあります。",
+      "material": "マテリアルグラフを開いています: {}",
+      "renderOutside": "レンダーグラフを開けませんでした: グラフがアセットルートの外にあります。",
+      "render": "レンダーグラフを開いています: {}",
+      "animatorOutside": "アニメーターグラフを開けませんでした: グラフがアセットルートの外にあります。",
+      "animator": "アニメーターグラフを開いています: {}",
+      "code": "コードエディターで開きました: {}",
+      "sceneOutside": "シーンを開けませんでした: シーンがアセットルートの外にあります。",
+      "scene": "シーンを開いています: {}"
+    },
+    "renameAsset": {
+      "title": "アセットの名前変更"
+    },
+    "createFolderDialog": {
+      "title": "フォルダーを作成"
+    },
+    "deleteAsset": {
+      "title": "アセットを削除",
+      "confirm": "このソースアセットを削除しますか？"
+    },
+    "createAsset": {
+      "title": "アセットを作成",
+      "unknownType": "アセットの作成に失敗しました: 不明なアセット種類です。",
+      "enterName": "アセットの作成に失敗しました: ファイル名を入力してください。",
+      "outsideRoot": "アセットの作成に失敗しました: 対象がアセットルートの外にあります。",
+      "exists": "アセットの作成に失敗しました: ファイルは既に存在します。",
+      "error": "アセットの作成に失敗しました: {}",
+      "cannotOpen": "アセットの作成に失敗しました: ファイルを開けません。",
+      "cannotWrite": "アセットの作成に失敗しました: ファイルを書き込めません。",
+      "created": "{} を作成しました。",
+      "createdNoImport": "{} を作成しましたが、アセットレジストリのインポートは実行されませんでした。",
+      "computeShader": "コンピュートシェーダー",
+      "raygenShader": "レイジェネレーションシェーダー",
+      "fragmentShader": "フラグメントシェーダー",
+      "none": "<なし>"
+    }
+  },
+  "frameDebugger": {
+    "column": {
+      "kind": "種別",
+      "label": "ラベル",
+      "id": "Id",
+      "state": "状態",
+      "refs": "参照数",
+      "from": "開始",
+      "to": "終了",
+      "resource": "リソース"
+    },
+    "import": "インポート",
+    "runtime": "ランタイム",
+    "state": {
+      "inactive": "非アクティブ",
+      "side": "サイド",
+      "active": "アクティブ"
+    },
+    "passes": "パス",
+    "noPassSelected": "パスが選択されていません。",
+    "inputs": "入力",
+    "outputs": "出力",
+    "captureFrame": "フレームをキャプチャ",
+    "captureRequested": "RenderDoc キャプチャを要求しました。",
+    "openRenderDoc": "RenderDoc を開く",
+    "captures": "captures={}{}",
+    "capturingSuffix": "、キャプチャ中",
+    "frozenFrame": "フリーズフレーム",
+    "live": "ライブ",
+    "freezeFrame": "フレームを固定",
+    "noGraph": "フレームグラフはまだコンパイルされていません。",
+    "notParseable": "フレームグラフのスナップショットを解析できません。",
+    "frameGraph": "フレームグラフ",
+    "counts": "passes={} resources={} edges={}",
+    "filter": "フィルター",
+    "filterHint": "パス/リソース/エッジ",
+    "tab": {
+      "passIo": "パス IO",
+      "textures": "テクスチャ",
+      "nodes": "ノード",
+      "edges": "エッジ",
+      "raw": "Raw"
+    },
+    "frameGraphTextures": "フレームグラフテクスチャ",
+    "noTextures": "キャプチャされたフレームグラフテクスチャはまだありません。",
+    "leftEye": "左目",
+    "rightEye": "右目",
+    "arrayLayer": "配列レイヤー",
+    "layer": "{}  レイヤー {} / {}",
+    "importedTexture": "インポートされたフレームグラフテクスチャ",
+    "previewUnavailableSample": "プレビューを利用できません: テクスチャはデバッグプレビューパスでサンプリングできません。",
+    "mode": {
+      "label": "モード",
+      "color": "色",
+      "rawDepth": "Raw深度",
+      "linearDepth": "リニア深度",
+      "invertedLinearDepth": "反転リニア深度",
+      "alpha": "アルファ",
+      "normal": "法線"
+    },
+    "cameraZ": "カメラ z: {:.4f} - {:.1f}",
+    "autoFitClamp": "プレビューからクランプを自動フィット",
+    "resetClamp": "クランプを 0..1 にリセット",
+    "clampMin": "クランプ最小",
+    "clampMax": "クランプ最大",
+    "gamma": "ガンマ",
+    "noChannels": "チャンネルが選択されていません。プレビューは黒で描画されます。",
+    "previewUnavailable": "テクスチャプレビューを利用できません。",
+    "previewNextFrame": "テクスチャプレビューは次のフレームで更新されます。",
+    "previewUnavailableResource": "このリソースのテクスチャプレビューは利用できません。",
+    "fitToView": "ビューに合わせる",
+    "nativeResolution": "ネイティブ解像度で表示"
+  },
+  "profiler": {
+    "noSamples": "フレームサンプルがありません。",
+    "unavailable": "レンダープロファイラーを利用できません。",
+    "warmingUp": "プロファイラーを準備中...",
+    "backendUnavailable": "レンダーバックエンドを利用できません。",
+    "capture": "キャプチャ",
+    "pause": "一時停止",
+    "autoEnable": "自動有効化",
+    "frameTimes": "フレームタイム",
+    "axisFrame": "フレーム",
+    "trackedResources": "追跡中のリソース: {}",
+    "texturesBytes": "テクスチャ {}",
+    "buffersBytes": "バッファー {}",
+    "vramBudget": "VRAM バジェット {} / {}",
+    "available": "利用可能 {}",
+    "vramExhaustion": "VRAM バジェットが枯渇に近づいています。",
+    "vramHeap": "VRAM ヒープ {}",
+    "vramUnavailable": "このバックエンド/デバイスではランタイム VRAM バジェットを利用できません。",
+    "ramUnavailable": "このプラットフォームではランタイム RAM 使用量を利用できません。",
+    "processRam": "プロセス RAM {}",
+    "systemRam": "システム RAM {} / {}",
+    "systemRamExhaustion": "システム RAM が枯渇に近づいています。",
+    "cpuFrame": "CPU フレーム {:.2f} ms",
+    "cpuRender": "CPU レンダー {:.2f} ms",
+    "gpu": "GPU {:.2f} ms",
+    "gpuNa": "GPU n/a",
+    "vsyncOn": "VSync オン",
+    "vsyncOff": "VSync オフ",
+    "draws": "描画 {}",
+    "dispatch": "ディスパッチ {}",
+    "updates": "更新 {}",
+    "gpuMem": "GPU メモリ {}",
+    "ram": "RAM {}",
+    "ramNa": "RAM n/a",
+    "ramAvail": "RAM 利用可能 {}",
+    "ramAvailNa": "RAM 利用可能 n/a",
+    "ramTotal": "RAM 合計 {}",
+    "ramTotalNa": "RAM 合計 n/a",
+    "cpuCache": "CPU キャッシュ {}",
+    "resType": {
+      "buffer": "バッファー",
+      "texture": "テクスチャ",
+      "resource": "リソース"
+    },
+    "resKind": {
+      "gpuLocal": "GPU ローカル",
+      "hostVisible": "ホスト可視",
+      "memory": "メモリ"
+    },
+    "column": {
+      "size": "サイズ",
+      "kind": "種類",
+      "details": "詳細",
+      "scope": "スコープ",
+      "totalMs": "合計 ms",
+      "selfMs": "自己 ms",
+      "calls": "呼び出し"
+    },
+    "tab": {
+      "plots": "プロット",
+      "cpu": "CPU",
+      "gpu": "GPU",
+      "memory": "メモリ"
+    }
+  },
+  "scene": {
+    "createEntity": "エンティティを作成",
+    "searchHint": "エンティティを検索...",
+    "servicesUnavailable": "サービスを利用できません。",
+    "worldServiceUnavailable": "ワールドサービスを利用できません。",
+    "entityLocked": "エンティティはロックされています。",
+    "cmdUnavailable": "エディターコマンド実行機能を利用できません",
+    "cmdFailed": "エディターコマンドが失敗しました",
+    "toggleVisibility": "表示を切り替え",
+    "toggleLock": "ロックを切り替え",
+    "column": {
+      "entity": "エンティティ",
+      "status": "ステータス"
+    },
+    "empty": {
+      "title": "エンティティなし",
+      "message": "右クリックまたは空のエンティティを作成で追加します。"
+    },
+    "context": {
+      "createChild": "子を作成"
+    },
+    "rename": {
+      "title": "エンティティの名前変更"
+    },
+    "instantiate": {
+      "title": "サブメッシュアセットをインスタンス化",
+      "keepChannels": "インポートしたトランスフォームチャンネルを保持:",
+      "instantiate": "インスタンス化"
+    },
+    "create": {
+      "empty": "空のエンティティ",
+      "basicGeometry": "基本ジオメトリ",
+      "quad": "クアッド",
+      "cube": "キューブ",
+      "sphere": "スフィア",
+      "capsule": "カプセル",
+      "light": "ライト",
+      "directionalLight": "ディレクショナルライト",
+      "pointLight": "ポイントライト",
+      "spotLight": "スポットライト",
+      "areaLight": "エリアライト",
+      "rendering": "レンダリング",
+      "particleEmitter": "パーティクルエミッター",
+      "camera": "カメラ",
+      "xrCamera": "XR カメラ",
+      "environment": "環境",
+      "ui": "UI",
+      "canvas": "キャンバス",
+      "panel": "パネル",
+      "text": "テキスト",
+      "image": "イメージ",
+      "button": "ボタン",
+      "toggle": "トグル",
+      "slider": "スライダー",
+      "progressBar": "プログレスバー",
+      "physics": "物理",
+      "staticBox": "スタティックボックス",
+      "dynamicSphere": "ダイナミックスフィア",
+      "capsuleRigidBody": "カプセルリジッドボディ"
+    }
+  },
+  "settings": {
+    "language": "言語"
+  }
+}

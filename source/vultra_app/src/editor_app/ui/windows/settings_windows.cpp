@@ -5,6 +5,9 @@
 #include "editor_app/ui/settings_widgets.hpp"
 #include "vproject.hpp"
 
+#include <vultra/core/i18n/i18n.hpp>
+#include <vultra/core/services/i18n_service.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/plugin/plugin_manifest.hpp>
 #include <vultra/function/services/plugin_service.hpp>
@@ -175,14 +178,14 @@ namespace vultra_app
             s_EnabledPlugins.clear();
             if (auto project = loadVProject(ctx.state.currentProject); project.has_value())
                 s_EnabledPlugins = project->enabledPlugins;
-            ImGui::OpenPopup("Project Settings");
+            ImGui::OpenPopup(vultra::trId("projectSettings.title", "Project Settings"));
             ctx.state.projectSettingsOpen = false;
         }
 
         ui::centerNextModalInCurrentWindow();
-        ImGui::SetNextWindowSize(ImVec2 {760.0f, 520.0f}, ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(ImVec2 {vultra::ui::dp(760.0f), vultra::ui::dp(520.0f)}, ImGuiCond_Appearing);
         bool popupOpen = true;
-        if (!ImGui::BeginPopupModal("Project Settings", &popupOpen))
+        if (!ImGui::BeginPopupModal(vultra::trId("projectSettings.title", "Project Settings"), &popupOpen))
             return;
         if (!popupOpen)
         {
@@ -192,43 +195,46 @@ namespace vultra_app
 
         ImGui::SetNextItemWidth(-1.0f);
         static char search[128] {};
-        ImGui::InputTextWithHint(
-            "##ProjectSettingsSearch", ICON_MDI_MAGNIFY " Search settings...", search, sizeof(search));
+        ImGui::InputTextWithHint("##ProjectSettingsSearch",
+                                 (std::string {ICON_MDI_MAGNIFY " "} + vultra::tr("projectSettings.searchHint")).c_str(),
+                                 search,
+                                 sizeof(search));
         ImGui::Separator();
 
-        ImGui::BeginChild("ProjectSettingsNav", ImVec2 {180.0f, -42.0f}, true);
-        ImGui::TextUnformatted("Project");
-        if (ui::settingsNavItem("Project Info", selectedPage == 0))
+        ImGui::BeginChild("ProjectSettingsNav", ImVec2 {vultra::ui::dp(180.0f), vultra::ui::dp(-42.0f)}, true);
+        ImGui::TextUnformatted(vultra::tr("projectSettings.nav.project"));
+        if (ui::settingsNavItem(vultra::trId("projectSettings.nav.projectInfo", "Project Info"), selectedPage == 0))
             selectedPage = 0;
-        if (ui::settingsNavItem("Render Settings", selectedPage == 1))
+        if (ui::settingsNavItem(vultra::trId("projectSettings.nav.renderSettings", "Render Settings"),
+                                selectedPage == 1))
             selectedPage = 1;
-        if (ui::settingsNavItem("Build Scenes", selectedPage == 2))
+        if (ui::settingsNavItem(vultra::trId("projectSettings.nav.buildScenes", "Build Scenes"), selectedPage == 2))
             selectedPage = 2;
-        if (ui::settingsNavItem("Packaging", selectedPage == 3))
+        if (ui::settingsNavItem(vultra::trId("projectSettings.nav.packaging", "Packaging"), selectedPage == 3))
             selectedPage = 3;
-        if (ui::settingsNavItem("Plugins", selectedPage == 4))
+        if (ui::settingsNavItem(vultra::trId("projectSettings.nav.plugins", "Plugins"), selectedPage == 4))
             selectedPage = 4;
         ImGui::Spacing();
-        ImGui::TextUnformatted("Engine");
+        ImGui::TextUnformatted(vultra::tr("projectSettings.nav.engine"));
         ImGui::BeginDisabled();
-        ui::settingsNavItem("General", false);
-        ui::settingsNavItem("Rendering", false);
-        ui::settingsNavItem("Materials", false);
-        ui::settingsNavItem("Scripting", false);
+        ui::settingsNavItem(vultra::trId("projectSettings.nav.general", "General"), false);
+        ui::settingsNavItem(vultra::trId("projectSettings.nav.rendering", "Rendering"), false);
+        ui::settingsNavItem(vultra::trId("projectSettings.nav.materials", "Materials"), false);
+        ui::settingsNavItem(vultra::trId("projectSettings.nav.scripting", "Scripting"), false);
         ImGui::EndDisabled();
         ImGui::EndChild();
 
         ImGui::SameLine();
-        ImGui::BeginChild("ProjectSettingsContent", ImVec2 {0.0f, -42.0f}, true);
+        ImGui::BeginChild("ProjectSettingsContent", ImVec2 {0.0f, vultra::ui::dp(-42.0f)}, true);
         bool projectSettingsChanged = false;
         if (selectedPage == 0)
         {
-            ui::drawSettingsSectionHeader("Project Info");
-            ui::beginSettingsRow("Project Name");
+            ui::drawSettingsSectionHeader(vultra::tr("projectSettings.info.header"));
+            ui::beginSettingsRow(vultra::tr("projectSettings.info.projectName"));
             projectSettingsChanged |=
                 ImGui::InputText("##ProjectName", m_ProjectNameBuffer.data(), m_ProjectNameBuffer.size());
             ui::endSettingsRow();
-            ui::beginSettingsRow("Asset Root");
+            ui::beginSettingsRow(vultra::tr("projectSettings.info.assetRoot"));
             if (m_ProjectAssetRootDialog.drawBrowseOnly(
                     "", m_ProjectAssetRootBuffer.data(), m_ProjectAssetRootBuffer.size()))
             {
@@ -245,10 +251,11 @@ namespace vultra_app
                     sceneUris.end())
                 sceneUris.push_back(bufferString(m_ProjectDefaultSceneBuffer));
             std::sort(sceneUris.begin(), sceneUris.end());
-            ui::beginSettingsRow("Default Scene");
-            if (ImGui::BeginCombo(
-                    "##DefaultScene",
-                    bufferString(m_ProjectDefaultSceneBuffer).empty() ? "(none)" : m_ProjectDefaultSceneBuffer.data()))
+            ui::beginSettingsRow(vultra::tr("projectSettings.info.defaultScene"));
+            if (ImGui::BeginCombo("##DefaultScene",
+                                  bufferString(m_ProjectDefaultSceneBuffer).empty() ?
+                                      vultra::tr("projectSettings.noneParen") :
+                                      m_ProjectDefaultSceneBuffer.data()))
             {
                 for (const auto& uri : sceneUris)
                 {
@@ -264,12 +271,12 @@ namespace vultra_app
                 ImGui::EndCombo();
             }
             ui::endSettingsRow();
-            ui::drawInfoRegion(ctx.state.currentProject.empty() ? "No project loaded" :
+            ui::drawInfoRegion(ctx.state.currentProject.empty() ? vultra::tr("projectSettings.info.noProjectLoaded") :
                                                                   ctx.state.currentProject.generic_string().c_str());
         }
         else if (selectedPage == 1)
         {
-            ui::drawSettingsSectionHeader("Render Settings");
+            ui::drawSettingsSectionHeader(vultra::tr("projectSettings.render.header"));
             auto renderGraphUris =
                 collectProjectRenderGraphUris(ctx.state.currentProject, bufferString(m_ProjectAssetRootBuffer));
             if (!bufferString(m_ProjectEditingRenderGraphBuffer).empty() &&
@@ -278,10 +285,10 @@ namespace vultra_app
                           bufferString(m_ProjectEditingRenderGraphBuffer)) == renderGraphUris.end())
                 renderGraphUris.push_back(bufferString(m_ProjectEditingRenderGraphBuffer));
             std::sort(renderGraphUris.begin(), renderGraphUris.end());
-            ui::beginSettingsRow("Editing Render Graph");
+            ui::beginSettingsRow(vultra::tr("projectSettings.render.editingRenderGraph"));
             if (ImGui::BeginCombo("##EditingRenderGraph",
                                   bufferString(m_ProjectEditingRenderGraphBuffer).empty() ?
-                                      "(none)" :
+                                      vultra::tr("projectSettings.noneParen") :
                                       m_ProjectEditingRenderGraphBuffer.data()))
             {
                 for (const auto& uri : renderGraphUris)
@@ -303,17 +310,20 @@ namespace vultra_app
             {
                 auto& outline = renderService->builtinRenderSettings().selectionOutline;
                 ImGui::Spacing();
-                ui::drawSettingsSectionHeader("Editor Selection");
-                ImGui::Checkbox("Selection Outline", &outline.enabled);
-                ImGui::ColorEdit3("Outline Color", &outline.color.x);
-                ImGui::SliderFloat("Outline Thickness", &outline.thickness, 1.0f, 8.0f, "%.0f px");
-                ImGui::SliderFloat("Fill Opacity", &outline.fillOpacity, 0.0f, 0.25f, "%.2f");
-                ImGui::SliderFloat("Edge Opacity", &outline.edgeOpacity, 0.0f, 1.0f, "%.2f");
+                ui::drawSettingsSectionHeader(vultra::tr("projectSettings.render.editorSelection"));
+                ImGui::Checkbox(vultra::tr("projectSettings.render.selectionOutline"), &outline.enabled);
+                ImGui::ColorEdit3(vultra::tr("projectSettings.render.outlineColor"), &outline.color.x);
+                ImGui::SliderFloat(
+                    vultra::tr("projectSettings.render.outlineThickness"), &outline.thickness, 1.0f, 8.0f, "%.0f px");
+                ImGui::SliderFloat(
+                    vultra::tr("projectSettings.render.fillOpacity"), &outline.fillOpacity, 0.0f, 0.25f, "%.2f");
+                ImGui::SliderFloat(
+                    vultra::tr("projectSettings.render.edgeOpacity"), &outline.edgeOpacity, 0.0f, 1.0f, "%.2f");
             }
         }
         else if (selectedPage == 2)
         {
-            ui::drawSettingsSectionHeader("Build Scenes");
+            ui::drawSettingsSectionHeader(vultra::tr("projectSettings.buildScenes.header"));
             auto sceneUris = collectAssetUrisWithExtension(
                 ctx.state.currentProject, bufferString(m_ProjectAssetRootBuffer), ".vscn");
             const auto defaultScene = bufferString(m_ProjectDefaultSceneBuffer);
@@ -325,7 +335,9 @@ namespace vultra_app
                 ctx.state.currentBuildScenes =
                     normalizedBuildScenes(defaultScene, ctx.state.currentBuildScenes);
 
-            if (ImGui::Button(ICON_MDI_PLUS "  Add Default", ImVec2 {128.0f, 0.0f}))
+            if (ImGui::Button((std::string {ICON_MDI_PLUS "  "} + vultra::tr("projectSettings.buildScenes.addDefault"))
+                                  .c_str(),
+                              ImVec2 {vultra::ui::dp(128.0f), 0.0f}))
             {
                 if (!defaultScene.empty() && !buildSceneContainsUri(ctx.state.currentBuildScenes, defaultScene))
                 {
@@ -338,7 +350,9 @@ namespace vultra_app
                 }
             }
             ImGui::SameLine();
-            if (ImGui::Button(ICON_MDI_PLUS "  Add All", ImVec2 {112.0f, 0.0f}))
+            if (ImGui::Button(
+                    (std::string {ICON_MDI_PLUS "  "} + vultra::tr("projectSettings.buildScenes.addAll")).c_str(),
+                    ImVec2 {vultra::ui::dp(112.0f), 0.0f}))
             {
                 for (const auto& uri : sceneUris)
                 {
@@ -356,20 +370,24 @@ namespace vultra_app
             ImGui::Spacing();
             if (ctx.state.currentBuildScenes.empty())
             {
-                ui::drawInfoRegion("No build scenes configured. Add scenes to control package roots and runtime scene indices.");
+                ui::drawInfoRegion(vultra::tr("projectSettings.buildScenes.noScenesInfo"));
             }
             else if (ImGui::BeginTable("BuildScenesTable",
                                        7,
                                        ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
                                            ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Resizable))
             {
-                ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 34.0f);
-                ImGui::TableSetupColumn("Enabled", ImGuiTableColumnFlags_WidthFixed, 64.0f);
-                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 0.26f);
-                ImGui::TableSetupColumn("Alias", ImGuiTableColumnFlags_WidthStretch, 0.26f);
-                ImGui::TableSetupColumn("Scene", ImGuiTableColumnFlags_WidthStretch, 0.48f);
-                ImGui::TableSetupColumn("Order", ImGuiTableColumnFlags_WidthFixed, 62.0f);
-                ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 34.0f);
+                ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(34.0f));
+                ImGui::TableSetupColumn(
+                    vultra::tr("common.enabled"), ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(64.0f));
+                ImGui::TableSetupColumn(vultra::tr("common.name"), ImGuiTableColumnFlags_WidthStretch, 0.26f);
+                ImGui::TableSetupColumn(
+                    vultra::tr("projectSettings.buildScenes.alias"), ImGuiTableColumnFlags_WidthStretch, 0.26f);
+                ImGui::TableSetupColumn(
+                    vultra::tr("projectSettings.buildScenes.scene"), ImGuiTableColumnFlags_WidthStretch, 0.48f);
+                ImGui::TableSetupColumn(
+                    vultra::tr("projectSettings.buildScenes.order"), ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(62.0f));
+                ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(34.0f));
                 ImGui::TableHeadersRow();
 
                 int removeIndex = -1;
@@ -410,7 +428,9 @@ namespace vultra_app
                     }
 
                     ImGui::TableSetColumnIndex(4);
-                    if (ImGui::BeginCombo("##BuildSceneUri", scene.uri.empty() ? "(none)" : scene.uri.c_str()))
+                    if (ImGui::BeginCombo("##BuildSceneUri",
+                                          scene.uri.empty() ? vultra::tr("projectSettings.noneParen") :
+                                                              scene.uri.c_str()))
                     {
                         for (const auto& uri : sceneUris)
                         {
@@ -436,7 +456,7 @@ namespace vultra_app
                     }
                     if (i == 0)
                         ImGui::EndDisabled();
-                    ImGui::SameLine(0.0f, 4.0f);
+                    ImGui::SameLine(0.0f, vultra::ui::dp(4.0f));
                     if (i + 1 == static_cast<int>(ctx.state.currentBuildScenes.size()))
                         ImGui::BeginDisabled();
                     if (ImGui::SmallButton(ICON_MDI_ARROW_DOWN))
@@ -469,31 +489,30 @@ namespace vultra_app
                     projectSettingsChanged = true;
                 }
             }
-            ui::drawInfoRegion("Enabled build scenes are exported as dependency roots in scene-index order.");
+            ui::drawInfoRegion(vultra::tr("projectSettings.buildScenes.exportInfo"));
         }
         else if (selectedPage == 3)
         {
-            ui::drawSettingsSectionHeader("Packaging");
-            ui::beginSettingsRow("Package Name");
+            ui::drawSettingsSectionHeader(vultra::tr("projectSettings.packaging.header"));
+            ui::beginSettingsRow(vultra::tr("projectSettings.packaging.packageName"));
             ImGui::TextUnformatted(m_ProjectNameBuffer.data());
             ui::endSettingsRow();
-            ui::beginSettingsRow("Package Manifest");
+            ui::beginSettingsRow(vultra::tr("projectSettings.packaging.packageManifest"));
             ImGui::TextUnformatted(kVPackageManifestPath);
             ui::endSettingsRow();
-            ui::drawInfoRegion("Runtime packages use a same-name executable and VPK.");
+            ui::drawInfoRegion(vultra::tr("projectSettings.packaging.info"));
         }
         else if (selectedPage == 4)
         {
-            ui::drawSettingsSectionHeader("Plugins");
+            ui::drawSettingsSectionHeader(vultra::tr("projectSettings.plugins.header"));
             const auto pluginsDir =
                 (ctx.state.currentProject / ctx.state.currentAssetRoot / "plugins").lexically_normal();
-            ui::drawInfoRegion("Plugins live in <asset-root>/plugins (e.g. resources/plugins) so they pack into "
-                               "the project VPK, and are off by default. Enable one to load it now and on the "
-                               "next launch. Native plugins are desktop-only.");
+            ui::drawInfoRegion(vultra::tr("projectSettings.plugins.info"));
 
             const auto manifests = vultra::discoverPlugins(pluginsDir);
             if (manifests.empty())
-                ImGui::TextDisabled("No plugins found in %s", pluginsDir.generic_string().c_str());
+                ImGui::TextDisabled(
+                    "%s", vultra::trf("projectSettings.plugins.noneFound", pluginsDir.generic_string()).c_str());
 
             for (const auto& manifest : manifests)
             {
@@ -539,11 +558,14 @@ namespace vultra_app
                 if (!manifest.entry.empty())
                     capabilities += "lua";
                 if (!capabilities.empty())
-                    ImGui::TextDisabled("provides: %s", capabilities.c_str());
+                    ImGui::TextDisabled("%s",
+                                        vultra::trf("projectSettings.plugins.provides", capabilities).c_str());
                 if (!supported)
-                    ImGui::TextColored(ImVec4 {1.0f, 0.7f, 0.2f, 1.0f},
-                                       "Not supported on this platform (%s).",
-                                       std::string(vultra::currentPluginPlatform()).c_str());
+                    ImGui::TextColored(
+                        ImVec4 {1.0f, 0.7f, 0.2f, 1.0f},
+                        "%s",
+                        vultra::trf("projectSettings.plugins.notSupported", std::string(vultra::currentPluginPlatform()))
+                            .c_str());
                 ImGui::Unindent();
                 ImGui::Separator();
                 ImGui::PopID();
@@ -557,10 +579,10 @@ namespace vultra_app
                                             m_ProjectAssetRootBuffer,
                                             m_ProjectDefaultSceneBuffer,
                                             m_ProjectEditingRenderGraphBuffer);
-            ctx.state.statusMessage = "Project settings changed.";
+            ctx.state.statusMessage = vultra::tr("projectSettings.status.changed");
         }
 
-        if (ImGui::Button("Reset to Defaults", ImVec2 {132.0f, 0.0f}))
+        if (ImGui::Button(vultra::tr("projectSettings.resetToDefaults"), ImVec2 {vultra::ui::dp(132.0f), 0.0f}))
         {
             setBuffer(m_ProjectAssetRootBuffer, "resources");
             setBuffer(m_ProjectDefaultSceneBuffer, "");
@@ -571,10 +593,10 @@ namespace vultra_app
                                             m_ProjectAssetRootBuffer,
                                             m_ProjectDefaultSceneBuffer,
                                             m_ProjectEditingRenderGraphBuffer);
-            ctx.state.statusMessage = "Project settings reset.";
+            ctx.state.statusMessage = vultra::tr("projectSettings.status.reset");
         }
         ui::alignSettingsButtonGroup(2);
-        if (ImGui::Button("Save", ImVec2 {82.0f, 0.0f}))
+        if (ImGui::Button(vultra::tr("common.save"), ImVec2 {vultra::ui::dp(82.0f), 0.0f}))
         {
             VProject project {
                 .projectDir         = ctx.state.currentProject,
@@ -587,12 +609,12 @@ namespace vultra_app
             };
             std::string error;
             if (saveVProject(project, &error))
-                ctx.state.statusMessage = "Saved project settings.";
+                ctx.state.statusMessage = vultra::tr("projectSettings.status.saved");
             else
-                ctx.state.statusMessage = "Project settings save failed: " + error;
+                ctx.state.statusMessage = vultra::trf("projectSettings.status.saveFailed", error);
         }
         ImGui::SameLine();
-        if (ImGui::Button("Close", ImVec2 {82.0f, 0.0f}))
+        if (ImGui::Button(vultra::tr("common.close"), ImVec2 {vultra::ui::dp(82.0f), 0.0f}))
             ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
@@ -608,14 +630,14 @@ namespace vultra_app
             setBuffer(m_AgentEndpointBuffer, ctx.state.editorSettings.agentEndpoint);
             setBuffer(m_AgentModelBuffer, ctx.state.editorSettings.agentModel);
             setBuffer(m_AgentCliPathBuffer, ctx.state.editorSettings.agentCliPath);
-            ImGui::OpenPopup("Editor Settings");
+            ImGui::OpenPopup(vultra::trId("editorSettings.title", "Editor Settings"));
             ctx.state.editorSettingsOpen = false;
         }
 
         ui::centerNextModalInCurrentWindow();
-        ImGui::SetNextWindowSize(ImVec2 {760.0f, 520.0f}, ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(ImVec2 {vultra::ui::dp(760.0f), vultra::ui::dp(520.0f)}, ImGuiCond_Appearing);
         bool popupOpen = true;
-        if (!ImGui::BeginPopupModal("Editor Settings", &popupOpen))
+        if (!ImGui::BeginPopupModal(vultra::trId("editorSettings.title", "Editor Settings"), &popupOpen))
             return;
         if (!popupOpen)
         {
@@ -625,37 +647,71 @@ namespace vultra_app
 
         ImGui::SetNextItemWidth(-1.0f);
         static char search[128] {};
-        ImGui::InputTextWithHint(
-            "##EditorSettingsSearch", ICON_MDI_MAGNIFY " Search settings...", search, sizeof(search));
+        ImGui::InputTextWithHint("##EditorSettingsSearch",
+                                 (std::string {ICON_MDI_MAGNIFY " "} + vultra::tr("editorSettings.searchHint")).c_str(),
+                                 search,
+                                 sizeof(search));
         ImGui::Separator();
 
-        ImGui::BeginChild("EditorSettingsNav", ImVec2 {180.0f, -42.0f}, true);
-        ImGui::TextUnformatted("General");
-        if (ui::settingsNavItem("Appearance", selectedPage == 0))
+        ImGui::BeginChild("EditorSettingsNav", ImVec2 {vultra::ui::dp(180.0f), vultra::ui::dp(-42.0f)}, true);
+        ImGui::TextUnformatted(vultra::tr("editorSettings.nav.general"));
+        if (ui::settingsNavItem(vultra::trId("editorSettings.nav.appearance", "Appearance"), selectedPage == 0))
             selectedPage = 0;
-        if (ui::settingsNavItem("Fonts", selectedPage == 1))
+        if (ui::settingsNavItem(vultra::trId("editorSettings.nav.fonts", "Fonts"), selectedPage == 1))
             selectedPage = 1;
-        if (ui::settingsNavItem("External Editor", selectedPage == 2))
+        if (ui::settingsNavItem(vultra::trId("editorSettings.nav.externalEditor", "External Editor"),
+                                selectedPage == 2))
             selectedPage = 2;
-        if (ui::settingsNavItem("AI Agent", selectedPage == 3))
+        if (ui::settingsNavItem(vultra::trId("editorSettings.nav.aiAgent", "AI Agent"), selectedPage == 3))
             selectedPage = 3;
         ImGui::Spacing();
-        ImGui::TextUnformatted("Advanced");
+        ImGui::TextUnformatted(vultra::tr("editorSettings.nav.advanced"));
         ImGui::BeginDisabled();
-        ui::settingsNavItem("Files & Paths", false);
-        ui::settingsNavItem("Console", false);
-        ui::settingsNavItem("Privacy", false);
+        ui::settingsNavItem(vultra::trId("editorSettings.nav.filesPaths", "Files & Paths"), false);
+        ui::settingsNavItem(vultra::trId("editorSettings.nav.console", "Console"), false);
+        ui::settingsNavItem(vultra::trId("editorSettings.nav.privacy", "Privacy"), false);
         ImGui::EndDisabled();
         ImGui::EndChild();
 
         ImGui::SameLine();
-        ImGui::BeginChild("EditorSettingsContent", ImVec2 {0.0f, -42.0f}, true);
+        ImGui::BeginChild("EditorSettingsContent", ImVec2 {0.0f, vultra::ui::dp(-42.0f)}, true);
         auto& settings = ctx.state.editorSettings;
         if (selectedPage == 0)
         {
-            ui::drawSettingsSectionHeader("Appearance");
-            const char* themes[]   = {"Dark", "Graphite", "Light", "Custom"};
-            int         themeIndex = 0;
+            ui::drawSettingsSectionHeader(vultra::tr("editorSettings.appearance.header"));
+
+            // Language (UI locale). Switching is live: the catalog swaps and every window re-renders
+            // next frame with the new strings (no font/atlas rebuild -- CJK glyphs are already merged).
+            if (auto* i18n = ctx.services ? ctx.services->tryGet<vultra::II18nService>() : nullptr)
+            {
+                ui::beginSettingsRow(vultra::tr("settings.language"));
+                const std::string current = i18n->displayName(i18n->currentLanguage());
+                if (ImGui::BeginCombo("##UiLanguage", current.c_str()))
+                {
+                    for (const auto& locale : i18n->availableLanguages())
+                    {
+                        const bool selected = locale == i18n->currentLanguage();
+                        if (ImGui::Selectable(i18n->displayName(locale).c_str(), selected) && !selected)
+                        {
+                            settings.language = locale;
+                            i18n->setLanguage(locale);
+                            ctx.state.statusMessage =
+                            vultra::trf("editorSettings.status.languageChanged", i18n->displayName(locale));
+                        }
+                        if (selected)
+                            ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+                ui::endSettingsRow();
+            }
+
+            const char* themes[]      = {"Dark", "Graphite", "Light", "Custom"};
+            const char* themeLabels[] = {vultra::tr("editorSettings.theme.dark"),
+                                         vultra::tr("editorSettings.theme.graphite"),
+                                         vultra::tr("editorSettings.theme.light"),
+                                         vultra::tr("editorSettings.theme.custom")};
+            int         themeIndex    = 0;
             for (int i = 0; i < IM_ARRAYSIZE(themes); ++i)
             {
                 if (settings.theme == themes[i])
@@ -664,107 +720,106 @@ namespace vultra_app
                     break;
                 }
             }
-            ui::beginSettingsRow("Color Theme");
-            if (ImGui::Combo("##ColorTheme", &themeIndex, themes, IM_ARRAYSIZE(themes)))
+            ui::beginSettingsRow(vultra::tr("editorSettings.appearance.colorTheme"));
+            if (ImGui::Combo("##ColorTheme", &themeIndex, themeLabels, IM_ARRAYSIZE(themeLabels)))
             {
                 settings.theme          = themes[themeIndex];
-                ctx.state.statusMessage = "Editor theme changed: " + settings.theme;
+                ctx.state.statusMessage = vultra::trf("editorSettings.status.themeChanged", settings.theme);
             }
             ui::endSettingsRow();
             if (settings.theme == "Custom")
             {
-                ui::beginSettingsRow("Background");
+                ui::beginSettingsRow(vultra::tr("editorSettings.appearance.background"));
                 ImGui::ColorEdit3("##CustomThemeBackground", &settings.customThemeBackground.x);
                 ui::endSettingsRow();
-                ui::beginSettingsRow("Panel");
+                ui::beginSettingsRow(vultra::tr("editorSettings.appearance.panel"));
                 ImGui::ColorEdit3("##CustomThemePanel", &settings.customThemePanel.x);
                 ui::endSettingsRow();
-                ui::beginSettingsRow("Text");
+                ui::beginSettingsRow(vultra::tr("editorSettings.appearance.text"));
                 ImGui::ColorEdit3("##CustomThemeText", &settings.customThemeText.x);
                 ui::endSettingsRow();
-                ui::beginSettingsRow("Accent");
+                ui::beginSettingsRow(vultra::tr("editorSettings.appearance.accent"));
                 ImGui::ColorEdit3("##CustomThemeAccent", &settings.customThemeAccent.x);
                 ui::endSettingsRow();
             }
-            ui::beginSettingsRow("Application Scale");
+            ui::beginSettingsRow(vultra::tr("editorSettings.appearance.applicationScale"));
             ImGui::SliderFloat("##ApplicationScale", &settings.applicationScale, 0.75f, 2.0f, "%.2fx");
             ui::endSettingsRow();
-            ui::beginSettingsRow("Text Scale");
+            ui::beginSettingsRow(vultra::tr("editorSettings.appearance.textScale"));
             ImGui::SliderFloat("##TextScale", &settings.textScale, 0.75f, 2.0f, "%.2fx");
             ui::endSettingsRow();
-            ImGui::Checkbox("Show Splash Screen on Startup", &settings.showSplashOnStartup);
-            ImGui::Checkbox("Enable Animations", &settings.enableAnimations);
+            ImGui::Checkbox(vultra::tr("editorSettings.appearance.showSplash"), &settings.showSplashOnStartup);
+            ImGui::Checkbox(vultra::tr("editorSettings.appearance.enableAnimations"), &settings.enableAnimations);
         }
         else if (selectedPage == 1)
         {
-            ui::drawSettingsSectionHeader("Fonts");
-            ui::beginSettingsRow("Interface Font");
+            ui::drawSettingsSectionHeader(vultra::tr("editorSettings.fonts.header"));
+            ui::beginSettingsRow(vultra::tr("editorSettings.fonts.interfaceFont"));
             ImGui::TextUnformatted(settings.interfaceFont.c_str());
             ui::endSettingsRow();
-            ui::beginSettingsRow("Interface Font Size");
+            ui::beginSettingsRow(vultra::tr("editorSettings.fonts.interfaceFontSize"));
             ImGui::SliderInt("##InterfaceFontSize", &settings.interfaceFontSize, 10, 24, "%d px");
             ui::endSettingsRow();
-            ui::beginSettingsRow("Monospace Font");
+            ui::beginSettingsRow(vultra::tr("editorSettings.fonts.monospaceFont"));
             ImGui::TextUnformatted(settings.monospaceFont.c_str());
             ui::endSettingsRow();
-            ui::beginSettingsRow("Monospace Font Size");
+            ui::beginSettingsRow(vultra::tr("editorSettings.fonts.monospaceFontSize"));
             ImGui::SliderInt("##MonospaceFontSize", &settings.monospaceFontSize, 10, 24, "%d px");
             ui::endSettingsRow();
-            ImGui::Checkbox("Use System Fonts", &settings.useSystemFonts);
+            ImGui::Checkbox(vultra::tr("editorSettings.fonts.useSystemFonts"), &settings.useSystemFonts);
         }
         else if (selectedPage == 2)
         {
-            ui::drawSettingsSectionHeader("External Editor");
-            ui::beginSettingsRow("Executable");
+            ui::drawSettingsSectionHeader(vultra::tr("editorSettings.externalEditor.header"));
+            ui::beginSettingsRow(vultra::tr("editorSettings.externalEditor.executable"));
             if (m_ExternalEditorDialog.drawBrowseOnly("", m_ExternalEditorBuffer.data(), m_ExternalEditorBuffer.size()))
                 ctx.state.editorSettings.externalEditor = bufferString(m_ExternalEditorBuffer);
             ui::endSettingsRow();
-            ui::drawInfoRegion("Used by source asset actions when an external editor command is available.");
+            ui::drawInfoRegion(vultra::tr("editorSettings.externalEditor.info"));
         }
         else
         {
-            ui::drawSettingsSectionHeader("AI Agent");
-            ImGui::Checkbox("Enable Agent Panel", &settings.enableAgent);
-            ImGui::Checkbox("Auto-start MCP Server", &settings.autoStartMcp);
-            ui::beginSettingsRow("MCP Server Name");
+            ui::drawSettingsSectionHeader(vultra::tr("editorSettings.aiAgent.header"));
+            ImGui::Checkbox(vultra::tr("editorSettings.aiAgent.enablePanel"), &settings.enableAgent);
+            ImGui::Checkbox(vultra::tr("editorSettings.aiAgent.autoStartMcp"), &settings.autoStartMcp);
+            ui::beginSettingsRow(vultra::tr("editorSettings.aiAgent.mcpServerName"));
             if (ImGui::InputText(
                     "##McpServerName", m_AgentMcpServerNameBuffer.data(), m_AgentMcpServerNameBuffer.size()))
                 settings.mcpServerName = bufferString(m_AgentMcpServerNameBuffer);
             ui::endSettingsRow();
-            ui::beginSettingsRow("MCP Host");
+            ui::beginSettingsRow(vultra::tr("editorSettings.aiAgent.mcpHost"));
             if (ImGui::InputText("##McpHost", m_AgentMcpHostBuffer.data(), m_AgentMcpHostBuffer.size()))
                 settings.mcpHost = bufferString(m_AgentMcpHostBuffer);
             ui::endSettingsRow();
-            ui::beginSettingsRow("MCP Port");
+            ui::beginSettingsRow(vultra::tr("editorSettings.aiAgent.mcpPort"));
             ImGui::InputInt("##McpPort", &settings.mcpPort);
             settings.mcpPort = std::clamp(settings.mcpPort, 1, 65535);
             ui::endSettingsRow();
             ImGui::Spacing();
-            ui::drawSettingsSectionHeader("Agent Client");
-            ui::beginSettingsRow("Endpoint");
+            ui::drawSettingsSectionHeader(vultra::tr("editorSettings.aiAgent.clientHeader"));
+            ui::beginSettingsRow(vultra::tr("editorSettings.aiAgent.endpoint"));
             if (ImGui::InputText("##AgentEndpoint", m_AgentEndpointBuffer.data(), m_AgentEndpointBuffer.size()))
                 settings.agentEndpoint = bufferString(m_AgentEndpointBuffer);
             ui::endSettingsRow();
-            ui::beginSettingsRow("Model");
+            ui::beginSettingsRow(vultra::tr("editorSettings.aiAgent.model"));
             if (ImGui::InputText("##AgentModel", m_AgentModelBuffer.data(), m_AgentModelBuffer.size()))
                 settings.agentModel = bufferString(m_AgentModelBuffer);
             ui::endSettingsRow();
-            ui::beginSettingsRow("CLI Path");
+            ui::beginSettingsRow(vultra::tr("editorSettings.aiAgent.cliPath"));
             if (ImGui::InputText("##AgentCliPath", m_AgentCliPathBuffer.data(), m_AgentCliPathBuffer.size()))
                 settings.agentCliPath = bufferString(m_AgentCliPathBuffer);
             ui::endSettingsRow();
-            ui::drawInfoRegion("Path to the agent CLI (e.g. claude). Leave empty to resolve 'claude' on PATH.");
+            ui::drawInfoRegion(vultra::tr("editorSettings.aiAgent.cliInfo"));
             ImGui::Spacing();
-            ui::drawSettingsSectionHeader("Operation Guardrails");
-            ImGui::Checkbox("Allow Project Operations", &settings.allowAgentProjectOperations);
-            ImGui::Checkbox("Allow Engine Operations", &settings.allowAgentEngineOperations);
-            ImGui::Checkbox("Require Confirmation Before Writes", &settings.requireAgentConfirmation);
-            ui::drawInfoRegion("This page only stores agent and MCP preferences. Runtime startup, chat, tool calls, "
-                               "and editor operations should live in a dedicated agent service.");
+            ui::drawSettingsSectionHeader(vultra::tr("editorSettings.aiAgent.guardrailsHeader"));
+            ImGui::Checkbox(vultra::tr("editorSettings.aiAgent.allowProjectOps"), &settings.allowAgentProjectOperations);
+            ImGui::Checkbox(vultra::tr("editorSettings.aiAgent.allowEngineOps"), &settings.allowAgentEngineOperations);
+            ImGui::Checkbox(vultra::tr("editorSettings.aiAgent.requireConfirmation"), &settings.requireAgentConfirmation);
+            ui::drawInfoRegion(vultra::tr("editorSettings.aiAgent.guardrailsInfo"));
         }
         ImGui::EndChild();
 
-        if (ImGui::Button("Reset to Defaults", ImVec2 {132.0f, 0.0f}))
+        if (ImGui::Button(vultra::tr("editorSettings.resetToDefaults"), ImVec2 {vultra::ui::dp(132.0f), 0.0f}))
         {
             ctx.state.editorSettings = AppState::EditorSettings {};
             setBuffer(m_ExternalEditorBuffer, {});
@@ -773,10 +828,10 @@ namespace vultra_app
             setBuffer(m_AgentEndpointBuffer, {});
             setBuffer(m_AgentModelBuffer, {});
             setBuffer(m_AgentCliPathBuffer, {});
-            ctx.state.statusMessage = "Editor settings reset.";
+            ctx.state.statusMessage = vultra::tr("editorSettings.status.reset");
         }
         ui::alignSettingsButtonGroup(2);
-        if (ImGui::Button("Save", ImVec2 {82.0f, 0.0f}))
+        if (ImGui::Button(vultra::tr("common.save"), ImVec2 {vultra::ui::dp(82.0f), 0.0f}))
         {
             ctx.state.editorSettings.externalEditor = bufferString(m_ExternalEditorBuffer);
             ctx.state.editorSettings.mcpServerName  = bufferString(m_AgentMcpServerNameBuffer);
@@ -786,12 +841,12 @@ namespace vultra_app
             ctx.state.editorSettings.agentCliPath   = bufferString(m_AgentCliPathBuffer);
             std::string error;
             if (saveEditorSettings(ctx.state.editorSettingsFile, ctx.state.editorSettings, &error))
-                ctx.state.statusMessage = "Saved editor settings.";
+                ctx.state.statusMessage = vultra::tr("editorSettings.status.saved");
             else
-                ctx.state.statusMessage = "Editor settings save failed: " + error;
+                ctx.state.statusMessage = vultra::trf("editorSettings.status.saveFailed", error);
         }
         ImGui::SameLine();
-        if (ImGui::Button("Close", ImVec2 {82.0f, 0.0f}))
+        if (ImGui::Button(vultra::tr("common.close"), ImVec2 {vultra::ui::dp(82.0f), 0.0f}))
             ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
@@ -806,14 +861,14 @@ namespace vultra_app
             setBuffer(m_BuildProjectNameBuffer, ctx.state.buildSettings.projectName);
             setBuffer(m_ExportTemplateBuffer, ctx.state.buildSettings.exportTemplatePath);
             setBuffer(m_BuildExtraArgsBuffer, ctx.state.buildSettings.additionalCommandLineArguments);
-            ImGui::OpenPopup("Export Settings");
+            ImGui::OpenPopup(vultra::trId("exportSettings.title", "Export Settings"));
             ctx.state.buildSettingsOpen = false;
         }
 
         ui::centerNextModalInCurrentWindow();
-        ImGui::SetNextWindowSize(ImVec2 {920.0f, 430.0f}, ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(ImVec2 {vultra::ui::dp(920.0f), vultra::ui::dp(430.0f)}, ImGuiCond_Appearing);
         bool popupOpen = true;
-        if (!ImGui::BeginPopupModal("Export Settings", &popupOpen))
+        if (!ImGui::BeginPopupModal(vultra::trId("exportSettings.title", "Export Settings"), &popupOpen))
             return;
         if (!popupOpen)
         {
@@ -822,8 +877,8 @@ namespace vultra_app
         }
 
         auto& settings = ctx.state.buildSettings;
-        ImGui::BeginChild("BuildPlatformNav", ImVec2 {190.0f, -1.0f}, true);
-        ImGui::TextUnformatted("Platform");
+        ImGui::BeginChild("BuildPlatformNav", ImVec2 {vultra::ui::dp(190.0f), -1.0f}, true);
+        ImGui::TextUnformatted(vultra::tr("exportSettings.platform"));
         const char* platforms[] = {"Windows", "macOS", "Linux", "Android", "WebGPU"};
         for (const char* platform : platforms)
         {
@@ -835,66 +890,68 @@ namespace vultra_app
         ImGui::EndChild();
 
         ImGui::SameLine();
-        ImGui::BeginChild("BuildSettingsContent", ImVec2 {470.0f, -1.0f}, true);
+        ImGui::BeginChild("BuildSettingsContent", ImVec2 {vultra::ui::dp(470.0f), -1.0f}, true);
         ui::drawSettingsSectionHeader(settings.targetPlatform.c_str());
         const char* architectures[] = {"x64", "arm64"};
         int         archIndex       = settings.architecture == "arm64" ? 1 : 0;
-        ui::beginSettingsRow("Architecture");
+        ui::beginSettingsRow(vultra::tr("exportSettings.architecture"));
         if (ImGui::Combo("##Architecture", &archIndex, architectures, IM_ARRAYSIZE(architectures)))
             settings.architecture = architectures[archIndex];
         ui::endSettingsRow();
-        const char* configs[]   = {"Development", "Release"};
-        int         configIndex = settings.configuration == "Release" ? 1 : 0;
-        ui::beginSettingsRow("Build Configuration");
-        if (ImGui::Combo("##BuildConfiguration", &configIndex, configs, IM_ARRAYSIZE(configs)))
+        const char* configs[]      = {"Development", "Release"};
+        const char* configLabels[] = {vultra::tr("exportSettings.config.development"),
+                                       vultra::tr("exportSettings.config.release")};
+        int         configIndex    = settings.configuration == "Release" ? 1 : 0;
+        ui::beginSettingsRow(vultra::tr("exportSettings.buildConfiguration"));
+        if (ImGui::Combo("##BuildConfiguration", &configIndex, configLabels, IM_ARRAYSIZE(configLabels)))
             settings.configuration = configs[configIndex];
         ui::endSettingsRow();
         const bool sameHost = settings.targetPlatform == currentHostPlatform();
-        ui::beginSettingsRow("Export Template");
+        ui::beginSettingsRow(vultra::tr("exportSettings.exportTemplate"));
         m_ExportTemplateDialog.drawBrowseOnly("", m_ExportTemplateBuffer.data(), m_ExportTemplateBuffer.size());
         ui::endSettingsRow();
-        ImGui::Indent(150.0f);
-        ui::drawInfoRegion(sameHost ? "Host platform export can use the current editor executable when empty." :
-                                      "Cross-platform export requires a target runtime executable.");
-        ImGui::Unindent(150.0f);
-        ui::beginSettingsRow("Output Directory");
+        ImGui::Indent(vultra::ui::dp(150.0f));
+        ui::drawInfoRegion(sameHost ? vultra::tr("exportSettings.hostExportInfo") :
+                                      vultra::tr("exportSettings.crossExportInfo"));
+        ImGui::Unindent(vultra::ui::dp(150.0f));
+        ui::beginSettingsRow(vultra::tr("exportSettings.outputDirectory"));
         m_BuildSettingsOutputDialog.setDefaultPath(ctx.state.currentProject);
         m_BuildSettingsOutputDialog.drawBrowseOnly(
             "", m_BuildOutputFolderBuffer.data(), m_BuildOutputFolderBuffer.size());
         ui::endSettingsRow();
-        ui::beginSettingsRow("Project Name");
+        ui::beginSettingsRow(vultra::tr("exportSettings.projectName"));
         ImGui::InputText("##ProjectName", m_BuildProjectNameBuffer.data(), m_BuildProjectNameBuffer.size());
         ui::endSettingsRow();
-        ImGui::Checkbox("Include Debug Symbols", &settings.includeDebugSymbols);
-        ImGui::Checkbox("Compress Content", &settings.compressContent);
-        ImGui::Checkbox("Use VPK Files", &settings.usePakFiles);
-        ui::beginSettingsRow("Additional Arguments");
+        ImGui::Checkbox(vultra::tr("exportSettings.includeDebugSymbols"), &settings.includeDebugSymbols);
+        ImGui::Checkbox(vultra::tr("exportSettings.compressContent"), &settings.compressContent);
+        ImGui::Checkbox(vultra::tr("exportSettings.useVpkFiles"), &settings.usePakFiles);
+        ui::beginSettingsRow(vultra::tr("exportSettings.additionalArguments"));
         ImGui::InputText("##AdditionalArguments", m_BuildExtraArgsBuffer.data(), m_BuildExtraArgsBuffer.size());
         ui::endSettingsRow();
         ImGui::EndChild();
 
         ImGui::SameLine();
         ImGui::BeginChild("BuildActions", ImVec2 {0.0f, -1.0f}, true);
-        ui::drawSettingsSectionHeader("Build");
+        ui::drawSettingsSectionHeader(vultra::tr("exportSettings.build.header"));
         const std::string templatePath = bufferString(m_ExportTemplateBuffer);
         std::string       exportBlockReason;
         if (m_BuildRunActive)
-            exportBlockReason = "Export is already running.";
+            exportBlockReason = vultra::tr("exportSettings.block.alreadyRunning");
         else if (m_BuildOutputFolderBuffer[0] == '\0')
-            exportBlockReason = "Output directory is required.";
+            exportBlockReason = vultra::tr("exportSettings.block.outputRequired");
         else if (ctx.state.currentProject.empty())
-            exportBlockReason = "No project is loaded.";
+            exportBlockReason = vultra::tr("exportSettings.block.noProject");
         else if (ctx.state.currentDefaultScene.empty())
-            exportBlockReason = "No default scene is selected.";
+            exportBlockReason = vultra::tr("exportSettings.block.noDefaultScene");
         else if (ctx.state.editorPlaying)
-            exportBlockReason = "Stop Play Mode before export.";
+            exportBlockReason = vultra::tr("exportSettings.block.stopPlayMode");
         else if (!sameHost && templatePath.empty())
-            exportBlockReason = "Missing export template for " + settings.targetPlatform + ".";
+            exportBlockReason = vultra::trf("exportSettings.block.missingTemplate", settings.targetPlatform);
         else if (!templatePath.empty())
         {
             std::error_code ec;
             if (!std::filesystem::is_regular_file(std::filesystem::path {templatePath}, ec))
-                exportBlockReason = "Export template does not exist.";
+                exportBlockReason = vultra::tr("exportSettings.block.templateMissing");
         }
 
         if (!exportBlockReason.empty())
@@ -912,17 +969,17 @@ namespace vultra_app
         auto prepareBuild = [&]() -> bool {
             if (ctx.state.currentProject.empty())
             {
-                ctx.state.statusMessage = "Export failed: no project is loaded.";
+                ctx.state.statusMessage = vultra::tr("exportSettings.status.failedNoProject");
                 return false;
             }
             if (ctx.state.currentDefaultScene.empty())
             {
-                ctx.state.statusMessage = "Export failed: no default scene is selected.";
+                ctx.state.statusMessage = vultra::tr("exportSettings.status.failedNoScene");
                 return false;
             }
             if (ctx.state.editorPlaying)
             {
-                ctx.state.statusMessage = "Stop Play Mode before export.";
+                ctx.state.statusMessage = vultra::tr("exportSettings.block.stopPlayMode");
                 return false;
             }
 
@@ -930,7 +987,7 @@ namespace vultra_app
             saveCurrentScene(ctx);
             if (sceneWasDirty && ctx.state.sceneDirty)
             {
-                ctx.state.statusMessage = "Export stopped: save the current scene first.";
+                ctx.state.statusMessage = vultra::tr("exportSettings.status.saveSceneFirst");
                 return false;
             }
             applyBuildSettings();
@@ -938,7 +995,7 @@ namespace vultra_app
         };
         if (!canBuild)
             ImGui::BeginDisabled();
-        if (ImGui::Button("Export", ImVec2 {-1.0f, 0.0f}))
+        if (ImGui::Button(vultra::tr("exportSettings.export"), ImVec2 {-1.0f, 0.0f}))
         {
             if (prepareBuild())
             {
@@ -946,7 +1003,8 @@ namespace vultra_app
                 ImGui::CloseCurrentPopup();
             }
         }
-        if (ImGui::Button(ICON_MDI_PLAY "  Export & Run", ImVec2 {-1.0f, 0.0f}))
+        if (ImGui::Button((std::string {ICON_MDI_PLAY "  "} + vultra::tr("exportSettings.exportAndRun")).c_str(),
+                          ImVec2 {-1.0f, 0.0f}))
         {
             if (prepareBuild())
             {
@@ -957,9 +1015,12 @@ namespace vultra_app
         if (!canBuild)
             ImGui::EndDisabled();
         ImGui::Spacing();
-        ui::drawSettingsSectionHeader("Export Status");
-        ImGui::Text("Status: %s", m_BuildRunActive ? "Running" : settings.lastBuildStatus.c_str());
-        ImGui::Text("Last Build: %s", settings.lastBuildTime.c_str());
+        ui::drawSettingsSectionHeader(vultra::tr("exportSettings.statusHeader"));
+        ImGui::TextUnformatted(
+            vultra::trf("exportSettings.statusLine",
+                        m_BuildRunActive ? vultra::tr("exportSettings.running") : settings.lastBuildStatus.c_str())
+                .c_str());
+        ImGui::TextUnformatted(vultra::trf("exportSettings.lastBuild", settings.lastBuildTime).c_str());
         if (!settings.buildLog.empty())
             ImGui::TextWrapped("%s", settings.buildLog.c_str());
         ImGui::EndChild();

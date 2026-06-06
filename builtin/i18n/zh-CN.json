@@ -1,0 +1,1699 @@
+{
+"inspector": {
+  "field": { "active": "激活", "allowSleeping": "允许休眠", "ambientColor": "环境光颜色", "ambientIntensity": "环境光强度", "anchorMax": "锚点最大值", "anchorMin": "锚点最小值", "anchoredPositionPx": "锚定位置（像素）", "angularDamping": "角阻尼", "angularVelocity": "角速度", "animation": "动画", "blendDistance": "混合距离", "borderRadiusPx": "边框圆角（像素）", "boxSize": "盒子尺寸", "builtinGeometry": "内置几何体", "castsShadow": "投射阴影", "cellSizePx": "单元格尺寸（像素）", "checkColor": "勾选颜色", "checked": "已勾选", "clearColor": "清除颜色", "clearMode": "清除模式", "color": "颜色", "colorValue": "颜色值", "cullingMask": "剔除掩码", "emissionRate": "发射速率", "enableIBL": "启用 IBL", "enabled": "启用", "endColor": "结束颜色", "endSize": "结束尺寸", "environmentMap": "环境贴图", "fallbackMono": "后备单色字体", "fillColor": "填充颜色", "fitMode": "适配模式", "floatValue": "浮点值", "fontSizePx": "字体大小（像素）", "fovYDegrees": "垂直视野角度", "friction": "摩擦力", "gaussianSplat": "高斯溅射", "gpu": "GPU", "graph": "图表", "gravity": "重力", "gravityFactor": "重力系数", "grounded": "接地", "halfHeight": "半高", "halfHeightOfCylinder": "圆柱半高", "handleColor": "手柄颜色", "height": "高度", "horizontalAlign": "水平对齐", "hoveredColor": "悬停颜色", "iblColor": "IBL 颜色", "iblIntensity": "IBL 强度", "innerConeDegrees": "内锥角度", "inputMove": "输入移动", "intensity": "强度", "interactable": "可交互", "isSensor": "是传感器", "jumpRequested": "请求跳跃", "jumpSpeed": "跳跃速度", "kind": "类别", "lifetime": "生命周期", "lifetimeVariance": "生命周期变化", "linearDamping": "线性阻尼", "linearVelocity": "线速度", "locked": "锁定", "loop": "循环", "marginPx": "外边距（像素）", "mask": "掩码", "mass": "质量", "material": "材质", "materialGraph": "材质图表", "materialOverrides": "材质覆盖", "maxAngularVelocity": "最大角速度", "maxLinearVelocity": "最大线速度", "maxParticles": "最大粒子数", "maxSlopeAngleDegrees": "最大坡度角度", "maxValue": "最大值", "mesh": "网格", "minValue": "最小值", "mode": "模式", "motionQuality": "运动质量", "motionType": "运动类型", "name": "名称", "normalColor": "正常颜色", "objectLayer": "对象层", "offColor": "关闭颜色", "onColor": "开启颜色", "orthographicHeight": "正交高度", "outerConeDegrees": "外锥角度", "overrideMass": "覆盖质量", "paddingPx": "内边距（像素）", "parallaxCorrection": "视差校正", "pivot": "枢轴", "pixelsPerUnit": "每单位像素数", "playOnStart": "启动时播放", "playing": "播放中", "position": "位置", "pressedColor": "按下颜色", "primary": "主要", "priority": "优先级", "projection": "投影", "properties": "属性", "radius": "半径", "range": "范围", "referenceResolutionPx": "参考分辨率（像素）", "renderMode": "渲染模式", "rendererKey": "渲染器键", "restitution": "弹性", "rotation": "旋转", "rotationDegrees": "旋转角度", "scale": "缩放", "scaleMode": "缩放模式", "scriptUri": "脚本 URI", "selectable": "可选择", "shape": "形状", "sizeDeltaPx": "尺寸增量（像素）", "skeleton": "骨骼", "skybox": "天空盒", "slot": "插槽", "sortOrder": "排序顺序", "spacingPx": "间距（像素）", "spawnRadius": "生成半径", "speed": "速度", "startColor": "起始颜色", "startSize": "起始尺寸", "startVelocity": "起始速度", "stepHeight": "台阶高度", "stereoGraphMode": "立体图表模式", "targetGraphic": "目标图形", "text": "文本", "texture": "贴图", "textureUri": "贴图 URI", "time": "时间", "tint": "色调", "trackColor": "轨道颜色", "trackingOrigin": "跟踪原点", "twoSided": "双面", "type": "类型", "uuid": "UUID", "value": "值", "velocity": "速度", "velocityVariance": "速度变化", "verticalAlign": "垂直对齐", "visible": "可见", "width": "宽度", "worldSpace": "世界空间", "zFar": "远裁剪面", "zNear": "近裁剪面" },
+  "preview": "预览",
+  "unsaved": "未保存",
+  "reload": "重新加载",
+  "clear": "清除",
+  "diagnostics": "诊断信息",
+  "noneAngle": "<无>",
+  "selectAngle": "<选择>",
+  "noneParen": "(无)",
+  "addComponent": "添加组件",
+  "allComponentsPresent": "所有可添加的组件均已存在。",
+  "fitToMeshBoundsSuffix": "（如可用则适配网格包围盒）",
+  "xrViewRequiresCamera": "只能向带有相机组件的实体添加 XR 视图。",
+  "servicesUnavailable": "服务不可用。",
+  "worldServiceUnavailable": "世界服务不可用。",
+  "assetServiceUnavailable": "资产服务不可用。",
+  "entityGone": "所选实体已不存在。",
+  "componentAdded": "已添加组件：{}",
+  "componentRemoved": "已移除组件：{}",
+  "componentMovedUp": "已上移组件：{}",
+  "componentMovedDown": "已下移组件：{}",
+  "component": {
+    "generic": "组件",
+    "transform": "变换",
+    "rectTransform": "矩形变换",
+    "layer": "图层",
+    "canvas": "画布",
+    "uiPanel": "UI 面板",
+    "uiImage": "UI 图像",
+    "uiText": "UI 文本",
+    "uiButton": "UI 按钮",
+    "uiToggle": "UI 开关",
+    "uiSlider": "UI 滑块",
+    "uiProgressBar": "UI 进度条",
+    "uiLayout": "UI 布局",
+    "status": "状态",
+    "hierarchy": "层级",
+    "mesh": "网格",
+    "animator": "动画控制器",
+    "gaussianSplat": "高斯溅射",
+    "camera": "相机",
+    "xrView": "XR 视图",
+    "environment": "环境",
+    "reflectionProbe": "反射探针",
+    "light": "灯光",
+    "particleEmitter": "粒子发射器",
+    "rigidBody": "刚体",
+    "boxShape": "盒体形状",
+    "sphereShape": "球体形状",
+    "capsuleShape": "胶囊形状",
+    "script": "脚本",
+    "prefab": "预制体",
+    "material": "材质"
+  },
+  "category": {
+    "core": "核心",
+    "ui": "UI",
+    "rendering": "渲染",
+    "animation": "动画",
+    "lighting": "光照",
+    "physics": "物理",
+    "camera": "相机",
+    "scripting": "脚本"
+  },
+  "project": {
+    "title": "项目",
+    "name": "名称：{}",
+    "root": "根目录：{}",
+    "assetRoot": "资产根目录：{}",
+    "defaultScene": "默认场景：{}",
+    "noProject": "（无项目）"
+  },
+  "entity": {
+    "title": "实体",
+    "uuid": "UUID：{}"
+  },
+  "hierarchy": {
+    "children": "子节点：{}",
+    "parentUuid": "父节点 UUID：{}",
+    "parentSceneRoot": "父节点：<场景根>"
+  },
+  "transform": {
+    "direction": "方向"
+  },
+  "rectTransform": {
+    "anchors": "锚点",
+    "size": "尺寸",
+    "anchorMin": "锚点最小",
+    "anchorMax": "锚点最大",
+    "pivot": "枚轴"
+  },
+  "light": {
+    "kindLabel": "类型",
+    "kind": {
+      "directional": "方向光",
+      "point": "点光",
+      "spot": "聚光",
+      "rectangleArea": "矩形面光"
+    },
+    "color": "颜色",
+    "intensity": "强度",
+    "range": "范围",
+    "radius": "半径",
+    "innerCone": "内锥角度",
+    "outerCone": "外锥角度",
+    "width": "宽度",
+    "height": "高度",
+    "castsShadow": "投射阴影",
+    "twoSided": "双面"
+  },
+  "xrView": {
+    "trackingOriginLabel": "跟踪原点",
+    "trackingOrigin": { "local": "本地", "stage": "舞台" },
+    "stereoGraphLabel": "立体图",
+    "stereoGraph": { "singleGraphStereo": "单图立体" },
+    "fallbackMono": "回退单目",
+    "runtime": "运行时",
+    "openxr": "OpenXR：{}",
+    "mirror": "镜像：{}",
+    "requestSession": "请求 XR 会话",
+    "sessionHint": "当启用的 XR 相机激活时会话将开始。"
+  },
+  "uiLayout": {
+    "layout": "布局",
+    "paddingPx": "内边距（像素）",
+    "marginPx": "外边距（像素）",
+    "spacingPx": "间距（像素）",
+    "cellSizePx": "单元格尺寸（像素）",
+    "kind": {
+      "horizontal": "水平",
+      "vertical": "垂直",
+      "grid": "网格"
+    }
+  },
+  "animator": {
+    "modeLabel": "模式",
+    "skeleton": "骨骼",
+    "graph": "图",
+    "animation": "动画",
+    "playOnStart": "启动时播放",
+    "playing": "播放中",
+    "loop": "循环",
+    "speed": "速度",
+    "time": "时间",
+    "resetTime": "重置时间",
+    "editGraph": "编辑图",
+    "clearSkeletonOverride": "清除骨骼覆盖",
+    "overrideSkeleton": "覆盖骨骼",
+    "fromMesh": "（来自网格）",
+    "noSkinnedMesh": "（无蒙皮网格）",
+    "noGraphs": "项目中没有动画图。",
+    "mode": {
+      "singleClip": "单个片段",
+      "graph": "图"
+    }
+  },
+  "script": {
+    "none": "无（Lua 脚本）",
+    "dialogTitle": "选择 Lua 脚本",
+    "chooseTip": "点击选择 .lua 脚本，或拖放 Lua 脚本资产到此处。",
+    "selectTip": "选择 Lua 脚本。",
+    "dropNotLua": "拖放的资产不是 Lua 脚本。",
+    "mustBeInRoot": "脚本必须位于项目资产根目录内。"
+  },
+  "assetType": {
+    "mesh": "网格",
+    "skeleton": "骨骼",
+    "animation": "动画",
+    "gaussianSplat": "高斯溅射",
+    "texture": "纹理",
+    "asset": "资产"
+  },
+  "assetField": {
+    "none": "无（{}）",
+    "dropTip": "在此处拖放 {} 资产。",
+    "selectTip": "选择 {} 资产。",
+    "clearTip": "清除引用。",
+    "dropRejected": "拖放的资产类型不被此字段接受。"
+  },
+  "assetPicker": {
+    "select": "选择 {}",
+    "noAssets": "没有此类型的源资产。"
+  },
+  "material": {
+    "source": "来源",
+    "graph": "图",
+    "material": "材质",
+    "texture": "纹理",
+    "textureUri": "纹理 URI",
+    "overrides": "材质覆盖",
+    "addOverride": "添加材质覆盖",
+    "forkBuiltin": "派生内置",
+    "forkBuiltinTip": "从内置 PBR 材质创建可编辑的项目 .vmat.json。",
+    "propertyBlock": "属性块",
+    "addProperty": "添加属性",
+    "removeProperty": "移除属性",
+    "addSourceProperty": "添加来源属性",
+    "customBuiltinId": "自定义内置 ID",
+    "properties": "属性",
+    "save": "保存材质",
+    "saved": "已保存材质：{}",
+    "saveFailed": "保存材质失败：{}",
+    "parseFailed": "解析材质资产失败：{}",
+    "noShaderParams": "未找到该着色器的可编辑材质参数。请检查着色器库是否已加载且着色器声明了材质参数。",
+    "noExposedParams": "此来源尚未暴露任何参数。",
+    "unsupportedType": "不支持的属性类型",
+    "kind": {
+      "builtin": "内置",
+      "shader": "着色器",
+      "graph": "图"
+    },
+    "propType": {
+      "float": "Float",
+      "color": "Color",
+      "texture2D": "Texture2D"
+    }
+  },
+  "materialSlot": {
+    "slot": "槽位",
+    "slot0Default": "槽位 0 - 默认材质",
+    "slot0Loading": "槽位 0 - 正在加载网格材质",
+    "materialN": "材质 {}",
+    "slotLabel": "槽位 {} - {}",
+    "slotUnknown": "槽位 {} - 未知材质",
+    "keepSlot": "保留槽位 {}",
+    "usedBySubmesh": "被子网格使用：{}",
+    "tip": "材质图覆盖会替换一个网格材质槽位。保存的值仍是数字槽位。"
+  },
+  "shader": {
+    "library": "库",
+    "shader": "着色器",
+    "vertex": "顶点",
+    "fragment": "片元",
+    "vertexLibrary": "顶点库",
+    "fragmentLibrary": "片元库",
+    "compute": "计算",
+    "raygen": "光线生成",
+    "miss": "未命中",
+    "closestHit": "最近命中",
+    "anyHit": "任意命中"
+  },
+  "renderPass": {
+    "title": "渲染图通道",
+    "pipelineLabel": "管线",
+    "inputs": "输入",
+    "outputs": "输出",
+    "dispatchByOutputSize": "按输出尺寸派发",
+    "save": "保存通道",
+    "saved": "已保存渲染图通道。",
+    "saveFailedOpen": "保存渲染通道失败：无法打开文件。",
+    "saveFailedWrite": "保存渲染通道失败：无法写入文件。",
+    "pipeline": {
+      "graphics": "图形",
+      "compute": "计算",
+      "raytracing": "光线追踪"
+    }
+  },
+  "rendererKey": {
+    "rayTracingUnavailable": "当前渲染设备不支持光线追踪。"
+  },
+  "graphNode": {
+    "title": "材质图节点",
+    "typeId": "类型 ID",
+    "displayName": "显示名称",
+    "inputs": "输入",
+    "outputs": "输出",
+    "removePin": "移除引脚",
+    "addPin": "添加引脚",
+    "defaultParams": "默认参数",
+    "addParam": "添加参数",
+    "paramNameHint": "参数名称",
+    "defaultUri": "默认 URI",
+    "glslOutputExpressions": "GLSL 输出表达式",
+    "save": "保存节点",
+    "saved": "已保存材质图节点：{}",
+    "saveFailed": "保存材质图节点失败：{}",
+    "parseFailed": "解析材质图节点失败：{}"
+  },
+  "asset": {
+    "title": "资产",
+    "uuid": "UUID：{}",
+    "type": "类型：{}",
+    "source": "来源：{}",
+    "imported": "已导入：{}"
+  },
+  "skeleton": {
+    "title": "骨骼",
+    "name": "名称：{}",
+    "joints": "关节：{}",
+    "payload": "数据：{}",
+    "unavailable": "骨骼元数据不可用。"
+  },
+  "animation": {
+    "title": "动画",
+    "name": "名称：{}",
+    "duration": "时长：{:.3f} 秒",
+    "payload": "数据：{}",
+    "unavailable": "动画元数据不可用。"
+  },
+  "sourceAsset": {
+    "title": "源资产",
+    "name": "名称：{}",
+    "type": "类型：{}",
+    "path": "路径：{}",
+    "size": "大小：{}",
+    "folder": "文件夹",
+    "editAsSource": "作为源编辑",
+    "openLuaSource": "打开 Lua 源",
+    "openInCodeEditor": "在代码编辑器中打开",
+    "editingScene": "正在编辑场景源：{}",
+    "openedInEditor": "已在代码编辑器中打开：{}"
+  },
+  "sceneSource": {
+    "title": "场景源",
+    "setAsDefault": "设为默认场景",
+    "defaultSet": "默认场景已设为：{}"
+  },
+  "prefab": {
+    "uri": "URI：{}",
+    "uuid": "UUID：{}"
+  },
+  "camera": {
+    "alignWithSceneView": "与场景视图对齐",
+    "alignWithSceneViewTip": "将此相机实体移动到当前场景视图相机姿态。",
+    "alignSceneViewWithCamera": "将场景视图与相机对齐",
+    "alignSceneViewWithCameraTip": "将场景视图编辑器相机移动到此相机实体。",
+    "sceneViewUnavailable": "场景视图相机尚不可用。",
+    "alignedToSceneView": "相机已对齐到场景视图。",
+    "sceneViewAligned": "场景视图已对齐到相机。"
+  },
+  "forkMaterial": {
+    "noAssetRoot": "派生材质失败：没有项目资产根目录。",
+    "failed": "派生材质失败：{}",
+    "noFileName": "派生材质失败：没有可用的文件名。",
+    "outsideAssets": "派生材质失败：目标位于项目资产之外。",
+    "forked": "已派生内置材质：{}",
+    "forkedNoImport": "已派生内置材质，但资产注册表导入未运行。"
+  },
+  "texture": {
+    "targetFormat": "目标格式",
+    "subtype": {
+      "uiSprite": "UI / 精灵",
+      "normalMap": "法线贴图",
+      "cursor": "光标"
+    }
+  },
+  "textureImport": {
+    "title": "纹理导入",
+    "subtype": "子类型",
+    "sourceSize": "源大小：{}",
+    "importedSize": "导入大小：{}",
+    "missing": "缺失",
+    "notImported": "未导入",
+    "generateMipmaps": "生成 Mipmap",
+    "flipY": "翻转 Y",
+    "qualityLevel": "质量等级",
+    "compressionLevel": "压缩等级",
+    "compressOnlyLarge": "仅压缩大纹理",
+    "downscaleLarge": "缩小大纹理",
+    "downscaleMinDimension": "缩小最小尺寸",
+    "downscaleTargetDimension": "缩小目标尺寸",
+    "bakeNormalMap": "烘焙法线贴图",
+    "directXNormalMap": "DirectX 法线贴图",
+    "revert": "还原",
+    "saveFailed": "纹理导入设置保存失败。",
+    "applied": "已应用纹理导入设置并排队重新导入：{}"
+  },
+  "modelPreview": {
+    "servicesUnavailable": "预览服务不可用。",
+    "empty": "预览场景为空。"
+  },
+  "layerMask": {
+    "all": "全选"
+  },
+  "removeBlock": {
+    "prefab": "预制体数据由预制体实例管理。",
+    "uiButtonTargetGraphic": "UI 按钮的 targetGraphic 使用此图像。移除前请先清除或重定向 targetGraphic。"
+  },
+  "enum": {
+    "projection": {
+      "perspective": "透视",
+      "orthographic": "正交"
+    },
+    "clearMode": {
+      "color": "颜色",
+      "skybox": "天空盒"
+    },
+    "motionType": {
+      "static": "静态",
+      "kinematic": "运动学",
+      "dynamic": "动态"
+    },
+    "objectLayer": {
+      "nonMoving": "非运动",
+      "moving": "运动"
+    },
+    "motionQuality": {
+      "discrete": "离散",
+      "linearCast": "线性扫描"
+    },
+    "geometry": {
+      "externalMesh": "外部网格",
+      "quad": "四边形",
+      "cube": "立方体",
+      "sphere": "球体",
+      "capsule": "胶囊"
+    },
+    "scaleMode": {
+      "constantPixels": "恒定像素",
+      "scaleWithScreen": "随屏幕缩放"
+    },
+    "fitMode": {
+      "stretch": "拉伸",
+      "contain": "包含",
+      "cover": "覆盖"
+    },
+    "hAlign": {
+      "left": "左对齐",
+      "center": "居中",
+      "right": "右对齐"
+    },
+    "vAlign": {
+      "top": "顶部",
+      "middle": "中间",
+      "bottom": "底部"
+    },
+    "shape": {
+      "box": "盒体",
+      "sphere": "球体"
+    }
+  }
+},
+"renderGraph": {
+  "selector": {
+    "graph": "渲染图",
+    "noneSelected": "<无>"
+  },
+  "toolbar": {
+    "reload": "重新加载",
+    "liveApply": "实时应用",
+    "topoOrder": "拓扑排序",
+    "autoLayout": "自动布局",
+    "deleteSelected": "删除所选",
+    "pipeline": "管线",
+    "editing": "正在编辑 {}",
+    "noGraphSelected": "未选择渲染图",
+    "builtinReadOnlySuffix": "（内置，只读）",
+    "openAssetHint": "打开一个 .vrg.json 渲染图资源。"
+  },
+  "export": {
+    "title": "导出内置渲染图",
+    "readOnlyHint": "内置渲染图为只读。请选择导出目标。",
+    "suggestedFile": "建议文件：{}",
+    "target": "目标"
+  },
+  "addMenu": {
+    "projectPass": "项目通道",
+    "builtinPass": "内置通道"
+  },
+  "menu": {
+    "editInternals": "编辑内部",
+    "deleteFeature": "删除特性",
+    "deleteLink": "删除连接",
+    "deletePass": "删除通道",
+    "enabled": "启用"
+  },
+  "pipeline": {
+    "customRenderGraph": "自定义渲染图",
+    "builtinFeature": "内置特性",
+    "passCount": "{} 个通道",
+    "doubleClickEdit": "双击以编辑内部"
+  },
+  "pin": {
+    "in": "输入",
+    "out": "输出"
+  },
+  "canvas": {
+    "importedResource": "导入资源",
+    "shader": "着色器：{}"
+  },
+  "param": {
+    "unknown": "未知"
+  },
+  "banner": {
+    "graphInvalid": "渲染图无效：{}"
+  },
+  "camera": {
+    "editorCamera": "编辑器相机",
+    "gameCamera": "游戏相机",
+    "gameCameraNamed": "游戏相机：{}"
+  },
+  "runtime": {
+    "viewerTitle": "运行时帧图查看器",
+    "captureStats": "纹理：已捕获 {}/{}，图：{}/{}",
+    "autoFit": "自动适配",
+    "scale": "缩放",
+    "noFrameGraph": "尚未编译任何帧图。",
+    "copyDot": "复制 DOT",
+    "copyDotFallbackTip": "复制重建的 Graphviz DOT 回退表示",
+    "copyDotTip": "复制 FrameGraph 输出的所选运行时图 DOT",
+    "graphLabel": "{} - {}（{} 个节点）",
+    "pinImport": "导入",
+    "pinRead": "读取",
+    "pinInSideEffect": "输入\n副作用",
+    "pinIn": "输入",
+    "pinUse": "使用",
+    "pinSide": "副作用",
+    "pinOut": "输出"
+  },
+  "texture": {
+    "nameSize": "{} | {}x{}",
+    "nameSizeFormat": "{} | {}x{} | {}",
+    "capturing": "正在捕获所选纹理预览…",
+    "modeColor": "颜色",
+    "modeRawDepth": "原始深度",
+    "modeLinearDepth": "线性深度",
+    "modeInvertedLinearDepth": "反转线性深度",
+    "modeAlpha": "Alpha",
+    "modeNormal": "法线",
+    "modeTooltip": "纹理显示模式",
+    "mode": "模式",
+    "gamma": "伽马",
+    "resetTooltip": "重置预览设置",
+    "fitRange": "适配范围",
+    "fitRangeTooltip": "根据预览图像自动适配深度范围",
+    "clampMin": "下限",
+    "clampMax": "上限",
+    "cameraZ": "相机 z：{:.4f} - {:.1f}",
+    "leftEye": "左眼",
+    "rightEye": "右眼"
+  },
+  "overlay": {
+    "preview": "预览",
+    "preparingPreview": "正在准备预览",
+    "noPrimaryCamera": "无主相机"
+  },
+  "status": {
+    "switched": "已切换渲染图",
+    "rendererInfo": "渲染器 '{}'：{}",
+    "switchFailed": "切换渲染图失败",
+    "featureOrderUpdated": "已更新特性顺序",
+    "linkRemoved": "已移除通道输入连接",
+    "readOnlyEdge": "这是一条只读依赖边。",
+    "passDeleted": "已删除通道",
+    "nodeReadOnly": "该节点为只读。",
+    "resourceDeleted": "已删除资源",
+    "nothingSelected": "未选择任何内容",
+    "exported": "已导出",
+    "exportedDetail": "已导出内置渲染图：{}",
+    "topoApplied": "已应用拓扑排序",
+    "autoLayoutApplied": "已应用自动布局",
+    "repairedLinks": "已修复失效的渲染图连接",
+    "loadedBuiltin": "已加载内置渲染图",
+    "loadBuiltinFailed": "加载内置渲染图失败：{}",
+    "loaded": "已加载",
+    "loadFailed": "加载渲染图失败：{}",
+    "connectToReorder": "将一个特性输出连接到另一个特性输入以重排管线。",
+    "featureDeleted": "已删除管线特性",
+    "passLinkUpdated": "已更新通道输入连接",
+    "validationFailed": "验证失败：{}",
+    "runtimeApplyUnavailable": "运行时应用失败：渲染/资源服务不可用。",
+    "appliedInMemory": "已在内存中应用",
+    "appliedInMemoryDetail": "已在内存中应用渲染图：{}",
+    "builtinReadOnly": "内置渲染图为只读；请使用导出。",
+    "saved": "已保存",
+    "savedDetail": "已保存渲染图：{}"
+  }
+},
+"sceneView": {
+  "tool": {
+    "select": "选择 (Q)",
+    "move": "移动 (W)",
+    "rotate": "旋转 (E)",
+    "scale": "缩放 (R)",
+    "rect": "矩形工具 (T)",
+    "transform": "变换工具 (Y)"
+  },
+  "coord": {
+    "local": "局部",
+    "localTooltip": "局部坐标系",
+    "global": "全局",
+    "globalTooltip": "全局坐标系"
+  },
+  "toolbar": {
+    "grid": "网格",
+    "uiSnap": "UI 吸附",
+    "viewModeTooltip": "3D / 2D UI"
+  },
+  "gizmos": {
+    "popupTitle": "编辑器图标",
+    "tooltip": "编辑器图标（图标、包围盒、碰撞体、灯光）",
+    "header": "编辑器图标",
+    "icons": "图标",
+    "iconSize": "图标大小",
+    "selectionBounds": "选中包围盒",
+    "colliders": "碰撞体",
+    "lightCameraGizmos": "灯光与相机图标",
+    "showAll": "全部显示",
+    "hideAll": "全部隐藏"
+  },
+  "clearColor": {
+    "applyTooltip": "应用 UI 清除颜色",
+    "popupTitle": "自定义 UI 清除颜色",
+    "customTooltip": "自定义 UI 清除颜色",
+    "label": "清除颜色"
+  },
+  "gameView": {
+    "title": "游戏视图",
+    "preparingPreview": "正在准备预览",
+    "noPrimaryCamera": "没有主相机"
+  },
+  "overlay": {
+    "canvas": "画布"
+  },
+  "history": {
+    "moveUiRect": "移动 UI 矩形",
+    "rotateUiRect": "旋转 UI 矩形",
+    "resizeUiRect": "调整 UI 矩形大小",
+    "scaleUiRect": "缩放 UI 矩形",
+    "transformEntity": "变换实体"
+  }
+},
+"materialGraph": {
+  "toolbar": {
+    "graph": "图表",
+    "new": "新建",
+    "compile": "编译",
+    "autoLayout": "自动布局",
+    "liveApply": "实时应用"
+  },
+  "nodeMenu": {
+    "editNote": "编辑备注...",
+    "clearNote": "清除备注",
+    "note": "备注"
+  },
+  "blackboard": {
+    "defaultValue": "默认值",
+    "defaultUri": "默认 URI"
+  },
+  "inspector": {
+    "blackboard": "黑板",
+    "addParameter": "添加参数",
+    "noExposedParameters": "没有暴露的参数。",
+    "displayName": "显示名称",
+    "uiRange": "UI 范围",
+    "min": "最小值",
+    "max": "最大值",
+    "diagnostics": "诊断信息",
+    "noDiagnostics": "无诊断信息。"
+  },
+  "preview": {
+    "mesh": "预览网格",
+    "skybox": "天空盒",
+    "time": "时间",
+    "usingSelectedMesh": "预览：使用插槽 0 覆盖的选中网格",
+    "usingSphere": "预览：使用插槽 0 覆盖的球体",
+    "controlsHint": "左键拖动：旋转预览  滚轮：缩放  F：聚焦"
+  },
+  "addNode": {
+    "searchHint": "搜索节点",
+    "noMatchingNodes": "没有匹配的节点。"
+  },
+  "category": {
+    "inputs": "输入",
+    "parameters": "参数",
+    "math": "数学",
+    "logic": "逻辑",
+    "texture": "纹理",
+    "shading": "着色",
+    "output": "输出",
+    "other": "其他"
+  },
+  "subcategory": {
+    "vertexAttributes": "顶点属性",
+    "textures": "纹理"
+  },
+  "status": {
+    "loadedCustomNodes": "已加载 {} 个自定义节点",
+    "loadedCustomNodesSkipped": "已加载 {} 个自定义节点，跳过 {} 个",
+    "reloaded": "已重新加载",
+    "alreadyOpen": "已打开",
+    "alreadyOpenMessage": "材质图表已打开：{}",
+    "openedMessage": "已打开材质图表：{}",
+    "openFailedMessage": "打开材质图表失败：{}",
+    "loadFailed": "加载失败",
+    "loaded": "已加载",
+    "saveFailed": "保存失败",
+    "saved": "已保存",
+    "compileFailed": "编译失败",
+    "writeShaderFailed": "写入生成的着色器失败",
+    "compiled": "已编译：{}",
+    "autoLayoutApplied": "已应用自动布局",
+    "livePreviewUpdated": "实时预览已更新",
+    "edited": "已编辑",
+    "previewMeshChanged": "预览网格已更改",
+    "previewMeshReset": "预览网格已重置为球体",
+    "previewSkyboxChanged": "预览天空盒已更改",
+    "previewSkyboxCleared": "预览天空盒已清除"
+  }
+},
+"animatorGraph": {
+  "toolbar": {
+    "new": "新建",
+    "addState": "添加状态"
+  },
+  "status": {
+    "opened": "已打开动画图表：{}",
+    "new": "新建动画图表：{}",
+    "loaded": "已加载",
+    "saved": "已保存",
+    "saveFailed": "保存失败",
+    "saveFailedBadUri": "保存失败：URI 无效"
+  },
+  "paramType": {
+    "bool": "布尔",
+    "trigger": "触发器",
+    "float": "浮点"
+  },
+  "condType": {
+    "greater": "> 大于",
+    "less": "< 小于",
+    "equal": "== 等于",
+    "notEqual": "!= 不等于",
+    "isTrue": "为真",
+    "isFalse": "为假",
+    "triggerSet": "触发器已置位"
+  },
+  "node": {
+    "anyState": "任意状态",
+    "anyOut": "任意 ->",
+    "in": "-> 输入",
+    "out": "输出 ->",
+    "clip": "动画片段 {}",
+    "speed": "速度 {:.2f}{}",
+    "loopSuffix": "  循环"
+  },
+  "menu": {
+    "setAsEntry": "设为入口",
+    "addTransitionFromHere": "从此处添加过渡",
+    "deleteState": "删除状态",
+    "deleteTransition": "删除过渡"
+  },
+  "section": {
+    "graph": "图表",
+    "parameters": "参数",
+    "state": "状态",
+    "transition": "过渡"
+  },
+  "field": {
+    "entry": "入口",
+    "clip": "动画片段",
+    "speed": "速度",
+    "loop": "循环",
+    "noAnimationAssets": "（未导入动画资产）"
+  },
+  "param": {
+    "add": "添加参数",
+    "triggerHint": "（触发器）"
+  },
+  "transition": {
+    "route": "{}  ->  {}",
+    "duration": "持续时间",
+    "durationFormat": "%.2f 秒",
+    "hasExitTime": "启用退出时间",
+    "exitTime": "退出时间",
+    "conditionsHint": "条件（必须全部满足）",
+    "paramPlaceholder": "（参数）",
+    "addCondition": "添加条件"
+  }
+},
+"codeEditor": {
+  "status": {
+    "openFailed": "打开文件失败。",
+    "opened": "已打开源文件：{}",
+    "saveFailed": "保存文件失败。",
+    "saved": "已保存源文件：{}",
+    "pipelineReloaded": "已保存并重新加载渲染管线。",
+    "shaderReloaded": "已保存并重新加载着色器库。",
+    "reimported": "已重新导入源资产。",
+    "noImportTarget": "未为此文件刷新任何导入目标。"
+  },
+  "diagnostics": {
+    "title": "诊断",
+    "none": "无诊断信息。",
+    "lineLabel": "第 {} 行：{}"
+  },
+  "toolbar": {
+    "reload": "重新加载",
+    "reimport": "重新导入"
+  },
+  "hint": {
+    "openFromContentBrowser": "从内容浏览器中打开脚本或着色器。",
+    "noSourceSelected": "未选择源文件。"
+  }
+},
+
+"aiChat": {
+  "thinking": "思考中",
+  "you": "你",
+  "restart": "重启",
+  "newChat": { "tooltip": "新建对话（清除历史）" },
+  "stop": { "tooltip": "停止" },
+  "send": { "tooltip": "发送（Enter）" },
+  "composer": { "hint": "Enter 发送 · Ctrl+Enter 换行" },
+  "banner": { "agentDisabled": "智能体功能已禁用。请在“编辑器设置”中启用智能体后再聊天。" },
+  "status": {
+    "launchFailed": "无法启动 “claude”。请确认已安装 Claude CLI 并在 PATH 中。",
+    "launchFailedSuffix": " - 是否已安装 Claude CLI 并在 PATH 中？"
+  },
+  "tool": {
+    "fallbackName": "工具",
+    "inputPrefix": "输入：",
+    "resultPrefix": "结果："
+  },
+  "permission": {
+    "tooltip": "智能体权限模式",
+    "header": "权限模式",
+    "statusMessage": "AI 权限模式：{}",
+    "ask": { "label": "询问", "hint": "每次编辑或执行命令前先询问。" },
+    "acceptEdits": { "label": "接受编辑", "hint": "自动接受文件编辑；其余操作仍需确认。" },
+    "plan": { "label": "规划", "hint": "仅规划 - 不执行任何编辑或命令。" },
+    "bypass": { "label": "跳过", "hint": "不提示直接执行所有操作（请谨慎使用）。" }
+  }
+},
+"projectSettings": {
+  "title": "项目设置",
+  "searchHint": "搜索设置...",
+  "noneParen": "（无）",
+  "resetToDefaults": "恢复默认值",
+  "nav": {
+    "project": "项目",
+    "projectInfo": "项目信息",
+    "renderSettings": "渲染设置",
+    "buildScenes": "构建场景",
+    "packaging": "打包",
+    "plugins": "插件",
+    "engine": "引擎",
+    "general": "通用",
+    "rendering": "渲染",
+    "materials": "材质",
+    "scripting": "脚本"
+  },
+  "info": {
+    "header": "项目信息",
+    "projectName": "项目名称",
+    "assetRoot": "资产根目录",
+    "defaultScene": "默认场景",
+    "noProjectLoaded": "未加载项目"
+  },
+  "render": {
+    "header": "渲染设置",
+    "editingRenderGraph": "编辑渲染图",
+    "editorSelection": "编辑器选择",
+    "selectionOutline": "选择轮廓",
+    "outlineColor": "轮廓颜色",
+    "outlineThickness": "轮廓粗细",
+    "fillOpacity": "填充不透明度",
+    "edgeOpacity": "边缘不透明度"
+  },
+  "buildScenes": {
+    "header": "构建场景",
+    "addDefault": "添加默认",
+    "addAll": "全部添加",
+    "noScenesInfo": "尚未配置构建场景。添加场景以控制打包根和运行时场景索引。",
+    "alias": "别名",
+    "scene": "场景",
+    "order": "顺序",
+    "exportInfo": "启用的构建场景将按场景索引顺序作为依赖根导出。"
+  },
+  "packaging": {
+    "header": "打包",
+    "packageName": "包名称",
+    "packageManifest": "包清单",
+    "info": "运行时包使用同名可执行文件和 VPK。"
+  },
+  "plugins": {
+    "header": "插件",
+    "info": "插件位于 <asset-root>/plugins（例如 resources/plugins），以便打包进项目 VPK，默认为关闭。启用某个插件可立即加载并在下次启动时加载。原生插件仅限桌面平台。",
+    "noneFound": "在 {} 中未找到插件",
+    "provides": "提供：{}",
+    "notSupported": "此平台（{}）不支持。"
+  },
+  "status": {
+    "changed": "项目设置已更改。",
+    "reset": "项目设置已重置。",
+    "saved": "已保存项目设置。",
+    "saveFailed": "项目设置保存失败：{}"
+  }
+},
+"editorSettings": {
+  "title": "编辑器设置",
+  "searchHint": "搜索设置...",
+  "resetToDefaults": "恢复默认值",
+  "nav": {
+    "general": "通用",
+    "appearance": "外观",
+    "fonts": "字体",
+    "externalEditor": "外部编辑器",
+    "aiAgent": "AI 代理",
+    "advanced": "高级",
+    "filesPaths": "文件与路径",
+    "console": "控制台",
+    "privacy": "隐私"
+  },
+  "appearance": {
+    "header": "外观",
+    "colorTheme": "颜色主题",
+    "background": "背景",
+    "panel": "面板",
+    "text": "文本",
+    "accent": "强调色",
+    "applicationScale": "应用缩放",
+    "textScale": "文本缩放",
+    "showSplash": "启动时显示启动画面",
+    "enableAnimations": "启用动画"
+  },
+  "theme": {
+    "dark": "深色",
+    "graphite": "石墨",
+    "light": "浅色",
+    "custom": "自定义"
+  },
+  "fonts": {
+    "header": "字体",
+    "interfaceFont": "界面字体",
+    "interfaceFontSize": "界面字体大小",
+    "monospaceFont": "等宽字体",
+    "monospaceFontSize": "等宽字体大小",
+    "useSystemFonts": "使用系统字体"
+  },
+  "externalEditor": {
+    "header": "外部编辑器",
+    "executable": "可执行文件",
+    "info": "在可用外部编辑器命令时，由源资产操作使用。"
+  },
+  "aiAgent": {
+    "header": "AI 代理",
+    "enablePanel": "启用代理面板",
+    "autoStartMcp": "自动启动 MCP 服务器",
+    "mcpServerName": "MCP 服务器名称",
+    "mcpHost": "MCP 主机",
+    "mcpPort": "MCP 端口",
+    "clientHeader": "代理客户端",
+    "endpoint": "端点",
+    "model": "模型",
+    "cliPath": "CLI 路径",
+    "cliInfo": "代理 CLI 的路径（例如 claude）。留空则在 PATH 上解析 'claude'。",
+    "guardrailsHeader": "操作护栏",
+    "allowProjectOps": "允许项目操作",
+    "allowEngineOps": "允许引擎操作",
+    "requireConfirmation": "写入前需要确认",
+    "guardrailsInfo": "此页仅存储代理和 MCP 首选项。运行时启动、聊天、工具调用及编辑器操作应由专用代理服务处理。"
+  },
+  "status": {
+    "languageChanged": "语言已更改：{}",
+    "themeChanged": "编辑器主题已更改：{}",
+    "reset": "编辑器设置已重置。",
+    "saved": "已保存编辑器设置。",
+    "saveFailed": "编辑器设置保存失败：{}"
+  }
+},
+"exportSettings": {
+  "title": "导出设置",
+  "platform": "平台",
+  "architecture": "架构",
+  "buildConfiguration": "构建配置",
+  "exportTemplate": "导出模板",
+  "hostExportInfo": "主机平台导出在为空时可使用当前编辑器可执行文件。",
+  "crossExportInfo": "跨平台导出需要目标运行时可执行文件。",
+  "outputDirectory": "输出目录",
+  "projectName": "项目名称",
+  "includeDebugSymbols": "包含调试符号",
+  "compressContent": "压缩内容",
+  "useVpkFiles": "使用 VPK 文件",
+  "additionalArguments": "附加参数",
+  "export": "导出",
+  "exportAndRun": "导出并运行",
+  "statusHeader": "导出状态",
+  "statusLine": "状态：{}",
+  "running": "运行中",
+  "lastBuild": "上次构建：{}",
+  "config": {
+    "development": "开发",
+    "release": "发布"
+  },
+  "build": {
+    "header": "构建"
+  },
+  "block": {
+    "alreadyRunning": "导出已在运行。",
+    "outputRequired": "必须指定输出目录。",
+    "noProject": "未加载项目。",
+    "noDefaultScene": "未选择默认场景。",
+    "stopPlayMode": "导出前请先停止播放模式。",
+    "missingTemplate": "缺少 {} 的导出模板。",
+    "templateMissing": "导出模板不存在。"
+  },
+  "status": {
+    "failedNoProject": "导出失败：未加载项目。",
+    "failedNoScene": "导出失败：未选择默认场景。",
+    "saveSceneFirst": "导出已停止：请先保存当前场景。"
+  }
+},
+"editorApp": {
+  "about": {
+    "title": "关于 Vultra 编辑器",
+    "product": "Vultra 编辑器",
+    "version": "版本：{}",
+    "contributors": "贡献者：Lazy_V (Kexuan Zhang)",
+    "license": "许可证：MIT",
+    "github": "GitHub"
+  },
+  "openSceneConfirm": {
+    "title": "打开场景",
+    "prompt": "放弃未保存的更改并打开此场景？"
+  },
+  "importPopup": {
+    "title": "导入资产"
+  },
+  "import": {
+    "preparing": "正在准备资产导入...",
+    "importingAssets": "正在导入资产",
+    "item": "项目",
+    "scanningAssets": "正在扫描项目资产...",
+    "scanningPath": "正在扫描 {}",
+    "importingAssetsProject": "正在导入项目资产...",
+    "importingPath": "正在导入 {}",
+    "finalizingDatabase": "正在完成资产数据库...",
+    "importingChanged": "正在导入变更的资产...",
+    "error": {
+      "assetImportFailed": "资产导入失败",
+      "saveRegistryFailed": "保存资产注册表失败",
+      "importerUnavailable": "vasset 导入器不可用且不存在注册表"
+    }
+  },
+  "loading": {
+    "preparingWorkspace": "正在准备编辑器工作区...",
+    "preparingProjectAssets": "正在准备项目资产...",
+    "openingAssetDatabase": "正在打开资产数据库...",
+    "preparingThumbnails": "正在准备资产缩略图...",
+    "renderingThumbnails": "正在渲染资产缩略图...",
+    "preparingWindows": "正在准备编辑器窗口...",
+    "loadingScene": "正在加载场景 {}...",
+    "loadingSceneAssets": "正在加载场景资产...",
+    "openingEditor": "正在打开编辑器...",
+    "ready": "就绪。"
+  },
+  "overlay": {
+    "openingEditor": "正在打开编辑器...",
+    "loadingAssets": "正在加载资产...",
+    "preparing": "正在准备..."
+  },
+  "taskBar": {
+    "fps": "FPS {:.1f}",
+    "cpuCache": "CPU 缓存 {}",
+    "ram": "RAM {}",
+    "ramWithAvail": "RAM {} / 可用 {}",
+    "vram": "VRAM {}",
+    "vramWithBudget": "VRAM {} / {}",
+    "job": "任务",
+    "working": "处理中...",
+    "sceneLoad": "场景加载",
+    "mcpListening": "MCP 正在监听 {}",
+    "mcpNotRunning": "MCP 未运行（请在编辑器设置中启用自动启动 MCP）",
+    "mcpNotRunningError": "MCP 未运行：{}",
+    "agentDisabled": "代理已禁用"
+  },
+  "history": {
+    "sceneOpened": "场景已打开",
+    "sceneLoaded": "场景已加载"
+  },
+  "status": {
+    "openScene": {
+      "servicesUnavailable": "打开场景失败：服务不可用。",
+      "stopPlayModeFirst": "请先停止播放模式再打开其他场景。",
+      "sceneWorldUnavailable": "打开场景失败：场景/世界服务不可用。",
+      "failed": "打开场景失败：{}",
+      "opened": "已打开场景：{}",
+      "cancelled": "已取消打开场景。"
+    },
+    "saveScene": {
+      "stopPlayModeFirst": "请先停止播放模式再保存场景。",
+      "noScenePath": "未选择用于保存的场景路径。",
+      "sceneWorldUnavailable": "场景保存失败：场景/世界服务不可用。",
+      "saved": "已保存场景：{}",
+      "failed": "场景保存失败：{}"
+    },
+    "playMode": {
+      "snapshotFailed": "播放模式快照失败：场景没有可序列化的根节点。",
+      "entered": "已进入播放模式。",
+      "exited": "已退出播放模式。场景状态已恢复。"
+    },
+    "import": {
+      "failed": "资产导入失败：{}",
+      "imported": "已导入项目资产：{}"
+    },
+    "projectImport": {
+      "failed": "项目资产导入失败：{}"
+    },
+    "projectLoad": {
+      "assetServiceUnavailable": "项目加载失败：资产服务不可用。",
+      "loadedAssets": "已加载项目资产：{}"
+    },
+    "scene": {
+      "loadDefaultFailed": "加载默认场景失败：{}",
+      "loadedDefault": "已加载默认场景：{}"
+    }
+  }
+},
+"editorBuild": {
+  "error": {
+    "missingAssetRoot": "导出失败：缺少资源根目录 {}",
+    "exportFailedDetail": "导出失败：{}",
+    "assetImportReturned": "导出失败：资源导入步骤返回 {}。",
+    "assetPackReturned": "导出失败：资源打包步骤返回 {}。",
+    "vassetUnavailable": "导出失败：此构建未启用 vasset 导入支持。",
+    "cannotCreateOutputFolder": "导出失败：无法创建输出文件夹 {}",
+    "publishedRuntimeLaunchReturned": "导出失败：发布运行时启动返回 {}。",
+    "targetMustMatchHost": "“导出并运行”要求目标平台与主机平台一致。",
+    "templateRequired": "导出失败：目标平台需要一个导出模板可执行文件。",
+    "templateNotFound": "导出失败：未找到导出模板可执行文件。",
+    "runtimeLaunchReturned": "导出成功，但运行时启动返回 {}。",
+    "webTemplateNotFound": "未找到网页导出模板：{}",
+    "webTemplateExtractFailed": "解压网页模板压缩包失败 {}",
+    "webTemplateNotDirOrZip": "网页导出模板既不是目录也不是 .zip：{}",
+    "copyTemplateFileFailed": "复制模板文件失败 {}：{}",
+    "webTemplateNoIndexHtml": "导出失败：网页模板未提供 index.html（模板：{}）。",
+    "androidNotImplemented": "Android 导出尚未实现（计划中）。",
+    "createOutputFolderFailed": "创建输出文件夹失败：{}",
+    "copyRuntimeFailed": "复制运行时可执行文件失败：{}"
+  },
+  "progress": {
+    "writingManifest": "正在写入包清单...",
+    "reimportingPacking": "正在重新导入资源并打包 VPK...",
+    "copyingRuntime": "正在复制运行时可执行文件...",
+    "launchingPublishedRuntime": "正在启动发布运行时...",
+    "runtimeLaunched": "运行时已启动。",
+    "exportComplete": "导出完成。",
+    "copyingTemplate": "正在复制导出模板...",
+    "launchingRuntime": "正在启动运行时...",
+    "exportCompleteRuntimeLaunched": "导出完成。运行时已启动。",
+    "copyingWebTemplate": "正在复制网页导出模板...",
+    "startingWebServer": "正在启动本地网页服务器...",
+    "runtimeLaunchedInBrowser": "运行时已在浏览器中启动。",
+    "preparing": "正在准备...",
+    "savingScenePreparing": "正在保存场景并准备包..."
+  },
+  "status": {
+    "packedVpk": "已打包 VPK：{}",
+    "runningPackage": "正在运行包：{}",
+    "exportComplete": "导出完成：{}",
+    "exportCompleteRunningPackage": "导出完成。正在运行包：{}",
+    "exportCompleteServeOverHttp": "导出完成：{}（通过 http 提供服务以运行）。",
+    "exportCompleteServerMessage": "导出完成。{}",
+    "exportCompleteWithServerMessage": "导出完成：{}。{}",
+    "succeeded": "成功",
+    "failed": "失败",
+    "thisSession": "本次会话",
+    "alreadyRunning": "“导出并运行”已在运行。",
+    "noProjectLoaded": "“导出并运行”失败：未加载任何项目。",
+    "noDefaultScene": "“导出并运行”失败：未选择默认场景。",
+    "stopPlayModeFirst": "在“导出并运行”之前请先停止播放模式。",
+    "saveSceneFirst": "“导出并运行”已停止：请先保存当前场景。",
+    "chooseOutputFolder": "导出并运行：选择输出文件夹。",
+    "exportRunStartedPackaging": "“导出并运行”已开始：正在打包运行时...",
+    "exportStartedPackaging": "导出已开始：正在打包运行时..."
+  },
+  "web": {
+    "noPythonServer": "请通过 http(s) 提供输出文件夹并打开 index.html（file:// 下会阻止 fetch）。未找到 Python 以自动启动服务器。",
+    "servingAt": "正在提供服务：{}"
+  },
+  "popup": {
+    "exportAndRun": "导出并运行",
+    "exportAndRunOutput": "导出并运行输出"
+  },
+  "label": {
+    "exportAndRun": "导出并运行",
+    "outputFolder": "输出文件夹"
+  },
+  "hint": {
+    "reimportCanTakeAWhile": "重新导入资源时这可能需要一段时间。"
+  }
+},
+"launcher": {
+  "projectLauncher": "项目启动器",
+  "subtitle": "选择一个工作区或创建新工作区。",
+  "searchHint": "搜索项目...",
+  "recentProjects": "最近项目",
+  "workspace": "工作区",
+  "addExisting": "添加已有",
+  "importProject": "导入项目",
+  "window": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "还原"
+  },
+  "nav": {
+    "projects": "项目",
+    "newProject": "新建项目",
+    "openExisting": "打开已有"
+  },
+  "empty": {
+    "title": "未找到项目",
+    "hint": "创建一个项目或添加已有的工作区。"
+  },
+  "createDialog": {
+    "title": "创建 Vultra 项目",
+    "hint": "选择一个空文件夹。文件夹名称将作为项目名称。",
+    "projectFolder": "项目文件夹",
+    "template": "模板",
+    "templateEmpty": "空白",
+    "templateMinimal": "最小"
+  },
+  "existingDialog": {
+    "title": "添加已有 Vultra 项目",
+    "heading": "已有项目",
+    "hint": "选择一个包含 .vproject 文件的项目根目录。",
+    "projectRoot": "项目根目录"
+  },
+  "status": {
+    "addedProject": "已添加项目：{}",
+    "folderEmpty": "项目文件夹为空。",
+    "folderMissing": "项目文件夹不存在：{}",
+    "pathNotFolder": "项目路径不是文件夹：{}",
+    "inspectFailed": "检查项目文件夹失败：{}",
+    "folderNotEmpty": "项目文件夹必须为空：{}",
+    "invalidName": "项目文件夹名称不是有效的项目名称。",
+    "fileExists": "项目文件已存在：{}",
+    "createFailed": "创建项目失败：{}",
+    "writeVprojectFailed": "写入 .vproject 失败：{}",
+    "writeAssetsFailed": "写入默认项目资源失败：{}",
+    "createdProject": "已创建项目：{}",
+    "noVproject": "在此处未找到 .vproject：{}",
+    "addedExisting": "已添加已有项目：{}",
+    "removedProject": "已从启动器中移除项目：{}",
+    "openFailed": "打开 project.vproject 失败。",
+    "openedProject": "已打开项目：{}"
+  },
+  "io": {
+    "createDirFailed": "创建目录 '{}' 失败：{}",
+    "openForWriteFailed": "打开 '{}' 以写入失败",
+    "writeFailed": "写入 '{}' 失败"
+  }
+},
+"textureSelector": {
+  "none": "<无>",
+  "filterHint": "过滤纹理...",
+  "size": "尺寸",
+  "emptyState": "未找到纹理资源。",
+  "clear": "清除",
+  "importFailed": "纹理未导入或导入失败：{}"
+},
+"fileDialog": {
+  "browse": "浏览"
+},
+"meshSelector": {
+  "filterHint": "筛选网格...",
+  "size": "尺寸",
+  "empty": "未找到已导入的网格资产。",
+  "clear": "清除",
+  "field": {
+    "none": "<无>"
+  }
+},
+
+  "@meta": { "name": "简体中文" },
+  "common": {
+    "save": "保存",
+    "cancel": "取消",
+    "close": "关闭",
+    "apply": "应用",
+    "ok": "确定",
+    "yes": "是",
+    "no": "否",
+    "delete": "删除",
+    "rename": "重命名",
+    "create": "创建",
+    "open": "打开",
+    "add": "添加",
+    "remove": "移除",
+    "reset": "重置",
+    "edit": "编辑",
+    "copy": "复制",
+    "paste": "粘贴",
+    "duplicate": "克隆",
+    "import": "导入",
+    "export": "导出",
+    "search": "搜索",
+    "name": "名称",
+    "type": "类型",
+    "value": "值",
+    "none": "无",
+    "default": "默认",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "position": "位置",
+    "rotation": "旋转",
+    "scale": "缩放"
+  },
+  "topbar": {
+    "title": "VultraEngine 编辑器"
+  },
+  "menu": {
+    "file": {
+      "title": "文件",
+      "newScene": "新建空白场景",
+      "saveScene": "保存场景",
+      "exportRun": "导出并运行",
+      "exportSettings": "导出设置",
+      "backToLauncher": "返回启动器"
+    },
+    "edit": {
+      "title": "编辑",
+      "projectSettings": "项目设置",
+      "editorSettings": "编辑器设置",
+      "resetLayout": "重置布局"
+    },
+    "window": {
+      "title": "窗口",
+      "resetLayout": "重置布局"
+    },
+    "tools": {
+      "title": "工具",
+      "import": "导入",
+      "saveAll": "全部保存",
+      "profiler": "性能分析器窗口",
+      "frameDebugger": "帧调试器",
+      "runtimeFrameGraph": "运行时帧图查看器",
+      "worldViewer": "世界查看器"
+    },
+    "help": {
+      "title": "帮助",
+      "about": "关于 Vultra 编辑器"
+    },
+    "renderdoc": {
+      "title": "RenderDoc",
+      "capture": "捕获下一帧",
+      "available": "可用",
+      "unavailable": "不可用",
+      "capturing": "正在捕获",
+      "idle": "空闲",
+      "captures": "已捕获：{}"
+    }
+  },
+  "playback": {
+    "resume": "继续",
+    "play": "运行",
+    "pause": "暂停",
+    "stop": "停止",
+    "stepFrame": "单步执行",
+    "options": "播放选项",
+    "resetState": "重置运行状态"
+  },
+  "toolbar": {
+    "contentDrawer": "内容抽屉",
+    "editorTools": "编辑器工具",
+    "graphTools": "图工具",
+    "noProject": "无项目",
+    "noProjectLoaded": "未加载项目",
+    "backToLauncher": "返回启动器",
+    "exportRun": "导出并运行",
+    "exportRunTooltip": "导出包并运行",
+    "platforms": "平台",
+    "targetPlatform": "目标平台",
+    "settings": "设置"
+  },
+  "window": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "还原",
+    "close": "关闭",
+    "aiChat": "AI 对话",
+    "animatorGraph": "动画图",
+    "codeEditor": "代码编辑器",
+    "console": "控制台",
+    "contentBrowser": "内容浏览器",
+    "frameDebugger": "帧调试器",
+    "gameView": "游戏视图",
+    "history": "历史记录",
+    "inspector": "检查器",
+    "profiler": "性能分析器",
+    "renderGraph": "渲染图",
+    "sceneHierarchy": "场景层级",
+    "sceneView": "场景视图",
+    "worldViewer": "世界查看器",
+    "materialGraph": "材质图"
+  },
+  "history": {
+    "unavailable": "历史记录不可用。",
+    "undo": "撤销 (Ctrl+Z)",
+    "redo": "重做 (Ctrl+Shift+Z)",
+    "empty": "暂无场景历史记录。"
+  },
+  "console": {
+    "clear": "清空",
+    "autoScroll": "自动滚动",
+    "level": {
+      "trace": "跟踪",
+      "info": "信息",
+      "warn": "警告",
+      "error": "错误",
+      "critical": "严重",
+      "unknown": "未知"
+    },
+    "column": {
+      "type": "类型",
+      "message": "消息"
+    }
+  },
+  "worldViewer": {
+    "liveWorlds": "活动世界：{}",
+    "entities": "实体：{}",
+    "estCpu": "估算 CPU：{}",
+    "expandPools": "展开组件池",
+    "hint": "活动世界以外的世界通常表示预览或未释放的暂存世界。",
+    "header": "{}  #{}{}  -  {} 个实体，{} 个池，{}",
+    "active": "（活动）",
+    "noComponents": "  （无组件）",
+    "column": {
+      "component": "组件",
+      "count": "数量",
+      "estCpu": "估算 CPU"
+    }
+  },
+  "gameView": {
+    "noCamera": {
+      "title": "无主摄像机",
+      "message": "创建摄像机组件并标记为主摄像机以预览游戏。"
+    },
+    "createCamera": "创建摄像机",
+    "cameraCreated": "已创建主摄像机实体。",
+    "xrDisabled": {
+      "title": "XR 已禁用",
+      "message": "OpenXR 无法初始化。请检查运行时/头显是否可用，或使用 --no-xr 启动以禁用 XR。"
+    },
+    "requestXr": "请求 XR 会话",
+    "xrWaiting": {
+      "title": "等待 XR 镜像",
+      "message": "XR 运行时生成镜像纹理后，头显画面将显示在此处。"
+    },
+    "metrics": {
+      "title": "指标",
+      "fps": "帧率       {:.1f}",
+      "frame": "帧时       {:.2f} ms",
+      "cpuFrame": "CPU 帧时   {:.2f} ms",
+      "gpuFrame": "GPU 帧时   {:.2f} ms",
+      "draws": "绘制       {}",
+      "dispatch": "派发       {}",
+      "vramLocal": "本地显存   {}",
+      "warmingUp": "性能分析器预热中……",
+      "ramUsed": "已用内存   {}",
+      "ramAvail": "可用内存   {}",
+      "ramTotal": "内存总量   {}",
+      "splats": "高斯点     {} / {}"
+    },
+    "zoom": "缩放",
+    "res": "分辨率：{}x{}",
+    "gamma": "伽马",
+    "freeAspect": "自由比例"
+  },
+  "contentBrowser": {
+    "noRoot": { "title": "无资源根目录", "message": "打开或创建项目以浏览源资源。" },
+    "missingRoot": "资源根目录缺失：\n{}",
+    "filterHint": "筛选源资源……",
+    "iconSize": "图标大小：",
+    "missingDir": { "title": "目录缺失", "message": "所选文件夹已不存在。" },
+    "importFile": "导入文件",
+    "importFolder": "导入文件夹",
+    "importPackage": "导入包",
+    "createFolder": "新建文件夹",
+    "exportPackage": "导出包",
+    "importVultraPackage": "导入 Vultra 包",
+    "exportVultraPackage": "导出 Vultra 包",
+    "folder": "文件夹",
+    "source": "源",
+    "reimportQueued": "已加入源资源重新导入队列。",
+    "importingModel": "正在导入模型以显示子资源……",
+    "invalidSubAssetUuid": "无效的子资源 UUID。",
+    "importingAsset": "拖拽前正在导入资源……",
+    "notImported": "资源尚未导入。",
+    "importFailed": "导入失败：{}",
+    "copiedQueued": "已复制资源。导入已加入队列。",
+    "packageImportFailed": "包导入失败：{}",
+    "packageImported": "已导入包：{} 个文件，跳过 {} 个未更改。",
+    "packageExportFailed": "包导出失败：{}",
+    "packageValidationFailed": "包校验失败：{}",
+    "packageExported": "已导出包：{}（{} 个文件）。",
+    "renamed": "已重命名资源。",
+    "renameFailed": "重命名失败：{}",
+    "folderCreated": "已创建文件夹。",
+    "createFolderFailed": "创建文件夹失败：{}",
+    "deleted": "已删除资源。",
+    "deleteFailed": "删除失败：{}",
+    "column": { "path": "路径" },
+    "context": { "inspect": "检查", "editSource": "编辑源文件", "reimport": "重新导入" },
+    "subAsset": {
+      "mesh": "子网格",
+      "texture": "子纹理",
+      "skeleton": "子骨骼",
+      "animation": "子动画",
+      "asset": "子资源"
+    },
+    "open": {
+      "materialOutside": "打开材质图失败：图在资源根目录之外。",
+      "material": "正在打开材质图：{}",
+      "renderOutside": "打开渲染图失败：图在资源根目录之外。",
+      "render": "正在打开渲染图：{}",
+      "animatorOutside": "打开动画图失败：图在资源根目录之外。",
+      "animator": "正在打开动画图：{}",
+      "code": "已在代码编辑器中打开：{}",
+      "sceneOutside": "打开场景失败：场景在资源根目录之外。",
+      "scene": "正在打开场景：{}"
+    },
+    "renameAsset": { "title": "重命名资源" },
+    "createFolderDialog": { "title": "新建文件夹" },
+    "deleteAsset": { "title": "删除资源", "confirm": "删除此源资源？" },
+    "createAsset": {
+      "title": "创建资源",
+      "unknownType": "创建资源失败：未知的资源类型。",
+      "enterName": "创建资源失败：请输入文件名。",
+      "outsideRoot": "创建资源失败：目标在资源根目录之外。",
+      "exists": "创建资源失败：文件已存在。",
+      "error": "创建资源失败：{}",
+      "cannotOpen": "创建资源失败：无法打开文件。",
+      "cannotWrite": "创建资源失败：无法写入文件。",
+      "created": "已创建 {}。",
+      "createdNoImport": "已创建 {}，但资源注册表导入未运行。",
+      "computeShader": "计算着色器",
+      "raygenShader": "光线生成着色器",
+      "fragmentShader": "片元着色器",
+      "none": "<无>"
+    }
+  },
+  "frameDebugger": {
+    "column": {
+      "kind": "种类", "label": "标签", "id": "ID", "state": "状态", "refs": "引用",
+      "from": "从", "to": "到", "resource": "资源"
+    },
+    "import": "导入",
+    "runtime": "运行时",
+    "state": { "inactive": "未激活", "side": "副作用", "active": "激活" },
+    "passes": "通道",
+    "noPassSelected": "未选择通道。",
+    "inputs": "输入",
+    "outputs": "输出",
+    "captureFrame": "捕获帧",
+    "captureRequested": "已请求 RenderDoc 捕获。",
+    "openRenderDoc": "打开 RenderDoc",
+    "captures": "捕获数={}{}",
+    "capturingSuffix": "，正在捕获",
+    "frozenFrame": "冻结帧",
+    "live": "实时",
+    "freezeFrame": "冻结帧",
+    "noGraph": "尚未编译任何帧图。",
+    "notParseable": "帧图快照无法解析。",
+    "frameGraph": "帧图",
+    "counts": "通道={} 资源={} 边={}",
+    "filter": "筛选",
+    "filterHint": "通道/资源/边",
+    "tab": { "passIo": "通道 IO", "textures": "纹理", "nodes": "节点", "edges": "边", "raw": "原始" },
+    "frameGraphTextures": "帧图纹理",
+    "noTextures": "尚未捕获任何帧图纹理。",
+    "leftEye": "左眼",
+    "rightEye": "右眼",
+    "arrayLayer": "数组层",
+    "layer": "{}  层 {} / {}",
+    "importedTexture": "导入的帧图纹理",
+    "previewUnavailableSample": "无法预览：该纹理无法被调试预览通道采样。",
+    "mode": {
+      "label": "模式", "color": "颜色", "rawDepth": "原始深度", "linearDepth": "线性深度",
+      "invertedLinearDepth": "反转线性深度", "alpha": "Alpha", "normal": "法线"
+    },
+    "cameraZ": "相机 z：{:.4f} - {:.1f}",
+    "autoFitClamp": "根据预览自动适配范围",
+    "resetClamp": "将范围重置为 0..1",
+    "clampMin": "范围下限",
+    "clampMax": "范围上限",
+    "gamma": "伽马",
+    "noChannels": "未选择通道；预览渲染为黑色。",
+    "previewUnavailable": "纹理预览不可用。",
+    "previewNextFrame": "纹理预览将在下一帧更新。",
+    "previewUnavailableResource": "此资源的纹理预览不可用。",
+    "fitToView": "适应视图",
+    "nativeResolution": "以原始分辨率查看"
+  },
+  "profiler": {
+    "noSamples": "无帧采样。",
+    "unavailable": "渲染性能分析器不可用。",
+    "warmingUp": "性能分析器预热中……",
+    "backendUnavailable": "渲染后端不可用。",
+    "capture": "捕获",
+    "pause": "暂停",
+    "autoEnable": "自动启用",
+    "frameTimes": "帧时间",
+    "axisFrame": "帧",
+    "trackedResources": "跟踪的资源：{}",
+    "texturesBytes": "纹理 {}",
+    "buffersBytes": "缓冲 {}",
+    "vramBudget": "显存预算 {} / {}",
+    "available": "可用 {}",
+    "vramExhaustion": "显存预算即将耗尽。",
+    "vramHeap": "显存堆 {}",
+    "vramUnavailable": "此后端/设备上运行时显存预算不可用。",
+    "ramUnavailable": "此平台上运行时内存使用量不可用。",
+    "processRam": "进程内存 {}",
+    "systemRam": "系统内存 {} / {}",
+    "systemRamExhaustion": "系统内存即将耗尽。",
+    "cpuFrame": "CPU 帧 {:.2f} ms",
+    "cpuRender": "CPU 渲染 {:.2f} ms",
+    "gpu": "GPU {:.2f} ms",
+    "gpuNa": "GPU 不可用",
+    "vsyncOn": "垂直同步 开",
+    "vsyncOff": "垂直同步 关",
+    "draws": "绘制 {}",
+    "dispatch": "派发 {}",
+    "updates": "更新 {}",
+    "gpuMem": "GPU 内存 {}",
+    "ram": "内存 {}",
+    "ramNa": "内存 不可用",
+    "ramAvail": "可用内存 {}",
+    "ramAvailNa": "可用内存 不可用",
+    "ramTotal": "内存总量 {}",
+    "ramTotalNa": "内存总量 不可用",
+    "cpuCache": "CPU 缓存 {}",
+    "resType": { "buffer": "缓冲", "texture": "纹理", "resource": "资源" },
+    "resKind": { "gpuLocal": "GPU 本地", "hostVisible": "主机可见", "memory": "内存" },
+    "column": {
+      "size": "大小", "kind": "种类", "details": "详情",
+      "scope": "作用域", "totalMs": "总计 ms", "selfMs": "自身 ms", "calls": "调用次数"
+    },
+    "tab": { "plots": "图表", "cpu": "CPU", "gpu": "GPU", "memory": "内存" }
+  },
+  "scene": {
+    "createEntity": "创建实体",
+    "searchHint": "搜索实体……",
+    "servicesUnavailable": "服务不可用。",
+    "worldServiceUnavailable": "世界服务不可用。",
+    "entityLocked": "实体已锁定。",
+    "cmdUnavailable": "编辑器命令执行器不可用",
+    "cmdFailed": "编辑器命令执行失败",
+    "toggleVisibility": "切换可见性",
+    "toggleLock": "切换锁定",
+    "column": {
+      "entity": "实体",
+      "status": "状态"
+    },
+    "empty": {
+      "title": "无实体",
+      "message": "右键或使用“创建空实体”来添加。"
+    },
+    "context": {
+      "createChild": "创建子实体"
+    },
+    "rename": {
+      "title": "重命名实体"
+    },
+    "instantiate": {
+      "title": "实例化子网格资源",
+      "keepChannels": "保留导入的变换通道：",
+      "instantiate": "实例化"
+    },
+    "create": {
+      "empty": "空实体",
+      "basicGeometry": "基础几何体",
+      "quad": "四边形",
+      "cube": "立方体",
+      "sphere": "球体",
+      "capsule": "胶囊体",
+      "light": "灯光",
+      "directionalLight": "方向光",
+      "pointLight": "点光",
+      "spotLight": "聚光",
+      "areaLight": "面光",
+      "rendering": "渲染",
+      "particleEmitter": "粒子发射器",
+      "camera": "摄像机",
+      "xrCamera": "XR 摄像机",
+      "environment": "环境",
+      "ui": "UI",
+      "canvas": "画布",
+      "panel": "面板",
+      "text": "文本",
+      "image": "图像",
+      "button": "按钮",
+      "toggle": "开关",
+      "slider": "滑块",
+      "progressBar": "进度条",
+      "physics": "物理",
+      "staticBox": "静态盒体",
+      "dynamicSphere": "动态球体",
+      "capsuleRigidBody": "胶囊刚体"
+    }
+  },
+  "settings": {
+    "language": "语言"
+  }
+}

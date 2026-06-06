@@ -7,6 +7,8 @@
 #include "editor_app/selection.hpp"
 
 #include <IconsMaterialDesignIcons.h>
+#include <vultra/core/i18n/i18n.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
@@ -42,6 +44,12 @@ namespace vultra_app
     namespace
     {
         constexpr const char* kAssetUuidPayload = "VULTRA_ASSET_UUID";
+
+        // Build an "<icon> <translated label>" menu/button caption (the icon stays language-invariant).
+        std::string iconLabel(const char* icon, std::string_view key)
+        {
+            return std::string {icon} + " " + vultra::tr(key);
+        }
 
         bool isDescendantOf(vultra::World& world, entt::entity entity, entt::entity possibleAncestor)
         {
@@ -183,10 +191,10 @@ namespace vultra_app
                                                     nlohmann::json         args = nlohmann::json::object())
         {
             if (!ctx.editor)
-                return {{"ok", false}, {"error", "editor command executor is unavailable"}};
+                return {{"ok", false}, {"error", vultra::tr("scene.cmdUnavailable")}};
             auto result = ctx.editor->executeCommand(ctx, name, args);
             if (!result.value("ok", false))
-                ctx.state.statusMessage = result.value("error", "editor command failed");
+                ctx.state.statusMessage = result.value("error", vultra::tr("scene.cmdFailed"));
             return result;
         }
 
@@ -221,15 +229,15 @@ namespace vultra_app
             const ImU32 accent = ImGui::GetColorU32(ImGuiCol_DragDropTarget);
             if (mode == EntityDropMode::AsChild)
             {
-                drawList->AddRect(itemMin, itemMax, accent, 3.0f, 0, 2.0f);
+                drawList->AddRect(itemMin, itemMax, accent, vultra::ui::dp(3.0f), 0, vultra::ui::dp(2.0f));
                 return;
             }
 
             const float y  = mode == EntityDropMode::Before ? itemMin.y : itemMax.y;
-            const float x0 = itemMin.x + 2.0f;
-            const float x1 = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x - 2.0f;
-            drawList->AddLine(ImVec2(x0, y), ImVec2(x1, y), accent, 2.0f);
-            drawList->AddCircleFilled(ImVec2(x0, y), 3.0f, accent);
+            const float x0 = itemMin.x + vultra::ui::dp(2.0f);
+            const float x1 = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x - vultra::ui::dp(2.0f);
+            drawList->AddLine(ImVec2(x0, y), ImVec2(x1, y), accent, vultra::ui::dp(2.0f));
+            drawList->AddCircleFilled(ImVec2(x0, y), vultra::ui::dp(3.0f), accent);
         }
 
         bool isDraggingPayload(const char* type)
@@ -252,77 +260,77 @@ namespace vultra_app
 
         void drawCreateEntityMenu(EditorContext& ctx, vultra::World& world, entt::entity parent)
         {
-            if (ImGui::MenuItem(ICON_MDI_CUBE_OUTLINE " Empty Entity"))
+            if (ImGui::MenuItem(iconLabel(ICON_MDI_CUBE_OUTLINE, "scene.create.empty").c_str()))
                 createSceneEntityCommand(ctx, parent, SceneCreateKind::Empty);
 
-            if (ImGui::BeginMenu(ICON_MDI_SHAPE " Basic Geometry"))
+            if (ImGui::BeginMenu(iconLabel(ICON_MDI_SHAPE, "scene.create.basicGeometry").c_str()))
             {
-                if (ImGui::MenuItem(ICON_MDI_VECTOR_SQUARE " Quad"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_VECTOR_SQUARE, "scene.create.quad").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::Quad);
-                if (ImGui::MenuItem(ICON_MDI_CUBE " Cube"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_CUBE, "scene.create.cube").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::Cube);
-                if (ImGui::MenuItem(ICON_MDI_SPHERE " Sphere"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_SPHERE, "scene.create.sphere").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::Sphere);
-                if (ImGui::MenuItem(ICON_MDI_CYLINDER " Capsule"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_CYLINDER, "scene.create.capsule").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::Capsule);
                 ImGui::EndMenu();
             }
 
-            if (ImGui::BeginMenu(ICON_MDI_LIGHTBULB_ON_OUTLINE " Light"))
+            if (ImGui::BeginMenu(iconLabel(ICON_MDI_LIGHTBULB_ON_OUTLINE, "scene.create.light").c_str()))
             {
-                if (ImGui::MenuItem("Directional Light"))
+                if (ImGui::MenuItem(vultra::tr("scene.create.directionalLight")))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::DirectionalLight);
-                if (ImGui::MenuItem("Point Light"))
+                if (ImGui::MenuItem(vultra::tr("scene.create.pointLight")))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::PointLight);
-                if (ImGui::MenuItem("Spot Light"))
+                if (ImGui::MenuItem(vultra::tr("scene.create.spotLight")))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::SpotLight);
-                if (ImGui::MenuItem("Area Light"))
+                if (ImGui::MenuItem(vultra::tr("scene.create.areaLight")))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::AreaLight);
                 ImGui::EndMenu();
             }
 
-            if (ImGui::BeginMenu(ICON_MDI_CREATION " Rendering"))
+            if (ImGui::BeginMenu(iconLabel(ICON_MDI_CREATION, "scene.create.rendering").c_str()))
             {
-                if (ImGui::MenuItem(ICON_MDI_CREATION " Particle Emitter"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_CREATION, "scene.create.particleEmitter").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::ParticleEmitter);
                 ImGui::EndMenu();
             }
 
-            if (ImGui::MenuItem(ICON_MDI_CAMERA " Camera"))
+            if (ImGui::MenuItem(iconLabel(ICON_MDI_CAMERA, "scene.create.camera").c_str()))
                 createSceneEntityCommand(ctx, parent, SceneCreateKind::Camera);
-            if (ImGui::MenuItem(ICON_MDI_VIRTUAL_REALITY " XR Camera"))
+            if (ImGui::MenuItem(iconLabel(ICON_MDI_VIRTUAL_REALITY, "scene.create.xrCamera").c_str()))
                 createSceneEntityCommand(ctx, parent, SceneCreateKind::XRCamera);
-            if (ImGui::MenuItem(ICON_MDI_WEATHER_SUNNY " Environment"))
+            if (ImGui::MenuItem(iconLabel(ICON_MDI_WEATHER_SUNNY, "scene.create.environment").c_str()))
                 createSceneEntityCommand(ctx, parent, SceneCreateKind::Environment);
 
-            if (ImGui::BeginMenu(ICON_MDI_APPLICATION " UI"))
+            if (ImGui::BeginMenu(iconLabel(ICON_MDI_APPLICATION, "scene.create.ui").c_str()))
             {
-                if (ImGui::MenuItem(ICON_MDI_MONITOR " Canvas"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_MONITOR, "scene.create.canvas").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::UiCanvas);
-                if (ImGui::MenuItem(ICON_MDI_RECTANGLE_OUTLINE " Panel"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_RECTANGLE_OUTLINE, "scene.create.panel").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::UiPanel);
-                if (ImGui::MenuItem(ICON_MDI_FORMAT_TEXT " Text"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_FORMAT_TEXT, "scene.create.text").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::UiText);
-                if (ImGui::MenuItem(ICON_MDI_IMAGE_OUTLINE " Image"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_IMAGE_OUTLINE, "scene.create.image").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::UiImage);
-                if (ImGui::MenuItem(ICON_MDI_GESTURE_TAP_BUTTON " Button"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_GESTURE_TAP_BUTTON, "scene.create.button").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::UiButton);
-                if (ImGui::MenuItem(ICON_MDI_CHECKBOX_MARKED_OUTLINE " Toggle"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_CHECKBOX_MARKED_OUTLINE, "scene.create.toggle").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::UiToggle);
-                if (ImGui::MenuItem(ICON_MDI_TUNE " Slider"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_TUNE, "scene.create.slider").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::UiSlider);
-                if (ImGui::MenuItem(ICON_MDI_PROGRESS_CHECK " Progress Bar"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_PROGRESS_CHECK, "scene.create.progressBar").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::UiProgressBar);
                 ImGui::EndMenu();
             }
 
-            if (ImGui::BeginMenu(ICON_MDI_ATOM " Physics"))
+            if (ImGui::BeginMenu(iconLabel(ICON_MDI_ATOM, "scene.create.physics").c_str()))
             {
-                if (ImGui::MenuItem(ICON_MDI_CUBE " Static Box"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_CUBE, "scene.create.staticBox").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::StaticBox);
-                if (ImGui::MenuItem(ICON_MDI_SPHERE " Dynamic Sphere"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_SPHERE, "scene.create.dynamicSphere").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::DynamicSphere);
-                if (ImGui::MenuItem(ICON_MDI_CYLINDER " Capsule Rigid Body"))
+                if (ImGui::MenuItem(iconLabel(ICON_MDI_CYLINDER, "scene.create.capsuleRigidBody").c_str()))
                     createSceneEntityCommand(ctx, parent, SceneCreateKind::CapsuleRigidBody);
                 ImGui::EndMenu();
             }
@@ -389,21 +397,21 @@ namespace vultra_app
     {
         if (m_PendingAssetInstantiation.openPopup)
         {
-            ImGui::OpenPopup("Instantiate Sub Mesh Asset");
+            ImGui::OpenPopup(vultra::trId("scene.instantiate.title", "InstantiateSubMesh"));
             m_PendingAssetInstantiation.openPopup = false;
         }
 
         const ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings;
-        if (ImGui::BeginPopupModal("Instantiate Sub Mesh Asset", nullptr, flags))
+        if (ImGui::BeginPopupModal(vultra::trId("scene.instantiate.title", "InstantiateSubMesh"), nullptr, flags))
         {
-            ImGui::TextUnformatted("Keep imported transform channels:");
+            ImGui::TextUnformatted(vultra::tr("scene.instantiate.keepChannels"));
             ImGui::Spacing();
-            ImGui::Checkbox("Position", &m_PendingAssetInstantiation.keepPosition);
-            ImGui::Checkbox("Rotation", &m_PendingAssetInstantiation.keepRotation);
-            ImGui::Checkbox("Scale", &m_PendingAssetInstantiation.keepScale);
+            ImGui::Checkbox(vultra::tr("common.position"), &m_PendingAssetInstantiation.keepPosition);
+            ImGui::Checkbox(vultra::tr("common.rotation"), &m_PendingAssetInstantiation.keepRotation);
+            ImGui::Checkbox(vultra::tr("common.scale"), &m_PendingAssetInstantiation.keepScale);
             ImGui::Spacing();
 
-            if (ImGui::Button("Instantiate", ImVec2(110.0f, 0.0f)))
+            if (ImGui::Button(vultra::tr("scene.instantiate.instantiate"), ImVec2(vultra::ui::dp(110.0f), 0.0f)))
             {
                 const auto request          = m_PendingAssetInstantiation;
                 m_PendingAssetInstantiation = {};
@@ -411,7 +419,7 @@ namespace vultra_app
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f)))
+            if (ImGui::Button(vultra::tr("common.cancel"), ImVec2(vultra::ui::dp(90.0f), 0.0f)))
             {
                 m_PendingAssetInstantiation = {};
                 ImGui::CloseCurrentPopup();
@@ -420,7 +428,7 @@ namespace vultra_app
         }
     }
 
-    SceneHierarchyWindow::SceneHierarchyWindow() : EditorWindow("Scene Hierarchy", ICON_MDI_FILE_TREE) {}
+    SceneHierarchyWindow::SceneHierarchyWindow() : EditorWindow("Scene Hierarchy", ICON_MDI_FILE_TREE, "window.sceneHierarchy") {}
 
     void SceneHierarchyWindow::draw(EditorContext& ctx)
     {
@@ -437,18 +445,18 @@ namespace vultra_app
         if (ImGui::Button(ICON_MDI_PLUS, ImVec2 {createButtonWidth, 0.0f}))
             ImGui::OpenPopup("SceneHierarchyCreateMenu");
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Create entity");
+            ImGui::SetTooltip("%s", vultra::tr("scene.createEntity"));
         ImGui::Separator();
 
         ImGui::TextUnformatted(ICON_MDI_MAGNIFY);
         ImGui::SameLine();
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint(
-            "##SceneHierarchySearch", "Search entities...", m_SearchBuffer.data(), m_SearchBuffer.size());
+            "##SceneHierarchySearch", vultra::tr("scene.searchHint"), m_SearchBuffer.data(), m_SearchBuffer.size());
 
         if (!ctx.services)
         {
-            ImGui::TextUnformatted("Services are not available.");
+            ImGui::TextUnformatted(vultra::tr("scene.servicesUnavailable"));
             ImGui::End();
             return;
         }
@@ -456,7 +464,7 @@ namespace vultra_app
         auto* worldService = ctx.services->tryGet<vultra::IWorldService>();
         if (!worldService)
         {
-            ImGui::TextUnformatted("World service is not available.");
+            ImGui::TextUnformatted(vultra::tr("scene.worldServiceUnavailable"));
             ImGui::End();
             return;
         }
@@ -482,8 +490,8 @@ namespace vultra_app
                               ImGuiTableFlags_Resizable | ImGuiTableFlags_NoPadOuterX | ImGuiTableFlags_BordersInnerV |
                                   ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg))
         {
-            ImGui::TableSetupColumn("Entity", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+            ImGui::TableSetupColumn(vultra::tr("scene.column.entity"), ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(vultra::tr("scene.column.status"), ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(86.0f));
             ImGui::TableHeadersRow();
 
             bool drewAny = false;
@@ -518,7 +526,7 @@ namespace vultra_app
                         {
                             if (auto* status = reg.try_get<vultra::EntityStatusComponent>(dropped);
                                 status && status->locked)
-                                ctx.state.statusMessage = "Entity is locked.";
+                                ctx.state.statusMessage = vultra::tr("scene.entityLocked");
                             else
                             {
                                 (void)executeSceneHierarchyCommand(ctx,
@@ -534,7 +542,8 @@ namespace vultra_app
             }
 
             if (!drewAny)
-                ui::emptyState(ICON_MDI_CUBE_OFF_OUTLINE, "No Entities", "Right-click or use Create Empty to add one.");
+                ui::emptyState(
+                    ICON_MDI_CUBE_OFF_OUTLINE, vultra::tr("scene.empty.title"), vultra::tr("scene.empty.message"));
 
             ImGui::EndTable();
         }
@@ -549,7 +558,7 @@ namespace vultra_app
                 if (reg.get<vultra::IDComponent>(entity).uuid != selectedUuid)
                     continue;
                 if (auto* status = reg.try_get<vultra::EntityStatusComponent>(entity); status && status->locked)
-                    ctx.state.statusMessage = "Entity is locked.";
+                    ctx.state.statusMessage = vultra::tr("scene.entityLocked");
                 else
                     (void)executeSceneHierarchyCommand(
                         ctx, "scene.remove_entity", {{"entity", static_cast<uint32_t>(entity)}});
@@ -627,7 +636,7 @@ namespace vultra_app
             m_RenameEntity = entity;
             std::memset(m_RenameBuffer.data(), 0, m_RenameBuffer.size());
             std::memcpy(m_RenameBuffer.data(), name.c_str(), std::min(name.size(), m_RenameBuffer.size() - 1));
-            ImGui::OpenPopup("Rename Entity");
+            ImGui::OpenPopup(vultra::trId("scene.rename.title", "RenameEntity"));
         }
 
         if (!status.locked && ImGui::BeginDragDropSource())
@@ -662,7 +671,7 @@ namespace vultra_app
                     {
                         if (auto* draggedStatus = reg.try_get<vultra::EntityStatusComponent>(dropped);
                             draggedStatus && draggedStatus->locked)
-                            ctx.state.statusMessage = "Entity is locked.";
+                            ctx.state.statusMessage = vultra::tr("scene.entityLocked");
                         else
                         {
                             if (dropMode == EntityDropMode::Before)
@@ -708,19 +717,19 @@ namespace vultra_app
 
         if (ImGui::BeginPopupContextItem("EntityContext"))
         {
-            if (ImGui::MenuItem("Rename"))
+            if (ImGui::MenuItem(vultra::tr("common.rename")))
             {
                 m_RenameEntity = entity;
                 std::memset(m_RenameBuffer.data(), 0, m_RenameBuffer.size());
                 std::memcpy(m_RenameBuffer.data(), name.c_str(), std::min(name.size(), m_RenameBuffer.size() - 1));
-                ImGui::OpenPopup("Rename Entity");
+                ImGui::OpenPopup(vultra::trId("scene.rename.title", "RenameEntity"));
             }
-            if (!status.locked && ImGui::BeginMenu("Create Child"))
+            if (!status.locked && ImGui::BeginMenu(vultra::tr("scene.context.createChild")))
             {
                 drawCreateEntityMenu(ctx, world, entity);
                 ImGui::EndMenu();
             }
-            if (ImGui::MenuItem("Delete"))
+            if (ImGui::MenuItem(vultra::tr("common.delete")))
             {
                 (void)executeSceneHierarchyCommand(
                     ctx, "scene.remove_entity", {{"entity", static_cast<uint32_t>(entity)}});
@@ -732,8 +741,9 @@ namespace vultra_app
         }
 
         ImGui::TableNextColumn();
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 6.0f);
-        if (ui::iconButton(status.visible ? ICON_MDI_EYE : ICON_MDI_EYE_OFF, "Toggle visibility", status.visible))
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + vultra::ui::dp(6.0f));
+        if (ui::iconButton(
+                status.visible ? ICON_MDI_EYE : ICON_MDI_EYE_OFF, vultra::tr("scene.toggleVisibility"), status.visible))
         {
             (void)executeSceneHierarchyCommand(ctx,
                                                "scene.update_component",
@@ -742,7 +752,8 @@ namespace vultra_app
                                                 {"visible", !status.visible}});
         }
         ImGui::SameLine();
-        if (ui::iconButton(status.locked ? ICON_MDI_LOCK : ICON_MDI_LOCK_OPEN_VARIANT, "Toggle lock", status.locked))
+        if (ui::iconButton(
+                status.locked ? ICON_MDI_LOCK : ICON_MDI_LOCK_OPEN_VARIANT, vultra::tr("scene.toggleLock"), status.locked))
         {
             (void)executeSceneHierarchyCommand(ctx,
                                                "scene.update_component",
@@ -752,10 +763,10 @@ namespace vultra_app
         }
 
         if (m_RenameEntity == entity &&
-            ImGui::BeginPopupModal("Rename Entity", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            ImGui::BeginPopupModal(vultra::trId("scene.rename.title", "RenameEntity"), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
-            ImGui::InputText("Name", m_RenameBuffer.data(), m_RenameBuffer.size());
-            if (ImGui::Button("OK"))
+            ImGui::InputText(vultra::tr("common.name"), m_RenameBuffer.data(), m_RenameBuffer.size());
+            if (ImGui::Button(vultra::tr("common.ok")))
             {
                 (void)executeSceneHierarchyCommand(ctx,
                                                    "scene.update_component",
@@ -766,7 +777,7 @@ namespace vultra_app
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel"))
+            if (ImGui::Button(vultra::tr("common.cancel")))
             {
                 m_RenameEntity = entt::null;
                 ImGui::CloseCurrentPopup();

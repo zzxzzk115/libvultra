@@ -8,7 +8,9 @@
 
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiFileDialog/ImGuiFileDialog.h>
+#include <vultra/core/i18n/i18n.hpp>
 #include <vultra/function/asset/builtin_assets.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/material/material_asset.hpp>
 #include <vultra/function/material_graph/material_graph.hpp>
 #include <vultra/function/material_graph/material_node_registry.hpp>
@@ -554,13 +556,13 @@ namespace vultra_app
             if (type == eTexture2D)
             {
                 std::string v = value.is_string() ? value.get<std::string>() : std::string {};
-                if (!drawMaterialStringInput("Default URI", v))
+                if (!drawMaterialStringInput(vultra::tr("inspector.graphNode.defaultUri"), v))
                     return false;
                 value = v;
                 return true;
             }
 
-            ui::beginPropertyRow("Default");
+            ui::beginPropertyRow(vultra::tr("common.default"));
             bool changed = false;
             switch (type)
             {
@@ -635,13 +637,13 @@ namespace vultra_app
 
         void drawImagePreviewPlaceholder(const std::filesystem::path& path, const char* note)
         {
-            ImGui::TextUnformatted("Preview");
-            const float  size = std::min(ImGui::GetContentRegionAvail().x, 220.0f);
+            ImGui::TextUnformatted(vultra::tr("inspector.preview"));
+            const float  size = std::min(ImGui::GetContentRegionAvail().x, vultra::ui::dp(220.0f));
             const ImVec2 pos  = ImGui::GetCursorScreenPos();
             ImDrawList*  dl   = ImGui::GetWindowDrawList();
             const ImVec2 max {pos.x + size, pos.y + size};
 
-            const float tile = 16.0f;
+            const float tile = vultra::ui::dp(16.0f);
             for (float y = pos.y; y < max.y; y += tile)
             {
                 for (float x = pos.x; x < max.x; x += tile)
@@ -653,7 +655,7 @@ namespace vultra_app
                                       dark ? IM_COL32(62, 66, 72, 255) : IM_COL32(82, 88, 96, 255));
                 }
             }
-            dl->AddRect(pos, max, IM_COL32(150, 160, 175, 255), 6.0f, 0, 1.5f);
+            dl->AddRect(pos, max, IM_COL32(150, 160, 175, 255), vultra::ui::dp(6.0f), 0, vultra::ui::dp(1.5f));
             const auto label = path.filename().generic_string();
             const auto text  = ImGui::CalcTextSize(label.c_str());
             dl->AddText(ImVec2(pos.x + (size - text.x) * 0.5f, pos.y + (size - text.y) * 0.5f),
@@ -756,14 +758,14 @@ namespace vultra_app
         const char* textureSubtypeLabel(std::string_view subtype)
         {
             if (subtype == vasset::kTextureSubtypeUiSprite)
-                return "UI / Sprite";
+                return vultra::tr("inspector.texture.subtype.uiSprite");
             if (subtype == vasset::kTextureSubtypeNormalMap)
-                return "Normal Map";
+                return vultra::tr("inspector.texture.subtype.normalMap");
             if (subtype == vasset::kTextureSubtypeCursor)
-                return "Cursor";
+                return vultra::tr("inspector.texture.subtype.cursor");
             if (subtype == vasset::kTextureSubtypeDefault)
-                return "Default";
-            return subtype.empty() ? "Default" : subtype.data();
+                return vultra::tr("common.default");
+            return subtype.empty() ? vultra::tr("common.default") : subtype.data();
         }
 
         bool drawTextureFileFormatCombo(vasset::VTextureFileFormat& format)
@@ -789,7 +791,7 @@ namespace vultra_app
                     preview = option.label;
 
             bool changed = false;
-            ui::beginPropertyRow("Target Format");
+            ui::beginPropertyRow(vultra::tr("inspector.texture.targetFormat"));
             if (ImGui::BeginCombo("##TargetFormat", preview))
             {
                 for (const auto& option : kOptions)
@@ -825,57 +827,57 @@ namespace vultra_app
         const char* displayComponentName(const char* metaName)
         {
             if (std::strcmp(metaName, "TransformComponent") == 0)
-                return "Transform";
+                return vultra::tr("inspector.component.transform");
             if (std::strcmp(metaName, "RectTransformComponent") == 0)
-                return "Rect Transform";
+                return vultra::tr("inspector.component.rectTransform");
             if (std::strcmp(metaName, "CanvasComponent") == 0)
-                return "Canvas";
+                return vultra::tr("inspector.component.canvas");
             if (std::strcmp(metaName, "UiPanelComponent") == 0)
-                return "UI Panel";
+                return vultra::tr("inspector.component.uiPanel");
             if (std::strcmp(metaName, "UiImageComponent") == 0)
-                return "UI Image";
+                return vultra::tr("inspector.component.uiImage");
             if (std::strcmp(metaName, "UiTextComponent") == 0)
-                return "UI Text";
+                return vultra::tr("inspector.component.uiText");
             if (std::strcmp(metaName, "UiButtonComponent") == 0)
-                return "UI Button";
+                return vultra::tr("inspector.component.uiButton");
             if (std::strcmp(metaName, "UiToggleComponent") == 0)
-                return "UI Toggle";
+                return vultra::tr("inspector.component.uiToggle");
             if (std::strcmp(metaName, "UiSliderComponent") == 0)
-                return "UI Slider";
+                return vultra::tr("inspector.component.uiSlider");
             if (std::strcmp(metaName, "UiProgressBarComponent") == 0)
-                return "UI Progress Bar";
+                return vultra::tr("inspector.component.uiProgressBar");
             if (std::strcmp(metaName, "UiLayoutComponent") == 0)
-                return "UI Layout";
+                return vultra::tr("inspector.component.uiLayout");
             if (std::strcmp(metaName, "EntityStatusComponent") == 0)
-                return "Status";
+                return vultra::tr("inspector.component.status");
             if (std::strcmp(metaName, "MeshComponent") == 0)
-                return "Mesh";
+                return vultra::tr("inspector.component.mesh");
             if (std::strcmp(metaName, "AnimatorComponent") == 0)
-                return "Animator";
+                return vultra::tr("inspector.component.animator");
             if (std::strcmp(metaName, "GaussianSplatComponent") == 0)
-                return "Gaussian Splat";
+                return vultra::tr("inspector.component.gaussianSplat");
             if (std::strcmp(metaName, "CameraComponent") == 0)
-                return "Camera";
+                return vultra::tr("inspector.component.camera");
             if (std::strcmp(metaName, "XRViewComponent") == 0)
-                return "XR View";
+                return vultra::tr("inspector.component.xrView");
             if (std::strcmp(metaName, "EnvironmentComponent") == 0)
-                return "Environment";
+                return vultra::tr("inspector.component.environment");
             if (std::strcmp(metaName, "ReflectionProbeComponent") == 0)
-                return "Reflection Probe";
+                return vultra::tr("inspector.component.reflectionProbe");
             if (std::strcmp(metaName, "LightComponent") == 0)
-                return "Light";
+                return vultra::tr("inspector.component.light");
             if (std::strcmp(metaName, "ParticleEmitterComponent") == 0)
-                return "Particle Emitter";
+                return vultra::tr("inspector.component.particleEmitter");
             if (std::strcmp(metaName, "RigidBodyComponent") == 0)
-                return "Rigid Body";
+                return vultra::tr("inspector.component.rigidBody");
             if (std::strcmp(metaName, "BoxShapeComponent") == 0)
-                return "Box Shape";
+                return vultra::tr("inspector.component.boxShape");
             if (std::strcmp(metaName, "SphereShapeComponent") == 0)
-                return "Sphere Shape";
+                return vultra::tr("inspector.component.sphereShape");
             if (std::strcmp(metaName, "CapsuleShapeComponent") == 0)
-                return "Capsule Shape";
+                return vultra::tr("inspector.component.capsuleShape");
             if (std::strcmp(metaName, "ScriptComponent") == 0)
-                return "Script";
+                return vultra::tr("inspector.component.script");
             return metaName;
         }
 
@@ -888,163 +890,171 @@ namespace vultra_app
         template<>
         const char* componentDisplayName<vultra::TransformComponent>()
         {
-            return "Transform";
+            return vultra::tr("inspector.component.transform");
         }
 
         template<>
         const char* componentDisplayName<vultra::RectTransformComponent>()
         {
-            return "Rect Transform";
+            return vultra::tr("inspector.component.rectTransform");
         }
 
         template<>
         const char* componentDisplayName<vultra::CanvasComponent>()
         {
-            return "Canvas";
+            return vultra::tr("inspector.component.canvas");
         }
 
         template<>
         const char* componentDisplayName<vultra::UiPanelComponent>()
         {
-            return "UI Panel";
+            return vultra::tr("inspector.component.uiPanel");
         }
 
         template<>
         const char* componentDisplayName<vultra::UiImageComponent>()
         {
-            return "UI Image";
+            return vultra::tr("inspector.component.uiImage");
         }
 
         template<>
         const char* componentDisplayName<vultra::UiTextComponent>()
         {
-            return "UI Text";
+            return vultra::tr("inspector.component.uiText");
         }
 
         template<>
         const char* componentDisplayName<vultra::UiButtonComponent>()
         {
-            return "UI Button";
+            return vultra::tr("inspector.component.uiButton");
         }
 
         template<>
         const char* componentDisplayName<vultra::UiToggleComponent>()
         {
-            return "UI Toggle";
+            return vultra::tr("inspector.component.uiToggle");
         }
 
         template<>
         const char* componentDisplayName<vultra::UiSliderComponent>()
         {
-            return "UI Slider";
+            return vultra::tr("inspector.component.uiSlider");
         }
 
         template<>
         const char* componentDisplayName<vultra::UiProgressBarComponent>()
         {
-            return "UI Progress Bar";
+            return vultra::tr("inspector.component.uiProgressBar");
         }
 
         template<>
         const char* componentDisplayName<vultra::UiLayoutComponent>()
         {
-            return "UI Layout";
+            return vultra::tr("inspector.component.uiLayout");
         }
 
         template<>
         const char* componentDisplayName<vultra::HierarchyComponent>()
         {
-            return "Hierarchy";
+            return vultra::tr("inspector.component.hierarchy");
         }
 
         template<>
         const char* componentDisplayName<vultra::MeshComponent>()
         {
-            return "Mesh";
+            return vultra::tr("inspector.component.mesh");
         }
 
         template<>
         const char* componentDisplayName<vultra::AnimatorComponent>()
         {
-            return "Animator";
+            return vultra::tr("inspector.component.animator");
         }
 
         template<>
         const char* componentDisplayName<vultra::GaussianSplatComponent>()
         {
-            return "Gaussian Splat";
+            return vultra::tr("inspector.component.gaussianSplat");
         }
 
         template<>
         const char* componentDisplayName<vultra::CameraComponent>()
         {
-            return "Camera";
+            return vultra::tr("inspector.component.camera");
         }
 
         template<>
         const char* componentDisplayName<vultra::XRViewComponent>()
         {
-            return "XR View";
+            return vultra::tr("inspector.component.xrView");
         }
 
         template<>
         const char* componentDisplayName<vultra::EnvironmentComponent>()
         {
-            return "Environment";
+            return vultra::tr("inspector.component.environment");
         }
 
         template<>
         const char* componentDisplayName<vultra::ReflectionProbeComponent>()
         {
-            return "Reflection Probe";
+            return vultra::tr("inspector.component.reflectionProbe");
         }
 
         template<>
         const char* componentDisplayName<vultra::LightComponent>()
         {
-            return "Light";
+            return vultra::tr("inspector.component.light");
         }
 
         template<>
         const char* componentDisplayName<vultra::RigidBodyComponent>()
         {
-            return "Rigid Body";
+            return vultra::tr("inspector.component.rigidBody");
         }
 
         template<>
         const char* componentDisplayName<vultra::BoxShapeComponent>()
         {
-            return "Box Shape";
+            return vultra::tr("inspector.component.boxShape");
         }
 
         template<>
         const char* componentDisplayName<vultra::SphereShapeComponent>()
         {
-            return "Sphere Shape";
+            return vultra::tr("inspector.component.sphereShape");
         }
 
         template<>
         const char* componentDisplayName<vultra::CapsuleShapeComponent>()
         {
-            return "Capsule Shape";
+            return vultra::tr("inspector.component.capsuleShape");
         }
 
         template<>
         const char* componentDisplayName<vultra::ScriptComponent>()
         {
-            return "Script";
+            return vultra::tr("inspector.component.script");
         }
 
         template<>
         const char* componentDisplayName<vultra::PrefabInstanceComponent>()
         {
-            return "Prefab";
+            return vultra::tr("inspector.component.prefab");
         }
 
         std::string displayFieldName(const char* raw)
         {
             if (raw == nullptr)
                 return {};
+
+            // i18n: reflected component fields are labelled by their raw member name. Prefer a
+            // translation keyed by that name (inspector.field.<rawName>); fall back to a prettified
+            // camelCase split when the active catalog has no entry (tr() returns the key on a miss).
+            std::string key = "inspector.field.";
+            key += raw;
+            if (const char* translated = vultra::tr(key); std::strcmp(translated, key.c_str()) != 0)
+                return translated;
 
             std::string out;
             out.reserve(std::strlen(raw) + 4);
@@ -1073,14 +1083,14 @@ namespace vultra_app
 
             ImGui::PushID(label);
             ImGui::Columns(2, nullptr, false);
-            ImGui::SetColumnWidth(0, 92.0f);
+            ImGui::SetColumnWidth(0, vultra::ui::dp(92.0f));
             ImGui::TextUnformatted(label);
             ImGui::NextColumn();
 
             const float  lineHeight = ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2.0f;
-            const ImVec2 buttonSize {lineHeight + 3.0f, lineHeight};
+            const ImVec2 buttonSize {lineHeight + vultra::ui::dp(3.0f), lineHeight};
             const float  itemWidth = std::max(
-                42.0f,
+                vultra::ui::dp(42.0f),
                 (ImGui::GetContentRegionAvail().x - buttonSize.x * 3.0f - ImGui::GetStyle().ItemSpacing.x * 6.0f) /
                     3.0f);
 
@@ -1137,14 +1147,14 @@ namespace vultra_app
 
             ImGui::PushID(label);
             ImGui::Columns(2, nullptr, false);
-            ImGui::SetColumnWidth(0, 92.0f);
+            ImGui::SetColumnWidth(0, vultra::ui::dp(92.0f));
             ImGui::TextUnformatted(label);
             ImGui::NextColumn();
 
             const float  lineHeight = ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2.0f;
-            const ImVec2 buttonSize {lineHeight + 3.0f, lineHeight};
+            const ImVec2 buttonSize {lineHeight + vultra::ui::dp(3.0f), lineHeight};
             const float  itemWidth = std::max(
-                48.0f,
+                vultra::ui::dp(48.0f),
                 (ImGui::GetContentRegionAvail().x - buttonSize.x * 2.0f - ImGui::GetStyle().ItemSpacing.x * 4.0f) /
                     2.0f);
 
@@ -1178,13 +1188,13 @@ namespace vultra_app
             bool changed = false;
             ImGui::PushID("AnchorPresetPreview");
             const ImVec2 origin = ImGui::GetCursorScreenPos();
-            const float  cell   = 18.0f;
-            const float  gap    = 3.0f;
+            const float  cell   = vultra::ui::dp(18.0f);
+            const float  gap    = vultra::ui::dp(3.0f);
             auto*        dl     = ImGui::GetWindowDrawList();
             const ImVec2 boxMin = origin;
             const ImVec2 boxMax {origin.x + cell * 3.0f + gap * 2.0f, origin.y + cell * 3.0f + gap * 2.0f};
-            dl->AddRectFilled(boxMin, boxMax, IM_COL32(18, 22, 28, 255), 4.0f);
-            dl->AddRect(boxMin, boxMax, IM_COL32(255, 255, 255, 32), 4.0f);
+            dl->AddRectFilled(boxMin, boxMax, IM_COL32(18, 22, 28, 255), vultra::ui::dp(4.0f));
+            dl->AddRect(boxMin, boxMax, IM_COL32(255, 255, 255, 32), vultra::ui::dp(4.0f));
 
             const glm::vec2 anchorCenter = (rect.anchorMin + rect.anchorMax) * 0.5f;
             const int selectedX = std::clamp(static_cast<int>(std::round(anchorCenter.x * 2.0f)), 0, 2);
@@ -1225,19 +1235,19 @@ namespace vultra_app
             bool changed = false;
             ImGui::PushID("RectTransformCustom");
 
-            ImGui::TextDisabled("Anchors");
-            ImGui::SameLine(92.0f);
+            ImGui::TextDisabled("%s", vultra::tr("inspector.rectTransform.anchors"));
+            ImGui::SameLine(vultra::ui::dp(92.0f));
             changed |= drawAnchorPresetPreview(rect);
 
-            changed |= drawVec2Control("Position", rect.anchoredPositionPx, glm::vec2 {0.0f}, 0.5f);
-            changed |= drawVec2Control("Size", rect.sizeDeltaPx, glm::vec2 {0.0f}, 0.5f);
-            changed |= drawVec2Control("Anchor Min", rect.anchorMin, glm::vec2 {0.5f}, 0.01f);
-            changed |= drawVec2Control("Anchor Max", rect.anchorMax, glm::vec2 {0.5f}, 0.01f);
-            changed |= drawVec2Control("Pivot", rect.pivot, glm::vec2 {0.5f}, 0.01f);
-            ui::beginPropertyRow("Rotation", 92.0f);
+            changed |= drawVec2Control(vultra::tr("common.position"), rect.anchoredPositionPx, glm::vec2 {0.0f}, 0.5f);
+            changed |= drawVec2Control(vultra::tr("inspector.rectTransform.size"), rect.sizeDeltaPx, glm::vec2 {0.0f}, 0.5f);
+            changed |= drawVec2Control(vultra::tr("inspector.rectTransform.anchorMin"), rect.anchorMin, glm::vec2 {0.5f}, 0.01f);
+            changed |= drawVec2Control(vultra::tr("inspector.rectTransform.anchorMax"), rect.anchorMax, glm::vec2 {0.5f}, 0.01f);
+            changed |= drawVec2Control(vultra::tr("inspector.rectTransform.pivot"), rect.pivot, glm::vec2 {0.5f}, 0.01f);
+            ui::beginPropertyRow(vultra::tr("common.rotation"), vultra::ui::dp(92.0f));
             changed |= ImGui::DragFloat("##Rotation", &rect.rotationDegrees, 0.5f, 0.0f, 0.0f, "%.2f deg");
             ui::endPropertyRow();
-            changed |= drawVec2Control("Scale", rect.scale, glm::vec2 {1.0f}, 0.01f);
+            changed |= drawVec2Control(vultra::tr("common.scale"), rect.scale, glm::vec2 {1.0f}, 0.01f);
 
             rect.anchorMin = glm::clamp(rect.anchorMin, glm::vec2 {0.0f}, glm::vec2 {1.0f});
             rect.anchorMax = glm::clamp(rect.anchorMax, glm::vec2 {0.0f}, glm::vec2 {1.0f});
@@ -1306,12 +1316,12 @@ namespace vultra_app
         {
             bool changed = false;
 
-            changed |= drawVec3Control("Position", transform.position, glm::vec3 {0.0f}, 0.05f);
+            changed |= drawVec3Control(vultra::tr("common.position"), transform.position, glm::vec3 {0.0f}, 0.05f);
 
             if (light && (light->kind == 0 || light->kind == 2))
             {
                 glm::vec3 direction = directionFromTransform(transform);
-                if (drawVec3Control("Direction", direction, glm::vec3 {0.0f, -1.0f, 0.0f}, 0.01f))
+                if (drawVec3Control(vultra::tr("inspector.transform.direction"), direction, glm::vec3 {0.0f, -1.0f, 0.0f}, 0.01f))
                 {
                     transform.rotation = rotationFromDirection(direction);
                     changed            = true;
@@ -1319,11 +1329,11 @@ namespace vultra_app
             }
             else
             {
-                if (drawQuaternionDeltaControl("Rotation", transform.rotation, entityId))
+                if (drawQuaternionDeltaControl(vultra::tr("common.rotation"), transform.rotation, entityId))
                     changed = true;
             }
 
-            changed |= drawVec3Control("Scale", transform.scale, glm::vec3 {1.0f}, 0.05f);
+            changed |= drawVec3Control(vultra::tr("common.scale"), transform.scale, glm::vec3 {1.0f}, 0.05f);
 
             if (changed)
                 transform.dirty = true;
@@ -1349,56 +1359,59 @@ namespace vultra_app
 
         bool drawLightComponentFields(vultra::LightComponent& light)
         {
-            bool                  changed       = false;
-            constexpr const char* kKindLabels[] = {"Directional", "Point", "Spot", "Rectangle Area"};
-            int                   kindIndex     = static_cast<int>(std::min(light.kind, 3u));
-            ui::beginPropertyRow("Kind");
-            if (ImGui::Combo("##Kind", &kindIndex, kKindLabels, IM_ARRAYSIZE(kKindLabels)))
+            bool       changed     = false;
+            const std::string kindLabels = std::string {vultra::tr("inspector.light.kind.directional")} + '\0' +
+                                           vultra::tr("inspector.light.kind.point") + '\0' +
+                                           vultra::tr("inspector.light.kind.spot") + '\0' +
+                                           vultra::tr("inspector.light.kind.rectangleArea") + '\0';
+            int kindIndex = static_cast<int>(std::min(light.kind, 3u));
+            ui::beginPropertyRow(vultra::tr("inspector.light.kindLabel"));
+            if (ImGui::Combo("##Kind", &kindIndex, kindLabels.c_str()))
             {
-                light.kind = static_cast<uint32_t>(std::clamp(kindIndex, 0, IM_ARRAYSIZE(kKindLabels) - 1));
+                light.kind = static_cast<uint32_t>(std::clamp(kindIndex, 0, 3));
                 changed    = true;
             }
             ui::endPropertyRow();
 
-            ui::beginPropertyRow("Color");
+            ui::beginPropertyRow(vultra::tr("inspector.light.color"));
             changed |= ImGui::ColorEdit3("##Color", &light.color.x);
             ui::endPropertyRow();
-            ui::beginPropertyRow("Intensity");
+            ui::beginPropertyRow(vultra::tr("inspector.light.intensity"));
             changed |= ImGui::DragFloat("##Intensity", &light.intensity, 0.05f, 0.0f, 10000.0f, "%.2f");
             ui::endPropertyRow();
 
             if (light.kind == 1 || light.kind == 2)
             {
-                ui::beginPropertyRow("Range");
+                ui::beginPropertyRow(vultra::tr("inspector.light.range"));
                 changed |= ImGui::DragFloat("##Range", &light.range, 0.05f, 0.0f, 1000.0f, "%.2f");
                 ui::endPropertyRow();
-                ui::beginPropertyRow("Radius");
+                ui::beginPropertyRow(vultra::tr("inspector.light.radius"));
                 changed |= ImGui::DragFloat("##Radius", &light.radius, 0.01f, 0.0f, 100.0f, "%.3f");
                 ui::endPropertyRow();
             }
             if (light.kind == 2)
             {
-                ui::beginPropertyRow("Inner Cone Degrees");
+                ui::beginPropertyRow(vultra::tr("inspector.light.innerCone"));
                 changed |= ImGui::DragFloat("##InnerCone", &light.innerConeDegrees, 0.25f, 0.0f, 179.0f, "%.1f");
                 ui::endPropertyRow();
-                ui::beginPropertyRow("Outer Cone Degrees");
+                ui::beginPropertyRow(vultra::tr("inspector.light.outerCone"));
                 changed |= ImGui::DragFloat("##OuterCone", &light.outerConeDegrees, 0.25f, 0.0f, 179.0f, "%.1f");
                 ui::endPropertyRow();
                 light.outerConeDegrees = std::max(light.outerConeDegrees, light.innerConeDegrees);
             }
             if (light.kind == 3)
             {
-                ui::beginPropertyRow("Width");
+                ui::beginPropertyRow(vultra::tr("inspector.light.width"));
                 changed |= ImGui::DragFloat("##Width", &light.width, 0.05f, 0.0f, 100.0f, "%.2f");
                 ui::endPropertyRow();
-                ui::beginPropertyRow("Height");
+                ui::beginPropertyRow(vultra::tr("inspector.light.height"));
                 changed |= ImGui::DragFloat("##Height", &light.height, 0.05f, 0.0f, 100.0f, "%.2f");
                 ui::endPropertyRow();
             }
-            ui::beginPropertyRow("Casts Shadow");
+            ui::beginPropertyRow(vultra::tr("inspector.light.castsShadow"));
             changed |= ImGui::Checkbox("##CastsShadow", &light.castsShadow);
             ui::endPropertyRow();
-            ui::beginPropertyRow("Two Sided");
+            ui::beginPropertyRow(vultra::tr("inspector.light.twoSided"));
             changed |= ImGui::Checkbox("##TwoSided", &light.twoSided);
             ui::endPropertyRow();
             return changed;
@@ -1408,48 +1421,58 @@ namespace vultra_app
         {
             bool changed = false;
 
-            ui::beginPropertyRow("Enabled");
+            ui::beginPropertyRow(vultra::tr("common.enabled"));
             changed |= ImGui::Checkbox("##Enabled", &xrView.enabled);
             ui::endPropertyRow();
 
-            int         trackingOrigin    = static_cast<int>(xrView.trackingOrigin);
-            const char* trackingOrigins[] = {"Local", "Stage"};
-            ui::beginPropertyRow("Tracking Origin");
-            if (ImGui::Combo("##TrackingOrigin", &trackingOrigin, trackingOrigins, IM_ARRAYSIZE(trackingOrigins)))
+            int               trackingOrigin = static_cast<int>(xrView.trackingOrigin);
+            const std::string trackingOrigins =
+                std::string {vultra::tr("inspector.xrView.trackingOrigin.local")} + '\0' +
+                vultra::tr("inspector.xrView.trackingOrigin.stage") + '\0';
+            ui::beginPropertyRow(vultra::tr("inspector.xrView.trackingOriginLabel"));
+            if (ImGui::Combo("##TrackingOrigin", &trackingOrigin, trackingOrigins.c_str()))
             {
                 xrView.trackingOrigin = static_cast<uint32_t>(std::clamp(trackingOrigin, 0, 1));
                 changed               = true;
             }
             ui::endPropertyRow();
 
-            int         stereoGraphMode    = static_cast<int>(xrView.stereoGraphMode);
-            const char* stereoGraphModes[] = {"Single Graph Stereo"};
-            ui::beginPropertyRow("Stereo Graph");
-            if (ImGui::Combo("##StereoGraph", &stereoGraphMode, stereoGraphModes, IM_ARRAYSIZE(stereoGraphModes)))
+            int               stereoGraphMode = static_cast<int>(xrView.stereoGraphMode);
+            const std::string stereoGraphModes =
+                std::string {vultra::tr("inspector.xrView.stereoGraph.singleGraphStereo")} + '\0';
+            ui::beginPropertyRow(vultra::tr("inspector.xrView.stereoGraphLabel"));
+            if (ImGui::Combo("##StereoGraph", &stereoGraphMode, stereoGraphModes.c_str()))
             {
                 xrView.stereoGraphMode = 0u;
                 changed                = true;
             }
             ui::endPropertyRow();
 
-            ui::beginPropertyRow("Fallback Mono");
+            ui::beginPropertyRow(vultra::tr("inspector.xrView.fallbackMono"));
             changed |= ImGui::Checkbox("##FallbackMono", &xrView.fallbackMono);
             ui::endPropertyRow();
 
             if (auto* backend = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
             {
-                ImGui::SeparatorText("Runtime");
-                ImGui::Text("OpenXR: %s", backend->isXREnabled() ? "Enabled" : "Disabled");
-                ImGui::Text("Mirror: %s", backend->isXRMirrorEnabled() ? "Enabled" : "Disabled");
+                ImGui::SeparatorText(vultra::tr("inspector.xrView.runtime"));
+                ImGui::TextUnformatted(
+                    vultra::trf("inspector.xrView.openxr",
+                                backend->isXREnabled() ? vultra::tr("common.enabled") : vultra::tr("common.disabled"))
+                        .c_str());
+                ImGui::TextUnformatted(
+                    vultra::trf("inspector.xrView.mirror",
+                                backend->isXRMirrorEnabled() ? vultra::tr("common.enabled") :
+                                                               vultra::tr("common.disabled"))
+                        .c_str());
                 ImGui::BeginDisabled(!xrView.enabled);
-                if (ImGui::SmallButton(ICON_MDI_HEADSET "  Request XR Session"))
+                if (ImGui::SmallButton((std::string {ICON_MDI_HEADSET "  "} + vultra::tr("inspector.xrView.requestSession")).c_str()))
                 {
                     backend->requestXRSession(false);
                     backend->requestXRSession(true);
                 }
                 ImGui::EndDisabled();
                 if (!backend->isXREnabled())
-                    ImGui::TextDisabled("Session starts when an enabled XR camera is active.");
+                    ImGui::TextDisabled("%s", vultra::tr("inspector.xrView.sessionHint"));
             }
 
             return changed;
@@ -1876,7 +1899,7 @@ namespace vultra_app
         {
             if (!ctx.state.sceneCamera.valid)
             {
-                ctx.state.statusMessage = "Scene View camera is not available yet.";
+                ctx.state.statusMessage = vultra::tr("inspector.camera.sceneViewUnavailable");
                 return false;
             }
 
@@ -1907,7 +1930,7 @@ namespace vultra_app
 
             if (camera.projection == 0u)
                 camera.fovYDegrees = ctx.state.sceneCamera.fovYDegrees;
-            ctx.state.statusMessage = "Camera aligned to Scene View.";
+            ctx.state.statusMessage = vultra::tr("inspector.camera.alignedToSceneView");
             return true;
         }
 
@@ -1925,7 +1948,7 @@ namespace vultra_app
             ctx.state.sceneCameraAlignRequest.rotation = extractRotation(worldTransform);
             ctx.state.sceneCameraAlignRequest.fovYDegrees =
                 camera.projection == 0u ? camera.fovYDegrees : ctx.state.sceneCamera.fovYDegrees;
-            ctx.state.statusMessage = "Scene View aligned to Camera.";
+            ctx.state.statusMessage = vultra::tr("inspector.camera.sceneViewAligned");
             return true;
         }
 
@@ -2172,16 +2195,16 @@ namespace vultra_app
         {
             const auto type = expectedAssetTypeForField(fieldName);
             if (type == vasset::VAssetType::eMesh)
-                return "Mesh";
+                return vultra::tr("inspector.assetType.mesh");
             if (type == vasset::VAssetType::eSkeleton)
-                return "Skeleton";
+                return vultra::tr("inspector.assetType.skeleton");
             if (type == vasset::VAssetType::eAnimation)
-                return "Animation";
+                return vultra::tr("inspector.assetType.animation");
             if (type == vasset::VAssetType::eGaussianSplat)
-                return "Gaussian Splat";
+                return vultra::tr("inspector.assetType.gaussianSplat");
             if (type == vasset::VAssetType::eTexture)
-                return "Texture";
-            return "Asset";
+                return vultra::tr("inspector.assetType.texture");
+            return vultra::tr("inspector.assetType.asset");
         }
 
         bool isAcceptedAssetUuid(EditorContext* ctx, const vultra::CoreUUID& uuid, const char* fieldName)
@@ -2242,7 +2265,7 @@ namespace vultra_app
             const auto assetRoot = editorAssetRoot(ctx);
             if (assetRoot.empty())
             {
-                ctx.state.statusMessage = "Fork material failed: no project asset root.";
+                ctx.state.statusMessage = vultra::tr("inspector.forkMaterial.noAssetRoot");
                 return false;
             }
 
@@ -2251,14 +2274,14 @@ namespace vultra_app
             std::filesystem::create_directories(materialDir, ec);
             if (ec)
             {
-                ctx.state.statusMessage = "Fork material failed: " + ec.message();
+                ctx.state.statusMessage = vultra::trf("inspector.forkMaterial.failed", ec.message());
                 return false;
             }
 
             const auto target = uniqueMaterialAssetPath(materialDir, slot);
             if (target.empty())
             {
-                ctx.state.statusMessage = "Fork material failed: no available file name.";
+                ctx.state.statusMessage = vultra::tr("inspector.forkMaterial.noFileName");
                 return false;
             }
 
@@ -2279,14 +2302,14 @@ namespace vultra_app
             std::string error;
             if (!writeJsonFile(target, doc, error))
             {
-                ctx.state.statusMessage = "Fork material failed: " + error;
+                ctx.state.statusMessage = vultra::trf("inspector.forkMaterial.failed", error);
                 return false;
             }
 
             auto uri = pathToResUri(ctx, target);
             if (uri.empty())
             {
-                ctx.state.statusMessage = "Fork material failed: target is outside project assets.";
+                ctx.state.statusMessage = vultra::tr("inspector.forkMaterial.outsideAssets");
                 return false;
             }
 
@@ -2302,8 +2325,8 @@ namespace vultra_app
 
             ++ctx.state.assetFileGeneration;
             outUri                  = std::move(uri);
-            ctx.state.statusMessage = registered ? "Forked builtin material: " + outUri :
-                                                   "Forked builtin material, but asset registry import did not run.";
+            ctx.state.statusMessage = registered ? vultra::trf("inspector.forkMaterial.forked", outUri) :
+                                                   vultra::tr("inspector.forkMaterial.forkedNoImport");
             return true;
         }
 
@@ -2673,10 +2696,10 @@ namespace vultra_app
         {
             bool changed = false;
             ui::beginPropertyRow(label);
-            const char* preview = value[0] == '\0' ? "<none>" : value.data();
+            const char* preview = value[0] == '\0' ? vultra::tr("inspector.noneAngle") : value.data();
             if (ImGui::BeginCombo("##shader", preview))
             {
-                if (allowEmpty && ImGui::Selectable("<none>", value[0] == '\0'))
+                if (allowEmpty && ImGui::Selectable(vultra::tr("inspector.noneAngle"), value[0] == '\0'))
                 {
                     value.fill('\0');
                     changed = true;
@@ -2773,12 +2796,12 @@ namespace vultra_app
             ImGui::PushID(label);
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(label);
-            ImGui::SameLine(160.0f);
-            ImGui::SetNextItemWidth(280.0f);
-            const char* preview = value[0] == '\0' ? "<none>" : value.data();
+            ImGui::SameLine(vultra::ui::dp(160.0f));
+            ImGui::SetNextItemWidth(vultra::ui::dp(280.0f));
+            const char* preview = value[0] == '\0' ? vultra::tr("inspector.noneAngle") : value.data();
             if (ImGui::BeginCombo("##shader", preview))
             {
-                if (allowEmpty && ImGui::Selectable("<none>", value[0] == '\0'))
+                if (allowEmpty && ImGui::Selectable(vultra::tr("inspector.noneAngle"), value[0] == '\0'))
                 {
                     value.fill('\0');
                     changed = true;
@@ -2798,7 +2821,7 @@ namespace vultra_app
             }
 
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(220.0f);
+            ImGui::SetNextItemWidth(vultra::ui::dp(220.0f));
             changed |= ImGui::InputText("##manual", value.data(), value.size());
             ImGui::PopID();
             return changed;
@@ -2843,9 +2866,9 @@ namespace vultra_app
 
             ImGui::PushID("BuiltinFullscreenVertex");
             ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted("Vertex");
-            ImGui::SameLine(160.0f);
-            ImGui::SetNextItemWidth(280.0f);
+            ImGui::TextUnformatted(vultra::tr("inspector.shader.vertex"));
+            ImGui::SameLine(vultra::ui::dp(160.0f));
+            ImGui::SetNextItemWidth(vultra::ui::dp(280.0f));
             ImGui::BeginDisabled();
             ImGui::InputText("##builtinVertex", vertex.data(), vertex.size());
             ImGui::EndDisabled();
@@ -3035,7 +3058,7 @@ namespace vultra_app
             bool changed = false;
             if (ImGui::BeginPopup(popupId))
             {
-                ImGui::Text("Select %s", vasset::toString(expectedType).c_str());
+                ImGui::TextUnformatted(vultra::trf("inspector.assetPicker.select", vasset::toString(expectedType)).c_str());
                 ImGui::Separator();
                 bool any = false;
                 for (const auto& [uuidText, entry] : assetService->registry().getRegistry())
@@ -3065,7 +3088,7 @@ namespace vultra_app
                     }
                 }
                 if (!any)
-                    ImGui::TextDisabled("No source assets of this type.");
+                    ImGui::TextDisabled("%s", vultra::tr("inspector.assetPicker.noAssets"));
                 ImGui::EndPopup();
             }
             return changed;
@@ -3077,7 +3100,8 @@ namespace vultra_app
             const auto uri     = assetUuidToUri(ctx, uuid);
             const auto text =
                 uuid.valid() ? (!uri.empty() ? uri : uuid.toString()) :
-                               std::string(ICON_MDI_BULLSEYE "  None (") + expectedAssetLabelForField(fieldName) + ")";
+                               std::string {ICON_MDI_BULLSEYE "  "} +
+                                   vultra::trf("inspector.assetField.none", expectedAssetLabelForField(fieldName));
             const auto dialogKey = std::string("InspectorSelectAsset_") + fieldName;
 
             ImGui::TextUnformatted(label);
@@ -3088,7 +3112,7 @@ namespace vultra_app
                 std::max(1.0f, ImGui::GetContentRegionAvail().x - buttonSize * 2.0f - spacing * 2.0f);
             ImGui::Button(text.c_str(), ImVec2(fieldWidth, 0.0f));
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("Drop a %s asset here.", expectedAssetLabelForField(fieldName));
+                ImGui::SetTooltip("%s", vultra::trf("inspector.assetField.dropTip", expectedAssetLabelForField(fieldName)).c_str());
 
             if (ImGui::BeginDragDropTarget())
             {
@@ -3105,7 +3129,7 @@ namespace vultra_app
                         }
                         else if (ctx)
                         {
-                            ctx->state.statusMessage = "Dropped asset type is not accepted by this field.";
+                            ctx->state.statusMessage = vultra::tr("inspector.assetField.dropRejected");
                         }
                     }
                 }
@@ -3116,7 +3140,7 @@ namespace vultra_app
             if (ImGui::SmallButton(ICON_MDI_BULLSEYE) && ctx)
                 ImGui::OpenPopup(dialogKey.c_str());
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("Select %s asset.", expectedAssetLabelForField(fieldName));
+                ImGui::SetTooltip("%s", vultra::trf("inspector.assetField.selectTip", expectedAssetLabelForField(fieldName)).c_str());
 
             ImGui::SameLine();
             if (ImGui::SmallButton(ICON_MDI_CLOSE_CIRCLE_OUTLINE) && uuid.valid())
@@ -3125,7 +3149,7 @@ namespace vultra_app
                 changed = true;
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("Clear reference.");
+                ImGui::SetTooltip("%s", vultra::tr("inspector.assetField.clearTip"));
 
             changed |= drawAssetRegistryPicker(ctx, dialogKey.c_str(), expectedAssetTypeForField(fieldName), uuid);
             ImGui::PopID();
@@ -3172,8 +3196,8 @@ namespace vultra_app
             const auto fromMesh = meshBundledSkeleton(ctx, reg, e);
             if (skeleton.valid())
             {
-                changed |= drawUuidObjectField(&ctx, skeleton, "skeleton", "Skeleton");
-                if (ImGui::SmallButton(ICON_MDI_CLOSE "  Clear Skeleton Override"))
+                changed |= drawUuidObjectField(&ctx, skeleton, "skeleton", vultra::tr("inspector.animator.skeleton"));
+                if (ImGui::SmallButton((std::string {ICON_MDI_CLOSE "  "} + vultra::tr("inspector.animator.clearSkeletonOverride")).c_str()))
                 {
                     skeleton = {};
                     changed  = true;
@@ -3181,11 +3205,13 @@ namespace vultra_app
             }
             else
             {
-                ui::beginPropertyRow("Skeleton");
-                ImGui::TextDisabled(fromMesh.valid() ? ICON_MDI_BONE "  (from mesh)" :
-                                                       ICON_MDI_ALERT "  (no skinned mesh)");
+                ui::beginPropertyRow(vultra::tr("inspector.animator.skeleton"));
+                ImGui::TextDisabled("%s",
+                                    fromMesh.valid() ?
+                                        (std::string {ICON_MDI_BONE "  "} + vultra::tr("inspector.animator.fromMesh")).c_str() :
+                                        (std::string {ICON_MDI_ALERT "  "} + vultra::tr("inspector.animator.noSkinnedMesh")).c_str());
                 ui::endPropertyRow();
-                if (ImGui::SmallButton(ICON_MDI_PENCIL "  Override Skeleton"))
+                if (ImGui::SmallButton((std::string {ICON_MDI_PENCIL "  "} + vultra::tr("inspector.animator.overrideSkeleton")).c_str()))
                 {
                     skeleton = fromMesh; // seed from the mesh, then it becomes editable
                     changed  = true;
@@ -3201,11 +3227,12 @@ namespace vultra_app
             bool changed = false;
 
             // --- Mode selector ---
-            static const char* kModes[] = {"Single Clip", "Graph"};
-            int                mode     = animator.mode == 1u ? 1 : 0;
-            ui::beginPropertyRow("Mode");
+            const std::string kModes = std::string {vultra::tr("inspector.animator.mode.singleClip")} + '\0' +
+                                       vultra::tr("inspector.animator.mode.graph") + '\0';
+            int mode = animator.mode == 1u ? 1 : 0;
+            ui::beginPropertyRow(vultra::tr("inspector.animator.modeLabel"));
             ImGui::SetNextItemWidth(-1.0f);
-            if (ImGui::Combo("##AnimatorMode", &mode, kModes, IM_ARRAYSIZE(kModes)))
+            if (ImGui::Combo("##AnimatorMode", &mode, kModes.c_str()))
             {
                 animator.mode = static_cast<uint32_t>(mode);
                 changed       = true;
@@ -3226,14 +3253,14 @@ namespace vultra_app
                     const auto sl = uri.find_last_of('/');
                     return sl == std::string::npos ? uri : uri.substr(sl + 1);
                 };
-                ui::beginPropertyRow("Graph");
+                ui::beginPropertyRow(vultra::tr("inspector.animator.graph"));
                 const std::string preview =
-                    animator.graph.empty() ? std::string(ICON_MDI_RUN_FAST "  (none)") :
+                    animator.graph.empty() ? std::string {ICON_MDI_RUN_FAST "  "} + vultra::tr("inspector.noneParen") :
                                              std::string(ICON_MDI_RUN_FAST "  ") + lastSegment(animator.graph);
                 ImGui::SetNextItemWidth(-1.0f);
                 if (ImGui::BeginCombo("##AnimatorGraphAsset", preview.c_str()))
                 {
-                    if (ImGui::Selectable("(none)", animator.graph.empty()))
+                    if (ImGui::Selectable(vultra::tr("inspector.noneParen"), animator.graph.empty()))
                     {
                         animator.graph.clear();
                         changed = true;
@@ -3263,13 +3290,14 @@ namespace vultra_app
                             ImGui::TextDisabled("%s", uri.c_str());
                         }
                     if (!any)
-                        ImGui::TextDisabled("No animator graphs in project.");
+                        ImGui::TextDisabled("%s", vultra::tr("inspector.animator.noGraphs"));
                     ImGui::EndCombo();
                 }
                 ui::endPropertyRow();
 
                 if (!animator.graph.empty() &&
-                    ImGui::Button(ICON_MDI_PENCIL "  Edit Graph", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+                    ImGui::Button((std::string {ICON_MDI_PENCIL "  "} + vultra::tr("inspector.animator.editGraph")).c_str(),
+                                  ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
                 {
                     ctx.state.currentEditingAnimatorGraph = animator.graph;
                     ctx.state.animatorGraphOpenRequested  = true;
@@ -3277,34 +3305,34 @@ namespace vultra_app
                 }
 
                 ImGui::Separator();
-                ui::beginPropertyRow("Play On Start");
+                ui::beginPropertyRow(vultra::tr("inspector.animator.playOnStart"));
                 changed |= ImGui::Checkbox("##ctrlPlayOnStart", &animator.playOnStart);
                 ui::endPropertyRow();
-                ui::beginPropertyRow("Speed");
+                ui::beginPropertyRow(vultra::tr("inspector.animator.speed"));
                 changed |= ImGui::DragFloat("##ctrlSpeed", &animator.speed, 0.01f, -8.0f, 8.0f, "%.3f");
                 ui::endPropertyRow();
                 return changed;
             }
 
             // --- Single-clip mode ---
-            changed |= drawUuidObjectField(&ctx, animator.animation, "animation", "Animation");
+            changed |= drawUuidObjectField(&ctx, animator.animation, "animation", vultra::tr("inspector.animator.animation"));
 
             ImGui::Separator();
-            ui::beginPropertyRow("Play On Start");
+            ui::beginPropertyRow(vultra::tr("inspector.animator.playOnStart"));
             changed |= ImGui::Checkbox("##PlayOnStart", &animator.playOnStart);
             ui::endPropertyRow();
-            ui::beginPropertyRow("Playing");
+            ui::beginPropertyRow(vultra::tr("inspector.animator.playing"));
             changed |= ImGui::Checkbox("##Playing", &animator.playing);
             ui::endPropertyRow();
-            ui::beginPropertyRow("Loop");
+            ui::beginPropertyRow(vultra::tr("inspector.animator.loop"));
             changed |= ImGui::Checkbox("##Loop", &animator.loop);
             ui::endPropertyRow();
-            ui::beginPropertyRow("Speed");
+            ui::beginPropertyRow(vultra::tr("inspector.animator.speed"));
             changed |= ImGui::DragFloat("##Speed", &animator.speed, 0.01f, -8.0f, 8.0f, "%.3f");
             ui::endPropertyRow();
 
             float time = std::max(animator.time, 0.0f);
-            ui::beginPropertyRow("Time");
+            ui::beginPropertyRow(vultra::tr("inspector.animator.time"));
             if (ImGui::DragFloat("##Time", &time, 0.01f, 0.0f, 0.0f, "%.3f s"))
             {
                 animator.time = std::max(time, 0.0f);
@@ -3312,7 +3340,8 @@ namespace vultra_app
             }
             ui::endPropertyRow();
 
-            if (ImGui::Button(ICON_MDI_RESTART "  Reset Time", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+            if (ImGui::Button((std::string {ICON_MDI_RESTART "  "} + vultra::tr("inspector.animator.resetTime")).c_str(),
+                              ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
             {
                 animator.time = 0.0f;
                 changed       = true;
@@ -3323,8 +3352,9 @@ namespace vultra_app
         bool drawScriptUriObjectField(EditorContext* ctx, std::string& uri, const char* label)
         {
             bool       changed = false;
-            const auto text    = uri.empty() ? std::string(ICON_MDI_BULLSEYE "  None (Lua Script)") :
-                                               std::string(ICON_MDI_LANGUAGE_LUA "  ") + uri;
+            const auto text    = uri.empty() ?
+                                     std::string {ICON_MDI_BULLSEYE "  "} + vultra::tr("inspector.script.none") :
+                                     std::string(ICON_MDI_LANGUAGE_LUA "  ") + uri;
 
             ImGui::TextUnformatted(label);
             ImGui::PushID(label);
@@ -3340,10 +3370,10 @@ namespace vultra_app
                                ImGuiFileDialogFlags_DontShowHiddenFiles |
                                ImGuiFileDialogFlags_CaseInsensitiveExtentionFiltering |
                                ImGuiFileDialogFlags_NaturalSorting | ImGuiFileDialogFlags_DisableThumbnailMode;
-                ImGuiFileDialog::Instance()->OpenDialog(kScriptDialogKey, "Select Lua Script", ".lua", config);
+                ImGuiFileDialog::Instance()->OpenDialog(kScriptDialogKey, vultra::tr("inspector.script.dialogTitle"), ".lua", config);
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("Click to choose a .lua script, or drop a Lua script asset here.");
+                ImGui::SetTooltip("%s", vultra::tr("inspector.script.chooseTip"));
 
             if (ImGui::BeginDragDropTarget())
             {
@@ -3369,7 +3399,7 @@ namespace vultra_app
                             }
                             else
                             {
-                                ctx->state.statusMessage = "Dropped asset is not a Lua script.";
+                                ctx->state.statusMessage = vultra::tr("inspector.script.dropNotLua");
                             }
                         }
                     }
@@ -3389,18 +3419,18 @@ namespace vultra_app
                                    ImGuiFileDialogFlags_DontShowHiddenFiles |
                                    ImGuiFileDialogFlags_CaseInsensitiveExtentionFiltering |
                                    ImGuiFileDialogFlags_NaturalSorting | ImGuiFileDialogFlags_DisableThumbnailMode;
-                    ImGuiFileDialog::Instance()->OpenDialog(kScriptDialogKey, "Select Lua Script", ".lua", config);
+                    ImGuiFileDialog::Instance()->OpenDialog(kScriptDialogKey, vultra::tr("inspector.script.dialogTitle"), ".lua", config);
                 }
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("Select Lua script.");
+                ImGui::SetTooltip("%s", vultra::tr("inspector.script.selectTip"));
             ImGui::PopID();
 
             ui::ScopedPopupStyle fileDialogStyle;
             if (ctx &&
                 ImGuiFileDialog::Instance()->Display(kScriptDialogKey,
                                                      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings,
-                                                     ImVec2(640.0f, 420.0f)))
+                                                     ImVec2(vultra::ui::dp(640.0f), vultra::ui::dp(420.0f))))
             {
                 if (ImGuiFileDialog::Instance()->IsOk())
                 {
@@ -3417,14 +3447,16 @@ namespace vultra_app
                         }
                         else
                         {
-                            ctx->state.statusMessage = "Script must be inside the project asset root.";
+                            ctx->state.statusMessage = vultra::tr("inspector.script.mustBeInRoot");
                         }
                     }
                 }
                 ImGuiFileDialog::Instance()->Close();
             }
 
-            if (!uri.empty() && ImGui::SmallButton((std::string(ICON_MDI_CLOSE "  Clear##") + label).c_str()))
+            if (!uri.empty() &&
+                ImGui::SmallButton(
+                    (std::string {ICON_MDI_CLOSE "  "} + vultra::tr("inspector.clear") + "##" + label).c_str()))
             {
                 uri.clear();
                 changed = true;
@@ -3513,12 +3545,12 @@ namespace vultra_app
             bool changed = false;
             ImGui::TextUnformatted(label);
             ImGui::PushID(label);
-            const auto preview = uri.empty() ? "<none>" : uri.c_str();
+            const auto preview = uri.empty() ? vultra::tr("inspector.noneAngle") : uri.c_str();
             ImGui::SetNextItemWidth(std::max(
                 1.0f, ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x));
             if (ImGui::BeginCombo("##MaterialUri", preview))
             {
-                if (ImGui::Selectable("<none>", uri.empty()))
+                if (ImGui::Selectable(vultra::tr("inspector.noneAngle"), uri.empty()))
                 {
                     uri.clear();
                     changed = true;
@@ -3551,12 +3583,12 @@ namespace vultra_app
             bool changed = false;
             ImGui::TextUnformatted(label);
             ImGui::PushID(label);
-            const auto preview = uri.empty() ? "<none>" : uri.c_str();
+            const auto preview = uri.empty() ? vultra::tr("inspector.noneAngle") : uri.c_str();
             ImGui::SetNextItemWidth(std::max(
                 1.0f, ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x));
             if (ImGui::BeginCombo("##MaterialGraphUri", preview))
             {
-                if (ImGui::Selectable("<none>", uri.empty()))
+                if (ImGui::Selectable(vultra::tr("inspector.noneAngle"), uri.empty()))
                 {
                     uri.clear();
                     changed = true;
@@ -3670,7 +3702,8 @@ namespace vultra_app
 
             bool changed = false;
             ImGui::BeginDisabled(candidates.empty());
-            if (ImGui::BeginCombo("Add Source Property", candidates.empty() ? "<none>" : "<select>"))
+            if (ImGui::BeginCombo(vultra::tr("inspector.material.addSourceProperty"),
+                                  candidates.empty() ? vultra::tr("inspector.noneAngle") : vultra::tr("inspector.selectAngle")))
             {
                 for (const auto* param : candidates)
                 {
@@ -3707,7 +3740,7 @@ namespace vultra_app
             keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
 
             bool        changed = false;
-            const char* preview = rendererKey.empty() ? "<none>" : rendererKey.c_str();
+            const char* preview = rendererKey.empty() ? vultra::tr("inspector.noneAngle") : rendererKey.c_str();
             if (ImGui::BeginCombo(label, preview))
             {
                 const bool rayTracingAvailable =
@@ -3728,7 +3761,7 @@ namespace vultra_app
                     {
                         ImGui::EndDisabled();
                         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                            ImGui::SetTooltip("Ray tracing is not available on the current render device.");
+                            ImGui::SetTooltip("%s", vultra::tr("inspector.rendererKey.rayTracingUnavailable"));
                     }
                     if (selected)
                         ImGui::SetItemDefaultFocus();
@@ -3754,17 +3787,17 @@ namespace vultra_app
                     changed = true;
                 }
             };
-            drawBit("Default", vultra::kRenderLayerDefaultMask);
+            drawBit(vultra::tr("common.default"), vultra::kRenderLayerDefaultMask);
             ImGui::SameLine();
             drawBit("UI", vultra::kRenderLayerUiMask);
             ImGui::SameLine();
-            if (ImGui::SmallButton("All"))
+            if (ImGui::SmallButton(vultra::tr("inspector.layerMask.all")))
             {
                 mask    = vultra::kRenderLayerAllMask;
                 changed = true;
             }
             ImGui::SameLine();
-            if (ImGui::SmallButton("Clear"))
+            if (ImGui::SmallButton(vultra::tr("inspector.clear")))
             {
                 mask    = 0u;
                 changed = true;
@@ -3802,9 +3835,11 @@ namespace vultra_app
 
                 if (std::strcmp(fieldName, "projection") == 0)
                 {
-                    const char* projectionLabels[] = {"Perspective", "Orthographic"};
-                    int         projectionIndex    = static_cast<int>(std::min(*v, 1u));
-                    if (ImGui::Combo(label, &projectionIndex, projectionLabels, IM_ARRAYSIZE(projectionLabels)))
+                    const std::string projectionLabels =
+                        std::string {vultra::tr("inspector.enum.projection.perspective")} + '\0' +
+                        vultra::tr("inspector.enum.projection.orthographic") + '\0';
+                    int projectionIndex = static_cast<int>(std::min(*v, 1u));
+                    if (ImGui::Combo(label, &projectionIndex, projectionLabels.c_str()))
                     {
                         *v      = static_cast<uint32_t>(projectionIndex);
                         changed = true;
@@ -3814,9 +3849,11 @@ namespace vultra_app
 
                 if (std::strcmp(fieldName, "clearMode") == 0)
                 {
-                    const char* clearModeLabels[] = {"Color", "Skybox"};
-                    int         clearModeIndex    = static_cast<int>(std::min(*v, 1u));
-                    if (ImGui::Combo(label, &clearModeIndex, clearModeLabels, IM_ARRAYSIZE(clearModeLabels)))
+                    const std::string clearModeLabels =
+                        std::string {vultra::tr("inspector.enum.clearMode.color")} + '\0' +
+                        vultra::tr("inspector.enum.clearMode.skybox") + '\0';
+                    int clearModeIndex = static_cast<int>(std::min(*v, 1u));
+                    if (ImGui::Combo(label, &clearModeIndex, clearModeLabels.c_str()))
                     {
                         *v      = static_cast<uint32_t>(clearModeIndex);
                         changed = true;
@@ -3826,11 +3863,14 @@ namespace vultra_app
 
                 if (std::strcmp(fieldName, "kind") == 0)
                 {
-                    const char* lightKindLabels[] = {"Directional", "Point", "Spot", "Rectangle Area"};
-                    int         kindIndex         = static_cast<int>(std::min(*v, 3u));
-                    if (ImGui::Combo(label, &kindIndex, lightKindLabels, IM_ARRAYSIZE(lightKindLabels)))
+                    const std::string lightKindLabels =
+                        std::string {vultra::tr("inspector.light.kind.directional")} + '\0' +
+                        vultra::tr("inspector.light.kind.point") + '\0' + vultra::tr("inspector.light.kind.spot") +
+                        '\0' + vultra::tr("inspector.light.kind.rectangleArea") + '\0';
+                    int kindIndex = static_cast<int>(std::min(*v, 3u));
+                    if (ImGui::Combo(label, &kindIndex, lightKindLabels.c_str()))
                     {
-                        *v      = static_cast<uint32_t>(std::clamp(kindIndex, 0, IM_ARRAYSIZE(lightKindLabels) - 1));
+                        *v      = static_cast<uint32_t>(std::clamp(kindIndex, 0, 3));
                         changed = true;
                     }
                     return changed;
@@ -3838,11 +3878,13 @@ namespace vultra_app
 
                 if (std::strcmp(fieldName, "motionType") == 0)
                 {
-                    const char* labels[] = {"Static", "Kinematic", "Dynamic"};
-                    int         index    = static_cast<int>(std::min(*v, 2u));
-                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    const std::string labels = std::string {vultra::tr("inspector.enum.motionType.static")} + '\0' +
+                                               vultra::tr("inspector.enum.motionType.kinematic") + '\0' +
+                                               vultra::tr("inspector.enum.motionType.dynamic") + '\0';
+                    int index = static_cast<int>(std::min(*v, 2u));
+                    if (ImGui::Combo(label, &index, labels.c_str()))
                     {
-                        *v      = static_cast<uint32_t>(std::clamp(index, 0, IM_ARRAYSIZE(labels) - 1));
+                        *v      = static_cast<uint32_t>(std::clamp(index, 0, 2));
                         changed = true;
                     }
                     return changed;
@@ -3850,9 +3892,10 @@ namespace vultra_app
 
                 if (std::strcmp(fieldName, "objectLayer") == 0)
                 {
-                    const char* labels[] = {"Non Moving", "Moving"};
-                    int         index    = static_cast<int>(std::min(*v, 1u));
-                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    const std::string labels = std::string {vultra::tr("inspector.enum.objectLayer.nonMoving")} + '\0' +
+                                               vultra::tr("inspector.enum.objectLayer.moving") + '\0';
+                    int index = static_cast<int>(std::min(*v, 1u));
+                    if (ImGui::Combo(label, &index, labels.c_str()))
                     {
                         *v      = static_cast<uint32_t>(index);
                         changed = true;
@@ -3862,9 +3905,10 @@ namespace vultra_app
 
                 if (std::strcmp(fieldName, "motionQuality") == 0)
                 {
-                    const char* labels[] = {"Discrete", "Linear Cast"};
-                    int         index    = static_cast<int>(std::min(*v, 1u));
-                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    const std::string labels = std::string {vultra::tr("inspector.enum.motionQuality.discrete")} + '\0' +
+                                               vultra::tr("inspector.enum.motionQuality.linearCast") + '\0';
+                    int index = static_cast<int>(std::min(*v, 1u));
+                    if (ImGui::Combo(label, &index, labels.c_str()))
                     {
                         *v      = static_cast<uint32_t>(index);
                         changed = true;
@@ -3874,9 +3918,13 @@ namespace vultra_app
 
                 if (std::strcmp(fieldName, "builtinGeometry") == 0)
                 {
-                    const char* geometryLabels[] = {"External Mesh", "Quad", "Cube", "Sphere", "Capsule"};
-                    int         geometryIndex    = *v == UINT32_MAX ? 0 : static_cast<int>(std::min(*v + 1u, 4u));
-                    if (ImGui::Combo(label, &geometryIndex, geometryLabels, IM_ARRAYSIZE(geometryLabels)))
+                    const std::string geometryLabels =
+                        std::string {vultra::tr("inspector.enum.geometry.externalMesh")} + '\0' +
+                        vultra::tr("inspector.enum.geometry.quad") + '\0' + vultra::tr("inspector.enum.geometry.cube") +
+                        '\0' + vultra::tr("inspector.enum.geometry.sphere") + '\0' +
+                        vultra::tr("inspector.enum.geometry.capsule") + '\0';
+                    int geometryIndex = *v == UINT32_MAX ? 0 : static_cast<int>(std::min(*v + 1u, 4u));
+                    if (ImGui::Combo(label, &geometryIndex, geometryLabels.c_str()))
                     {
                         *v      = geometryIndex == 0 ? UINT32_MAX : static_cast<uint32_t>(geometryIndex - 1);
                         changed = true;
@@ -3886,9 +3934,11 @@ namespace vultra_app
 
                 if (std::strcmp(fieldName, "scaleMode") == 0)
                 {
-                    const char* labels[] = {"Constant Pixels", "Scale With Screen"};
-                    int         index    = static_cast<int>(std::min(*v, 1u));
-                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    const std::string labels =
+                        std::string {vultra::tr("inspector.enum.scaleMode.constantPixels")} + '\0' +
+                        vultra::tr("inspector.enum.scaleMode.scaleWithScreen") + '\0';
+                    int index = static_cast<int>(std::min(*v, 1u));
+                    if (ImGui::Combo(label, &index, labels.c_str()))
                     {
                         *v      = static_cast<uint32_t>(index);
                         changed = true;
@@ -3898,11 +3948,13 @@ namespace vultra_app
 
                 if (std::strcmp(fieldName, "fitMode") == 0)
                 {
-                    const char* labels[] = {"Stretch", "Contain", "Cover"};
-                    int         index    = static_cast<int>(std::min(*v, 2u));
-                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    const std::string labels = std::string {vultra::tr("inspector.enum.fitMode.stretch")} + '\0' +
+                                               vultra::tr("inspector.enum.fitMode.contain") + '\0' +
+                                               vultra::tr("inspector.enum.fitMode.cover") + '\0';
+                    int index = static_cast<int>(std::min(*v, 2u));
+                    if (ImGui::Combo(label, &index, labels.c_str()))
                     {
-                        *v      = static_cast<uint32_t>(std::clamp(index, 0, IM_ARRAYSIZE(labels) - 1));
+                        *v      = static_cast<uint32_t>(std::clamp(index, 0, 2));
                         changed = true;
                     }
                     return changed;
@@ -3910,11 +3962,13 @@ namespace vultra_app
 
                 if (std::strcmp(fieldName, "horizontalAlign") == 0)
                 {
-                    const char* labels[] = {"Left", "Center", "Right"};
-                    int         index    = static_cast<int>(std::min(*v, 2u));
-                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    const std::string labels = std::string {vultra::tr("inspector.enum.hAlign.left")} + '\0' +
+                                               vultra::tr("inspector.enum.hAlign.center") + '\0' +
+                                               vultra::tr("inspector.enum.hAlign.right") + '\0';
+                    int index = static_cast<int>(std::min(*v, 2u));
+                    if (ImGui::Combo(label, &index, labels.c_str()))
                     {
-                        *v      = static_cast<uint32_t>(std::clamp(index, 0, IM_ARRAYSIZE(labels) - 1));
+                        *v      = static_cast<uint32_t>(std::clamp(index, 0, 2));
                         changed = true;
                     }
                     return changed;
@@ -3922,11 +3976,13 @@ namespace vultra_app
 
                 if (std::strcmp(fieldName, "verticalAlign") == 0)
                 {
-                    const char* labels[] = {"Top", "Middle", "Bottom"};
-                    int         index    = static_cast<int>(std::min(*v, 2u));
-                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    const std::string labels = std::string {vultra::tr("inspector.enum.vAlign.top")} + '\0' +
+                                               vultra::tr("inspector.enum.vAlign.middle") + '\0' +
+                                               vultra::tr("inspector.enum.vAlign.bottom") + '\0';
+                    int index = static_cast<int>(std::min(*v, 2u));
+                    if (ImGui::Combo(label, &index, labels.c_str()))
                     {
-                        *v      = static_cast<uint32_t>(std::clamp(index, 0, IM_ARRAYSIZE(labels) - 1));
+                        *v      = static_cast<uint32_t>(std::clamp(index, 0, 2));
                         changed = true;
                     }
                     return changed;
@@ -3934,9 +3990,10 @@ namespace vultra_app
 
                 if (std::strcmp(fieldName, "shape") == 0)
                 {
-                    const char* shapeLabels[] = {"Box", "Sphere"};
-                    int         shapeIndex    = static_cast<int>(std::min(*v, 1u));
-                    if (ImGui::Combo(label, &shapeIndex, shapeLabels, IM_ARRAYSIZE(shapeLabels)))
+                    const std::string shapeLabels = std::string {vultra::tr("inspector.enum.shape.box")} + '\0' +
+                                                    vultra::tr("inspector.enum.shape.sphere") + '\0';
+                    int shapeIndex = static_cast<int>(std::min(*v, 1u));
+                    if (ImGui::Combo(label, &shapeIndex, shapeLabels.c_str()))
                     {
                         *v      = static_cast<uint32_t>(shapeIndex);
                         changed = true;
@@ -4075,14 +4132,14 @@ namespace vultra_app
 
             if (!ctx || !ctx->services || !mesh.mesh.valid())
             {
-                choices.push_back({.slot = 0u, .label = "Slot 0 - Default Material"});
+                choices.push_back({.slot = 0u, .label = vultra::tr("inspector.materialSlot.slot0Default")});
                 return choices;
             }
 
             auto* assets = ctx->services->tryGet<vultra::IAssetService>();
             if (!assets)
             {
-                choices.push_back({.slot = 0u, .label = "Slot 0 - Default Material"});
+                choices.push_back({.slot = 0u, .label = vultra::tr("inspector.materialSlot.slot0Default")});
                 return choices;
             }
 
@@ -4090,7 +4147,7 @@ namespace vultra_app
             const auto* cpuMesh = handle.cpu();
             if (!cpuMesh)
             {
-                choices.push_back({.slot = 0u, .label = "Slot 0 - Loading Mesh Materials"});
+                choices.push_back({.slot = 0u, .label = vultra::tr("inspector.materialSlot.slot0Loading")});
                 return choices;
             }
 
@@ -4106,7 +4163,7 @@ namespace vultra_app
                 if (slot < cpuMesh->materials.size())
                     materialName = cpuMesh->materials[slot].name;
                 if (materialName.empty())
-                    materialName = "Material " + std::to_string(slot);
+                    materialName = vultra::trf("inspector.materialSlot.materialN", slot);
 
                 std::string subMeshName;
                 for (const auto& subMesh : cpuMesh->subMeshes)
@@ -4120,8 +4177,9 @@ namespace vultra_app
 
                 MaterialSlotChoice choice;
                 choice.slot   = slot;
-                choice.label  = "Slot " + std::to_string(slot) + " - " + materialName;
-                choice.detail = subMeshName.empty() ? std::string {} : "Used by submesh: " + subMeshName;
+                choice.label  = vultra::trf("inspector.materialSlot.slotLabel", slot, materialName);
+                choice.detail =
+                    subMeshName.empty() ? std::string {} : vultra::trf("inspector.materialSlot.usedBySubmesh", subMeshName);
                 choices.push_back(std::move(choice));
             }
             return choices;
@@ -4134,11 +4192,11 @@ namespace vultra_app
                 choices.begin(), choices.end(), [&](const MaterialSlotChoice& choice) { return choice.slot == slot; });
             std::string selectedLabel = selectedIt != choices.end() ?
                                             selectedIt->label :
-                                            "Slot " + std::to_string(slot) + " - Unknown Material";
+                                            vultra::trf("inspector.materialSlot.slotUnknown", slot);
 
             bool changed = false;
             ImGui::SetNextItemWidth(-1.0f);
-            if (ImGui::BeginCombo("Slot", selectedLabel.c_str()))
+            if (ImGui::BeginCombo(vultra::tr("inspector.materialSlot.slot"), selectedLabel.c_str()))
             {
                 for (const auto& choice : choices)
                 {
@@ -4156,15 +4214,14 @@ namespace vultra_app
                 if (selectedIt == choices.end())
                 {
                     ImGui::Separator();
-                    const std::string unknown = "Keep Slot " + std::to_string(slot);
+                    const std::string unknown = vultra::trf("inspector.materialSlot.keepSlot", slot);
                     if (ImGui::Selectable(unknown.c_str(), true))
                         changed = false;
                 }
                 ImGui::EndCombo();
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("Material graph overrides replace one mesh material slot. The saved value is still "
-                                  "the numeric slot.");
+                ImGui::SetTooltip("%s", vultra::tr("inspector.materialSlot.tip"));
             return changed;
         }
 
@@ -4237,7 +4294,7 @@ namespace vultra_app
         {
             bool changed = drawMetaFields(ctx, textureSelector, mesh, {}, meshSelector);
             ImGui::Spacing();
-            if (ImGui::CollapsingHeader("Material Overrides", ImGuiTreeNodeFlags_DefaultOpen))
+            if (ImGui::CollapsingHeader(vultra::tr("inspector.material.overrides"), ImGuiTreeNodeFlags_DefaultOpen))
             {
                 int removeIndex = -1;
                 for (int i = 0; i < static_cast<int>(mesh.materialOverrides.size()); ++i)
@@ -4246,12 +4303,12 @@ namespace vultra_app
                     ImGui::PushID(i);
                     if (drawMaterialSlotCombo(ctx, mesh, override.slot))
                         changed = true;
-                    if (drawMaterialUriField(ctx, override.material, "Material"))
+                    if (drawMaterialUriField(ctx, override.material, vultra::tr("inspector.material.material")))
                         changed = true;
                     const bool canForkBuiltin =
                         ctx && (override.material.empty() || override.material == vultra::kBuiltinDefaultMaterialUri);
                     ImGui::BeginDisabled(!canForkBuiltin);
-                    if (ImGui::SmallButton(ICON_MDI_CONTENT_COPY " Fork Builtin"))
+                    if (ImGui::SmallButton((std::string {ICON_MDI_CONTENT_COPY " "} + vultra::tr("inspector.material.forkBuiltin")).c_str()))
                     {
                         std::string forkedUri;
                         if (forkBuiltinDefaultMaterial(*ctx, override.slot, forkedUri))
@@ -4263,10 +4320,10 @@ namespace vultra_app
                     }
                     ImGui::EndDisabled();
                     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                        ImGui::SetTooltip("Create an editable project .vmat.json from the builtin PBR material.");
-                    if (drawMaterialGraphUriField(ctx, override.materialGraph, "Graph"))
+                        ImGui::SetTooltip("%s", vultra::tr("inspector.material.forkBuiltinTip"));
+                    if (drawMaterialGraphUriField(ctx, override.materialGraph, vultra::tr("inspector.material.graph")))
                         changed = true;
-                    if (ImGui::TreeNode("Property Block"))
+                    if (ImGui::TreeNode(vultra::tr("inspector.material.propertyBlock")))
                     {
                         if (drawAddMaterialPropertyBlockEntry(ctx, override))
                             changed = true;
@@ -4276,16 +4333,18 @@ namespace vultra_app
                         {
                             auto& property = override.properties[static_cast<size_t>(propertyIndex)];
                             ImGui::PushID(propertyIndex);
-                            if (drawMaterialStringInput("Name", property.name))
+                            if (drawMaterialStringInput(vultra::tr("common.name"), property.name))
                                 changed = true;
 
                             int typeIndex = property.type == vultra::MaterialPropertyBlockValueType::eColor ? 1 :
                                             property.type == vultra::MaterialPropertyBlockValueType::eTexture2D ? 2 :
                                                                                                                  0;
-                            const char* typeLabels[] = {"Float", "Color", "Texture2D"};
-                            ui::beginPropertyRow("Type");
-                            const bool propTypeChanged =
-                                ImGui::Combo("##Type", &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels));
+                            const std::string typeLabels =
+                                std::string {vultra::tr("inspector.material.propType.float")} + '\0' +
+                                vultra::tr("inspector.material.propType.color") + '\0' +
+                                vultra::tr("inspector.material.propType.texture2D") + '\0';
+                            ui::beginPropertyRow(vultra::tr("common.type"));
+                            const bool propTypeChanged = ImGui::Combo("##Type", &typeIndex, typeLabels.c_str());
                             ui::endPropertyRow();
                             if (propTypeChanged)
                             {
@@ -4298,7 +4357,7 @@ namespace vultra_app
                             switch (property.type)
                             {
                                 case vultra::MaterialPropertyBlockValueType::eColor:
-                                    ui::beginPropertyRow("Value");
+                                    ui::beginPropertyRow(vultra::tr("common.value"));
                                     if (ImGui::ColorEdit4("##Value", &property.colorValue.x))
                                         changed = true;
                                     ui::endPropertyRow();
@@ -4306,20 +4365,20 @@ namespace vultra_app
                                 case vultra::MaterialPropertyBlockValueType::eTexture2D:
                                     if (ctx && textureSelector)
                                         changed |= ui::drawTextureUriField(
-                                            *ctx, "Texture", property.textureUri, *textureSelector);
-                                    else if (drawMaterialStringInput("Texture URI", property.textureUri))
+                                            *ctx, vultra::tr("inspector.material.texture"), property.textureUri, *textureSelector);
+                                    else if (drawMaterialStringInput(vultra::tr("inspector.material.textureUri"), property.textureUri))
                                         changed = true;
                                     break;
                                 case vultra::MaterialPropertyBlockValueType::eFloat:
                                 default:
-                                    ui::beginPropertyRow("Value");
+                                    ui::beginPropertyRow(vultra::tr("common.value"));
                                     if (ImGui::DragFloat("##Value", &property.floatValue, 0.01f))
                                         changed = true;
                                     ui::endPropertyRow();
                                     break;
                             }
 
-                            if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE " Remove Property"))
+                            if (ImGui::SmallButton((std::string {ICON_MDI_DELETE_OUTLINE " "} + vultra::tr("inspector.material.removeProperty")).c_str()))
                                 removeProperty = propertyIndex;
                             ImGui::Separator();
                             ImGui::PopID();
@@ -4329,7 +4388,7 @@ namespace vultra_app
                             override.properties.erase(override.properties.begin() + removeProperty);
                             changed = true;
                         }
-                        if (ImGui::SmallButton(ICON_MDI_PLUS " Add Property"))
+                        if (ImGui::SmallButton((std::string {ICON_MDI_PLUS " "} + vultra::tr("inspector.material.addProperty")).c_str()))
                         {
                             override.properties.push_back(vultra::MaterialPropertyBlockEntry {
                                 .name       = "baseColor",
@@ -4340,7 +4399,7 @@ namespace vultra_app
                         }
                         ImGui::TreePop();
                     }
-                    if (ImGui::SmallButton(ICON_MDI_DELETE " Remove"))
+                    if (ImGui::SmallButton((std::string {ICON_MDI_DELETE " "} + vultra::tr("common.remove")).c_str()))
                         removeIndex = i;
                     ImGui::Separator();
                     ImGui::PopID();
@@ -4350,7 +4409,7 @@ namespace vultra_app
                     mesh.materialOverrides.erase(mesh.materialOverrides.begin() + removeIndex);
                     changed = true;
                 }
-                if (ImGui::Button(ICON_MDI_PLUS " Add Material Override",
+                if (ImGui::Button((std::string {ICON_MDI_PLUS " "} + vultra::tr("inspector.material.addOverride")).c_str(),
                                   ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
                 {
                     mesh.materialOverrides.push_back({});
@@ -4363,30 +4422,33 @@ namespace vultra_app
         bool drawUiLayoutComponentFields(vultra::UiLayoutComponent& layout)
         {
             bool changed = false;
-            ui::beginPropertyRow("Enabled");
+            ui::beginPropertyRow(vultra::tr("common.enabled"));
             changed |= ImGui::Checkbox("##Enabled", &layout.enabled);
             ui::endPropertyRow();
 
-            const char* labels[] = {"None", "Horizontal", "Vertical", "Grid"};
-            int         index    = static_cast<int>(std::min(layout.kind, 3u));
-            ui::beginPropertyRow("Layout");
-            if (ImGui::Combo("##Layout", &index, labels, IM_ARRAYSIZE(labels)))
+            const std::string labels = std::string {vultra::tr("common.none")} + '\0' +
+                                       vultra::tr("inspector.uiLayout.kind.horizontal") + '\0' +
+                                       vultra::tr("inspector.uiLayout.kind.vertical") + '\0' +
+                                       vultra::tr("inspector.uiLayout.kind.grid") + '\0';
+            int index = static_cast<int>(std::min(layout.kind, 3u));
+            ui::beginPropertyRow(vultra::tr("inspector.uiLayout.layout"));
+            if (ImGui::Combo("##Layout", &index, labels.c_str()))
             {
-                layout.kind = static_cast<uint32_t>(std::clamp(index, 0, IM_ARRAYSIZE(labels) - 1));
+                layout.kind = static_cast<uint32_t>(std::clamp(index, 0, 3));
                 changed     = true;
             }
             ui::endPropertyRow();
 
-            ui::beginPropertyRow("Padding Px");
+            ui::beginPropertyRow(vultra::tr("inspector.uiLayout.paddingPx"));
             changed |= ImGui::DragFloat4("##PaddingPx", &layout.paddingPx.x, 0.5f);
             ui::endPropertyRow();
-            ui::beginPropertyRow("Margin Px");
+            ui::beginPropertyRow(vultra::tr("inspector.uiLayout.marginPx"));
             changed |= ImGui::DragFloat4("##MarginPx", &layout.marginPx.x, 0.5f);
             ui::endPropertyRow();
-            ui::beginPropertyRow("Spacing Px");
+            ui::beginPropertyRow(vultra::tr("inspector.uiLayout.spacingPx"));
             changed |= ImGui::DragFloat("##SpacingPx", &layout.spacingPx, 0.5f);
             ui::endPropertyRow();
-            ui::beginPropertyRow("Cell Size Px");
+            ui::beginPropertyRow(vultra::tr("inspector.uiLayout.cellSizePx"));
             changed |= ImGui::DragFloat2("##CellSizePx", &layout.cellSizePx.x, 0.5f);
             ui::endPropertyRow();
             return changed;
@@ -4720,63 +4782,93 @@ namespace vultra_app
             }
         }
 
-        const char* orderedComponentLabel(const std::string& key)
+        const char* componentKeyToTrKey(const std::string& key)
         {
             if (key == "RectTransform")
-                return "Rect Transform";
+                return "inspector.component.rectTransform";
             if (key == "Transform")
-                return "Transform";
+                return "inspector.component.transform";
             if (key == "Layer")
-                return "Layer";
+                return "inspector.component.layer";
             if (key == "Canvas")
-                return "Canvas";
+                return "inspector.component.canvas";
             if (key == "UiPanel")
-                return "UI Panel";
+                return "inspector.component.uiPanel";
             if (key == "UiImage")
-                return "UI Image";
+                return "inspector.component.uiImage";
             if (key == "UiText")
-                return "UI Text";
+                return "inspector.component.uiText";
             if (key == "UiButton")
-                return "UI Button";
+                return "inspector.component.uiButton";
             if (key == "UiToggle")
-                return "UI Toggle";
+                return "inspector.component.uiToggle";
             if (key == "UiSlider")
-                return "UI Slider";
+                return "inspector.component.uiSlider";
             if (key == "UiProgressBar")
-                return "UI Progress Bar";
+                return "inspector.component.uiProgressBar";
             if (key == "UiLayout")
-                return "UI Layout";
+                return "inspector.component.uiLayout";
             if (key == "Mesh")
-                return "Mesh";
+                return "inspector.component.mesh";
             if (key == "Animator")
-                return "Animator";
+                return "inspector.component.animator";
             if (key == "GaussianSplat")
-                return "Gaussian Splat";
+                return "inspector.component.gaussianSplat";
             if (key == "Environment")
-                return "Environment";
+                return "inspector.component.environment";
             if (key == "ReflectionProbe")
-                return "Reflection Probe";
+                return "inspector.component.reflectionProbe";
             if (key == "Light")
-                return "Light";
+                return "inspector.component.light";
             if (key == "ParticleEmitter")
-                return "Particle Emitter";
+                return "inspector.component.particleEmitter";
             if (key == "RigidBody")
-                return "Rigid Body";
+                return "inspector.component.rigidBody";
             if (key == "BoxShape")
-                return "Box Shape";
+                return "inspector.component.boxShape";
             if (key == "SphereShape")
-                return "Sphere Shape";
+                return "inspector.component.sphereShape";
             if (key == "CapsuleShape")
-                return "Capsule Shape";
+                return "inspector.component.capsuleShape";
             if (key == "Camera")
-                return "Camera";
+                return "inspector.component.camera";
             if (key == "XRView")
-                return "XR View";
+                return "inspector.component.xrView";
             if (key == "Script")
-                return "Script";
+                return "inspector.component.script";
             if (key == "Prefab")
-                return "Prefab";
-            return "Component";
+                return "inspector.component.prefab";
+            return nullptr;
+        }
+
+        const char* orderedComponentLabel(const std::string& key)
+        {
+            if (const char* trKey = componentKeyToTrKey(key))
+                return vultra::tr(trKey);
+            return vultra::tr("inspector.component.generic");
+        }
+
+        const char* addComponentCategoryLabel(const char* category)
+        {
+            if (category == nullptr)
+                return "";
+            if (std::strcmp(category, "Core") == 0)
+                return vultra::trId("inspector.category.core", "Core");
+            if (std::strcmp(category, "UI") == 0)
+                return vultra::trId("inspector.category.ui", "UI");
+            if (std::strcmp(category, "Rendering") == 0)
+                return vultra::trId("inspector.category.rendering", "Rendering");
+            if (std::strcmp(category, "Animation") == 0)
+                return vultra::trId("inspector.category.animation", "Animation");
+            if (std::strcmp(category, "Lighting") == 0)
+                return vultra::trId("inspector.category.lighting", "Lighting");
+            if (std::strcmp(category, "Physics") == 0)
+                return vultra::trId("inspector.category.physics", "Physics");
+            if (std::strcmp(category, "Camera") == 0)
+                return vultra::trId("inspector.category.camera", "Camera");
+            if (std::strcmp(category, "Scripting") == 0)
+                return vultra::trId("inspector.category.scripting", "Scripting");
+            return category;
         }
 
         void removeOrderedComponent(entt::registry& reg, entt::entity entity, const std::string& key)
@@ -4842,14 +4934,14 @@ namespace vultra_app
         std::string componentRemovalBlockReason(entt::registry& reg, entt::entity entity, const std::string& key)
         {
             if (key == "Prefab")
-                return "Prefab data is managed by the prefab instance.";
+                return vultra::tr("inspector.removeBlock.prefab");
 
             if (key == "UiImage")
             {
                 const auto* button = reg.try_get<vultra::UiButtonComponent>(entity);
                 const auto* id     = reg.try_get<vultra::IDComponent>(entity);
                 if (button && id && button->targetGraphic.valid() && button->targetGraphic == id->uuid)
-                    return "UI Button targetGraphic uses this Image. Clear or retarget targetGraphic before removing it.";
+                    return vultra::tr("inspector.removeBlock.uiButtonTargetGraphic");
             }
 
             return {};
@@ -4900,7 +4992,7 @@ namespace vultra_app
         }
     } // namespace
 
-    InspectorWindow::InspectorWindow() : EditorWindow("Inspector", ICON_MDI_TUNE)
+    InspectorWindow::InspectorWindow() : EditorWindow("Inspector", ICON_MDI_TUNE, "window.inspector")
     {
         m_ModelPreviewWorld.setDebugName("Inspector Preview");
     }
@@ -4973,14 +5065,22 @@ namespace vultra_app
         else
         {
             auto& state = ctx.state;
-            ImGui::TextUnformatted("Project");
+            ImGui::TextUnformatted(vultra::tr("inspector.project.title"));
             ImGui::Separator();
-            ImGui::TextWrapped("Name: %s",
-                               state.currentProjectName.empty() ? "(no project)" : state.currentProjectName.c_str());
-            ImGui::TextWrapped("Root: %s",
-                               state.currentProject.empty() ? "(none)" : state.currentProject.generic_string().c_str());
-            ImGui::TextWrapped("Asset root: %s", state.currentAssetRoot.c_str());
-            ImGui::TextWrapped("Default scene: %s", state.currentDefaultScene.c_str());
+            ImGui::TextWrapped(
+                "%s",
+                vultra::trf("inspector.project.name",
+                            state.currentProjectName.empty() ? vultra::tr("inspector.project.noProject") :
+                                                               state.currentProjectName.c_str())
+                    .c_str());
+            ImGui::TextWrapped(
+                "%s",
+                vultra::trf("inspector.project.root",
+                            state.currentProject.empty() ? vultra::tr("common.none") :
+                                                           state.currentProject.generic_string().c_str())
+                    .c_str());
+            ImGui::TextWrapped("%s", vultra::trf("inspector.project.assetRoot", state.currentAssetRoot).c_str());
+            ImGui::TextWrapped("%s", vultra::trf("inspector.project.defaultScene", state.currentDefaultScene).c_str());
         }
 
         ImGui::End();
@@ -4990,14 +5090,14 @@ namespace vultra_app
     {
         if (!ctx.services)
         {
-            ImGui::TextUnformatted("Services are not available.");
+            ImGui::TextUnformatted(vultra::tr("inspector.servicesUnavailable"));
             return;
         }
 
         auto* worldService = ctx.services->tryGet<vultra::IWorldService>();
         if (!worldService)
         {
-            ImGui::TextUnformatted("World service is not available.");
+            ImGui::TextUnformatted(vultra::tr("inspector.worldServiceUnavailable"));
             return;
         }
 
@@ -5006,14 +5106,14 @@ namespace vultra_app
         auto  e     = findEntityByUUID(world, Selection::lastId());
         if (e == entt::null || !reg.valid(e))
         {
-            ImGui::TextUnformatted("Selected entity no longer exists.");
+            ImGui::TextUnformatted(vultra::tr("inspector.entityGone"));
             return;
         }
 
-        ui::sectionTitle(ICON_MDI_CUBE_OUTLINE, "Entity");
+        ui::sectionTitle(ICON_MDI_CUBE_OUTLINE, vultra::tr("inspector.entity.title"));
 
         if (auto* id = reg.try_get<vultra::IDComponent>(e))
-            ImGui::TextWrapped("UUID: %s", id->uuid.toString().c_str());
+            ImGui::TextWrapped("%s", vultra::trf("inspector.entity.uuid", id->uuid.toString()).c_str());
 
         auto& name = reg.get_or_emplace<vultra::NameComponent>(e, vultra::NameComponent {"Entity"});
         if (m_NameEditEntity != Selection::lastId())
@@ -5021,7 +5121,7 @@ namespace vultra_app
             m_NameEditEntity = Selection::lastId();
             copyName(m_NameBuffer, name.name);
         }
-        ui::beginPropertyRow("Name");
+        ui::beginPropertyRow(vultra::tr("common.name"));
         const bool nameChanged = ImGui::InputText("##Name", m_NameBuffer.data(), m_NameBuffer.size());
         ui::endPropertyRow();
         if (nameChanged)
@@ -5033,7 +5133,7 @@ namespace vultra_app
         }
 
         auto& status = reg.get_or_emplace<vultra::EntityStatusComponent>(e);
-        if (ImGui::CollapsingHeader("Status", ImGuiTreeNodeFlags_DefaultOpen))
+        if (ImGui::CollapsingHeader(vultra::tr("inspector.component.status"), ImGuiTreeNodeFlags_DefaultOpen))
         {
             if (drawMetaFields(&ctx, &m_TextureSelector, status))
             {
@@ -5046,15 +5146,15 @@ namespace vultra_app
         if (componentHeader<vultra::HierarchyComponent>(world, e))
         {
             const auto* h = reg.try_get<vultra::HierarchyComponent>(e);
-            ImGui::Text("Children: %u", h ? h->childCount : 0);
+            ImGui::TextUnformatted(vultra::trf("inspector.hierarchy.children", h ? h->childCount : 0).c_str());
             if (h && h->parent != entt::null)
             {
                 if (auto* parentId = reg.try_get<vultra::IDComponent>(h->parent))
-                    ImGui::TextWrapped("Parent UUID: %s", parentId->uuid.toString().c_str());
+                    ImGui::TextWrapped("%s", vultra::trf("inspector.hierarchy.parentUuid", parentId->uuid.toString()).c_str());
             }
             else
             {
-                ImGui::TextUnformatted("Parent: <scene root>");
+                ImGui::TextUnformatted(vultra::tr("inspector.hierarchy.parentSceneRoot"));
             }
         }
 
@@ -5079,13 +5179,13 @@ namespace vultra_app
             if (moveUpRequested && i > 0)
             {
                 std::swap(componentOrder[i], componentOrder[i - 1]);
-                ctx.state.statusMessage = "Moved component up: " + std::string(orderedComponentLabel(key));
+                ctx.state.statusMessage = vultra::trf("inspector.componentMovedUp", orderedComponentLabel(key));
                 break;
             }
             if (moveDownRequested && i + 1 < componentOrder.size())
             {
                 std::swap(componentOrder[i], componentOrder[i + 1]);
-                ctx.state.statusMessage = "Moved component down: " + std::string(orderedComponentLabel(key));
+                ctx.state.statusMessage = vultra::trf("inspector.componentMovedDown", orderedComponentLabel(key));
                 break;
             }
 
@@ -5094,7 +5194,7 @@ namespace vultra_app
                 removeOrderedComponent(reg, e, key);
                 componentOrder.erase(componentOrder.begin() + static_cast<std::ptrdiff_t>(i));
                 ctx.state.sceneDirty    = true;
-                ctx.state.statusMessage = "Removed component: " + std::string(orderedComponentLabel(key));
+                ctx.state.statusMessage = vultra::trf("inspector.componentRemoved", orderedComponentLabel(key));
                 if (ctx.history)
                     ctx.history->setNextLabel(ctx.state.statusMessage);
                 break;
@@ -5347,7 +5447,7 @@ namespace vultra_app
             {
                 if (auto* camera = reg.try_get<vultra::CameraComponent>(e))
                 {
-                    if (ImGui::Button(ICON_MDI_CAMERA_SWITCH "  Align With Scene View",
+                    if (ImGui::Button((std::string {ICON_MDI_CAMERA_SWITCH "  "} + vultra::tr("inspector.camera.alignWithSceneView")).c_str(),
                                       ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
                     {
                         if (alignCameraEntityToSceneView(ctx, world, e))
@@ -5358,14 +5458,14 @@ namespace vultra_app
                         }
                     }
                     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                        ImGui::SetTooltip("Move this Camera entity to the current Scene View camera pose.");
-                    if (ImGui::Button(ICON_MDI_CROSSHAIRS_GPS "  Align Scene View With Camera",
+                        ImGui::SetTooltip("%s", vultra::tr("inspector.camera.alignWithSceneViewTip"));
+                    if (ImGui::Button((std::string {ICON_MDI_CROSSHAIRS_GPS "  "} + vultra::tr("inspector.camera.alignSceneViewWithCamera")).c_str(),
                                       ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
                     {
                         alignSceneViewToCameraEntity(ctx, world, e);
                     }
                     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                        ImGui::SetTooltip("Move the Scene View editor camera to this Camera entity.");
+                        ImGui::SetTooltip("%s", vultra::tr("inspector.camera.alignSceneViewWithCameraTip"));
                     ImGui::Spacing();
 
                     drawMetaFields<vultra::CameraComponent>(
@@ -5411,9 +5511,9 @@ namespace vultra_app
             {
                 if (auto* prefab = reg.try_get<vultra::PrefabInstanceComponent>(e))
                 {
-                    ImGui::TextWrapped("URI: %s", prefab->prefabUri.c_str());
+                    ImGui::TextWrapped("%s", vultra::trf("inspector.prefab.uri", prefab->prefabUri).c_str());
                     if (prefab->prefabId.valid())
-                        ImGui::TextWrapped("UUID: %s", prefab->prefabId.toString().c_str());
+                        ImGui::TextWrapped("%s", vultra::trf("inspector.prefab.uuid", prefab->prefabId.toString()).c_str());
                 }
             }
 
@@ -5429,7 +5529,7 @@ namespace vultra_app
         auto& reg = world.registry();
 
         const float width = ImGui::GetContentRegionAvail().x;
-        if (ImGui::Button(ICON_MDI_PLUS "  Add Component", ImVec2(width, 0.0f)))
+        if (ImGui::Button((std::string {ICON_MDI_PLUS "  "} + vultra::tr("inspector.addComponent")).c_str(), ImVec2(width, 0.0f)))
             ImGui::OpenPopup("AddComponentPopup");
 
         if (ImGui::BeginPopup("AddComponentPopup"))
@@ -5457,7 +5557,7 @@ namespace vultra_app
                     continue;
 
                 any = true;
-                if (ImGui::BeginMenu(category))
+                if (ImGui::BeginMenu(addComponentCategoryLabel(category)))
                 {
                     for (const auto& desc : addableComponents())
                     {
@@ -5470,21 +5570,24 @@ namespace vultra_app
                                                           !reg.all_of<vultra::CameraComponent>(entity);
                         if (xrViewRequiresCamera)
                             ImGui::BeginDisabled();
-                        if (ImGui::MenuItem(desc.label))
+                        const char* descTrKey   = desc.key ? componentKeyToTrKey(desc.key) : nullptr;
+                        const char* descLabel   = descTrKey ? vultra::tr(descTrKey) : desc.label;
+                        const char* descMenuLbl = descTrKey ? vultra::trId(descTrKey, desc.key) : desc.label;
+                        if (ImGui::MenuItem(descMenuLbl))
                         {
                             desc.add(ctx, reg, entity);
                             auto& order = m_ComponentOrder[Selection::lastId()];
                             if (desc.key && std::find(order.begin(), order.end(), desc.key) == order.end())
                                 order.emplace_back(desc.key);
                             ctx.state.sceneDirty    = true;
-                            ctx.state.statusMessage = std::string("Added component: ") + desc.label;
+                            ctx.state.statusMessage = vultra::trf("inspector.componentAdded", descLabel);
                             if (desc.key &&
                                 (std::strcmp(desc.key, "BoxShape") == 0 ||
                                  std::strcmp(desc.key, "SphereShape") == 0 ||
                                  std::strcmp(desc.key, "CapsuleShape") == 0) &&
                                 reg.all_of<vultra::MeshComponent>(entity))
                             {
-                                ctx.state.statusMessage += " (fit to mesh bounds if available)";
+                                ctx.state.statusMessage += vultra::tr("inspector.fitToMeshBoundsSuffix");
                             }
                             if (ctx.history)
                                 ctx.history->setNextLabel(ctx.state.statusMessage);
@@ -5494,7 +5597,7 @@ namespace vultra_app
                         {
                             ImGui::EndDisabled();
                             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                                ImGui::SetTooltip("XR View can only be added to an entity with a Camera component.");
+                                ImGui::SetTooltip("%s", vultra::tr("inspector.xrViewRequiresCamera"));
                         }
                     }
                     ImGui::EndMenu();
@@ -5502,7 +5605,7 @@ namespace vultra_app
             }
 
             if (!any)
-                ImGui::TextDisabled("All addable components are already present.");
+                ImGui::TextDisabled("%s", vultra::tr("inspector.allComponentsPresent"));
 
             ImGui::EndPopup();
         }
@@ -5512,25 +5615,25 @@ namespace vultra_app
     {
         if (!ctx.services)
         {
-            ImGui::TextUnformatted("Services are not available.");
+            ImGui::TextUnformatted(vultra::tr("inspector.servicesUnavailable"));
             return;
         }
 
         auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
         if (!assetService)
         {
-            ImGui::TextUnformatted("Asset service is not available.");
+            ImGui::TextUnformatted(vultra::tr("inspector.assetServiceUnavailable"));
             return;
         }
 
         const auto uuid  = Selection::lastId();
         const auto entry = assetService->registry().lookup(uuid.native());
 
-        ui::sectionTitle(ICON_MDI_PACKAGE_VARIANT_CLOSED, "Asset");
-        ImGui::TextWrapped("UUID: %s", uuid.toString().c_str());
-        ImGui::TextWrapped("Type: %s", vasset::toString(entry.type).c_str());
-        ImGui::TextWrapped("Source: %s", entry.sourcePath.c_str());
-        ImGui::TextWrapped("Imported: %s", entry.importedPath.c_str());
+        ui::sectionTitle(ICON_MDI_PACKAGE_VARIANT_CLOSED, vultra::tr("inspector.asset.title"));
+        ImGui::TextWrapped("%s", vultra::trf("inspector.asset.uuid", uuid.toString()).c_str());
+        ImGui::TextWrapped("%s", vultra::trf("inspector.asset.type", vasset::toString(entry.type)).c_str());
+        ImGui::TextWrapped("%s", vultra::trf("inspector.asset.source", entry.sourcePath).c_str());
+        ImGui::TextWrapped("%s", vultra::trf("inspector.asset.imported", entry.importedPath).c_str());
 
         if (entry.type == vasset::VAssetType::eMesh)
         {
@@ -5567,8 +5670,8 @@ namespace vultra_app
             return;
         }
 
-        ImGui::TextUnformatted("Preview");
-        const float size = std::min(ImGui::GetContentRegionAvail().x, 260.0f);
+        ImGui::TextUnformatted(vultra::tr("inspector.preview"));
+        const float size = std::min(ImGui::GetContentRegionAvail().x, vultra::ui::dp(260.0f));
         ImGui::Image(previewId, ImVec2(size, size));
         (void)ui::capturePreviewItemInput();
     }
@@ -5581,14 +5684,14 @@ namespace vultra_app
         const auto result = vasset::loadSkeleton(path.generic_string(), skeleton);
         if (!result)
         {
-            ImGui::TextDisabled("Skeleton metadata unavailable.");
+            ImGui::TextDisabled("%s", vultra::tr("inspector.skeleton.unavailable"));
             return;
         }
 
-        ui::sectionTitle(ICON_MDI_SOURCE_BRANCH, "Skeleton");
-        ImGui::TextWrapped("Name: %s", skeleton.name.c_str());
-        ImGui::Text("Joints: %zu", skeleton.jointNames.size());
-        ImGui::Text("Payload: %s", formatFileSize(skeleton.ozzData.size()).c_str());
+        ui::sectionTitle(ICON_MDI_SOURCE_BRANCH, vultra::tr("inspector.skeleton.title"));
+        ImGui::TextWrapped("%s", vultra::trf("inspector.skeleton.name", skeleton.name).c_str());
+        ImGui::TextUnformatted(vultra::trf("inspector.skeleton.joints", skeleton.jointNames.size()).c_str());
+        ImGui::TextUnformatted(vultra::trf("inspector.skeleton.payload", formatFileSize(skeleton.ozzData.size())).c_str());
     }
 
     void InspectorWindow::drawAnimationAssetInspector(EditorContext& ctx, const vasset::VAssetRegistry::AssetEntry& entry)
@@ -5599,14 +5702,14 @@ namespace vultra_app
         const auto result = vasset::loadAnimation(path.generic_string(), animation);
         if (!result)
         {
-            ImGui::TextDisabled("Animation metadata unavailable.");
+            ImGui::TextDisabled("%s", vultra::tr("inspector.animation.unavailable"));
             return;
         }
 
-        ui::sectionTitle(ICON_MDI_PLAY, "Animation");
-        ImGui::TextWrapped("Name: %s", animation.name.c_str());
-        ImGui::Text("Duration: %.3f s", animation.duration);
-        ImGui::Text("Payload: %s", formatFileSize(animation.ozzData.size()).c_str());
+        ui::sectionTitle(ICON_MDI_PLAY, vultra::tr("inspector.animation.title"));
+        ImGui::TextWrapped("%s", vultra::trf("inspector.animation.name", animation.name).c_str());
+        ImGui::TextUnformatted(vultra::trf("inspector.animation.duration", animation.duration).c_str());
+        ImGui::TextUnformatted(vultra::trf("inspector.animation.payload", formatFileSize(animation.ozzData.size())).c_str());
 
         const auto uuid = Selection::lastId();
         const auto key  = "animation:" + uuid.toString() + ":" + entry.importedPath;
@@ -5614,7 +5717,7 @@ namespace vultra_app
             rebuildModelPreviewWorldForAnimation(ctx, uuid, entry);
 
         ImGui::Spacing();
-        ui::sectionTitle(ICON_MDI_PLAY, "Preview");
+        ui::sectionTitle(ICON_MDI_PLAY, vultra::tr("inspector.preview"));
         if (ImGui::SmallButton(m_ModelPreviewAnimationPlaying ? ICON_MDI_PAUSE : ICON_MDI_PLAY))
         {
             m_ModelPreviewAnimationPlaying = !m_ModelPreviewAnimationPlaying;
@@ -5627,10 +5730,10 @@ namespace vultra_app
             m_ModelPreviewDirty = true;
         }
         bool controlsChanged = false;
-        ui::beginPropertyRow("Loop");
+        ui::beginPropertyRow(vultra::tr("inspector.animator.loop"));
         controlsChanged |= ImGui::Checkbox("##Loop", &m_ModelPreviewAnimationLoop);
         ui::endPropertyRow();
-        ui::beginPropertyRow("Speed");
+        ui::beginPropertyRow(vultra::tr("inspector.animator.speed"));
         controlsChanged |= ImGui::DragFloat("##Speed", &m_ModelPreviewAnimationSpeed, 0.02f, 0.05f, 4.0f, "%.2f");
         ui::endPropertyRow();
         m_ModelPreviewAnimationSpeed = std::clamp(m_ModelPreviewAnimationSpeed, 0.05f, 4.0f);
@@ -5650,13 +5753,17 @@ namespace vultra_app
 
         std::error_code ec;
         const bool      isDir = std::filesystem::is_directory(path, ec);
-        ui::sectionTitle(ui::sourceAssetIcon(path, isDir), "Source Asset");
-        ImGui::TextWrapped("Name: %s", path.filename().generic_string().c_str());
-        ImGui::TextWrapped("Type: %s", ext.empty() ? "Folder" : ext.c_str());
-        ImGui::TextWrapped("Path: %s", path.generic_string().c_str());
+        ui::sectionTitle(ui::sourceAssetIcon(path, isDir), vultra::tr("inspector.sourceAsset.title"));
+        ImGui::TextWrapped("%s", vultra::trf("inspector.sourceAsset.name", path.filename().generic_string()).c_str());
+        ImGui::TextWrapped(
+            "%s",
+            vultra::trf("inspector.sourceAsset.type", ext.empty() ? std::string {vultra::tr("inspector.sourceAsset.folder")} : ext)
+                .c_str());
+        ImGui::TextWrapped("%s", vultra::trf("inspector.sourceAsset.path", path.generic_string()).c_str());
 
         if (std::filesystem::is_regular_file(path, ec))
-            ImGui::Text("Size: %s", formatFileSize(std::filesystem::file_size(path, ec)).c_str());
+            ImGui::TextUnformatted(
+                vultra::trf("inspector.sourceAsset.size", formatFileSize(std::filesystem::file_size(path, ec))).c_str());
 
         const bool renderGraphPassSource = std::filesystem::is_regular_file(path, ec) && fileLooksLikeRenderGraphPass(path);
         const bool materialAssetSource   = std::filesystem::is_regular_file(path, ec) && isMaterialAssetSource(path);
@@ -5682,17 +5789,18 @@ namespace vultra_app
 
         if (std::filesystem::is_regular_file(path, ec) && isEditableSourceText(path))
         {
-            const bool sceneSource = sourceAssetHasExtension(path, {".vscn"});
-            const char* buttonText = sceneSource ? ICON_MDI_FILE_DOCUMENT_EDIT " Edit As Source" :
-                                     renderGraphPassSource ? ICON_MDI_CODE_BRACES " Open Lua Source" :
-                                                             ICON_MDI_FILE_DOCUMENT_EDIT " Open in Code Editor";
-            if (ImGui::Button(buttonText))
+            const bool        sceneSource = sourceAssetHasExtension(path, {".vscn"});
+            const std::string buttonText =
+                sceneSource ? std::string {ICON_MDI_FILE_DOCUMENT_EDIT " "} + vultra::tr("inspector.sourceAsset.editAsSource") :
+                renderGraphPassSource ? std::string {ICON_MDI_CODE_BRACES " "} + vultra::tr("inspector.sourceAsset.openLuaSource") :
+                                        std::string {ICON_MDI_FILE_DOCUMENT_EDIT " "} + vultra::tr("inspector.sourceAsset.openInCodeEditor");
+            if (ImGui::Button(buttonText.c_str()))
             {
                 ctx.state.codeEditorPath          = path.lexically_normal();
                 ctx.state.codeEditorOpenRequested = true;
-                ctx.state.statusMessage           = sceneSource ?
-                                                        "Editing scene source: " + path.filename().generic_string() :
-                                                        "Opened in Code Editor: " + path.filename().generic_string();
+                ctx.state.statusMessage =
+                    sceneSource ? vultra::trf("inspector.sourceAsset.editingScene", path.filename().generic_string()) :
+                                  vultra::trf("inspector.sourceAsset.openedInEditor", path.filename().generic_string());
             }
         }
 
@@ -5711,8 +5819,8 @@ namespace vultra_app
         else if (sourceAssetHasExtension(path, {".vscn"}))
         {
             ImGui::Spacing();
-            ImGui::TextUnformatted("Scene source");
-            if (ImGui::Button("Set As Default Scene"))
+            ImGui::TextUnformatted(vultra::tr("inspector.sceneSource.title"));
+            if (ImGui::Button(vultra::tr("inspector.sceneSource.setAsDefault")))
             {
                 const auto      assetRoot = ctx.state.currentProject / ctx.state.currentAssetRoot;
                 std::error_code relEc;
@@ -5720,7 +5828,7 @@ namespace vultra_app
                 if (!relEc)
                 {
                     ctx.state.currentDefaultScene = "res://" + rel.generic_string();
-                    ctx.state.statusMessage       = "Default scene set to: " + ctx.state.currentDefaultScene;
+                    ctx.state.statusMessage = vultra::trf("inspector.sceneSource.defaultSet", ctx.state.currentDefaultScene);
                 }
             }
         }
@@ -5757,11 +5865,11 @@ namespace vultra_app
             }
         }
 
-        ui::sectionTitle(ICON_MDI_PALETTE_SWATCH, "Material");
+        ui::sectionTitle(ICON_MDI_PALETTE_SWATCH, vultra::tr("inspector.component.material"));
         if (!state.valid)
         {
-            ImGui::TextWrapped("Failed to parse material asset: %s", state.error.c_str());
-            if (ImGui::Button(ICON_MDI_REFRESH " Reload"))
+            ImGui::TextWrapped("%s", vultra::trf("inspector.material.parseFailed", state.error).c_str());
+            if (ImGui::Button((std::string {ICON_MDI_REFRESH " "} + vultra::tr("inspector.reload")).c_str()))
             {
                 state.valid = readJsonFile(normalized, state.doc, state.error);
                 state.dirty = false;
@@ -5772,7 +5880,7 @@ namespace vultra_app
         bool dirty = false;
 
         auto materialName = state.doc.value("name", normalized.stem().generic_string());
-        if (drawMaterialStringInput("Name", materialName))
+        if (drawMaterialStringInput(vultra::tr("common.name"), materialName))
         {
             state.doc["name"] = materialName;
             dirty             = true;
@@ -5783,7 +5891,7 @@ namespace vultra_app
         if (!state.diagnostics.empty())
         {
             ImGui::Spacing();
-            ImGui::TextUnformatted("Diagnostics");
+            ImGui::TextUnformatted(vultra::tr("inspector.diagnostics"));
             for (const auto& diagnostic : state.diagnostics)
                 ImGui::BulletText("%s", diagnostic.c_str());
         }
@@ -5791,9 +5899,11 @@ namespace vultra_app
         int  kind   = source.kind == vultra::material::MaterialSourceKind::eShader ? 1 :
                       source.kind == vultra::material::MaterialSourceKind::eGraph  ? 2 :
                                                                                      0;
-        const char* kinds[] = {"Builtin", "Shader", "Graph"};
-        ui::beginPropertyRow("Source");
-        const bool sourceChanged = ImGui::Combo("##Source", &kind, kinds, IM_ARRAYSIZE(kinds));
+        const std::string kinds = std::string {vultra::tr("inspector.material.kind.builtin")} + '\0' +
+                                  vultra::tr("inspector.material.kind.shader") + '\0' +
+                                  vultra::tr("inspector.material.kind.graph") + '\0';
+        ui::beginPropertyRow(vultra::tr("inspector.material.source"));
+        const bool sourceChanged = ImGui::Combo("##Source", &kind, kinds.c_str());
         ui::endPropertyRow();
         if (sourceChanged)
         {
@@ -5812,7 +5922,7 @@ namespace vultra_app
                 source.id = "builtin/pbr";
             const char* builtinIds[] = {"builtin/pbr"};
             int         builtinIndex = source.id == "builtin/pbr" ? 0 : -1;
-            ui::beginPropertyRow("Builtin");
+            ui::beginPropertyRow(vultra::tr("inspector.material.kind.builtin"));
             const bool builtinChanged = ImGui::Combo("##Builtin", &builtinIndex, builtinIds, IM_ARRAYSIZE(builtinIds));
             ui::endPropertyRow();
             if (builtinChanged && builtinIndex == 0)
@@ -5823,7 +5933,7 @@ namespace vultra_app
             }
             if (source.id != "builtin/pbr")
             {
-                if (drawMaterialStringInput("Custom Builtin ID", source.id))
+                if (drawMaterialStringInput(vultra::tr("inspector.material.customBuiltinId"), source.id))
                 {
                     materialSourceToJson(source, state.doc);
                     dirty = true;
@@ -5832,7 +5942,7 @@ namespace vultra_app
         }
         else if (source.kind == vultra::material::MaterialSourceKind::eGraph)
         {
-            if (drawMaterialGraphUriField(&ctx, source.uri, "Graph"))
+            if (drawMaterialGraphUriField(&ctx, source.uri, vultra::tr("inspector.material.graph")))
             {
                 materialSourceToJson(source, state.doc);
                 dirty = true;
@@ -5844,13 +5954,13 @@ namespace vultra_app
             std::array<char, 128> shader {};
             copyName(library, source.shaderLibrary.empty() ? std::string {"project"} : source.shaderLibrary);
             copyName(shader, source.id);
-            if (drawShaderLibrarySelector("Library", library))
+            if (drawShaderLibrarySelector(vultra::tr("inspector.shader.library"), library))
             {
                 source.shaderLibrary = library.data();
                 materialSourceToJson(source, state.doc);
                 dirty = true;
             }
-            if (drawLibraryShaderSelector(ctx, "Shader", "frag", library, shader, true))
+            if (drawLibraryShaderSelector(ctx, vultra::tr("inspector.shader.shader"), "frag", library, shader, true))
             {
                 source.shaderLibrary = library.data();
                 source.id            = shader.data();
@@ -5865,23 +5975,22 @@ namespace vultra_app
             ImGui::Spacing();
             if (source.kind == vultra::material::MaterialSourceKind::eShader)
             {
-                ImGui::TextWrapped(
-                    "No editable material parameters were found for this shader. Check that the shader library is loaded and the shader declares material params.");
+                ImGui::TextWrapped("%s", vultra::tr("inspector.material.noShaderParams"));
             }
             else
             {
-                ImGui::TextWrapped("No exposed parameters for this source yet.");
+                ImGui::TextWrapped("%s", vultra::tr("inspector.material.noExposedParams"));
             }
         }
         else
         {
             ImGui::Spacing();
-            ImGui::TextUnformatted("Properties");
+            ImGui::TextUnformatted(vultra::tr("inspector.material.properties"));
             auto& properties = state.doc["properties"];
             if (ImGui::BeginTable("MaterialProperties", 2, ImGuiTableFlags_SizingStretchProp))
             {
-                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 170.0f);
-                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn(vultra::tr("common.name"), ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(170.0f));
+                ImGui::TableSetupColumn(vultra::tr("common.value"), ImGuiTableColumnFlags_WidthStretch);
                 for (const auto& param : schema.parameters)
                 {
                     const auto label = param.displayName.empty() ? param.name : param.displayName;
@@ -5962,7 +6071,7 @@ namespace vultra_app
                                 1.0f,
                                 ImGui::GetContentRegionAvail().x - clearButtonSize - ImGui::GetStyle().ItemSpacing.x);
                             bool changed = ui::drawTextureUriSelector(
-                                ctx, "TextureSelectorPopup", value, m_TextureSelector, ImVec2(width, 40.0f));
+                                ctx, "TextureSelectorPopup", value, m_TextureSelector, ImVec2(width, vultra::ui::dp(40.0f)));
                             ImGui::SameLine();
                             if (ImGui::SmallButton(ICON_MDI_CLOSE) && !value.empty())
                             {
@@ -5980,7 +6089,7 @@ namespace vultra_app
                             break;
                         }
                         default:
-                            ImGui::TextDisabled("Unsupported property type");
+                            ImGui::TextDisabled("%s", vultra::tr("inspector.material.unsupportedType"));
                             break;
                     }
                     ImGui::PopID();
@@ -5992,7 +6101,7 @@ namespace vultra_app
         state.dirty = state.dirty || dirty;
         ImGui::Spacing();
         ImGui::BeginDisabled(!state.dirty);
-        if (ImGui::Button(ICON_MDI_CONTENT_SAVE " Save Material"))
+        if (ImGui::Button((std::string {ICON_MDI_CONTENT_SAVE " "} + vultra::tr("inspector.material.save")).c_str()))
         {
             std::string error;
             if (writeJsonFile(state.path, state.doc, error))
@@ -6007,17 +6116,17 @@ namespace vultra_app
                     if (!relEc)
                         assets->clearTextAssetOverride("res://" + rel.generic_string());
                 }
-                ctx.state.statusMessage = "Saved material: " + state.path.filename().generic_string();
+                ctx.state.statusMessage = vultra::trf("inspector.material.saved", state.path.filename().generic_string());
             }
             else
             {
                 state.error             = error;
-                ctx.state.statusMessage = "Failed to save material: " + error;
+                ctx.state.statusMessage = vultra::trf("inspector.material.saveFailed", error);
             }
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button(ICON_MDI_REFRESH " Reload"))
+        if (ImGui::Button((std::string {ICON_MDI_REFRESH " "} + vultra::tr("inspector.reload")).c_str()))
         {
             state.valid = readJsonFile(normalized, state.doc, state.error);
             state.dirty = false;
@@ -6065,11 +6174,11 @@ namespace vultra_app
             }
         }
 
-        ui::sectionTitle(ICON_MDI_VECTOR_POINT, "Material Graph Node");
+        ui::sectionTitle(ICON_MDI_VECTOR_POINT, vultra::tr("inspector.graphNode.title"));
         if (!state.valid)
         {
-            ImGui::TextWrapped("Failed to parse material graph node: %s", state.error.c_str());
-            if (ImGui::Button(ICON_MDI_REFRESH " Reload"))
+            ImGui::TextWrapped("%s", vultra::trf("inspector.graphNode.parseFailed", state.error).c_str());
+            if (ImGui::Button((std::string {ICON_MDI_REFRESH " "} + vultra::tr("inspector.reload")).c_str()))
             {
                 state.valid = readJsonFile(normalized, state.doc, state.error);
                 state.dirty = false;
@@ -6079,13 +6188,13 @@ namespace vultra_app
 
         bool dirty = false;
         auto typeId = state.doc.value("typeId", state.doc.value("id", std::string {"project.custom_node"}));
-        if (drawMaterialStringInput("Type ID", typeId))
+        if (drawMaterialStringInput(vultra::tr("inspector.graphNode.typeId"), typeId))
         {
             state.doc["typeId"] = typeId;
             dirty               = true;
         }
         auto displayName = state.doc.value("displayName", state.doc.value("name", std::string {"Custom Node"}));
-        if (drawMaterialStringInput("Display Name", displayName))
+        if (drawMaterialStringInput(vultra::tr("inspector.graphNode.displayName"), displayName))
         {
             state.doc["displayName"] = displayName;
             dirty                    = true;
@@ -6102,14 +6211,14 @@ namespace vultra_app
                 if (ImGui::CollapsingHeader(pin.value("name", std::string {"pin"}).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
                 {
                     auto name = pin.value("name", std::string {});
-                    if (drawMaterialStringInput("Name", name))
+                    if (drawMaterialStringInput(vultra::tr("common.name"), name))
                     {
                         pin["name"] = name;
                         dirty       = true;
                     }
                     auto type = vultra::material_graph::valueTypeFromString(pin.value("type", std::string {"float"}));
                     int  typeIndex = materialGraphValueTypeIndex(type);
-                    ui::beginPropertyRow("Type");
+                    ui::beginPropertyRow(vultra::tr("common.type"));
                     const bool typeChanged = ImGui::Combo("##Type",
                                                           &typeIndex,
                                                           kMaterialGraphValueTypeLabels,
@@ -6129,7 +6238,7 @@ namespace vultra_app
                         pin["defaultValue"] = defaultValue;
                         dirty               = true;
                     }
-                    if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE " Remove Pin"))
+                    if (ImGui::SmallButton((std::string {ICON_MDI_DELETE_OUTLINE " "} + vultra::tr("inspector.graphNode.removePin")).c_str()))
                         removeIndex = i;
                 }
                 ImGui::PopID();
@@ -6139,22 +6248,22 @@ namespace vultra_app
                 pins.erase(pins.begin() + removeIndex);
                 dirty = true;
             }
-            if (ImGui::SmallButton(ICON_MDI_PLUS " Add Pin"))
+            if (ImGui::SmallButton((std::string {ICON_MDI_PLUS " "} + vultra::tr("inspector.graphNode.addPin")).c_str()))
             {
                 pins.push_back({{"name", "value"}, {"type", "float"}, {"defaultValue", 0.0f}});
                 dirty = true;
             }
         };
 
-        drawPins("Inputs", state.doc["inputs"]);
-        drawPins("Outputs", state.doc["outputs"]);
+        drawPins(vultra::tr("inspector.graphNode.inputs"), state.doc["inputs"]);
+        drawPins(vultra::tr("inspector.graphNode.outputs"), state.doc["outputs"]);
 
         ImGui::Spacing();
-        ImGui::TextUnformatted("Default Params");
+        ImGui::TextUnformatted(vultra::tr("inspector.graphNode.defaultParams"));
         if (ImGui::BeginTable("NodeDefaultParams", 2, ImGuiTableFlags_SizingStretchProp))
         {
-            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 160.0f);
-            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(vultra::tr("common.name"), ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(160.0f));
+            ImGui::TableSetupColumn(vultra::tr("common.value"), ImGuiTableColumnFlags_WidthStretch);
             std::string removeKey;
             for (auto& [key, value] : state.doc["defaultParams"].items())
             {
@@ -6203,10 +6312,10 @@ namespace vultra_app
             ImGui::EndTable();
         }
         static std::array<char, 64> newParamName {};
-        ImGui::SetNextItemWidth(160.0f);
-        ImGui::InputTextWithHint("##NewParamName", "param name", newParamName.data(), newParamName.size());
+        ImGui::SetNextItemWidth(vultra::ui::dp(160.0f));
+        ImGui::InputTextWithHint("##NewParamName", vultra::tr("inspector.graphNode.paramNameHint"), newParamName.data(), newParamName.size());
         ImGui::SameLine();
-        if (ImGui::SmallButton(ICON_MDI_PLUS " Add Param") && newParamName[0] != '\0')
+        if (ImGui::SmallButton((std::string {ICON_MDI_PLUS " "} + vultra::tr("inspector.graphNode.addParam")).c_str()) && newParamName[0] != '\0')
         {
             state.doc["defaultParams"][newParamName.data()] = 0.0f;
             newParamName = {};
@@ -6214,7 +6323,7 @@ namespace vultra_app
         }
 
         ImGui::Spacing();
-        ImGui::TextUnformatted("GLSL Output Expressions");
+        ImGui::TextUnformatted(vultra::tr("inspector.graphNode.glslOutputExpressions"));
         state.doc["implementation"]["language"] = "glsl";
         auto& outputs = state.doc["implementation"]["outputs"];
         for (const auto& pin : state.doc["outputs"])
@@ -6236,7 +6345,7 @@ namespace vultra_app
         if (!parsed.diagnostics.empty())
         {
             ImGui::Spacing();
-            ImGui::TextUnformatted("Diagnostics");
+            ImGui::TextUnformatted(vultra::tr("inspector.diagnostics"));
             for (const auto& diagnostic : parsed.diagnostics)
                 ImGui::BulletText("%s", diagnostic.c_str());
         }
@@ -6244,7 +6353,7 @@ namespace vultra_app
         state.dirty = state.dirty || dirty;
         ImGui::Spacing();
         ImGui::BeginDisabled(!state.dirty);
-        if (ImGui::Button(ICON_MDI_CONTENT_SAVE " Save Node"))
+        if (ImGui::Button((std::string {ICON_MDI_CONTENT_SAVE " "} + vultra::tr("inspector.graphNode.save")).c_str()))
         {
             std::string error;
             if (writeJsonFile(state.path, state.doc, error))
@@ -6260,17 +6369,17 @@ namespace vultra_app
                     if (!relEc)
                         assets->clearTextAssetOverride("res://" + rel.generic_string());
                 }
-                ctx.state.statusMessage = "Saved material graph node: " + state.path.filename().generic_string();
+                ctx.state.statusMessage = vultra::trf("inspector.graphNode.saved", state.path.filename().generic_string());
             }
             else
             {
                 state.error             = error;
-                ctx.state.statusMessage = "Failed to save material graph node: " + error;
+                ctx.state.statusMessage = vultra::trf("inspector.graphNode.saveFailed", error);
             }
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button(ICON_MDI_REFRESH " Reload"))
+        if (ImGui::Button((std::string {ICON_MDI_REFRESH " "} + vultra::tr("inspector.reload")).c_str()))
         {
             state.valid = readJsonFile(normalized, state.doc, state.error);
             state.dirty = false;
@@ -6292,45 +6401,47 @@ namespace vultra_app
         if (!editState.valid)
             return false;
 
-        ui::sectionTitle(ICON_MDI_VECTOR_POLYGON, "Render Graph Pass");
+        ui::sectionTitle(ICON_MDI_VECTOR_POLYGON, vultra::tr("inspector.renderPass.title"));
 
         bool dirty = false;
-        ui::beginPropertyRow("Type");
+        ui::beginPropertyRow(vultra::tr("common.type"));
         dirty |= ImGui::InputText("##Type", editState.type.data(), editState.type.size());
         ui::endPropertyRow();
 
-        const char* pipelines[] = {"Graphics", "Compute", "Raytracing"};
-        ui::beginPropertyRow("Pipeline");
-        dirty |= ImGui::Combo("##Pipeline", &editState.pipeline, pipelines, IM_ARRAYSIZE(pipelines));
+        const std::string pipelines = std::string {vultra::tr("inspector.renderPass.pipeline.graphics")} + '\0' +
+                                      vultra::tr("inspector.renderPass.pipeline.compute") + '\0' +
+                                      vultra::tr("inspector.renderPass.pipeline.raytracing") + '\0';
+        ui::beginPropertyRow(vultra::tr("inspector.renderPass.pipelineLabel"));
+        dirty |= ImGui::Combo("##Pipeline", &editState.pipeline, pipelines.c_str());
         ui::endPropertyRow();
 
-        ui::beginPropertyRow("Inputs");
+        ui::beginPropertyRow(vultra::tr("inspector.renderPass.inputs"));
         dirty |= ImGui::InputText("##Inputs", editState.inputs.data(), editState.inputs.size());
         ui::endPropertyRow();
-        ui::beginPropertyRow("Outputs");
+        ui::beginPropertyRow(vultra::tr("inspector.renderPass.outputs"));
         dirty |= ImGui::InputText("##Outputs", editState.outputs.data(), editState.outputs.size());
         ui::endPropertyRow();
 
         if (editState.pipeline == 1)
         {
-            dirty |= drawShaderLibrarySelector("Library", editState.library);
-            dirty |= drawLibraryShaderSelector(ctx, "Compute", "comp", editState.library, editState.compute);
-            ui::beginPropertyRow("Dispatch By Output Size");
+            dirty |= drawShaderLibrarySelector(vultra::tr("inspector.shader.library"), editState.library);
+            dirty |= drawLibraryShaderSelector(ctx, vultra::tr("inspector.shader.compute"), "comp", editState.library, editState.compute);
+            ui::beginPropertyRow(vultra::tr("inspector.renderPass.dispatchByOutputSize"));
             dirty |= ImGui::Checkbox("##DispatchByOutputSize", &editState.dispatchByOutputSize);
             ui::endPropertyRow();
         }
         else if (editState.pipeline == 2)
         {
-            dirty |= drawShaderLibrarySelector("Library", editState.library);
-            dirty |= drawLibraryShaderSelector(ctx, "Raygen", "rgen", editState.library, editState.raygen);
-            dirty |= drawLibraryShaderSelector(ctx, "Miss", "rmiss", editState.library, editState.miss, true);
-            dirty |= drawLibraryShaderSelector(ctx, "Closest Hit", "rchit", editState.library, editState.closestHit, true);
-            dirty |= drawLibraryShaderSelector(ctx, "Any Hit", "rahit", editState.library, editState.anyHit, true);
+            dirty |= drawShaderLibrarySelector(vultra::tr("inspector.shader.library"), editState.library);
+            dirty |= drawLibraryShaderSelector(ctx, vultra::tr("inspector.shader.raygen"), "rgen", editState.library, editState.raygen);
+            dirty |= drawLibraryShaderSelector(ctx, vultra::tr("inspector.shader.miss"), "rmiss", editState.library, editState.miss, true);
+            dirty |= drawLibraryShaderSelector(ctx, vultra::tr("inspector.shader.closestHit"), "rchit", editState.library, editState.closestHit, true);
+            dirty |= drawLibraryShaderSelector(ctx, vultra::tr("inspector.shader.anyHit"), "rahit", editState.library, editState.anyHit, true);
         }
         else
         {
-            dirty |= drawShaderLibrarySelector("Vertex Library", editState.vertexLibrary);
-            dirty |= drawShaderLibrarySelector("Fragment Library", editState.fragmentLibrary);
+            dirty |= drawShaderLibrarySelector(vultra::tr("inspector.shader.vertexLibrary"), editState.vertexLibrary);
+            dirty |= drawShaderLibrarySelector(vultra::tr("inspector.shader.fragmentLibrary"), editState.fragmentLibrary);
             dirty |= normalizeGraphicsShaderSelection(ctx, editState);
 
             const bool builtinVertex = std::string_view(editState.vertexLibrary.data()) == "builtin" ||
@@ -6338,12 +6449,12 @@ namespace vultra_app
             if (builtinVertex)
                 dirty |= drawBuiltinFullscreenVertexField(editState.vertex);
             else
-                dirty |= drawShaderSelector(ctx, "Vertex", "vert", editState.vertex, false, false);
+                dirty |= drawShaderSelector(ctx, vultra::tr("inspector.shader.vertex"), "vert", editState.vertex, false, false);
 
             if (std::string_view(editState.fragmentLibrary.data()) == "builtin")
-                dirty |= drawShaderOptionSelector("Fragment", editState.fragment, collectBuiltinShaderIds("frag"));
+                dirty |= drawShaderOptionSelector(vultra::tr("inspector.shader.fragment"), editState.fragment, collectBuiltinShaderIds("frag"));
             else
-                dirty |= drawShaderSelector(ctx, "Fragment", "frag", editState.fragment, false, false);
+                dirty |= drawShaderSelector(ctx, vultra::tr("inspector.shader.fragment"), "frag", editState.fragment, false, false);
             dirty |= normalizeGraphicsShaderSelection(ctx, editState);
         }
 
@@ -6353,12 +6464,12 @@ namespace vultra_app
             pendingUnsaved = true;
 
         ImGui::BeginDisabled(!pendingUnsaved);
-        if (ImGui::Button(ICON_MDI_CONTENT_SAVE " Save Pass"))
+        if (ImGui::Button((std::string {ICON_MDI_CONTENT_SAVE " "} + vultra::tr("inspector.renderPass.save")).c_str()))
         {
             std::ofstream file(path, std::ios::binary | std::ios::trunc);
             if (!file.is_open())
             {
-                ctx.state.statusMessage = "Save render pass failed: cannot open file.";
+                ctx.state.statusMessage = vultra::tr("inspector.renderPass.saveFailedOpen");
             }
             else
             {
@@ -6367,7 +6478,7 @@ namespace vultra_app
                 file.close();
                 if (!file)
                 {
-                    ctx.state.statusMessage = "Save render pass failed: cannot write file.";
+                    ctx.state.statusMessage = vultra::tr("inspector.renderPass.saveFailedWrite");
                 }
                 else
                 {
@@ -6378,7 +6489,7 @@ namespace vultra_app
                         if (auto uri = pathToResUri(ctx, path); !uri.empty())
                             (void)assetService->reimportAsset(uri, true);
                     }
-                    ctx.state.statusMessage = "Saved render graph pass.";
+                    ctx.state.statusMessage = vultra::tr("inspector.renderPass.saved");
                 }
             }
         }
@@ -6386,7 +6497,7 @@ namespace vultra_app
         if (pendingUnsaved)
         {
             ImGui::SameLine();
-            ImGui::TextDisabled("Unsaved");
+            ImGui::TextDisabled("%s", vultra::tr("inspector.unsaved"));
         }
 
         return true;
@@ -6408,14 +6519,20 @@ namespace vultra_app
             m_TextureImportEdit.valid = true;
         }
 
-        ui::sectionTitle(ICON_MDI_IMAGE, "Texture Import");
+        ui::sectionTitle(ICON_MDI_IMAGE, vultra::tr("inspector.textureImport.title"));
 
         auto& edit    = m_TextureImportEdit.edit;
         bool  changed = false;
 
         const auto importedPath = importedTexturePhysicalPath(ctx, normalizedPath);
-        ImGui::Text("Source Size: %s", formatFileSizeIfPresent(normalizedPath, "Missing").c_str());
-        ImGui::Text("Imported Size: %s", formatFileSizeIfPresent(importedPath, "Not imported").c_str());
+        ImGui::TextUnformatted(
+            vultra::trf("inspector.textureImport.sourceSize",
+                        formatFileSizeIfPresent(normalizedPath, vultra::tr("inspector.textureImport.missing")))
+                .c_str());
+        ImGui::TextUnformatted(
+            vultra::trf("inspector.textureImport.importedSize",
+                        formatFileSizeIfPresent(importedPath, vultra::tr("inspector.textureImport.notImported")))
+                .c_str());
 
         constexpr std::string_view subtypeIds[] = {
             vasset::kTextureSubtypeDefault,
@@ -6424,7 +6541,7 @@ namespace vultra_app
             vasset::kTextureSubtypeCursor,
         };
         const auto subtypePreview = std::string(textureSubtypeLabel(edit.subtype));
-        ui::beginPropertyRow("Subtype");
+        ui::beginPropertyRow(vultra::tr("inspector.textureImport.subtype"));
         if (ImGui::BeginCombo("##Subtype", subtypePreview.c_str()))
         {
             for (const auto subtype : subtypeIds)
@@ -6449,13 +6566,13 @@ namespace vultra_app
             ui::endPropertyRow();
         };
 
-        checkboxRow("Generate Mipmaps", edit.options.generateMipmaps);
-        checkboxRow("Flip Y", edit.options.flipY);
+        checkboxRow(vultra::tr("inspector.textureImport.generateMipmaps"), edit.options.generateMipmaps);
+        checkboxRow(vultra::tr("inspector.textureImport.flipY"), edit.options.flipY);
         changed |= drawTextureFileFormatCombo(edit.options.targetTextureFileFormat);
         checkboxRow("UASTC", edit.options.uastc);
 
         int qualityLevel = static_cast<int>(edit.options.qualityLevel);
-        ui::beginPropertyRow("Quality Level");
+        ui::beginPropertyRow(vultra::tr("inspector.textureImport.qualityLevel"));
         if (ImGui::SliderInt("##QualityLevel", &qualityLevel, 1, 255))
         {
             edit.options.qualityLevel = static_cast<uint32_t>(std::clamp(qualityLevel, 1, 255));
@@ -6464,7 +6581,7 @@ namespace vultra_app
         ui::endPropertyRow();
 
         int compressionLevel = static_cast<int>(edit.options.compressionLevel);
-        ui::beginPropertyRow("Compression Level");
+        ui::beginPropertyRow(vultra::tr("inspector.textureImport.compressionLevel"));
         if (ImGui::SliderInt("##CompressionLevel", &compressionLevel, 0, 4))
         {
             edit.options.compressionLevel = static_cast<uint32_t>(std::clamp(compressionLevel, 0, 4));
@@ -6472,11 +6589,11 @@ namespace vultra_app
         }
         ui::endPropertyRow();
 
-        checkboxRow("Compress Only Large", edit.options.compressOnlyLargeTextures);
-        checkboxRow("Downscale Large", edit.options.downscaleLargeTextures);
+        checkboxRow(vultra::tr("inspector.textureImport.compressOnlyLarge"), edit.options.compressOnlyLargeTextures);
+        checkboxRow(vultra::tr("inspector.textureImport.downscaleLarge"), edit.options.downscaleLargeTextures);
 
         int downscaleMin = static_cast<int>(edit.options.downscaleMinDimension);
-        ui::beginPropertyRow("Downscale Min Dimension");
+        ui::beginPropertyRow(vultra::tr("inspector.textureImport.downscaleMinDimension"));
         if (ImGui::InputInt("##DownscaleMin", &downscaleMin))
         {
             edit.options.downscaleMinDimension = static_cast<uint32_t>(std::max(downscaleMin, 1));
@@ -6485,7 +6602,7 @@ namespace vultra_app
         ui::endPropertyRow();
 
         int downscaleTarget = static_cast<int>(edit.options.downscaleTargetDimension);
-        ui::beginPropertyRow("Downscale Target Dimension");
+        ui::beginPropertyRow(vultra::tr("inspector.textureImport.downscaleTargetDimension"));
         if (ImGui::InputInt("##DownscaleTarget", &downscaleTarget))
         {
             edit.options.downscaleTargetDimension = static_cast<uint32_t>(std::max(downscaleTarget, 1));
@@ -6493,13 +6610,13 @@ namespace vultra_app
         }
         ui::endPropertyRow();
 
-        checkboxRow("Bake Normal Map", edit.options.bakeNormalMap);
-        checkboxRow("DirectX Normal Map", edit.options.directXNormalMap);
+        checkboxRow(vultra::tr("inspector.textureImport.bakeNormalMap"), edit.options.bakeNormalMap);
+        checkboxRow(vultra::tr("inspector.textureImport.directXNormalMap"), edit.options.directXNormalMap);
         static_cast<void>(changed);
 
         const bool dirty = !textureImportParamsEqual(m_TextureImportEdit.saved, edit);
         ImGui::BeginDisabled(!dirty);
-        if (ImGui::Button(ICON_MDI_CHECK " Apply"))
+        if (ImGui::Button((std::string {ICON_MDI_CHECK " "} + vultra::tr("common.apply")).c_str()))
         {
             auto sidecar = textureImportSidecarPath(normalizedPath);
             vasset::VImport vimport {};
@@ -6518,7 +6635,7 @@ namespace vultra_app
 
             if (auto saved = vasset::saveVImport(vimport, sidecar.generic_string()); !saved)
             {
-                ctx.state.statusMessage = "Texture import settings save failed.";
+                ctx.state.statusMessage = vultra::tr("inspector.textureImport.saveFailed");
             }
             else
             {
@@ -6527,14 +6644,14 @@ namespace vultra_app
                 m_TextureImportEdit.edit           = m_TextureImportEdit.saved;
                 queueTextureImport(ctx, normalizedPath, true);
                 ctx.state.statusMessage =
-                    "Applied texture import settings and queued reimport: " + normalizedPath.filename().generic_string();
+                    vultra::trf("inspector.textureImport.applied", normalizedPath.filename().generic_string());
             }
         }
         ImGui::EndDisabled();
 
         ImGui::SameLine();
         ImGui::BeginDisabled(!dirty);
-        if (ImGui::Button(ICON_MDI_RESTORE " Revert"))
+        if (ImGui::Button((std::string {ICON_MDI_RESTORE " "} + vultra::tr("inspector.textureImport.revert")).c_str()))
         {
             auto sidecar = textureImportSidecarPath(normalizedPath);
             m_TextureImportEdit.originalParams.clear();
@@ -6547,7 +6664,7 @@ namespace vultra_app
         if (dirty)
         {
             ImGui::SameLine();
-            ImGui::TextDisabled("Unsaved");
+            ImGui::TextDisabled("%s", vultra::tr("inspector.unsaved"));
         }
     }
 
@@ -6559,8 +6676,8 @@ namespace vultra_app
             drawImagePreviewPlaceholder(path, m_PreviewCache.lastError().c_str());
             return;
         }
-        ImGui::TextUnformatted("Preview");
-        const float size = std::min(ImGui::GetContentRegionAvail().x, 260.0f);
+        ImGui::TextUnformatted(vultra::tr("inspector.preview"));
+        const float size = std::min(ImGui::GetContentRegionAvail().x, vultra::ui::dp(260.0f));
         ImGui::Image(previewId, ImVec2(size, size));
         (void)ui::capturePreviewItemInput();
     }
@@ -6586,9 +6703,9 @@ namespace vultra_app
 
     void InspectorWindow::drawModelPreviewViewport(EditorContext& ctx, const std::string& key)
     {
-        ImGui::TextUnformatted("Preview");
-        const float    width        = std::clamp(ImGui::GetContentRegionAvail().x, 140.0f, 220.0f);
-        const float    height       = std::clamp(width * 0.68f, 120.0f, 180.0f);
+        ImGui::TextUnformatted(vultra::tr("inspector.preview"));
+        const float    width        = std::clamp(ImGui::GetContentRegionAvail().x, vultra::ui::dp(140.0f), vultra::ui::dp(220.0f));
+        const float    height       = std::clamp(width * 0.68f, vultra::ui::dp(120.0f), vultra::ui::dp(180.0f));
         const uint32_t targetWidth  = quantizePreviewExtent(width);
         const uint32_t targetHeight = quantizePreviewExtent(height);
         if (targetWidth != m_ModelPreviewLastWidth || targetHeight != m_ModelPreviewLastHeight)
@@ -6624,7 +6741,7 @@ namespace vultra_app
         auto* cameraService = ctx.services->tryGet<vultra::ICameraService>();
         if (!worldService || !assetService || !cameraService)
         {
-            ImGui::TextDisabled("Preview services are unavailable.");
+            ImGui::TextDisabled("%s", vultra::tr("inspector.modelPreview.servicesUnavailable"));
             return;
         }
 
@@ -6663,7 +6780,7 @@ namespace vultra_app
         }
 
         auto* drawList = ImGui::GetWindowDrawList();
-        drawList->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(72, 150, 225, 180), 4.0f);
+        drawList->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(72, 150, 225, 180), vultra::ui::dp(4.0f));
 
         if (!previewWorldAssetsReady(m_ModelPreviewWorld, *assetService))
         {
@@ -6705,7 +6822,7 @@ namespace vultra_app
 
         if (!rotatedBounds.valid)
         {
-            ImGui::TextDisabled("Preview scene is empty.");
+            ImGui::TextDisabled("%s", vultra::tr("inspector.modelPreview.empty"));
             m_ModelPreviewDirty = true;
             return;
         }

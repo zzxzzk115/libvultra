@@ -58,6 +58,7 @@ The desktop runtime path is designed around a self-contained executable plus a `
 - Lua scripting with engine service bindings for scene, entity, transform, input, timing, asset, render, and script access. See `doc/lua_scripting.md` for gameplay scripting examples and API notes.
 - Built-in renderer features including deferred lighting, shadow maps, SSAO, SSR, FXAA, tone mapping, selection outlines, meshlet/visibility-buffer paths, ray tracing examples, and Gaussian Splatting.
 - Project launcher that creates `.vproject` workspaces with scenes, render graphs, shader libraries, scripts, assets, and AI workspace scaffolding.
+- Engine-wide i18n subsystem with lz4-embedded JSON catalogs, a fully localized editor UI (English, Simplified Chinese, Japanese, Korean), OS-language auto-detection, live language switching, and a bundled pan-CJK font; games can register and override their own catalogs.
 
 ## Platform Targets
 

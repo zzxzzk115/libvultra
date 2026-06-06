@@ -1,5 +1,7 @@
 #include "editor_app/ui/windows/code_editor_window.hpp"
 
+#include <vultra/core/i18n/i18n.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_service.hpp>
 
@@ -109,7 +111,7 @@ namespace vultra_app
         }
     } // namespace
 
-    CodeEditorWindow::CodeEditorWindow() : EditorWindow("Code Editor", ICON_MDI_CODE_BRACES)
+    CodeEditorWindow::CodeEditorWindow() : EditorWindow("Code Editor", ICON_MDI_CODE_BRACES, "window.codeEditor")
     {
         m_Editor.SetPalette(TextEditor::PaletteId::Mariana);
         m_Editor.SetShowWhitespacesEnabled(false);
@@ -150,7 +152,7 @@ namespace vultra_app
         if (!file)
         {
             m_Loaded                = false;
-            m_Error                 = "Failed to open file.";
+            m_Error                 = vultra::tr("codeEditor.status.openFailed");
             ctx.state.statusMessage = m_Error + " " + m_CurrentPath.generic_string();
             return;
         }
@@ -164,7 +166,7 @@ namespace vultra_app
         m_Loaded                = true;
         m_Open                  = true;
         m_RequestFocus          = true;
-        ctx.state.statusMessage = "Opened source: " + m_CurrentPath.filename().generic_string();
+        ctx.state.statusMessage = vultra::trf("codeEditor.status.opened", m_CurrentPath.filename().generic_string());
     }
 
     void CodeEditorWindow::save(EditorContext& ctx)
@@ -176,7 +178,7 @@ namespace vultra_app
         std::ofstream file(m_CurrentPath, std::ios::binary | std::ios::trunc);
         if (!file)
         {
-            m_Error                 = "Failed to save file.";
+            m_Error                 = vultra::tr("codeEditor.status.saveFailed");
             ctx.state.statusMessage = m_Error + " " + m_CurrentPath.generic_string();
             return;
         }
@@ -187,7 +189,7 @@ namespace vultra_app
 
         std::error_code ec;
         m_LoadedWriteTime       = std::filesystem::last_write_time(m_CurrentPath, ec);
-        ctx.state.statusMessage = "Saved source: " + m_CurrentPath.filename().generic_string();
+        ctx.state.statusMessage = vultra::trf("codeEditor.status.saved", m_CurrentPath.filename().generic_string());
 
         reimport(ctx);
     }
@@ -238,10 +240,10 @@ namespace vultra_app
                 pipelineReloaded = renderService->reloadRenderPipeline();
         }
 
-        ctx.state.statusMessage = pipelineReloaded ? "Saved and reloaded render pipeline." :
-                                  shaderReloaded   ? "Saved and reloaded shader library." :
-                                  anyImported      ? "Reimported source asset." :
-                                                     "No import target was refreshed for this file.";
+        ctx.state.statusMessage = pipelineReloaded ? vultra::tr("codeEditor.status.pipelineReloaded") :
+                                  shaderReloaded   ? vultra::tr("codeEditor.status.shaderReloaded") :
+                                  anyImported      ? vultra::tr("codeEditor.status.reimported") :
+                                                     vultra::tr("codeEditor.status.noImportTarget");
         refreshDiagnostics(ctx);
     }
 
@@ -285,14 +287,15 @@ namespace vultra_app
 
     void CodeEditorWindow::drawDiagnosticsPanel()
     {
-        const float panelHeight = std::min(160.0f, std::max(72.0f, ImGui::GetContentRegionAvail().y * 0.24f));
+        const float panelHeight =
+            std::min(vultra::ui::dp(160.0f), std::max(vultra::ui::dp(72.0f), ImGui::GetContentRegionAvail().y * 0.24f));
         if (ImGui::BeginChild("##CodeDiagnostics", ImVec2 {0.0f, panelHeight}, true))
         {
-            ImGui::TextDisabled("Diagnostics");
+            ImGui::TextDisabled("%s", vultra::tr("codeEditor.diagnostics.title"));
             ImGui::Separator();
             if (m_Diagnostics.empty())
             {
-                ImGui::TextDisabled("No diagnostics.");
+                ImGui::TextDisabled("%s", vultra::tr("codeEditor.diagnostics.none"));
             }
             else
             {
@@ -301,7 +304,7 @@ namespace vultra_app
                     const auto& diagnostic = m_Diagnostics[i];
                     const auto  line       = static_cast<int>(diagnostic.line == 0 ? 1 : diagnostic.line);
                     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4 {1.0f, 0.32f, 0.28f, 1.0f});
-                    const std::string label = "Line " + std::to_string(line) + ": " + diagnostic.message;
+                    const std::string label = vultra::trf("codeEditor.diagnostics.lineLabel", line, diagnostic.message);
                     if (ImGui::Selectable(label.c_str()))
                     {
                         m_Editor.SetCursorPosition(line - 1, static_cast<int>(diagnostic.column));
@@ -337,16 +340,16 @@ namespace vultra_app
 
         const bool dirty = isDirty();
         ImGui::BeginDisabled(!hasOpenFile() || !dirty);
-        if (ImGui::Button(ICON_MDI_CONTENT_SAVE " Save"))
+        if (ImGui::Button((std::string {ICON_MDI_CONTENT_SAVE " "} + vultra::tr("common.save")).c_str()))
             save(ctx);
         ImGui::EndDisabled();
 
         ImGui::SameLine();
         ImGui::BeginDisabled(!hasOpenFile());
-        if (ImGui::Button(ICON_MDI_REFRESH " Reload"))
+        if (ImGui::Button((std::string {ICON_MDI_REFRESH " "} + vultra::tr("codeEditor.toolbar.reload")).c_str()))
             reload(ctx);
         ImGui::SameLine();
-        if (ImGui::Button(ICON_MDI_PACKAGE_DOWN " Reimport"))
+        if (ImGui::Button((std::string {ICON_MDI_PACKAGE_DOWN " "} + vultra::tr("codeEditor.toolbar.reimport")).c_str()))
             reimport(ctx);
         ImGui::SameLine();
         ImGui::BeginDisabled(!m_Editor.CanUndo());
@@ -366,7 +369,7 @@ namespace vultra_app
         if (hasOpenFile())
             ImGui::TextDisabled("%s", m_CurrentPath.generic_string().c_str());
         else
-            ImGui::TextDisabled("Open a script or shader from the Content Browser.");
+            ImGui::TextDisabled("%s", vultra::tr("codeEditor.hint.openFromContentBrowser"));
 
         if (!m_Error.empty())
             ImGui::TextColored(ImVec4 {1.0f, 0.35f, 0.25f, 1.0f}, "%s", m_Error.c_str());
@@ -387,7 +390,7 @@ namespace vultra_app
         }
         else
         {
-            ImGui::TextUnformatted("No source file selected.");
+            ImGui::TextUnformatted(vultra::tr("codeEditor.hint.noSourceSelected"));
         }
 
         ImGui::End();

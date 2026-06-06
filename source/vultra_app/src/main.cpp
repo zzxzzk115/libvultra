@@ -1,5 +1,6 @@
 #include "app_state.hpp"
 #include "editor_app/editor_app.hpp"
+#include "editor_app/editor_i18n.hpp"
 #include "editor_app/editor_settings_persistence.hpp"
 #include "editor_app/mcp_stdio_bridge.hpp"
 #include "launch_options.hpp"
@@ -23,6 +24,7 @@
 #include <vultra/function/jobs/job_system.hpp>
 #include <vultra/function/physics/physics_system.hpp>
 #include <vultra/function/plugin/plugin_manifest.hpp>
+#include <vultra/core/services/i18n_service.hpp>
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
@@ -646,6 +648,27 @@ namespace
 
         void onPostConfigureDemo(vultra::Engine& engine) override
         {
+            // Localization: register the lz4-embedded editor catalogs and apply the UI language as
+            // early as possible -- before any frame -- so the launcher, splash/loading screen and the
+            // editor all render in it. On first launch (no saved preference) the OS language is
+            // auto-detected (Simplified Chinese -> zh-CN, otherwise en) and the resolved choice is
+            // persisted so later launches and the in-editor language picker take over.
+            if (auto* i18n = engine.ctx().services.tryGet<vultra::II18nService>())
+            {
+                vultra_app::registerBuiltinEditorCatalogs(*i18n);
+                const bool        firstLaunch = m_State.editorSettings.language.empty();
+                const std::string locale      = vultra_app::resolveStartupLocale(m_State.editorSettings.language);
+                m_State.editorSettings.language = locale;
+                i18n->setLanguage(locale);
+                if (firstLaunch)
+                {
+                    // Persist the auto-detected choice so this branch only runs once.
+                    std::string saveError;
+                    if (!vultra_app::saveEditorSettings(m_State.editorSettingsFile, m_State.editorSettings, &saveError))
+                        VULTRA_CLIENT_WARN("[VultraEditor] Failed to persist auto-detected language: {}", saveError);
+                }
+            }
+
             if (m_Options.editorMode)
             {
                 registerEditorSceneRenderer(engine.ctx().services);

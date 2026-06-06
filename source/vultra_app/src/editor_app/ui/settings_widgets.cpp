@@ -1,5 +1,6 @@
 #include "editor_app/ui/settings_widgets.hpp"
 
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/imgui/imgui_theme.hpp>
 
 #include <imgui.h>
@@ -182,5 +183,9 @@ namespace vultra_app::ui
             ImGui::GetStyle().ScaleAllSizes(applicationScale / appliedApplicationScale);
             appliedApplicationScale = applicationScale;
         }
+
+        // Keep ui::dp() in step with the style: the OS DPI factor is set once by ImGuiSystem; this is
+        // the user "Application Scale" multiplier on top, so hardcoded px stay proportional to widgets.
+        vultra::setImGuiUserScale(applicationScale);
     }
 } // namespace vultra_app::ui

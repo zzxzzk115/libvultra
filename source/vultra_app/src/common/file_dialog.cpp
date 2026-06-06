@@ -1,6 +1,8 @@
 #include "common/file_dialog.hpp"
 #include "common/ui_widgets.hpp"
 
+#include <vultra/core/i18n/i18n.hpp>
+
 #include <ImGuiFileDialog/ImGuiFileDialog.h>
 #include <imgui.h>
 
@@ -115,7 +117,7 @@ namespace vultra_app::ui
         bool changed = false;
         changed |= ImGui::InputText(label, buffer, bufferSize);
         ImGui::SameLine();
-        if (ImGui::Button((std::string("Browse##") + m_Key).c_str()))
+        if (ImGui::Button((std::string(vultra::tr("fileDialog.browse")) + "##" + m_Key).c_str()))
             open(buffer);
         changed |= display(buffer, bufferSize);
         return changed;
@@ -133,13 +135,13 @@ namespace vultra_app::ui
         }
 
         const auto& style       = ImGui::GetStyle();
-        const float buttonWidth = ImGui::CalcTextSize("Browse").x + style.FramePadding.x * 2.0f;
+        const float buttonWidth = ImGui::CalcTextSize(vultra::tr("fileDialog.browse")).x + style.FramePadding.x * 2.0f;
         const float fieldWidth  = std::max(80.0f, ImGui::GetContentRegionAvail().x - buttonWidth - style.ItemSpacing.x);
 
         ImGui::SetNextItemWidth(fieldWidth);
         ImGui::InputText("##Value", buffer, bufferSize, ImGuiInputTextFlags_ReadOnly);
         ImGui::SameLine();
-        if (ImGui::Button("Browse"))
+        if (ImGui::Button(vultra::tr("fileDialog.browse")))
             open(buffer);
 
         changed |= display(buffer, bufferSize);

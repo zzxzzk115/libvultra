@@ -1,6 +1,8 @@
 #include "editor_app/ui/editor_top_bar.hpp"
 
+#include <vultra/core/i18n/i18n.hpp>
 #include <vultra/core/services/window_service.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/imgui/imgui_theme.hpp>
 #include <vultra/function/services/frame_debugger_service.hpp>
 
@@ -34,18 +36,18 @@ namespace vultra_app
                                 radius,
                                 vultra::imgui_theme::u32(vultra::imgui_theme::accentTransparent(210.0f / 255.0f)),
                                 40,
-                                1.5f);
+                                vultra::ui::dp(1.5f));
             const char*  mark     = "V";
             const ImVec2 textSize = ImGui::CalcTextSize(mark);
-            drawList->AddText(ImVec2 {pos.x - textSize.x * 0.5f, pos.y - textSize.y * 0.5f - 1.0f},
+            drawList->AddText(ImVec2 {pos.x - textSize.x * 0.5f, pos.y - textSize.y * 0.5f - vultra::ui::dp(1.0f)},
                               vultra::imgui_theme::u32(vultra::imgui_theme::text()),
                               mark);
         }
 
         void pushToolbarButtonStyle()
         {
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {8.0f, 5.0f});
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, vultra::ui::dp(4.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {vultra::ui::dp(8.0f), vultra::ui::dp(5.0f)});
             ImGui::PushStyleColor(ImGuiCol_Button, vultra::imgui_theme::buttonTransparent(0.96f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, vultra::imgui_theme::buttonHovered());
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, vultra::imgui_theme::accentButton());
@@ -70,8 +72,8 @@ namespace vultra_app
         bool titleMenuButton(const char* label)
         {
             const ImVec2 menuPos = ImGui::GetCursorScreenPos();
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {8.0f, 4.0f});
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {vultra::ui::dp(8.0f), vultra::ui::dp(4.0f)});
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, vultra::ui::dp(3.0f));
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.0f, 0.0f, 0.0f, 0.0f});
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
                                   vultra::imgui_theme::withAlpha(vultra::imgui_theme::buttonHovered(), 0.95f));
@@ -88,8 +90,8 @@ namespace vultra_app
 
         bool titleBarWindowButton(const char* label, const char* tooltip, bool destructive = false)
         {
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {9.0f, 4.0f});
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, vultra::ui::dp(3.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {vultra::ui::dp(9.0f), vultra::ui::dp(4.0f)});
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.0f, 0.0f, 0.0f, 0.0f});
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
                                   destructive ? vultra::imgui_theme::destructiveHovered() :
@@ -118,7 +120,7 @@ namespace vultra_app
                             const bool  active,
                             const bool  accent = false)
         {
-            constexpr ImVec2 buttonSize {38.0f, 32.0f};
+            const ImVec2 buttonSize {vultra::ui::dp(38.0f), vultra::ui::dp(32.0f)};
             if (!enabled)
                 ImGui::BeginDisabled();
 
@@ -148,18 +150,18 @@ namespace vultra_app
 
             auto*        drawList = ImGui::GetWindowDrawList();
             const ImVec2 max {pos.x + buttonSize.x, pos.y + buttonSize.y};
-            drawList->AddRectFilled(pos, max, ImGui::GetColorU32(fill), 4.0f);
+            drawList->AddRectFilled(pos, max, ImGui::GetColorU32(fill), vultra::ui::dp(4.0f));
             drawList->AddRect(pos,
                               max,
                               ImGui::GetColorU32(vultra::imgui_theme::withAlpha(vultra::imgui_theme::border(),
                                                                                 enabled ? 0.82f : 0.38f)),
-                              4.0f);
+                              vultra::ui::dp(4.0f));
 
             ImFont*      font     = ImGui::GetFont();
             const float  iconSize = ImGui::GetFontSize() * 1.18f;
             const ImVec2 textSize = font->CalcTextSizeA(iconSize, 1000.0f, 0.0f, label);
             const ImVec2 textPos {pos.x + (buttonSize.x - textSize.x) * 0.5f,
-                                  pos.y + (buttonSize.y - textSize.y) * 0.5f - 1.0f};
+                                  pos.y + (buttonSize.y - textSize.y) * 0.5f - vultra::ui::dp(1.0f)};
             drawList->AddText(font, iconSize, textPos, ImGui::GetColorU32(text), label);
 
             setTooltip(tooltip);
@@ -176,18 +178,20 @@ namespace vultra_app
             const bool playing = ctx.state.editorPlaying;
             const bool paused  = ctx.state.editorPaused;
 
-            if (playbackButton(ICON_MDI_PLAY, playing && paused ? "Resume" : "Play", true, playing && !paused, true))
+            if (playbackButton(
+                    ICON_MDI_PLAY, playing && paused ? vultra::tr("playback.resume") : vultra::tr("playback.play"),
+                    true, playing && !paused, true))
             {
                 ctx.state.editorPlaying = true;
                 ctx.state.editorPaused  = false;
             }
 
             ImGui::SameLine(0.0f, 0.0f);
-            if (playbackButton(ICON_MDI_PAUSE, "Pause", playing, paused))
+            if (playbackButton(ICON_MDI_PAUSE, vultra::tr("playback.pause"), playing, paused))
                 ctx.state.editorPaused = true;
 
             ImGui::SameLine(0.0f, 0.0f);
-            if (playbackButton(ICON_MDI_STOP, "Stop", playing, false))
+            if (playbackButton(ICON_MDI_STOP, vultra::tr("playback.stop"), playing, false))
             {
                 ctx.state.editorPlaying       = false;
                 ctx.state.editorPaused        = false;
@@ -195,7 +199,7 @@ namespace vultra_app
             }
 
             ImGui::SameLine(0.0f, 0.0f);
-            if (playbackButton(ICON_MDI_STEP_FORWARD, "Step Frame", true, false))
+            if (playbackButton(ICON_MDI_STEP_FORWARD, vultra::tr("playback.stepFrame"), true, false))
             {
                 ctx.state.editorPlaying       = true;
                 ctx.state.editorPaused        = true;
@@ -203,17 +207,17 @@ namespace vultra_app
             }
 
             ImGui::SameLine(0.0f, 0.0f);
-            if (playbackButton(ICON_MDI_DOTS_VERTICAL, "Playback options", true, false))
+            if (playbackButton(ICON_MDI_DOTS_VERTICAL, vultra::tr("playback.options"), true, false))
                 ImGui::OpenPopup("PlaybackOptions");
             if (ImGui::BeginPopup("PlaybackOptions"))
             {
-                if (ImGui::MenuItem("Step Frame"))
+                if (ImGui::MenuItem(vultra::tr("playback.stepFrame")))
                 {
                     ctx.state.editorPlaying       = true;
                     ctx.state.editorPaused        = true;
                     ctx.state.editorStepRequested = true;
                 }
-                ImGui::MenuItem("Reset Play State", nullptr, false, false);
+                ImGui::MenuItem(vultra::tr("playback.resetState"), nullptr, false, false);
                 ImGui::EndPopup();
             }
 
@@ -227,23 +231,31 @@ namespace vultra_app
             const bool enabled       = frameDebugger && frameDebugger->isRenderDocEnabled();
             const bool available     = enabled && frameDebugger->isAvailable();
 
-            if (ImGui::BeginMenu("RenderDoc", enabled))
+            if (ImGui::BeginMenu(vultra::trId("menu.renderdoc.title", "menuRenderDoc"), enabled))
             {
                 if (!available)
                     ImGui::BeginDisabled();
 
-                if (ImGui::MenuItem("Capture Next Frame", "F12") && frameDebugger)
+                if (ImGui::MenuItem(vultra::tr("menu.renderdoc.capture"), "F12") && frameDebugger)
                     frameDebugger->captureSingleFrame();
 
                 if (!available)
                     ImGui::EndDisabled();
 
                 ImGui::Separator();
-                ImGui::MenuItem(available ? "Available" : "Unavailable", nullptr, false, false);
+                ImGui::MenuItem(available ? vultra::tr("menu.renderdoc.available") : vultra::tr("menu.renderdoc.unavailable"),
+                                nullptr,
+                                false,
+                                false);
                 if (frameDebugger)
                 {
-                    ImGui::MenuItem(frameDebugger->isFrameCapturing() ? "Capturing" : "Idle", nullptr, false, false);
-                    const std::string captureCount = "Captures: " + std::to_string(frameDebugger->getCaptureCount());
+                    ImGui::MenuItem(frameDebugger->isFrameCapturing() ? vultra::tr("menu.renderdoc.capturing") :
+                                                                        vultra::tr("menu.renderdoc.idle"),
+                                    nullptr,
+                                    false,
+                                    false);
+                    const std::string captureCount =
+                        vultra::trf("menu.renderdoc.captures", frameDebugger->getCaptureCount());
                     ImGui::MenuItem(captureCount.c_str(), nullptr, false, false);
                 }
                 ImGui::EndMenu();
@@ -259,50 +271,52 @@ namespace vultra_app
         ImGuiWindowFlags barFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings |
                                     ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking;
 
-        if (ImGui::BeginViewportSideBar("##VultraEditorTitleBar", viewport, ImGuiDir_Up, kTitleBarHeight, barFlags))
+        if (ImGui::BeginViewportSideBar(
+                "##VultraEditorTitleBar", viewport, ImGuiDir_Up, vultra::ui::dp(kTitleBarHeight), barFlags))
         {
             const ImVec2 start           = ImGui::GetCursorScreenPos();
             auto*        windowService   = ctx.services ? ctx.services->tryGet<IWindowService>() : nullptr;
             const bool   decoratedWindow = windowService && windowService->window().isDecorated();
 
-            drawEngineMark(ImVec2 {start.x + 28.0f, start.y + kTitleLogoY}, 20.0f);
+            drawEngineMark(ImVec2 {start.x + vultra::ui::dp(28.0f), start.y + vultra::ui::dp(kTitleLogoY)},
+                           vultra::ui::dp(20.0f));
 
-            ImGui::SetCursorScreenPos(ImVec2 {start.x + 64.0f, start.y + kTitleTextY});
-            ImGui::TextUnformatted("VultraEngine Editor");
+            ImGui::SetCursorScreenPos(ImVec2 {start.x + vultra::ui::dp(64.0f), start.y + vultra::ui::dp(kTitleTextY)});
+            ImGui::TextUnformatted(vultra::tr("topbar.title"));
 
-            ImGui::SetCursorScreenPos(ImVec2 {start.x + 12.0f, start.y + kMenuRowY});
-            if (titleMenuButton("File"))
+            ImGui::SetCursorScreenPos(ImVec2 {start.x + vultra::ui::dp(12.0f), start.y + vultra::ui::dp(kMenuRowY)});
+            if (titleMenuButton(vultra::trId("menu.file.title", "menuFile")))
             {
-                if (ImGui::MenuItem("New Blank Scene") && actions.newBlankScene)
+                if (ImGui::MenuItem(vultra::tr("menu.file.newScene")) && actions.newBlankScene)
                     actions.newBlankScene(ctx);
-                if (ImGui::MenuItem("Save Scene", "Ctrl+S") && actions.saveScene)
+                if (ImGui::MenuItem(vultra::tr("menu.file.saveScene"), "Ctrl+S") && actions.saveScene)
                     actions.saveScene(ctx);
-                if (ImGui::MenuItem("Export & Run", "F5") && actions.buildAndRun)
+                if (ImGui::MenuItem(vultra::tr("menu.file.exportRun"), "F5") && actions.buildAndRun)
                     actions.buildAndRun(ctx);
-                if (ImGui::MenuItem("Export Settings"))
+                if (ImGui::MenuItem(vultra::tr("menu.file.exportSettings")))
                     ctx.state.buildSettingsOpen = true;
-                if (ImGui::MenuItem("Back to Launcher") && actions.backToLauncher)
+                if (ImGui::MenuItem(vultra::tr("menu.file.backToLauncher")) && actions.backToLauncher)
                     actions.backToLauncher(ctx);
                 ImGui::EndPopup();
             }
 
-            ImGui::SameLine(0.0f, 2.0f);
-            if (titleMenuButton("Edit"))
+            ImGui::SameLine(0.0f, vultra::ui::dp(2.0f));
+            if (titleMenuButton(vultra::trId("menu.edit.title", "menuEdit")))
             {
-                if (ImGui::MenuItem("Project Settings"))
+                if (ImGui::MenuItem(vultra::tr("menu.edit.projectSettings")))
                     ctx.state.projectSettingsOpen = true;
-                if (ImGui::MenuItem("Editor Settings"))
+                if (ImGui::MenuItem(vultra::tr("menu.edit.editorSettings")))
                     ctx.state.editorSettingsOpen = true;
                 ImGui::Separator();
-                if (ImGui::MenuItem("Reset Layout") && actions.resetLayout)
+                if (ImGui::MenuItem(vultra::tr("menu.edit.resetLayout")) && actions.resetLayout)
                     actions.resetLayout(ctx);
                 ImGui::EndPopup();
             }
 
-            ImGui::SameLine(0.0f, 2.0f);
-            if (titleMenuButton("Window"))
+            ImGui::SameLine(0.0f, vultra::ui::dp(2.0f));
+            if (titleMenuButton(vultra::trId("menu.window.title", "menuWindow")))
             {
-                if (ImGui::MenuItem("Reset Layout") && actions.resetLayout)
+                if (ImGui::MenuItem(vultra::tr("menu.window.resetLayout")) && actions.resetLayout)
                     actions.resetLayout(ctx);
                 ImGui::Separator();
 
@@ -311,42 +325,43 @@ namespace vultra_app
                 ImGui::EndPopup();
             }
 
-            ImGui::SameLine(0.0f, 2.0f);
-            if (titleMenuButton("Tools"))
+            ImGui::SameLine(0.0f, vultra::ui::dp(2.0f));
+            if (titleMenuButton(vultra::trId("menu.tools.title", "menuTools")))
             {
-                ImGui::MenuItem("Import", nullptr, false, false);
-                ImGui::MenuItem("Save All", nullptr, false, false);
+                ImGui::MenuItem(vultra::tr("menu.tools.import"), nullptr, false, false);
+                ImGui::MenuItem(vultra::tr("menu.tools.saveAll"), nullptr, false, false);
                 ImGui::Separator();
-                if (ImGui::MenuItem("Profiler Window"))
+                if (ImGui::MenuItem(vultra::tr("menu.tools.profiler")))
                     ctx.state.profilerWindowOpenRequested = true;
-                if (ImGui::MenuItem("Frame Debugger"))
+                if (ImGui::MenuItem(vultra::tr("menu.tools.frameDebugger")))
                     ctx.state.frameDebuggerWindowOpenRequested = true;
-                if (ImGui::MenuItem("Runtime Frame Graph Viewer"))
+                if (ImGui::MenuItem(vultra::tr("menu.tools.runtimeFrameGraph")))
                     ctx.state.runtimeFrameGraphViewerOpenRequested = true;
-                if (ImGui::MenuItem("World Viewer"))
+                if (ImGui::MenuItem(vultra::tr("menu.tools.worldViewer")))
                     ctx.state.editorWindowFocusRequested = "World Viewer";
                 drawRenderDocMenu(ctx);
                 ImGui::EndPopup();
             }
 
-            ImGui::SameLine(0.0f, 2.0f);
-            if (titleMenuButton("Help"))
+            ImGui::SameLine(0.0f, vultra::ui::dp(2.0f));
+            if (titleMenuButton(vultra::trId("menu.help.title", "menuHelp")))
             {
-                if (ImGui::MenuItem("About Vultra Editor") && actions.showAbout)
+                if (ImGui::MenuItem(vultra::tr("menu.help.about")) && actions.showAbout)
                     actions.showAbout(ctx);
                 ImGui::EndPopup();
             }
 
             if (!decoratedWindow)
             {
-                ImGui::SetCursorScreenPos(ImVec2 {start.x + ImGui::GetWindowWidth() - 116.0f, start.y + 10.0f});
-                if (titleBarWindowButton(ICON_MDI_WINDOW_MINIMIZE, "Minimize") && windowService)
+                ImGui::SetCursorScreenPos(
+                    ImVec2 {start.x + ImGui::GetWindowWidth() - vultra::ui::dp(116.0f), start.y + vultra::ui::dp(10.0f)});
+                if (titleBarWindowButton(ICON_MDI_WINDOW_MINIMIZE, vultra::tr("window.minimize")) && windowService)
                     windowService->window().minimize();
                 ImGui::SameLine(0.0f, 0.0f);
                 const bool maximized =
                     windowService && (windowService->window().isFullscreen() || windowService->window().isMaximized());
                 if (titleBarWindowButton(maximized ? ICON_MDI_WINDOW_RESTORE : ICON_MDI_WINDOW_MAXIMIZE,
-                                         maximized ? "Restore" : "Maximize") &&
+                                         maximized ? vultra::tr("window.restore") : vultra::tr("window.maximize")) &&
                     windowService)
                 {
                     if (maximized)
@@ -362,73 +377,81 @@ namespace vultra_app
                     }
                 }
                 ImGui::SameLine(0.0f, 0.0f);
-                if (titleBarWindowButton(ICON_MDI_CLOSE, "Close", true) && windowService)
+                if (titleBarWindowButton(ICON_MDI_CLOSE, vultra::tr("window.close"), true) && windowService)
                     windowService->window().close();
             }
 
             ImGui::End();
         }
 
-        if (ImGui::BeginViewportSideBar("##VultraEditorToolBar", viewport, ImGuiDir_Up, kToolBarHeight, barFlags))
+        if (ImGui::BeginViewportSideBar(
+                "##VultraEditorToolBar", viewport, ImGuiDir_Up, vultra::ui::dp(kToolBarHeight), barFlags))
         {
             const ImVec2 start = ImGui::GetCursorScreenPos();
-            ImGui::SetCursorScreenPos(ImVec2 {start.x + 12.0f, start.y + 7.0f});
+            ImGui::SetCursorScreenPos(ImVec2 {start.x + vultra::ui::dp(12.0f), start.y + vultra::ui::dp(7.0f)});
 
-            toolbarButton(ICON_MDI_VIEW_DASHBOARD, "Content drawer", ImVec2 {30.0f, 0.0f});
-            ImGui::SameLine(0.0f, 6.0f);
-            toolbarButton(ICON_MDI_ENGINE_OUTLINE, "Editor tools", ImVec2 {30.0f, 0.0f});
-            ImGui::SameLine(0.0f, 10.0f);
+            toolbarButton(ICON_MDI_VIEW_DASHBOARD, vultra::tr("toolbar.contentDrawer"), ImVec2 {vultra::ui::dp(30.0f), 0.0f});
+            ImGui::SameLine(0.0f, vultra::ui::dp(6.0f));
+            toolbarButton(ICON_MDI_ENGINE_OUTLINE, vultra::tr("toolbar.editorTools"), ImVec2 {vultra::ui::dp(30.0f), 0.0f});
+            ImGui::SameLine(0.0f, vultra::ui::dp(10.0f));
 
             const std::string projectLabel =
-                ctx.state.currentProjectName.empty() ? "No Project" : ctx.state.currentProjectName;
-            ImGui::SetNextItemWidth(158.0f);
+                ctx.state.currentProjectName.empty() ? vultra::tr("toolbar.noProject") : ctx.state.currentProjectName;
+            ImGui::SetNextItemWidth(vultra::ui::dp(158.0f));
             if (ImGui::BeginCombo("##ProjectSelector", projectLabel.c_str(), ImGuiComboFlags_NoArrowButton))
             {
                 ImGui::TextDisabled("%s",
                                     ctx.state.currentProject.empty() ?
-                                        "No project loaded" :
+                                        vultra::tr("toolbar.noProjectLoaded") :
                                         ctx.state.currentProject.generic_string().c_str());
-                if (ImGui::Selectable("Back to Launcher") && actions.backToLauncher)
+                if (ImGui::Selectable(vultra::tr("toolbar.backToLauncher")) && actions.backToLauncher)
                     actions.backToLauncher(ctx);
                 ImGui::EndCombo();
             }
 
-            ImGui::SameLine(0.0f, 12.0f);
-            toolbarButton(ICON_MDI_COG_TRANSFER_OUTLINE " " ICON_MDI_MENU_DOWN, "Editor tools", ImVec2 {46.0f, 0.0f});
-            ImGui::SameLine(0.0f, 6.0f);
-            toolbarButton(ICON_MDI_SOURCE_BRANCH " " ICON_MDI_MENU_DOWN, "Graph tools", ImVec2 {46.0f, 0.0f});
-            ImGui::SameLine(0.0f, 12.0f);
+            ImGui::SameLine(0.0f, vultra::ui::dp(12.0f));
+            toolbarButton(ICON_MDI_COG_TRANSFER_OUTLINE " " ICON_MDI_MENU_DOWN,
+                          vultra::tr("toolbar.editorTools"),
+                          ImVec2 {vultra::ui::dp(46.0f), 0.0f});
+            ImGui::SameLine(0.0f, vultra::ui::dp(6.0f));
+            toolbarButton(ICON_MDI_SOURCE_BRANCH " " ICON_MDI_MENU_DOWN,
+                          vultra::tr("toolbar.graphTools"),
+                          ImVec2 {vultra::ui::dp(46.0f), 0.0f});
+            ImGui::SameLine(0.0f, vultra::ui::dp(12.0f));
             drawPlaybackControls(ctx);
 
-            ImGui::SameLine(0.0f, 12.0f);
+            ImGui::SameLine(0.0f, vultra::ui::dp(12.0f));
+            const std::string exportRunLabel = std::string {ICON_MDI_ROCKET_LAUNCH "  "} + vultra::tr("toolbar.exportRun");
             if (toolbarButton(
-                    ICON_MDI_ROCKET_LAUNCH "  Export & Run", "Export package and run", ImVec2 {126.0f, 0.0f}) &&
+                    exportRunLabel.c_str(), vultra::tr("toolbar.exportRunTooltip"), ImVec2 {vultra::ui::dp(126.0f), 0.0f}) &&
                 actions.buildAndRun)
             {
                 actions.buildAndRun(ctx);
             }
 
-            ImGui::SameLine(0.0f, 12.0f);
-            const char* platformLabel = ICON_MDI_MONITOR "  Platforms " ICON_MDI_MENU_DOWN;
-            const float platformWidth = ImGui::CalcTextSize(platformLabel).x + 26.0f;
-            const float settingsWidth = ImGui::CalcTextSize(ICON_MDI_COG "  Settings").x + 26.0f;
-            const float settingsStart = ImGui::GetWindowWidth() - settingsWidth - 18.0f;
-            if (ImGui::GetCursorPosX() + platformWidth + 20.0f < settingsStart)
+            ImGui::SameLine(0.0f, vultra::ui::dp(12.0f));
+            const std::string platformLabel =
+                std::string {ICON_MDI_MONITOR "  "} + vultra::tr("toolbar.platforms") + " " ICON_MDI_MENU_DOWN;
+            const std::string settingsLabel = std::string {ICON_MDI_COG "  "} + vultra::tr("toolbar.settings");
+            const float       platformWidth = ImGui::CalcTextSize(platformLabel.c_str()).x + vultra::ui::dp(26.0f);
+            const float       settingsWidth = ImGui::CalcTextSize(settingsLabel.c_str()).x + vultra::ui::dp(26.0f);
+            const float       settingsStart = ImGui::GetWindowWidth() - settingsWidth - vultra::ui::dp(18.0f);
+            if (ImGui::GetCursorPosX() + platformWidth + vultra::ui::dp(20.0f) < settingsStart)
             {
-                toolbarButton(platformLabel, "Target platform", ImVec2 {platformWidth, 0.0f});
-                ImGui::SameLine(0.0f, 8.0f);
+                toolbarButton(platformLabel.c_str(), vultra::tr("toolbar.targetPlatform"), ImVec2 {platformWidth, 0.0f});
+                ImGui::SameLine(0.0f, vultra::ui::dp(8.0f));
             }
             if (settingsStart > ImGui::GetCursorPosX())
                 ImGui::SetCursorPosX(settingsStart);
-            if (toolbarButton(ICON_MDI_COG "  Settings", "Settings", ImVec2 {settingsWidth, 0.0f}))
+            if (toolbarButton(settingsLabel.c_str(), vultra::tr("toolbar.settings"), ImVec2 {settingsWidth, 0.0f}))
                 ImGui::OpenPopup("SettingsMenu");
             if (ImGui::BeginPopup("SettingsMenu"))
             {
-                if (ImGui::MenuItem("Project Settings"))
+                if (ImGui::MenuItem(vultra::tr("menu.edit.projectSettings")))
                     ctx.state.projectSettingsOpen = true;
-                if (ImGui::MenuItem("Editor Settings"))
+                if (ImGui::MenuItem(vultra::tr("menu.edit.editorSettings")))
                     ctx.state.editorSettingsOpen = true;
-                if (ImGui::MenuItem("Export Settings"))
+                if (ImGui::MenuItem(vultra::tr("menu.file.exportSettings")))
                     ctx.state.buildSettingsOpen = true;
                 ImGui::EndPopup();
             }

@@ -3,6 +3,8 @@
 #include "common/ui_widgets.hpp"
 
 #include <vultra/core/base/common_context.hpp>
+#include <vultra/core/i18n/i18n.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -37,17 +39,17 @@ namespace vultra_app
             switch (level)
             {
                 case vultra::Logger::Level::eTrace:
-                    return "Trace";
+                    return vultra::tr("console.level.trace");
                 case vultra::Logger::Level::eInfo:
-                    return "Info";
+                    return vultra::tr("console.level.info");
                 case vultra::Logger::Level::eWarn:
-                    return "Warn";
+                    return vultra::tr("console.level.warn");
                 case vultra::Logger::Level::eError:
-                    return "Error";
+                    return vultra::tr("console.level.error");
                 case vultra::Logger::Level::eCritical:
-                    return "Critical";
+                    return vultra::tr("console.level.critical");
                 default:
-                    return "Unknown";
+                    return vultra::tr("console.level.unknown");
             }
         }
 
@@ -71,7 +73,7 @@ namespace vultra_app
         }
     } // namespace
 
-    ConsoleWindow::ConsoleWindow() : EditorWindow("Console", ICON_MDI_CONSOLE) {}
+    ConsoleWindow::ConsoleWindow() : EditorWindow("Console", ICON_MDI_CONSOLE, "window.console") {}
 
     void ConsoleWindow::draw(EditorContext& ctx)
     {
@@ -89,7 +91,8 @@ namespace vultra_app
                                         static_cast<float>(vultra::Logger::Level::eMaxLevels);
 
         ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(0, 0, 0, 0));
-        m_Filter.Draw("##ConsoleFilter", ImGui::GetContentRegionAvail().x - levelButtonsWidth - 112.0f);
+        m_Filter.Draw("##ConsoleFilter",
+                      ImGui::GetContentRegionAvail().x - levelButtonsWidth - vultra::ui::dp(112.0f));
         ImGui::PopStyleColor();
 
         for (int i = 0; i < static_cast<int>(vultra::Logger::Level::eMaxLevels); ++i)
@@ -105,11 +108,12 @@ namespace vultra_app
         }
 
         ImGui::SameLine();
-        if (ImGui::SmallButton(ICON_MDI_DELETE_SWEEP " Clear"))
+        const std::string clearLabel = std::string {ICON_MDI_DELETE_SWEEP " "} + vultra::tr("console.clear");
+        if (ImGui::SmallButton(clearLabel.c_str()))
             m_Logs.clear();
         ImGui::SameLine();
         if (ui::iconButton(m_AutoScroll ? ICON_MDI_ARROW_DOWN_BOLD_BOX : ICON_MDI_ARROW_DOWN_BOLD_BOX_OUTLINE,
-                           "Auto-scroll",
+                           vultra::tr("console.autoScroll"),
                            m_AutoScroll))
             m_AutoScroll = !m_AutoScroll;
 
@@ -122,8 +126,9 @@ namespace vultra_app
                               ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_Borders |
                                   ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg))
         {
-            ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 46.0f);
-            ImGui::TableSetupColumn("Message");
+            ImGui::TableSetupColumn(
+                vultra::tr("console.column.type"), ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(46.0f));
+            ImGui::TableSetupColumn(vultra::tr("console.column.message"));
 
             for (const auto& log : m_Logs)
             {

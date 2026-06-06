@@ -5,6 +5,8 @@
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 #include <implot/implot.h>
+#include <vultra/core/i18n/i18n.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
@@ -80,9 +82,9 @@ namespace vultra_app
         {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            ImGui::Indent(static_cast<float>(node.depth) * 12.0f);
+            ImGui::Indent(static_cast<float>(node.depth) * vultra::ui::dp(12.0f));
             ImGui::TextUnformatted(node.name.c_str());
-            ImGui::Unindent(static_cast<float>(node.depth) * 12.0f);
+            ImGui::Unindent(static_cast<float>(node.depth) * vultra::ui::dp(12.0f));
 
             ImGui::TableNextColumn();
             ImGui::Text("%.3f", scopeTotalMs(node, gpu));
@@ -145,7 +147,7 @@ namespace vultra_app
         {
             if (history.empty())
             {
-                ImGui::TextDisabled("No frame samples.");
+                ImGui::TextDisabled("%s", vultra::tr("profiler.noSamples"));
                 return;
             }
 
@@ -182,9 +184,9 @@ namespace vultra_app
             const double paddedMaxMs = std::ceil(maxMs * 1.15 / 5.0) * 5.0;
             const double yMax        = std::max(25.0, paddedMaxMs);
 
-            if (ImPlot::BeginPlot("Frame Times", ImVec2(-1, 260)))
+            if (ImPlot::BeginPlot(vultra::trId("profiler.frameTimes", "ProfilerFrameTimes"), ImVec2(-1, vultra::ui::dp(260.0f))))
             {
-                ImPlot::SetupAxes("Frame", "ms", ImPlotAxisFlags_NoTickLabels, ImPlotAxisFlags_AutoFit);
+                ImPlot::SetupAxes(vultra::tr("profiler.axisFrame"), "ms", ImPlotAxisFlags_NoTickLabels, ImPlotAxisFlags_AutoFit);
                 ImPlot::SetupAxisLimits(ImAxis_X1, x.front(), x.back(), ImGuiCond_Always);
                 ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, yMax, ImGuiCond_Always);
                 ImPlot::TagY(1000.0 / 144.0, ImVec4(0.45f, 0.70f, 1.0f, 1.0f), "144 FPS");
@@ -202,11 +204,11 @@ namespace vultra_app
             switch (type)
             {
                 case vultra::rhi::RenderMemoryResourceType::eBuffer:
-                    return "Buffer";
+                    return vultra::tr("profiler.resType.buffer");
                 case vultra::rhi::RenderMemoryResourceType::eTexture:
-                    return "Texture";
+                    return vultra::tr("profiler.resType.texture");
             }
-            return "Resource";
+            return vultra::tr("profiler.resType.resource");
         }
 
         const char* resourceKindLabel(const vultra::rhi::RenderMemoryKind kind)
@@ -216,11 +218,11 @@ namespace vultra_app
                 case vultra::rhi::RenderMemoryKind::eCpuCache:
                     return "CPU";
                 case vultra::rhi::RenderMemoryKind::eGpuDeviceLocal:
-                    return "GPU local";
+                    return vultra::tr("profiler.resKind.gpuLocal");
                 case vultra::rhi::RenderMemoryKind::eGpuHostVisible:
-                    return "Host visible";
+                    return vultra::tr("profiler.resKind.hostVisible");
             }
-            return "Memory";
+            return vultra::tr("profiler.resKind.memory");
         }
 
         void drawMemoryResourcesTable(std::vector<vultra::rhi::RenderMemoryResourceDesc> resources)
@@ -241,22 +243,22 @@ namespace vultra_app
                     bufferBytes += resource.bytes;
             }
 
-            ImGui::Text("Tracked resources: %zu", resources.size());
-            ImGui::SameLine(0.0f, 16.0f);
-            ImGui::Text("Textures %s", formatBytes(textureBytes).c_str());
-            ImGui::SameLine(0.0f, 16.0f);
-            ImGui::Text("Buffers %s", formatBytes(bufferBytes).c_str());
+            ImGui::TextUnformatted(vultra::trf("profiler.trackedResources", resources.size()).c_str());
+            ImGui::SameLine(0.0f, vultra::ui::dp(16.0f));
+            ImGui::TextUnformatted(vultra::trf("profiler.texturesBytes", formatBytes(textureBytes)).c_str());
+            ImGui::SameLine(0.0f, vultra::ui::dp(16.0f));
+            ImGui::TextUnformatted(vultra::trf("profiler.buffersBytes", formatBytes(bufferBytes)).c_str());
 
             constexpr ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                                               ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY |
                                               ImGuiTableFlags_Sortable;
             if (ImGui::BeginTable("##ProfilerMemoryResources", 5, flags, ImVec2(0.0f, 0.0f)))
             {
-                ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_WidthFixed, 96.0f);
-                ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-                ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthFixed, 96.0f);
-                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch);
-                ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn(vultra::tr("profiler.column.size"), ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(96.0f));
+                ImGui::TableSetupColumn(vultra::tr("common.type"), ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(80.0f));
+                ImGui::TableSetupColumn(vultra::tr("profiler.column.kind"), ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(96.0f));
+                ImGui::TableSetupColumn(vultra::tr("frameDebugger.column.label"), ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn(vultra::tr("profiler.column.details"), ImGuiTableColumnFlags_WidthStretch);
                 ImGui::TableSetupScrollFreeze(0, 1);
                 ImGui::TableHeadersRow();
 
@@ -314,38 +316,40 @@ namespace vultra_app
                 const double usageRatio =
                     static_cast<double>(budget.deviceLocalUsageBytes) /
                     static_cast<double>(budget.deviceLocalBudgetBytes);
-                ImGui::Text("VRAM budget %s / %s",
-                            formatBytes(budget.deviceLocalUsageBytes).c_str(),
-                            formatBytes(budget.deviceLocalBudgetBytes).c_str());
-                ImGui::SameLine(0.0f, 16.0f);
-                ImGui::Text("Available %s", formatBytes(budget.deviceLocalAvailableBytes).c_str());
+                ImGui::TextUnformatted(vultra::trf("profiler.vramBudget",
+                                                   formatBytes(budget.deviceLocalUsageBytes),
+                                                   formatBytes(budget.deviceLocalBudgetBytes))
+                                           .c_str());
+                ImGui::SameLine(0.0f, vultra::ui::dp(16.0f));
+                ImGui::TextUnformatted(
+                    vultra::trf("profiler.available", formatBytes(budget.deviceLocalAvailableBytes)).c_str());
                 ImGui::ProgressBar(static_cast<float>(std::clamp(usageRatio, 0.0, 1.0)), ImVec2(-1.0f, 0.0f));
                 if (usageRatio >= 0.90)
-                    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.25f, 1.0f), "VRAM budget is close to exhaustion.");
+                    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.25f, 1.0f), "%s", vultra::tr("profiler.vramExhaustion"));
                 return;
             }
 
             if (budget.deviceLocalHeapBytes > 0u)
-                ImGui::Text("VRAM heap %s", formatBytes(budget.deviceLocalHeapBytes).c_str());
-            ImGui::TextDisabled("Runtime VRAM budget is unavailable on this backend/device.");
+                ImGui::TextUnformatted(vultra::trf("profiler.vramHeap", formatBytes(budget.deviceLocalHeapBytes)).c_str());
+            ImGui::TextDisabled("%s", vultra::tr("profiler.vramUnavailable"));
         }
 
         void drawSystemMemory(const SystemMemorySnapshot& memory)
         {
             if (!memory.processResidentAvailable && !memory.systemMemoryAvailable)
             {
-                ImGui::TextDisabled("Runtime RAM usage is unavailable on this platform.");
+                ImGui::TextDisabled("%s", vultra::tr("profiler.ramUnavailable"));
                 return;
             }
 
             if (memory.processResidentAvailable)
-                ImGui::Text("Process RAM %s", formatBytes(memory.processResidentBytes).c_str());
+                ImGui::TextUnformatted(vultra::trf("profiler.processRam", formatBytes(memory.processResidentBytes)).c_str());
 
             if (!memory.systemMemoryAvailable)
                 return;
 
-            ImGui::SameLine(0.0f, 16.0f);
-            ImGui::Text("Available %s", formatBytes(memory.systemAvailableBytes).c_str());
+            ImGui::SameLine(0.0f, vultra::ui::dp(16.0f));
+            ImGui::TextUnformatted(vultra::trf("profiler.available", formatBytes(memory.systemAvailableBytes)).c_str());
 
             if (memory.systemTotalBytes > 0u)
             {
@@ -355,17 +359,16 @@ namespace vultra_app
                         0u;
                 const double usageRatio =
                     static_cast<double>(usedBytes) / static_cast<double>(memory.systemTotalBytes);
-                ImGui::Text("System RAM %s / %s",
-                            formatBytes(usedBytes).c_str(),
-                            formatBytes(memory.systemTotalBytes).c_str());
+                ImGui::TextUnformatted(
+                    vultra::trf("profiler.systemRam", formatBytes(usedBytes), formatBytes(memory.systemTotalBytes)).c_str());
                 ImGui::ProgressBar(static_cast<float>(std::clamp(usageRatio, 0.0, 1.0)), ImVec2(-1.0f, 0.0f));
                 if (usageRatio >= 0.90)
-                    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.25f, 1.0f), "System RAM is close to exhaustion.");
+                    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.25f, 1.0f), "%s", vultra::tr("profiler.systemRamExhaustion"));
             }
         }
     } // namespace
 
-    ProfilerWindow::ProfilerWindow() : EditorWindow("Profiler", ICON_MDI_CHART_TIMELINE_VARIANT) {}
+    ProfilerWindow::ProfilerWindow() : EditorWindow("Profiler", ICON_MDI_CHART_TIMELINE_VARIANT, "window.profiler") {}
 
     void ProfilerWindow::draw(EditorContext& ctx)
     {
@@ -379,22 +382,22 @@ namespace vultra_app
         auto* profiler      = renderService ? renderService->runtimeProfiler() : nullptr;
         if (!profiler)
         {
-            ImGui::TextDisabled("Render profiler is unavailable.");
+            ImGui::TextDisabled("%s", vultra::tr("profiler.unavailable"));
             ImGui::End();
             return;
         }
 
         bool enabled = profiler->isEnabled();
-        if (ImGui::Checkbox("Capture", &enabled))
+        if (ImGui::Checkbox(vultra::tr("profiler.capture"), &enabled))
             profiler->setEnabled(enabled);
 
         ImGui::SameLine();
         bool paused = profiler->isPaused();
-        if (ImGui::Checkbox("Pause", &paused))
+        if (ImGui::Checkbox(vultra::tr("profiler.pause"), &paused))
             profiler->setPaused(paused);
 
         ImGui::SameLine();
-        ImGui::Checkbox("Auto-enable", &m_AutoEnableCapture);
+        ImGui::Checkbox(vultra::tr("profiler.autoEnable"), &m_AutoEnableCapture);
         if (m_AutoEnableCapture && !profiler->isEnabled())
             profiler->setEnabled(true);
 
@@ -403,7 +406,7 @@ namespace vultra_app
         if (!frame)
         {
             ImGui::Separator();
-            ImGui::TextDisabled("Profiler warming up...");
+            ImGui::TextDisabled("%s", vultra::tr("profiler.warmingUp"));
             ImGui::End();
             return;
         }
@@ -413,69 +416,71 @@ namespace vultra_app
         {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            ImGui::Text("CPU frame %.2f ms", frame->cpuFrameMs);
+            ImGui::TextUnformatted(vultra::trf("profiler.cpuFrame", frame->cpuFrameMs).c_str());
             ImGui::TableNextColumn();
-            ImGui::Text("CPU render %.2f ms", frame->cpuRenderMs);
+            ImGui::TextUnformatted(vultra::trf("profiler.cpuRender", frame->cpuRenderMs).c_str());
             ImGui::TableNextColumn();
             if (frame->gpuFrameMs >= 0.0)
-                ImGui::Text("GPU %.2f ms", frame->gpuFrameMs);
+                ImGui::TextUnformatted(vultra::trf("profiler.gpu", frame->gpuFrameMs).c_str());
             else
-                ImGui::TextUnformatted("GPU n/a");
+                ImGui::TextUnformatted(vultra::tr("profiler.gpuNa"));
             ImGui::TableNextColumn();
-            ImGui::Text("%s", frame->vsyncEnabled ? "VSync on" : "VSync off");
+            ImGui::TextUnformatted(frame->vsyncEnabled ? vultra::tr("profiler.vsyncOn") : vultra::tr("profiler.vsyncOff"));
 
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            ImGui::Text("Draws %llu", static_cast<unsigned long long>(frame->drawCalls));
+            ImGui::TextUnformatted(vultra::trf("profiler.draws", static_cast<unsigned long long>(frame->drawCalls)).c_str());
             ImGui::TableNextColumn();
-            ImGui::Text("Dispatch %llu", static_cast<unsigned long long>(frame->dispatchCalls));
+            ImGui::TextUnformatted(
+                vultra::trf("profiler.dispatch", static_cast<unsigned long long>(frame->dispatchCalls)).c_str());
             ImGui::TableNextColumn();
-            ImGui::Text("Updates %llu", static_cast<unsigned long long>(frame->updateOps));
+            ImGui::TextUnformatted(vultra::trf("profiler.updates", static_cast<unsigned long long>(frame->updateOps)).c_str());
             ImGui::TableNextColumn();
-            ImGui::Text("GPU mem %s", formatBytes(frame->gpuDeviceLocalBytes).c_str());
+            ImGui::TextUnformatted(vultra::trf("profiler.gpuMem", formatBytes(frame->gpuDeviceLocalBytes)).c_str());
 
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             if (systemMemory.processResidentAvailable)
-                ImGui::Text("RAM %s", formatBytes(systemMemory.processResidentBytes).c_str());
+                ImGui::TextUnformatted(vultra::trf("profiler.ram", formatBytes(systemMemory.processResidentBytes)).c_str());
             else
-                ImGui::TextUnformatted("RAM n/a");
+                ImGui::TextUnformatted(vultra::tr("profiler.ramNa"));
             ImGui::TableNextColumn();
             if (systemMemory.systemMemoryAvailable)
-                ImGui::Text("RAM avail %s", formatBytes(systemMemory.systemAvailableBytes).c_str());
+                ImGui::TextUnformatted(vultra::trf("profiler.ramAvail", formatBytes(systemMemory.systemAvailableBytes)).c_str());
             else
-                ImGui::TextUnformatted("RAM avail n/a");
+                ImGui::TextUnformatted(vultra::tr("profiler.ramAvailNa"));
             ImGui::TableNextColumn();
             if (systemMemory.systemTotalBytes > 0u)
-                ImGui::Text("RAM total %s", formatBytes(systemMemory.systemTotalBytes).c_str());
+                ImGui::TextUnformatted(vultra::trf("profiler.ramTotal", formatBytes(systemMemory.systemTotalBytes)).c_str());
             else
-                ImGui::TextUnformatted("RAM total n/a");
+                ImGui::TextUnformatted(vultra::tr("profiler.ramTotalNa"));
             ImGui::TableNextColumn();
-            ImGui::Text("CPU cache %s", formatBytes(frame->assetCpuCacheBytes + frame->renderCpuCacheBytes).c_str());
+            ImGui::TextUnformatted(
+                vultra::trf("profiler.cpuCache", formatBytes(frame->assetCpuCacheBytes + frame->renderCpuCacheBytes)).c_str());
             ImGui::EndTable();
         }
 
         if (ImGui::BeginTabBar("##ProfilerTabs"))
         {
-            if (ImGui::BeginTabItem("Plots"))
+            if (ImGui::BeginTabItem(vultra::trId("profiler.tab.plots", "ProfilerPlots")))
             {
                 drawFrameTimesPlot(profiler->history());
                 ImGui::EndTabItem();
             }
 
-            if (ImGui::BeginTabItem("CPU"))
+            if (ImGui::BeginTabItem(vultra::trId("profiler.tab.cpu", "ProfilerCpu")))
             {
                 if (ImGui::BeginTable("##ProfilerCpuTable",
                                       4,
                                       ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
                                           ImGuiTableFlags_Sortable))
                 {
-                    ImGui::TableSetupColumn("Scope", ImGuiTableColumnFlags_WidthStretch);
-                    ImGui::TableSetupColumn("Total ms",
+                    ImGui::TableSetupColumn(vultra::tr("profiler.column.scope"), ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn(vultra::tr("profiler.column.totalMs"),
                                             ImGuiTableColumnFlags_DefaultSort |
                                                 ImGuiTableColumnFlags_PreferSortDescending);
-                    ImGui::TableSetupColumn("Self ms", ImGuiTableColumnFlags_PreferSortDescending);
-                    ImGui::TableSetupColumn("Calls", ImGuiTableColumnFlags_PreferSortDescending);
+                    ImGui::TableSetupColumn(vultra::tr("profiler.column.selfMs"), ImGuiTableColumnFlags_PreferSortDescending);
+                    ImGui::TableSetupColumn(vultra::tr("profiler.column.calls"), ImGuiTableColumnFlags_PreferSortDescending);
                     ImGui::TableHeadersRow();
                     drawScopeRowsSorted(frame->cpuScopeTree, false);
                     ImGui::EndTable();
@@ -483,19 +488,19 @@ namespace vultra_app
                 ImGui::EndTabItem();
             }
 
-            if (ImGui::BeginTabItem("GPU"))
+            if (ImGui::BeginTabItem(vultra::trId("profiler.tab.gpu", "ProfilerGpu")))
             {
                 if (ImGui::BeginTable("##ProfilerGpuTable",
                                       4,
                                       ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
                                           ImGuiTableFlags_Sortable))
                 {
-                    ImGui::TableSetupColumn("Scope", ImGuiTableColumnFlags_WidthStretch);
-                    ImGui::TableSetupColumn("Total ms",
+                    ImGui::TableSetupColumn(vultra::tr("profiler.column.scope"), ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn(vultra::tr("profiler.column.totalMs"),
                                             ImGuiTableColumnFlags_DefaultSort |
                                                 ImGuiTableColumnFlags_PreferSortDescending);
-                    ImGui::TableSetupColumn("Self ms", ImGuiTableColumnFlags_PreferSortDescending);
-                    ImGui::TableSetupColumn("Calls", ImGuiTableColumnFlags_PreferSortDescending);
+                    ImGui::TableSetupColumn(vultra::tr("profiler.column.selfMs"), ImGuiTableColumnFlags_PreferSortDescending);
+                    ImGui::TableSetupColumn(vultra::tr("profiler.column.calls"), ImGuiTableColumnFlags_PreferSortDescending);
                     ImGui::TableHeadersRow();
                     drawScopeRowsSorted(frame->gpuScopeTree, true);
                     ImGui::EndTable();
@@ -503,14 +508,14 @@ namespace vultra_app
                 ImGui::EndTabItem();
             }
 
-            if (ImGui::BeginTabItem("Memory"))
+            if (ImGui::BeginTabItem(vultra::trId("profiler.tab.memory", "ProfilerMemory")))
             {
                 auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
                 drawSystemMemory(systemMemory);
                 ImGui::Separator();
                 if (!backendService)
                 {
-                    ImGui::TextDisabled("Render backend is unavailable.");
+                    ImGui::TextDisabled("%s", vultra::tr("profiler.backendUnavailable"));
                 }
                 else
                 {

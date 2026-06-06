@@ -63,6 +63,7 @@ namespace vultra_app
         {
             float       applicationScale {1.0f};
             float       textScale {1.0f};
+            std::string language {}; // BCP-47 UI locale (e.g. "en", "zh-CN"); empty = auto-detect from OS on first launch
             std::string theme {"Dark"};
             glm::vec4   customThemeBackground {0.050f, 0.063f, 0.080f, 1.0f};
             glm::vec4   customThemePanel {0.058f, 0.072f, 0.092f, 1.0f};

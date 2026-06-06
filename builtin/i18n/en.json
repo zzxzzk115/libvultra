@@ -1,0 +1,1699 @@
+{
+"inspector": {
+  "field": { "active": "Active", "allowSleeping": "Allow Sleeping", "ambientColor": "Ambient Color", "ambientIntensity": "Ambient Intensity", "anchorMax": "Anchor Max", "anchorMin": "Anchor Min", "anchoredPositionPx": "Anchored Position (px)", "angularDamping": "Angular Damping", "angularVelocity": "Angular Velocity", "animation": "Animation", "blendDistance": "Blend Distance", "borderRadiusPx": "Border Radius (px)", "boxSize": "Box Size", "builtinGeometry": "Builtin Geometry", "castsShadow": "Casts Shadow", "cellSizePx": "Cell Size (px)", "checkColor": "Check Color", "checked": "Checked", "clearColor": "Clear Color", "clearMode": "Clear Mode", "color": "Color", "colorValue": "Color Value", "cullingMask": "Culling Mask", "emissionRate": "Emission Rate", "enableIBL": "Enable IBL", "enabled": "Enabled", "endColor": "End Color", "endSize": "End Size", "environmentMap": "Environment Map", "fallbackMono": "Fallback Mono", "fillColor": "Fill Color", "fitMode": "Fit Mode", "floatValue": "Float Value", "fontSizePx": "Font Size (px)", "fovYDegrees": "FOV Y Degrees", "friction": "Friction", "gaussianSplat": "Gaussian Splat", "gpu": "GPU", "graph": "Graph", "gravity": "Gravity", "gravityFactor": "Gravity Factor", "grounded": "Grounded", "halfHeight": "Half Height", "halfHeightOfCylinder": "Half Height Of Cylinder", "handleColor": "Handle Color", "height": "Height", "horizontalAlign": "Horizontal Align", "hoveredColor": "Hovered Color", "iblColor": "IBL Color", "iblIntensity": "IBL Intensity", "innerConeDegrees": "Inner Cone Degrees", "inputMove": "Input Move", "intensity": "Intensity", "interactable": "Interactable", "isSensor": "Is Sensor", "jumpRequested": "Jump Requested", "jumpSpeed": "Jump Speed", "kind": "Kind", "lifetime": "Lifetime", "lifetimeVariance": "Lifetime Variance", "linearDamping": "Linear Damping", "linearVelocity": "Linear Velocity", "locked": "Locked", "loop": "Loop", "marginPx": "Margin (px)", "mask": "Mask", "mass": "Mass", "material": "Material", "materialGraph": "Material Graph", "materialOverrides": "Material Overrides", "maxAngularVelocity": "Max Angular Velocity", "maxLinearVelocity": "Max Linear Velocity", "maxParticles": "Max Particles", "maxSlopeAngleDegrees": "Max Slope Angle Degrees", "maxValue": "Max Value", "mesh": "Mesh", "minValue": "Min Value", "mode": "Mode", "motionQuality": "Motion Quality", "motionType": "Motion Type", "name": "Name", "normalColor": "Normal Color", "objectLayer": "Object Layer", "offColor": "Off Color", "onColor": "On Color", "orthographicHeight": "Orthographic Height", "outerConeDegrees": "Outer Cone Degrees", "overrideMass": "Override Mass", "paddingPx": "Padding (px)", "parallaxCorrection": "Parallax Correction", "pivot": "Pivot", "pixelsPerUnit": "Pixels Per Unit", "playOnStart": "Play On Start", "playing": "Playing", "position": "Position", "pressedColor": "Pressed Color", "primary": "Primary", "priority": "Priority", "projection": "Projection", "properties": "Properties", "radius": "Radius", "range": "Range", "referenceResolutionPx": "Reference Resolution (px)", "renderMode": "Render Mode", "rendererKey": "Renderer Key", "restitution": "Restitution", "rotation": "Rotation", "rotationDegrees": "Rotation Degrees", "scale": "Scale", "scaleMode": "Scale Mode", "scriptUri": "Script URI", "selectable": "Selectable", "shape": "Shape", "sizeDeltaPx": "Size Delta (px)", "skeleton": "Skeleton", "skybox": "Skybox", "slot": "Slot", "sortOrder": "Sort Order", "spacingPx": "Spacing (px)", "spawnRadius": "Spawn Radius", "speed": "Speed", "startColor": "Start Color", "startSize": "Start Size", "startVelocity": "Start Velocity", "stepHeight": "Step Height", "stereoGraphMode": "Stereo Graph Mode", "targetGraphic": "Target Graphic", "text": "Text", "texture": "Texture", "textureUri": "Texture URI", "time": "Time", "tint": "Tint", "trackColor": "Track Color", "trackingOrigin": "Tracking Origin", "twoSided": "Two Sided", "type": "Type", "uuid": "UUID", "value": "Value", "velocity": "Velocity", "velocityVariance": "Velocity Variance", "verticalAlign": "Vertical Align", "visible": "Visible", "width": "Width", "worldSpace": "World Space", "zFar": "Z Far", "zNear": "Z Near" },
+  "preview": "Preview",
+  "unsaved": "Unsaved",
+  "reload": "Reload",
+  "clear": "Clear",
+  "diagnostics": "Diagnostics",
+  "noneAngle": "<none>",
+  "selectAngle": "<select>",
+  "noneParen": "(none)",
+  "addComponent": "Add Component",
+  "allComponentsPresent": "All addable components are already present.",
+  "fitToMeshBoundsSuffix": " (fit to mesh bounds if available)",
+  "xrViewRequiresCamera": "XR View can only be added to an entity with a Camera component.",
+  "servicesUnavailable": "Services are not available.",
+  "worldServiceUnavailable": "World service is not available.",
+  "assetServiceUnavailable": "Asset service is not available.",
+  "entityGone": "Selected entity no longer exists.",
+  "componentAdded": "Added component: {}",
+  "componentRemoved": "Removed component: {}",
+  "componentMovedUp": "Moved component up: {}",
+  "componentMovedDown": "Moved component down: {}",
+  "component": {
+    "generic": "Component",
+    "transform": "Transform",
+    "rectTransform": "Rect Transform",
+    "layer": "Layer",
+    "canvas": "Canvas",
+    "uiPanel": "UI Panel",
+    "uiImage": "UI Image",
+    "uiText": "UI Text",
+    "uiButton": "UI Button",
+    "uiToggle": "UI Toggle",
+    "uiSlider": "UI Slider",
+    "uiProgressBar": "UI Progress Bar",
+    "uiLayout": "UI Layout",
+    "status": "Status",
+    "hierarchy": "Hierarchy",
+    "mesh": "Mesh",
+    "animator": "Animator",
+    "gaussianSplat": "Gaussian Splat",
+    "camera": "Camera",
+    "xrView": "XR View",
+    "environment": "Environment",
+    "reflectionProbe": "Reflection Probe",
+    "light": "Light",
+    "particleEmitter": "Particle Emitter",
+    "rigidBody": "Rigid Body",
+    "boxShape": "Box Shape",
+    "sphereShape": "Sphere Shape",
+    "capsuleShape": "Capsule Shape",
+    "script": "Script",
+    "prefab": "Prefab",
+    "material": "Material"
+  },
+  "category": {
+    "core": "Core",
+    "ui": "UI",
+    "rendering": "Rendering",
+    "animation": "Animation",
+    "lighting": "Lighting",
+    "physics": "Physics",
+    "camera": "Camera",
+    "scripting": "Scripting"
+  },
+  "project": {
+    "title": "Project",
+    "name": "Name: {}",
+    "root": "Root: {}",
+    "assetRoot": "Asset root: {}",
+    "defaultScene": "Default scene: {}",
+    "noProject": "(no project)"
+  },
+  "entity": {
+    "title": "Entity",
+    "uuid": "UUID: {}"
+  },
+  "hierarchy": {
+    "children": "Children: {}",
+    "parentUuid": "Parent UUID: {}",
+    "parentSceneRoot": "Parent: <scene root>"
+  },
+  "transform": {
+    "direction": "Direction"
+  },
+  "rectTransform": {
+    "anchors": "Anchors",
+    "size": "Size",
+    "anchorMin": "Anchor Min",
+    "anchorMax": "Anchor Max",
+    "pivot": "Pivot"
+  },
+  "light": {
+    "kindLabel": "Kind",
+    "kind": {
+      "directional": "Directional",
+      "point": "Point",
+      "spot": "Spot",
+      "rectangleArea": "Rectangle Area"
+    },
+    "color": "Color",
+    "intensity": "Intensity",
+    "range": "Range",
+    "radius": "Radius",
+    "innerCone": "Inner Cone Degrees",
+    "outerCone": "Outer Cone Degrees",
+    "width": "Width",
+    "height": "Height",
+    "castsShadow": "Casts Shadow",
+    "twoSided": "Two Sided"
+  },
+  "xrView": {
+    "trackingOriginLabel": "Tracking Origin",
+    "trackingOrigin": { "local": "Local", "stage": "Stage" },
+    "stereoGraphLabel": "Stereo Graph",
+    "stereoGraph": { "singleGraphStereo": "Single Graph Stereo" },
+    "fallbackMono": "Fallback Mono",
+    "runtime": "Runtime",
+    "openxr": "OpenXR: {}",
+    "mirror": "Mirror: {}",
+    "requestSession": "Request XR Session",
+    "sessionHint": "Session starts when an enabled XR camera is active."
+  },
+  "uiLayout": {
+    "layout": "Layout",
+    "paddingPx": "Padding Px",
+    "marginPx": "Margin Px",
+    "spacingPx": "Spacing Px",
+    "cellSizePx": "Cell Size Px",
+    "kind": {
+      "horizontal": "Horizontal",
+      "vertical": "Vertical",
+      "grid": "Grid"
+    }
+  },
+  "animator": {
+    "modeLabel": "Mode",
+    "skeleton": "Skeleton",
+    "graph": "Graph",
+    "animation": "Animation",
+    "playOnStart": "Play On Start",
+    "playing": "Playing",
+    "loop": "Loop",
+    "speed": "Speed",
+    "time": "Time",
+    "resetTime": "Reset Time",
+    "editGraph": "Edit Graph",
+    "clearSkeletonOverride": "Clear Skeleton Override",
+    "overrideSkeleton": "Override Skeleton",
+    "fromMesh": "(from mesh)",
+    "noSkinnedMesh": "(no skinned mesh)",
+    "noGraphs": "No animator graphs in project.",
+    "mode": {
+      "singleClip": "Single Clip",
+      "graph": "Graph"
+    }
+  },
+  "script": {
+    "none": "None (Lua Script)",
+    "dialogTitle": "Select Lua Script",
+    "chooseTip": "Click to choose a .lua script, or drop a Lua script asset here.",
+    "selectTip": "Select Lua script.",
+    "dropNotLua": "Dropped asset is not a Lua script.",
+    "mustBeInRoot": "Script must be inside the project asset root."
+  },
+  "assetType": {
+    "mesh": "Mesh",
+    "skeleton": "Skeleton",
+    "animation": "Animation",
+    "gaussianSplat": "Gaussian Splat",
+    "texture": "Texture",
+    "asset": "Asset"
+  },
+  "assetField": {
+    "none": "None ({})",
+    "dropTip": "Drop a {} asset here.",
+    "selectTip": "Select {} asset.",
+    "clearTip": "Clear reference.",
+    "dropRejected": "Dropped asset type is not accepted by this field."
+  },
+  "assetPicker": {
+    "select": "Select {}",
+    "noAssets": "No source assets of this type."
+  },
+  "material": {
+    "source": "Source",
+    "graph": "Graph",
+    "material": "Material",
+    "texture": "Texture",
+    "textureUri": "Texture URI",
+    "overrides": "Material Overrides",
+    "addOverride": "Add Material Override",
+    "forkBuiltin": "Fork Builtin",
+    "forkBuiltinTip": "Create an editable project .vmat.json from the builtin PBR material.",
+    "propertyBlock": "Property Block",
+    "addProperty": "Add Property",
+    "removeProperty": "Remove Property",
+    "addSourceProperty": "Add Source Property",
+    "customBuiltinId": "Custom Builtin ID",
+    "properties": "Properties",
+    "save": "Save Material",
+    "saved": "Saved material: {}",
+    "saveFailed": "Failed to save material: {}",
+    "parseFailed": "Failed to parse material asset: {}",
+    "noShaderParams": "No editable material parameters were found for this shader. Check that the shader library is loaded and the shader declares material params.",
+    "noExposedParams": "No exposed parameters for this source yet.",
+    "unsupportedType": "Unsupported property type",
+    "kind": {
+      "builtin": "Builtin",
+      "shader": "Shader",
+      "graph": "Graph"
+    },
+    "propType": {
+      "float": "Float",
+      "color": "Color",
+      "texture2D": "Texture2D"
+    }
+  },
+  "materialSlot": {
+    "slot": "Slot",
+    "slot0Default": "Slot 0 - Default Material",
+    "slot0Loading": "Slot 0 - Loading Mesh Materials",
+    "materialN": "Material {}",
+    "slotLabel": "Slot {} - {}",
+    "slotUnknown": "Slot {} - Unknown Material",
+    "keepSlot": "Keep Slot {}",
+    "usedBySubmesh": "Used by submesh: {}",
+    "tip": "Material graph overrides replace one mesh material slot. The saved value is still the numeric slot."
+  },
+  "shader": {
+    "library": "Library",
+    "shader": "Shader",
+    "vertex": "Vertex",
+    "fragment": "Fragment",
+    "vertexLibrary": "Vertex Library",
+    "fragmentLibrary": "Fragment Library",
+    "compute": "Compute",
+    "raygen": "Raygen",
+    "miss": "Miss",
+    "closestHit": "Closest Hit",
+    "anyHit": "Any Hit"
+  },
+  "renderPass": {
+    "title": "Render Graph Pass",
+    "pipelineLabel": "Pipeline",
+    "inputs": "Inputs",
+    "outputs": "Outputs",
+    "dispatchByOutputSize": "Dispatch By Output Size",
+    "save": "Save Pass",
+    "saved": "Saved render graph pass.",
+    "saveFailedOpen": "Save render pass failed: cannot open file.",
+    "saveFailedWrite": "Save render pass failed: cannot write file.",
+    "pipeline": {
+      "graphics": "Graphics",
+      "compute": "Compute",
+      "raytracing": "Raytracing"
+    }
+  },
+  "rendererKey": {
+    "rayTracingUnavailable": "Ray tracing is not available on the current render device."
+  },
+  "graphNode": {
+    "title": "Material Graph Node",
+    "typeId": "Type ID",
+    "displayName": "Display Name",
+    "inputs": "Inputs",
+    "outputs": "Outputs",
+    "removePin": "Remove Pin",
+    "addPin": "Add Pin",
+    "defaultParams": "Default Params",
+    "addParam": "Add Param",
+    "paramNameHint": "param name",
+    "defaultUri": "Default URI",
+    "glslOutputExpressions": "GLSL Output Expressions",
+    "save": "Save Node",
+    "saved": "Saved material graph node: {}",
+    "saveFailed": "Failed to save material graph node: {}",
+    "parseFailed": "Failed to parse material graph node: {}"
+  },
+  "asset": {
+    "title": "Asset",
+    "uuid": "UUID: {}",
+    "type": "Type: {}",
+    "source": "Source: {}",
+    "imported": "Imported: {}"
+  },
+  "skeleton": {
+    "title": "Skeleton",
+    "name": "Name: {}",
+    "joints": "Joints: {}",
+    "payload": "Payload: {}",
+    "unavailable": "Skeleton metadata unavailable."
+  },
+  "animation": {
+    "title": "Animation",
+    "name": "Name: {}",
+    "duration": "Duration: {:.3f} s",
+    "payload": "Payload: {}",
+    "unavailable": "Animation metadata unavailable."
+  },
+  "sourceAsset": {
+    "title": "Source Asset",
+    "name": "Name: {}",
+    "type": "Type: {}",
+    "path": "Path: {}",
+    "size": "Size: {}",
+    "folder": "Folder",
+    "editAsSource": "Edit As Source",
+    "openLuaSource": "Open Lua Source",
+    "openInCodeEditor": "Open in Code Editor",
+    "editingScene": "Editing scene source: {}",
+    "openedInEditor": "Opened in Code Editor: {}"
+  },
+  "sceneSource": {
+    "title": "Scene source",
+    "setAsDefault": "Set As Default Scene",
+    "defaultSet": "Default scene set to: {}"
+  },
+  "prefab": {
+    "uri": "URI: {}",
+    "uuid": "UUID: {}"
+  },
+  "camera": {
+    "alignWithSceneView": "Align With Scene View",
+    "alignWithSceneViewTip": "Move this Camera entity to the current Scene View camera pose.",
+    "alignSceneViewWithCamera": "Align Scene View With Camera",
+    "alignSceneViewWithCameraTip": "Move the Scene View editor camera to this Camera entity.",
+    "sceneViewUnavailable": "Scene View camera is not available yet.",
+    "alignedToSceneView": "Camera aligned to Scene View.",
+    "sceneViewAligned": "Scene View aligned to Camera."
+  },
+  "forkMaterial": {
+    "noAssetRoot": "Fork material failed: no project asset root.",
+    "failed": "Fork material failed: {}",
+    "noFileName": "Fork material failed: no available file name.",
+    "outsideAssets": "Fork material failed: target is outside project assets.",
+    "forked": "Forked builtin material: {}",
+    "forkedNoImport": "Forked builtin material, but asset registry import did not run."
+  },
+  "texture": {
+    "targetFormat": "Target Format",
+    "subtype": {
+      "uiSprite": "UI / Sprite",
+      "normalMap": "Normal Map",
+      "cursor": "Cursor"
+    }
+  },
+  "textureImport": {
+    "title": "Texture Import",
+    "subtype": "Subtype",
+    "sourceSize": "Source Size: {}",
+    "importedSize": "Imported Size: {}",
+    "missing": "Missing",
+    "notImported": "Not imported",
+    "generateMipmaps": "Generate Mipmaps",
+    "flipY": "Flip Y",
+    "qualityLevel": "Quality Level",
+    "compressionLevel": "Compression Level",
+    "compressOnlyLarge": "Compress Only Large",
+    "downscaleLarge": "Downscale Large",
+    "downscaleMinDimension": "Downscale Min Dimension",
+    "downscaleTargetDimension": "Downscale Target Dimension",
+    "bakeNormalMap": "Bake Normal Map",
+    "directXNormalMap": "DirectX Normal Map",
+    "revert": "Revert",
+    "saveFailed": "Texture import settings save failed.",
+    "applied": "Applied texture import settings and queued reimport: {}"
+  },
+  "modelPreview": {
+    "servicesUnavailable": "Preview services are unavailable.",
+    "empty": "Preview scene is empty."
+  },
+  "layerMask": {
+    "all": "All"
+  },
+  "removeBlock": {
+    "prefab": "Prefab data is managed by the prefab instance.",
+    "uiButtonTargetGraphic": "UI Button targetGraphic uses this Image. Clear or retarget targetGraphic before removing it."
+  },
+  "enum": {
+    "projection": {
+      "perspective": "Perspective",
+      "orthographic": "Orthographic"
+    },
+    "clearMode": {
+      "color": "Color",
+      "skybox": "Skybox"
+    },
+    "motionType": {
+      "static": "Static",
+      "kinematic": "Kinematic",
+      "dynamic": "Dynamic"
+    },
+    "objectLayer": {
+      "nonMoving": "Non Moving",
+      "moving": "Moving"
+    },
+    "motionQuality": {
+      "discrete": "Discrete",
+      "linearCast": "Linear Cast"
+    },
+    "geometry": {
+      "externalMesh": "External Mesh",
+      "quad": "Quad",
+      "cube": "Cube",
+      "sphere": "Sphere",
+      "capsule": "Capsule"
+    },
+    "scaleMode": {
+      "constantPixels": "Constant Pixels",
+      "scaleWithScreen": "Scale With Screen"
+    },
+    "fitMode": {
+      "stretch": "Stretch",
+      "contain": "Contain",
+      "cover": "Cover"
+    },
+    "hAlign": {
+      "left": "Left",
+      "center": "Center",
+      "right": "Right"
+    },
+    "vAlign": {
+      "top": "Top",
+      "middle": "Middle",
+      "bottom": "Bottom"
+    },
+    "shape": {
+      "box": "Box",
+      "sphere": "Sphere"
+    }
+  }
+},
+"renderGraph": {
+  "selector": {
+    "graph": "Graph",
+    "noneSelected": "<none>"
+  },
+  "toolbar": {
+    "reload": "Reload",
+    "liveApply": "Live Apply",
+    "topoOrder": "Topo Order",
+    "autoLayout": "Auto Layout",
+    "deleteSelected": "Delete Selected",
+    "pipeline": "Pipeline",
+    "editing": "Editing {}",
+    "noGraphSelected": "No render graph selected",
+    "builtinReadOnlySuffix": " (builtin, read-only)",
+    "openAssetHint": "Open a .vrg.json render graph asset."
+  },
+  "export": {
+    "title": "Export Builtin Render Graph",
+    "readOnlyHint": "Builtin graphs are read-only. Choose an export target.",
+    "suggestedFile": "Suggested file: {}",
+    "target": "Target"
+  },
+  "addMenu": {
+    "projectPass": "Project Pass",
+    "builtinPass": "Builtin Pass"
+  },
+  "menu": {
+    "editInternals": "Edit Internals",
+    "deleteFeature": "Delete Feature",
+    "deleteLink": "Delete Link",
+    "deletePass": "Delete Pass",
+    "enabled": "Enabled"
+  },
+  "pipeline": {
+    "customRenderGraph": "Custom Render Graph",
+    "builtinFeature": "builtin feature",
+    "passCount": "{} passes",
+    "doubleClickEdit": "Double-click to edit internals"
+  },
+  "pin": {
+    "in": "in",
+    "out": "out"
+  },
+  "canvas": {
+    "importedResource": "imported resource",
+    "shader": "shader: {}"
+  },
+  "param": {
+    "unknown": "Unknown"
+  },
+  "banner": {
+    "graphInvalid": "Graph invalid: {}"
+  },
+  "camera": {
+    "editorCamera": "Editor Camera",
+    "gameCamera": "Game Camera",
+    "gameCameraNamed": "Game Camera: {}"
+  },
+  "runtime": {
+    "viewerTitle": "Runtime Frame Graph Viewer",
+    "captureStats": "textures: {}/{} captured, graph: {}/{}",
+    "autoFit": "Auto Fit",
+    "scale": "Scale",
+    "noFrameGraph": "No frame graph has been compiled yet.",
+    "copyDot": "Copy DOT",
+    "copyDotFallbackTip": "Copy a reconstructed Graphviz DOT fallback",
+    "copyDotTip": "Copy the selected runtime graph DOT emitted by FrameGraph",
+    "graphLabel": "{} - {} ({} nodes)",
+    "pinImport": "import",
+    "pinRead": "read",
+    "pinInSideEffect": "in\nside effect",
+    "pinIn": "in",
+    "pinUse": "use",
+    "pinSide": "side",
+    "pinOut": "out"
+  },
+  "texture": {
+    "nameSize": "{} | {}x{}",
+    "nameSizeFormat": "{} | {}x{} | {}",
+    "capturing": "Capturing selected texture preview...",
+    "modeColor": "Color",
+    "modeRawDepth": "Raw Depth",
+    "modeLinearDepth": "Linear Depth",
+    "modeInvertedLinearDepth": "Inverted Linear Depth",
+    "modeAlpha": "Alpha",
+    "modeNormal": "Normal",
+    "modeTooltip": "Texture display mode",
+    "mode": "Mode",
+    "gamma": "Gamma",
+    "resetTooltip": "Reset preview settings",
+    "fitRange": "Fit Range",
+    "fitRangeTooltip": "Auto fit depth range from the preview image",
+    "clampMin": "Clamp Min",
+    "clampMax": "Clamp Max",
+    "cameraZ": "Camera z: {:.4f} - {:.1f}",
+    "leftEye": "Left Eye",
+    "rightEye": "Right Eye"
+  },
+  "overlay": {
+    "preview": "Preview",
+    "preparingPreview": "Preparing preview",
+    "noPrimaryCamera": "No primary camera"
+  },
+  "status": {
+    "switched": "Switched render graph",
+    "rendererInfo": "Renderer '{}': {}",
+    "switchFailed": "Failed to switch render graph",
+    "featureOrderUpdated": "Updated feature order",
+    "linkRemoved": "Removed pass input link",
+    "readOnlyEdge": "This is a read-only dependency edge.",
+    "passDeleted": "Deleted pass",
+    "nodeReadOnly": "This node is read-only.",
+    "resourceDeleted": "Deleted resource",
+    "nothingSelected": "Nothing selected",
+    "exported": "Exported",
+    "exportedDetail": "Exported builtin render graph: {}",
+    "topoApplied": "Topo order applied",
+    "autoLayoutApplied": "Auto layout applied",
+    "repairedLinks": "Repaired stale render graph links",
+    "loadedBuiltin": "Loaded builtin graph",
+    "loadBuiltinFailed": "Failed to load builtin graph: {}",
+    "loaded": "Loaded",
+    "loadFailed": "Failed to load graph: {}",
+    "connectToReorder": "Connect feature output to another feature input to reorder the pipeline.",
+    "featureDeleted": "Deleted pipeline feature",
+    "passLinkUpdated": "Updated pass input link",
+    "validationFailed": "Validation failed: {}",
+    "runtimeApplyUnavailable": "Runtime apply failed: render/asset service unavailable.",
+    "appliedInMemory": "Applied in memory",
+    "appliedInMemoryDetail": "Applied render graph in memory: {}",
+    "builtinReadOnly": "Builtin graphs are read-only; use Export.",
+    "saved": "Saved",
+    "savedDetail": "Saved render graph: {}"
+  }
+},
+"sceneView": {
+  "tool": {
+    "select": "Select (Q)",
+    "move": "Move (W)",
+    "rotate": "Rotate (E)",
+    "scale": "Scale (R)",
+    "rect": "Rect Tool (T)",
+    "transform": "Transform Tool (Y)"
+  },
+  "coord": {
+    "local": "Local",
+    "localTooltip": "Local coordinate space",
+    "global": "Global",
+    "globalTooltip": "Global coordinate space"
+  },
+  "toolbar": {
+    "grid": "Grid",
+    "uiSnap": "UI Snap",
+    "viewModeTooltip": "3D / 2D UI"
+  },
+  "gizmos": {
+    "popupTitle": "Editor Gizmos",
+    "tooltip": "Editor gizmos (icons, bounds, colliders, lights)",
+    "header": "Editor Gizmos",
+    "icons": "Icons",
+    "iconSize": "Icon Size",
+    "selectionBounds": "Selection Bounds",
+    "colliders": "Colliders",
+    "lightCameraGizmos": "Light & Camera Gizmos",
+    "showAll": "Show All",
+    "hideAll": "Hide All"
+  },
+  "clearColor": {
+    "applyTooltip": "Apply UI Clear Color",
+    "popupTitle": "Custom UI Clear Color",
+    "customTooltip": "Custom UI Clear Color",
+    "label": "Clear Color"
+  },
+  "gameView": {
+    "title": "Game View",
+    "preparingPreview": "Preparing preview",
+    "noPrimaryCamera": "No primary camera"
+  },
+  "overlay": {
+    "canvas": "Canvas"
+  },
+  "history": {
+    "moveUiRect": "Move UI Rect",
+    "rotateUiRect": "Rotate UI Rect",
+    "resizeUiRect": "Resize UI Rect",
+    "scaleUiRect": "Scale UI Rect",
+    "transformEntity": "Transform Entity"
+  }
+},
+"materialGraph": {
+  "toolbar": {
+    "graph": "Graph",
+    "new": "New",
+    "compile": "Compile",
+    "autoLayout": "Auto Layout",
+    "liveApply": "Live Apply"
+  },
+  "nodeMenu": {
+    "editNote": "Edit Note...",
+    "clearNote": "Clear Note",
+    "note": "Note"
+  },
+  "blackboard": {
+    "defaultValue": "Default",
+    "defaultUri": "Default URI"
+  },
+  "inspector": {
+    "blackboard": "Blackboard",
+    "addParameter": "Add Parameter",
+    "noExposedParameters": "No exposed parameters.",
+    "displayName": "Display Name",
+    "uiRange": "UI Range",
+    "min": "Min",
+    "max": "Max",
+    "diagnostics": "Diagnostics",
+    "noDiagnostics": "No diagnostics."
+  },
+  "preview": {
+    "mesh": "Preview Mesh",
+    "skybox": "Skybox",
+    "time": "Time",
+    "usingSelectedMesh": "Preview: selected mesh using slot 0 override",
+    "usingSphere": "Preview: sphere using slot 0 override",
+    "controlsHint": "Left drag: rotate preview  Wheel: zoom  F: frame"
+  },
+  "addNode": {
+    "searchHint": "Search nodes",
+    "noMatchingNodes": "No matching nodes."
+  },
+  "category": {
+    "inputs": "Inputs",
+    "parameters": "Parameters",
+    "math": "Math",
+    "logic": "Logic",
+    "texture": "Texture",
+    "shading": "Shading",
+    "output": "Output",
+    "other": "Other"
+  },
+  "subcategory": {
+    "vertexAttributes": "Vertex Attributes",
+    "textures": "Textures"
+  },
+  "status": {
+    "loadedCustomNodes": "Loaded {} custom node(s)",
+    "loadedCustomNodesSkipped": "Loaded {} custom node(s), skipped {}",
+    "reloaded": "Reloaded",
+    "alreadyOpen": "Already open",
+    "alreadyOpenMessage": "Material graph already open: {}",
+    "openedMessage": "Opened material graph: {}",
+    "openFailedMessage": "Open material graph failed: {}",
+    "loadFailed": "Load failed",
+    "loaded": "Loaded",
+    "saveFailed": "Save failed",
+    "saved": "Saved",
+    "compileFailed": "Compile failed",
+    "writeShaderFailed": "Failed to write generated shader",
+    "compiled": "Compiled: {}",
+    "autoLayoutApplied": "Auto layout applied",
+    "livePreviewUpdated": "Live preview updated",
+    "edited": "Edited",
+    "previewMeshChanged": "Preview mesh changed",
+    "previewMeshReset": "Preview mesh reset to sphere",
+    "previewSkyboxChanged": "Preview skybox changed",
+    "previewSkyboxCleared": "Preview skybox cleared"
+  }
+},
+"animatorGraph": {
+  "toolbar": {
+    "new": "New",
+    "addState": "Add State"
+  },
+  "status": {
+    "opened": "Opened animator graph: {}",
+    "new": "New animator graph: {}",
+    "loaded": "Loaded",
+    "saved": "Saved",
+    "saveFailed": "Save failed",
+    "saveFailedBadUri": "Save failed: bad uri"
+  },
+  "paramType": {
+    "bool": "Bool",
+    "trigger": "Trigger",
+    "float": "Float"
+  },
+  "condType": {
+    "greater": "> greater",
+    "less": "< less",
+    "equal": "== equal",
+    "notEqual": "!= notEqual",
+    "isTrue": "is true",
+    "isFalse": "is false",
+    "triggerSet": "trigger set"
+  },
+  "node": {
+    "anyState": "Any State",
+    "anyOut": "any ->",
+    "in": "-> in",
+    "out": "out ->",
+    "clip": "clip {}",
+    "speed": "speed {:.2f}{}",
+    "loopSuffix": "  loop"
+  },
+  "menu": {
+    "setAsEntry": "Set as Entry",
+    "addTransitionFromHere": "Add Transition From Here",
+    "deleteState": "Delete State",
+    "deleteTransition": "Delete Transition"
+  },
+  "section": {
+    "graph": "Graph",
+    "parameters": "Parameters",
+    "state": "State",
+    "transition": "Transition"
+  },
+  "field": {
+    "entry": "Entry",
+    "clip": "Clip",
+    "speed": "Speed",
+    "loop": "Loop",
+    "noAnimationAssets": "(no animation assets imported)"
+  },
+  "param": {
+    "add": "Add Parameter",
+    "triggerHint": "(trigger)"
+  },
+  "transition": {
+    "route": "{}  ->  {}",
+    "duration": "Duration",
+    "durationFormat": "%.2f s",
+    "hasExitTime": "Has Exit Time",
+    "exitTime": "Exit Time",
+    "conditionsHint": "Conditions (all must pass)",
+    "paramPlaceholder": "(param)",
+    "addCondition": "Add Condition"
+  }
+},
+"codeEditor": {
+  "status": {
+    "openFailed": "Failed to open file.",
+    "opened": "Opened source: {}",
+    "saveFailed": "Failed to save file.",
+    "saved": "Saved source: {}",
+    "pipelineReloaded": "Saved and reloaded render pipeline.",
+    "shaderReloaded": "Saved and reloaded shader library.",
+    "reimported": "Reimported source asset.",
+    "noImportTarget": "No import target was refreshed for this file."
+  },
+  "diagnostics": {
+    "title": "Diagnostics",
+    "none": "No diagnostics.",
+    "lineLabel": "Line {}: {}"
+  },
+  "toolbar": {
+    "reload": "Reload",
+    "reimport": "Reimport"
+  },
+  "hint": {
+    "openFromContentBrowser": "Open a script or shader from the Content Browser.",
+    "noSourceSelected": "No source file selected."
+  }
+},
+
+"aiChat": {
+  "thinking": "Thinking",
+  "you": "You",
+  "restart": "Restart",
+  "newChat": { "tooltip": "New chat (clear history)" },
+  "stop": { "tooltip": "Stop" },
+  "send": { "tooltip": "Send (Enter)" },
+  "composer": { "hint": "Enter to send · Ctrl+Enter for newline" },
+  "banner": { "agentDisabled": "Agent features are disabled. Enable the agent in Editor Settings to chat." },
+  "status": {
+    "launchFailed": "Failed to launch 'claude'. Is the Claude CLI installed and on PATH?",
+    "launchFailedSuffix": " - is the Claude CLI installed and on PATH?"
+  },
+  "tool": {
+    "fallbackName": "tool",
+    "inputPrefix": "input: ",
+    "resultPrefix": "result: "
+  },
+  "permission": {
+    "tooltip": "Agent permission mode",
+    "header": "Permission mode",
+    "statusMessage": "AI permission mode: {}",
+    "ask": { "label": "Ask", "hint": "Ask before each edit or command." },
+    "acceptEdits": { "label": "Accept Edits", "hint": "Auto-accept file edits; still gates the rest." },
+    "plan": { "label": "Plan", "hint": "Plan only - no edits or commands are run." },
+    "bypass": { "label": "Bypass", "hint": "Run everything without prompting (use with care)." }
+  }
+},
+"projectSettings": {
+  "title": "Project Settings",
+  "searchHint": "Search settings...",
+  "noneParen": "(none)",
+  "resetToDefaults": "Reset to Defaults",
+  "nav": {
+    "project": "Project",
+    "projectInfo": "Project Info",
+    "renderSettings": "Render Settings",
+    "buildScenes": "Build Scenes",
+    "packaging": "Packaging",
+    "plugins": "Plugins",
+    "engine": "Engine",
+    "general": "General",
+    "rendering": "Rendering",
+    "materials": "Materials",
+    "scripting": "Scripting"
+  },
+  "info": {
+    "header": "Project Info",
+    "projectName": "Project Name",
+    "assetRoot": "Asset Root",
+    "defaultScene": "Default Scene",
+    "noProjectLoaded": "No project loaded"
+  },
+  "render": {
+    "header": "Render Settings",
+    "editingRenderGraph": "Editing Render Graph",
+    "editorSelection": "Editor Selection",
+    "selectionOutline": "Selection Outline",
+    "outlineColor": "Outline Color",
+    "outlineThickness": "Outline Thickness",
+    "fillOpacity": "Fill Opacity",
+    "edgeOpacity": "Edge Opacity"
+  },
+  "buildScenes": {
+    "header": "Build Scenes",
+    "addDefault": "Add Default",
+    "addAll": "Add All",
+    "noScenesInfo": "No build scenes configured. Add scenes to control package roots and runtime scene indices.",
+    "alias": "Alias",
+    "scene": "Scene",
+    "order": "Order",
+    "exportInfo": "Enabled build scenes are exported as dependency roots in scene-index order."
+  },
+  "packaging": {
+    "header": "Packaging",
+    "packageName": "Package Name",
+    "packageManifest": "Package Manifest",
+    "info": "Runtime packages use a same-name executable and VPK."
+  },
+  "plugins": {
+    "header": "Plugins",
+    "info": "Plugins live in <asset-root>/plugins (e.g. resources/plugins) so they pack into the project VPK, and are off by default. Enable one to load it now and on the next launch. Native plugins are desktop-only.",
+    "noneFound": "No plugins found in {}",
+    "provides": "provides: {}",
+    "notSupported": "Not supported on this platform ({})."
+  },
+  "status": {
+    "changed": "Project settings changed.",
+    "reset": "Project settings reset.",
+    "saved": "Saved project settings.",
+    "saveFailed": "Project settings save failed: {}"
+  }
+},
+"editorSettings": {
+  "title": "Editor Settings",
+  "searchHint": "Search settings...",
+  "resetToDefaults": "Reset to Defaults",
+  "nav": {
+    "general": "General",
+    "appearance": "Appearance",
+    "fonts": "Fonts",
+    "externalEditor": "External Editor",
+    "aiAgent": "AI Agent",
+    "advanced": "Advanced",
+    "filesPaths": "Files & Paths",
+    "console": "Console",
+    "privacy": "Privacy"
+  },
+  "appearance": {
+    "header": "Appearance",
+    "colorTheme": "Color Theme",
+    "background": "Background",
+    "panel": "Panel",
+    "text": "Text",
+    "accent": "Accent",
+    "applicationScale": "Application Scale",
+    "textScale": "Text Scale",
+    "showSplash": "Show Splash Screen on Startup",
+    "enableAnimations": "Enable Animations"
+  },
+  "theme": {
+    "dark": "Dark",
+    "graphite": "Graphite",
+    "light": "Light",
+    "custom": "Custom"
+  },
+  "fonts": {
+    "header": "Fonts",
+    "interfaceFont": "Interface Font",
+    "interfaceFontSize": "Interface Font Size",
+    "monospaceFont": "Monospace Font",
+    "monospaceFontSize": "Monospace Font Size",
+    "useSystemFonts": "Use System Fonts"
+  },
+  "externalEditor": {
+    "header": "External Editor",
+    "executable": "Executable",
+    "info": "Used by source asset actions when an external editor command is available."
+  },
+  "aiAgent": {
+    "header": "AI Agent",
+    "enablePanel": "Enable Agent Panel",
+    "autoStartMcp": "Auto-start MCP Server",
+    "mcpServerName": "MCP Server Name",
+    "mcpHost": "MCP Host",
+    "mcpPort": "MCP Port",
+    "clientHeader": "Agent Client",
+    "endpoint": "Endpoint",
+    "model": "Model",
+    "cliPath": "CLI Path",
+    "cliInfo": "Path to the agent CLI (e.g. claude). Leave empty to resolve 'claude' on PATH.",
+    "guardrailsHeader": "Operation Guardrails",
+    "allowProjectOps": "Allow Project Operations",
+    "allowEngineOps": "Allow Engine Operations",
+    "requireConfirmation": "Require Confirmation Before Writes",
+    "guardrailsInfo": "This page only stores agent and MCP preferences. Runtime startup, chat, tool calls, and editor operations should live in a dedicated agent service."
+  },
+  "status": {
+    "languageChanged": "Language changed: {}",
+    "themeChanged": "Editor theme changed: {}",
+    "reset": "Editor settings reset.",
+    "saved": "Saved editor settings.",
+    "saveFailed": "Editor settings save failed: {}"
+  }
+},
+"exportSettings": {
+  "title": "Export Settings",
+  "platform": "Platform",
+  "architecture": "Architecture",
+  "buildConfiguration": "Build Configuration",
+  "exportTemplate": "Export Template",
+  "hostExportInfo": "Host platform export can use the current editor executable when empty.",
+  "crossExportInfo": "Cross-platform export requires a target runtime executable.",
+  "outputDirectory": "Output Directory",
+  "projectName": "Project Name",
+  "includeDebugSymbols": "Include Debug Symbols",
+  "compressContent": "Compress Content",
+  "useVpkFiles": "Use VPK Files",
+  "additionalArguments": "Additional Arguments",
+  "export": "Export",
+  "exportAndRun": "Export & Run",
+  "statusHeader": "Export Status",
+  "statusLine": "Status: {}",
+  "running": "Running",
+  "lastBuild": "Last Build: {}",
+  "config": {
+    "development": "Development",
+    "release": "Release"
+  },
+  "build": {
+    "header": "Build"
+  },
+  "block": {
+    "alreadyRunning": "Export is already running.",
+    "outputRequired": "Output directory is required.",
+    "noProject": "No project is loaded.",
+    "noDefaultScene": "No default scene is selected.",
+    "stopPlayMode": "Stop Play Mode before export.",
+    "missingTemplate": "Missing export template for {}.",
+    "templateMissing": "Export template does not exist."
+  },
+  "status": {
+    "failedNoProject": "Export failed: no project is loaded.",
+    "failedNoScene": "Export failed: no default scene is selected.",
+    "saveSceneFirst": "Export stopped: save the current scene first."
+  }
+},
+"editorApp": {
+  "about": {
+    "title": "About Vultra Editor",
+    "product": "Vultra Editor",
+    "version": "Version: {}",
+    "contributors": "Contributors: Lazy_V (Kexuan Zhang)",
+    "license": "License: MIT",
+    "github": "GitHub"
+  },
+  "openSceneConfirm": {
+    "title": "Open Scene",
+    "prompt": "Discard unsaved changes and open this scene?"
+  },
+  "importPopup": {
+    "title": "Import Assets"
+  },
+  "import": {
+    "preparing": "Preparing asset import...",
+    "importingAssets": "Importing assets",
+    "item": "Item",
+    "scanningAssets": "Scanning project assets...",
+    "scanningPath": "Scanning {}",
+    "importingAssetsProject": "Importing project assets...",
+    "importingPath": "Importing {}",
+    "finalizingDatabase": "Finalizing asset database...",
+    "importingChanged": "Importing changed assets...",
+    "error": {
+      "assetImportFailed": "asset import failed",
+      "saveRegistryFailed": "failed to save asset registry",
+      "importerUnavailable": "vasset importer is unavailable and no registry exists"
+    }
+  },
+  "loading": {
+    "preparingWorkspace": "Preparing editor workspace...",
+    "preparingProjectAssets": "Preparing project assets...",
+    "openingAssetDatabase": "Opening asset database...",
+    "preparingThumbnails": "Preparing asset thumbnails...",
+    "renderingThumbnails": "Rendering asset thumbnails...",
+    "preparingWindows": "Preparing editor windows...",
+    "loadingScene": "Loading scene {}...",
+    "loadingSceneAssets": "Loading scene assets...",
+    "openingEditor": "Opening editor...",
+    "ready": "Ready."
+  },
+  "overlay": {
+    "openingEditor": "OPENING EDITOR...",
+    "loadingAssets": "LOADING ASSETS...",
+    "preparing": "Preparing..."
+  },
+  "taskBar": {
+    "fps": "FPS {:.1f}",
+    "cpuCache": "CPU cache {}",
+    "ram": "RAM {}",
+    "ramWithAvail": "RAM {} / avail {}",
+    "vram": "VRAM {}",
+    "vramWithBudget": "VRAM {} / {}",
+    "job": "Task",
+    "working": "Working...",
+    "sceneLoad": "Scene Load",
+    "mcpListening": "MCP listening on {}",
+    "mcpNotRunning": "MCP not running (enable Auto-start MCP in Editor Settings)",
+    "mcpNotRunningError": "MCP not running: {}",
+    "agentDisabled": "Agent disabled"
+  },
+  "history": {
+    "sceneOpened": "Scene Opened",
+    "sceneLoaded": "Scene Loaded"
+  },
+  "status": {
+    "openScene": {
+      "servicesUnavailable": "Open scene failed: services unavailable.",
+      "stopPlayModeFirst": "Stop Play Mode before opening another scene.",
+      "sceneWorldUnavailable": "Open scene failed: scene/world service unavailable.",
+      "failed": "Open scene failed: {}",
+      "opened": "Opened scene: {}",
+      "cancelled": "Open scene cancelled."
+    },
+    "saveScene": {
+      "stopPlayModeFirst": "Stop Play Mode before saving the scene.",
+      "noScenePath": "No scene path is selected for saving.",
+      "sceneWorldUnavailable": "Scene save failed: scene/world service unavailable.",
+      "saved": "Saved scene: {}",
+      "failed": "Scene save failed: {}"
+    },
+    "playMode": {
+      "snapshotFailed": "Play mode snapshot failed: scene has no serializable root.",
+      "entered": "Entered Play Mode.",
+      "exited": "Exited Play Mode. Scene state restored."
+    },
+    "import": {
+      "failed": "Asset import failed: {}",
+      "imported": "Imported project assets: {}"
+    },
+    "projectImport": {
+      "failed": "Project asset import failed: {}"
+    },
+    "projectLoad": {
+      "assetServiceUnavailable": "Project load failed: asset service unavailable.",
+      "loadedAssets": "Loaded project assets: {}"
+    },
+    "scene": {
+      "loadDefaultFailed": "Failed to load default scene: {}",
+      "loadedDefault": "Loaded default scene: {}"
+    }
+  }
+},
+"editorBuild": {
+  "error": {
+    "missingAssetRoot": "Export failed: missing asset root {}",
+    "exportFailedDetail": "Export failed: {}",
+    "assetImportReturned": "Export failed: asset import step returned {}.",
+    "assetPackReturned": "Export failed: asset package step returned {}.",
+    "vassetUnavailable": "Export failed: vasset import support is not available in this build.",
+    "cannotCreateOutputFolder": "Export failed: cannot create output folder {}",
+    "publishedRuntimeLaunchReturned": "Export failed: published runtime launch returned {}.",
+    "targetMustMatchHost": "Export & Run requires the target platform to match the host platform.",
+    "templateRequired": "Export failed: target platform requires an export template executable.",
+    "templateNotFound": "Export failed: export template executable was not found.",
+    "runtimeLaunchReturned": "Export succeeded, but runtime launch returned {}.",
+    "webTemplateNotFound": "web export template not found: {}",
+    "webTemplateExtractFailed": "failed to extract web template archive {}",
+    "webTemplateNotDirOrZip": "web export template is neither a directory nor a .zip: {}",
+    "copyTemplateFileFailed": "failed to copy template file {}: {}",
+    "webTemplateNoIndexHtml": "Export failed: web template did not provide index.html (template: {}).",
+    "androidNotImplemented": "Android export is not implemented yet (planned).",
+    "createOutputFolderFailed": "failed to create output folder: {}",
+    "copyRuntimeFailed": "failed to copy runtime executable: {}"
+  },
+  "progress": {
+    "writingManifest": "Writing package manifest...",
+    "reimportingPacking": "Reimporting assets and packing VPK...",
+    "copyingRuntime": "Copying runtime executable...",
+    "launchingPublishedRuntime": "Launching published runtime...",
+    "runtimeLaunched": "Runtime launched.",
+    "exportComplete": "Export complete.",
+    "copyingTemplate": "Copying export template...",
+    "launchingRuntime": "Launching runtime...",
+    "exportCompleteRuntimeLaunched": "Export complete. Runtime launched.",
+    "copyingWebTemplate": "Copying web export template...",
+    "startingWebServer": "Starting local web server...",
+    "runtimeLaunchedInBrowser": "Runtime launched in browser.",
+    "preparing": "Preparing...",
+    "savingScenePreparing": "Saving scene and preparing package..."
+  },
+  "status": {
+    "packedVpk": "Packed VPK: {}",
+    "runningPackage": "Running package: {}",
+    "exportComplete": "Export complete: {}",
+    "exportCompleteRunningPackage": "Export complete. Running package: {}",
+    "exportCompleteServeOverHttp": "Export complete: {} (serve over http to run).",
+    "exportCompleteServerMessage": "Export complete. {}",
+    "exportCompleteWithServerMessage": "Export complete: {}. {}",
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "thisSession": "This session",
+    "alreadyRunning": "Export & Run is already running.",
+    "noProjectLoaded": "Export & Run failed: no project is loaded.",
+    "noDefaultScene": "Export & Run failed: no default scene is selected.",
+    "stopPlayModeFirst": "Stop Play Mode before Export & Run.",
+    "saveSceneFirst": "Export & Run stopped: save the current scene first.",
+    "chooseOutputFolder": "Export & Run: choose output folder.",
+    "exportRunStartedPackaging": "Export & Run started: packaging runtime...",
+    "exportStartedPackaging": "Export started: packaging runtime..."
+  },
+  "web": {
+    "noPythonServer": "Serve the output folder over http(s) and open index.html (fetch is blocked on file://). No Python found to auto-launch a server.",
+    "servingAt": "Serving at {}"
+  },
+  "popup": {
+    "exportAndRun": "Export & Run",
+    "exportAndRunOutput": "Export & Run Output"
+  },
+  "label": {
+    "exportAndRun": "Export & Run",
+    "outputFolder": "Output Folder"
+  },
+  "hint": {
+    "reimportCanTakeAWhile": "This can take a while when assets are reimported."
+  }
+},
+"launcher": {
+  "projectLauncher": "Project Launcher",
+  "subtitle": "Choose a workspace or create a new one.",
+  "searchHint": "Search projects...",
+  "recentProjects": "Recent Projects",
+  "workspace": "Workspace",
+  "addExisting": "Add Existing",
+  "importProject": "Import Project",
+  "window": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore"
+  },
+  "nav": {
+    "projects": "Projects",
+    "newProject": "New Project",
+    "openExisting": "Open Existing"
+  },
+  "empty": {
+    "title": "No projects found",
+    "hint": "Create a project or add an existing workspace."
+  },
+  "createDialog": {
+    "title": "Create Vultra Project",
+    "hint": "Choose an empty folder. The folder name becomes the project name.",
+    "projectFolder": "Project Folder",
+    "template": "Template",
+    "templateEmpty": "Empty",
+    "templateMinimal": "Minimal"
+  },
+  "existingDialog": {
+    "title": "Add Existing Vultra Project",
+    "heading": "Existing Project",
+    "hint": "Select a project root containing a .vproject file.",
+    "projectRoot": "Project Root"
+  },
+  "status": {
+    "addedProject": "Added project: {}",
+    "folderEmpty": "Project folder is empty.",
+    "folderMissing": "Project folder does not exist: {}",
+    "pathNotFolder": "Project path is not a folder: {}",
+    "inspectFailed": "Failed to inspect project folder: {}",
+    "folderNotEmpty": "Project folder must be empty: {}",
+    "invalidName": "Project folder name is not a valid project name.",
+    "fileExists": "Project file already exists: {}",
+    "createFailed": "Failed to create project: {}",
+    "writeVprojectFailed": "Failed to write .vproject: {}",
+    "writeAssetsFailed": "Failed to write default project assets: {}",
+    "createdProject": "Created project: {}",
+    "noVproject": "No .vproject found at: {}",
+    "addedExisting": "Added existing project: {}",
+    "removedProject": "Removed project from launcher: {}",
+    "openFailed": "Failed to open project.vproject.",
+    "openedProject": "Opened project: {}"
+  },
+  "io": {
+    "createDirFailed": "failed to create directory '{}': {}",
+    "openForWriteFailed": "failed to open '{}' for writing",
+    "writeFailed": "failed to write '{}'"
+  }
+},
+"textureSelector": {
+  "none": "<none>",
+  "filterHint": "Filter textures...",
+  "size": "Size",
+  "emptyState": "No texture assets found.",
+  "clear": "Clear",
+  "importFailed": "Texture is not imported or failed to import: {}"
+},
+"fileDialog": {
+  "browse": "Browse"
+},
+"meshSelector": {
+  "filterHint": "Filter meshes...",
+  "size": "Size",
+  "empty": "No imported mesh assets found.",
+  "clear": "Clear",
+  "field": {
+    "none": "<none>"
+  }
+},
+
+  "@meta": { "name": "English" },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "apply": "Apply",
+    "ok": "OK",
+    "yes": "Yes",
+    "no": "No",
+    "delete": "Delete",
+    "rename": "Rename",
+    "create": "Create",
+    "open": "Open",
+    "add": "Add",
+    "remove": "Remove",
+    "reset": "Reset",
+    "edit": "Edit",
+    "copy": "Copy",
+    "paste": "Paste",
+    "duplicate": "Duplicate",
+    "import": "Import",
+    "export": "Export",
+    "search": "Search",
+    "name": "Name",
+    "type": "Type",
+    "value": "Value",
+    "none": "None",
+    "default": "Default",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "position": "Position",
+    "rotation": "Rotation",
+    "scale": "Scale"
+  },
+  "topbar": {
+    "title": "VultraEngine Editor"
+  },
+  "menu": {
+    "file": {
+      "title": "File",
+      "newScene": "New Blank Scene",
+      "saveScene": "Save Scene",
+      "exportRun": "Export & Run",
+      "exportSettings": "Export Settings",
+      "backToLauncher": "Back to Launcher"
+    },
+    "edit": {
+      "title": "Edit",
+      "projectSettings": "Project Settings",
+      "editorSettings": "Editor Settings",
+      "resetLayout": "Reset Layout"
+    },
+    "window": {
+      "title": "Window",
+      "resetLayout": "Reset Layout"
+    },
+    "tools": {
+      "title": "Tools",
+      "import": "Import",
+      "saveAll": "Save All",
+      "profiler": "Profiler Window",
+      "frameDebugger": "Frame Debugger",
+      "runtimeFrameGraph": "Runtime Frame Graph Viewer",
+      "worldViewer": "World Viewer"
+    },
+    "help": {
+      "title": "Help",
+      "about": "About Vultra Editor"
+    },
+    "renderdoc": {
+      "title": "RenderDoc",
+      "capture": "Capture Next Frame",
+      "available": "Available",
+      "unavailable": "Unavailable",
+      "capturing": "Capturing",
+      "idle": "Idle",
+      "captures": "Captures: {}"
+    }
+  },
+  "playback": {
+    "resume": "Resume",
+    "play": "Play",
+    "pause": "Pause",
+    "stop": "Stop",
+    "stepFrame": "Step Frame",
+    "options": "Playback options",
+    "resetState": "Reset Play State"
+  },
+  "toolbar": {
+    "contentDrawer": "Content drawer",
+    "editorTools": "Editor tools",
+    "graphTools": "Graph tools",
+    "noProject": "No Project",
+    "noProjectLoaded": "No project loaded",
+    "backToLauncher": "Back to Launcher",
+    "exportRun": "Export & Run",
+    "exportRunTooltip": "Export package and run",
+    "platforms": "Platforms",
+    "targetPlatform": "Target platform",
+    "settings": "Settings"
+  },
+  "window": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close",
+    "aiChat": "AI Chat",
+    "animatorGraph": "Animator Graph",
+    "codeEditor": "Code Editor",
+    "console": "Console",
+    "contentBrowser": "Content Browser",
+    "frameDebugger": "Frame Debugger",
+    "gameView": "Game View",
+    "history": "History",
+    "inspector": "Inspector",
+    "profiler": "Profiler",
+    "renderGraph": "Render Graph",
+    "sceneHierarchy": "Scene Hierarchy",
+    "sceneView": "Scene View",
+    "worldViewer": "World Viewer",
+    "materialGraph": "Material Graph"
+  },
+  "history": {
+    "unavailable": "History is unavailable.",
+    "undo": "Undo (Ctrl+Z)",
+    "redo": "Redo (Ctrl+Shift+Z)",
+    "empty": "No scene history yet."
+  },
+  "console": {
+    "clear": "Clear",
+    "autoScroll": "Auto-scroll",
+    "level": {
+      "trace": "Trace",
+      "info": "Info",
+      "warn": "Warn",
+      "error": "Error",
+      "critical": "Critical",
+      "unknown": "Unknown"
+    },
+    "column": {
+      "type": "Type",
+      "message": "Message"
+    }
+  },
+  "worldViewer": {
+    "liveWorlds": "Live worlds: {}",
+    "entities": "Entities: {}",
+    "estCpu": "Est. CPU: {}",
+    "expandPools": "Expand component pools",
+    "hint": "Worlds beyond the active one usually indicate previews or unreleased staging worlds.",
+    "header": "{}  #{}{}  -  {} entities, {} pools, {}",
+    "active": " (active)",
+    "noComponents": "  (no components)",
+    "column": {
+      "component": "Component",
+      "count": "Count",
+      "estCpu": "Est. CPU"
+    }
+  },
+  "gameView": {
+    "noCamera": {
+      "title": "No Primary Camera",
+      "message": "Create or mark a CameraComponent as primary to preview the game."
+    },
+    "createCamera": "Create Camera",
+    "cameraCreated": "Created a primary Camera entity.",
+    "xrDisabled": {
+      "title": "XR Disabled",
+      "message": "OpenXR could not initialize. Check that a runtime/headset is available, or launch with --no-xr to disable XR."
+    },
+    "requestXr": "Request XR Session",
+    "xrWaiting": {
+      "title": "Waiting For XR Mirror",
+      "message": "The headset view will appear here after the XR runtime produces mirror textures."
+    },
+    "metrics": {
+      "title": "Metrics",
+      "fps": "FPS        {:.1f}",
+      "frame": "Frame      {:.2f} ms",
+      "cpuFrame": "CPU frame  {:.2f} ms",
+      "gpuFrame": "GPU frame  {:.2f} ms",
+      "draws": "Draws      {}",
+      "dispatch": "Dispatch   {}",
+      "vramLocal": "VRAM local {}",
+      "warmingUp": "Profiler warming up...",
+      "ramUsed": "RAM used   {}",
+      "ramAvail": "RAM avail  {}",
+      "ramTotal": "RAM total  {}",
+      "splats": "Splats     {} / {}"
+    },
+    "zoom": "Zoom",
+    "res": "Res: {}x{}",
+    "gamma": "Gamma",
+    "freeAspect": "Free Aspect"
+  },
+  "contentBrowser": {
+    "noRoot": { "title": "No Asset Root", "message": "Open or create a project to browse source assets." },
+    "missingRoot": "Missing asset root:\n{}",
+    "filterHint": "Filter source assets...",
+    "iconSize": "Icon Size:",
+    "missingDir": { "title": "Missing Directory", "message": "The selected folder no longer exists." },
+    "importFile": "Import File",
+    "importFolder": "Import Folder",
+    "importPackage": "Import Package",
+    "createFolder": "Create Folder",
+    "exportPackage": "Export Package",
+    "importVultraPackage": "Import Vultra Package",
+    "exportVultraPackage": "Export Vultra Package",
+    "folder": "Folder",
+    "source": "Source",
+    "reimportQueued": "Queued source asset reimport.",
+    "importingModel": "Importing model before showing sub assets...",
+    "invalidSubAssetUuid": "Invalid sub asset uuid.",
+    "importingAsset": "Importing asset before drag...",
+    "notImported": "Asset is not imported yet.",
+    "importFailed": "Import failed: {}",
+    "copiedQueued": "Copied asset. Import queued.",
+    "packageImportFailed": "Package import failed: {}",
+    "packageImported": "Imported package: {} file(s), skipped {} unchanged.",
+    "packageExportFailed": "Package export failed: {}",
+    "packageValidationFailed": "Package validation failed: {}",
+    "packageExported": "Exported package: {} ({} file(s)).",
+    "renamed": "Renamed asset.",
+    "renameFailed": "Rename failed: {}",
+    "folderCreated": "Created folder.",
+    "createFolderFailed": "Create folder failed: {}",
+    "deleted": "Deleted asset.",
+    "deleteFailed": "Delete failed: {}",
+    "column": { "path": "Path" },
+    "context": { "inspect": "Inspect", "editSource": "Edit Source", "reimport": "Reimport" },
+    "subAsset": {
+      "mesh": "Sub Mesh",
+      "texture": "Sub Texture",
+      "skeleton": "Sub Skeleton",
+      "animation": "Sub Animation",
+      "asset": "Sub Asset"
+    },
+    "open": {
+      "materialOutside": "Open material graph failed: graph is outside the asset root.",
+      "material": "Opening material graph: {}",
+      "renderOutside": "Open render graph failed: graph is outside the asset root.",
+      "render": "Opening render graph: {}",
+      "animatorOutside": "Open animator graph failed: graph is outside the asset root.",
+      "animator": "Opening animator graph: {}",
+      "code": "Opened in Code Editor: {}",
+      "sceneOutside": "Open scene failed: scene is outside the asset root.",
+      "scene": "Opening scene: {}"
+    },
+    "renameAsset": { "title": "Rename Asset" },
+    "createFolderDialog": { "title": "Create Folder" },
+    "deleteAsset": { "title": "Delete Asset", "confirm": "Delete this source asset?" },
+    "createAsset": {
+      "title": "Create Asset",
+      "unknownType": "Create asset failed: unknown asset type.",
+      "enterName": "Create asset failed: enter a file name.",
+      "outsideRoot": "Create asset failed: target is outside the asset root.",
+      "exists": "Create asset failed: file already exists.",
+      "error": "Create asset failed: {}",
+      "cannotOpen": "Create asset failed: cannot open file.",
+      "cannotWrite": "Create asset failed: cannot write file.",
+      "created": "Created {}.",
+      "createdNoImport": "Created {}, but asset registry import did not run.",
+      "computeShader": "Compute Shader",
+      "raygenShader": "Raygen Shader",
+      "fragmentShader": "Fragment Shader",
+      "none": "<none>"
+    }
+  },
+  "frameDebugger": {
+    "column": {
+      "kind": "Kind", "label": "Label", "id": "Id", "state": "State", "refs": "Refs",
+      "from": "From", "to": "To", "resource": "Resource"
+    },
+    "import": "import",
+    "runtime": "runtime",
+    "state": { "inactive": "inactive", "side": "side", "active": "active" },
+    "passes": "Passes",
+    "noPassSelected": "No pass selected.",
+    "inputs": "Inputs",
+    "outputs": "Outputs",
+    "captureFrame": "Capture Frame",
+    "captureRequested": "RenderDoc capture requested.",
+    "openRenderDoc": "Open RenderDoc",
+    "captures": "captures={}{}",
+    "capturingSuffix": ", capturing",
+    "frozenFrame": "Frozen Frame",
+    "live": "Live",
+    "freezeFrame": "Freeze Frame",
+    "noGraph": "No frame graph has been compiled yet.",
+    "notParseable": "Frame graph snapshot is not parseable.",
+    "frameGraph": "Frame Graph",
+    "counts": "passes={} resources={} edges={}",
+    "filter": "Filter",
+    "filterHint": "pass/resource/edge",
+    "tab": { "passIo": "Pass IO", "textures": "Textures", "nodes": "Nodes", "edges": "Edges", "raw": "Raw" },
+    "frameGraphTextures": "Frame Graph Textures",
+    "noTextures": "No captured frame graph textures yet.",
+    "leftEye": "Left Eye",
+    "rightEye": "Right Eye",
+    "arrayLayer": "Array Layer",
+    "layer": "{}  layer {} / {}",
+    "importedTexture": "Imported frame graph texture",
+    "previewUnavailableSample": "Preview unavailable: texture is not sampleable by the debug preview pass.",
+    "mode": {
+      "label": "Mode", "color": "Color", "rawDepth": "Raw Depth", "linearDepth": "Linear Depth",
+      "invertedLinearDepth": "Inverted Linear Depth", "alpha": "Alpha", "normal": "Normal"
+    },
+    "cameraZ": "Camera z: {:.4f} - {:.1f}",
+    "autoFitClamp": "Auto fit clamp from preview",
+    "resetClamp": "Reset clamp to 0..1",
+    "clampMin": "Clamp Min",
+    "clampMax": "Clamp Max",
+    "gamma": "Gamma",
+    "noChannels": "No channels selected; preview renders black.",
+    "previewUnavailable": "Texture preview unavailable.",
+    "previewNextFrame": "Texture preview will update next frame.",
+    "previewUnavailableResource": "Texture preview is unavailable for this resource.",
+    "fitToView": "Fit to view",
+    "nativeResolution": "View at native resolution"
+  },
+  "profiler": {
+    "noSamples": "No frame samples.",
+    "unavailable": "Render profiler is unavailable.",
+    "warmingUp": "Profiler warming up...",
+    "backendUnavailable": "Render backend is unavailable.",
+    "capture": "Capture",
+    "pause": "Pause",
+    "autoEnable": "Auto-enable",
+    "frameTimes": "Frame Times",
+    "axisFrame": "Frame",
+    "trackedResources": "Tracked resources: {}",
+    "texturesBytes": "Textures {}",
+    "buffersBytes": "Buffers {}",
+    "vramBudget": "VRAM budget {} / {}",
+    "available": "Available {}",
+    "vramExhaustion": "VRAM budget is close to exhaustion.",
+    "vramHeap": "VRAM heap {}",
+    "vramUnavailable": "Runtime VRAM budget is unavailable on this backend/device.",
+    "ramUnavailable": "Runtime RAM usage is unavailable on this platform.",
+    "processRam": "Process RAM {}",
+    "systemRam": "System RAM {} / {}",
+    "systemRamExhaustion": "System RAM is close to exhaustion.",
+    "cpuFrame": "CPU frame {:.2f} ms",
+    "cpuRender": "CPU render {:.2f} ms",
+    "gpu": "GPU {:.2f} ms",
+    "gpuNa": "GPU n/a",
+    "vsyncOn": "VSync on",
+    "vsyncOff": "VSync off",
+    "draws": "Draws {}",
+    "dispatch": "Dispatch {}",
+    "updates": "Updates {}",
+    "gpuMem": "GPU mem {}",
+    "ram": "RAM {}",
+    "ramNa": "RAM n/a",
+    "ramAvail": "RAM avail {}",
+    "ramAvailNa": "RAM avail n/a",
+    "ramTotal": "RAM total {}",
+    "ramTotalNa": "RAM total n/a",
+    "cpuCache": "CPU cache {}",
+    "resType": { "buffer": "Buffer", "texture": "Texture", "resource": "Resource" },
+    "resKind": { "gpuLocal": "GPU local", "hostVisible": "Host visible", "memory": "Memory" },
+    "column": {
+      "size": "Size", "kind": "Kind", "details": "Details",
+      "scope": "Scope", "totalMs": "Total ms", "selfMs": "Self ms", "calls": "Calls"
+    },
+    "tab": { "plots": "Plots", "cpu": "CPU", "gpu": "GPU", "memory": "Memory" }
+  },
+  "scene": {
+    "createEntity": "Create entity",
+    "searchHint": "Search entities...",
+    "servicesUnavailable": "Services are not available.",
+    "worldServiceUnavailable": "World service is not available.",
+    "entityLocked": "Entity is locked.",
+    "cmdUnavailable": "editor command executor is unavailable",
+    "cmdFailed": "editor command failed",
+    "toggleVisibility": "Toggle visibility",
+    "toggleLock": "Toggle lock",
+    "column": {
+      "entity": "Entity",
+      "status": "Status"
+    },
+    "empty": {
+      "title": "No Entities",
+      "message": "Right-click or use Create Empty to add one."
+    },
+    "context": {
+      "createChild": "Create Child"
+    },
+    "rename": {
+      "title": "Rename Entity"
+    },
+    "instantiate": {
+      "title": "Instantiate Sub Mesh Asset",
+      "keepChannels": "Keep imported transform channels:",
+      "instantiate": "Instantiate"
+    },
+    "create": {
+      "empty": "Empty Entity",
+      "basicGeometry": "Basic Geometry",
+      "quad": "Quad",
+      "cube": "Cube",
+      "sphere": "Sphere",
+      "capsule": "Capsule",
+      "light": "Light",
+      "directionalLight": "Directional Light",
+      "pointLight": "Point Light",
+      "spotLight": "Spot Light",
+      "areaLight": "Area Light",
+      "rendering": "Rendering",
+      "particleEmitter": "Particle Emitter",
+      "camera": "Camera",
+      "xrCamera": "XR Camera",
+      "environment": "Environment",
+      "ui": "UI",
+      "canvas": "Canvas",
+      "panel": "Panel",
+      "text": "Text",
+      "image": "Image",
+      "button": "Button",
+      "toggle": "Toggle",
+      "slider": "Slider",
+      "progressBar": "Progress Bar",
+      "physics": "Physics",
+      "staticBox": "Static Box",
+      "dynamicSphere": "Dynamic Sphere",
+      "capsuleRigidBody": "Capsule Rigid Body"
+    }
+  },
+  "settings": {
+    "language": "Language"
+  }
+}

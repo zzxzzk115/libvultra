@@ -2,6 +2,9 @@
 
 #include "editor_app/agent/claude_cli_backend.hpp"
 
+#include <vultra/core/i18n/i18n.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
+
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 
@@ -168,7 +171,10 @@ namespace vultra_app
                 const ImVec2 p = ImGui::GetCursorScreenPos();
                 if (piece.code)
                     ImGui::GetWindowDrawList()->AddRectFilled(
-                        ImVec2(p.x - 2.0f, p.y), ImVec2(p.x + ww + 2.0f, p.y + lineH), IM_COL32(46, 52, 64, 210), 3.0f);
+                        ImVec2(p.x - vultra::ui::dp(2.0f), p.y),
+                    ImVec2(p.x + ww + vultra::ui::dp(2.0f), p.y + lineH),
+                    IM_COL32(46, 52, 64, 210),
+                    vultra::ui::dp(3.0f));
                 ImGui::PushStyleColor(ImGuiCol_Text,
                                       piece.code ? kInlineCodeColor
                                                  : (piece.bold ? ImVec4(1.0f, 1.0f, 1.0f, 1.0f) : baseColor));
@@ -205,7 +211,7 @@ namespace vultra_app
                     renderInline(trimmed.substr(2), kHeadingColor);
                 else if (trimmed.rfind("- ", 0) == 0 || trimmed.rfind("* ", 0) == 0)
                 {
-                    const float ind = static_cast<float>(indent == std::string::npos ? 0 : indent / 2) * 14.0f + 4.0f;
+                    const float ind = static_cast<float>(indent == std::string::npos ? 0 : indent / 2) * vultra::ui::dp(14.0f) + vultra::ui::dp(4.0f);
                     ImGui::Indent(ind);
                     renderInline("\xe2\x80\xa2  " + trimmed.substr(2), baseColor); // leading bullet glyph
                     ImGui::Unindent(ind);
@@ -274,16 +280,18 @@ namespace vultra_app
                 const ImVec2 p = ImGui::GetCursorScreenPos();
                 const float  h = ImGui::GetTextLineHeight();
                 ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImVec2(p.x, p.y + 1.0f), ImVec2(p.x + 2.0f, p.y + h), ImGui::GetColorU32(ImGuiCol_Text));
+                    ImVec2(p.x, p.y + vultra::ui::dp(1.0f)),
+                    ImVec2(p.x + vultra::ui::dp(2.0f), p.y + h),
+                    ImGui::GetColorU32(ImGuiCol_Text));
             }
-            ImGui::Dummy(ImVec2(3.0f, ImGui::GetTextLineHeight()));
+            ImGui::Dummy(ImVec2(vultra::ui::dp(3.0f), ImGui::GetTextLineHeight()));
         }
 
         // Animated "Thinking" label with cycling dots.
         std::string animatedThinking()
         {
             const auto dots = static_cast<std::size_t>(ImGui::GetTime() * 2.0) % 4;
-            return std::string("Thinking") + std::string(dots, '.');
+            return std::string(vultra::tr("aiChat.thinking")) + std::string(dots, '.');
         }
 
         // A small rotating arc spinner drawn at the cursor; advances Y like a one-line widget.
@@ -310,8 +318,8 @@ namespace vultra_app
         // Spinner + "Thinking..." on one baseline; the live "AI is working" indicator.
         void thinkingIndicator()
         {
-            spinner(7.0f, 2.5f, ImGui::GetColorU32(kSystemColor));
-            ImGui::SameLine(0.0f, 8.0f);
+            spinner(vultra::ui::dp(7.0f), vultra::ui::dp(2.5f), ImGui::GetColorU32(kSystemColor));
+            ImGui::SameLine(0.0f, vultra::ui::dp(8.0f));
             ImGui::AlignTextToFramePadding();
             ImGui::PushStyleColor(ImGuiCol_Text, kSystemColor);
             ImGui::TextUnformatted(animatedThinking().c_str());
@@ -321,16 +329,18 @@ namespace vultra_app
         // The Claude permission modes offered by the composer picker, in escalating-trust order.
         struct PermissionOption
         {
-            const char* mode;  // value passed to the CLI (--permission-mode)
-            const char* label; // short menu label
-            const char* icon;  // leading glyph
-            const char* hint;  // tooltip
+            const char* mode;     // value passed to the CLI (--permission-mode)
+            const char* labelKey; // i18n key for the short menu label
+            const char* icon;     // leading glyph
+            const char* hintKey;  // i18n key for the tooltip
         };
         constexpr PermissionOption kPermissionOptions[] = {
-            {"default", "Ask", ICON_MDI_SHIELD_CHECK, "Ask before each edit or command."},
-            {"acceptEdits", "Accept Edits", ICON_MDI_PENCIL_OUTLINE, "Auto-accept file edits; still gates the rest."},
-            {"plan", "Plan", ICON_MDI_MAP_OUTLINE, "Plan only - no edits or commands are run."},
-            {"bypassPermissions", "Bypass", ICON_MDI_FLASH_OUTLINE, "Run everything without prompting (use with care)."},
+            {"default", "aiChat.permission.ask.label", ICON_MDI_SHIELD_CHECK, "aiChat.permission.ask.hint"},
+            {"acceptEdits", "aiChat.permission.acceptEdits.label", ICON_MDI_PENCIL_OUTLINE,
+             "aiChat.permission.acceptEdits.hint"},
+            {"plan", "aiChat.permission.plan.label", ICON_MDI_MAP_OUTLINE, "aiChat.permission.plan.hint"},
+            {"bypassPermissions", "aiChat.permission.bypass.label", ICON_MDI_FLASH_OUTLINE,
+             "aiChat.permission.bypass.hint"},
         };
 
         const PermissionOption& permissionOptionFor(const std::string& mode)
@@ -343,7 +353,7 @@ namespace vultra_app
 
     } // namespace
 
-    AiChatWindow::AiChatWindow() : EditorWindow("AI Chat", ICON_MDI_ROBOT) {}
+    AiChatWindow::AiChatWindow() : EditorWindow("AI Chat", ICON_MDI_ROBOT, "window.aiChat") {}
 
     bool AiChatWindow::ensureBackend(EditorContext& ctx)
     {
@@ -406,8 +416,8 @@ namespace vultra_app
         {
             m_Backend.reset();
             m_Status       = Status::Error;
-            m_StatusDetail = error.empty() ? "Failed to launch 'claude'. Is the Claude CLI installed and on PATH?"
-                                           : error + " - is the Claude CLI installed and on PATH?";
+            m_StatusDetail = error.empty() ? vultra::tr("aiChat.status.launchFailed")
+                                           : error + vultra::tr("aiChat.status.launchFailedSuffix");
             return false;
         }
 
@@ -585,8 +595,7 @@ namespace vultra_app
         if (!ctx.state.editorSettings.enableAgent)
         {
             ImGui::PushStyleColor(ImGuiCol_Text, kSystemColor);
-            ImGui::TextWrapped("%s Agent features are disabled. Enable the agent in Editor Settings to chat.",
-                               ICON_MDI_INFORMATION_OUTLINE);
+            ImGui::TextWrapped("%s %s", ICON_MDI_INFORMATION_OUTLINE, vultra::tr("aiChat.banner.agentDisabled"));
             ImGui::PopStyleColor();
             ImGui::Separator();
             return;
@@ -598,7 +607,7 @@ namespace vultra_app
             ImGui::TextWrapped("%s %s", ICON_MDI_ALERT, m_StatusDetail.c_str());
             ImGui::PopStyleColor();
             ImGui::SameLine();
-            if (ImGui::SmallButton(ICON_MDI_RELOAD " Restart"))
+            if (ImGui::SmallButton((std::string {ICON_MDI_RELOAD " "} + vultra::tr("aiChat.restart")).c_str()))
             {
                 m_Status = Status::NotStarted;
                 m_StatusDetail.clear();
@@ -635,14 +644,14 @@ namespace vultra_app
                                             ImGuiTreeNodeFlags_SpanAvailWidth,
                                             "%s %s",
                                             icon,
-                                            tool.name.empty() ? "tool" : tool.name.c_str());
+                                            tool.name.empty() ? vultra::tr("aiChat.tool.fallbackName") : tool.name.c_str());
         ImGui::PopStyleColor();
         if (open)
         {
             if (!tool.input.is_null())
-                wrappedText("input: " + tool.input.dump(2), ImVec4(0.70f, 0.74f, 0.80f, 1.0f));
+                wrappedText(vultra::tr("aiChat.tool.inputPrefix") + tool.input.dump(2), ImVec4(0.70f, 0.74f, 0.80f, 1.0f));
             if (!tool.result.empty())
-                wrappedText("result: " + tool.result, ImVec4(0.70f, 0.80f, 0.74f, 1.0f));
+                wrappedText(vultra::tr("aiChat.tool.resultPrefix") + tool.result, ImVec4(0.70f, 0.80f, 0.74f, 1.0f));
             ImGui::TreePop();
         }
     }
@@ -662,15 +671,16 @@ namespace vultra_app
 
         // Avatar + name header, so every turn is unmistakably one speaker.
         ImGui::PushStyleColor(ImGuiCol_Text, accent);
-        ImGui::TextUnformatted(isUser ? ICON_MDI_ACCOUNT " You" : ICON_MDI_ROBOT " Claude");
+        ImGui::TextUnformatted(isUser ? (std::string {ICON_MDI_ACCOUNT " "} + vultra::tr("aiChat.you")).c_str()
+                                      : ICON_MDI_ROBOT " Claude");
         ImGui::PopStyleColor();
 
         // The turn's body sits in a rounded, tinted bubble so replies read as distinct cards
         // instead of a wall of text. Auto-resizes to its content height.
         ImGui::PushStyleColor(ImGuiCol_ChildBg,
                               isUser ? ImVec4(0.13f, 0.17f, 0.24f, 0.55f) : ImVec4(0.11f, 0.13f, 0.17f, 0.70f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 7.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(9.0f, 7.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, vultra::ui::dp(7.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(vultra::ui::dp(9.0f), vultra::ui::dp(7.0f)));
         const std::string childId = "##bubble" + std::to_string(index);
         if (ImGui::BeginChild(childId.c_str(), ImVec2(0.0f, 0.0f), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders))
         {
@@ -709,21 +719,21 @@ namespace vultra_app
     void AiChatWindow::drawPermissionPicker(EditorContext& ctx, const ImVec2& size)
     {
         const PermissionOption& current = permissionOptionFor(m_PermissionMode);
-        const std::string       label =
-            std::string(current.icon) + " " + current.label + " " ICON_MDI_MENU_DOWN "##aiPermPicker";
+        const std::string       label   = std::string(current.icon) + " " + vultra::tr(current.labelKey) + " " ICON_MDI_MENU_DOWN
+                                    "##aiPermPicker";
         if (ImGui::Button(label.c_str(), size))
             ImGui::OpenPopup("##aiPermPopup");
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Agent permission mode");
+            ImGui::SetTooltip("%s", vultra::tr("aiChat.permission.tooltip"));
 
         if (ImGui::BeginPopup("##aiPermPopup"))
         {
-            ImGui::TextDisabled("Permission mode");
+            ImGui::TextDisabled("%s", vultra::tr("aiChat.permission.header"));
             ImGui::Separator();
             for (const auto& option : kPermissionOptions)
             {
                 const bool        selected = m_PermissionMode == option.mode;
-                const std::string item     = std::string(option.icon) + "   " + option.label;
+                const std::string item     = std::string(option.icon) + "   " + vultra::tr(option.labelKey);
                 if (ImGui::MenuItem(item.c_str(), nullptr, selected) && !selected)
                 {
                     m_PermissionMode = option.mode;
@@ -731,10 +741,11 @@ namespace vultra_app
                     // the backend next starts (ensureBackend reads m_PermissionMode).
                     if (m_Backend)
                         m_Backend->setPermissionMode(m_PermissionMode);
-                    ctx.state.statusMessage = std::string("AI permission mode: ") + option.label;
+                    ctx.state.statusMessage =
+                        vultra::trf("aiChat.permission.statusMessage", vultra::tr(option.labelKey));
                 }
                 if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("%s", option.hint);
+                    ImGui::SetTooltip("%s", vultra::tr(option.hintKey));
             }
             ImGui::EndPopup();
         }
@@ -767,13 +778,13 @@ namespace vultra_app
         const ImGuiStyle& style = ImGui::GetStyle();
         const float       rowH  = ImGui::GetFrameHeight();
         const float       sendW = rowH;    // square icon button
-        const float       permW = 170.0f;  // fits "Accept Edits  v"
+        const float       permW = vultra::ui::dp(170.0f);  // fits "Accept Edits  v"
         const bool        busy  = m_TurnActive && m_Backend;
 
         if (ImGui::Button(ICON_MDI_BROOM "##aiNewChat", ImVec2(rowH, rowH)))
             clearConversation();
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("New chat (clear history)");
+            ImGui::SetTooltip("%s", vultra::tr("aiChat.newChat.tooltip"));
 
         // Right-align the permission picker + send/stop cluster.
         const float clusterW = permW + style.ItemSpacing.x + sendW;
@@ -794,20 +805,20 @@ namespace vultra_app
                 m_Backend->interrupt();
             ImGui::PopStyleColor(4);
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Stop");
+                ImGui::SetTooltip("%s", vultra::tr("aiChat.stop.tooltip"));
         }
         else
         {
             if (ImGui::Button(ICON_MDI_SEND "##aiSend", ImVec2(sendW, rowH)))
                 submit();
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Send (Enter)");
+                ImGui::SetTooltip("%s", vultra::tr("aiChat.send.tooltip"));
         }
 
         if (!agentEnabled)
             ImGui::EndDisabled();
 
-        ImGui::TextDisabled("Enter to send \xc2\xb7 Ctrl+Enter for newline");
+        ImGui::TextDisabled("%s", vultra::tr("aiChat.composer.hint"));
     }
 
     void AiChatWindow::draw(EditorContext& ctx)
@@ -827,13 +838,13 @@ namespace vultra_app
         if (ImGui::BeginChild("##AiChatScroll", ImVec2(0.0f, -composerHeight), ImGuiChildFlags_Borders))
         {
             // Capture before adding content: was the user already parked at the bottom last frame?
-            const bool wasAtBottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 8.0f;
+            const bool wasAtBottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - vultra::ui::dp(8.0f);
 
             ImGui::PushTextWrapPos(0.0f);
             for (std::size_t i = 0; i < m_Messages.size(); ++i)
             {
                 if (i > 0)
-                    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+                    ImGui::Dummy(ImVec2(0.0f, vultra::ui::dp(4.0f)));
                 drawMessage(m_Messages[i], i);
             }
             ImGui::PopTextWrapPos();

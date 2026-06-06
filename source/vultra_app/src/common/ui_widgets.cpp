@@ -1,5 +1,6 @@
 #include "common/ui_widgets.hpp"
 
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/imgui/imgui_theme.hpp>
 
 #include <IconsMaterialDesignIcons.h>
@@ -126,19 +127,20 @@ namespace vultra_app::ui
 
         auto* drawList  = ImGui::GetWindowDrawList();
         namespace theme = vultra::imgui_theme;
-        drawList->AddCircleFilled(center, 38.0f, theme::u32(theme::withAlpha(theme::accent(), 14.0f / 255.0f)), 48);
+        drawList->AddCircleFilled(
+            center, vultra::ui::dp(38.0f), theme::u32(theme::withAlpha(theme::accent(), 14.0f / 255.0f)), 48);
         const ImVec2 iconSize = ImGui::CalcTextSize(icon);
-        drawList->AddText(ImVec2(center.x - iconSize.x * 0.5f, center.y - 43.0f),
+        drawList->AddText(ImVec2(center.x - iconSize.x * 0.5f, center.y - vultra::ui::dp(43.0f)),
                           theme::u32(theme::withAlpha(theme::textSoft(), 220.0f / 255.0f)),
                           icon);
 
         const ImVec2 titleSize = ImGui::CalcTextSize(title);
-        drawList->AddText(ImVec2(center.x - titleSize.x * 0.5f, center.y + 10.0f),
+        drawList->AddText(ImVec2(center.x - titleSize.x * 0.5f, center.y + vultra::ui::dp(10.0f)),
                           theme::u32(theme::withAlpha(theme::text(), 240.0f / 255.0f)),
                           title);
 
         const ImVec2 msgSize = ImGui::CalcTextSize(message);
-        drawList->AddText(ImVec2(center.x - msgSize.x * 0.5f, center.y + 32.0f),
+        drawList->AddText(ImVec2(center.x - msgSize.x * 0.5f, center.y + vultra::ui::dp(32.0f)),
                           theme::u32(theme::withAlpha(theme::textMuted(), 230.0f / 255.0f)),
                           message);
     }
@@ -178,15 +180,15 @@ namespace vultra_app::ui
     {
         namespace theme = vultra::imgui_theme;
 
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 6.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, 4.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 4.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2 {14.0f, 12.0f});
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {8.0f, 5.0f});
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2 {7.0f, 6.0f});
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, vultra::ui::dp(6.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, vultra::ui::dp(4.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, vultra::ui::dp(4.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, vultra::ui::dp(6.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, vultra::ui::dp(4.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, vultra::ui::dp(4.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2 {vultra::ui::dp(14.0f), vultra::ui::dp(12.0f)});
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {vultra::ui::dp(8.0f), vultra::ui::dp(5.0f)});
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2 {vultra::ui::dp(7.0f), vultra::ui::dp(6.0f)});
         m_StyleVarCount = 9;
 
         ImGui::PushStyleColor(ImGuiCol_WindowBg, theme::background());

@@ -3,6 +3,7 @@
 #include "editor_app/editor_context.hpp"
 
 #include <IconsMaterialDesignIcons.h>
+#include <vultra/core/i18n/i18n.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/animator_component.hpp>
 #include <vultra/function/world/components/box_shape_component.hpp>
@@ -165,7 +166,7 @@ namespace vultra_app
         }
     } // namespace
 
-    WorldViewerWindow::WorldViewerWindow() : EditorWindow("World Viewer", ICON_MDI_EARTH)
+    WorldViewerWindow::WorldViewerWindow() : EditorWindow("World Viewer", ICON_MDI_EARTH, "window.worldViewer")
     {
         // Debug/diagnostic tool -opened on demand from the Tools menu, hidden by default.
         m_Open = false;
@@ -201,34 +202,32 @@ namespace vultra_app
             totalBytes += w.totalBytes;
         }
 
-        ImGui::Text("Live worlds: %zu", worlds.size());
+        ImGui::TextUnformatted(vultra::trf("worldViewer.liveWorlds", worlds.size()).c_str());
         ImGui::SameLine();
         ImGui::TextDisabled("|");
         ImGui::SameLine();
-        ImGui::Text("Entities: %zu", totalEntities);
+        ImGui::TextUnformatted(vultra::trf("worldViewer.entities", totalEntities).c_str());
         ImGui::SameLine();
         ImGui::TextDisabled("|");
         ImGui::SameLine();
-        ImGui::Text("Est. CPU: %s", humanizeBytes(totalBytes).c_str());
+        ImGui::TextUnformatted(vultra::trf("worldViewer.estCpu", humanizeBytes(totalBytes)).c_str());
 
-        ImGui::Checkbox("Expand component pools", &m_ExpandPools);
-        ImGui::TextDisabled("Worlds beyond the active one usually indicate previews or unreleased staging worlds.");
+        ImGui::Checkbox(vultra::tr("worldViewer.expandPools"), &m_ExpandPools);
+        ImGui::TextDisabled("%s", vultra::tr("worldViewer.hint"));
         ImGui::Separator();
 
         for (const auto& w : worlds)
         {
             ImGui::PushID(static_cast<int>(w.id));
 
-            char header[256];
-            std::snprintf(header,
-                          sizeof(header),
-                          "%s  #%llu%s  -  %zu entities, %zu pools, %s",
-                          w.name.c_str(),
-                          static_cast<unsigned long long>(w.id),
-                          w.isActive ? " (active)" : "",
-                          w.entityCount,
-                          w.pools.size(),
-                          humanizeBytes(w.totalBytes).c_str());
+            const std::string header = vultra::trf("worldViewer.header",
+                                                   w.name,
+                                                   static_cast<unsigned long long>(w.id),
+                                                   w.isActive ? vultra::tr("worldViewer.active") : "",
+                                                   w.entityCount,
+                                                   w.pools.size(),
+                                                   humanizeBytes(w.totalBytes)) +
+                                       "###wv";
 
             // The "Expand component pools" checkbox gates expansion: when off, the header is a
             // non-collapsible leaf (no arrow, can't open); when on, it is a normal default-open
@@ -236,17 +235,17 @@ namespace vultra_app
             const ImGuiTreeNodeFlags headerFlags =
                 m_ExpandPools ? ImGuiTreeNodeFlags_DefaultOpen
                               : (ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen);
-            if (ImGui::CollapsingHeader(header, headerFlags) && m_ExpandPools)
+            if (ImGui::CollapsingHeader(header.c_str(), headerFlags) && m_ExpandPools)
             {
                 if (w.pools.empty())
                 {
-                    ImGui::TextDisabled("  (no components)");
+                    ImGui::TextDisabled("%s", vultra::tr("worldViewer.noComponents"));
                 }
                 else if (ImGui::BeginTable("pools", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH))
                 {
-                    ImGui::TableSetupColumn("Component", ImGuiTableColumnFlags_WidthStretch);
-                    ImGui::TableSetupColumn("Count", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("Est. CPU", ImGuiTableColumnFlags_WidthFixed);
+                    ImGui::TableSetupColumn(vultra::tr("worldViewer.column.component"), ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn(vultra::tr("worldViewer.column.count"), ImGuiTableColumnFlags_WidthFixed);
+                    ImGui::TableSetupColumn(vultra::tr("worldViewer.column.estCpu"), ImGuiTableColumnFlags_WidthFixed);
                     ImGui::TableHeadersRow();
                     for (const auto& pool : w.pools)
                     {

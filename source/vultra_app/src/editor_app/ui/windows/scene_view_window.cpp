@@ -8,6 +8,8 @@
 #include "editor_app/ui/viewport_math.hpp"
 
 #include <IconsMaterialDesignIcons.h>
+#include <vultra/core/i18n/i18n.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/core/services/input_service.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/services/asset_service.hpp>
@@ -604,13 +606,13 @@ namespace vultra_app
 
         ImVec2 uiCanvasLayoutMin(const ImVec2& viewportMin)
         {
-            const float inset = kUiRulerThicknessPx + kUiRulerPaddingPx;
+            const float inset = vultra::ui::dp(kUiRulerThicknessPx) + vultra::ui::dp(kUiRulerPaddingPx);
             return {viewportMin.x + inset, viewportMin.y + inset};
         }
 
         ImVec2 uiCanvasLayoutSize(const ImVec2& viewportSize)
         {
-            const float inset = kUiRulerThicknessPx + kUiRulerPaddingPx;
+            const float inset = vultra::ui::dp(kUiRulerThicknessPx) + vultra::ui::dp(kUiRulerPaddingPx);
             return {std::max(1.0f, viewportSize.x - inset), std::max(1.0f, viewportSize.y - inset)};
         }
 
@@ -781,7 +783,7 @@ namespace vultra_app
                         drawList->AddLine(ImVec2 {sx, canvasDrawMin.y},
                                           ImVec2 {sx, canvasDrawMax.y},
                                           major ? IM_COL32(130, 170, 210, 58) : IM_COL32(255, 255, 255, 20),
-                                          1.0f);
+                                          vultra::ui::dp(1.0f));
                     }
                     for (float y = 0.0f; y <= reference.y + 0.5f; y += kUiGridStepPx)
                     {
@@ -790,14 +792,14 @@ namespace vultra_app
                         drawList->AddLine(ImVec2 {canvasDrawMin.x, sy},
                                           ImVec2 {canvasDrawMax.x, sy},
                                           major ? IM_COL32(130, 170, 210, 58) : IM_COL32(255, 255, 255, 20),
-                                          1.0f);
+                                          vultra::ui::dp(1.0f));
                     }
                     drawList->PopClipRect();
                 }
             }
 
-            const ImVec2 topMin {layoutDrawMin.x, layoutDrawMin.y - kUiRulerThicknessPx};
-            const ImVec2 leftMin {layoutDrawMin.x - kUiRulerThicknessPx, layoutDrawMin.y};
+            const ImVec2 topMin {layoutDrawMin.x, layoutDrawMin.y - vultra::ui::dp(kUiRulerThicknessPx)};
+            const ImVec2 leftMin {layoutDrawMin.x - vultra::ui::dp(kUiRulerThicknessPx), layoutDrawMin.y};
             drawList->AddRectFilled(topMin, ImVec2 {viewportMax.x, layoutDrawMin.y}, IM_COL32(18, 22, 28, 210));
             drawList->AddRectFilled(leftMin, ImVec2 {layoutDrawMin.x, viewportMax.y}, IM_COL32(18, 22, 28, 210));
             for (float x = 0.0f; x <= reference.x + 0.5f; x += kUiRulerMajorStepPx)
@@ -807,10 +809,10 @@ namespace vultra_app
                     continue;
                 char label[32] {};
                 std::snprintf(label, sizeof(label), "%.0f", x);
-                drawList->AddLine(ImVec2 {sx, layoutDrawMin.y - 8.0f},
+                drawList->AddLine(ImVec2 {sx, layoutDrawMin.y - vultra::ui::dp(8.0f)},
                                   ImVec2 {sx, layoutDrawMin.y},
                                   IM_COL32(170, 190, 210, 180));
-                drawList->AddText(ImVec2 {sx + 3.0f, layoutDrawMin.y - 19.0f}, IM_COL32(190, 204, 218, 220), label);
+                drawList->AddText(ImVec2 {sx + vultra::ui::dp(3.0f), layoutDrawMin.y - vultra::ui::dp(19.0f)}, IM_COL32(190, 204, 218, 220), label);
             }
             for (float y = 0.0f; y <= reference.y + 0.5f; y += kUiRulerMajorStepPx)
             {
@@ -819,12 +821,12 @@ namespace vultra_app
                     continue;
                 char label[32] {};
                 std::snprintf(label, sizeof(label), "%.0f", y);
-                drawList->AddLine(ImVec2 {layoutDrawMin.x - 8.0f, sy},
+                drawList->AddLine(ImVec2 {layoutDrawMin.x - vultra::ui::dp(8.0f), sy},
                                   ImVec2 {layoutDrawMin.x, sy},
                                   IM_COL32(170, 190, 210, 180));
-                drawList->AddText(ImVec2 {leftMin.x + 3.0f, sy + 3.0f}, IM_COL32(190, 204, 218, 220), label);
+                drawList->AddText(ImVec2 {leftMin.x + vultra::ui::dp(3.0f), sy + vultra::ui::dp(3.0f)}, IM_COL32(190, 204, 218, 220), label);
             }
-            drawList->AddRectFilled(ImVec2 {layoutDrawMin.x - kUiRulerThicknessPx, layoutDrawMin.y - kUiRulerThicknessPx},
+            drawList->AddRectFilled(ImVec2 {layoutDrawMin.x - vultra::ui::dp(kUiRulerThicknessPx), layoutDrawMin.y - vultra::ui::dp(kUiRulerThicknessPx)},
                                     layoutDrawMin,
                                     IM_COL32(18, 22, 28, 230));
         }
@@ -976,7 +978,7 @@ namespace vultra_app
                                       static_cast<int>(corners.size()),
                                       IM_COL32(120, 205, 255, 190),
                                       ImDrawFlags_Closed,
-                                      1.5f);
+                                      vultra::ui::dp(1.5f));
             if (selected)
             {
                 const bool activeDrag = dragState.operation != SceneViewWindow::Ui2DDragOperation::None &&
@@ -986,15 +988,15 @@ namespace vultra_app
                                       static_cast<int>(corners.size()),
                                       activeDrag ? IM_COL32(255, 224, 120, 255) : IM_COL32(255, 180, 48, 255),
                                       ImDrawFlags_Closed,
-                                      2.0f);
+                                      vultra::ui::dp(2.0f));
                 const ImVec2 center = uiPointFlippedY(viewportMin, viewportSize, canvasReferencePx, scale, viewPanPx, pivotPx);
-                drawList->AddRectFilled(ImVec2(center.x - 5.0f, center.y - 5.0f),
-                                        ImVec2(center.x + 5.0f, center.y + 5.0f),
+                drawList->AddRectFilled(ImVec2(center.x - vultra::ui::dp(5.0f), center.y - vultra::ui::dp(5.0f)),
+                                        ImVec2(center.x + vultra::ui::dp(5.0f), center.y + vultra::ui::dp(5.0f)),
                                         IM_COL32(72, 126, 255, 255));
 
-                const glm::vec2 xAxisEndPx = pivotPx + rotateUiPoint({80.0f / scale, 0.0f}, rect->rotationDegrees);
-                const glm::vec2 yAxisEndPx = pivotPx + rotateUiPoint({0.0f, 80.0f / scale}, rect->rotationDegrees);
-                const glm::vec2 rotatePx   = pivotPx + rotateUiPoint({0.0f, (sizePx.y * rect->scale.y * (1.0f - rect->pivot.y)) + 42.0f / scale},
+                const glm::vec2 xAxisEndPx = pivotPx + rotateUiPoint({vultra::ui::dp(80.0f) / scale, 0.0f}, rect->rotationDegrees);
+                const glm::vec2 yAxisEndPx = pivotPx + rotateUiPoint({0.0f, vultra::ui::dp(80.0f) / scale}, rect->rotationDegrees);
+                const glm::vec2 rotatePx   = pivotPx + rotateUiPoint({0.0f, (sizePx.y * rect->scale.y * (1.0f - rect->pivot.y)) + vultra::ui::dp(42.0f) / scale},
                                                                    rect->rotationDegrees);
                 const ImVec2 xAxisEnd = uiPointFlippedY(viewportMin, viewportSize, canvasReferencePx, scale, viewPanPx, xAxisEndPx);
                 const ImVec2 yAxisEnd = uiPointFlippedY(viewportMin, viewportSize, canvasReferencePx, scale, viewPanPx, yAxisEndPx);
@@ -1023,15 +1025,15 @@ namespace vultra_app
                 };
                 if (showMove)
                 {
-                    drawList->AddLine(center, xAxisEnd, IM_COL32(235, 64, 64, 255), 2.0f);
-                    drawList->AddLine(center, yAxisEnd, IM_COL32(70, 210, 92, 255), 2.0f);
-                    drawList->AddCircleFilled(xAxisEnd, 4.0f, IM_COL32(235, 64, 64, 255), 12);
-                    drawList->AddCircleFilled(yAxisEnd, 4.0f, IM_COL32(70, 210, 92, 255), 12);
+                    drawList->AddLine(center, xAxisEnd, IM_COL32(235, 64, 64, 255), vultra::ui::dp(2.0f));
+                    drawList->AddLine(center, yAxisEnd, IM_COL32(70, 210, 92, 255), vultra::ui::dp(2.0f));
+                    drawList->AddCircleFilled(xAxisEnd, vultra::ui::dp(4.0f), IM_COL32(235, 64, 64, 255), 12);
+                    drawList->AddCircleFilled(yAxisEnd, vultra::ui::dp(4.0f), IM_COL32(70, 210, 92, 255), 12);
                 }
                 if (showRotate)
                 {
-                    drawList->AddLine(center, rotateHandle, IM_COL32(255, 210, 80, 180), 1.5f);
-                    drawList->AddCircle(rotateHandle, 7.0f, IM_COL32(255, 210, 80, 255), 16, 2.0f);
+                    drawList->AddLine(center, rotateHandle, IM_COL32(255, 210, 80, 180), vultra::ui::dp(1.5f));
+                    drawList->AddCircle(rotateHandle, vultra::ui::dp(7.0f), IM_COL32(255, 210, 80, 255), 16, vultra::ui::dp(2.0f));
                 }
                 if (showScale || showRect)
                 {
@@ -1043,15 +1045,15 @@ namespace vultra_app
                                                          scale,
                                                          viewPanPx,
                                                          pivotPx + rotateUiPoint(handle.local, rect->rotationDegrees));
-                        drawList->AddRectFilled(ImVec2(p.x - 4.0f, p.y - 4.0f),
-                                                ImVec2(p.x + 4.0f, p.y + 4.0f),
+                        drawList->AddRectFilled(ImVec2(p.x - vultra::ui::dp(4.0f), p.y - vultra::ui::dp(4.0f)),
+                                                ImVec2(p.x + vultra::ui::dp(4.0f), p.y + vultra::ui::dp(4.0f)),
                                                 IM_COL32(36, 43, 52, 255));
-                        drawList->AddRect(ImVec2(p.x - 5.0f, p.y - 5.0f),
-                                          ImVec2(p.x + 5.0f, p.y + 5.0f),
+                        drawList->AddRect(ImVec2(p.x - vultra::ui::dp(5.0f), p.y - vultra::ui::dp(5.0f)),
+                                          ImVec2(p.x + vultra::ui::dp(5.0f), p.y + vultra::ui::dp(5.0f)),
                                           IM_COL32(255, 180, 48, 255),
                                           0.0f,
                                           0,
-                                          1.5f);
+                                          vultra::ui::dp(1.5f));
                     }
                 }
 
@@ -1073,7 +1075,7 @@ namespace vultra_app
                                                          scale,
                                                          viewPanPx,
                                                          pivotPx + rotateUiPoint(handle.local, rect->rotationDegrees));
-                        if (screenDistance(mouse, p) <= 10.0f)
+                        if (screenDistance(mouse, p) <= vultra::ui::dp(10.0f))
                         {
                             hitResize = true;
                             hitAxis   = handle.axis;
@@ -1091,9 +1093,9 @@ namespace vultra_app
                     dragState.scaleAxis               = hitAxis;
                     dragState.moveAxis                = {1.0f, 1.0f};
                     const float rotateDist            = screenDistance(mouse, rotateHandle);
-                    const bool hitXAxis = showMove && screenDistance(mouse, xAxisEnd) <= 14.0f;
-                    const bool hitYAxis = showMove && screenDistance(mouse, yAxisEnd) <= 14.0f;
-                    if (showRotate && rotateDist <= 12.0f)
+                    const bool hitXAxis = showMove && screenDistance(mouse, xAxisEnd) <= vultra::ui::dp(14.0f);
+                    const bool hitYAxis = showMove && screenDistance(mouse, yAxisEnd) <= vultra::ui::dp(14.0f);
+                    if (showRotate && rotateDist <= vultra::ui::dp(12.0f))
                     {
                         const glm::vec2 v = mouseUi - pivotPx;
                         if (glm::dot(v, v) > 0.0001f)
@@ -1180,12 +1182,12 @@ namespace vultra_app
                         ctx.state.sceneDirty = true;
                         if (ctx.history)
                             ctx.history->setNextLabel(dragState.operation == SceneViewWindow::Ui2DDragOperation::Move ?
-                                                          "Move UI Rect" :
+                                                          vultra::tr("sceneView.history.moveUiRect") :
                                                       dragState.operation == SceneViewWindow::Ui2DDragOperation::Rotate ?
-                                                          "Rotate UI Rect" :
+                                                          vultra::tr("sceneView.history.rotateUiRect") :
                                                       dragState.operation == SceneViewWindow::Ui2DDragOperation::Rect ?
-                                                          "Resize UI Rect" :
-                                                          "Scale UI Rect");
+                                                          vultra::tr("sceneView.history.resizeUiRect") :
+                                                          vultra::tr("sceneView.history.scaleUiRect"));
                     }
                     ImGui::SetNextFrameWantCaptureMouse(true);
                 }
@@ -1238,10 +1240,10 @@ namespace vultra_app
                 const ImVec2 canvasDrawMin = uiDrawLinePoint(canvasMin);
                 const ImVec2 canvasDrawMax = uiDrawLinePoint(canvasMax);
                 drawUiGridAndRulers(viewportMin, viewportSize, reference, fit, viewPanPx, showGrid, drawList);
-                drawList->AddRect(canvasDrawMin, canvasDrawMax, IM_COL32(80, 180, 255, 150), 0.0f, 0, 1.5f);
-                drawList->AddText(ImVec2(canvasDrawMin.x + 8.0f, canvasDrawMin.y + 8.0f),
+                drawList->AddRect(canvasDrawMin, canvasDrawMax, IM_COL32(80, 180, 255, 150), 0.0f, 0, vultra::ui::dp(1.5f));
+                drawList->AddText(ImVec2(canvasDrawMin.x + vultra::ui::dp(8.0f), canvasDrawMin.y + vultra::ui::dp(8.0f)),
                                   IM_COL32(130, 210, 255, 220),
-                                  "Canvas");
+                                  vultra::tr("sceneView.overlay.canvas"));
                 for (auto child = world.firstChild(canvasEntity); child != entt::null; child = world.nextSibling(child))
                     drawUiEntityOverlay(ctx,
                                         world,
@@ -1296,17 +1298,17 @@ namespace vultra_app
         bool isMouseOverViewManipulator(const ImVec2& viewportMin, const ImVec2& viewportMax)
         {
             const ImVec2 viewportSize {viewportMax.x - viewportMin.x, viewportMax.y - viewportMin.y};
-            if (viewportSize.x < kViewManipulatorSize + kViewManipulatorMargin * 2.0f ||
-                viewportSize.y < kViewManipulatorSize + kViewManipulatorMargin * 2.0f)
+            if (viewportSize.x < vultra::ui::dp(kViewManipulatorSize) + vultra::ui::dp(kViewManipulatorMargin) * 2.0f ||
+                viewportSize.y < vultra::ui::dp(kViewManipulatorSize) + vultra::ui::dp(kViewManipulatorMargin) * 2.0f)
                 return false;
 
-            const ImVec2 position {viewportMax.x - kViewManipulatorSize - kViewManipulatorMargin,
-                                   viewportMin.y + kViewManipulatorMargin};
-            const ImVec2 center {position.x + kViewManipulatorSize * 0.5f, position.y + kViewManipulatorSize * 0.5f};
+            const ImVec2 position {viewportMax.x - vultra::ui::dp(kViewManipulatorSize) - vultra::ui::dp(kViewManipulatorMargin),
+                                   viewportMin.y + vultra::ui::dp(kViewManipulatorMargin)};
+            const ImVec2 center {position.x + vultra::ui::dp(kViewManipulatorSize) * 0.5f, position.y + vultra::ui::dp(kViewManipulatorSize) * 0.5f};
             const ImVec2 mouse  = ImGui::GetMousePos();
             const float  dx     = mouse.x - center.x;
             const float  dy     = mouse.y - center.y;
-            const float  radius = kViewManipulatorSize * 0.5f;
+            const float  radius = vultra::ui::dp(kViewManipulatorSize) * 0.5f;
             return dx * dx + dy * dy <= radius * radius;
         }
 
@@ -1353,19 +1355,19 @@ namespace vultra_app
                 return false;
 
             const ImVec2 viewportSize {viewportMax.x - viewportMin.x, viewportMax.y - viewportMin.y};
-            if (viewportSize.x < 220.0f || viewportSize.y < 160.0f)
+            if (viewportSize.x < vultra::ui::dp(220.0f) || viewportSize.y < vultra::ui::dp(160.0f))
                 return false;
 
             constexpr float aspect    = 16.0f / 9.0f;
-            const float     baseWidth = std::min(320.0f, std::max(180.0f, viewportSize.x * 0.22f));
+            const float     baseWidth = std::min(vultra::ui::dp(320.0f), std::max(vultra::ui::dp(180.0f), viewportSize.x * 0.22f));
             const float     width =
-                std::min(viewportSize.x - 32.0f,
+                std::min(viewportSize.x - vultra::ui::dp(32.0f),
                          baseWidth * std::clamp(gameOverlayZoom, kOverlayZoomMin, kOverlayZoomMax));
             const float  height = width / aspect;
-            const ImVec2 padding {14.0f, 14.0f};
-            constexpr float controlHeight = 30.0f;
-            const ImVec2 panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + 22.0f + controlHeight};
-            const ImVec2 panelMin {viewportMin.x + 16.0f, viewportMax.y - panelSize.y - 16.0f};
+            const ImVec2 padding {vultra::ui::dp(14.0f), vultra::ui::dp(14.0f)};
+            const float controlHeight = vultra::ui::dp(30.0f);
+            const ImVec2 panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + vultra::ui::dp(22.0f) + controlHeight};
+            const ImVec2 panelMin {viewportMin.x + vultra::ui::dp(16.0f), viewportMax.y - panelSize.y - vultra::ui::dp(16.0f)};
             const ImVec2 panelMax {panelMin.x + panelSize.x, panelMin.y + panelSize.y};
             return isMouseInRect(panelMin, panelMax);
         }
@@ -1379,7 +1381,7 @@ namespace vultra_app
 
     } // namespace
 
-    SceneViewWindow::SceneViewWindow() : EditorWindow("Scene View", ICON_MDI_EYE) {}
+    SceneViewWindow::SceneViewWindow() : EditorWindow("Scene View", ICON_MDI_EYE, "window.sceneView") {}
 
     void SceneViewWindow::onClosed(EditorContext& ctx)
     {
@@ -1864,7 +1866,7 @@ namespace vultra_app
 
         if (m_ShowGrid && !ui2DMode)
         {
-            constexpr float step = 32.0f;
+            const float step = vultra::ui::dp(32.0f);
             for (float x = imageMin.x; x < imageMax.x; x += step)
                 dl->AddLine(ImVec2(x, imageMin.y), ImVec2(x, imageMax.y), IM_COL32(255, 255, 255, 18));
             for (float y = imageMin.y; y < imageMax.y; y += step)
@@ -2290,7 +2292,7 @@ namespace vultra_app
                             {
                                 ctx.state.sceneDirty = true;
                                 if (ctx.history)
-                                    ctx.history->setNextLabel("Transform Entity");
+                                    ctx.history->setNextLabel(vultra::tr("sceneView.history.transformEntity"));
                             }
                         }
                     }
@@ -2322,25 +2324,25 @@ namespace vultra_app
                                               const glm::mat4& projection)
     {
         const ImVec2 viewportSize {viewportMax.x - viewportMin.x, viewportMax.y - viewportMin.y};
-        if (viewportSize.x < kViewManipulatorSize + kViewManipulatorMargin * 2.0f ||
-            viewportSize.y < kViewManipulatorSize + kViewManipulatorMargin * 2.0f)
+        if (viewportSize.x < vultra::ui::dp(kViewManipulatorSize) + vultra::ui::dp(kViewManipulatorMargin) * 2.0f ||
+            viewportSize.y < vultra::ui::dp(kViewManipulatorSize) + vultra::ui::dp(kViewManipulatorMargin) * 2.0f)
             return false;
 
-        const ImVec2 position {viewportMax.x - kViewManipulatorSize - kViewManipulatorMargin,
-                               viewportMin.y + kViewManipulatorMargin};
-        const ImVec2 center {position.x + kViewManipulatorSize * 0.5f, position.y + kViewManipulatorSize * 0.5f};
-        const float  radius = kViewManipulatorSize * 0.5f;
+        const ImVec2 position {viewportMax.x - vultra::ui::dp(kViewManipulatorSize) - vultra::ui::dp(kViewManipulatorMargin),
+                               viewportMin.y + vultra::ui::dp(kViewManipulatorMargin)};
+        const ImVec2 center {position.x + vultra::ui::dp(kViewManipulatorSize) * 0.5f, position.y + vultra::ui::dp(kViewManipulatorSize) * 0.5f};
+        const float  radius = vultra::ui::dp(kViewManipulatorSize) * 0.5f;
 
         auto* drawList = ImGui::GetWindowDrawList();
         drawList->AddCircleFilled(center, radius, IM_COL32(16, 19, 24, 128), 48);
-        drawList->AddCircle(center, radius, IM_COL32(255, 255, 255, 32), 48, 1.0f);
+        drawList->AddCircle(center, radius, IM_COL32(255, 255, 255, 32), 48, vultra::ui::dp(1.0f));
 
         const glm::vec3 cameraPosition = m_CameraPosition;
         glm::mat4       gizmoView      = view;
         const glm::mat4 gizmoProjection {1.0f};
 
         ImOGuizmo::config.axisLengthScale = 0.30f;
-        ImOGuizmo::SetRect(position.x, position.y, kViewManipulatorSize);
+        ImOGuizmo::SetRect(position.x, position.y, vultra::ui::dp(kViewManipulatorSize));
         ImOGuizmo::SetDrawList(drawList);
         bool changed = ImOGuizmo::DrawGizmo(glm::value_ptr(gizmoView), glm::value_ptr(gizmoProjection), 1.0f);
 
@@ -2390,9 +2392,9 @@ namespace vultra_app
     {
         (void)ctx;
         constexpr float buttonSize = 28.0f;
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, vultra::ui::dp(5.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {0.0f, 0.0f});
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2 {4.0f, 0.0f});
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2 {vultra::ui::dp(4.0f), 0.0f});
 
         auto toolButton = [&](const char* icon, const char* label, Tool tool) {
             const bool selected = m_Tool == tool;
@@ -2401,7 +2403,7 @@ namespace vultra_app
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.12f, 0.35f, 0.72f, 0.95f});
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {0.16f, 0.43f, 0.86f, 1.0f});
             }
-            const bool pressed = ImGui::Button(icon, ImVec2 {buttonSize, buttonSize});
+            const bool pressed = ImGui::Button(icon, ImVec2 {vultra::ui::dp(buttonSize), vultra::ui::dp(buttonSize)});
             tooltip(label);
             if (selected)
                 ImGui::PopStyleColor(2);
@@ -2409,18 +2411,18 @@ namespace vultra_app
                 m_Tool = tool;
         };
 
-        toolButton(ICON_MDI_CURSOR_DEFAULT, "Select (Q)", Tool::Select);
+        toolButton(ICON_MDI_CURSOR_DEFAULT, vultra::tr("sceneView.tool.select"), Tool::Select);
         ImGui::SameLine();
-        toolButton(ICON_MDI_AXIS_ARROW, "Move (W)", Tool::Move);
+        toolButton(ICON_MDI_AXIS_ARROW, vultra::tr("sceneView.tool.move"), Tool::Move);
         ImGui::SameLine();
-        toolButton(ICON_MDI_ROTATE_3D, "Rotate (E)", Tool::Rotate);
+        toolButton(ICON_MDI_ROTATE_3D, vultra::tr("sceneView.tool.rotate"), Tool::Rotate);
         ImGui::SameLine();
-        toolButton(ICON_MDI_RESIZE, "Scale (R)", Tool::Scale);
+        toolButton(ICON_MDI_RESIZE, vultra::tr("sceneView.tool.scale"), Tool::Scale);
         ImGui::SameLine();
-        toolButton(ICON_MDI_RECTANGLE_OUTLINE, "Rect Tool (T)", Tool::Rect);
+        toolButton(ICON_MDI_RECTANGLE_OUTLINE, vultra::tr("sceneView.tool.rect"), Tool::Rect);
         ImGui::SameLine();
-        toolButton(ICON_MDI_ARROW_ALL, "Transform Tool (Y)", Tool::Transform);
-        ImGui::SameLine(0.0f, 10.0f);
+        toolButton(ICON_MDI_ARROW_ALL, vultra::tr("sceneView.tool.transform"), Tool::Transform);
+        ImGui::SameLine(0.0f, vultra::ui::dp(10.0f));
 
         const bool local = m_CoordinateMode == CoordinateMode::Local;
         if (local)
@@ -2428,9 +2430,10 @@ namespace vultra_app
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.17f, 0.27f, 0.38f, 0.95f});
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {0.20f, 0.34f, 0.48f, 1.0f});
         }
-        if (ImGui::Button(ICON_MDI_AXIS_ARROW " Local", ImVec2 {76.0f, buttonSize}))
+        if (ImGui::Button((std::string {ICON_MDI_AXIS_ARROW " "} + vultra::tr("sceneView.coord.local")).c_str(),
+                          ImVec2 {vultra::ui::dp(76.0f), vultra::ui::dp(buttonSize)}))
             m_CoordinateMode = CoordinateMode::Local;
-        tooltip("Local coordinate space");
+        tooltip(vultra::tr("sceneView.coord.localTooltip"));
         if (local)
             ImGui::PopStyleColor(2);
         ImGui::SameLine();
@@ -2440,21 +2443,22 @@ namespace vultra_app
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.17f, 0.27f, 0.38f, 0.95f});
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {0.20f, 0.34f, 0.48f, 1.0f});
         }
-        if (ImGui::Button(ICON_MDI_EARTH " Global", ImVec2 {82.0f, buttonSize}))
+        if (ImGui::Button((std::string {ICON_MDI_EARTH " "} + vultra::tr("sceneView.coord.global")).c_str(),
+                          ImVec2 {vultra::ui::dp(82.0f), vultra::ui::dp(buttonSize)}))
             m_CoordinateMode = CoordinateMode::Global;
-        tooltip("Global coordinate space");
+        tooltip(vultra::tr("sceneView.coord.globalTooltip"));
         if (global)
             ImGui::PopStyleColor(2);
-        ImGui::SameLine(0.0f, 10.0f);
+        ImGui::SameLine(0.0f, vultra::ui::dp(10.0f));
 
         if (m_ShowGrid)
         {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.17f, 0.38f, 0.28f, 0.95f});
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {0.20f, 0.48f, 0.34f, 1.0f});
         }
-        if (ImGui::Button(ICON_MDI_GRID, ImVec2 {buttonSize, buttonSize}))
+        if (ImGui::Button(ICON_MDI_GRID, ImVec2 {vultra::ui::dp(buttonSize), vultra::ui::dp(buttonSize)}))
             m_ShowGrid = !m_ShowGrid;
-        tooltip("Grid");
+        tooltip(vultra::tr("sceneView.toolbar.grid"));
         if (m_ShowGrid)
             ImGui::PopStyleColor(2);
         ImGui::SameLine();
@@ -2465,28 +2469,28 @@ namespace vultra_app
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.17f, 0.38f, 0.28f, 0.95f});
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {0.20f, 0.48f, 0.34f, 1.0f});
         }
-        if (ImGui::Button(ICON_MDI_EYE, ImVec2 {buttonSize, buttonSize}))
-            ImGui::OpenPopup("SceneViewGizmosPopup");
-        tooltip("Editor gizmos (icons, bounds, colliders, lights)");
+        if (ImGui::Button(ICON_MDI_EYE, ImVec2 {vultra::ui::dp(buttonSize), vultra::ui::dp(buttonSize)}))
+            ImGui::OpenPopup(vultra::trId("sceneView.gizmos.popupTitle", "SceneViewGizmosPopup"));
+        tooltip(vultra::tr("sceneView.gizmos.tooltip"));
         if (gizmosActive)
             ImGui::PopStyleColor(2);
-        if (ImGui::BeginPopup("SceneViewGizmosPopup"))
+        if (ImGui::BeginPopup(vultra::trId("sceneView.gizmos.popupTitle", "SceneViewGizmosPopup")))
         {
-            ImGui::TextDisabled("Editor Gizmos");
+            ImGui::TextDisabled("%s", vultra::tr("sceneView.gizmos.header"));
             ImGui::Separator();
-            ImGui::Checkbox("Icons", &m_ShowIcons);
+            ImGui::Checkbox(vultra::tr("sceneView.gizmos.icons"), &m_ShowIcons);
             ImGui::BeginDisabled(!m_ShowIcons);
-            ImGui::SetNextItemWidth(140.0f);
-            ImGui::SliderFloat("Icon Size", &m_IconSize, 1.0f, 8.0f, "%.1fx");
+            ImGui::SetNextItemWidth(vultra::ui::dp(140.0f));
+            ImGui::SliderFloat(vultra::tr("sceneView.gizmos.iconSize"), &m_IconSize, 1.0f, 8.0f, "%.1fx");
             ImGui::EndDisabled();
-            ImGui::Checkbox("Selection Bounds", &m_ShowSelectionBounds);
-            ImGui::Checkbox("Colliders", &m_ShowColliders);
-            ImGui::Checkbox("Light & Camera Gizmos", &m_ShowLightGizmos);
+            ImGui::Checkbox(vultra::tr("sceneView.gizmos.selectionBounds"), &m_ShowSelectionBounds);
+            ImGui::Checkbox(vultra::tr("sceneView.gizmos.colliders"), &m_ShowColliders);
+            ImGui::Checkbox(vultra::tr("sceneView.gizmos.lightCameraGizmos"), &m_ShowLightGizmos);
             ImGui::Separator();
-            if (ImGui::SmallButton("Show All"))
+            if (ImGui::SmallButton(vultra::tr("sceneView.gizmos.showAll")))
                 m_ShowIcons = m_ShowSelectionBounds = m_ShowColliders = m_ShowLightGizmos = true;
             ImGui::SameLine();
-            if (ImGui::SmallButton("Hide All"))
+            if (ImGui::SmallButton(vultra::tr("sceneView.gizmos.hideAll")))
                 m_ShowIcons = m_ShowSelectionBounds = m_ShowColliders = m_ShowLightGizmos = false;
             ImGui::EndPopup();
         }
@@ -2498,10 +2502,11 @@ namespace vultra_app
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {0.54f, 0.38f, 0.16f, 1.0f});
         }
         ImGui::BeginDisabled(m_ViewMode != ViewMode::Ui2D);
-        if (ImGui::Button(m_UiSnapEnabled ? ICON_MDI_MAGNET_ON : ICON_MDI_MAGNET, ImVec2 {buttonSize, buttonSize}))
+        if (ImGui::Button(m_UiSnapEnabled ? ICON_MDI_MAGNET_ON : ICON_MDI_MAGNET,
+                          ImVec2 {vultra::ui::dp(buttonSize), vultra::ui::dp(buttonSize)}))
             m_UiSnapEnabled = !m_UiSnapEnabled;
         ImGui::EndDisabled();
-        tooltip("UI Snap");
+        tooltip(vultra::tr("sceneView.toolbar.uiSnap"));
         if (snapActive)
             ImGui::PopStyleColor(2);
         ImGui::SameLine();
@@ -2510,9 +2515,10 @@ namespace vultra_app
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.42f, 0.30f, 0.12f, 0.95f});
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {0.54f, 0.38f, 0.16f, 1.0f});
         }
-        if (ImGui::Button(m_ViewMode == ViewMode::Ui2D ? "2D" : "3D", ImVec2 {buttonSize, buttonSize}))
+        if (ImGui::Button(m_ViewMode == ViewMode::Ui2D ? "2D" : "3D",
+                          ImVec2 {vultra::ui::dp(buttonSize), vultra::ui::dp(buttonSize)}))
             m_ViewMode = m_ViewMode == ViewMode::Ui2D ? ViewMode::View3D : ViewMode::Ui2D;
-        tooltip("3D / 2D UI");
+        tooltip(vultra::tr("sceneView.toolbar.viewModeTooltip"));
         if (m_ViewMode == ViewMode::Ui2D)
             ImGui::PopStyleColor(2);
         // Clear-color controls are 2D-only (they drive m_Ui2DClearColor). In 3D the scene
@@ -2531,18 +2537,18 @@ namespace vultra_app
                 if (ImGui::ColorButton(id,
                                        ImVec4 {preset.r, preset.g, preset.b, preset.a},
                                        ImGuiColorEditFlags_NoAlpha | ImGuiColorEditFlags_NoTooltip,
-                                       ImVec2 {buttonSize, buttonSize}))
+                                       ImVec2 {vultra::ui::dp(buttonSize), vultra::ui::dp(buttonSize)}))
                     m_Ui2DClearColor = preset;
-                tooltip("Apply UI Clear Color");
+                tooltip(vultra::tr("sceneView.clearColor.applyTooltip"));
                 ImGui::SameLine();
             }
-            if (ImGui::Button(ICON_MDI_PALETTE, ImVec2 {buttonSize, buttonSize}))
-                ImGui::OpenPopup("Ui2DClearColorPopup");
-            tooltip("Custom UI Clear Color");
-            if (ImGui::BeginPopup("Ui2DClearColorPopup"))
+            if (ImGui::Button(ICON_MDI_PALETTE, ImVec2 {vultra::ui::dp(buttonSize), vultra::ui::dp(buttonSize)}))
+                ImGui::OpenPopup(vultra::trId("sceneView.clearColor.popupTitle", "Ui2DClearColorPopup"));
+            tooltip(vultra::tr("sceneView.clearColor.customTooltip"));
+            if (ImGui::BeginPopup(vultra::trId("sceneView.clearColor.popupTitle", "Ui2DClearColorPopup")))
             {
                 float color[3] {m_Ui2DClearColor.r, m_Ui2DClearColor.g, m_Ui2DClearColor.b};
-                if (ImGui::ColorEdit3("Clear Color", color, ImGuiColorEditFlags_NoInputs))
+                if (ImGui::ColorEdit3(vultra::tr("sceneView.clearColor.label"), color, ImGuiColorEditFlags_NoInputs))
                     m_Ui2DClearColor = glm::vec4 {color[0], color[1], color[2], 1.0f};
                 ImGui::EndPopup();
             }
@@ -2558,13 +2564,13 @@ namespace vultra_app
             return;
 
         const ImVec2 viewportSize {viewportMax.x - viewportMin.x, viewportMax.y - viewportMin.y};
-        if (viewportSize.x < 220.0f || viewportSize.y < 160.0f)
+        if (viewportSize.x < vultra::ui::dp(220.0f) || viewportSize.y < vultra::ui::dp(160.0f))
             return;
 
         const float aspect    = 16.0f / 9.0f;
         m_GameOverlayZoom     = std::clamp(m_GameOverlayZoom, kOverlayZoomMin, kOverlayZoomMax);
-        const float baseWidth = std::min(320.0f, std::max(180.0f, viewportSize.x * 0.22f));
-        const float width     = std::min(viewportSize.x - 32.0f, baseWidth * m_GameOverlayZoom);
+        const float baseWidth = std::min(vultra::ui::dp(320.0f), std::max(vultra::ui::dp(180.0f), viewportSize.x * 0.22f));
+        const float width     = std::min(viewportSize.x - vultra::ui::dp(32.0f), baseWidth * m_GameOverlayZoom);
         const float height    = width / aspect;
         ensureGameOverlayRenderTarget(
             ctx, static_cast<uint32_t>(std::max(1.0f, width)), static_cast<uint32_t>(std::max(1.0f, height)));
@@ -2621,23 +2627,23 @@ namespace vultra_app
             }
         }
 
-        const ImVec2    padding {14.0f, 14.0f};
-        constexpr float controlHeight = 30.0f;
-        const ImVec2    panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + 22.0f + controlHeight};
-        const ImVec2    panelMin {viewportMin.x + 16.0f, viewportMax.y - panelSize.y - 16.0f};
+        const ImVec2    padding {vultra::ui::dp(14.0f), vultra::ui::dp(14.0f)};
+        const float     controlHeight = vultra::ui::dp(30.0f);
+        const ImVec2    panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + vultra::ui::dp(22.0f) + controlHeight};
+        const ImVec2    panelMin {viewportMin.x + vultra::ui::dp(16.0f), viewportMax.y - panelSize.y - vultra::ui::dp(16.0f)};
         const ImVec2    panelMax {panelMin.x + panelSize.x, panelMin.y + panelSize.y};
-        const ImVec2    imageMin {panelMin.x + padding.x, panelMin.y + padding.y + 22.0f};
+        const ImVec2    imageMin {panelMin.x + padding.x, panelMin.y + padding.y + vultra::ui::dp(22.0f)};
         const ImVec2    imageMax {imageMin.x + width, imageMin.y + height};
-        const ImVec2    controlsMin {imageMin.x, imageMax.y + 8.0f};
+        const ImVec2    controlsMin {imageMin.x, imageMax.y + vultra::ui::dp(8.0f)};
         const ImVec2    mouse    = ImGui::GetIO().MousePos;
         const auto      contains = [&](const ImVec2& min, const ImVec2& max) {
             return mouse.x >= min.x && mouse.x <= max.x && mouse.y >= min.y && mouse.y <= max.y;
         };
         const ImVec2 minusMin {controlsMin.x, controlsMin.y};
-        const ImVec2 minusMax {minusMin.x + 24.0f, minusMin.y + 24.0f};
-        const ImVec2 labelMin {minusMax.x + 10.0f, controlsMin.y + 4.0f};
-        const ImVec2 plusMin {labelMin.x + 56.0f, controlsMin.y};
-        const ImVec2 plusMax {plusMin.x + 24.0f, plusMin.y + 24.0f};
+        const ImVec2 minusMax {minusMin.x + vultra::ui::dp(24.0f), minusMin.y + vultra::ui::dp(24.0f)};
+        const ImVec2 labelMin {minusMax.x + vultra::ui::dp(10.0f), controlsMin.y + vultra::ui::dp(4.0f)};
+        const ImVec2 plusMin {labelMin.x + vultra::ui::dp(56.0f), controlsMin.y};
+        const ImVec2 plusMax {plusMin.x + vultra::ui::dp(24.0f), plusMin.y + vultra::ui::dp(24.0f)};
 
         const bool minusHovered = contains(minusMin, minusMax);
         const bool plusHovered  = contains(plusMin, plusMax);
@@ -2655,40 +2661,43 @@ namespace vultra_app
 
         auto* drawList = ImGui::GetWindowDrawList();
         drawList->PushClipRect(viewportMin, viewportMax, true);
-        drawList->AddRectFilled(panelMin, panelMax, IM_COL32(10, 14, 18, 255), 7.0f);
-        drawList->AddRect(panelMin, panelMax, IM_COL32(68, 86, 105, 255), 7.0f);
-        drawList->AddText(ImVec2(panelMin.x + padding.x, panelMin.y + 8.0f), IM_COL32(190, 204, 218, 255), "Game View");
+        drawList->AddRectFilled(panelMin, panelMax, IM_COL32(10, 14, 18, 255), vultra::ui::dp(7.0f));
+        drawList->AddRect(panelMin, panelMax, IM_COL32(68, 86, 105, 255), vultra::ui::dp(7.0f));
+        drawList->AddText(ImVec2(panelMin.x + padding.x, panelMin.y + vultra::ui::dp(8.0f)),
+                          IM_COL32(190, 204, 218, 255),
+                          vultra::tr("sceneView.gameView.title"));
         const ImVec2 zoomSize = ImGui::CalcTextSize(zoomLabel);
         drawList->AddText(
-            ImVec2(panelMax.x - padding.x - zoomSize.x, panelMin.y + 8.0f), IM_COL32(126, 142, 158, 255), zoomLabel);
+            ImVec2(panelMax.x - padding.x - zoomSize.x, panelMin.y + vultra::ui::dp(8.0f)), IM_COL32(126, 142, 158, 255), zoomLabel);
 
         if (m_GameOverlayActiveRenderTarget.textureId && hasPrimaryCamera)
         {
-            drawList->AddRectFilled(imageMin, imageMax, IM_COL32(0, 0, 0, 255), 3.0f);
+            drawList->AddRectFilled(imageMin, imageMax, IM_COL32(0, 0, 0, 255), vultra::ui::dp(3.0f));
             drawList->AddImage(
                 m_GameOverlayActiveRenderTarget.textureId, imageMin, imageMax, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
         }
         else
         {
-            drawList->AddRectFilled(imageMin, imageMax, IM_COL32(16, 19, 24, 255), 3.0f);
-            const char*  label    = hasPrimaryCamera ? "Preparing preview" : "No primary camera";
+            drawList->AddRectFilled(imageMin, imageMax, IM_COL32(16, 19, 24, 255), vultra::ui::dp(3.0f));
+            const char*  label    = hasPrimaryCamera ? vultra::tr("sceneView.gameView.preparingPreview") :
+                                                       vultra::tr("sceneView.gameView.noPrimaryCamera");
             const ImVec2 textSize = ImGui::CalcTextSize(label);
             drawList->AddText(
                 ImVec2((imageMin.x + imageMax.x - textSize.x) * 0.5f, (imageMin.y + imageMax.y - textSize.y) * 0.5f),
                 IM_COL32(140, 152, 166, 255),
                 label);
         }
-        drawList->AddRect(imageMin, imageMax, IM_COL32(72, 86, 104, 255), 3.0f);
+        drawList->AddRect(imageMin, imageMax, IM_COL32(72, 86, 104, 255), vultra::ui::dp(3.0f));
         const auto buttonColor = [](bool hovered) {
             return hovered ? IM_COL32(42, 50, 62, 255) : IM_COL32(26, 31, 39, 255);
         };
-        drawList->AddRectFilled(minusMin, minusMax, buttonColor(minusHovered), 5.0f);
+        drawList->AddRectFilled(minusMin, minusMax, buttonColor(minusHovered), vultra::ui::dp(5.0f));
         drawList->AddText(
-            ImVec2(minusMin.x + 4.0f, minusMin.y + 4.0f), IM_COL32(184, 198, 214, 255), ICON_MDI_MAGNIFY_MINUS);
+            ImVec2(minusMin.x + vultra::ui::dp(4.0f), minusMin.y + vultra::ui::dp(4.0f)), IM_COL32(184, 198, 214, 255), ICON_MDI_MAGNIFY_MINUS);
         drawList->AddText(labelMin, IM_COL32(126, 142, 158, 255), zoomLabel);
-        drawList->AddRectFilled(plusMin, plusMax, buttonColor(plusHovered), 5.0f);
+        drawList->AddRectFilled(plusMin, plusMax, buttonColor(plusHovered), vultra::ui::dp(5.0f));
         drawList->AddText(
-            ImVec2(plusMin.x + 4.0f, plusMin.y + 4.0f), IM_COL32(184, 198, 214, 255), ICON_MDI_MAGNIFY_PLUS);
+            ImVec2(plusMin.x + vultra::ui::dp(4.0f), plusMin.y + vultra::ui::dp(4.0f)), IM_COL32(184, 198, 214, 255), ICON_MDI_MAGNIFY_PLUS);
         drawList->PopClipRect();
     }
 

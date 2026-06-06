@@ -2,6 +2,8 @@
 
 #include "editor_app/asset_thumbnail_service.hpp"
 
+#include <vultra/core/i18n/i18n.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/imgui/imgui_theme.hpp>
 #include <vultra/function/services/asset_service.hpp>
 
@@ -130,14 +132,15 @@ namespace vultra_app::ui
                                               vultra::imgui_theme::frame();
             auto*        drawList = ImGui::GetWindowDrawList();
             const ImVec2 max {pos.x + size.x, pos.y + size.y};
-            drawList->AddRectFilled(pos, max, ImGui::GetColorU32(fill), 4.0f);
-            drawList->AddRect(pos, max, ImGui::GetColorU32(vultra::imgui_theme::border()), 4.0f);
+            drawList->AddRectFilled(pos, max, ImGui::GetColorU32(fill), vultra::ui::dp(4.0f));
+            drawList->AddRect(pos, max, ImGui::GetColorU32(vultra::imgui_theme::border()), vultra::ui::dp(4.0f));
 
-            const float  pad         = 4.0f;
+            const float  pad         = vultra::ui::dp(4.0f);
             const float  previewSize = std::max(1.0f, size.y - pad * 2.0f);
             const ImVec2 imageMin {pos.x + pad, pos.y + pad};
             const ImVec2 imageMax {imageMin.x + previewSize, imageMin.y + previewSize};
-            drawList->AddRectFilled(imageMin, imageMax, ImGui::GetColorU32(vultra::imgui_theme::panel()), 3.0f);
+            drawList->AddRectFilled(
+                imageMin, imageMax, ImGui::GetColorU32(vultra::imgui_theme::panel()), vultra::ui::dp(3.0f));
             if (preview)
             {
                 drawList->AddImage(preview, imageMin, imageMax);
@@ -150,24 +153,26 @@ namespace vultra_app::ui
                                   ImGui::GetColorU32(vultra::imgui_theme::textMuted()),
                                   fallbackIcon);
             }
-            drawList->AddRect(imageMin, imageMax, ImGui::GetColorU32(vultra::imgui_theme::separator()), 3.0f);
+            drawList->AddRect(
+                imageMin, imageMax, ImGui::GetColorU32(vultra::imgui_theme::separator()), vultra::ui::dp(3.0f));
 
-            const float       textX     = imageMax.x + 8.0f;
-            const float       textRight = max.x - 8.0f;
+            const float       textX     = imageMax.x + vultra::ui::dp(8.0f);
+            const float       textRight = max.x - vultra::ui::dp(8.0f);
             const float       textWidth = std::max(1.0f, textRight - textX);
-            const ImVec2      clipMin {textX, pos.y + 3.0f};
-            const ImVec2      clipMax {textRight, max.y - 3.0f};
-            const std::string primaryText    = primary.empty() ? std::string {"<none>"} : std::string {primary};
+            const ImVec2      clipMin {textX, pos.y + vultra::ui::dp(3.0f)};
+            const ImVec2      clipMax {textRight, max.y - vultra::ui::dp(3.0f)};
+            const std::string primaryText =
+            primary.empty() ? std::string {vultra::tr("meshSelector.field.none")} : std::string {primary};
             const std::string primaryDisplay = ellipsizeText(primaryText, textWidth);
             drawList->PushClipRect(clipMin, clipMax, true);
-            drawList->AddText(ImVec2 {textX, pos.y + 6.0f},
+            drawList->AddText(ImVec2 {textX, pos.y + vultra::ui::dp(6.0f)},
                               ImGui::GetColorU32(vultra::imgui_theme::text()),
                               primaryDisplay.c_str(),
                               primaryDisplay.c_str() + primaryDisplay.size());
             if (!secondary.empty())
             {
                 const std::string secondaryDisplay = ellipsizeText(secondary, textWidth);
-                drawList->AddText(ImVec2 {textX, pos.y + 23.0f},
+                drawList->AddText(ImVec2 {textX, pos.y + vultra::ui::dp(23.0f)},
                                   ImGui::GetColorU32(vultra::imgui_theme::textMuted()),
                                   secondaryDisplay.c_str(),
                                   secondaryDisplay.c_str() + secondaryDisplay.size());
@@ -225,11 +230,13 @@ namespace vultra_app::ui
             return false;
 
         bool changed = false;
-        ImGui::SetNextItemWidth(std::max(180.0f, ImGui::GetContentRegionAvail().x - 170.0f));
-        ImGui::InputTextWithHint("##MeshFilter", "Filter meshes...", state.filter.data(), state.filter.size());
+        ImGui::SetNextItemWidth(
+            std::max(vultra::ui::dp(180.0f), ImGui::GetContentRegionAvail().x - vultra::ui::dp(170.0f)));
+        ImGui::InputTextWithHint(
+            "##MeshFilter", vultra::tr("meshSelector.filterHint"), state.filter.data(), state.filter.size());
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(120.0f);
-        if (ImGui::SliderFloat("Size", &state.iconSize, 48.0f, 128.0f, "%.0f px"))
+        ImGui::SetNextItemWidth(vultra::ui::dp(120.0f));
+        if (ImGui::SliderFloat(vultra::tr("meshSelector.size"), &state.iconSize, 48.0f, 128.0f, "%.0f px"))
             state.iconSize = std::clamp(state.iconSize, 48.0f, 128.0f);
         ImGui::Separator();
 
@@ -239,7 +246,7 @@ namespace vultra_app::ui
         const float cellWidth       = iconSize + 24.0f;
         const int   columns         = std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / cellWidth));
 
-        if (ImGui::BeginChild("##MeshSelectorGrid", ImVec2(0.0f, 320.0f), true))
+        if (ImGui::BeginChild("##MeshSelectorGrid", ImVec2(0.0f, vultra::ui::dp(320.0f)), true))
         {
             ImGui::Columns(columns, nullptr, false);
             bool any = false;
@@ -262,7 +269,7 @@ namespace vultra_app::ui
                 const ImVec2 end {start.x + iconSize, start.y + iconSize};
                 if (isSelected)
                     ImGui::GetWindowDrawList()->AddRect(
-                        start, end, ImGui::GetColorU32(ImGuiCol_ButtonActive), 4.0f, 0, 2.0f);
+                        start, end, ImGui::GetColorU32(ImGuiCol_ButtonActive), vultra::ui::dp(4.0f), 0, vultra::ui::dp(2.0f));
 
                 if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                 {
@@ -287,12 +294,12 @@ namespace vultra_app::ui
                 ImGui::NextColumn();
             }
             if (!any)
-                ImGui::TextDisabled("No imported mesh assets found.");
+                ImGui::TextDisabled("%s", vultra::tr("meshSelector.empty"));
             ImGui::Columns(1);
         }
         ImGui::EndChild();
 
-        if (ImGui::Button(ICON_MDI_CLOSE " Clear"))
+        if (ImGui::Button((std::string {ICON_MDI_CLOSE "  "} + vultra::tr("meshSelector.clear")).c_str()))
         {
             if (selection)
                 *selection = {};
@@ -316,7 +323,7 @@ namespace vultra_app::ui
         const auto uri     = meshUriForUuid(ctx, uuid);
         ImGui::TextUnformatted(label);
         ImGui::PushID(label);
-        const float fieldHeight     = 40.0f;
+        const float fieldHeight     = vultra::ui::dp(40.0f);
         const float clearButtonSize = ImGui::GetFrameHeight();
         const float width =
             std::max(1.0f, ImGui::GetContentRegionAvail().x - clearButtonSize - ImGui::GetStyle().ItemSpacing.x);

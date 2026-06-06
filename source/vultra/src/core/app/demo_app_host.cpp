@@ -1,6 +1,7 @@
 #include "vultra/core/app/demo_app_host.hpp"
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/i18n/i18n_system.hpp"
 #include "vultra/core/input/input_system.hpp"
 #include "vultra/core/os/window_system.hpp"
 #include "vultra/core/services/input_service.hpp"
@@ -377,6 +378,7 @@ namespace vultra
 
         engine.emplaceSubsystem<WindowSystem>();
         engine.emplaceSubsystem<InputSystem>();
+        engine.emplaceSubsystem<I18nSystem>();
         engine.emplaceSubsystem<TimingSystem>();
         engine.emplaceSubsystem<JobSystem>();
 

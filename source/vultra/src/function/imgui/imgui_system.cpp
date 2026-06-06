@@ -4,6 +4,7 @@
 #include "vultra/core/rhi/structs/sampler_info.hpp"
 #include "vultra/core/rhi/texture.hpp"
 #include "vultra/core/services/window_service.hpp"
+#include "vultra/function/imgui/imgui_dpi.hpp"
 #include "vultra/function/imgui/imgui_theme.hpp"
 #include "vultra/function/rendering/runtime_profiler.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
@@ -16,7 +17,7 @@
 
 #include <font_headers/materialdesignicons_webfont.ttf.binfont.h>
 #include <font_headers/color_emoji.ttf.binfont.h>  // bundled colour-emoji font (builtin/fonts)
-#include <font_headers/wqy_microhei.ttf.binfont.h>  // bundled Simplified-Chinese font (WenQuanYi Micro Hei)
+#include <font_headers/noto_sans_cjk.otf.binfont.h>  // bundled pan-CJK font (Noto Sans CJK SC subset, OFL)
 
 #include <vbase/core/exe_path.hpp>
 
@@ -435,18 +436,20 @@ namespace vultra
         // and UI text render emoji rather than tofu. Requires the FreeType-enabled imgui package.
         tryMergeColorEmoji(io, 16.0f);
 
-        // Simplified-Chinese glyphs folded into the default font so CJK text (UI + AI chat) renders.
-        // WenQuanYi Micro Hei is a compact smooth hei-ti (GB2312 subset ~1.3MB) that harmonises with
-        // Roboto. No glyph ranges needed (1.92 loads glyphs on demand).
+        // CJK glyphs folded into the default font so Chinese / Japanese / Korean UI text (and AI chat)
+        // renders. Noto Sans CJK SC (SIL OFL) subset to common GB2312 + JIS X 0208 + KS X 1001 + kana
+        // + the bundled catalog characters -- one pan-CJK face that replaces the old Chinese-only WQY
+        // (which lacked Japanese kanji like 8A9E/8A2D and all Korean hangul). FreeType rasterises the
+        // CFF outlines. No glyph ranges needed (1.92 loads glyphs on demand).
         {
-            ImFontConfig cnConfig {};
-            cnConfig.MergeMode = true;
+            ImFontConfig cjkConfig {};
+            cjkConfig.MergeMode = true;
             addCompressedFontTTF(io,
-                                 wqy_microhei_ttf_lz4,
-                                 static_cast<int>(wqy_microhei_ttf_lz4_size),
-                                 static_cast<int>(wqy_microhei_ttf_size),
+                                 noto_sans_cjk_otf_lz4,
+                                 static_cast<int>(noto_sans_cjk_otf_lz4_size),
+                                 static_cast<int>(noto_sans_cjk_otf_size),
                                  fontSize,
-                                 &cnConfig);
+                                 &cjkConfig);
         }
 
         io.Fonts->AddFontFromMemoryCompressedTTF(
@@ -462,14 +465,18 @@ namespace vultra
 
         setImGuiStyle();
 
-        // Keep window/display scale semantic intact in window backends.
-        // For ImGui style sizing, only apply density scaling on Android.
+        // Desktop deliberately locks the OS density scale to 1.0: auto-DPI scaling looked off, so UI
+        // scale is the user's call via the editor's Application Scale setting (which drives the style
+        // through ScaleAllSizes and hardcoded px through ui::dp(), kept in sync by setImGuiUserScale).
+        // Only Android applies the platform display density automatically. setImGuiDpiScale feeds the
+        // OS factor into ui::dp() -- 1.0 on desktop, the real density on Android.
         float displayScale = window.getDisplayScale();
         if (displayScale <= 0.0f)
             displayScale = 1.0f;
 #if !defined(__ANDROID__)
         displayScale = 1.0f;
 #endif
+        setImGuiDpiScale(displayScale);
         auto& style = ImGui::GetStyle();
         style.ScaleAllSizes(displayScale);
         style.FontScaleDpi = displayScale;

@@ -32,5 +32,6 @@ namespace vultra_app
     private:
         std::vector<std::unique_ptr<EditorWindow>> m_Windows;
         std::vector<bool>                          m_WasOpen;
+        std::string                                m_LastLanguage; // drives title refresh on switch
     };
 } // namespace vultra_app

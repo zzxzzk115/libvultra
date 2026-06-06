@@ -114,6 +114,7 @@ namespace vultra_app
             AppState::EditorSettings loaded = settings;
             loaded.applicationScale         = jsonFloat(json, "applicationScale", loaded.applicationScale);
             loaded.textScale                = jsonFloat(json, "textScale", loaded.textScale);
+            loaded.language                 = jsonString(json, "language", loaded.language);
             loaded.theme                    = jsonString(json, "theme", loaded.theme);
             loaded.customThemeBackground    = jsonVec4(json, "customThemeBackground", loaded.customThemeBackground);
             loaded.customThemePanel         = jsonVec4(json, "customThemePanel", loaded.customThemePanel);
@@ -174,6 +175,7 @@ namespace vultra_app
             {"version", 1},
             {"applicationScale", normalized.applicationScale},
             {"textScale", normalized.textScale},
+            {"language", normalized.language},
             {"theme", normalized.theme},
             {"customThemeBackground", jsonVec4Value(normalized.customThemeBackground)},
             {"customThemePanel", jsonVec4Value(normalized.customThemePanel)},

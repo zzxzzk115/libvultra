@@ -6,6 +6,8 @@
 #include "editor_app/selection.hpp"
 
 #include <IconsMaterialDesignIcons.h>
+#include <vultra/core/i18n/i18n.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/services/camera_service.hpp>
@@ -265,7 +267,7 @@ namespace vultra_app
 
     } // namespace
 
-    GameViewWindow::GameViewWindow() : EditorWindow("Game View", ICON_MDI_GAMEPAD_VARIANT) {}
+    GameViewWindow::GameViewWindow() : EditorWindow("Game View", ICON_MDI_GAMEPAD_VARIANT, "window.gameView") {}
 
     void GameViewWindow::onClosed(EditorContext& ctx) { releaseRenderTarget(ctx); }
 
@@ -433,7 +435,7 @@ namespace vultra_app
             {
                 dl->AddRectFilled(min, max, IM_COL32(10, 12, 16, 255));
                 const float spacing      = ImGui::GetStyle().ItemSpacing.x;
-                const float padding      = 8.0f;
+                const float padding      = vultra::ui::dp(8.0f);
                 const float labelHeight  = ImGui::GetTextLineHeight();
                 const float headerHeight = labelHeight + padding * 2.0f;
                 const float slotCount    = static_cast<float>(std::max<size_t>(mirrorCount, 1u));
@@ -482,18 +484,20 @@ namespace vultra_app
             dl->AddRectFilled(min, max, IM_COL32(15, 17, 21, 255));
             ImGui::SetCursorScreenPos(min);
             ui::emptyState(ICON_MDI_CAMERA_OFF_OUTLINE,
-                           "No Primary Camera",
-                           "Create or mark a CameraComponent as primary to preview the game.");
+                           vultra::tr("gameView.noCamera.title"),
+                           vultra::tr("gameView.noCamera.message"));
 
             const ImVec2 panelCenter {(min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f};
-            ImGui::SetCursorScreenPos(ImVec2(panelCenter.x - 74.0f, panelCenter.y));
-            if (ImGui::Button(ICON_MDI_CAMERA_PLUS "  Create Camera", ImVec2(174.0f, 0.0f)) && ctx.services)
+            ImGui::SetCursorScreenPos(ImVec2(panelCenter.x - vultra::ui::dp(74.0f), panelCenter.y));
+            const std::string createCameraLabel =
+                std::string {ICON_MDI_CAMERA_PLUS "  "} + vultra::tr("gameView.createCamera");
+            if (ImGui::Button(createCameraLabel.c_str(), ImVec2(vultra::ui::dp(174.0f), 0.0f)) && ctx.services)
             {
                 if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
                 {
                     createDefaultCamera(worldService->world());
                     ctx.state.sceneDirty    = true;
-                    ctx.state.statusMessage = "Created a primary Camera entity.";
+                    ctx.state.statusMessage = vultra::tr("gameView.cameraCreated");
                     if (ctx.history)
                         ctx.history->setNextLabel("Create Primary Camera");
                 }
@@ -504,15 +508,13 @@ namespace vultra_app
             dl->AddRectFilled(min, max, IM_COL32(15, 17, 21, 210));
             ImGui::SetCursorScreenPos(min);
             ui::emptyState(ICON_MDI_GOOGLE_CARDBOARD,
-                           "XR Disabled",
-                           "OpenXR could not initialize. Check that a runtime/headset is available, or launch with "
-                           "--no-xr to disable XR.");
+                           vultra::tr("gameView.xrDisabled.title"),
+                           vultra::tr("gameView.xrDisabled.message"));
             ImGui::BeginDisabled(!backendService);
-            if (centeredButtonBelowEmptyState(min,
-                                              max,
-                                              ICON_MDI_HEADSET "  Request XR Session",
-                                              ImVec2(196.0f, 0.0f),
-                                              64.0f) &&
+            const std::string requestXrLabel =
+                std::string {ICON_MDI_HEADSET "  "} + vultra::tr("gameView.requestXr");
+            if (centeredButtonBelowEmptyState(
+                    min, max, requestXrLabel.c_str(), ImVec2(vultra::ui::dp(196.0f), 0.0f), vultra::ui::dp(64.0f)) &&
                 backendService)
             {
                 backendService->requestXRSession(false);
@@ -525,8 +527,8 @@ namespace vultra_app
             dl->AddRectFilled(min, max, IM_COL32(15, 17, 21, 180));
             ImGui::SetCursorScreenPos(min);
             ui::emptyState(ICON_MDI_GOOGLE_CARDBOARD,
-                           "Waiting For XR Mirror",
-                           "The headset view will appear here after the XR runtime produces mirror textures.");
+                           vultra::tr("gameView.xrWaiting.title"),
+                           vultra::tr("gameView.xrWaiting.message"));
         }
         drawMetricsOverlay(ctx, min, max);
 
@@ -582,10 +584,12 @@ namespace vultra_app
         const float    frameMs = fps > 0.0f ? 1000.0f / fps : 0.0f;
         const auto     systemMemory = querySystemMemory();
 
-        ImGui::SetNextWindowPos(ImVec2 {imageMax.x - 10.0f, imageMin.y + 10.0f}, ImGuiCond_Always, ImVec2 {1.0f, 0.0f});
+        ImGui::SetNextWindowPos(ImVec2 {imageMax.x - vultra::ui::dp(10.0f), imageMin.y + vultra::ui::dp(10.0f)},
+                                ImGuiCond_Always,
+                                ImVec2 {1.0f, 0.0f});
         ImGui::SetNextWindowBgAlpha(0.88f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2 {12.0f, 10.0f});
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, vultra::ui::dp(6.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2 {vultra::ui::dp(12.0f), vultra::ui::dp(10.0f)});
 
         constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
                                            ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
@@ -593,37 +597,44 @@ namespace vultra_app
                                            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs;
         if (ImGui::Begin("##GameViewMetricsOverlay", nullptr, flags))
         {
-            ImGui::TextUnformatted(ICON_MDI_CHART_LINE " Metrics");
+            ImGui::TextUnformatted((std::string {ICON_MDI_CHART_LINE " "} + vultra::tr("gameView.metrics.title")).c_str());
             ImGui::Separator();
-            ImGui::Text("FPS        %.1f", fps);
-            ImGui::Text("Frame      %.2f ms", frameMs);
+            ImGui::TextUnformatted(vultra::trf("gameView.metrics.fps", fps).c_str());
+            ImGui::TextUnformatted(vultra::trf("gameView.metrics.frame", frameMs).c_str());
 
             const auto* selectedFrame = profiler ? profiler->selectedFrame() : nullptr;
             if (selectedFrame)
             {
-                ImGui::Text("CPU frame  %.2f ms", selectedFrame->cpuFrameMs);
+                ImGui::TextUnformatted(vultra::trf("gameView.metrics.cpuFrame", selectedFrame->cpuFrameMs).c_str());
                 if (selectedFrame->gpuFrameMs >= 0.0)
-                    ImGui::Text("GPU frame  %.2f ms", selectedFrame->gpuFrameMs);
+                    ImGui::TextUnformatted(vultra::trf("gameView.metrics.gpuFrame", selectedFrame->gpuFrameMs).c_str());
                 ImGui::Separator();
-                ImGui::Text("Draws      %llu", static_cast<unsigned long long>(selectedFrame->drawCalls));
-                ImGui::Text("Dispatch   %llu", static_cast<unsigned long long>(selectedFrame->dispatchCalls));
-                ImGui::Text("VRAM local %s", formatBytes(selectedFrame->gpuDeviceLocalBytes).c_str());
+                ImGui::TextUnformatted(
+                    vultra::trf("gameView.metrics.draws", static_cast<unsigned long long>(selectedFrame->drawCalls)).c_str());
+                ImGui::TextUnformatted(
+                    vultra::trf("gameView.metrics.dispatch", static_cast<unsigned long long>(selectedFrame->dispatchCalls))
+                        .c_str());
+                ImGui::TextUnformatted(
+                    vultra::trf("gameView.metrics.vramLocal", formatBytes(selectedFrame->gpuDeviceLocalBytes)).c_str());
             }
             else
             {
-                ImGui::TextDisabled("Profiler warming up...");
+                ImGui::TextDisabled("%s", vultra::tr("gameView.metrics.warmingUp"));
             }
 
             if (systemMemory.processResidentAvailable || systemMemory.systemMemoryAvailable)
             {
                 ImGui::Separator();
                 if (systemMemory.processResidentAvailable)
-                    ImGui::Text("RAM used   %s", formatBytes(systemMemory.processResidentBytes).c_str());
+                    ImGui::TextUnformatted(
+                        vultra::trf("gameView.metrics.ramUsed", formatBytes(systemMemory.processResidentBytes)).c_str());
                 if (systemMemory.systemMemoryAvailable)
                 {
-                    ImGui::Text("RAM avail  %s", formatBytes(systemMemory.systemAvailableBytes).c_str());
+                    ImGui::TextUnformatted(
+                        vultra::trf("gameView.metrics.ramAvail", formatBytes(systemMemory.systemAvailableBytes)).c_str());
                     if (systemMemory.systemTotalBytes > 0u)
-                        ImGui::Text("RAM total  %s", formatBytes(systemMemory.systemTotalBytes).c_str());
+                        ImGui::TextUnformatted(
+                            vultra::trf("gameView.metrics.ramTotal", formatBytes(systemMemory.systemTotalBytes)).c_str());
                 }
             }
 
@@ -633,7 +644,9 @@ namespace vultra_app
                 if (gaussianStats.splatAssets > 0u || gaussianStats.totalSplats > 0u)
                 {
                     ImGui::Separator();
-                    ImGui::Text("Splats     %u / %u", gaussianStats.preparedSplats, gaussianStats.totalSplats);
+                    ImGui::TextUnformatted(
+                        vultra::trf("gameView.metrics.splats", gaussianStats.preparedSplats, gaussianStats.totalSplats)
+                            .c_str());
                 }
             }
         }
@@ -643,8 +656,9 @@ namespace vultra_app
 
     void GameViewWindow::drawToolbar(EditorContext& ctx)
     {
-        const char* resolutionLabels[] = {"Free Aspect", "16:9", "4:3", "21:9", "1920x1080", "1280x720", "800x600"};
-        ImGui::SetNextItemWidth(126.0f);
+        const char* resolutionLabels[] = {
+            vultra::tr("gameView.freeAspect"), "16:9", "4:3", "21:9", "1920x1080", "1280x720", "800x600"};
+        ImGui::SetNextItemWidth(vultra::ui::dp(126.0f));
         if (ImGui::Combo(
                 "##GameViewResolution", &m_SelectedResolution, resolutionLabels, IM_ARRAYSIZE(resolutionLabels)))
         {
@@ -654,35 +668,38 @@ namespace vultra_app
         }
 
         ImGui::SameLine();
-        ImGui::TextUnformatted(ICON_MDI_MAGNIFY " Zoom");
+        ImGui::TextUnformatted((std::string {ICON_MDI_MAGNIFY " "} + vultra::tr("gameView.zoom")).c_str());
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(90.0f);
+        ImGui::SetNextItemWidth(vultra::ui::dp(90.0f));
         if (m_SelectedResolution == 0)
             ImGui::BeginDisabled();
         ImGui::SliderFloat("##GameViewZoom", &m_UserZoom, m_MinZoom, 4.0f, "%.2fx");
         if (m_SelectedResolution == 0)
             ImGui::EndDisabled();
 
-        ImGui::SameLine(0.0f, 14.0f);
+        ImGui::SameLine(0.0f, vultra::ui::dp(14.0f));
         const ImVec2 target = m_ActiveRenderTarget.texture ?
                                   ImVec2(static_cast<float>(m_ActiveRenderTarget.extent.width),
                                          static_cast<float>(m_ActiveRenderTarget.extent.height)) :
                                   ImVec2(0.0f, 0.0f);
-        ImGui::TextDisabled("Res: %dx%d", static_cast<int>(target.x), static_cast<int>(target.y));
+        ImGui::TextDisabled(
+            "%s", vultra::trf("gameView.res", static_cast<int>(target.x), static_cast<int>(target.y)).c_str());
 
-        ImGui::SameLine(0.0f, 14.0f);
+        ImGui::SameLine(0.0f, vultra::ui::dp(14.0f));
         const bool metricsActive = ctx.state.metricsOverlayVisible;
         if (metricsActive)
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-        if (ImGui::SmallButton(ICON_MDI_CHART_LINE " Metrics"))
+        const std::string metricsButtonLabel =
+            std::string {ICON_MDI_CHART_LINE " "} + vultra::tr("gameView.metrics.title");
+        if (ImGui::SmallButton(metricsButtonLabel.c_str()))
             ctx.state.metricsOverlayVisible = !ctx.state.metricsOverlayVisible;
         if (metricsActive)
             ImGui::PopStyleColor();
 
         if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
         {
-            ImGui::SameLine(0.0f, 14.0f);
-            ImGui::Checkbox("Gamma", &renderService->builtinRenderSettings().xrMirrorGammaCorrect);
+            ImGui::SameLine(0.0f, vultra::ui::dp(14.0f));
+            ImGui::Checkbox(vultra::tr("gameView.gamma"), &renderService->builtinRenderSettings().xrMirrorGammaCorrect);
         }
     }
 

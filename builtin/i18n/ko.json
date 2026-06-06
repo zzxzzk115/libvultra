@@ -1,0 +1,1931 @@
+{
+  "inspector": {
+    "field": {
+      "active": "활성",
+      "allowSleeping": "슬립 허용",
+      "ambientColor": "앰비언트 색상",
+      "ambientIntensity": "앰비언트 강도",
+      "anchorMax": "앵커 최대",
+      "anchorMin": "앵커 최소",
+      "anchoredPositionPx": "앵커 위치 (px)",
+      "angularDamping": "각 감쇠",
+      "angularVelocity": "각속도",
+      "animation": "애니메이션",
+      "blendDistance": "블렌드 거리",
+      "borderRadiusPx": "테두리 반경 (px)",
+      "boxSize": "박스 크기",
+      "builtinGeometry": "내장 지오메트리",
+      "castsShadow": "그림자 드리우기",
+      "cellSizePx": "셀 크기 (px)",
+      "checkColor": "체크 색상",
+      "checked": "체크됨",
+      "clearColor": "클리어 색상",
+      "clearMode": "클리어 모드",
+      "color": "색상",
+      "colorValue": "색상 값",
+      "cullingMask": "컬링 마스크",
+      "emissionRate": "방출 속도",
+      "enableIBL": "IBL 활성화",
+      "enabled": "활성화",
+      "endColor": "종료 색상",
+      "endSize": "종료 크기",
+      "environmentMap": "환경 맵",
+      "fallbackMono": "폴백 모노",
+      "fillColor": "채우기 색상",
+      "fitMode": "맞춤 모드",
+      "floatValue": "Float 값",
+      "fontSizePx": "글꼴 크기 (px)",
+      "fovYDegrees": "FOV Y 도",
+      "friction": "마찰",
+      "gaussianSplat": "가우시안 스플랫",
+      "gpu": "GPU",
+      "graph": "그래프",
+      "gravity": "중력",
+      "gravityFactor": "중력 계수",
+      "grounded": "접지",
+      "halfHeight": "절반 높이",
+      "halfHeightOfCylinder": "실린더 절반 높이",
+      "handleColor": "핸들 색상",
+      "height": "높이",
+      "horizontalAlign": "수평 정렬",
+      "hoveredColor": "호버 색상",
+      "iblColor": "IBL 색상",
+      "iblIntensity": "IBL 강도",
+      "innerConeDegrees": "내부 콘 각도",
+      "inputMove": "입력 이동",
+      "intensity": "강도",
+      "interactable": "상호작용 가능",
+      "isSensor": "센서 여부",
+      "jumpRequested": "점프 요청됨",
+      "jumpSpeed": "점프 속도",
+      "kind": "종류",
+      "lifetime": "수명",
+      "lifetimeVariance": "수명 분산",
+      "linearDamping": "선형 감쇠",
+      "linearVelocity": "선형 속도",
+      "locked": "잠김",
+      "loop": "루프",
+      "marginPx": "여백 (px)",
+      "mask": "마스크",
+      "mass": "질량",
+      "material": "머티리얼",
+      "materialGraph": "머티리얼 그래프",
+      "materialOverrides": "머티리얼 오버라이드",
+      "maxAngularVelocity": "최대 각속도",
+      "maxLinearVelocity": "최대 선형 속도",
+      "maxParticles": "최대 파티클 수",
+      "maxSlopeAngleDegrees": "최대 경사 각도",
+      "maxValue": "최대값",
+      "mesh": "메시",
+      "minValue": "최소값",
+      "mode": "모드",
+      "motionQuality": "모션 품질",
+      "motionType": "모션 유형",
+      "name": "이름",
+      "normalColor": "기본 색상",
+      "objectLayer": "오브젝트 레이어",
+      "offColor": "오프 색상",
+      "onColor": "온 색상",
+      "orthographicHeight": "직교 투영 높이",
+      "outerConeDegrees": "외부 콘 각도",
+      "overrideMass": "질량 오버라이드",
+      "paddingPx": "패딩 (px)",
+      "parallaxCorrection": "시차 보정",
+      "pivot": "피벗",
+      "pixelsPerUnit": "단위당 픽셀",
+      "playOnStart": "시작 시 재생",
+      "playing": "재생 중",
+      "position": "위치",
+      "pressedColor": "눌렀을 때 색상",
+      "primary": "기본",
+      "priority": "우선순위",
+      "projection": "투영",
+      "properties": "속성",
+      "radius": "반지름",
+      "range": "범위",
+      "referenceResolutionPx": "기준 해상도 (px)",
+      "renderMode": "렌더 모드",
+      "rendererKey": "렌더러 키",
+      "restitution": "반발 계수",
+      "rotation": "회전",
+      "rotationDegrees": "회전 각도 (도)",
+      "scale": "스케일",
+      "scaleMode": "스케일 모드",
+      "scriptUri": "스크립트 URI",
+      "selectable": "선택 가능",
+      "shape": "모양",
+      "sizeDeltaPx": "크기 델타 (px)",
+      "skeleton": "스켈레톤",
+      "skybox": "스카이박스",
+      "slot": "슬롯",
+      "sortOrder": "정렬 순서",
+      "spacingPx": "간격 (px)",
+      "spawnRadius": "스폰 반지름",
+      "speed": "속도",
+      "startColor": "시작 색상",
+      "startSize": "시작 크기",
+      "startVelocity": "시작 속도",
+      "stepHeight": "스텝 높이",
+      "stereoGraphMode": "스테레오 그래프 모드",
+      "targetGraphic": "대상 그래픽",
+      "text": "텍스트",
+      "texture": "텍스처",
+      "textureUri": "텍스처 URI",
+      "time": "시간",
+      "tint": "색조",
+      "trackColor": "트랙 색상",
+      "trackingOrigin": "트래킹 원점",
+      "twoSided": "양면",
+      "type": "유형",
+      "uuid": "UUID",
+      "value": "값",
+      "velocity": "속도",
+      "velocityVariance": "속도 분산",
+      "verticalAlign": "세로 정렬",
+      "visible": "표시",
+      "width": "너비",
+      "worldSpace": "월드 공간",
+      "zFar": "Z 원거리",
+      "zNear": "Z 근거리"
+    },
+    "preview": "미리보기",
+    "unsaved": "저장 안 됨",
+    "reload": "다시 불러오기",
+    "clear": "지우기",
+    "diagnostics": "진단",
+    "noneAngle": "<없음>",
+    "selectAngle": "<선택>",
+    "noneParen": "(없음)",
+    "addComponent": "컴포넌트 추가",
+    "allComponentsPresent": "추가 가능한 컴포넌트가 모두 이미 존재합니다.",
+    "fitToMeshBoundsSuffix": " (가능한 경우 메시 경계에 맞춤)",
+    "xrViewRequiresCamera": "XR View는 Camera 컴포넌트가 있는 엔티티에만 추가할 수 있습니다.",
+    "servicesUnavailable": "서비스를 사용할 수 없습니다.",
+    "worldServiceUnavailable": "World 서비스를 사용할 수 없습니다.",
+    "assetServiceUnavailable": "Asset 서비스를 사용할 수 없습니다.",
+    "entityGone": "선택한 엔티티가 더 이상 존재하지 않습니다.",
+    "componentAdded": "컴포넌트 추가됨: {}",
+    "componentRemoved": "컴포넌트 제거됨: {}",
+    "componentMovedUp": "컴포넌트를 위로 이동함: {}",
+    "componentMovedDown": "컴포넌트를 아래로 이동함: {}",
+    "component": {
+      "generic": "컴포넌트",
+      "transform": "트랜스폼",
+      "rectTransform": "Rect Transform",
+      "layer": "레이어",
+      "canvas": "캔버스",
+      "uiPanel": "UI 패널",
+      "uiImage": "UI 이미지",
+      "uiText": "UI 텍스트",
+      "uiButton": "UI 버튼",
+      "uiToggle": "UI 토글",
+      "uiSlider": "UI 슬라이더",
+      "uiProgressBar": "UI 진행 표시줄",
+      "uiLayout": "UI 레이아웃",
+      "status": "상태",
+      "hierarchy": "계층",
+      "mesh": "메시",
+      "animator": "애니메이터",
+      "gaussianSplat": "Gaussian Splat",
+      "camera": "카메라",
+      "xrView": "XR View",
+      "environment": "환경",
+      "reflectionProbe": "리플렉션 프로브",
+      "light": "라이트",
+      "particleEmitter": "파티클 이미터",
+      "rigidBody": "리지드바디",
+      "boxShape": "박스 셰이프",
+      "sphereShape": "스피어 셰이프",
+      "capsuleShape": "캡슐 셰이프",
+      "script": "스크립트",
+      "prefab": "프리팹",
+      "material": "머티리얼"
+    },
+    "category": {
+      "core": "코어",
+      "ui": "UI",
+      "rendering": "렌더링",
+      "animation": "애니메이션",
+      "lighting": "라이팅",
+      "physics": "물리",
+      "camera": "카메라",
+      "scripting": "스크립팅"
+    },
+    "project": {
+      "title": "프로젝트",
+      "name": "이름: {}",
+      "root": "루트: {}",
+      "assetRoot": "에셋 루트: {}",
+      "defaultScene": "기본 씬: {}",
+      "noProject": "(프로젝트 없음)"
+    },
+    "entity": {
+      "title": "엔티티",
+      "uuid": "UUID: {}"
+    },
+    "hierarchy": {
+      "children": "자식: {}",
+      "parentUuid": "부모 UUID: {}",
+      "parentSceneRoot": "부모: <씬 루트>"
+    },
+    "transform": {
+      "direction": "방향"
+    },
+    "rectTransform": {
+      "anchors": "앵커",
+      "size": "크기",
+      "anchorMin": "앵커 최소",
+      "anchorMax": "앵커 최대",
+      "pivot": "피벗"
+    },
+    "light": {
+      "kindLabel": "종류",
+      "kind": {
+        "directional": "디렉셔널",
+        "point": "포인트",
+        "spot": "스포트",
+        "rectangleArea": "사각형 영역"
+      },
+      "color": "색상",
+      "intensity": "강도",
+      "range": "범위",
+      "radius": "반지름",
+      "innerCone": "내부 콘 각도",
+      "outerCone": "외부 콘 각도",
+      "width": "너비",
+      "height": "높이",
+      "castsShadow": "그림자 드리우기",
+      "twoSided": "양면"
+    },
+    "xrView": {
+      "trackingOriginLabel": "트래킹 원점",
+      "trackingOrigin": {
+        "local": "로컬",
+        "stage": "스테이지"
+      },
+      "stereoGraphLabel": "스테레오 그래프",
+      "stereoGraph": {
+        "singleGraphStereo": "싱글 그래프 스테레오"
+      },
+      "fallbackMono": "폴백 모노",
+      "runtime": "런타임",
+      "openxr": "OpenXR: {}",
+      "mirror": "미러: {}",
+      "requestSession": "XR 세션 요청",
+      "sessionHint": "활성화된 XR 카메라가 활성 상태가 되면 세션이 시작됩니다."
+    },
+    "uiLayout": {
+      "layout": "레이아웃",
+      "paddingPx": "패딩 Px",
+      "marginPx": "마진 Px",
+      "spacingPx": "간격 Px",
+      "cellSizePx": "셀 크기 Px",
+      "kind": {
+        "horizontal": "가로",
+        "vertical": "세로",
+        "grid": "그리드"
+      }
+    },
+    "animator": {
+      "modeLabel": "모드",
+      "skeleton": "스켈레톤",
+      "graph": "그래프",
+      "animation": "애니메이션",
+      "playOnStart": "시작 시 재생",
+      "playing": "재생 중",
+      "loop": "루프",
+      "speed": "속도",
+      "time": "시간",
+      "resetTime": "시간 재설정",
+      "editGraph": "그래프 편집",
+      "clearSkeletonOverride": "스켈레톤 재정의 지우기",
+      "overrideSkeleton": "스켈레톤 재정의",
+      "fromMesh": "(메시에서)",
+      "noSkinnedMesh": "(스킨 메시 없음)",
+      "noGraphs": "프로젝트에 애니메이터 그래프가 없습니다.",
+      "mode": {
+        "singleClip": "싱글 클립",
+        "graph": "그래프"
+      }
+    },
+    "script": {
+      "none": "없음 (Lua 스크립트)",
+      "dialogTitle": "Lua 스크립트 선택",
+      "chooseTip": "클릭하여 .lua 스크립트를 선택하거나, Lua 스크립트 에셋을 여기에 드롭하세요.",
+      "selectTip": "Lua 스크립트를 선택하세요.",
+      "dropNotLua": "드롭된 에셋은 Lua 스크립트가 아닙니다.",
+      "mustBeInRoot": "스크립트는 프로젝트 에셋 루트 내에 있어야 합니다."
+    },
+    "assetType": {
+      "mesh": "메시",
+      "skeleton": "스켈레톤",
+      "animation": "애니메이션",
+      "gaussianSplat": "가우시안 스플랫",
+      "texture": "텍스처",
+      "asset": "에셋"
+    },
+    "assetField": {
+      "none": "없음 ({})",
+      "dropTip": "{} 에셋을 여기에 드롭하세요.",
+      "selectTip": "{} 에셋을 선택하세요.",
+      "clearTip": "참조를 지웁니다.",
+      "dropRejected": "드롭한 에셋 유형은 이 필드에서 허용되지 않습니다."
+    },
+    "assetPicker": {
+      "select": "{} 선택",
+      "noAssets": "이 유형의 소스 에셋이 없습니다."
+    },
+    "material": {
+      "source": "소스",
+      "graph": "그래프",
+      "material": "머티리얼",
+      "texture": "텍스처",
+      "textureUri": "텍스처 URI",
+      "overrides": "머티리얼 오버라이드",
+      "addOverride": "머티리얼 오버라이드 추가",
+      "forkBuiltin": "빌트인 포크",
+      "forkBuiltinTip": "빌트인 PBR 머티리얼에서 편집 가능한 프로젝트 .vmat.json을 만듭니다.",
+      "propertyBlock": "프로퍼티 블록",
+      "addProperty": "프로퍼티 추가",
+      "removeProperty": "프로퍼티 제거",
+      "addSourceProperty": "소스 프로퍼티 추가",
+      "customBuiltinId": "커스텀 빌트인 ID",
+      "properties": "프로퍼티",
+      "save": "머티리얼 저장",
+      "saved": "머티리얼 저장됨: {}",
+      "saveFailed": "머티리얼 저장 실패: {}",
+      "parseFailed": "머티리얼 에셋 파싱 실패: {}",
+      "noShaderParams": "이 셰이더에서 편집 가능한 머티리얼 파라미터를 찾을 수 없습니다. 셰이더 라이브러리가 로드되었고 셰이더가 머티리얼 파라미터를 선언하는지 확인하세요.",
+      "noExposedParams": "이 소스에 노출된 파라미터가 아직 없습니다.",
+      "unsupportedType": "지원되지 않는 프로퍼티 유형",
+      "kind": {
+        "builtin": "빌트인",
+        "shader": "셰이더",
+        "graph": "그래프"
+      },
+      "propType": {
+        "float": "Float",
+        "color": "색상",
+        "texture2D": "Texture2D"
+      }
+    },
+    "materialSlot": {
+      "slot": "슬롯",
+      "slot0Default": "슬롯 0 - 기본 머티리얼",
+      "slot0Loading": "슬롯 0 - 메시 머티리얼 로딩 중",
+      "materialN": "머티리얼 {}",
+      "slotLabel": "슬롯 {} - {}",
+      "slotUnknown": "슬롯 {} - 알 수 없는 머티리얼",
+      "keepSlot": "슬롯 {} 유지",
+      "usedBySubmesh": "서브메시에서 사용됨: {}",
+      "tip": "머티리얼 그래프 오버라이드는 메시 머티리얼 슬롯 하나를 대체합니다. 저장되는 값은 여전히 숫자 슬롯입니다."
+    },
+    "shader": {
+      "library": "라이브러리",
+      "shader": "셰이더",
+      "vertex": "버텍스",
+      "fragment": "프래그먼트",
+      "vertexLibrary": "버텍스 라이브러리",
+      "fragmentLibrary": "프래그먼트 라이브러리",
+      "compute": "컴퓨트",
+      "raygen": "Raygen",
+      "miss": "Miss",
+      "closestHit": "Closest Hit",
+      "anyHit": "Any Hit"
+    },
+    "renderPass": {
+      "title": "렌더 그래프 패스",
+      "pipelineLabel": "파이프라인",
+      "inputs": "입력",
+      "outputs": "출력",
+      "dispatchByOutputSize": "출력 크기로 디스패치",
+      "save": "패스 저장",
+      "saved": "렌더 그래프 패스를 저장했습니다.",
+      "saveFailedOpen": "렌더 패스 저장 실패: 파일을 열 수 없습니다.",
+      "saveFailedWrite": "렌더 패스 저장 실패: 파일을 쓸 수 없습니다.",
+      "pipeline": {
+        "graphics": "그래픽스",
+        "compute": "컴퓨트",
+        "raytracing": "레이트레이싱"
+      }
+    },
+    "rendererKey": {
+      "rayTracingUnavailable": "현재 렌더 장치에서는 레이트레이싱을 사용할 수 없습니다."
+    },
+    "graphNode": {
+      "title": "머티리얼 그래프 노드",
+      "typeId": "타입 ID",
+      "displayName": "표시 이름",
+      "inputs": "입력",
+      "outputs": "출력",
+      "removePin": "핀 제거",
+      "addPin": "핀 추가",
+      "defaultParams": "기본 파라미터",
+      "addParam": "파라미터 추가",
+      "paramNameHint": "파라미터 이름",
+      "defaultUri": "기본 URI",
+      "glslOutputExpressions": "GLSL 출력 표현식",
+      "save": "노드 저장",
+      "saved": "머티리얼 그래프 노드 저장됨: {}",
+      "saveFailed": "머티리얼 그래프 노드 저장 실패: {}",
+      "parseFailed": "머티리얼 그래프 노드 파싱 실패: {}"
+    },
+    "asset": {
+      "title": "에셋",
+      "uuid": "UUID: {}",
+      "type": "유형: {}",
+      "source": "소스: {}",
+      "imported": "가져옴: {}"
+    },
+    "skeleton": {
+      "title": "스켈레톤",
+      "name": "이름: {}",
+      "joints": "조인트: {}",
+      "payload": "페이로드: {}",
+      "unavailable": "스켈레톤 메타데이터를 사용할 수 없습니다."
+    },
+    "animation": {
+      "title": "애니메이션",
+      "name": "이름: {}",
+      "duration": "길이: {:.3f} s",
+      "payload": "페이로드: {}",
+      "unavailable": "애니메이션 메타데이터를 사용할 수 없습니다."
+    },
+    "sourceAsset": {
+      "title": "소스 에셋",
+      "name": "이름: {}",
+      "type": "유형: {}",
+      "path": "경로: {}",
+      "size": "크기: {}",
+      "folder": "폴더",
+      "editAsSource": "소스로 편집",
+      "openLuaSource": "Lua 소스 열기",
+      "openInCodeEditor": "코드 에디터에서 열기",
+      "editingScene": "씬 소스 편집 중: {}",
+      "openedInEditor": "코드 에디터에서 열었습니다: {}"
+    },
+    "sceneSource": {
+      "title": "씬 소스",
+      "setAsDefault": "기본 씬으로 설정",
+      "defaultSet": "기본 씬으로 설정했습니다: {}"
+    },
+    "prefab": {
+      "uri": "URI: {}",
+      "uuid": "UUID: {}"
+    },
+    "camera": {
+      "alignWithSceneView": "씬 뷰에 맞추기",
+      "alignWithSceneViewTip": "이 카메라 엔티티를 현재 씬 뷰 카메라 포즈로 이동합니다.",
+      "alignSceneViewWithCamera": "씬 뷰를 카메라에 맞추기",
+      "alignSceneViewWithCameraTip": "씬 뷰 에디터 카메라를 이 카메라 엔티티로 이동합니다.",
+      "sceneViewUnavailable": "씬 뷰 카메라를 아직 사용할 수 없습니다.",
+      "alignedToSceneView": "카메라를 씬 뷰에 맞췄습니다.",
+      "sceneViewAligned": "씬 뷰를 카메라에 맞췄습니다."
+    },
+    "forkMaterial": {
+      "noAssetRoot": "머티리얼 포크 실패: 프로젝트 에셋 루트가 없습니다.",
+      "failed": "머티리얼 포크 실패: {}",
+      "noFileName": "머티리얼 포크 실패: 사용 가능한 파일 이름이 없습니다.",
+      "outsideAssets": "머티리얼 포크 실패: 대상이 프로젝트 에셋 외부에 있습니다.",
+      "forked": "내장 머티리얼을 포크했습니다: {}",
+      "forkedNoImport": "내장 머티리얼을 포크했지만 에셋 레지스트리 가져오기가 실행되지 않았습니다."
+    },
+    "texture": {
+      "targetFormat": "대상 포맷",
+      "subtype": {
+        "uiSprite": "UI / 스프라이트",
+        "normalMap": "노멀 맵",
+        "cursor": "커서"
+      }
+    },
+    "textureImport": {
+      "title": "텍스처 가져오기",
+      "subtype": "하위 유형",
+      "sourceSize": "소스 크기: {}",
+      "importedSize": "가져온 크기: {}",
+      "missing": "없음",
+      "notImported": "가져오지 않음",
+      "generateMipmaps": "밉맵 생성",
+      "flipY": "Y 뒤집기",
+      "qualityLevel": "품질 레벨",
+      "compressionLevel": "압축 레벨",
+      "compressOnlyLarge": "큰 것만 압축",
+      "downscaleLarge": "큰 것 다운스케일",
+      "downscaleMinDimension": "다운스케일 최소 크기",
+      "downscaleTargetDimension": "다운스케일 목표 크기",
+      "bakeNormalMap": "노멀 맵 베이크",
+      "directXNormalMap": "DirectX 노멀 맵",
+      "revert": "되돌리기",
+      "saveFailed": "텍스처 가져오기 설정 저장에 실패했습니다.",
+      "applied": "텍스처 가져오기 설정을 적용하고 다시 가져오기를 대기열에 추가했습니다: {}"
+    },
+    "modelPreview": {
+      "servicesUnavailable": "미리보기 서비스를 사용할 수 없습니다.",
+      "empty": "미리보기 씬이 비어 있습니다."
+    },
+    "layerMask": {
+      "all": "전체"
+    },
+    "removeBlock": {
+      "prefab": "프리팹 데이터는 프리팹 인스턴스에서 관리됩니다.",
+      "uiButtonTargetGraphic": "UI 버튼의 targetGraphic이 이 Image를 사용합니다. 제거하기 전에 targetGraphic을 지우거나 다시 지정하세요."
+    },
+    "enum": {
+      "projection": {
+        "perspective": "원근",
+        "orthographic": "직교"
+      },
+      "clearMode": {
+        "color": "색상",
+        "skybox": "스카이박스"
+      },
+      "motionType": {
+        "static": "정적",
+        "kinematic": "키네마틱",
+        "dynamic": "동적"
+      },
+      "objectLayer": {
+        "nonMoving": "비이동",
+        "moving": "이동"
+      },
+      "motionQuality": {
+        "discrete": "이산",
+        "linearCast": "리니어 캐스트"
+      },
+      "geometry": {
+        "externalMesh": "외부 메시",
+        "quad": "쿼드",
+        "cube": "큐브",
+        "sphere": "구체",
+        "capsule": "캡슐"
+      },
+      "scaleMode": {
+        "constantPixels": "고정 픽셀",
+        "scaleWithScreen": "화면에 맞춰 스케일"
+      },
+      "fitMode": {
+        "stretch": "늘이기",
+        "contain": "맞춤",
+        "cover": "채우기"
+      },
+      "hAlign": {
+        "left": "왼쪽",
+        "center": "가운데",
+        "right": "오른쪽"
+      },
+      "vAlign": {
+        "top": "위",
+        "middle": "가운데",
+        "bottom": "아래"
+      },
+      "shape": {
+        "box": "박스",
+        "sphere": "구체"
+      }
+    }
+  },
+  "renderGraph": {
+    "selector": {
+      "graph": "그래프",
+      "noneSelected": "<없음>"
+    },
+    "toolbar": {
+      "reload": "다시 불러오기",
+      "liveApply": "실시간 적용",
+      "topoOrder": "토폴로지 순서",
+      "autoLayout": "자동 레이아웃",
+      "deleteSelected": "선택 항목 삭제",
+      "pipeline": "파이프라인",
+      "editing": "{} 편집 중",
+      "noGraphSelected": "선택된 렌더 그래프가 없습니다",
+      "builtinReadOnlySuffix": " (내장, 읽기 전용)",
+      "openAssetHint": ".vrg.json 렌더 그래프 에셋을 엽니다."
+    },
+    "export": {
+      "title": "내장 렌더 그래프 내보내기",
+      "readOnlyHint": "내장 그래프는 읽기 전용입니다. 내보낼 대상을 선택하세요.",
+      "suggestedFile": "추천 파일: {}",
+      "target": "대상"
+    },
+    "addMenu": {
+      "projectPass": "프로젝트 패스",
+      "builtinPass": "내장 패스"
+    },
+    "menu": {
+      "editInternals": "내부 편집",
+      "deleteFeature": "기능 삭제",
+      "deleteLink": "링크 삭제",
+      "deletePass": "패스 삭제",
+      "enabled": "활성화"
+    },
+    "pipeline": {
+      "customRenderGraph": "사용자 지정 렌더 그래프",
+      "builtinFeature": "내장 기능",
+      "passCount": "패스 {}개",
+      "doubleClickEdit": "더블클릭하여 내부 편집"
+    },
+    "pin": {
+      "in": "입력",
+      "out": "출력"
+    },
+    "canvas": {
+      "importedResource": "가져온 리소스",
+      "shader": "셰이더: {}"
+    },
+    "param": {
+      "unknown": "알 수 없음"
+    },
+    "banner": {
+      "graphInvalid": "그래프가 유효하지 않습니다: {}"
+    },
+    "camera": {
+      "editorCamera": "에디터 카메라",
+      "gameCamera": "게임 카메라",
+      "gameCameraNamed": "게임 카메라: {}"
+    },
+    "runtime": {
+      "viewerTitle": "런타임 프레임 그래프 뷰어",
+      "captureStats": "텍스처: {}/{} 캡처됨, 그래프: {}/{}",
+      "autoFit": "자동 맞춤",
+      "scale": "스케일",
+      "noFrameGraph": "아직 컴파일된 프레임 그래프가 없습니다.",
+      "copyDot": "DOT 복사",
+      "copyDotFallbackTip": "재구성된 Graphviz DOT 폴백 복사",
+      "copyDotTip": "FrameGraph가 생성한 선택된 런타임 그래프 DOT 복사",
+      "graphLabel": "{} - {} (노드 {}개)",
+      "pinImport": "가져오기",
+      "pinRead": "읽기",
+      "pinInSideEffect": "입력\n부작용",
+      "pinIn": "입력",
+      "pinUse": "사용",
+      "pinSide": "부작용",
+      "pinOut": "출력"
+    },
+    "texture": {
+      "nameSize": "{} | {}x{}",
+      "nameSizeFormat": "{} | {}x{} | {}",
+      "capturing": "선택한 텍스처 미리보기 캡처 중...",
+      "modeColor": "색상",
+      "modeRawDepth": "원본 깊이",
+      "modeLinearDepth": "선형 깊이",
+      "modeInvertedLinearDepth": "반전 선형 깊이",
+      "modeAlpha": "알파",
+      "modeNormal": "노멀",
+      "modeTooltip": "텍스처 표시 모드",
+      "mode": "모드",
+      "gamma": "감마",
+      "resetTooltip": "미리보기 설정 재설정",
+      "fitRange": "범위 맞춤",
+      "fitRangeTooltip": "미리보기 이미지에서 깊이 범위 자동 맞춤",
+      "clampMin": "클램프 최소",
+      "clampMax": "클램프 최대",
+      "cameraZ": "카메라 z: {:.4f} - {:.1f}",
+      "leftEye": "왼쪽 눈",
+      "rightEye": "오른쪽 눈"
+    },
+    "overlay": {
+      "preview": "미리보기",
+      "preparingPreview": "미리보기 준비 중",
+      "noPrimaryCamera": "기본 카메라가 없습니다"
+    },
+    "status": {
+      "switched": "렌더 그래프를 전환했습니다",
+      "rendererInfo": "렌더러 '{}': {}",
+      "switchFailed": "렌더 그래프 전환에 실패했습니다",
+      "featureOrderUpdated": "기능 순서를 업데이트했습니다",
+      "linkRemoved": "패스 입력 링크를 제거했습니다",
+      "readOnlyEdge": "이것은 읽기 전용 종속성 에지입니다.",
+      "passDeleted": "패스를 삭제했습니다",
+      "nodeReadOnly": "이 노드는 읽기 전용입니다.",
+      "resourceDeleted": "리소스를 삭제했습니다",
+      "nothingSelected": "선택된 항목이 없습니다",
+      "exported": "내보냈습니다",
+      "exportedDetail": "내장 렌더 그래프를 내보냈습니다: {}",
+      "topoApplied": "토폴로지 순서를 적용했습니다",
+      "autoLayoutApplied": "자동 레이아웃을 적용했습니다",
+      "repairedLinks": "오래된 렌더 그래프 링크를 복구했습니다",
+      "loadedBuiltin": "내장 그래프를 불러왔습니다",
+      "loadBuiltinFailed": "내장 그래프를 불러오지 못했습니다: {}",
+      "loaded": "불러왔습니다",
+      "loadFailed": "그래프를 불러오지 못했습니다: {}",
+      "connectToReorder": "기능 출력을 다른 기능 입력에 연결하여 파이프라인 순서를 변경하세요.",
+      "featureDeleted": "파이프라인 기능을 삭제했습니다",
+      "passLinkUpdated": "패스 입력 링크를 업데이트했습니다",
+      "validationFailed": "검증에 실패했습니다: {}",
+      "runtimeApplyUnavailable": "런타임 적용에 실패했습니다: 렌더/에셋 서비스를 사용할 수 없습니다.",
+      "appliedInMemory": "메모리에 적용됨",
+      "appliedInMemoryDetail": "렌더 그래프를 메모리에 적용했습니다: {}",
+      "builtinReadOnly": "내장 그래프는 읽기 전용입니다. 내보내기를 사용하세요.",
+      "saved": "저장됨",
+      "savedDetail": "렌더 그래프를 저장했습니다: {}"
+    }
+  },
+  "sceneView": {
+    "tool": {
+      "select": "선택 (Q)",
+      "move": "이동 (W)",
+      "rotate": "회전 (E)",
+      "scale": "스케일 (R)",
+      "rect": "사각형 도구 (T)",
+      "transform": "트랜스폼 도구 (Y)"
+    },
+    "coord": {
+      "local": "로컬",
+      "localTooltip": "로컬 좌표 공간",
+      "global": "글로벌",
+      "globalTooltip": "글로벌 좌표 공간"
+    },
+    "toolbar": {
+      "grid": "그리드",
+      "uiSnap": "UI 스냅",
+      "viewModeTooltip": "3D / 2D UI"
+    },
+    "gizmos": {
+      "popupTitle": "에디터 기즈모",
+      "tooltip": "에디터 기즈모 (아이콘, 경계, 콜라이더, 라이트)",
+      "header": "에디터 기즈모",
+      "icons": "아이콘",
+      "iconSize": "아이콘 크기",
+      "selectionBounds": "선택 경계",
+      "colliders": "콜라이더",
+      "lightCameraGizmos": "라이트 및 카메라 기즈모",
+      "showAll": "모두 표시",
+      "hideAll": "모두 숨기기"
+    },
+    "clearColor": {
+      "applyTooltip": "UI 클리어 색상 적용",
+      "popupTitle": "사용자 지정 UI 클리어 색상",
+      "customTooltip": "사용자 지정 UI 클리어 색상",
+      "label": "클리어 색상"
+    },
+    "gameView": {
+      "title": "게임 뷰",
+      "preparingPreview": "미리보기 준비 중",
+      "noPrimaryCamera": "기본 카메라 없음"
+    },
+    "overlay": {
+      "canvas": "캔버스"
+    },
+    "history": {
+      "moveUiRect": "UI 사각형 이동",
+      "rotateUiRect": "UI 사각형 회전",
+      "resizeUiRect": "UI 사각형 크기 조정",
+      "scaleUiRect": "UI 사각형 스케일",
+      "transformEntity": "엔티티 트랜스폼"
+    }
+  },
+  "materialGraph": {
+    "toolbar": {
+      "graph": "그래프",
+      "new": "새로 만들기",
+      "compile": "컴파일",
+      "autoLayout": "자동 레이아웃",
+      "liveApply": "실시간 적용"
+    },
+    "nodeMenu": {
+      "editNote": "메모 편집...",
+      "clearNote": "메모 지우기",
+      "note": "메모"
+    },
+    "blackboard": {
+      "defaultValue": "기본값",
+      "defaultUri": "기본 URI"
+    },
+    "inspector": {
+      "blackboard": "블랙보드",
+      "addParameter": "매개변수 추가",
+      "noExposedParameters": "노출된 매개변수가 없습니다.",
+      "displayName": "표시 이름",
+      "uiRange": "UI 범위",
+      "min": "최소",
+      "max": "최대",
+      "diagnostics": "진단",
+      "noDiagnostics": "진단 정보가 없습니다."
+    },
+    "preview": {
+      "mesh": "미리보기 메시",
+      "skybox": "스카이박스",
+      "time": "시간",
+      "usingSelectedMesh": "미리보기: 슬롯 0 오버라이드를 사용하는 선택된 메시",
+      "usingSphere": "미리보기: 슬롯 0 오버라이드를 사용하는 구체",
+      "controlsHint": "왼쪽 드래그: 미리보기 회전  휠: 줌  F: 프레임"
+    },
+    "addNode": {
+      "searchHint": "노드 검색",
+      "noMatchingNodes": "일치하는 노드가 없습니다."
+    },
+    "category": {
+      "inputs": "입력",
+      "parameters": "매개변수",
+      "math": "수학",
+      "logic": "논리",
+      "texture": "텍스처",
+      "shading": "셰이딩",
+      "output": "출력",
+      "other": "기타"
+    },
+    "subcategory": {
+      "vertexAttributes": "버텍스 속성",
+      "textures": "텍스처"
+    },
+    "status": {
+      "loadedCustomNodes": "{}개의 사용자 지정 노드를 불러왔습니다",
+      "loadedCustomNodesSkipped": "{}개의 사용자 지정 노드를 불러왔고 {}개를 건너뛰었습니다",
+      "reloaded": "다시 불러옴",
+      "alreadyOpen": "이미 열려 있음",
+      "alreadyOpenMessage": "머티리얼 그래프가 이미 열려 있습니다: {}",
+      "openedMessage": "머티리얼 그래프를 열었습니다: {}",
+      "openFailedMessage": "머티리얼 그래프 열기 실패: {}",
+      "loadFailed": "불러오기 실패",
+      "loaded": "불러옴",
+      "saveFailed": "저장 실패",
+      "saved": "저장됨",
+      "compileFailed": "컴파일 실패",
+      "writeShaderFailed": "생성된 셰이더 쓰기 실패",
+      "compiled": "컴파일됨: {}",
+      "autoLayoutApplied": "자동 레이아웃 적용됨",
+      "livePreviewUpdated": "실시간 미리보기 업데이트됨",
+      "edited": "편집됨",
+      "previewMeshChanged": "미리보기 메시를 변경했습니다",
+      "previewMeshReset": "미리보기 메시를 구체로 재설정했습니다",
+      "previewSkyboxChanged": "미리보기 스카이박스를 변경했습니다",
+      "previewSkyboxCleared": "미리보기 스카이박스를 지웠습니다"
+    }
+  },
+  "animatorGraph": {
+    "toolbar": {
+      "new": "새로 만들기",
+      "addState": "스테이트 추가"
+    },
+    "status": {
+      "opened": "애니메이터 그래프를 열었습니다: {}",
+      "new": "새 애니메이터 그래프: {}",
+      "loaded": "불러옴",
+      "saved": "저장됨",
+      "saveFailed": "저장 실패",
+      "saveFailedBadUri": "저장 실패: 잘못된 uri"
+    },
+    "paramType": {
+      "bool": "Bool",
+      "trigger": "Trigger",
+      "float": "Float"
+    },
+    "condType": {
+      "greater": "> 보다 큼",
+      "less": "< 보다 작음",
+      "equal": "== 같음",
+      "notEqual": "!= 같지 않음",
+      "isTrue": "true임",
+      "isFalse": "false임",
+      "triggerSet": "트리거 설정됨"
+    },
+    "node": {
+      "anyState": "Any State",
+      "anyOut": "any ->",
+      "in": "-> in",
+      "out": "out ->",
+      "clip": "클립 {}",
+      "speed": "속도 {:.2f}{}",
+      "loopSuffix": "  루프"
+    },
+    "menu": {
+      "setAsEntry": "엔트리로 설정",
+      "addTransitionFromHere": "여기서 트랜지션 추가",
+      "deleteState": "스테이트 삭제",
+      "deleteTransition": "트랜지션 삭제"
+    },
+    "section": {
+      "graph": "그래프",
+      "parameters": "파라미터",
+      "state": "스테이트",
+      "transition": "트랜지션"
+    },
+    "field": {
+      "entry": "엔트리",
+      "clip": "클립",
+      "speed": "속도",
+      "loop": "루프",
+      "noAnimationAssets": "(가져온 애니메이션 에셋 없음)"
+    },
+    "param": {
+      "add": "파라미터 추가",
+      "triggerHint": "(트리거)"
+    },
+    "transition": {
+      "route": "{}  ->  {}",
+      "duration": "지속 시간",
+      "durationFormat": "%.2f s",
+      "hasExitTime": "종료 시간 사용",
+      "exitTime": "종료 시간",
+      "conditionsHint": "조건 (모두 충족해야 함)",
+      "paramPlaceholder": "(파라미터)",
+      "addCondition": "조건 추가"
+    }
+  },
+  "codeEditor": {
+    "status": {
+      "openFailed": "파일을 열지 못했습니다.",
+      "opened": "소스를 열었습니다: {}",
+      "saveFailed": "파일을 저장하지 못했습니다.",
+      "saved": "소스를 저장했습니다: {}",
+      "pipelineReloaded": "렌더 파이프라인을 저장하고 다시 불러왔습니다.",
+      "shaderReloaded": "셰이더 라이브러리를 저장하고 다시 불러왔습니다.",
+      "reimported": "소스 에셋을 다시 가져왔습니다.",
+      "noImportTarget": "이 파일에 대해 새로 고친 가져오기 대상이 없습니다."
+    },
+    "diagnostics": {
+      "title": "진단",
+      "none": "진단이 없습니다.",
+      "lineLabel": "줄 {}: {}"
+    },
+    "toolbar": {
+      "reload": "다시 불러오기",
+      "reimport": "다시 가져오기"
+    },
+    "hint": {
+      "openFromContentBrowser": "Content Browser에서 스크립트나 셰이더를 여세요.",
+      "noSourceSelected": "선택된 소스 파일이 없습니다."
+    }
+  },
+  "aiChat": {
+    "thinking": "생각 중",
+    "you": "나",
+    "restart": "다시 시작",
+    "newChat": {
+      "tooltip": "새 채팅 (기록 지우기)"
+    },
+    "stop": {
+      "tooltip": "정지"
+    },
+    "send": {
+      "tooltip": "보내기 (Enter)"
+    },
+    "composer": {
+      "hint": "Enter로 보내기 · Ctrl+Enter로 줄바꿈"
+    },
+    "banner": {
+      "agentDisabled": "에이전트 기능이 비활성화되어 있습니다. 채팅하려면 Editor Settings에서 에이전트를 활성화하세요."
+    },
+    "status": {
+      "launchFailed": "'claude' 실행에 실패했습니다. Claude CLI가 설치되어 있고 PATH에 있나요?",
+      "launchFailedSuffix": " - Claude CLI가 설치되어 있고 PATH에 있나요?"
+    },
+    "tool": {
+      "fallbackName": "도구",
+      "inputPrefix": "입력: ",
+      "resultPrefix": "결과: "
+    },
+    "permission": {
+      "tooltip": "에이전트 권한 모드",
+      "header": "권한 모드",
+      "statusMessage": "AI 권한 모드: {}",
+      "ask": {
+        "label": "확인",
+        "hint": "각 편집이나 명령 전에 확인합니다."
+      },
+      "acceptEdits": {
+        "label": "편집 수락",
+        "hint": "파일 편집은 자동 수락하고 나머지는 계속 확인합니다."
+      },
+      "plan": {
+        "label": "플랜",
+        "hint": "플랜만 - 편집이나 명령을 실행하지 않습니다."
+      },
+      "bypass": {
+        "label": "바이패스",
+        "hint": "확인 없이 모두 실행합니다 (주의해서 사용)."
+      }
+    }
+  },
+  "projectSettings": {
+    "title": "프로젝트 설정",
+    "searchHint": "설정 검색...",
+    "noneParen": "(없음)",
+    "resetToDefaults": "기본값으로 재설정",
+    "nav": {
+      "project": "프로젝트",
+      "projectInfo": "프로젝트 정보",
+      "renderSettings": "렌더 설정",
+      "buildScenes": "빌드 씬",
+      "packaging": "패키징",
+      "plugins": "플러그인",
+      "engine": "엔진",
+      "general": "일반",
+      "rendering": "렌더링",
+      "materials": "머티리얼",
+      "scripting": "스크립팅"
+    },
+    "info": {
+      "header": "프로젝트 정보",
+      "projectName": "프로젝트 이름",
+      "assetRoot": "에셋 루트",
+      "defaultScene": "기본 씬",
+      "noProjectLoaded": "로드된 프로젝트가 없습니다"
+    },
+    "render": {
+      "header": "렌더 설정",
+      "editingRenderGraph": "편집 중인 렌더 그래프",
+      "editorSelection": "에디터 선택",
+      "selectionOutline": "선택 윤곽선",
+      "outlineColor": "윤곽선 색상",
+      "outlineThickness": "윤곽선 두께",
+      "fillOpacity": "채우기 불투명도",
+      "edgeOpacity": "가장자리 불투명도"
+    },
+    "buildScenes": {
+      "header": "빌드 씬",
+      "addDefault": "기본값 추가",
+      "addAll": "모두 추가",
+      "noScenesInfo": "구성된 빌드 씬이 없습니다. 씬을 추가하여 패키지 루트와 런타임 씬 인덱스를 제어하세요.",
+      "alias": "별칭",
+      "scene": "씬",
+      "order": "순서",
+      "exportInfo": "활성화된 빌드 씬은 씬 인덱스 순서로 종속성 루트로 내보내집니다."
+    },
+    "packaging": {
+      "header": "패키징",
+      "packageName": "패키지 이름",
+      "packageManifest": "패키지 매니페스트",
+      "info": "런타임 패키지는 동일한 이름의 실행 파일과 VPK를 사용합니다."
+    },
+    "plugins": {
+      "header": "플러그인",
+      "info": "플러그인은 <asset-root>/plugins (예: resources/plugins)에 위치하여 프로젝트 VPK에 패킹되며, 기본적으로 비활성화되어 있습니다. 활성화하면 지금과 다음 실행 시 로드됩니다. 네이티브 플러그인은 데스크톱 전용입니다.",
+      "noneFound": "{}에서 플러그인을 찾을 수 없습니다",
+      "provides": "제공: {}",
+      "notSupported": "이 플랫폼 ({})에서는 지원되지 않습니다."
+    },
+    "status": {
+      "changed": "프로젝트 설정이 변경되었습니다.",
+      "reset": "프로젝트 설정이 재설정되었습니다.",
+      "saved": "프로젝트 설정을 저장했습니다.",
+      "saveFailed": "프로젝트 설정 저장 실패: {}"
+    }
+  },
+  "editorSettings": {
+    "title": "에디터 설정",
+    "searchHint": "설정 검색...",
+    "resetToDefaults": "기본값으로 재설정",
+    "nav": {
+      "general": "일반",
+      "appearance": "외관",
+      "fonts": "폰트",
+      "externalEditor": "외부 에디터",
+      "aiAgent": "AI 에이전트",
+      "advanced": "고급",
+      "filesPaths": "파일 및 경로",
+      "console": "콘솔",
+      "privacy": "개인정보"
+    },
+    "appearance": {
+      "header": "외관",
+      "colorTheme": "색상 테마",
+      "background": "배경",
+      "panel": "패널",
+      "text": "텍스트",
+      "accent": "강조색",
+      "applicationScale": "애플리케이션 스케일",
+      "textScale": "텍스트 스케일",
+      "showSplash": "시작 시 스플래시 화면 표시",
+      "enableAnimations": "애니메이션 활성화"
+    },
+    "theme": {
+      "dark": "다크",
+      "graphite": "그래파이트",
+      "light": "라이트",
+      "custom": "사용자 지정"
+    },
+    "fonts": {
+      "header": "폰트",
+      "interfaceFont": "인터페이스 폰트",
+      "interfaceFontSize": "인터페이스 폰트 크기",
+      "monospaceFont": "고정폭 폰트",
+      "monospaceFontSize": "고정폭 폰트 크기",
+      "useSystemFonts": "시스템 폰트 사용"
+    },
+    "externalEditor": {
+      "header": "외부 에디터",
+      "executable": "실행 파일",
+      "info": "외부 에디터 명령을 사용할 수 있을 때 소스 에셋 작업에서 사용됩니다."
+    },
+    "aiAgent": {
+      "header": "AI 에이전트",
+      "enablePanel": "에이전트 패널 활성화",
+      "autoStartMcp": "MCP 서버 자동 시작",
+      "mcpServerName": "MCP 서버 이름",
+      "mcpHost": "MCP 호스트",
+      "mcpPort": "MCP 포트",
+      "clientHeader": "에이전트 클라이언트",
+      "endpoint": "엔드포인트",
+      "model": "모델",
+      "cliPath": "CLI 경로",
+      "cliInfo": "에이전트 CLI 경로 (예: claude). 비워 두면 PATH에서 'claude'를 찾습니다.",
+      "guardrailsHeader": "작업 가드레일",
+      "allowProjectOps": "프로젝트 작업 허용",
+      "allowEngineOps": "엔진 작업 허용",
+      "requireConfirmation": "쓰기 전 확인 요구",
+      "guardrailsInfo": "이 페이지는 에이전트와 MCP 설정만 저장합니다. 런타임 시작, 채팅, 도구 호출, 에디터 작업은 전용 에이전트 서비스에서 처리해야 합니다."
+    },
+    "status": {
+      "languageChanged": "언어가 변경되었습니다: {}",
+      "themeChanged": "에디터 테마가 변경되었습니다: {}",
+      "reset": "에디터 설정을 재설정했습니다.",
+      "saved": "에디터 설정을 저장했습니다.",
+      "saveFailed": "에디터 설정 저장에 실패했습니다: {}"
+    }
+  },
+  "exportSettings": {
+    "title": "내보내기 설정",
+    "platform": "플랫폼",
+    "architecture": "아키텍처",
+    "buildConfiguration": "빌드 구성",
+    "exportTemplate": "내보내기 템플릿",
+    "hostExportInfo": "호스트 플랫폼 내보내기는 비어 있으면 현재 에디터 실행 파일을 사용할 수 있습니다.",
+    "crossExportInfo": "크로스 플랫폼 내보내기에는 대상 런타임 실행 파일이 필요합니다.",
+    "outputDirectory": "출력 디렉터리",
+    "projectName": "프로젝트 이름",
+    "includeDebugSymbols": "디버그 심볼 포함",
+    "compressContent": "콘텐츠 압축",
+    "useVpkFiles": "VPK 파일 사용",
+    "additionalArguments": "추가 인수",
+    "export": "내보내기",
+    "exportAndRun": "내보내고 실행",
+    "statusHeader": "내보내기 상태",
+    "statusLine": "상태: {}",
+    "running": "실행 중",
+    "lastBuild": "마지막 빌드: {}",
+    "config": {
+      "development": "개발",
+      "release": "릴리스"
+    },
+    "build": {
+      "header": "빌드"
+    },
+    "block": {
+      "alreadyRunning": "내보내기가 이미 실행 중입니다.",
+      "outputRequired": "출력 디렉터리가 필요합니다.",
+      "noProject": "로드된 프로젝트가 없습니다.",
+      "noDefaultScene": "기본 씬이 선택되지 않았습니다.",
+      "stopPlayMode": "내보내기 전에 재생 모드를 정지하세요.",
+      "missingTemplate": "{}의 내보내기 템플릿이 없습니다.",
+      "templateMissing": "내보내기 템플릿이 존재하지 않습니다."
+    },
+    "status": {
+      "failedNoProject": "내보내기에 실패했습니다: 로드된 프로젝트가 없습니다.",
+      "failedNoScene": "내보내기에 실패했습니다: 기본 씬이 선택되지 않았습니다.",
+      "saveSceneFirst": "내보내기를 중지했습니다: 먼저 현재 씬을 저장하세요."
+    }
+  },
+  "editorApp": {
+    "about": {
+      "title": "Vultra Editor 정보",
+      "product": "Vultra Editor",
+      "version": "버전: {}",
+      "contributors": "기여자: Lazy_V (Kexuan Zhang)",
+      "license": "라이선스: MIT",
+      "github": "GitHub"
+    },
+    "openSceneConfirm": {
+      "title": "씬 열기",
+      "prompt": "저장하지 않은 변경 사항을 버리고 이 씬을 여시겠습니까?"
+    },
+    "importPopup": {
+      "title": "에셋 가져오기"
+    },
+    "import": {
+      "preparing": "에셋 가져오기 준비 중...",
+      "importingAssets": "에셋 가져오는 중",
+      "item": "항목",
+      "scanningAssets": "프로젝트 에셋 스캔 중...",
+      "scanningPath": "{} 스캔 중",
+      "importingAssetsProject": "프로젝트 에셋 가져오는 중...",
+      "importingPath": "{} 가져오는 중",
+      "finalizingDatabase": "에셋 데이터베이스 마무리 중...",
+      "importingChanged": "변경된 에셋 가져오는 중...",
+      "error": {
+        "assetImportFailed": "에셋 가져오기에 실패했습니다",
+        "saveRegistryFailed": "에셋 레지스트리 저장에 실패했습니다",
+        "importerUnavailable": "vasset 가져오기 도구를 사용할 수 없으며 레지스트리도 존재하지 않습니다"
+      }
+    },
+    "loading": {
+      "preparingWorkspace": "에디터 작업 공간 준비 중...",
+      "preparingProjectAssets": "프로젝트 에셋 준비 중...",
+      "openingAssetDatabase": "에셋 데이터베이스 여는 중...",
+      "preparingThumbnails": "에셋 썸네일 준비 중...",
+      "renderingThumbnails": "에셋 썸네일 렌더링 중...",
+      "preparingWindows": "에디터 창 준비 중...",
+      "loadingScene": "씬 {} 로드 중...",
+      "loadingSceneAssets": "씬 에셋 로드 중...",
+      "openingEditor": "에디터 여는 중...",
+      "ready": "준비 완료."
+    },
+    "overlay": {
+      "openingEditor": "에디터 여는 중...",
+      "loadingAssets": "에셋 로드 중...",
+      "preparing": "준비 중..."
+    },
+    "taskBar": {
+      "fps": "FPS {:.1f}",
+      "cpuCache": "CPU 캐시 {}",
+      "ram": "RAM {}",
+      "ramWithAvail": "RAM {} / 사용 가능 {}",
+      "vram": "VRAM {}",
+      "vramWithBudget": "VRAM {} / {}",
+      "job": "작업",
+      "working": "처리 중...",
+      "sceneLoad": "씬 로드",
+      "mcpListening": "MCP가 {}에서 수신 대기 중",
+      "mcpNotRunning": "MCP가 실행되고 있지 않습니다 (에디터 설정에서 MCP 자동 시작을 활성화하세요)",
+      "mcpNotRunningError": "MCP가 실행되고 있지 않습니다: {}",
+      "agentDisabled": "에이전트 비활성화"
+    },
+    "history": {
+      "sceneOpened": "씬 열림",
+      "sceneLoaded": "씬 로드됨"
+    },
+    "status": {
+      "openScene": {
+        "servicesUnavailable": "씬 열기에 실패했습니다: 서비스를 사용할 수 없습니다.",
+        "stopPlayModeFirst": "다른 씬을 열기 전에 재생 모드를 정지하세요.",
+        "sceneWorldUnavailable": "씬 열기에 실패했습니다: 씬/월드 서비스를 사용할 수 없습니다.",
+        "failed": "씬 열기에 실패했습니다: {}",
+        "opened": "씬을 열었습니다: {}",
+        "cancelled": "씬 열기를 취소했습니다."
+      },
+      "saveScene": {
+        "stopPlayModeFirst": "씬을 저장하기 전에 재생 모드를 정지하세요.",
+        "noScenePath": "저장할 씬 경로가 선택되지 않았습니다.",
+        "sceneWorldUnavailable": "씬 저장 실패: scene/world 서비스를 사용할 수 없습니다.",
+        "saved": "씬 저장됨: {}",
+        "failed": "씬 저장 실패: {}"
+      },
+      "playMode": {
+        "snapshotFailed": "재생 모드 스냅샷 실패: 씬에 직렬화 가능한 루트가 없습니다.",
+        "entered": "재생 모드에 진입했습니다.",
+        "exited": "재생 모드를 종료했습니다. 씬 상태가 복원되었습니다."
+      },
+      "import": {
+        "failed": "에셋 가져오기 실패: {}",
+        "imported": "프로젝트 에셋 가져옴: {}"
+      },
+      "projectImport": {
+        "failed": "프로젝트 에셋 가져오기 실패: {}"
+      },
+      "projectLoad": {
+        "assetServiceUnavailable": "프로젝트 로드 실패: 에셋 서비스를 사용할 수 없습니다.",
+        "loadedAssets": "프로젝트 에셋 로드됨: {}"
+      },
+      "scene": {
+        "loadDefaultFailed": "기본 씬 로드 실패: {}",
+        "loadedDefault": "기본 씬 로드됨: {}"
+      }
+    }
+  },
+  "editorBuild": {
+    "error": {
+      "missingAssetRoot": "내보내기 실패: 에셋 루트 없음 {}",
+      "exportFailedDetail": "내보내기 실패: {}",
+      "assetImportReturned": "내보내기 실패: 에셋 가져오기 단계가 {}을(를) 반환했습니다.",
+      "assetPackReturned": "내보내기 실패: 에셋 패키지 단계가 {}을(를) 반환했습니다.",
+      "vassetUnavailable": "내보내기 실패: 이 빌드에서는 vasset 가져오기를 지원하지 않습니다.",
+      "cannotCreateOutputFolder": "내보내기 실패: 출력 폴더를 만들 수 없습니다 {}",
+      "publishedRuntimeLaunchReturned": "내보내기 실패: 게시된 런타임 실행이 {}을(를) 반환했습니다.",
+      "targetMustMatchHost": "내보내기 및 실행은 대상 플랫폼이 호스트 플랫폼과 일치해야 합니다.",
+      "templateRequired": "내보내기 실패: 대상 플랫폼에는 내보내기 템플릿 실행 파일이 필요합니다.",
+      "templateNotFound": "내보내기 실패: 내보내기 템플릿 실행 파일을 찾을 수 없습니다.",
+      "runtimeLaunchReturned": "내보내기 성공했지만 런타임 실행이 {}을(를) 반환했습니다.",
+      "webTemplateNotFound": "web 내보내기 템플릿을 찾을 수 없습니다: {}",
+      "webTemplateExtractFailed": "web 템플릿 아카이브 추출 실패 {}",
+      "webTemplateNotDirOrZip": "web 내보내기 템플릿이 디렉터리도 .zip도 아닙니다: {}",
+      "copyTemplateFileFailed": "템플릿 파일 복사 실패 {}: {}",
+      "webTemplateNoIndexHtml": "내보내기 실패: web 템플릿에 index.html이 없습니다 (템플릿: {}).",
+      "androidNotImplemented": "Android 내보내기는 아직 구현되지 않았습니다 (예정).",
+      "createOutputFolderFailed": "출력 폴더 만들기 실패: {}",
+      "copyRuntimeFailed": "런타임 실행 파일 복사 실패: {}"
+    },
+    "progress": {
+      "writingManifest": "패키지 매니페스트 작성 중...",
+      "reimportingPacking": "에셋 재가져오기 및 VPK 패킹 중...",
+      "copyingRuntime": "런타임 실행 파일 복사 중...",
+      "launchingPublishedRuntime": "게시된 런타임 실행 중...",
+      "runtimeLaunched": "런타임이 실행되었습니다.",
+      "exportComplete": "내보내기 완료.",
+      "copyingTemplate": "내보내기 템플릿 복사 중...",
+      "launchingRuntime": "런타임 실행 중...",
+      "exportCompleteRuntimeLaunched": "내보내기 완료. 런타임이 실행되었습니다.",
+      "copyingWebTemplate": "web 내보내기 템플릿 복사 중...",
+      "startingWebServer": "로컬 web 서버 시작 중...",
+      "runtimeLaunchedInBrowser": "브라우저에서 런타임이 실행되었습니다.",
+      "preparing": "준비 중...",
+      "savingScenePreparing": "씬 저장 및 패키지 준비 중..."
+    },
+    "status": {
+      "packedVpk": "VPK 패킹됨: {}",
+      "runningPackage": "패키지 실행 중: {}",
+      "exportComplete": "내보내기 완료: {}",
+      "exportCompleteRunningPackage": "내보내기 완료. 패키지 실행 중: {}",
+      "exportCompleteServeOverHttp": "내보내기 완료: {} (실행하려면 http로 제공하세요).",
+      "exportCompleteServerMessage": "내보내기 완료. {}",
+      "exportCompleteWithServerMessage": "내보내기 완료: {}. {}",
+      "succeeded": "성공",
+      "failed": "실패",
+      "thisSession": "이 세션",
+      "alreadyRunning": "내보내기 및 실행이 이미 실행 중입니다.",
+      "noProjectLoaded": "내보내기 및 실행 실패: 로드된 프로젝트가 없습니다.",
+      "noDefaultScene": "내보내기 및 실행 실패: 선택된 기본 씬이 없습니다.",
+      "stopPlayModeFirst": "내보내기 및 실행 전에 재생 모드를 정지하세요.",
+      "saveSceneFirst": "내보내기 및 실행 중지됨: 먼저 현재 씬을 저장하세요.",
+      "chooseOutputFolder": "내보내기 및 실행: 출력 폴더를 선택하세요.",
+      "exportRunStartedPackaging": "내보내기 및 실행 시작됨: 런타임 패키징 중...",
+      "exportStartedPackaging": "내보내기 시작됨: 런타임 패키징 중..."
+    },
+    "web": {
+      "noPythonServer": "출력 폴더를 http(s)로 제공하고 index.html을 여세요 (file://에서는 fetch가 차단됩니다). 서버를 자동 실행할 Python을 찾을 수 없습니다.",
+      "servingAt": "{}에서 제공 중"
+    },
+    "popup": {
+      "exportAndRun": "내보내기 및 실행",
+      "exportAndRunOutput": "내보내기 및 실행 출력"
+    },
+    "label": {
+      "exportAndRun": "내보내기 및 실행",
+      "outputFolder": "출력 폴더"
+    },
+    "hint": {
+      "reimportCanTakeAWhile": "에셋이 재가져오기될 때 시간이 걸릴 수 있습니다."
+    }
+  },
+  "launcher": {
+    "projectLauncher": "프로젝트 런처",
+    "subtitle": "워크스페이스를 선택하거나 새로 만드세요.",
+    "searchHint": "프로젝트 검색...",
+    "recentProjects": "최근 프로젝트",
+    "workspace": "워크스페이스",
+    "addExisting": "기존 추가",
+    "importProject": "프로젝트 가져오기",
+    "window": {
+      "minimize": "최소화",
+      "maximize": "최대화",
+      "restore": "복원"
+    },
+    "nav": {
+      "projects": "프로젝트",
+      "newProject": "새 프로젝트",
+      "openExisting": "기존 열기"
+    },
+    "empty": {
+      "title": "프로젝트를 찾을 수 없습니다",
+      "hint": "프로젝트를 만들거나 기존 워크스페이스를 추가하세요."
+    },
+    "createDialog": {
+      "title": "Vultra 프로젝트 만들기",
+      "hint": "빈 폴더를 선택하세요. 폴더 이름이 프로젝트 이름이 됩니다.",
+      "projectFolder": "프로젝트 폴더",
+      "template": "템플릿",
+      "templateEmpty": "비어 있음",
+      "templateMinimal": "최소"
+    },
+    "existingDialog": {
+      "title": "기존 Vultra 프로젝트 추가",
+      "heading": "기존 프로젝트",
+      "hint": ".vproject 파일이 있는 프로젝트 루트를 선택하세요.",
+      "projectRoot": "프로젝트 루트"
+    },
+    "status": {
+      "addedProject": "프로젝트를 추가했습니다: {}",
+      "folderEmpty": "프로젝트 폴더가 비어 있습니다.",
+      "folderMissing": "프로젝트 폴더가 존재하지 않습니다: {}",
+      "pathNotFolder": "프로젝트 경로가 폴더가 아닙니다: {}",
+      "inspectFailed": "프로젝트 폴더 검사에 실패했습니다: {}",
+      "folderNotEmpty": "프로젝트 폴더는 비어 있어야 합니다: {}",
+      "invalidName": "프로젝트 폴더 이름이 유효한 프로젝트 이름이 아닙니다.",
+      "fileExists": "프로젝트 파일이 이미 존재합니다: {}",
+      "createFailed": "프로젝트 만들기에 실패했습니다: {}",
+      "writeVprojectFailed": ".vproject 쓰기에 실패했습니다: {}",
+      "writeAssetsFailed": "기본 프로젝트 에셋 쓰기에 실패했습니다: {}",
+      "createdProject": "프로젝트를 만들었습니다: {}",
+      "noVproject": ".vproject를 찾을 수 없습니다: {}",
+      "addedExisting": "기존 프로젝트를 추가했습니다: {}",
+      "removedProject": "런처에서 프로젝트를 제거했습니다: {}",
+      "openFailed": "project.vproject를 열지 못했습니다.",
+      "openedProject": "프로젝트를 열었습니다: {}"
+    },
+    "io": {
+      "createDirFailed": "디렉터리 '{}' 만들기에 실패했습니다: {}",
+      "openForWriteFailed": "쓰기용으로 '{}'를 열지 못했습니다",
+      "writeFailed": "'{}' 쓰기에 실패했습니다"
+    }
+  },
+  "textureSelector": {
+    "none": "<없음>",
+    "filterHint": "텍스처 필터링...",
+    "size": "크기",
+    "emptyState": "텍스처 에셋을 찾을 수 없습니다.",
+    "clear": "지우기",
+    "importFailed": "텍스처를 가져오지 않았거나 가져오기에 실패했습니다: {}"
+  },
+  "fileDialog": {
+    "browse": "찾아보기"
+  },
+  "meshSelector": {
+    "filterHint": "메시 필터링...",
+    "size": "크기",
+    "empty": "가져온 메시 에셋을 찾을 수 없습니다.",
+    "clear": "지우기",
+    "field": {
+      "none": "<없음>"
+    }
+  },
+  "@meta": {
+    "name": "한국어"
+  },
+  "common": {
+    "save": "저장",
+    "cancel": "취소",
+    "close": "닫기",
+    "apply": "적용",
+    "ok": "확인",
+    "yes": "예",
+    "no": "아니요",
+    "delete": "삭제",
+    "rename": "이름 변경",
+    "create": "만들기",
+    "open": "열기",
+    "add": "추가",
+    "remove": "제거",
+    "reset": "재설정",
+    "edit": "편집",
+    "copy": "복사",
+    "paste": "붙여넣기",
+    "duplicate": "복제",
+    "import": "가져오기",
+    "export": "내보내기",
+    "search": "검색",
+    "name": "이름",
+    "type": "유형",
+    "value": "값",
+    "none": "없음",
+    "default": "기본값",
+    "enabled": "활성화",
+    "disabled": "비활성화",
+    "position": "위치",
+    "rotation": "회전",
+    "scale": "스케일"
+  },
+  "topbar": {
+    "title": "VultraEngine Editor"
+  },
+  "menu": {
+    "file": {
+      "title": "파일",
+      "newScene": "새 빈 씬",
+      "saveScene": "씬 저장",
+      "exportRun": "내보내기 및 실행",
+      "exportSettings": "내보내기 설정",
+      "backToLauncher": "런처로 돌아가기"
+    },
+    "edit": {
+      "title": "편집",
+      "projectSettings": "프로젝트 설정",
+      "editorSettings": "에디터 설정",
+      "resetLayout": "레이아웃 재설정"
+    },
+    "window": {
+      "title": "창",
+      "resetLayout": "레이아웃 재설정"
+    },
+    "tools": {
+      "title": "도구",
+      "import": "가져오기",
+      "saveAll": "모두 저장",
+      "profiler": "프로파일러 창",
+      "frameDebugger": "프레임 디버거",
+      "runtimeFrameGraph": "런타임 프레임 그래프 뷰어",
+      "worldViewer": "월드 뷰어"
+    },
+    "help": {
+      "title": "도움말",
+      "about": "Vultra Editor 정보"
+    },
+    "renderdoc": {
+      "title": "RenderDoc",
+      "capture": "다음 프레임 캡처",
+      "available": "사용 가능",
+      "unavailable": "사용 불가",
+      "capturing": "캡처 중",
+      "idle": "대기 중",
+      "captures": "캡처: {}"
+    }
+  },
+  "playback": {
+    "resume": "재개",
+    "play": "재생",
+    "pause": "일시정지",
+    "stop": "정지",
+    "stepFrame": "프레임 단계 진행",
+    "options": "재생 옵션",
+    "resetState": "재생 상태 재설정"
+  },
+  "toolbar": {
+    "contentDrawer": "콘텐츠 서랍",
+    "editorTools": "에디터 도구",
+    "graphTools": "그래프 도구",
+    "noProject": "프로젝트 없음",
+    "noProjectLoaded": "로드된 프로젝트가 없습니다",
+    "backToLauncher": "런처로 돌아가기",
+    "exportRun": "내보내기 및 실행",
+    "exportRunTooltip": "패키지 내보내기 및 실행",
+    "platforms": "플랫폼",
+    "targetPlatform": "대상 플랫폼",
+    "settings": "설정"
+  },
+  "window": {
+    "minimize": "최소화",
+    "maximize": "최대화",
+    "restore": "이전 크기로 복원",
+    "close": "닫기",
+    "aiChat": "AI 채팅",
+    "animatorGraph": "애니메이터 그래프",
+    "codeEditor": "코드 에디터",
+    "console": "콘솔",
+    "contentBrowser": "콘텐츠 브라우저",
+    "frameDebugger": "프레임 디버거",
+    "gameView": "게임 뷰",
+    "history": "히스토리",
+    "inspector": "인스펙터",
+    "profiler": "프로파일러",
+    "renderGraph": "렌더 그래프",
+    "sceneHierarchy": "씬 계층 구조",
+    "sceneView": "씬 뷰",
+    "worldViewer": "월드 뷰어",
+    "materialGraph": "머티리얼 그래프"
+  },
+  "history": {
+    "unavailable": "히스토리를 사용할 수 없습니다.",
+    "undo": "실행 취소 (Ctrl+Z)",
+    "redo": "다시 실행 (Ctrl+Shift+Z)",
+    "empty": "아직 씬 히스토리가 없습니다."
+  },
+  "console": {
+    "clear": "지우기",
+    "autoScroll": "자동 스크롤",
+    "level": {
+      "trace": "추적",
+      "info": "정보",
+      "warn": "경고",
+      "error": "오류",
+      "critical": "심각",
+      "unknown": "알 수 없음"
+    },
+    "column": {
+      "type": "유형",
+      "message": "메시지"
+    }
+  },
+  "worldViewer": {
+    "liveWorlds": "활성 월드: {}",
+    "entities": "엔티티: {}",
+    "estCpu": "예상 CPU: {}",
+    "expandPools": "컴포넌트 풀 펼치기",
+    "hint": "활성 월드 외의 월드는 일반적으로 미리보기 또는 미공개 스테이징 월드를 나타냅니다.",
+    "header": "{}  #{}{}  -  {} 엔티티, {} 풀, {}",
+    "active": " (활성)",
+    "noComponents": "  (컴포넌트 없음)",
+    "column": {
+      "component": "컴포넌트",
+      "count": "개수",
+      "estCpu": "예상 CPU"
+    }
+  },
+  "gameView": {
+    "noCamera": {
+      "title": "기본 카메라 없음",
+      "message": "게임을 미리 보려면 CameraComponent를 만들거나 기본으로 지정하세요."
+    },
+    "createCamera": "카메라 만들기",
+    "cameraCreated": "기본 카메라 엔티티를 만들었습니다.",
+    "xrDisabled": {
+      "title": "XR 비활성화",
+      "message": "OpenXR를 초기화할 수 없습니다. 런타임/헤드셋이 사용 가능한지 확인하거나 --no-xr로 실행하여 XR을 비활성화하세요."
+    },
+    "requestXr": "XR 세션 요청",
+    "xrWaiting": {
+      "title": "XR 미러 대기 중",
+      "message": "XR 런타임이 미러 텍스처를 생성하면 헤드셋 뷰가 여기에 표시됩니다."
+    },
+    "metrics": {
+      "title": "메트릭",
+      "fps": "FPS        {:.1f}",
+      "frame": "프레임      {:.2f} ms",
+      "cpuFrame": "CPU 프레임  {:.2f} ms",
+      "gpuFrame": "GPU 프레임  {:.2f} ms",
+      "draws": "드로우      {}",
+      "dispatch": "디스패치    {}",
+      "vramLocal": "VRAM 로컬   {}",
+      "warmingUp": "프로파일러 준비 중...",
+      "ramUsed": "RAM 사용    {}",
+      "ramAvail": "RAM 사용 가능 {}",
+      "ramTotal": "RAM 전체    {}",
+      "splats": "스플랫      {} / {}"
+    },
+    "zoom": "확대/축소",
+    "res": "해상도: {}x{}",
+    "gamma": "감마",
+    "freeAspect": "자유 종횡비"
+  },
+  "contentBrowser": {
+    "noRoot": {
+      "title": "에셋 루트 없음",
+      "message": "소스 에셋을 탐색하려면 프로젝트를 열거나 만드세요."
+    },
+    "missingRoot": "에셋 루트를 찾을 수 없습니다:\n{}",
+    "filterHint": "소스 에셋 필터링...",
+    "iconSize": "아이콘 크기:",
+    "missingDir": {
+      "title": "디렉터리 없음",
+      "message": "선택한 폴더가 더 이상 존재하지 않습니다."
+    },
+    "importFile": "파일 가져오기",
+    "importFolder": "폴더 가져오기",
+    "importPackage": "패키지 가져오기",
+    "createFolder": "폴더 만들기",
+    "exportPackage": "패키지 내보내기",
+    "importVultraPackage": "Vultra 패키지 가져오기",
+    "exportVultraPackage": "Vultra 패키지 내보내기",
+    "folder": "폴더",
+    "source": "소스",
+    "reimportQueued": "소스 에셋 다시 가져오기를 대기열에 추가했습니다.",
+    "importingModel": "하위 에셋을 표시하기 전에 모델을 가져오는 중...",
+    "invalidSubAssetUuid": "잘못된 하위 에셋 UUID입니다.",
+    "importingAsset": "드래그 전에 에셋을 가져오는 중...",
+    "notImported": "에셋이 아직 가져와지지 않았습니다.",
+    "importFailed": "가져오기 실패: {}",
+    "copiedQueued": "에셋을 복사했습니다. 가져오기를 대기열에 추가했습니다.",
+    "packageImportFailed": "패키지 가져오기 실패: {}",
+    "packageImported": "패키지를 가져왔습니다: {}개 파일, 변경 없음 {}개 건너뜀.",
+    "packageExportFailed": "패키지 내보내기 실패: {}",
+    "packageValidationFailed": "패키지 검증 실패: {}",
+    "packageExported": "패키지를 내보냈습니다: {} ({}개 파일).",
+    "renamed": "에셋 이름을 변경했습니다.",
+    "renameFailed": "이름 변경 실패: {}",
+    "folderCreated": "폴더를 만들었습니다.",
+    "createFolderFailed": "폴더 만들기 실패: {}",
+    "deleted": "에셋을 삭제했습니다.",
+    "deleteFailed": "삭제 실패: {}",
+    "column": {
+      "path": "경로"
+    },
+    "context": {
+      "inspect": "검사",
+      "editSource": "소스 편집",
+      "reimport": "다시 가져오기"
+    },
+    "subAsset": {
+      "mesh": "하위 메시",
+      "texture": "하위 텍스처",
+      "skeleton": "하위 스켈레톤",
+      "animation": "하위 애니메이션",
+      "asset": "하위 에셋"
+    },
+    "open": {
+      "materialOutside": "머티리얼 그래프 열기 실패: 그래프가 에셋 루트 밖에 있습니다.",
+      "material": "머티리얼 그래프 여는 중: {}",
+      "renderOutside": "렌더 그래프 열기 실패: 그래프가 에셋 루트 밖에 있습니다.",
+      "render": "렌더 그래프 여는 중: {}",
+      "animatorOutside": "애니메이터 그래프 열기 실패: 그래프가 에셋 루트 밖에 있습니다.",
+      "animator": "애니메이터 그래프 여는 중: {}",
+      "code": "코드 에디터에서 열었습니다: {}",
+      "sceneOutside": "씬 열기 실패: 씬이 에셋 루트 밖에 있습니다.",
+      "scene": "씬 여는 중: {}"
+    },
+    "renameAsset": {
+      "title": "에셋 이름 변경"
+    },
+    "createFolderDialog": {
+      "title": "폴더 만들기"
+    },
+    "deleteAsset": {
+      "title": "에셋 삭제",
+      "confirm": "이 소스 에셋을 삭제하시겠습니까?"
+    },
+    "createAsset": {
+      "title": "에셋 만들기",
+      "unknownType": "에셋 만들기 실패: 알 수 없는 에셋 유형입니다.",
+      "enterName": "에셋 만들기 실패: 파일 이름을 입력하세요.",
+      "outsideRoot": "에셋 만들기 실패: 대상이 에셋 루트 밖에 있습니다.",
+      "exists": "에셋 만들기 실패: 파일이 이미 존재합니다.",
+      "error": "에셋 만들기 실패: {}",
+      "cannotOpen": "에셋 만들기 실패: 파일을 열 수 없습니다.",
+      "cannotWrite": "에셋 만들기 실패: 파일을 쓸 수 없습니다.",
+      "created": "{}을(를) 만들었습니다.",
+      "createdNoImport": "{}을(를) 만들었지만 에셋 레지스트리 가져오기가 실행되지 않았습니다.",
+      "computeShader": "컴퓨트 셰이더",
+      "raygenShader": "레이젠 셰이더",
+      "fragmentShader": "프래그먼트 셰이더",
+      "none": "<없음>"
+    }
+  },
+  "frameDebugger": {
+    "column": {
+      "kind": "종류",
+      "label": "레이블",
+      "id": "Id",
+      "state": "상태",
+      "refs": "참조",
+      "from": "시작",
+      "to": "끝",
+      "resource": "리소스"
+    },
+    "import": "가져오기",
+    "runtime": "런타임",
+    "state": {
+      "inactive": "비활성",
+      "side": "사이드",
+      "active": "활성"
+    },
+    "passes": "패스",
+    "noPassSelected": "선택된 패스가 없습니다.",
+    "inputs": "입력",
+    "outputs": "출력",
+    "captureFrame": "프레임 캡처",
+    "captureRequested": "RenderDoc 캡처를 요청했습니다.",
+    "openRenderDoc": "RenderDoc 열기",
+    "captures": "captures={}{}",
+    "capturingSuffix": ", 캡처 중",
+    "frozenFrame": "고정 프레임",
+    "live": "라이브",
+    "freezeFrame": "프레임 고정",
+    "noGraph": "프레임 그래프가 아직 컴파일되지 않았습니다.",
+    "notParseable": "프레임 그래프 스냅샷을 파싱할 수 없습니다.",
+    "frameGraph": "프레임 그래프",
+    "counts": "passes={} resources={} edges={}",
+    "filter": "필터",
+    "filterHint": "패스/리소스/엣지",
+    "tab": {
+      "passIo": "패스 IO",
+      "textures": "텍스처",
+      "nodes": "노드",
+      "edges": "엣지",
+      "raw": "Raw"
+    },
+    "frameGraphTextures": "프레임 그래프 텍스처",
+    "noTextures": "아직 캡처된 프레임 그래프 텍스처가 없습니다.",
+    "leftEye": "왼쪽 눈",
+    "rightEye": "오른쪽 눈",
+    "arrayLayer": "배열 레이어",
+    "layer": "{}  레이어 {} / {}",
+    "importedTexture": "가져온 프레임 그래프 텍스처",
+    "previewUnavailableSample": "미리보기를 사용할 수 없습니다: 텍스처를 디버그 미리보기 패스에서 샘플링할 수 없습니다.",
+    "mode": {
+      "label": "모드",
+      "color": "색상",
+      "rawDepth": "Raw 깊이",
+      "linearDepth": "선형 깊이",
+      "invertedLinearDepth": "반전 선형 깊이",
+      "alpha": "알파",
+      "normal": "노멀"
+    },
+    "cameraZ": "카메라 z: {:.4f} - {:.1f}",
+    "autoFitClamp": "미리보기에서 클램프 자동 맞춤",
+    "resetClamp": "클램프를 0..1로 재설정",
+    "clampMin": "클램프 최소",
+    "clampMax": "클램프 최대",
+    "gamma": "감마",
+    "noChannels": "선택된 채널이 없습니다. 미리보기가 검은색으로 렌더링됩니다.",
+    "previewUnavailable": "텍스처 미리보기를 사용할 수 없습니다.",
+    "previewNextFrame": "텍스처 미리보기는 다음 프레임에 업데이트됩니다.",
+    "previewUnavailableResource": "이 리소스의 텍스처 미리보기를 사용할 수 없습니다.",
+    "fitToView": "뷰에 맞추기",
+    "nativeResolution": "기본 해상도로 보기"
+  },
+  "profiler": {
+    "noSamples": "프레임 샘플이 없습니다.",
+    "unavailable": "렌더 프로파일러를 사용할 수 없습니다.",
+    "warmingUp": "프로파일러 준비 중...",
+    "backendUnavailable": "렌더 백엔드를 사용할 수 없습니다.",
+    "capture": "캡처",
+    "pause": "일시정지",
+    "autoEnable": "자동 활성화",
+    "frameTimes": "프레임 타임",
+    "axisFrame": "프레임",
+    "trackedResources": "추적 중인 리소스: {}",
+    "texturesBytes": "텍스처 {}",
+    "buffersBytes": "버퍼 {}",
+    "vramBudget": "VRAM 예산 {} / {}",
+    "available": "사용 가능 {}",
+    "vramExhaustion": "VRAM 예산이 고갈에 가까워지고 있습니다.",
+    "vramHeap": "VRAM 힙 {}",
+    "vramUnavailable": "이 백엔드/장치에서는 런타임 VRAM 예산을 사용할 수 없습니다.",
+    "ramUnavailable": "이 플랫폼에서는 런타임 RAM 사용량을 사용할 수 없습니다.",
+    "processRam": "프로세스 RAM {}",
+    "systemRam": "시스템 RAM {} / {}",
+    "systemRamExhaustion": "시스템 RAM이 고갈에 가까워지고 있습니다.",
+    "cpuFrame": "CPU 프레임 {:.2f} ms",
+    "cpuRender": "CPU 렌더 {:.2f} ms",
+    "gpu": "GPU {:.2f} ms",
+    "gpuNa": "GPU n/a",
+    "vsyncOn": "VSync 켜짐",
+    "vsyncOff": "VSync 꺼짐",
+    "draws": "드로우 {}",
+    "dispatch": "디스패치 {}",
+    "updates": "업데이트 {}",
+    "gpuMem": "GPU 메모리 {}",
+    "ram": "RAM {}",
+    "ramNa": "RAM n/a",
+    "ramAvail": "RAM 사용 가능 {}",
+    "ramAvailNa": "RAM 사용 가능 n/a",
+    "ramTotal": "RAM 총합 {}",
+    "ramTotalNa": "RAM 총합 n/a",
+    "cpuCache": "CPU 캐시 {}",
+    "resType": {
+      "buffer": "버퍼",
+      "texture": "텍스처",
+      "resource": "리소스"
+    },
+    "resKind": {
+      "gpuLocal": "GPU 로컬",
+      "hostVisible": "호스트 가시",
+      "memory": "메모리"
+    },
+    "column": {
+      "size": "크기",
+      "kind": "종류",
+      "details": "세부 정보",
+      "scope": "범위",
+      "totalMs": "총 ms",
+      "selfMs": "자체 ms",
+      "calls": "호출"
+    },
+    "tab": {
+      "plots": "플롯",
+      "cpu": "CPU",
+      "gpu": "GPU",
+      "memory": "메모리"
+    }
+  },
+  "scene": {
+    "createEntity": "엔티티 만들기",
+    "searchHint": "엔티티 검색...",
+    "servicesUnavailable": "서비스를 사용할 수 없습니다.",
+    "worldServiceUnavailable": "월드 서비스를 사용할 수 없습니다.",
+    "entityLocked": "엔티티가 잠겨 있습니다.",
+    "cmdUnavailable": "에디터 명령 실행기를 사용할 수 없습니다",
+    "cmdFailed": "에디터 명령이 실패했습니다",
+    "toggleVisibility": "표시 전환",
+    "toggleLock": "잠금 전환",
+    "column": {
+      "entity": "엔티티",
+      "status": "상태"
+    },
+    "empty": {
+      "title": "엔티티 없음",
+      "message": "마우스 오른쪽 버튼을 클릭하거나 빈 엔티티 만들기로 추가하세요."
+    },
+    "context": {
+      "createChild": "자식 만들기"
+    },
+    "rename": {
+      "title": "엔티티 이름 변경"
+    },
+    "instantiate": {
+      "title": "서브 메시 에셋 인스턴스화",
+      "keepChannels": "가져온 트랜스폼 채널 유지:",
+      "instantiate": "인스턴스화"
+    },
+    "create": {
+      "empty": "빈 엔티티",
+      "basicGeometry": "기본 지오메트리",
+      "quad": "쿼드",
+      "cube": "큐브",
+      "sphere": "구체",
+      "capsule": "캡슐",
+      "light": "라이트",
+      "directionalLight": "디렉셔널 라이트",
+      "pointLight": "포인트 라이트",
+      "spotLight": "스포트 라이트",
+      "areaLight": "에어리어 라이트",
+      "rendering": "렌더링",
+      "particleEmitter": "파티클 이미터",
+      "camera": "카메라",
+      "xrCamera": "XR 카메라",
+      "environment": "환경",
+      "ui": "UI",
+      "canvas": "캔버스",
+      "panel": "패널",
+      "text": "텍스트",
+      "image": "이미지",
+      "button": "버튼",
+      "toggle": "토글",
+      "slider": "슬라이더",
+      "progressBar": "프로그레스 바",
+      "physics": "물리",
+      "staticBox": "정적 박스",
+      "dynamicSphere": "동적 구체",
+      "capsuleRigidBody": "캡슐 리지드바디"
+    }
+  },
+  "settings": {
+    "language": "언어"
+  }
+}

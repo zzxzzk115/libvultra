@@ -11,6 +11,8 @@
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiFileDialog/ImGuiFileDialog.h>
 #include <vultra/core/base/common_context.hpp>
+#include <vultra/core/i18n/i18n.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <imgui.h>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_service.hpp>
@@ -382,15 +384,15 @@ namespace vultra_app
             switch (type)
             {
                 case vasset::VAssetType::eMesh:
-                    return "Sub Mesh";
+                    return vultra::tr("contentBrowser.subAsset.mesh");
                 case vasset::VAssetType::eTexture:
-                    return "Sub Texture";
+                    return vultra::tr("contentBrowser.subAsset.texture");
                 case vasset::VAssetType::eSkeleton:
-                    return "Sub Skeleton";
+                    return vultra::tr("contentBrowser.subAsset.skeleton");
                 case vasset::VAssetType::eAnimation:
-                    return "Sub Animation";
+                    return vultra::tr("contentBrowser.subAsset.animation");
                 default:
-                    return "Sub Asset";
+                    return vultra::tr("contentBrowser.subAsset.asset");
             }
         }
 
@@ -594,7 +596,7 @@ namespace vultra_app
             {
                 ctx.state.pendingAssetImportPaths.push_back(normalized);
                 ctx.state.pendingAssetImportRefresh = true;
-                ctx.state.statusMessage             = "Importing model before showing sub assets...";
+                ctx.state.statusMessage             = vultra::tr("contentBrowser.importingModel");
             }
         }
 
@@ -608,7 +610,7 @@ namespace vultra_app
                 ImGui::TextUnformatted(name.c_str());
                 ImGui::TextDisabled("%s", importedPath.c_str());
                 if (!valid)
-                    ImGui::TextDisabled("Invalid sub asset uuid.");
+                    ImGui::TextDisabled("%s", vultra::tr("contentBrowser.invalidSubAssetUuid"));
                 ImGui::EndDragDropSource();
             }
         }
@@ -619,12 +621,12 @@ namespace vultra_app
             if (!drawList)
                 return;
 
-            const float  x0 = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMin().x + 8.0f;
-            const float  x1 = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x - 8.0f;
-            const ImVec2 min {x0, itemMin.y - 1.0f};
-            const ImVec2 max {x1, itemMax.y + 1.0f};
-            drawList->AddRect(min, max, IM_COL32(90, 145, 210, 90), 3.0f);
-            drawList->AddLine(ImVec2(x0 + 6.0f, min.y), ImVec2(x0 + 6.0f, max.y), IM_COL32(90, 145, 210, 150), 2.0f);
+            const float  x0 = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMin().x + vultra::ui::dp(8.0f);
+            const float  x1 = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x - vultra::ui::dp(8.0f);
+            const ImVec2 min {x0, itemMin.y - vultra::ui::dp(1.0f)};
+            const ImVec2 max {x1, itemMax.y + vultra::ui::dp(1.0f)};
+            drawList->AddRect(min, max, IM_COL32(90, 145, 210, 90), vultra::ui::dp(3.0f));
+            drawList->AddLine(ImVec2(x0 + vultra::ui::dp(6.0f), min.y), ImVec2(x0 + vultra::ui::dp(6.0f), max.y), IM_COL32(90, 145, 210, 150), vultra::ui::dp(2.0f));
         }
 
         std::string trimLine(std::string_view text)
@@ -742,7 +744,7 @@ namespace vultra_app
                     {
                         ctx.state.pendingAssetImportPaths.push_back(normalized);
                         ctx.state.pendingAssetImportRefresh = true;
-                        ctx.state.statusMessage             = "Importing asset before drag...";
+                        ctx.state.statusMessage             = vultra::tr("contentBrowser.importingAsset");
                     }
                 }
 
@@ -753,7 +755,7 @@ namespace vultra_app
                 ImGui::TextUnformatted(sourceAssetDisplayName(path, false).c_str());
                 ImGui::TextDisabled("%s", sourceAssetUriFor(ctx, path).c_str());
                 if (!uuid.valid())
-                    ImGui::TextDisabled("Asset is not imported yet.");
+                    ImGui::TextDisabled("%s", vultra::tr("contentBrowser.notImported"));
                 ImGui::EndDragDropSource();
             }
         }
@@ -761,7 +763,7 @@ namespace vultra_app
         std::string sourceAssetTypeLabel(EditorContext& ctx, const std::filesystem::path& path, const bool isDirectory)
         {
             if (isDirectory)
-                return "Folder";
+                return vultra::tr("contentBrowser.folder");
 
             vultra::CoreUUID uuid;
             if (resolveDraggableAsset(ctx, path, uuid))
@@ -770,7 +772,7 @@ namespace vultra_app
                     return vasset::toString(assetService->registry().lookup(uuid.native()).type);
             }
 
-            return "Source";
+            return vultra::tr("contentBrowser.source");
         }
 
         ImGuiFileDialogFlags importDialogFlags()
@@ -911,7 +913,7 @@ namespace vultra_app
         }
     } // namespace
 
-    ContentBrowserWindow::ContentBrowserWindow() : EditorWindow("Content Browser", ICON_MDI_FOLDER_MULTIPLE_IMAGE)
+    ContentBrowserWindow::ContentBrowserWindow() : EditorWindow("Content Browser", ICON_MDI_FOLDER_MULTIPLE_IMAGE, "window.contentBrowser")
     {
         registerBuiltinContentAssetCreators();
     }
@@ -936,14 +938,15 @@ namespace vultra_app
 
         if (m_AssetRoot.empty())
         {
-            ui::emptyState(
-                ICON_MDI_FOLDER_OFF_OUTLINE, "No Asset Root", "Open or create a project to browse source assets.");
+            ui::emptyState(ICON_MDI_FOLDER_OFF_OUTLINE,
+                           vultra::tr("contentBrowser.noRoot.title"),
+                           vultra::tr("contentBrowser.noRoot.message"));
             ImGui::End();
             return;
         }
 
         const ImVec2 region            = ImGui::GetContentRegionAvail();
-        const float  splitterThickness = 4.0f;
+        const float  splitterThickness = vultra::ui::dp(4.0f);
         m_LeftPanelRatio               = std::clamp(m_LeftPanelRatio, 0.18f, 0.55f);
 
         const float leftWidth  = region.x * m_LeftPanelRatio;
@@ -964,7 +967,7 @@ namespace vultra_app
         }
         else
         {
-            ImGui::TextWrapped("Missing asset root:\n%s", m_AssetRoot.generic_string().c_str());
+            ImGui::TextWrapped("%s", vultra::trf("contentBrowser.missingRoot", m_AssetRoot.generic_string()).c_str());
         }
         ImGui::EndChild();
 
@@ -1050,9 +1053,9 @@ namespace vultra_app
         ImGui::TextUnformatted(ICON_MDI_MAGNIFY);
         ImGui::SameLine();
         ImGui::SetNextItemWidth(-1.0f);
-        ImGui::InputTextWithHint("##AssetFilter", "Filter source assets...", m_Filter.data(), m_Filter.size());
+        ImGui::InputTextWithHint("##AssetFilter", vultra::tr("contentBrowser.filterHint"), m_Filter.data(), m_Filter.size());
 
-        ImGui::TextUnformatted(ICON_MDI_RESIZE " Icon Size:");
+        ImGui::TextUnformatted((std::string {ICON_MDI_RESIZE " "} + vultra::tr("contentBrowser.iconSize")).c_str());
         ImGui::SameLine();
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::SliderFloat("##AssetIconSize", &m_IconSize, m_MinIconSize, m_MaxIconSize, "%.0f px");
@@ -1084,22 +1087,24 @@ namespace vultra_app
 
         if (m_CurrentDir.empty() || !std::filesystem::exists(m_CurrentDir))
         {
-            ui::emptyState(ICON_MDI_FOLDER_ALERT_OUTLINE, "Missing Directory", "The selected folder no longer exists.");
+            ui::emptyState(ICON_MDI_FOLDER_ALERT_OUTLINE,
+                           vultra::tr("contentBrowser.missingDir.title"),
+                           vultra::tr("contentBrowser.missingDir.message"));
             return;
         }
 
         if (ImGui::BeginPopupContextWindow("AssetBrowserEmptyContext",
                                            ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
         {
-            if (ImGui::MenuItem(ICON_MDI_FILE_IMPORT "  Import File"))
+            if (ImGui::MenuItem((std::string {ICON_MDI_FILE_IMPORT "  "} + vultra::tr("contentBrowser.importFile")).c_str()))
                 openImportDialog(m_CurrentDir, false);
-            if (ImGui::MenuItem(ICON_MDI_FOLDER_UPLOAD "  Import Folder"))
+            if (ImGui::MenuItem((std::string {ICON_MDI_FOLDER_UPLOAD "  "} + vultra::tr("contentBrowser.importFolder")).c_str()))
                 openImportDialog(m_CurrentDir, true);
-            if (ImGui::MenuItem(ICON_MDI_PACKAGE_DOWN "  Import Package"))
+            if (ImGui::MenuItem((std::string {ICON_MDI_PACKAGE_DOWN "  "} + vultra::tr("contentBrowser.importPackage")).c_str()))
                 openPackageImportDialog();
             ImGui::Separator();
             drawCreateAssetMenu(ctx, m_CurrentDir);
-            if (ImGui::MenuItem(ICON_MDI_FOLDER_PLUS "  Create Folder"))
+            if (ImGui::MenuItem((std::string {ICON_MDI_FOLDER_PLUS "  "} + vultra::tr("contentBrowser.createFolder")).c_str()))
             {
                 std::memset(m_NewFolderBuffer.data(), 0, m_NewFolderBuffer.size());
                 std::strncpy(m_NewFolderBuffer.data(), "NewFolder", m_NewFolderBuffer.size() - 1);
@@ -1121,9 +1126,9 @@ namespace vultra_app
                                   ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
                                       ImGuiTableFlags_SizingStretchProp))
             {
-                ImGui::TableSetupColumn("Name");
-                ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 90.0f);
-                ImGui::TableSetupColumn("Path");
+                ImGui::TableSetupColumn(vultra::tr("common.name"));
+                ImGui::TableSetupColumn(vultra::tr("common.type"), ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(90.0f));
+                ImGui::TableSetupColumn(vultra::tr("contentBrowser.column.path"));
                 ImGui::TableHeadersRow();
 
                 for (const auto& entry : entries)
@@ -1142,7 +1147,7 @@ namespace vultra_app
             return;
         }
 
-        const float  cellPadding = 12.0f;
+        const float  cellPadding = vultra::ui::dp(12.0f);
         const float  cellWidth   = m_IconSize + cellPadding;
         const float  panelWidth  = std::max(1.0f, ImGui::GetContentRegionAvail().x);
         const ImVec2 gridMin     = ImGui::GetCursorScreenPos();
@@ -1232,9 +1237,9 @@ namespace vultra_app
 
         ImGui::PushID(path.generic_string().c_str());
         ImGui::BeginGroup();
-        const float  tileWidth   = iconSize + 10.0f;
+        const float  tileWidth   = iconSize + vultra::ui::dp(10.0f);
         const float  labelHeight = ImGui::GetTextLineHeight() * 2.0f;
-        const float  tileHeight  = iconSize + labelHeight + 6.0f;
+        const float  tileHeight  = iconSize + labelHeight + vultra::ui::dp(6.0f);
         const ImVec2 itemMin     = ImGui::GetCursorScreenPos();
         const ImVec2 itemMax {itemMin.x + tileWidth, itemMin.y + tileHeight};
         const bool   itemVisible = ImGui::IsRectVisible(itemMin, itemMax);
@@ -1262,14 +1267,14 @@ namespace vultra_app
 
         if (selected)
         {
-            drawList->AddRectFilled(ImVec2 {itemMin.x - 3.0f, itemMin.y - 3.0f},
-                                    ImVec2 {itemMax.x + 3.0f, itemMax.y + 2.0f},
+            drawList->AddRectFilled(ImVec2 {itemMin.x - vultra::ui::dp(3.0f), itemMin.y - vultra::ui::dp(3.0f)},
+                                    ImVec2 {itemMax.x + vultra::ui::dp(3.0f), itemMax.y + vultra::ui::dp(2.0f)},
                                     IM_COL32(28, 45, 62, 230),
-                                    5.0f);
-            drawList->AddRectFilled(ImVec2 {itemMin.x - 3.0f, itemMin.y - 3.0f},
-                                    ImVec2 {itemMax.x + 3.0f, itemMin.y + 1.0f},
+                                    vultra::ui::dp(5.0f));
+            drawList->AddRectFilled(ImVec2 {itemMin.x - vultra::ui::dp(3.0f), itemMin.y - vultra::ui::dp(3.0f)},
+                                    ImVec2 {itemMax.x + vultra::ui::dp(3.0f), itemMin.y + vultra::ui::dp(1.0f)},
                                     IM_COL32(45, 145, 230, 230),
-                                    5.0f,
+                                    vultra::ui::dp(5.0f),
                                     ImDrawFlags_RoundCornersTop);
         }
 
@@ -1346,7 +1351,7 @@ namespace vultra_app
             drawList->AddRect(ImGui::GetItemRectMin(),
                               ImGui::GetItemRectMax(),
                               selected ? IM_COL32(68, 160, 242, 230) : ImGui::GetColorU32(ImGuiCol_Border),
-                              isDir ? 8.0f : 4.0f);
+                              isDir ? vultra::ui::dp(8.0f) : vultra::ui::dp(4.0f));
         }
         else
         {
@@ -1355,9 +1360,9 @@ namespace vultra_app
 
         const ImVec2 iconMin           = ImGui::GetItemRectMin();
         const ImVec2 iconMax           = ImGui::GetItemRectMax();
-        const float  foldoutButtonSize = 14.0f;
+        const float  foldoutButtonSize = vultra::ui::dp(14.0f);
         const ImVec2 foldoutButtonPos {
-            iconMax.x - foldoutButtonSize - 6.0f,
+            iconMax.x - foldoutButtonSize - vultra::ui::dp(6.0f),
             iconMin.y + (iconMax.y - iconMin.y - foldoutButtonSize) * 0.5f,
         };
         const ImVec2 foldoutButtonMax {
@@ -1413,13 +1418,13 @@ namespace vultra_app
                                                         IM_COL32(28, 88, 150, 170);
             const ImU32 buttonBorder =
                 buttonHovered || buttonActive ? IM_COL32(130, 195, 255, 235) : IM_COL32(72, 150, 225, 210);
-            drawList->AddRectFilled(foldoutButtonPos, foldoutButtonMax, buttonFill, 4.0f);
-            drawList->AddRect(foldoutButtonPos, foldoutButtonMax, buttonBorder, 4.0f);
+            drawList->AddRectFilled(foldoutButtonPos, foldoutButtonMax, buttonFill, vultra::ui::dp(4.0f));
+            drawList->AddRect(foldoutButtonPos, foldoutButtonMax, buttonBorder, vultra::ui::dp(4.0f));
 
             const ImU32 triangleColor =
                 buttonHovered || buttonActive ? IM_COL32(255, 255, 255, 255) : IM_COL32(215, 235, 255, 255);
-            const float  triW = 5.0f;
-            const float  triH = 6.5f;
+            const float  triW = vultra::ui::dp(5.0f);
+            const float  triH = vultra::ui::dp(6.5f);
             const ImVec2 center {
                 foldoutButtonPos.x + foldoutButtonSize * 0.5f,
                 foldoutButtonPos.y + foldoutButtonSize * 0.5f,
@@ -1460,7 +1465,7 @@ namespace vultra_app
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::PushID((ownerPath.generic_string() + "#" + subAsset.uuid).c_str());
-        ImGui::Indent(22.0f);
+        ImGui::Indent(vultra::ui::dp(22.0f));
         ImGui::Selectable((std::string(subAssetIcon(subAsset.type)) + "  " + subAsset.name).c_str(),
                           Selection::lastCategory() == SelectionCategory::Asset &&
                               Selection::lastId().toString() == subAsset.uuid,
@@ -1477,7 +1482,7 @@ namespace vultra_app
         }
         drawSubAssetListFrame(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
         drawSubAssetDragSource(subAsset.uuid, subAsset.name, subAsset.importedPath);
-        ImGui::Unindent(22.0f);
+        ImGui::Unindent(vultra::ui::dp(22.0f));
         ImGui::TableNextColumn();
         ImGui::TextUnformatted(subAssetTypeLabel(subAsset.type));
         ImGui::TableNextColumn();
@@ -1493,12 +1498,12 @@ namespace vultra_app
         ImGui::PushID((ownerPath.generic_string() + "#" + subAsset.uuid).c_str());
         ImGui::BeginGroup();
         const ImVec2 itemMin = ImGui::GetCursorScreenPos();
-        const ImVec2 itemMax {itemMin.x + iconSize + 10.0f,
-                              itemMin.y + iconSize + ImGui::GetTextLineHeightWithSpacing() * 2.0f + 8.0f};
+        const ImVec2 itemMax {itemMin.x + iconSize + vultra::ui::dp(10.0f),
+                              itemMin.y + iconSize + ImGui::GetTextLineHeightWithSpacing() * 2.0f + vultra::ui::dp(8.0f)};
         const bool   itemVisible = ImGui::IsRectVisible(itemMin, itemMax);
         if (!itemVisible)
         {
-            ImGui::Dummy(ImVec2(iconSize + 10.0f, iconSize + ImGui::GetTextLineHeightWithSpacing() * 2.0f + 8.0f));
+            ImGui::Dummy(ImVec2(iconSize + vultra::ui::dp(10.0f), iconSize + ImGui::GetTextLineHeightWithSpacing() * 2.0f + vultra::ui::dp(8.0f)));
             ImGui::EndGroup();
             ImGui::NextColumn();
             ImGui::PopID();
@@ -1532,7 +1537,7 @@ namespace vultra_app
         {
             ImGui::Image(previewId, ImVec2(iconSize, iconSize));
             ImGui::GetWindowDrawList()->AddRect(
-                ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(90, 145, 210, 150), 4.0f);
+                ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(90, 145, 210, 150), vultra::ui::dp(4.0f));
         }
         else
         {
@@ -1542,7 +1547,7 @@ namespace vultra_app
             ImGui::Button(subAssetIcon(subAsset.type), ImVec2(iconSize, iconSize));
             ImGui::PopStyleColor(3);
             ImGui::GetWindowDrawList()->AddRect(
-                ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(90, 145, 210, 150), 4.0f);
+                ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(90, 145, 210, 150), vultra::ui::dp(4.0f));
         }
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
         {
@@ -1553,7 +1558,7 @@ namespace vultra_app
             }
         }
         drawSubAssetDragSource(subAsset.uuid, subAsset.name, subAsset.importedPath);
-        const float textWidth = iconSize + 10.0f;
+        const float textWidth = iconSize + vultra::ui::dp(10.0f);
         drawWrappedEllipsizedLabel(subAsset.name, textWidth, 2);
         ImGui::EndGroup();
         m_GridItemBounds.push_back(GridItemBounds {
@@ -1679,54 +1684,54 @@ namespace vultra_app
             const auto uri = pathToResUri(ctx, path);
             if (uri.empty())
             {
-                ctx.state.statusMessage = "Open material graph failed: graph is outside the asset root.";
+                ctx.state.statusMessage = vultra::tr("contentBrowser.open.materialOutside");
                 return;
             }
 
             queueOpenMaterialGraph(ctx.state, uri);
-            ctx.state.statusMessage = "Opening material graph: " + uri;
+            ctx.state.statusMessage = vultra::trf("contentBrowser.open.material", uri);
         }
         else if (isRenderGraphSourceAsset(path))
         {
             const auto uri = pathToResUri(ctx, path);
             if (uri.empty())
             {
-                ctx.state.statusMessage = "Open render graph failed: graph is outside the asset root.";
+                ctx.state.statusMessage = vultra::tr("contentBrowser.open.renderOutside");
                 return;
             }
 
             queueOpenRenderGraph(ctx.state, uri);
-            ctx.state.statusMessage = "Opening render graph: " + uri;
+            ctx.state.statusMessage = vultra::trf("contentBrowser.open.render", uri);
         }
         else if (isAnimatorGraphSourceAsset(path))
         {
             const auto uri = pathToResUri(ctx, path);
             if (uri.empty())
             {
-                ctx.state.statusMessage = "Open animator graph failed: graph is outside the asset root.";
+                ctx.state.statusMessage = vultra::tr("contentBrowser.open.animatorOutside");
                 return;
             }
             ctx.state.currentEditingAnimatorGraph = uri;
             ctx.state.animatorGraphOpenRequested  = true;
             ctx.state.editorWindowFocusRequested  = "Animator Graph";
-            ctx.state.statusMessage               = "Opening animator graph: " + uri;
+            ctx.state.statusMessage               = vultra::trf("contentBrowser.open.animator", uri);
         }
         else if (isCodeEditableSourceAsset(path))
         {
             requestOpenCodeEditor(ctx.state, path);
-            ctx.state.statusMessage           = "Opened in Code Editor: " + path.filename().generic_string();
+            ctx.state.statusMessage = vultra::trf("contentBrowser.open.code", path.filename().generic_string());
         }
         else if (isSceneSourceAsset(path))
         {
             const auto uri = pathToResUri(ctx, path);
             if (uri.empty())
             {
-                ctx.state.statusMessage = "Open scene failed: scene is outside the asset root.";
+                ctx.state.statusMessage = vultra::tr("contentBrowser.open.sceneOutside");
                 return;
             }
 
             queueOpenScene(ctx.state, uri);
-            ctx.state.statusMessage = "Opening scene: " + uri;
+            ctx.state.statusMessage = vultra::trf("contentBrowser.open.scene", uri);
         }
     }
 
@@ -1760,8 +1765,8 @@ namespace vultra_app
                                ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x,
                                       ImGui::GetWindowPos().y + ImGui::GetWindowSize().y),
                                true);
-        drawList->AddRectFilled(min, max, IM_COL32(35, 110, 180, 54), 2.0f);
-        drawList->AddRect(min, max, IM_COL32(80, 176, 255, 220), 2.0f, 0, 1.35f);
+        drawList->AddRectFilled(min, max, IM_COL32(35, 110, 180, 54), vultra::ui::dp(2.0f));
+        drawList->AddRect(min, max, IM_COL32(80, 176, 255, 220), vultra::ui::dp(2.0f), 0, vultra::ui::dp(1.35f));
         drawList->PopClipRect();
 
         m_SelectedPaths.clear();
@@ -1798,7 +1803,10 @@ namespace vultra_app
 
     void ContentBrowserWindow::drawContextMenu(EditorContext& ctx, const std::filesystem::path& path, bool isDirectory)
     {
-        if (ImGui::MenuItem(isDirectory ? ICON_MDI_FOLDER_OPEN "  Open" : ICON_MDI_EYE "  Inspect"))
+        const std::string openLabel = isDirectory ?
+                                          std::string {ICON_MDI_FOLDER_OPEN "  "} + vultra::tr("common.open") :
+                                          std::string {ICON_MDI_EYE "  "} + vultra::tr("contentBrowser.context.inspect");
+        if (ImGui::MenuItem(openLabel.c_str()))
         {
             if (isDirectory)
                 openPath(ctx, path);
@@ -1807,10 +1815,10 @@ namespace vultra_app
         }
         if (!isDirectory && isCodeEditableSourceAsset(path))
         {
-            if (ImGui::MenuItem(ICON_MDI_FILE_DOCUMENT_EDIT "  Edit Source"))
+            if (ImGui::MenuItem((std::string {ICON_MDI_FILE_DOCUMENT_EDIT "  "} + vultra::tr("contentBrowser.context.editSource")).c_str()))
                 openPath(ctx, path);
         }
-        if (ImGui::MenuItem(ICON_MDI_REFRESH "  Reimport"))
+        if (ImGui::MenuItem((std::string {ICON_MDI_REFRESH "  "} + vultra::tr("contentBrowser.context.reimport")).c_str()))
         {
             const auto normalized = path.lexically_normal();
             if (std::find(ctx.state.pendingAssetImportPaths.begin(),
@@ -1820,20 +1828,20 @@ namespace vultra_app
                 ctx.state.pendingAssetImportPaths.push_back(normalized);
                 ctx.state.pendingAssetImportRefresh = true;
             }
-            ctx.state.statusMessage = "Queued source asset reimport.";
+            ctx.state.statusMessage = vultra::tr("contentBrowser.reimportQueued");
         }
         ImGui::Separator();
-        if (ImGui::MenuItem(ICON_MDI_PACKAGE_UP "  Export Package"))
+        if (ImGui::MenuItem((std::string {ICON_MDI_PACKAGE_UP "  "} + vultra::tr("contentBrowser.exportPackage")).c_str()))
             openPackageExportDialog(path);
-        if (ImGui::MenuItem(ICON_MDI_PACKAGE_DOWN "  Import Package"))
+        if (ImGui::MenuItem((std::string {ICON_MDI_PACKAGE_DOWN "  "} + vultra::tr("contentBrowser.importPackage")).c_str()))
             openPackageImportDialog();
         ImGui::Separator();
-        if (ImGui::MenuItem(ICON_MDI_FILE_IMPORT "  Import File"))
+        if (ImGui::MenuItem((std::string {ICON_MDI_FILE_IMPORT "  "} + vultra::tr("contentBrowser.importFile")).c_str()))
             openImportDialog(isDirectory ? path : path.parent_path(), false);
-        if (ImGui::MenuItem(ICON_MDI_FOLDER_UPLOAD "  Import Folder"))
+        if (ImGui::MenuItem((std::string {ICON_MDI_FOLDER_UPLOAD "  "} + vultra::tr("contentBrowser.importFolder")).c_str()))
             openImportDialog(isDirectory ? path : path.parent_path(), true);
         ImGui::Separator();
-        if (ImGui::MenuItem(ICON_MDI_FOLDER_PLUS "  Create Folder"))
+        if (ImGui::MenuItem((std::string {ICON_MDI_FOLDER_PLUS "  "} + vultra::tr("contentBrowser.createFolder")).c_str()))
         {
             m_CurrentDir = isDirectory ? path : path.parent_path();
             std::memset(m_NewFolderBuffer.data(), 0, m_NewFolderBuffer.size());
@@ -1841,13 +1849,13 @@ namespace vultra_app
             m_OpenNewFolderPopup = true;
         }
         drawCreateAssetMenu(ctx, isDirectory ? path : path.parent_path());
-        if (ImGui::MenuItem(ICON_MDI_PENCIL "  Rename"))
+        if (ImGui::MenuItem((std::string {ICON_MDI_PENCIL "  "} + vultra::tr("common.rename")).c_str()))
         {
             m_RenamingPath = path;
             copyPathName(m_RenameBuffer, path);
             m_OpenRenamePopup = true;
         }
-        if (ImGui::MenuItem(ICON_MDI_DELETE "  Delete"))
+        if (ImGui::MenuItem((std::string {ICON_MDI_DELETE "  "} + vultra::tr("common.delete")).c_str()))
         {
             m_DeletePath      = path;
             m_OpenDeletePopup = true;
@@ -1860,7 +1868,7 @@ namespace vultra_app
         if (creators.empty())
             return;
 
-        if (!ImGui::BeginMenu(ICON_MDI_PLUS_BOX_OUTLINE "  Create"))
+        if (!ImGui::BeginMenu((std::string {ICON_MDI_PLUS_BOX_OUTLINE "  "} + vultra::tr("common.create")).c_str()))
             return;
 
         std::function<void(std::string_view)> drawLevel = [&](std::string_view prefix) {
@@ -1989,14 +1997,14 @@ namespace vultra_app
         const auto* creator = ContentAssetRegistry::instance().find(m_CreateAssetCreatorId);
         if (!creator)
         {
-            ctx.state.statusMessage = "Create asset failed: unknown asset type.";
+            ctx.state.statusMessage = vultra::tr("contentBrowser.createAsset.unknownType");
             return false;
         }
 
         auto fileName = sanitizeAssetFileName(m_CreateAssetNameBuffer.data());
         if (fileName.empty())
         {
-            ctx.state.statusMessage = "Create asset failed: enter a file name.";
+            ctx.state.statusMessage = vultra::tr("contentBrowser.createAsset.enterName");
             return false;
         }
 
@@ -2014,14 +2022,14 @@ namespace vultra_app
         const auto      relText = relDir.generic_string();
         if (relEc || relDir.empty() || relText == ".." || relText.starts_with("../"))
         {
-            ctx.state.statusMessage = "Create asset failed: target is outside the asset root.";
+            ctx.state.statusMessage = vultra::tr("contentBrowser.createAsset.outsideRoot");
             return false;
         }
 
         const auto target = (targetDir / fileName).lexically_normal();
         if (std::filesystem::exists(target))
         {
-            ctx.state.statusMessage = "Create asset failed: file already exists.";
+            ctx.state.statusMessage = vultra::tr("contentBrowser.createAsset.exists");
             return false;
         }
 
@@ -2029,7 +2037,7 @@ namespace vultra_app
         std::filesystem::create_directories(target.parent_path(), ec);
         if (ec)
         {
-            ctx.state.statusMessage = "Create asset failed: " + ec.message();
+            ctx.state.statusMessage = vultra::trf("contentBrowser.createAsset.error", ec.message());
             return false;
         }
 
@@ -2043,7 +2051,7 @@ namespace vultra_app
         std::ofstream file(target, std::ios::trunc);
         if (!file)
         {
-            ctx.state.statusMessage = "Create asset failed: cannot open file.";
+            ctx.state.statusMessage = vultra::tr("contentBrowser.createAsset.cannotOpen");
             return false;
         }
         if (isRenderGraphPassCreator(creator->id) && !selectedShader.empty())
@@ -2100,7 +2108,7 @@ namespace vultra_app
         file.close();
         if (!file)
         {
-            ctx.state.statusMessage = "Create asset failed: cannot write file.";
+            ctx.state.statusMessage = vultra::tr("contentBrowser.createAsset.cannotWrite");
             return false;
         }
 
@@ -2122,9 +2130,9 @@ namespace vultra_app
         if (creator->openInCodeEditor)
             openPath(ctx, target);
 
-        ctx.state.statusMessage = registered ? "Created " + creator->displayName + "." :
-                                             "Created " + creator->displayName +
-                                                 ", but asset registry import did not run.";
+        ctx.state.statusMessage = registered ?
+                                      vultra::trf("contentBrowser.createAsset.created", creator->displayName) :
+                                      vultra::trf("contentBrowser.createAsset.createdNoImport", creator->displayName);
         return true;
     }
 
@@ -2132,19 +2140,20 @@ namespace vultra_app
     {
         if (m_OpenRenamePopup)
         {
-            ImGui::OpenPopup("Rename Asset");
+            ImGui::OpenPopup(vultra::trId("contentBrowser.renameAsset.title", "RenameAsset"));
             m_OpenRenamePopup = false;
         }
-        if (ImGui::BeginPopupModal("Rename Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        if (ImGui::BeginPopupModal(vultra::trId("contentBrowser.renameAsset.title", "RenameAsset"), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
             ImGui::TextWrapped("%s", m_RenamingPath.generic_string().c_str());
-            ImGui::InputText("Name", m_RenameBuffer.data(), m_RenameBuffer.size());
-            if (ImGui::Button("Rename"))
+            ImGui::InputText(vultra::tr("common.name"), m_RenameBuffer.data(), m_RenameBuffer.size());
+            if (ImGui::Button(vultra::tr("common.rename")))
             {
                 std::error_code ec;
                 const auto      dst = m_RenamingPath.parent_path() / m_RenameBuffer.data();
                 std::filesystem::rename(m_RenamingPath, dst, ec);
-                ctx.state.statusMessage = ec ? "Rename failed: " + ec.message() : "Renamed asset.";
+                ctx.state.statusMessage =
+                    ec ? vultra::trf("contentBrowser.renameFailed", ec.message()) : vultra::tr("contentBrowser.renamed");
                 if (!ec)
                     m_SelectedPath = dst;
                 invalidateEntryCache();
@@ -2152,43 +2161,44 @@ namespace vultra_app
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel"))
+            if (ImGui::Button(vultra::tr("common.cancel")))
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
 
         if (m_OpenNewFolderPopup)
         {
-            ImGui::OpenPopup("Create Folder");
+            ImGui::OpenPopup(vultra::trId("contentBrowser.createFolderDialog.title", "CreateFolder"));
             m_OpenNewFolderPopup = false;
         }
-        if (ImGui::BeginPopupModal("Create Folder", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        if (ImGui::BeginPopupModal(vultra::trId("contentBrowser.createFolderDialog.title", "CreateFolder"), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
-            ImGui::InputText("Name", m_NewFolderBuffer.data(), m_NewFolderBuffer.size());
-            if (ImGui::Button("Create"))
+            ImGui::InputText(vultra::tr("common.name"), m_NewFolderBuffer.data(), m_NewFolderBuffer.size());
+            if (ImGui::Button(vultra::tr("common.create")))
             {
                 std::error_code ec;
                 std::filesystem::create_directories(m_CurrentDir / m_NewFolderBuffer.data(), ec);
-                ctx.state.statusMessage = ec ? "Create folder failed: " + ec.message() : "Created folder.";
+                ctx.state.statusMessage = ec ? vultra::trf("contentBrowser.createFolderFailed", ec.message()) :
+                                               vultra::tr("contentBrowser.folderCreated");
                 invalidateEntryCache();
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel"))
+            if (ImGui::Button(vultra::tr("common.cancel")))
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
 
         if (m_OpenCreateAssetPopup)
         {
-            ImGui::OpenPopup("Create Asset");
+            ImGui::OpenPopup(vultra::trId("contentBrowser.createAsset.title", "CreateAsset"));
             m_OpenCreateAssetPopup = false;
         }
-        if (ImGui::BeginPopupModal("Create Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        if (ImGui::BeginPopupModal(vultra::trId("contentBrowser.createAsset.title", "CreateAsset"), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
             const auto* creator = ContentAssetRegistry::instance().find(m_CreateAssetCreatorId);
             ImGui::TextWrapped("%s", m_CreateAssetTargetDir.generic_string().c_str());
-            ImGui::InputText("Name", m_CreateAssetNameBuffer.data(), m_CreateAssetNameBuffer.size());
+            ImGui::InputText(vultra::tr("common.name"), m_CreateAssetNameBuffer.data(), m_CreateAssetNameBuffer.size());
             if (creator && !creator->extension.empty())
             {
                 ImGui::SameLine();
@@ -2196,12 +2206,13 @@ namespace vultra_app
             }
             if (creator && isRenderGraphPassCreator(creator->id))
             {
-                const auto stage = renderGraphPassStageForCreator(creator->id);
-                const auto label = stage == "comp" ? "Compute Shader" : stage == "rgen" ? "Raygen Shader" :
-                                                                             "Fragment Shader";
-                ImGui::SetNextItemWidth(360.0f);
+                const auto  stage = renderGraphPassStageForCreator(creator->id);
+                const char* label = stage == "comp" ? vultra::tr("contentBrowser.createAsset.computeShader") :
+                                    stage == "rgen" ? vultra::tr("contentBrowser.createAsset.raygenShader") :
+                                                      vultra::tr("contentBrowser.createAsset.fragmentShader");
+                ImGui::SetNextItemWidth(vultra::ui::dp(360.0f));
                 const char* preview =
-                    m_CreateAssetShaderOptions.empty() ? "<none>" :
+                    m_CreateAssetShaderOptions.empty() ? vultra::tr("contentBrowser.createAsset.none") :
                                                          m_CreateAssetShaderOptions[static_cast<size_t>(
                                                              std::clamp(m_CreateAssetShaderIndex,
                                                                         0,
@@ -2221,31 +2232,32 @@ namespace vultra_app
                     ImGui::EndCombo();
                 }
             }
-            if (ImGui::Button("Create"))
+            if (ImGui::Button(vultra::tr("common.create")))
             {
                 if (createRegisteredAsset(ctx))
                     ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel"))
+            if (ImGui::Button(vultra::tr("common.cancel")))
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
 
         if (m_OpenDeletePopup)
         {
-            ImGui::OpenPopup("Delete Asset");
+            ImGui::OpenPopup(vultra::trId("contentBrowser.deleteAsset.title", "DeleteAsset"));
             m_OpenDeletePopup = false;
         }
-        if (ImGui::BeginPopupModal("Delete Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        if (ImGui::BeginPopupModal(vultra::trId("contentBrowser.deleteAsset.title", "DeleteAsset"), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
-            ImGui::TextWrapped("Delete this source asset?");
+            ImGui::TextWrapped("%s", vultra::tr("contentBrowser.deleteAsset.confirm"));
             ImGui::TextWrapped("%s", m_DeletePath.generic_string().c_str());
-            if (ImGui::Button("Delete"))
+            if (ImGui::Button(vultra::tr("common.delete")))
             {
                 std::error_code ec;
                 deleteSourceAssetWithSidecars(m_DeletePath, ec);
-                ctx.state.statusMessage = ec ? "Delete failed: " + ec.message() : "Deleted asset.";
+                ctx.state.statusMessage =
+                    ec ? vultra::trf("contentBrowser.deleteFailed", ec.message()) : vultra::tr("contentBrowser.deleted");
                 if (m_SelectedPath == m_DeletePath)
                 {
                     m_SelectedPath.clear();
@@ -2261,7 +2273,7 @@ namespace vultra_app
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel"))
+            if (ImGui::Button(vultra::tr("common.cancel")))
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
@@ -2277,7 +2289,8 @@ namespace vultra_app
         config.path  = m_ImportTargetDir.empty() ? "." : m_ImportTargetDir.generic_string();
         config.flags = importDialogFlags();
         ImGuiFileDialog::Instance()->OpenDialog(directory ? "ContentBrowserImportFolder" : "ContentBrowserImportFile",
-                                                directory ? "Import Folder" : "Import File",
+                                                directory ? vultra::tr("contentBrowser.importFolder") :
+                                                            vultra::tr("contentBrowser.importFile"),
                                                 directory ? nullptr : ".*",
                                                 config);
     }
@@ -2288,7 +2301,7 @@ namespace vultra_app
         config.path  = m_CurrentDir.empty() ? "." : m_CurrentDir.generic_string();
         config.flags = importDialogFlags();
         ImGuiFileDialog::Instance()->OpenDialog(
-            "ContentBrowserImportPackage", "Import Vultra Package", ".vultrapackage", config);
+            "ContentBrowserImportPackage", vultra::tr("contentBrowser.importVultraPackage"), ".vultrapackage", config);
     }
 
     void ContentBrowserWindow::openPackageExportDialog(const std::filesystem::path& contextPath)
@@ -2305,13 +2318,13 @@ namespace vultra_app
         config.fileName    = sanitizeAssetFileName(baseName.empty() ? "assets" : baseName) + ".vultrapackage";
         config.flags       = importDialogFlags();
         ImGuiFileDialog::Instance()->OpenDialog(
-            "ContentBrowserExportPackage", "Export Vultra Package", ".vultrapackage", config);
+            "ContentBrowserExportPackage", vultra::tr("contentBrowser.exportVultraPackage"), ".vultrapackage", config);
     }
 
     void ContentBrowserWindow::drawImportDialogs(EditorContext& ctx)
     {
         ui::ScopedPopupStyle style;
-        constexpr ImVec2     dialogSize {640.0f, 420.0f};
+        const ImVec2         dialogSize {vultra::ui::dp(640.0f), vultra::ui::dp(420.0f)};
 
         if (ImGuiFileDialog::Instance()->Display(
                 "ContentBrowserImportFile", ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings, dialogSize))
@@ -2378,13 +2391,13 @@ namespace vultra_app
         if (!copyExternalAssetIntoDirectory(
                 source, m_ImportTargetDir.empty() ? m_CurrentDir : m_ImportTargetDir, copiedPath, error))
         {
-            ctx.state.statusMessage = "Import failed: " + error;
+            ctx.state.statusMessage = vultra::trf("contentBrowser.importFailed", error);
             return;
         }
 
         ctx.state.pendingAssetImportPaths.push_back(copiedPath);
         ctx.state.pendingAssetImportRefresh = true;
-        ctx.state.statusMessage             = "Copied asset. Import queued.";
+        ctx.state.statusMessage             = vultra::tr("contentBrowser.copiedQueued");
         invalidateEntryCache();
         m_CurrentDir   = (m_ImportTargetDir.empty() ? m_CurrentDir : m_ImportTargetDir).lexically_normal();
         m_SelectedPath = copiedPath;
@@ -2396,7 +2409,7 @@ namespace vultra_app
         const auto result = importVultraPackage(m_AssetRoot, packagePath);
         if (!result.ok)
         {
-            ctx.state.statusMessage = "Package import failed: " + result.error;
+            ctx.state.statusMessage = vultra::trf("contentBrowser.packageImportFailed", result.error);
             return false;
         }
 
@@ -2404,8 +2417,7 @@ namespace vultra_app
         ctx.state.pendingAssetImportPaths.insert(
             ctx.state.pendingAssetImportPaths.end(), importRoots.begin(), importRoots.end());
         ctx.state.pendingAssetImportRefresh = !importRoots.empty();
-        ctx.state.statusMessage = "Imported package: " + std::to_string(result.filesWritten) + " file(s), skipped " +
-                                  std::to_string(result.filesSkipped) + " unchanged.";
+        ctx.state.statusMessage = vultra::trf("contentBrowser.packageImported", result.filesWritten, result.filesSkipped);
         invalidateEntryCache();
         return true;
     }
@@ -2420,7 +2432,7 @@ namespace vultra_app
         const auto result   = exportVultraPackage(m_AssetRoot, target, selected, assets ? &assets->registry() : nullptr);
         if (!result.ok)
         {
-            ctx.state.statusMessage = "Package export failed: " + result.error;
+            ctx.state.statusMessage = vultra::trf("contentBrowser.packageExportFailed", result.error);
             return false;
         }
 
@@ -2428,14 +2440,14 @@ namespace vultra_app
         if (!validation.ok)
         {
             ctx.state.statusMessage =
-                validation.missingDependencies.empty() ? "Package validation failed: " + validation.error :
-                                                         "Package validation failed: " +
-                                                             validation.missingDependencies.front();
+                vultra::trf("contentBrowser.packageValidationFailed",
+                            validation.missingDependencies.empty() ? validation.error :
+                                                                     validation.missingDependencies.front());
             return false;
         }
 
         ctx.state.statusMessage =
-            "Exported package: " + target.generic_string() + " (" + std::to_string(result.filesWritten) + " file(s)).";
+            vultra::trf("contentBrowser.packageExported", target.generic_string(), result.filesWritten);
         return true;
     }
 

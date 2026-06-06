@@ -5,7 +5,9 @@
 #include "editor_app/ui/texture_preview_utils.hpp"
 #include "common/ui_widgets.hpp"
 
+#include <vultra/core/i18n/i18n.hpp>
 #include <vultra/core/rhi/sampler.hpp>
+#include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/rendering/srp/builtin/builtin_rendergraph_registry.hpp>
@@ -579,14 +581,16 @@ namespace vultra_app
 
             ImGui::PushStyleColor(ImGuiCol_ChildBg, bg);
             ImGui::PushStyleColor(ImGuiCol_Border, border);
-            ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, vultra::ui::dp(4.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, vultra::ui::dp(1.0f));
             const float height = std::max(
-                34.0f,
-                ImGui::CalcTextSize(
-                    message.data(), message.data() + message.size(), false, ImGui::GetContentRegionAvail().x - 20.0f)
+                vultra::ui::dp(34.0f),
+                ImGui::CalcTextSize(message.data(),
+                                    message.data() + message.size(),
+                                    false,
+                                    ImGui::GetContentRegionAvail().x - vultra::ui::dp(20.0f))
                         .y +
-                    18.0f);
+                    vultra::ui::dp(18.0f));
             if (ImGui::BeginChild("##RenderGraphStatusBanner",
                                   ImVec2(0.0f, height),
                                   true,
@@ -734,7 +738,7 @@ namespace vultra_app
                         }
                     }
                     if (!preview)
-                        preview = "Unknown";
+                        preview = vultra::tr("renderGraph.param.unknown");
 
                     if (ImGui::BeginCombo("##value", preview))
                     {
@@ -829,13 +833,13 @@ namespace vultra_app
                             const vrendergraph::PassDecl&       pass,
                             const vrendergraph::PassDefinition& def)
         {
-            float width = std::max(textWidth(pass.id), textWidth(pass.type)) + 58.0f;
+            float width = std::max(textWidth(pass.id), textWidth(pass.type)) + vultra::ui::dp(58.0f);
             for (const auto& slot : def.inputs)
-                width = std::max(width, textWidth(slot) + 150.0f);
+                width = std::max(width, textWidth(slot) + vultra::ui::dp(150.0f));
             for (const auto& slot : def.outputs)
             {
                 if (isEditorVisiblePassPin(pass, slot, false))
-                    width = std::max(width, textWidth(slot) + 150.0f);
+                    width = std::max(width, textWidth(slot) + vultra::ui::dp(150.0f));
             }
 
             auto measureParam = [&](const vrendergraph::ParamDesc& param) {
@@ -846,7 +850,10 @@ namespace vultra_app
                 const auto  valueIt = raw.find(param.name);
                 const float value =
                     valueIt == raw.end() ? valuePreviewWidth(param.defaultValue) : valuePreviewWidth(*valueIt);
-                width = std::max(width, textWidth(param.name) + std::clamp(value + 58.0f, 150.0f, 280.0f) + 50.0f);
+                width = std::max(width,
+                                 textWidth(param.name) +
+                                     std::clamp(value + vultra::ui::dp(58.0f), vultra::ui::dp(150.0f), vultra::ui::dp(280.0f)) +
+                                     vultra::ui::dp(50.0f));
             };
             auto params = def.params;
             for (const auto& param : readShaderParamDescs(ctx, pass))
@@ -858,7 +865,7 @@ namespace vultra_app
             }
             for (const auto& param : params)
                 measureParam(param);
-            return std::clamp(width, 250.0f, 540.0f);
+            return std::clamp(width, vultra::ui::dp(250.0f), vultra::ui::dp(540.0f));
         }
 
         void pushNodePalette(ImU32 title, ImU32 body)
@@ -905,7 +912,7 @@ namespace vultra_app
             ImNodes::PopColorStyle();
         }
 
-        void drawNodeTitleText(const char* text, const float fontSize = 18.0f)
+        void drawNodeTitleText(const char* text, const float fontSize = vultra::ui::dp(18.0f))
         {
             const ImVec2 pos      = ImGui::GetCursorScreenPos();
             ImDrawList*  drawList = ImGui::GetWindowDrawList();
@@ -913,10 +920,10 @@ namespace vultra_app
             const ImU32  outline  = IM_COL32(0, 0, 0, 220);
             const ImU32  main     = ImGui::GetColorU32(ImGuiCol_Text);
 
-            drawList->AddText(font, fontSize, ImVec2(pos.x - 1.0f, pos.y), outline, text);
-            drawList->AddText(font, fontSize, ImVec2(pos.x + 1.0f, pos.y), outline, text);
-            drawList->AddText(font, fontSize, ImVec2(pos.x, pos.y - 1.0f), outline, text);
-            drawList->AddText(font, fontSize, ImVec2(pos.x, pos.y + 1.0f), outline, text);
+            drawList->AddText(font, fontSize, ImVec2(pos.x - vultra::ui::dp(1.0f), pos.y), outline, text);
+            drawList->AddText(font, fontSize, ImVec2(pos.x + vultra::ui::dp(1.0f), pos.y), outline, text);
+            drawList->AddText(font, fontSize, ImVec2(pos.x, pos.y - vultra::ui::dp(1.0f)), outline, text);
+            drawList->AddText(font, fontSize, ImVec2(pos.x, pos.y + vultra::ui::dp(1.0f)), outline, text);
             drawList->AddText(font, fontSize, pos, main, text);
 
             const float  scale    = fontSize / ImGui::GetFontSize();
@@ -1211,10 +1218,10 @@ namespace vultra_app
         std::string runtimeCameraDisplayName(std::string_view cameraName)
         {
             if (cameraName == "Scene View")
-                return "Editor Camera";
+                return vultra::tr("renderGraph.camera.editorCamera");
             if (cameraName.empty())
-                return "Game Camera";
-            return "Game Camera: " + std::string(cameraName);
+                return vultra::tr("renderGraph.camera.gameCamera");
+            return vultra::trf("renderGraph.camera.gameCameraNamed", std::string(cameraName));
         }
 
         std::optional<std::filesystem::path> findShaderSourceFile(const EditorContext& ctx, std::string_view shaderId)
@@ -1385,13 +1392,14 @@ namespace vultra_app
             }
 
             ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted("Graph");
+            ImGui::TextUnformatted(vultra::tr("renderGraph.selector.graph"));
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(320.0f);
+            ImGui::SetNextItemWidth(vultra::ui::dp(320.0f));
 
             bool        changed = false;
             const char* preview =
-                ctx.state.currentEditingRenderGraph.empty() ? "<none>" : ctx.state.currentEditingRenderGraph.c_str();
+                ctx.state.currentEditingRenderGraph.empty() ? vultra::tr("renderGraph.selector.noneSelected") :
+                                                              ctx.state.currentEditingRenderGraph.c_str();
             if (ImGui::BeginCombo("##ProjectRenderGraphAsset", preview))
             {
                 for (const auto& uri : uris)
@@ -1415,13 +1423,14 @@ namespace vultra_app
                     const auto rendererKey = rendererKeyFromRenderGraphUri(ctx.state.currentEditingRenderGraph);
                     if (renderService->reloadRenderPipeline(ctx.state.currentEditingRenderGraph, rendererKey))
                     {
-                        status = "Switched render graph";
+                        status = vultra::tr("renderGraph.status.switched");
                         ctx.state.statusMessage =
-                            "Renderer '" + rendererKey + "': " + ctx.state.currentEditingRenderGraph;
+                            vultra::trf("renderGraph.status.rendererInfo", rendererKey,
+                                        ctx.state.currentEditingRenderGraph);
                     }
                     else
                     {
-                        status                  = "Failed to switch render graph";
+                        status                  = vultra::tr("renderGraph.status.switchFailed");
                         ctx.state.statusMessage = status;
                     }
                 }
@@ -2689,8 +2698,10 @@ namespace vultra_app
                     graphKey += "#" + std::to_string(i);
 
                 graphKeys.push_back(graphKey);
-                graphLabels.push_back(runtimeCameraDisplayName(cameraName) + " - " + rendererKey + " (" +
-                                      std::to_string(nodeCount) + " nodes)");
+                graphLabels.push_back(vultra::trf("renderGraph.runtime.graphLabel",
+                                                  runtimeCameraDisplayName(cameraName),
+                                                  rendererKey,
+                                                  nodeCount));
 
                 if (previewGraphIndex < 0 && cameraName == "Render Graph Preview")
                     previewGraphIndex = static_cast<int>(i);
@@ -3402,7 +3413,7 @@ namespace vultra_app
             pipelineFeatures.insert(insertIt, std::move(value));
             markPipelineDirty();
             applyPositions = true;
-            status         = "Updated feature order";
+            status         = vultra::tr("renderGraph.status.featureOrderUpdated");
             return true;
         }
 
@@ -3416,12 +3427,12 @@ namespace vultra_app
                     {
                         ref.clear();
                         markDirty();
-                        status = "Removed pass input link";
+                        status = vultra::tr("renderGraph.status.linkRemoved");
                         return true;
                     }
                 }
             }
-            status = "This is a read-only dependency edge.";
+            status = vultra::tr("renderGraph.status.readOnlyEdge");
             return false;
         }
 
@@ -3445,7 +3456,7 @@ namespace vultra_app
                     }
                 }
                 markDirty();
-                status = "Deleted pass";
+                status = vultra::tr("renderGraph.status.passDeleted");
                 return true;
             }
 
@@ -3459,7 +3470,7 @@ namespace vultra_app
                                   graph.resources.end());
             if (graph.resources.size() == before)
             {
-                status = "This node is read-only.";
+                status = vultra::tr("renderGraph.status.nodeReadOnly");
                 return false;
             }
 
@@ -3474,7 +3485,7 @@ namespace vultra_app
                 }
             }
             markDirty();
-            status = "Deleted resource";
+            status = vultra::tr("renderGraph.status.resourceDeleted");
             return true;
         }
 
@@ -3502,12 +3513,12 @@ namespace vultra_app
                 ImNodes::ClearNodeSelection();
             }
             if (!removed && selectedLinks == 0 && selectedNodes == 0)
-                status = "Nothing selected";
+                status = vultra::tr("renderGraph.status.nothingSelected");
             return removed;
         }
     };
 
-    RenderGraphWindow::RenderGraphWindow() : EditorWindow("Render Graph", ICON_MDI_GRAPH) {}
+    RenderGraphWindow::RenderGraphWindow() : EditorWindow("Render Graph", ICON_MDI_GRAPH, "window.renderGraph") {}
 
     RenderGraphWindow::~RenderGraphWindow() = default;
 
@@ -3687,7 +3698,7 @@ namespace vultra_app
 
         if (!graph.graphLabels.empty())
         {
-            ImGui::SetNextItemWidth(240.0f);
+            ImGui::SetNextItemWidth(vultra::ui::dp(240.0f));
             const char* preview = graph
                                       .graphLabels[static_cast<size_t>(std::clamp(
                                           graph.selectedGraphIndex, 0, static_cast<int>(graph.graphLabels.size()) - 1))]
@@ -3713,24 +3724,26 @@ namespace vultra_app
         if (renderService)
         {
             ImGui::SameLine();
-            ImGui::TextDisabled("textures: %zu/%zu captured, graph: %zu/%zu",
-                                capturedTextureCount,
-                                debugTextureCount,
-                                graphCapturedTextureCount,
-                                graphTextureCount);
+            ImGui::TextDisabled("%s",
+                                vultra::trf("renderGraph.runtime.captureStats",
+                                            capturedTextureCount,
+                                            debugTextureCount,
+                                            graphCapturedTextureCount,
+                                            graphTextureCount)
+                                    .c_str());
         }
         ImGui::SameLine();
-        ImGui::Checkbox("Auto Fit", &m_RuntimeGraphPreviewAutoFit);
+        ImGui::Checkbox(vultra::tr("renderGraph.runtime.autoFit"), &m_RuntimeGraphPreviewAutoFit);
         ImGui::SameLine();
         ImGui::BeginDisabled(m_RuntimeGraphPreviewAutoFit);
-        ImGui::SetNextItemWidth(120.0f);
-        ImGui::SliderFloat("Scale", &m_RuntimeGraphPreviewScale, 0.65f, 1.5f, "%.2fx");
+        ImGui::SetNextItemWidth(vultra::ui::dp(120.0f));
+        ImGui::SliderFloat(vultra::tr("renderGraph.runtime.scale"), &m_RuntimeGraphPreviewScale, 0.65f, 1.5f, "%.2fx");
         ImGui::EndDisabled();
 
         ImGui::Separator();
         if (snapshot.empty())
         {
-            ImGui::TextDisabled("No frame graph has been compiled yet.");
+            ImGui::TextDisabled("%s", vultra::tr("renderGraph.runtime.noFrameGraph"));
             return;
         }
 
@@ -4037,11 +4050,12 @@ namespace vultra_app
             ImGui::SetClipboardText(dot.str().c_str());
         };
 
-        if (ImGui::Button("Copy DOT"))
+        if (ImGui::Button(vultra::tr("renderGraph.runtime.copyDot")))
             copyRuntimeGraphDot();
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip(graph.rawDot.empty() ? "Copy a reconstructed Graphviz DOT fallback" :
-                                                     "Copy the selected runtime graph DOT emitted by FrameGraph");
+            ImGui::SetTooltip("%s",
+                              graph.rawDot.empty() ? vultra::tr("renderGraph.runtime.copyDotFallbackTip") :
+                                                     vultra::tr("renderGraph.runtime.copyDotTip"));
 
         if (ImGuiGraphNode::BeginNodeGraph("RuntimeFrameGraphDot", ImGuiGraphNodeLayout_Dot, graphPixelsPerUnit))
         {
@@ -4082,10 +4096,13 @@ namespace vultra_app
 
                 const auto  displayLabel = concreteRuntimeGraphNodeLabel(node);
                 const auto  title        = runtimeGraphDisplayLabel(displayLabel);
-                const char* inputLabel   = resourceNode    ? (node.imported ? "import" : "read") :
-                                           node.sideEffect ? "in\nside effect" :
-                                                             "in";
-                const char* outputLabel  = resourceNode ? "use" : (node.sideEffect ? "side" : "out");
+                const char* inputLabel   = resourceNode    ? (node.imported ? vultra::tr("renderGraph.runtime.pinImport") :
+                                                                              vultra::tr("renderGraph.runtime.pinRead")) :
+                                           node.sideEffect ? vultra::tr("renderGraph.runtime.pinInSideEffect") :
+                                                             vultra::tr("renderGraph.runtime.pinIn");
+                const char* outputLabel  = resourceNode ? vultra::tr("renderGraph.runtime.pinUse") :
+                                           (node.sideEffect ? vultra::tr("renderGraph.runtime.pinSide") :
+                                                              vultra::tr("renderGraph.runtime.pinOut"));
                 const auto  titleColorU32 =
                     resourceNode ? (node.imported ? IM_COL32(84, 122, 176, 255) : IM_COL32(70, 138, 148, 255)) :
                                     (node.sideEffect ? IM_COL32(172, 118, 58, 255) : IM_COL32(86, 136, 82, 255));
@@ -4197,13 +4214,13 @@ namespace vultra_app
 
         if (m_RuntimeGraphPopupPendingOpen)
         {
-            ImGui::OpenPopup("Runtime Frame Graph Viewer");
+            ImGui::OpenPopup(vultra::trId("renderGraph.runtime.viewerTitle", "Runtime Frame Graph Viewer"));
             m_RuntimeGraphPopupPendingOpen = false;
         }
 
-        ImGui::SetNextWindowSize(ImVec2 {1280.0f, 820.0f}, ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(ImVec2 {vultra::ui::dp(1280.0f), vultra::ui::dp(820.0f)}, ImGuiCond_Appearing);
         bool popupOpen = m_RuntimeGraphPopupOpen;
-        if (ImGui::BeginPopupModal("Runtime Frame Graph Viewer",
+        if (ImGui::BeginPopupModal(vultra::trId("renderGraph.runtime.viewerTitle", "Runtime Frame Graph Viewer"),
                                    &popupOpen,
                                    ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings))
         {
@@ -4308,7 +4325,7 @@ namespace vultra_app
         {
             std::string title = m_RuntimeTexturePreviewTitle.empty() ? debugTexture->name : m_RuntimeTexturePreviewTitle;
             title += "##RuntimeTexturePreview";
-            ImGui::SetNextWindowSize(ImVec2 {520.0f, 180.0f}, ImGuiCond_Appearing);
+            ImGui::SetNextWindowSize(ImVec2 {vultra::ui::dp(520.0f), vultra::ui::dp(180.0f)}, ImGuiCond_Appearing);
             if (m_RuntimeTexturePreviewPopupPendingOpen)
             {
                 ImGui::OpenPopup(title.c_str());
@@ -4316,12 +4333,14 @@ namespace vultra_app
             }
             if (ImGui::BeginPopupModal(title.c_str(), &m_RuntimeTexturePreviewOpen, ImGuiWindowFlags_NoCollapse))
             {
-                ImGui::TextDisabled("%s | %ux%u",
-                                    debugTexture->name.c_str(),
-                                    debugTexture->sourceExtent.width,
-                                    debugTexture->sourceExtent.height);
+                ImGui::TextDisabled("%s",
+                                    vultra::trf("renderGraph.texture.nameSize",
+                                                debugTexture->name,
+                                                debugTexture->sourceExtent.width,
+                                                debugTexture->sourceExtent.height)
+                                        .c_str());
                 ImGui::Separator();
-                ImGui::TextUnformatted("Capturing selected texture preview...");
+                ImGui::TextUnformatted(vultra::tr("renderGraph.texture.capturing"));
                 ImGui::EndPopup();
             }
             return;
@@ -4355,7 +4374,7 @@ namespace vultra_app
 
         std::string title = m_RuntimeTexturePreviewTitle.empty() ? debugTexture->name : m_RuntimeTexturePreviewTitle;
         title += "##RuntimeTexturePreview";
-        ImGui::SetNextWindowSize(ImVec2 {960.0f, 720.0f}, ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(ImVec2 {vultra::ui::dp(960.0f), vultra::ui::dp(720.0f)}, ImGuiCond_Appearing);
         if (m_RuntimeTexturePreviewPopupPendingOpen)
         {
             ImGui::OpenPopup(title.c_str());
@@ -4398,27 +4417,34 @@ namespace vultra_app
             }
 
             const auto formatName = std::string(vultra::rhi::toString(debugTexture->format));
-            ImGui::TextDisabled("%s | %ux%u | %s",
-                                debugTexture->name.c_str(),
-                                debugTexture->sourceExtent.width,
-                                debugTexture->sourceExtent.height,
-                                formatName.c_str());
+            ImGui::TextDisabled("%s",
+                                vultra::trf("renderGraph.texture.nameSizeFormat",
+                                            debugTexture->name,
+                                            debugTexture->sourceExtent.width,
+                                            debugTexture->sourceExtent.height,
+                                            formatName)
+                                    .c_str());
             ImGui::SameLine();
-            ImGui::Checkbox("Auto Fit", &m_RuntimeTexturePreviewAutoFit);
+            ImGui::Checkbox(vultra::tr("renderGraph.runtime.autoFit"), &m_RuntimeTexturePreviewAutoFit);
             ImGui::SameLine();
             ImGui::BeginDisabled(m_RuntimeTexturePreviewAutoFit);
-            ImGui::SetNextItemWidth(130.0f);
+            ImGui::SetNextItemWidth(vultra::ui::dp(130.0f));
             ImGui::SliderFloat(
-                "Scale", &m_RuntimeTexturePreviewScale, 0.1f, 8.0f, "%.2fx", ImGuiSliderFlags_Logarithmic);
+                vultra::tr("renderGraph.runtime.scale"), &m_RuntimeTexturePreviewScale, 0.1f, 8.0f, "%.2fx",
+                ImGuiSliderFlags_Logarithmic);
             ImGui::EndDisabled();
             ImGui::SameLine();
             ui::drawSaveFrameGraphTexturePreviewButton(ctx, *debugTexture, "RuntimeGraphSaveTexturePreview");
             ImGui::SameLine();
-            static constexpr const char* kPreviewModes[] {
-                "Color", "Raw Depth", "Linear Depth", "Inverted Linear Depth", "Alpha", "Normal"};
+            const char* kPreviewModes[] {vultra::tr("renderGraph.texture.modeColor"),
+                                         vultra::tr("renderGraph.texture.modeRawDepth"),
+                                         vultra::tr("renderGraph.texture.modeLinearDepth"),
+                                         vultra::tr("renderGraph.texture.modeInvertedLinearDepth"),
+                                         vultra::tr("renderGraph.texture.modeAlpha"),
+                                         vultra::tr("renderGraph.texture.modeNormal")};
             constexpr int kPreviewModeCount = static_cast<int>(sizeof(kPreviewModes) / sizeof(kPreviewModes[0]));
             m_RuntimeTexturePreviewMode     = std::clamp(m_RuntimeTexturePreviewMode, 0, kPreviewModeCount - 1);
-            ImGui::SetNextItemWidth(160.0f);
+            ImGui::SetNextItemWidth(vultra::ui::dp(160.0f));
             ImGui::PushID(debugTexture->resourceKey.c_str());
             if (ImGui::BeginCombo("##RuntimeTexturePreviewMode", kPreviewModes[m_RuntimeTexturePreviewMode]))
             {
@@ -4433,11 +4459,11 @@ namespace vultra_app
                 ImGui::EndCombo();
             }
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Texture display mode");
+                ImGui::SetTooltip("%s", vultra::tr("renderGraph.texture.modeTooltip"));
             ImGui::SameLine();
-            ImGui::TextUnformatted("Mode");
+            ImGui::TextUnformatted(vultra::tr("renderGraph.texture.mode"));
             ImGui::PopID();
-            ImGui::Checkbox("Gamma", &m_RuntimeTexturePreviewGammaCorrect);
+            ImGui::Checkbox(vultra::tr("renderGraph.texture.gamma"), &m_RuntimeTexturePreviewGammaCorrect);
             ImGui::SameLine();
             ImGui::Checkbox("R", &m_RuntimeTexturePreviewChannels[0]);
             ImGui::SameLine();
@@ -4452,9 +4478,9 @@ namespace vultra_app
                 m_RuntimeTexturePreviewDefaultsKey.clear();
             }
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Reset preview settings");
+                ImGui::SetTooltip("%s", vultra::tr("renderGraph.texture.resetTooltip"));
             ImGui::SameLine();
-            if (ImGui::SmallButton("Fit Range"))
+            if (ImGui::SmallButton(vultra::tr("renderGraph.texture.fitRange")))
             {
                 m_RuntimeTexturePreviewDepthNear = std::max(debugTexture->zNear, 0.0001f);
                 m_RuntimeTexturePreviewDepthFar =
@@ -4472,16 +4498,21 @@ namespace vultra_app
                 }
             }
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Auto fit depth range from the preview image");
-            ImGui::SetNextItemWidth(120.0f);
-            ImGui::DragFloat("Clamp Min", &m_RuntimeTexturePreviewClampMin, 0.001f, 0.0f, 1.0f, "%.4f");
+                ImGui::SetTooltip("%s", vultra::tr("renderGraph.texture.fitRangeTooltip"));
+            ImGui::SetNextItemWidth(vultra::ui::dp(120.0f));
+            ImGui::DragFloat(
+                vultra::tr("renderGraph.texture.clampMin"), &m_RuntimeTexturePreviewClampMin, 0.001f, 0.0f, 1.0f, "%.4f");
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(120.0f);
-            ImGui::DragFloat("Clamp Max", &m_RuntimeTexturePreviewClampMax, 0.001f, 0.0f, 1.0f, "%.4f");
+            ImGui::SetNextItemWidth(vultra::ui::dp(120.0f));
+            ImGui::DragFloat(
+                vultra::tr("renderGraph.texture.clampMax"), &m_RuntimeTexturePreviewClampMax, 0.001f, 0.0f, 1.0f, "%.4f");
             ui::normalizePreviewClamp(m_RuntimeTexturePreviewClampMin, m_RuntimeTexturePreviewClampMax);
             if (m_RuntimeTexturePreviewMode == 2 || m_RuntimeTexturePreviewMode == 3)
-                ImGui::TextDisabled(
-                    "Camera z: %.4f - %.1f", m_RuntimeTexturePreviewDepthNear, m_RuntimeTexturePreviewDepthFar);
+                ImGui::TextDisabled("%s",
+                                    vultra::trf("renderGraph.texture.cameraZ",
+                                                m_RuntimeTexturePreviewDepthNear,
+                                                m_RuntimeTexturePreviewDepthFar)
+                                        .c_str());
 
             const auto previewSettings = ui::makeFrameGraphTexturePreviewSettings(debugTexture->resourceKey,
                                                                                   m_RuntimeTexturePreviewGammaCorrect,
@@ -4630,13 +4661,13 @@ namespace vultra_app
             if (showStereoPreview)
             {
                 ImGui::BeginGroup();
-                ImGui::TextDisabled("Left Eye");
+                ImGui::TextDisabled("%s", vultra::tr("renderGraph.texture.leftEye"));
                 ImGui::Image(leftTextureId, imageSize);
                 (void)ui::capturePreviewItemInput();
                 ImGui::EndGroup();
                 ImGui::SameLine();
                 ImGui::BeginGroup();
-                ImGui::TextDisabled("Right Eye");
+                ImGui::TextDisabled("%s", vultra::tr("renderGraph.texture.rightEye"));
                 ImGui::Image(rightTextureId, imageSize);
                 (void)ui::capturePreviewItemInput();
                 ImGui::EndGroup();
@@ -4753,7 +4784,7 @@ namespace vultra_app
             std::string validationError;
             if (!validateRenderGraph(state.registry, state.graph, validationError))
             {
-                state.status            = "Validation failed: " + validationError;
+                state.status            = vultra::trf("renderGraph.status.validationFailed", validationError);
                 ctx.state.statusMessage = state.status;
                 return false;
             }
@@ -4762,7 +4793,7 @@ namespace vultra_app
             auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr;
             if (!assetService || !renderService)
             {
-                state.status = "Runtime apply failed: render/asset service unavailable.";
+                state.status = vultra::tr("renderGraph.status.runtimeApplyUnavailable");
                 return false;
             }
 
@@ -4770,14 +4801,14 @@ namespace vultra_app
             if (!renderService->updateRenderGraph(uri, rendererKeyFromRenderGraphUri(uri)))
                 renderService->reloadRenderPipeline(uri, rendererKeyFromRenderGraphUri(uri));
             state.runtimeDirty      = false;
-            state.status            = "Applied in memory";
-            ctx.state.statusMessage = "Applied render graph in memory: " + uri;
+            state.status            = vultra::tr("renderGraph.status.appliedInMemory");
+            ctx.state.statusMessage = vultra::trf("renderGraph.status.appliedInMemoryDetail", uri);
             return true;
         };
         auto persistGraph = [&]() {
             if (state.builtinGraphAsset)
             {
-                state.status            = "Builtin graphs are read-only; use Export.";
+                state.status            = vultra::tr("renderGraph.status.builtinReadOnly");
                 ctx.state.statusMessage = state.status;
                 return false;
             }
@@ -4785,7 +4816,7 @@ namespace vultra_app
             std::string validationError;
             if (!validateRenderGraph(state.registry, state.graph, validationError))
             {
-                state.status            = "Validation failed: " + validationError;
+                state.status            = vultra::trf("renderGraph.status.validationFailed", validationError);
                 ctx.state.statusMessage = state.status;
                 return false;
             }
@@ -4803,8 +4834,8 @@ namespace vultra_app
             state.dirty             = false;
             state.pipelineDirty     = false;
             state.runtimeDirty      = false;
-            state.status            = "Saved";
-            ctx.state.statusMessage = "Saved render graph: " + state.path.generic_string();
+            state.status            = vultra::tr("renderGraph.status.saved");
+            ctx.state.statusMessage = vultra::trf("renderGraph.status.savedDetail", state.path.generic_string());
 
             if (auto* assetService = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
             {
@@ -4855,7 +4886,7 @@ namespace vultra_app
             state.status.clear();
         }
 
-        if (ImGui::Button(ICON_MDI_PLUS " Add"))
+        if (ImGui::Button((std::string {ICON_MDI_PLUS " "} + vultra::tr("common.add")).c_str()))
         {
             const ImVec2 buttonMin = ImGui::GetItemRectMin();
             const ImVec2 buttonMax = ImGui::GetItemRectMax();
@@ -4866,7 +4897,7 @@ namespace vultra_app
         drawGraphEditorAddPopup(ctx);
 
         ImGui::SameLine();
-        if (ImGui::SmallButton(ICON_MDI_REFRESH " Reload"))
+        if (ImGui::SmallButton((std::string {ICON_MDI_REFRESH " "} + vultra::tr("renderGraph.toolbar.reload")).c_str()))
         {
             if (auto* assetService = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
             {
@@ -4877,13 +4908,13 @@ namespace vultra_app
             state.loaded = false;
         }
         ImGui::SameLine();
-        ImGui::Checkbox("Live Apply", &state.liveApply);
+        ImGui::Checkbox(vultra::tr("renderGraph.toolbar.liveApply"), &state.liveApply);
         ImGui::SameLine();
 
         const bool canSave = state.loaded && !state.path.empty() && !state.builtinGraphAsset;
         if (!canSave)
             ImGui::BeginDisabled();
-        if (ImGui::SmallButton(ICON_MDI_CONTENT_SAVE " Save"))
+        if (ImGui::SmallButton((std::string {ICON_MDI_CONTENT_SAVE " "} + vultra::tr("common.save")).c_str()))
         {
             persistGraph();
         }
@@ -4894,34 +4925,40 @@ namespace vultra_app
         const bool canExport = state.loaded && state.builtinGraphAsset;
         if (!canExport)
             ImGui::BeginDisabled();
-        if (ImGui::SmallButton(ICON_MDI_EXPORT " Export"))
+        if (ImGui::SmallButton((std::string {ICON_MDI_EXPORT " "} + vultra::tr("common.export")).c_str()))
         {
             m_BuiltinRenderGraphExportPath[0] = '\0';
-            ImGui::OpenPopup("Export Builtin Render Graph");
+            ImGui::OpenPopup(vultra::trId("renderGraph.export.title", "Export Builtin Render Graph"));
         }
         if (!canExport)
             ImGui::EndDisabled();
 
-        if (ImGui::BeginPopupModal("Export Builtin Render Graph", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        if (ImGui::BeginPopupModal(vultra::trId("renderGraph.export.title", "Export Builtin Render Graph"),
+                                   nullptr,
+                                   ImGuiWindowFlags_AlwaysAutoResize))
         {
-            ImGui::TextUnformatted("Builtin graphs are read-only. Choose an export target.");
+            ImGui::TextUnformatted(vultra::tr("renderGraph.export.readOnlyHint"));
             const auto filename =
                 std::filesystem::path(std::string(ctx.state.currentEditingRenderGraph)).filename().generic_string();
-            ImGui::TextDisabled("Suggested file: %s", filename.c_str());
+            ImGui::TextDisabled("%s", vultra::trf("renderGraph.export.suggestedFile", filename).c_str());
             m_BuiltinRenderGraphExportDialog.drawBrowseOnly(
-                "Target", m_BuiltinRenderGraphExportPath.data(), m_BuiltinRenderGraphExportPath.size());
+                vultra::tr("renderGraph.export.target"),
+                m_BuiltinRenderGraphExportPath.data(),
+                m_BuiltinRenderGraphExportPath.size());
 
             const bool hasTarget = m_BuiltinRenderGraphExportPath[0] != '\0';
             if (!hasTarget)
                 ImGui::BeginDisabled();
-            if (ImGui::Button(ICON_MDI_EXPORT " Export", ImVec2 {112.0f, 0.0f}))
+            if (ImGui::Button((std::string {ICON_MDI_EXPORT " "} + vultra::tr("common.export")).c_str(),
+                              ImVec2 {vultra::ui::dp(112.0f), 0.0f}))
             {
                 std::string error;
                 const auto  target = std::filesystem::path(m_BuiltinRenderGraphExportPath.data()).lexically_normal();
                 if (writeTextAtomic(target, serializedGraph(), error))
                 {
-                    state.status            = "Exported";
-                    ctx.state.statusMessage = "Exported builtin render graph: " + target.generic_string();
+                    state.status            = vultra::tr("renderGraph.status.exported");
+                    ctx.state.statusMessage =
+                        vultra::trf("renderGraph.status.exportedDetail", target.generic_string());
                     ImGui::CloseCurrentPopup();
                 }
                 else
@@ -4933,19 +4970,19 @@ namespace vultra_app
             if (!hasTarget)
                 ImGui::EndDisabled();
             ImGui::SameLine();
-            if (ImGui::Button("Cancel", ImVec2 {96.0f, 0.0f}))
+            if (ImGui::Button(vultra::tr("common.cancel"), ImVec2 {vultra::ui::dp(96.0f), 0.0f}))
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
 
         ImGui::SameLine();
-        if (ImGui::SmallButton("Topo Order") && state.loaded)
+        if (ImGui::SmallButton(vultra::tr("renderGraph.toolbar.topoOrder")) && state.loaded)
         {
             std::string error;
             if (applyTopoOrder(state.graph, &error))
             {
                 state.markDirty();
-                state.status = "Topo order applied";
+                state.status = vultra::tr("renderGraph.status.topoApplied");
             }
             else
             {
@@ -4953,23 +4990,25 @@ namespace vultra_app
             }
         }
         ImGui::SameLine();
-        if (ImGui::SmallButton(ICON_MDI_GRAPH " Auto Layout") && state.loaded)
+        if (ImGui::SmallButton((std::string {ICON_MDI_GRAPH " "} + vultra::tr("renderGraph.toolbar.autoLayout")).c_str()) &&
+            state.loaded)
         {
             applyRenderGraphAutoLayout(state.registry, state.graph);
             state.markDirty();
             state.applyPositions = true;
-            state.status         = "Auto layout applied";
+            state.status         = vultra::tr("renderGraph.status.autoLayoutApplied");
         }
         ImGui::SameLine();
-        if (ImGui::SmallButton(ICON_MDI_DELETE " Delete Selected") && state.loaded)
+        if (ImGui::SmallButton((std::string {ICON_MDI_DELETE " "} + vultra::tr("renderGraph.toolbar.deleteSelected")).c_str()) &&
+            state.loaded)
             state.removeSelected();
 
         const auto graphLabel = state.builtinGraphAsset ? state.loadedUri :
-                                state.path.empty()     ? std::string {"No render graph selected"} :
+                                state.path.empty()     ? std::string {vultra::tr("renderGraph.toolbar.noGraphSelected")} :
                                                          state.path.generic_string();
         ImGui::TextDisabled("%s%s%s",
                             graphLabel.c_str(),
-                            state.builtinGraphAsset ? " (builtin, read-only)" : "",
+                            state.builtinGraphAsset ? vultra::tr("renderGraph.toolbar.builtinReadOnlySuffix") : "",
                             state.dirty ? " *" : "");
 
         std::string bannerMessage;
@@ -4979,7 +5018,7 @@ namespace vultra_app
             std::string validationError;
             if (!validateRenderGraph(state.registry, state.graph, validationError))
             {
-                bannerMessage = "Graph invalid: " + validationError;
+                bannerMessage = vultra::trf("renderGraph.banner.graphInvalid", validationError);
                 bannerError   = true;
             }
         }
@@ -5010,7 +5049,7 @@ namespace vultra_app
                         {
                             state.dirty        = true;
                             state.runtimeDirty = true;
-                            state.status       = "Repaired stale render graph links";
+                            state.status       = vultra::tr("renderGraph.status.repairedLinks");
                         }
                         for (auto& pass : state.graph.passes)
                         {
@@ -5024,12 +5063,13 @@ namespace vultra_app
                         state.pipelineDirty  = false;
                         state.runtimeDirty   = false;
                         state.applyPositions = true;
-                        state.status         = "Loaded builtin graph";
+                        state.status         = vultra::tr("renderGraph.status.loadedBuiltin");
                     }
                     catch (const std::exception& e)
                     {
-                        ImGui::TextColored(
-                            ImVec4 {1.0f, 0.35f, 0.25f, 1.0f}, "Failed to load builtin graph: %s", e.what());
+                        ImGui::TextColored(ImVec4 {1.0f, 0.35f, 0.25f, 1.0f},
+                                           "%s",
+                                           vultra::trf("renderGraph.status.loadBuiltinFailed", e.what()).c_str());
                     }
                 }
             }
@@ -5049,7 +5089,7 @@ namespace vultra_app
                     {
                         state.dirty        = true;
                         state.runtimeDirty = true;
-                        state.status       = "Repaired stale render graph links";
+                        state.status       = vultra::tr("renderGraph.status.repairedLinks");
                     }
                     for (auto& pass : state.graph.passes)
                     {
@@ -5063,25 +5103,28 @@ namespace vultra_app
                     state.pipelineDirty  = false;
                     state.runtimeDirty   = false;
                     state.applyPositions = true;
-                    state.status         = "Loaded";
+                    state.status         = vultra::tr("renderGraph.status.loaded");
                 }
                 catch (const std::exception& e)
                 {
-                    ImGui::TextColored(ImVec4 {1.0f, 0.35f, 0.25f, 1.0f}, "Failed to load graph: %s", e.what());
+                    ImGui::TextColored(ImVec4 {1.0f, 0.35f, 0.25f, 1.0f},
+                                       "%s",
+                                       vultra::trf("renderGraph.status.loadFailed", e.what()).c_str());
                 }
             }
         }
 
         if (!state.loaded)
         {
-            ImGui::TextDisabled("Open a .vrg.json render graph asset.");
+            ImGui::TextDisabled("%s", vultra::tr("renderGraph.toolbar.openAssetHint"));
             return;
         }
 
         bool drawPipeline = !state.editingFeatureInternals && !state.directGraphAsset;
         if (state.editingFeatureInternals)
         {
-            if (!state.directGraphAsset && ImGui::SmallButton(ICON_MDI_ARROW_LEFT " Pipeline"))
+            if (!state.directGraphAsset &&
+                ImGui::SmallButton((std::string {ICON_MDI_ARROW_LEFT " "} + vultra::tr("renderGraph.toolbar.pipeline")).c_str()))
             {
                 state.storeMeta();
                 state.editingFeatureInternals = false;
@@ -5095,7 +5138,7 @@ namespace vultra_app
                 if (!state.directGraphAsset)
                 {
                     ImGui::SameLine();
-                    ImGui::TextDisabled("Editing %s", state.editingFeature.c_str());
+                    ImGui::TextDisabled("%s", vultra::trf("renderGraph.toolbar.editing", state.editingFeature).c_str());
                 }
                 drawGraphEditorCanvas(ctx);
             }
@@ -5154,14 +5197,16 @@ namespace vultra_app
         std::erase_if(projectTypes, [&](const std::string& type) { return !state.registry.contains(type); });
         const std::unordered_set<std::string> projectTypeSet(projectTypes.begin(), projectTypes.end());
 
-        if (state.editingFeatureInternals && !projectTypes.empty() && ImGui::BeginMenu("Project Pass"))
+        if (state.editingFeatureInternals && !projectTypes.empty() &&
+            ImGui::BeginMenu(vultra::trId("renderGraph.addMenu.projectPass", "Project Pass")))
         {
             for (const auto& type : projectTypes)
                 addPassItem(type);
             ImGui::EndMenu();
         }
 
-        if (state.editingFeatureInternals && ImGui::BeginMenu("Builtin Pass"))
+        if (state.editingFeatureInternals &&
+            ImGui::BeginMenu(vultra::trId("renderGraph.addMenu.builtinPass", "Builtin Pass")))
         {
             auto types = state.registry.listTypes();
             std::sort(types.begin(), types.end());
@@ -5203,26 +5248,30 @@ namespace vultra_app
             const int         id            = state.nodeId("feature", feature);
             const bool        isCustomGraph = state.isCurrentGraphFeature(feature);
             const float       nodeWidth     = std::clamp(
-                std::max(textWidth(feature), textWidth("Double-click to edit internals")) + 58.0f, 230.0f, 420.0f);
+                std::max(textWidth(feature), textWidth(vultra::tr("renderGraph.pipeline.doubleClickEdit"))) +
+                    vultra::ui::dp(58.0f),
+                vultra::ui::dp(230.0f),
+                vultra::ui::dp(420.0f));
             pushNodeTitlePalette(isCustomGraph ? IM_COL32(145, 96, 205, 255) : IM_COL32(70, 130, 190, 255));
             ImNodes::BeginNode(id);
             ImNodes::BeginNodeTitleBar();
-            drawNodeTitleText(isCustomGraph ? "Custom Render Graph" : feature.c_str());
+            drawNodeTitleText(isCustomGraph ? vultra::tr("renderGraph.pipeline.customRenderGraph") : feature.c_str());
             ImNodes::EndNodeTitleBar();
-            ImGui::TextDisabled("%s", isCustomGraph ? feature.c_str() : "builtin feature");
+            ImGui::TextDisabled("%s", isCustomGraph ? feature.c_str() : vultra::tr("renderGraph.pipeline.builtinFeature"));
             if (isCustomGraph)
             {
                 ImGui::Separator();
-                ImGui::TextDisabled("%zu passes", state.graph.passes.size());
-                ImGui::TextDisabled("Double-click to edit internals");
+                ImGui::TextDisabled("%s", vultra::trf("renderGraph.pipeline.passCount", state.graph.passes.size()).c_str());
+                ImGui::TextDisabled("%s", vultra::tr("renderGraph.pipeline.doubleClickEdit"));
             }
 
             ImNodes::BeginInputAttribute(state.pinId(nodeKey, "in", true), ImNodesPinShape_TriangleFilled);
-            ImGui::TextDisabled("in");
+            ImGui::TextDisabled("%s", vultra::tr("renderGraph.pin.in"));
             ImNodes::EndInputAttribute();
             ImNodes::BeginOutputAttribute(state.pinId(nodeKey, "out", false), ImNodesPinShape_TriangleFilled);
-            ImGui::Indent(std::max(24.0f, nodeWidth - textWidth("out") - 42.0f));
-            ImGui::TextDisabled("out");
+            ImGui::Indent(std::max(vultra::ui::dp(24.0f),
+                                   nodeWidth - textWidth(vultra::tr("renderGraph.pin.out")) - vultra::ui::dp(42.0f)));
+            ImGui::TextDisabled("%s", vultra::tr("renderGraph.pin.out"));
             ImNodes::EndOutputAttribute();
             ImNodes::EndNode();
             popNodeTitlePalette();
@@ -5265,7 +5314,7 @@ namespace vultra_app
                 }
                 else
                 {
-                    state.status = "Connect feature output to another feature input to reorder the pipeline.";
+                    state.status = vultra::tr("renderGraph.status.connectToReorder");
                 }
             }
         }
@@ -5290,7 +5339,7 @@ namespace vultra_app
                         std::remove(state.pipelineFeatures.begin(), state.pipelineFeatures.end(), feature),
                         state.pipelineFeatures.end());
                     state.markPipelineDirty();
-                    state.status = "Deleted pipeline feature";
+                    state.status = vultra::tr("renderGraph.status.featureDeleted");
                 }
                 ImNodes::ClearNodeSelection();
             }
@@ -5333,7 +5382,7 @@ namespace vultra_app
                 const bool isCustomGraph = state.isCurrentGraphFeature(feature);
                 if (!isCustomGraph)
                     ImGui::BeginDisabled();
-                if (ImGui::MenuItem("Edit Internals"))
+                if (ImGui::MenuItem(vultra::trId("renderGraph.menu.editInternals", "Edit Internals")))
                 {
                     state.storeMeta();
                     state.editingFeatureInternals = true;
@@ -5342,13 +5391,13 @@ namespace vultra_app
                 }
                 if (!isCustomGraph)
                     ImGui::EndDisabled();
-                if (ImGui::MenuItem("Delete Feature"))
+                if (ImGui::MenuItem(vultra::trId("renderGraph.menu.deleteFeature", "Delete Feature")))
                 {
                     state.pipelineFeatures.erase(
                         std::remove(state.pipelineFeatures.begin(), state.pipelineFeatures.end(), feature),
                         state.pipelineFeatures.end());
                     state.markPipelineDirty();
-                    state.status = "Deleted pipeline feature";
+                    state.status = vultra::tr("renderGraph.status.featureDeleted");
                 }
             }
             ImGui::EndPopup();
@@ -5404,11 +5453,13 @@ namespace vultra_app
                 ImNodes::BeginNodeTitleBar();
                 drawNodeTitleText(resource.name.c_str());
                 ImNodes::EndNodeTitleBar();
-                ImGui::TextDisabled("imported resource");
+                ImGui::TextDisabled("%s", vultra::tr("renderGraph.canvas.importedResource"));
                 const int pin = state.pinId(resource.name, "out", false);
                 ImNodes::BeginOutputAttribute(pin, ImNodesPinShape_CircleFilled);
-                ImGui::Indent(std::max(24.0f, 120.0f - textWidth("out") - 42.0f));
-                ImGui::TextUnformatted("out");
+                ImGui::Indent(std::max(vultra::ui::dp(24.0f),
+                                       vultra::ui::dp(120.0f) - textWidth(vultra::tr("renderGraph.pin.out")) -
+                                           vultra::ui::dp(42.0f)));
+                ImGui::TextUnformatted(vultra::tr("renderGraph.pin.out"));
                 ImNodes::EndOutputAttribute();
                 ImNodes::EndNode();
                 popNodeTitlePalette();
@@ -5444,8 +5495,9 @@ namespace vultra_app
                     const EditorCpuScope widthPerf {ctx, "Editor::RenderGraph/CanvasPassNodeWidth"};
                     nodeWidth = passNodeWidth(ctx, pass, def);
                 }
-                const float paramLabelWidth = std::clamp(nodeWidth * 0.38f, 92.0f, 190.0f);
-                const float paramValueWidth = std::clamp(nodeWidth - paramLabelWidth - 58.0f, 150.0f, 300.0f);
+                const float paramLabelWidth = std::clamp(nodeWidth * 0.38f, vultra::ui::dp(92.0f), vultra::ui::dp(190.0f));
+                const float paramValueWidth =
+                    std::clamp(nodeWidth - paramLabelWidth - vultra::ui::dp(58.0f), vultra::ui::dp(150.0f), vultra::ui::dp(300.0f));
                 const ImU32 passTitle       = vrgNodeColorFromType(pass.type, false);
                 pushNodeTitlePalette(passTitle);
                 ImNodes::BeginNode(id);
@@ -5455,7 +5507,7 @@ namespace vultra_app
                 ImGui::TextDisabled("%s", pass.type.c_str());
 
                 bool enabled = pass.enabled;
-                if (ImGui::Checkbox("Enabled", &enabled))
+                if (ImGui::Checkbox(vultra::tr("common.enabled"), &enabled))
                 {
                     pass.enabled = enabled;
                     state.markDirty();
@@ -5466,7 +5518,9 @@ namespace vultra_app
                     if (const auto shaderRef = resolvePassShaderRef(ctx, pass);
                         shaderRef && !primaryShaderId(*shaderRef).empty())
                     {
-                        ImGui::TextDisabled("shader: %s", primaryShaderId(*shaderRef).c_str());
+                        ImGui::TextDisabled("%s",
+                                            vultra::trf("renderGraph.canvas.shader", primaryShaderId(*shaderRef))
+                                                .c_str());
                     }
                 }
 
@@ -5512,7 +5566,7 @@ namespace vultra_app
 
                         const int pin = state.pinId(pass.id, slot, false);
                         ImNodes::BeginOutputAttribute(pin, ImNodesPinShape_CircleFilled);
-                        ImGui::Indent(std::max(24.0f, nodeWidth - textWidth(slot) - 42.0f));
+                        ImGui::Indent(std::max(vultra::ui::dp(24.0f), nodeWidth - textWidth(slot) - vultra::ui::dp(42.0f)));
                         ImGui::TextUnformatted(slot.c_str());
                         ImNodes::EndOutputAttribute();
                     }
@@ -5596,7 +5650,7 @@ namespace vultra_app
                             if (!applyTopoOrder(state.graph, &topoError))
                                 state.status = topoError;
                             else
-                                state.status = "Updated pass input link";
+                                state.status = vultra::tr("renderGraph.status.passLinkUpdated");
                             state.markDirty();
                         }
                     }
@@ -5643,7 +5697,7 @@ namespace vultra_app
             const EditorCpuScope popupsPerf {ctx, "Editor::RenderGraph/CanvasContextPopups"};
             if (ImGui::BeginPopup("RenderGraphLinkMenu"))
             {
-                if (ImGui::MenuItem("Delete Link"))
+                if (ImGui::MenuItem(vultra::trId("renderGraph.menu.deleteLink", "Delete Link")))
                     state.removeEditableLink(state.contextLink);
                 ImGui::EndPopup();
             }
@@ -5655,12 +5709,12 @@ namespace vultra_app
                 {
                     if (state.nodeId("pass", it->id) != state.contextNode)
                         continue;
-                    if (ImGui::MenuItem("Enabled", nullptr, it->enabled))
+                    if (ImGui::MenuItem(vultra::trId("renderGraph.menu.enabled", "Enabled"), nullptr, it->enabled))
                     {
                         it->enabled = !it->enabled;
                         state.markDirty();
                     }
-                    if (ImGui::MenuItem("Delete Pass"))
+                    if (ImGui::MenuItem(vultra::trId("renderGraph.menu.deletePass", "Delete Pass")))
                         state.removeEditableNode(state.contextNode);
                     handled = true;
                     break;
@@ -5735,14 +5789,14 @@ namespace vultra_app
         const bool anyPopupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup);
 
         const ImVec2 childSize {childMax.x - childMin.x, childMax.y - childMin.y};
-        if (childSize.x < 220.0f || childSize.y < 160.0f)
+        if (childSize.x < vultra::ui::dp(220.0f) || childSize.y < vultra::ui::dp(160.0f))
             return;
 
         const bool     xrPreview    = isXrRenderGraphUri(ctx.state.currentEditingRenderGraph);
         const float    aspect       = xrPreview ? kRenderGraphPreviewAspect * 2.0f : kRenderGraphPreviewAspect;
         m_OverlayZoom               = std::clamp(m_OverlayZoom, kOverlayZoomMin, kOverlayZoomMax);
-        const float baseWidth       = std::min(320.0f, std::max(180.0f, childSize.x * 0.22f));
-        const float width           = std::min(childSize.x - 32.0f, baseWidth * m_OverlayZoom);
+        const float baseWidth       = std::min(vultra::ui::dp(320.0f), std::max(vultra::ui::dp(180.0f), childSize.x * 0.22f));
+        const float width           = std::min(childSize.x - vultra::ui::dp(32.0f), baseWidth * m_OverlayZoom);
         const float height          = width / aspect;
         const auto   renderWidth     = static_cast<uint32_t>(std::max(1.0f, std::round(xrPreview ? width * 0.5f : width)));
         const auto   renderHeight    = static_cast<uint32_t>(std::max(1.0f, std::round(height)));
@@ -5761,23 +5815,25 @@ namespace vultra_app
         }
         const bool   hasPrimaryCamera = ensureRenderGraphPreviewCamera(ctx, renderWidth, renderHeight);
 
-        const ImVec2    padding {14.0f, 14.0f};
+        const ImVec2    padding {vultra::ui::dp(14.0f), vultra::ui::dp(14.0f)};
         constexpr float controlHeight = 30.0f;
-        const ImVec2    panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + 22.0f + controlHeight};
-        const ImVec2    panelMin {childMin.x + 16.0f, childMin.y + childSize.y - panelSize.y - 16.0f};
+        const ImVec2    panelSize {width + padding.x * 2.0f,
+                                height + padding.y * 2.0f + vultra::ui::dp(22.0f) + vultra::ui::dp(controlHeight)};
+        const ImVec2    panelMin {childMin.x + vultra::ui::dp(16.0f),
+                               childMin.y + childSize.y - panelSize.y - vultra::ui::dp(16.0f)};
         const ImVec2    panelMax {panelMin.x + panelSize.x, panelMin.y + panelSize.y};
-        const ImVec2    imageMin {panelMin.x + padding.x, panelMin.y + padding.y + 22.0f};
+        const ImVec2    imageMin {panelMin.x + padding.x, panelMin.y + padding.y + vultra::ui::dp(22.0f)};
         const ImVec2    imageMax {imageMin.x + width, imageMin.y + height};
-        const ImVec2    controlsMin {imageMin.x, imageMax.y + 8.0f};
+        const ImVec2    controlsMin {imageMin.x, imageMax.y + vultra::ui::dp(8.0f)};
         const ImVec2    mouse    = ImGui::GetIO().MousePos;
         const auto      contains = [&](const ImVec2& min, const ImVec2& max) {
             return mouse.x >= min.x && mouse.x <= max.x && mouse.y >= min.y && mouse.y <= max.y;
         };
         const ImVec2 minusMin {controlsMin.x, controlsMin.y};
-        const ImVec2 minusMax {minusMin.x + 24.0f, minusMin.y + 24.0f};
-        const ImVec2 labelMin {minusMax.x + 10.0f, controlsMin.y + 4.0f};
-        const ImVec2 plusMin {labelMin.x + 56.0f, controlsMin.y};
-        const ImVec2 plusMax {plusMin.x + 24.0f, plusMin.y + 24.0f};
+        const ImVec2 minusMax {minusMin.x + vultra::ui::dp(24.0f), minusMin.y + vultra::ui::dp(24.0f)};
+        const ImVec2 labelMin {minusMax.x + vultra::ui::dp(10.0f), controlsMin.y + vultra::ui::dp(4.0f)};
+        const ImVec2 plusMin {labelMin.x + vultra::ui::dp(56.0f), controlsMin.y};
+        const ImVec2 plusMax {plusMin.x + vultra::ui::dp(24.0f), plusMin.y + vultra::ui::dp(24.0f)};
 
         const bool minusHovered = contains(minusMin, minusMax);
         const bool plusHovered  = contains(plusMin, plusMax);
@@ -5793,14 +5849,17 @@ namespace vultra_app
         ImDrawList* drawList =
             anyPopupOpen ? ImGui::GetWindowDrawList() : ImGui::GetForegroundDrawList(ImGui::GetWindowViewport());
         drawList->PushClipRect(childMin, childMax, true);
-        drawList->AddRectFilled(panelMin, panelMax, IM_COL32(10, 14, 18, 255), 7.0f);
-        drawList->AddRect(panelMin, panelMax, IM_COL32(68, 86, 105, 255), 7.0f);
-        drawList->AddText(ImVec2(panelMin.x + padding.x, panelMin.y + 8.0f), IM_COL32(190, 204, 218, 255), "Preview");
+        drawList->AddRectFilled(panelMin, panelMax, IM_COL32(10, 14, 18, 255), vultra::ui::dp(7.0f));
+        drawList->AddRect(panelMin, panelMax, IM_COL32(68, 86, 105, 255), vultra::ui::dp(7.0f));
+        drawList->AddText(ImVec2(panelMin.x + padding.x, panelMin.y + vultra::ui::dp(8.0f)),
+                          IM_COL32(190, 204, 218, 255),
+                          vultra::tr("renderGraph.overlay.preview"));
         char zoomLabel[16] {};
         std::snprintf(zoomLabel, sizeof(zoomLabel), "%.0f%%", m_OverlayZoom * 100.0f);
         const ImVec2 zoomSize = ImGui::CalcTextSize(zoomLabel);
-        drawList->AddText(
-            ImVec2(panelMax.x - padding.x - zoomSize.x, panelMin.y + 8.0f), IM_COL32(126, 142, 158, 255), zoomLabel);
+        drawList->AddText(ImVec2(panelMax.x - padding.x - zoomSize.x, panelMin.y + vultra::ui::dp(8.0f)),
+                          IM_COL32(126, 142, 158, 255),
+                          zoomLabel);
 
         RuntimeStereoTexturePair previewStereoPair;
         if (xrPreview)
@@ -5850,45 +5909,48 @@ namespace vultra_app
                 return cached.textureId;
             };
             const ImVec2 split {std::floor((imageMin.x + imageMax.x) * 0.5f), imageMax.y};
-            drawList->AddRectFilled(imageMin, imageMax, IM_COL32(0, 0, 0, 255), 3.0f);
+            drawList->AddRectFilled(imageMin, imageMax, IM_COL32(0, 0, 0, 255), vultra::ui::dp(3.0f));
             drawList->AddImage(ensurePreviewId(*previewStereoPair.left),
                                imageMin,
-                               ImVec2 {split.x - 2.0f, split.y},
+                               ImVec2 {split.x - vultra::ui::dp(2.0f), split.y},
                                ImVec2(0.0f, 0.0f),
                                ImVec2(1.0f, 1.0f));
             drawList->AddImage(ensurePreviewId(*previewStereoPair.right),
-                               ImVec2 {split.x + 2.0f, imageMin.y},
+                               ImVec2 {split.x + vultra::ui::dp(2.0f), imageMin.y},
                                imageMax,
                                ImVec2(0.0f, 0.0f),
                                ImVec2(1.0f, 1.0f));
         }
         else if (m_OverlayActiveRenderTarget.textureId && hasPrimaryCamera && !xrPreview)
         {
-            drawList->AddRectFilled(imageMin, imageMax, IM_COL32(0, 0, 0, 255), 3.0f);
+            drawList->AddRectFilled(imageMin, imageMax, IM_COL32(0, 0, 0, 255), vultra::ui::dp(3.0f));
             drawList->AddImage(
                 m_OverlayActiveRenderTarget.textureId, imageMin, imageMax, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
         }
         else
         {
-            drawList->AddRectFilled(imageMin, imageMax, IM_COL32(16, 19, 24, 255), 3.0f);
-            const char*  label    = hasPrimaryCamera ? "Preparing preview" : "No primary camera";
+            drawList->AddRectFilled(imageMin, imageMax, IM_COL32(16, 19, 24, 255), vultra::ui::dp(3.0f));
+            const char*  label    = hasPrimaryCamera ? vultra::tr("renderGraph.overlay.preparingPreview") :
+                                                        vultra::tr("renderGraph.overlay.noPrimaryCamera");
             const ImVec2 textSize = ImGui::CalcTextSize(label);
             drawList->AddText(
                 ImVec2((imageMin.x + imageMax.x - textSize.x) * 0.5f, (imageMin.y + imageMax.y - textSize.y) * 0.5f),
                 IM_COL32(140, 152, 166, 255),
                 label);
         }
-        drawList->AddRect(imageMin, imageMax, IM_COL32(72, 86, 104, 255), 3.0f);
+        drawList->AddRect(imageMin, imageMax, IM_COL32(72, 86, 104, 255), vultra::ui::dp(3.0f));
         const auto buttonColor = [](bool hovered) {
             return hovered ? IM_COL32(42, 50, 62, 255) : IM_COL32(26, 31, 39, 255);
         };
-        drawList->AddRectFilled(minusMin, minusMax, buttonColor(minusHovered), 5.0f);
-        drawList->AddText(
-            ImVec2(minusMin.x + 4.0f, minusMin.y + 4.0f), IM_COL32(184, 198, 214, 255), ICON_MDI_MAGNIFY_MINUS);
+        drawList->AddRectFilled(minusMin, minusMax, buttonColor(minusHovered), vultra::ui::dp(5.0f));
+        drawList->AddText(ImVec2(minusMin.x + vultra::ui::dp(4.0f), minusMin.y + vultra::ui::dp(4.0f)),
+                          IM_COL32(184, 198, 214, 255),
+                          ICON_MDI_MAGNIFY_MINUS);
         drawList->AddText(labelMin, IM_COL32(126, 142, 158, 255), zoomLabel);
-        drawList->AddRectFilled(plusMin, plusMax, buttonColor(plusHovered), 5.0f);
-        drawList->AddText(
-            ImVec2(plusMin.x + 4.0f, plusMin.y + 4.0f), IM_COL32(184, 198, 214, 255), ICON_MDI_MAGNIFY_PLUS);
+        drawList->AddRectFilled(plusMin, plusMax, buttonColor(plusHovered), vultra::ui::dp(5.0f));
+        drawList->AddText(ImVec2(plusMin.x + vultra::ui::dp(4.0f), plusMin.y + vultra::ui::dp(4.0f)),
+                          IM_COL32(184, 198, 214, 255),
+                          ICON_MDI_MAGNIFY_PLUS);
         drawList->PopClipRect();
     }
 
