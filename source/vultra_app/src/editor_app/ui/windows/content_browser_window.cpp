@@ -1917,7 +1917,12 @@ namespace vultra_app
 
         m_CreateAssetCreatorId = creatorId;
         m_CreateAssetTargetDir = targetDir.empty() ? m_CurrentDir : targetDir;
-        copyText(m_CreateAssetNameBuffer, creator->defaultFileName);
+        // Seed the Name field with the stem only; the extension is shown separately
+        // and re-appended on create (so it must not appear in the editable name).
+        auto defaultName = creator->defaultFileName;
+        if (!creator->extension.empty() && hasSuffix(lowerString(defaultName), lowerString(creator->extension)))
+            defaultName.erase(defaultName.size() - creator->extension.size());
+        copyText(m_CreateAssetNameBuffer, defaultName);
         refreshCreateAssetShaderOptions();
         m_OpenCreateAssetPopup = true;
     }
@@ -2054,52 +2059,16 @@ namespace vultra_app
             ctx.state.statusMessage = vultra::tr("contentBrowser.createAsset.cannotOpen");
             return false;
         }
-        if (isRenderGraphPassCreator(creator->id) && !selectedShader.empty())
+        if (isRenderGraphPassCreator(creator->id))
         {
+            // New standard: scripted passes. Post-processing gets a filled
+            // setup/execute (the operation is standard); the user picks type +
+            // shader. Other pass kinds get a stub with only the type filled.
             const auto typeName = renderGraphPassTypeName(fileName);
-            if (creator->id == "vultra.compute_pass")
-            {
-                file << "return RenderGraphPass {\n"
-                     << "    type = " << luaQuote(typeName) << ",\n"
-                     << "    pipeline = \"compute\",\n"
-                     << "    inputs = { \"source\" },\n"
-                     << "    outputs = { \"color\" },\n"
-                     << "    shader = {\n"
-                     << "        library = \"project\",\n"
-                     << "        compute = " << luaQuote(selectedShader) << ",\n"
-                     << "    },\n"
-                     << "    dispatch = {\n"
-                     << "        byOutputSize = true,\n"
-                     << "    },\n"
-                     << "}\n";
-            }
-            else if (creator->id == "vultra.raytracing_pass")
-            {
-                file << "return RenderGraphPass {\n"
-                     << "    type = " << luaQuote(typeName) << ",\n"
-                     << "    pipeline = \"raytracing\",\n"
-                     << "    inputs = { \"source\" },\n"
-                     << "    outputs = { \"color\" },\n"
-                     << "    shader = {\n"
-                     << "        library = \"project\",\n"
-                     << "        raygen = " << luaQuote(selectedShader) << ",\n"
-                     << "    },\n"
-                     << "}\n";
-            }
+            if (creator->id == "vultra.post_processing_pass")
+                file << scriptedPostProcessPassLua(typeName, selectedShader);
             else
-            {
-                file << "return RenderGraphPass {\n"
-                     << "    type = " << luaQuote(typeName) << ",\n"
-                     << "    inputs = { \"source\" },\n"
-                     << "    outputs = { \"color\" },\n"
-                     << "    shader = {\n"
-                     << "        library = \"project\",\n"
-                     << "        vertexLibrary = \"builtin\",\n"
-                     << "        vertex = \"fullscreen_triangle.vert\",\n"
-                     << "        fragment = " << luaQuote(selectedShader) << ",\n"
-                     << "    },\n"
-                     << "}\n";
-            }
+                file << scriptedPassStubLua(typeName);
         }
         else
         {
@@ -2221,13 +2190,20 @@ namespace vultra_app
                                                              .c_str();
                 if (ImGui::BeginCombo(label, preview))
                 {
-                    for (int i = 0; i < static_cast<int>(m_CreateAssetShaderOptions.size()); ++i)
+                    // Hierarchical picker: shader ids are '/'-namespaced
+                    // (e.g. project/fullscreen/pixelate.frag) and shown as submenus.
+                    const std::string current =
+                        m_CreateAssetShaderOptions.empty() ?
+                            std::string {} :
+                            m_CreateAssetShaderOptions[static_cast<size_t>(std::clamp(
+                                m_CreateAssetShaderIndex, 0, static_cast<int>(m_CreateAssetShaderOptions.size()) - 1))];
+                    std::string selected;
+                    if (ui::hierarchicalMenu(m_CreateAssetShaderOptions, selected, current))
                     {
-                        const bool selected = i == m_CreateAssetShaderIndex;
-                        if (ImGui::Selectable(m_CreateAssetShaderOptions[static_cast<size_t>(i)].c_str(), selected))
-                            m_CreateAssetShaderIndex = i;
-                        if (selected)
-                            ImGui::SetItemDefaultFocus();
+                        const auto it = std::find(
+                            m_CreateAssetShaderOptions.begin(), m_CreateAssetShaderOptions.end(), selected);
+                        if (it != m_CreateAssetShaderOptions.end())
+                            m_CreateAssetShaderIndex = static_cast<int>(it - m_CreateAssetShaderOptions.begin());
                     }
                     ImGui::EndCombo();
                 }

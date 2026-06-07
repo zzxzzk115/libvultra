@@ -4,6 +4,7 @@
 #include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_service.hpp>
+#include <vultra/function/services/shader_service.hpp>
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -51,6 +52,19 @@ namespace vultra_app
                    hasSuffix(name, ".vsrp.lua") || hasSuffix(name, ".vshaderlib.lua");
         }
 
+        // A plain `.lua` that declares a render pass/feature/pipeline. These don't
+        // have a distinguishing extension, so detect them by content; saving one
+        // must reload the render pipeline to re-validate and re-register it (and so
+        // refresh its diagnostics).
+        bool isRenderScriptLua(const std::filesystem::path& path, std::string_view content)
+        {
+            if (lowerString(path.extension().generic_string()) != ".lua")
+                return false;
+            return content.find("RenderGraphPass") != std::string_view::npos ||
+                   content.find("RenderPipeline") != std::string_view::npos ||
+                   content.find("RenderFeature") != std::string_view::npos;
+        }
+
         std::filesystem::path assetRoot(const EditorContext& ctx)
         {
             return (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
@@ -92,6 +106,33 @@ namespace vultra_app
             return !diagnosticPath.empty() && diagnosticPath.ends_with(filename);
         }
 
+        // Imported-asset diagnostics (shader/scene/script cook errors etc.).
+        class ImportDiagnosticProvider final : public ISourceDiagnosticProvider
+        {
+        public:
+            [[nodiscard]] const char* name() const override { return "import"; }
+            [[nodiscard]] std::vector<vultra::AssetDiagnostic> collect(EditorContext& ctx) const override
+            {
+                if (auto* assetService = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
+                    return assetService->lastImportDiagnostics();
+                return {};
+            }
+        };
+
+        // Render-pass diagnostics (invalid pass definitions + shader-resolution
+        // failures), produced at pipeline load/build and keyed to the pass .lua.
+        class RenderPassDiagnosticProvider final : public ISourceDiagnosticProvider
+        {
+        public:
+            [[nodiscard]] const char* name() const override { return "render-pass"; }
+            [[nodiscard]] std::vector<vultra::AssetDiagnostic> collect(EditorContext& ctx) const override
+            {
+                if (auto* shaderService = ctx.services ? ctx.services->tryGet<vultra::IShaderService>() : nullptr)
+                    return shaderService->renderPassDiagnostics();
+                return {};
+            }
+        };
+
         std::vector<std::filesystem::path> shaderLibraryManifests(const EditorContext& ctx)
         {
             std::vector<std::filesystem::path> manifests;
@@ -116,6 +157,11 @@ namespace vultra_app
         m_Editor.SetPalette(TextEditor::PaletteId::Mariana);
         m_Editor.SetShowWhitespacesEnabled(false);
         m_Editor.SetTabSize(4);
+
+        // Diagnostic sources, one per source family. Add a provider here to support
+        // a new format's diagnostics; the collection/render code stays untouched.
+        m_DiagnosticProviders.push_back(std::make_unique<ImportDiagnosticProvider>());
+        m_DiagnosticProviders.push_back(std::make_unique<RenderPassDiagnosticProvider>());
     }
 
     bool CodeEditorWindow::hasOpenFile() const { return m_Loaded && !m_CurrentPath.empty(); }
@@ -234,7 +280,10 @@ namespace vultra_app
         }
 
         bool pipelineReloaded = false;
-        if (isRenderPipelineSource(m_CurrentPath) && !isShaderSource(m_CurrentPath))
+        const bool reloadsPipeline =
+            (isRenderPipelineSource(m_CurrentPath) || isRenderScriptLua(m_CurrentPath, m_LastSavedText)) &&
+            !isShaderSource(m_CurrentPath);
+        if (reloadsPipeline)
         {
             if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
                 pipelineReloaded = renderService->reloadRenderPipeline();
@@ -250,23 +299,17 @@ namespace vultra_app
     void CodeEditorWindow::refreshDiagnostics(EditorContext& ctx)
     {
         m_Diagnostics.clear();
-        if (!hasOpenFile() || !ctx.services)
+        if (hasOpenFile() && ctx.services)
         {
-            applyDiagnosticsToEditor();
-            return;
-        }
-
-        auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
-        if (!assetService)
-        {
-            applyDiagnosticsToEditor();
-            return;
-        }
-
-        for (auto diagnostic : assetService->lastImportDiagnostics())
-        {
-            if (diagnosticPathMatches(diagnostic.path, m_CurrentPath, ctx))
-                m_Diagnostics.push_back(std::move(diagnostic));
+            // Aggregate every provider's diagnostics, keeping those for the open file.
+            for (const auto& provider : m_DiagnosticProviders)
+            {
+                for (auto& diagnostic : provider->collect(ctx))
+                {
+                    if (diagnosticPathMatches(diagnostic.path, m_CurrentPath, ctx))
+                        m_Diagnostics.push_back(std::move(diagnostic));
+                }
+            }
         }
         applyDiagnosticsToEditor();
     }
@@ -323,6 +366,12 @@ namespace vultra_app
     {
         if (!ctx.state.codeEditorPath.empty() && ctx.state.codeEditorPath.lexically_normal() != m_CurrentPath)
             loadPath(ctx, ctx.state.codeEditorPath);
+
+        // Render-pass diagnostics are produced at pipeline load/build time and
+        // self-heal once fixed; refresh each frame so markers stay live for the
+        // open file (cheap: providers just hand back already-collected lists).
+        if (hasOpenFile())
+            refreshDiagnostics(ctx);
 
         if (m_RequestFocus)
             ImGui::SetNextWindowFocus();

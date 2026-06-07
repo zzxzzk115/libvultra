@@ -1,12 +1,14 @@
 #pragma once
 
 #include "editor_app/ui/editor_window.hpp"
+#include "editor_app/ui/windows/source_diagnostic_provider.hpp"
 
 #include <ImGuiColorTextEdit/TextEditor.h>
 
 #include <vultra/function/services/asset_service.hpp>
 
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -38,6 +40,8 @@ namespace vultra_app
         std::string                      m_LastSavedText;
         std::string                      m_Error;
         std::vector<vultra::AssetDiagnostic> m_Diagnostics;
+        // Pluggable per-source-format diagnostic sources (import, render pass, ...).
+        std::vector<std::unique_ptr<ISourceDiagnosticProvider>> m_DiagnosticProviders;
         bool                             m_Loaded {false};
         bool                             m_RequestFocus {false};
     };

@@ -110,6 +110,49 @@ namespace vultra
         return it != m_ProjectShaderLibraries.end() ? &it->second : nullptr;
     }
 
+    void ShaderSystem::setRenderPassDiagnostics(const std::string& sourcePath, std::vector<AssetDiagnostic> diagnostics)
+    {
+        if (sourcePath.empty())
+            return;
+
+        const auto it  = m_RenderPassDiagnostics.find(sourcePath);
+        const bool had = it != m_RenderPassDiagnostics.end();
+
+        if (diagnostics.empty())
+        {
+            if (had)
+            {
+                VULTRA_CORE_INFO("[RenderPass] '{}': diagnostics cleared", sourcePath);
+                m_RenderPassDiagnostics.erase(it);
+            }
+            return;
+        }
+
+        // Log only when the diagnostic set changes (setup runs every frame; this
+        // avoids spamming the log with the same unresolved error).
+        bool changed = !had || it->second.size() != diagnostics.size();
+        for (size_t i = 0; !changed && i < diagnostics.size(); ++i)
+            changed = it->second[i].message != diagnostics[i].message || it->second[i].line != diagnostics[i].line;
+        if (changed)
+            for (const auto& diagnostic : diagnostics)
+                VULTRA_CORE_ERROR("[RenderPass] {}:{}: {}", diagnostic.path, diagnostic.line, diagnostic.message);
+
+        m_RenderPassDiagnostics[sourcePath] = std::move(diagnostics);
+    }
+
+    void ShaderSystem::clearRenderPassDiagnostics() { m_RenderPassDiagnostics.clear(); }
+
+    std::vector<AssetDiagnostic> ShaderSystem::renderPassDiagnostics() const
+    {
+        std::vector<AssetDiagnostic> out;
+        for (const auto& [path, list] : m_RenderPassDiagnostics)
+        {
+            static_cast<void>(path);
+            out.insert(out.end(), list.begin(), list.end());
+        }
+        return out;
+    }
+
     rhi::ShaderLibraryRuntime* ShaderSystem::loadProjectLibrary(std::string_view uri)
     {
         return loadProjectLibraryImpl(uri, false);

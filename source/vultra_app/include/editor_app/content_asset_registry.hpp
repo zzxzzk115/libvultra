@@ -36,4 +36,13 @@ namespace vultra_app
     };
 
     void registerBuiltinContentAssetCreators();
+
+    // Scripted-pass Lua templates (the standard for project render passes). The
+    // pass `type` comes from the asset name entered at creation.
+    [[nodiscard]] std::string passTypeFromAssetName(std::string_view assetName);
+    // Post-processing template with setup/execute pre-filled (the operation is
+    // standard); `fragment` may be empty (a TODO placeholder is emitted).
+    [[nodiscard]] std::string scriptedPostProcessPassLua(std::string_view type, std::string_view fragment);
+    // Generic stub: only `type`; empty setup/execute for the user to fill.
+    [[nodiscard]] std::string scriptedPassStubLua(std::string_view type);
 } // namespace vultra_app

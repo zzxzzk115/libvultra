@@ -622,6 +622,7 @@ namespace vultra_app
         struct EditorProjectGraphPassDesc
         {
             std::string              type;
+            std::string              menuPath; // author-defined "Group/Sub/Name" for the Add menu
             std::vector<std::string> inputs;
             std::vector<std::string> outputs;
             EditorShaderRef          shader;
@@ -1532,6 +1533,7 @@ namespace vultra_app
             desc.type = solString(passTable, "type", solString(passTable, "name"));
             if (desc.type.empty())
                 return std::nullopt;
+            desc.menuPath = solString(passTable, "menuPath", "");
 
             desc.inputs = solStringList(passTable, "inputs");
             if (desc.inputs.empty())
@@ -5164,10 +5166,7 @@ namespace vultra_app
         if (!ImGui::BeginPopup("RenderGraphAddMenu"))
             return;
 
-        const auto addPassItem = [&](const std::string& type) {
-            if (!ImGui::MenuItem(type.c_str()))
-                return;
-
+        const auto createPass = [&](const std::string& type) {
             const auto& def    = state.registry.get(type);
             int         suffix = 1;
             std::string id     = type;
@@ -5193,6 +5192,11 @@ namespace vultra_app
             ImGui::CloseCurrentPopup();
         };
 
+        const auto addPassItem = [&](const std::string& type) {
+            if (ImGui::MenuItem(type.c_str()))
+                createPass(type);
+        };
+
         auto projectTypes = listEditorProjectRenderGraphPassTypes(ctx);
         std::erase_if(projectTypes, [&](const std::string& type) { return !state.registry.contains(type); });
         const std::unordered_set<std::string> projectTypeSet(projectTypes.begin(), projectTypes.end());
@@ -5200,8 +5204,28 @@ namespace vultra_app
         if (state.editingFeatureInternals && !projectTypes.empty() &&
             ImGui::BeginMenu(vultra::trId("renderGraph.addMenu.projectPass", "Project Pass")))
         {
-            for (const auto& type : projectTypes)
-                addPassItem(type);
+            // Author-defined hierarchy: a pass .lua may set menuPath = "Group/Sub/Name"
+            // to nest it in submenus split on '/'. Falls back to the pass type.
+            std::vector<std::string>                     menuItems;
+            std::unordered_map<std::string, std::string> menuPathToType;
+            for (const auto& path : collectProjectLuaSourceFiles(ctx))
+            {
+                const auto desc = loadRenderGraphPassLuaDesc(path);
+                if (!desc || !projectTypeSet.contains(desc->type))
+                    continue;
+                std::string menuPath          = desc->menuPath.empty() ? desc->type : desc->menuPath;
+                menuPathToType[menuPath]       = desc->type;
+                menuItems.push_back(std::move(menuPath));
+            }
+            std::sort(menuItems.begin(), menuItems.end());
+            menuItems.erase(std::unique(menuItems.begin(), menuItems.end()), menuItems.end());
+
+            std::string selectedMenuPath;
+            if (ui::hierarchicalMenu(menuItems, selectedMenuPath))
+            {
+                if (const auto it = menuPathToType.find(selectedMenuPath); it != menuPathToType.end())
+                    createPass(it->second);
+            }
             ImGui::EndMenu();
         }
 

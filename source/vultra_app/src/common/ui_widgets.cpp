@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <map>
 #include <string>
 
 namespace vultra_app::ui
@@ -217,5 +218,132 @@ namespace vultra_app::ui
     {
         ImGui::PopStyleColor(m_ColorCount);
         ImGui::PopStyleVar(m_StyleVarCount);
+    }
+
+    namespace
+    {
+        // A node in the '/'-split menu tree. Interior nodes hold ordered
+        // children; a leaf carries the full id it was built from.
+        struct MenuNode
+        {
+            std::map<std::string, MenuNode> children;
+            std::string                     fullId;
+            bool                            leaf {false};
+        };
+
+        void insertMenuPath(MenuNode& root, const std::string& id)
+        {
+            MenuNode* node = &root;
+            size_t    start = 0;
+            while (start <= id.size())
+            {
+                const auto slash   = id.find('/', start);
+                const auto segment = id.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
+                if (!segment.empty())
+                    node = &node->children[segment];
+                if (slash == std::string::npos)
+                    break;
+                start = slash + 1;
+            }
+            node->leaf   = true;
+            node->fullId = id;
+        }
+
+        bool drawMenuNode(const MenuNode& node, std::string& outSelected, std::string_view current)
+        {
+            bool picked = false;
+            for (const auto& [name, child] : node.children)
+            {
+                if (child.children.empty())
+                {
+                    const bool selected = !current.empty() && child.fullId == current;
+                    if (ImGui::MenuItem(name.c_str(), nullptr, selected))
+                    {
+                        outSelected = child.fullId;
+                        picked      = true;
+                    }
+                }
+                else if (ImGui::BeginMenu(name.c_str()))
+                {
+                    // A node that is itself a leaf and also a parent: offer it first.
+                    if (child.leaf)
+                    {
+                        const bool selected = !current.empty() && child.fullId == current;
+                        if (ImGui::MenuItem(name.c_str(), nullptr, selected))
+                        {
+                            outSelected = child.fullId;
+                            picked      = true;
+                        }
+                        ImGui::Separator();
+                    }
+                    if (drawMenuNode(child, outSelected, current))
+                        picked = true;
+                    ImGui::EndMenu();
+                }
+            }
+            return picked;
+        }
+
+        std::string lowerCopy(std::string_view s)
+        {
+            std::string out {s};
+            std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            return out;
+        }
+
+        std::string_view leafName(std::string_view id)
+        {
+            const auto slash = id.rfind('/');
+            return slash == std::string_view::npos ? id : id.substr(slash + 1);
+        }
+    } // namespace
+
+    bool hierarchicalMenu(const std::vector<std::string>& items,
+                          std::string&                    outSelected,
+                          std::string_view                currentSelection,
+                          std::string_view                filter)
+    {
+        if (!filter.empty())
+        {
+            // Flat, filtered view: match anywhere in the full id (case-insensitive).
+            const auto needle = lowerCopy(filter);
+            bool       picked = false;
+            for (const auto& id : items)
+            {
+                if (lowerCopy(id).find(needle) == std::string::npos)
+                    continue;
+                const bool selected = !currentSelection.empty() && id == currentSelection;
+                if (ImGui::MenuItem(id.c_str(), nullptr, selected))
+                {
+                    outSelected = id;
+                    picked      = true;
+                }
+            }
+            return picked;
+        }
+
+        MenuNode root;
+        for (const auto& id : items)
+            insertMenuPath(root, id);
+        return drawMenuNode(root, outSelected, currentSelection);
+    }
+
+    bool hierarchicalCombo(const char* label, const std::vector<std::string>& items, std::string& current)
+    {
+        bool       changed = false;
+        const auto preview  = current.empty() ? std::string {"<none>"} : std::string {leafName(current)};
+        if (ImGui::BeginCombo(label, preview.c_str()))
+        {
+            std::string selected;
+            if (hierarchicalMenu(items, selected, current) && selected != current)
+            {
+                current = std::move(selected);
+                changed = true;
+            }
+            ImGui::EndCombo();
+        }
+        return changed;
     }
 } // namespace vultra_app::ui

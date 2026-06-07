@@ -1091,7 +1091,7 @@ namespace vultra_app
             m_Status = vultra::tr("materialGraph.status.writeShaderFailed");
             return false;
         }
-        file << "[vshader]\nlanguage = glsl\nversion = 460\n\n[frag]\n";
+        file << "[vshader]\nid = \"project/material_graph/" << shaderId << ".frag\"\nlanguage = glsl\nversion = 460\n\n[frag]\n";
         file << "#extension GL_EXT_nonuniform_qualifier : require\n\n";
         file << "#define VULTRA_DECLARE_BINDLESS_TEXTURES\n";
         file << "#include \"include/common/gpu_scene.glsl\"\n\n";
@@ -1104,6 +1104,26 @@ namespace vultra_app
         file << "    FragColor = surface.baseColor;\n";
         file << "}\n";
         file.close();
+
+        // Also emit a mesh-material fragment (a real GBuffer-writing material
+        // shader) next to the standalone preview, so the graph can render through
+        // the eShaderMaterial path via its per-pixel GLSL. The reimport below cooks
+        // it for both Vulkan (.vshlib) and WebGPU (.vshweblib).
+        {
+            vultra::material_graph::MeshMaterialBackend meshBackend;
+            auto                                        meshResult = compiler.compile(
+                {.graph    = m_Graph,
+                                            .shaderId = shaderId,
+                                            .graphId  = vultra::material_graph::stableGraphId(m_CurrentUri)},
+                meshBackend);
+            if (meshResult)
+            {
+                const auto    meshPath = outDir / (shaderId + ".material.frag.vshader");
+                std::ofstream meshFile(meshPath, std::ios::binary | std::ios::trunc);
+                if (meshFile)
+                    meshFile << meshResult->vshaderSource;
+            }
+        }
 
         if (auto* assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
             assets->reimportAsset("res://shaders/project.vshaderlib.lua", true);
@@ -1204,9 +1224,17 @@ namespace vultra_app
                     markDirty(ctx);
             }
 
+            // Output pins sit on the node's right edge, so right-align their labels
+            // (inputs stay left-aligned next to their left-edge pins). The node width
+            // comes from the previous frame's layout; nodes are static so it converges.
+            const float nodeContentWidth =
+                ImNodes::GetNodeDimensions(id).x - ImNodes::GetStyle().NodePadding.x * 2.0f;
             for (const auto& pin : node.outputs)
             {
                 ImNodes::BeginOutputAttribute(pinId(node.id, pin.name, false), ImNodesPinShape_CircleFilled);
+                const float labelWidth = ImGui::CalcTextSize(pin.name.c_str()).x;
+                if (nodeContentWidth > labelWidth)
+                    ImGui::Indent(nodeContentWidth - labelWidth);
                 ImGui::TextUnformatted(pin.name.c_str());
                 ImNodes::EndOutputAttribute();
             }

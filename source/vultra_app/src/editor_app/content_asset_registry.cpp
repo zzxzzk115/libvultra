@@ -1,11 +1,30 @@
 #include "editor_app/content_asset_registry.hpp"
 
 #include <algorithm>
+#include <cctype>
 
 namespace vultra_app
 {
     namespace
     {
+        // Every project shader needs an explicit, unique [vshader] id. Derive a
+        // sane default from the new asset's stem (assetName already has the
+        // .vshader extension stripped) and splice it into the template header;
+        // the author can rename it. Ids are deep-namespaced under "project/".
+        std::string projectShaderId(std::string_view assetName)
+        {
+            return "project/" + std::string {assetName};
+        }
+
+        std::string withProjectShaderId(std::string text, std::string_view assetName)
+        {
+            const std::string marker {"[vshader]\n"};
+            const auto        pos = text.find(marker);
+            if (pos != std::string::npos)
+                text.insert(pos + marker.size(), "id = \"" + projectShaderId(assetName) + "\"\n");
+            return text;
+        }
+
         std::string makeSceneText(std::string_view)
         {
             return R"([vscn]
@@ -24,9 +43,9 @@ end
 )";
         }
 
-        std::string makeSurfaceShaderText(std::string_view)
+        std::string makeSurfaceShaderText(std::string_view assetName)
         {
-            return R"([vshader]
+            return withProjectShaderId(R"([vshader]
 language = glsl
 version = 460
 
@@ -36,7 +55,7 @@ roughness : float = 0.5
 albedoTex : Texture2D
 
 [frag]
-#include "vultra/mesh_material.glsl"
+#include "include/vultra/mesh_material.glsl"
 
 VULTRA_MATERIAL_MAIN(shade)
 
@@ -47,12 +66,13 @@ void shade(in VultraMaterialInput IN, inout VultraMaterialEval OUT)
     OUT.baseColor = m.tint * tex;
     OUT.roughness = m.roughness;
 }
-)";
+)",
+                                       assetName);
         }
 
-        std::string makePostProcessingShaderText(std::string_view)
+        std::string makePostProcessingShaderText(std::string_view assetName)
         {
-            return R"([vshader]
+            return withProjectShaderId(R"([vshader]
 language = glsl
 version = 460
 
@@ -67,12 +87,13 @@ void main()
     vec4 color = texture(u_Source, v_TexCoord);
     FragColor = vec4(color.rgb, color.a);
 }
-)";
+)",
+                                       assetName);
         }
 
-        std::string makeComputeShaderText(std::string_view)
+        std::string makeComputeShaderText(std::string_view assetName)
         {
-            return R"([vshader]
+            return withProjectShaderId(R"([vshader]
 language = glsl
 version = 460
 
@@ -93,12 +114,13 @@ void main()
 
     imageStore(u_Output, pixel, texelFetch(u_Source, pixel, 0));
 }
-)";
+)",
+                                       assetName);
         }
 
-        std::string makeRayTracingShaderText(std::string_view)
+        std::string makeRayTracingShaderText(std::string_view assetName)
         {
-            return R"([vshader]
+            return withProjectShaderId(R"([vshader]
 language = glsl
 version = 460
 
@@ -131,56 +153,31 @@ void main()
 {
     payload = vec4(1.0, 0.65, 0.25, 1.0);
 }
-)";
+)",
+                                       assetName);
         }
 
-        std::string makeRenderPassText(std::string_view)
+        // Render/compute/raytracing pass creators: a scripted-pass stub with only
+        // the type (from the asset name) and empty setup/execute for the user.
+        std::string makeRenderPassText(std::string_view assetName)
         {
-            return R"(return RenderGraphPass {
-    type = "NewRenderPass",
-    inputs = { "source" },
-    outputs = { "color" },
-    shader = {
-        library = "project",
-        vertexLibrary = "builtin",
-        vertex = "fullscreen_triangle.vert",
-        fragment = "pixelate.frag",
-    },
-}
-)";
+            return scriptedPassStubLua(passTypeFromAssetName(assetName));
         }
 
-        std::string makeComputePassText(std::string_view)
+        std::string makeComputePassText(std::string_view assetName)
         {
-            return R"(return RenderGraphPass {
-    type = "NewComputePass",
-    pipeline = "compute",
-    inputs = { "source" },
-    outputs = { "color" },
-    shader = {
-        library = "project",
-        compute = "invert.comp",
-    },
-    dispatch = {
-        byOutputSize = true,
-    },
-}
-)";
+            return scriptedPassStubLua(passTypeFromAssetName(assetName));
         }
 
-        std::string makeRayTracingPassText(std::string_view)
+        std::string makeRayTracingPassText(std::string_view assetName)
         {
-            return R"(return RenderGraphPass {
-    type = "NewRayTracingPass",
-    pipeline = "raytracing",
-    inputs = { "source" },
-    outputs = { "color" },
-    shader = {
-        library = "project",
-        raygen = "default_rt_primary.rgen",
-    },
-}
-)";
+            return scriptedPassStubLua(passTypeFromAssetName(assetName));
+        }
+
+        // Post-processing pass creator: setup/execute pre-filled (standard op).
+        std::string makePostProcessingPassText(std::string_view assetName)
+        {
+            return scriptedPostProcessPassLua(passTypeFromAssetName(assetName), {});
         }
 
         std::string makeBuiltinPbrMaterialText(std::string_view)
@@ -211,7 +208,7 @@ void main()
   "source": {
     "kind": "shader",
     "shaderLibrary": "project",
-    "id": "pixelate.frag"
+    "id": "project/fullscreen/pixelate.frag"
   },
   "properties": {}
 }
@@ -390,7 +387,7 @@ void main()
             .extension       = ".lua",
             .assetType       = vasset::VAssetType::eScriptLua,
             .openInCodeEditor = true,
-            .makeText        = makeRenderPassText,
+            .makeText        = makePostProcessingPassText,
         });
         registry.registerCreator(ContentAssetCreator {
             .id              = "vultra.compute_pass",
@@ -454,5 +451,109 @@ void main()
         });
 
         registered = true;
+    }
+
+    std::string passTypeFromAssetName(std::string_view assetName)
+    {
+        std::string type;
+        type.reserve(assetName.size());
+        for (const char c : assetName)
+        {
+            if (std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_')
+                type.push_back(c);
+            else if (c == ' ' || c == '-' || c == '.')
+                type.push_back('_');
+        }
+        while (!type.empty() && type.front() == '_')
+            type.erase(type.begin());
+        if (type.empty())
+            type = "NewPass";
+        return type;
+    }
+
+    namespace
+    {
+        std::string replaceAllTokens(std::string text, std::string_view token, std::string_view value)
+        {
+            for (auto pos = text.find(token); pos != std::string::npos; pos = text.find(token, pos + value.size()))
+                text.replace(pos, token.size(), value);
+            return text;
+        }
+    } // namespace
+
+    std::string scriptedPostProcessPassLua(std::string_view type, std::string_view fragment)
+    {
+        const std::string frag = fragment.empty() ? std::string {"TODO_replace_with_your.frag"} : std::string {fragment};
+        static constexpr std::string_view kTemplate = R"(-- Post-processing scripted render pass (the project pass standard).
+-- setup declares FrameGraph I/O and picks the shader; execute records the
+-- fullscreen draw. See doc/scripted_render_passes.md.
+local state = {}
+
+return RenderGraphPass {
+    type     = "__TYPE__",
+    -- Where this pass appears in the render graph "Add" menu ('/'-nested submenus).
+    menuPath = "Post Processing/__TYPE__",
+    inputs   = { "source" },
+    outputs  = { "color" },
+
+    -- Auto-exposes this fragment shader's reflected params on the graph node.
+    shader = { fragmentLibrary = "project", fragment = "__FRAG__" },
+
+    setup = function(ctx)
+        local src = ctx:getInput("source")
+        ctx:read(src, { set = 3, binding = 0, stage = "fragment" })
+        local out = ctx:createColorTexture { name = "__TYPE__ Color", inherit = src }
+        ctx:writeColor(out)
+        ctx:setOutput("color", out)
+        ctx:useGraphicsShader {
+            vertexLibrary   = "builtin",
+            vertex          = "builtin/general/fullscreen_triangle.vert",
+            fragmentLibrary = "project",
+            fragment        = "__FRAG__",
+        }
+        -- Read graph params here, e.g. state.strength = ctx:paramFloat("strength", 1.0)
+    end,
+
+    execute = function(rc)
+        if not rc:bindPipeline() then return end
+        rc:bindDescriptorSets()
+        -- rc:pushConstants("fragment", { strength = state.strength })
+        rc:beginRendering()
+        rc:drawFullscreen()
+        rc:endRendering()
+    end,
+}
+)";
+        return replaceAllTokens(replaceAllTokens(std::string {kTemplate}, "__TYPE__", type), "__FRAG__", frag);
+    }
+
+    std::string scriptedPassStubLua(std::string_view type)
+    {
+        static constexpr std::string_view kTemplate = R"(-- Scripted render pass (the project pass standard).
+-- Fill in setup(ctx) and execute(rc) to drive the FrameGraph + command
+-- recorder. See doc/scripted_render_passes.md for the full API.
+return RenderGraphPass {
+    type     = "__TYPE__",
+    -- Where this pass appears in the render graph "Add" menu ('/'-nested submenus).
+    menuPath = "Custom/__TYPE__",
+    inputs   = { "source" },
+    outputs  = { "color" },
+
+    setup = function(ctx)
+        -- local src = ctx:getInput("source")
+        -- ctx:read(src, { set = 3, binding = 0, stage = "fragment" })
+        -- local out = ctx:createColorTexture { name = "__TYPE__ Color", inherit = src }
+        -- ctx:writeColor(out); ctx:setOutput("color", out)
+        -- ctx:useGraphicsShader { ... }  or  ctx:useComputeShader { ... }
+    end,
+
+    execute = function(rc)
+        -- if not rc:bindPipeline() then return end
+        -- rc:bindDescriptorSets()
+        -- rc:beginRendering(); rc:drawFullscreen(); rc:endRendering()  -- or rc:dispatch(x, y, z)
+    end,
+}
+)";
+        return replaceAllTokens(std::string {kTemplate}, "__TYPE__", type);
     }
 } // namespace vultra_app

@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace vultra
 {
@@ -26,6 +27,11 @@ namespace vultra
         rhi::ShaderLibraryRuntime* reloadProjectLibrary(std::string_view uri) override;
         rhi::ShaderLibraryRuntime* findProjectLibrary(std::string_view uri) override;
 
+        void setRenderPassDiagnostics(const std::string&           sourcePath,
+                                      std::vector<AssetDiagnostic> diagnostics) override;
+        void                         clearRenderPassDiagnostics() override;
+        std::vector<AssetDiagnostic> renderPassDiagnostics() const override;
+
     private:
         rhi::ShaderLibraryRuntime* loadProjectLibraryImpl(std::string_view uri, bool forceReload);
 
@@ -38,5 +44,8 @@ namespace vultra
         // per-project override; caching the miss avoids retrying the VFS lookup every frame and
         // keeps the logs quiet for projects/packages that don't ship one.
         std::unordered_set<std::string> m_MissingProjectLibraries;
+
+        // Render-pass diagnostics (definition + shader-resolution), keyed by source .lua path.
+        std::unordered_map<std::string, std::vector<AssetDiagnostic>> m_RenderPassDiagnostics;
     };
 } // namespace vultra
