@@ -305,6 +305,12 @@ if not is_plat("android") and not is_plat("wasm") then
         else
             add_defines("VULTRA_APP_DEFAULT_RENDERDOC=0")
         end
+        -- Surface the engine version to the editor status bar. Read straight from set_version() in
+        -- the root xmake.lua so that remains the single source of truth (no duplicated literal here).
+        on_load(function (target)
+            import("core.project.project")
+            target:add("defines", 'VULTRA_ENGINE_VERSION="' .. (project.version() or "dev") .. '"')
+        end)
         set_rundir("$(projectdir)")
         set_runargs("--editor", "--mcp", "--project", "$(projectdir)/example.vproject")
         set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vultra-app")

@@ -1072,7 +1072,8 @@
     "mcpListening": "MCP 正在监听 {}",
     "mcpNotRunning": "MCP 未运行（请在编辑器设置中启用自动启动 MCP）",
     "mcpNotRunningError": "MCP 未运行：{}",
-    "agentDisabled": "代理已禁用"
+    "agentDisabled": "代理已禁用",
+    "engine": "VultraEngine {}"
   },
   "history": {
     "sceneOpened": "场景已打开",

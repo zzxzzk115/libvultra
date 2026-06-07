@@ -1245,7 +1245,8 @@
       "mcpListening": "MCP가 {}에서 수신 대기 중",
       "mcpNotRunning": "MCP가 실행되고 있지 않습니다 (에디터 설정에서 MCP 자동 시작을 활성화하세요)",
       "mcpNotRunningError": "MCP가 실행되고 있지 않습니다: {}",
-      "agentDisabled": "에이전트 비활성화"
+      "agentDisabled": "에이전트 비활성화",
+      "engine": "VultraEngine {}"
     },
     "history": {
       "sceneOpened": "씬 열림",

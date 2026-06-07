@@ -1436,7 +1436,33 @@ namespace vultra_app
 
         auto& window = windowService->window();
         resetWindowModeForShellState(*windowService);
-        window.setTitle(kWindowTitle)
+
+        // Window title mirrors Unity's layout: "<Project> - <Editor> <Backend | GPU>". The project
+        // name prefixes the editor name (when a project is open), and the active render backend + GPU
+        // device are stamped in the trailing angle brackets so the surface in use is visible at a glance.
+        std::string title = ctx.state.currentProjectName.empty() ?
+                                std::string {kWindowTitle} :
+                                ctx.state.currentProjectName + " - " + kWindowTitle;
+        if (auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>())
+        {
+            auto&             device  = backendService->renderDevice();
+            const std::string backend = device.getName();
+            const std::string gpu     = device.getPhysicalDeviceInfo().deviceName;
+            if (!backend.empty() || !gpu.empty())
+            {
+                title += " <";
+                title += backend;
+                if (!gpu.empty())
+                {
+                    if (!backend.empty())
+                        title += " | ";
+                    title += gpu;
+                }
+                title += ">";
+            }
+        }
+
+        window.setTitle(title)
             .setDecorated(false)
             .setResizable(true)
             .setExtent({1280, 720})
@@ -1759,6 +1785,23 @@ namespace vultra_app
                           ImVec2 {center.x - detailSize.x * 0.5f, max.y - vultra::ui::dp(32.0f)},
                           theme::u32(theme::withAlpha(theme::textMuted(), 185.0f / 255.0f)),
                           detail.c_str());
+
+        // Project name pinned to the bottom-right corner in bold pure white -- the splash's product
+        // branding, mirroring how Unity stamps the open project on its boot screen. Falls back to the
+        // project folder name before the loaded project metadata is available.
+        std::string projectName = ctx.state.currentProjectName;
+        if (projectName.empty() && !m_Loading.projectRoot.empty())
+            projectName = m_Loading.projectRoot.filename().generic_string();
+        if (!projectName.empty())
+        {
+            ImFont*      nameFont =
+                ImGui::GetIO().Fonts->Fonts.Size > 1 ? ImGui::GetIO().Fonts->Fonts[1] : font;
+            const float  nameFontSize = vultra::ui::dp(22.0f);
+            const ImVec2 nameSize     = nameFont->CalcTextSizeA(nameFontSize, FLT_MAX, 0.0f, projectName.c_str());
+            const ImVec2 namePos {max.x - nameSize.x - vultra::ui::dp(28.0f),
+                                  max.y - nameSize.y - vultra::ui::dp(24.0f)};
+            drawList->AddText(nameFont, nameFontSize, namePos, IM_COL32(255, 255, 255, 255), projectName.c_str());
+        }
         drawList->PopClipRect();
     }
 
@@ -1808,6 +1851,10 @@ namespace vultra_app
         ctx.state.editorGameTimeSeconds     = 0.0f;
         ctx.state.editorGameDeltaSeconds    = 0.0f;
     }
+
+#ifndef VULTRA_ENGINE_VERSION
+    #define VULTRA_ENGINE_VERSION "dev"
+#endif
 
     void EditorApp::drawEditorTaskBar(EditorContext& ctx)
     {
@@ -1962,6 +2009,39 @@ namespace vultra_app
             ImGui::PopStyleColor();
             ImGui::SameLine(0.0f, vultra::ui::dp(6.0f));
             ImGui::TextDisabled("%s", vultra::tr("editorApp.taskBar.agentDisabled"));
+        }
+
+        // Engine version + active render backend + GPU, right-aligned on row 2 opposite the MCP
+        // status. These are effectively static for the session, so they live on the quieter row.
+        std::vector<std::string> sysLabels;
+        sysLabels.emplace_back(vultra::trf("editorApp.taskBar.engine", VULTRA_ENGINE_VERSION));
+        if (renderBackendService)
+        {
+            auto& device = renderBackendService->renderDevice();
+            if (std::string backend = device.getName(); !backend.empty())
+                sysLabels.emplace_back(std::move(backend));
+            if (std::string gpu = device.getPhysicalDeviceInfo().deviceName; !gpu.empty())
+                sysLabels.emplace_back(std::move(gpu));
+        }
+
+        float sysWidth = 0.0f;
+        for (size_t i = 0; i < sysLabels.size(); ++i)
+        {
+            sysWidth += ImGui::CalcTextSize(sysLabels[i].c_str()).x;
+            if (i + 1 < sysLabels.size())
+                sysWidth += separatorWidth;
+        }
+        ImGui::SetCursorPosY(row2Y);
+        ImGui::SetCursorPosX(std::max(vultra::ui::dp(8.0f), ImGui::GetWindowWidth() - sysWidth - vultra::ui::dp(12.0f)));
+        for (size_t i = 0; i < sysLabels.size(); ++i)
+        {
+            if (i > 0)
+            {
+                ImGui::SameLine(0.0f, vultra::ui::dp(8.0f));
+                ImGui::TextDisabled("|");
+                ImGui::SameLine(0.0f, vultra::ui::dp(8.0f));
+            }
+            ImGui::TextDisabled("%s", sysLabels[i].c_str());
         }
 
         ImGui::End();

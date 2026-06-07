@@ -1245,7 +1245,8 @@
       "mcpListening": "MCP が {} で待機中",
       "mcpNotRunning": "MCP は実行されていません (エディター設定で MCP の自動起動を有効にしてください)",
       "mcpNotRunningError": "MCP は実行されていません: {}",
-      "agentDisabled": "エージェントは無効"
+      "agentDisabled": "エージェントは無効",
+      "engine": "VultraEngine {}"
     },
     "history": {
       "sceneOpened": "シーンを開いた",

@@ -1072,7 +1072,8 @@
     "mcpListening": "MCP listening on {}",
     "mcpNotRunning": "MCP not running (enable Auto-start MCP in Editor Settings)",
     "mcpNotRunningError": "MCP not running: {}",
-    "agentDisabled": "Agent disabled"
+    "agentDisabled": "Agent disabled",
+    "engine": "VultraEngine {}"
   },
   "history": {
     "sceneOpened": "Scene Opened",
