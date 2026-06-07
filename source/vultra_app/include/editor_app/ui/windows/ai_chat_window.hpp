@@ -76,6 +76,7 @@ namespace vultra_app
         ChatMessage& currentAssistantMessage(); // streaming assistant message, creating if needed
 
         void drawStatusBanner(EditorContext& ctx);
+        void drawWelcome(EditorContext& ctx); // empty-state greeting + clickable example prompt
         void drawMessage(const ChatMessage& message, std::size_t index);
         void drawToolCard(const ToolInvocation& tool);
         void drawComposer(EditorContext& ctx);
@@ -84,6 +85,7 @@ namespace vultra_app
 
         std::unique_ptr<agent::IAgentBackend> m_Backend;
         std::vector<ChatMessage>              m_Messages;
+        std::string                           m_AgentName {"Claude"}; // refreshed from the CLI each draw
         std::array<char, 8192>                m_InputBuffer {};
         Status                                m_Status {Status::NotStarted};
         std::string                           m_StatusDetail;

@@ -5,6 +5,7 @@
 #include "editor_app/asset_thumbnail_service.hpp"
 #include "editor_app/editor_context.hpp"
 #include "editor_app/editor_history.hpp"
+#include "editor_app/selection.hpp"
 #include "editor_app/project_file_watcher.hpp"
 #include "editor_app/runtime_mcp_server.hpp"
 #include "editor_app/ui/editor_window_manager.hpp"
@@ -141,6 +142,9 @@ namespace vultra_app
         void endDockSpace();
         void buildDefaultDockLayout();
         void resetDefaultDockLayout();
+        // Bring the Inspector to front whenever the selection changes, so the user sees
+        // the selected item's properties (AI Chat stays the default tab otherwise).
+        void updateSelectionFocus(EditorContext& ctx);
 
         EditorWindowManager m_WindowManager;
         EditorHistory       m_History;
@@ -209,6 +213,9 @@ namespace vultra_app
         bool                m_PlayModeSceneDirtySnapshot {false};
         bool                m_Initialized {false};
         bool                m_DefaultLayoutBuilt {false};
+        vultra::CoreUUID      m_LastSelectionId;
+        SelectionCategory     m_LastSelectionCategory {SelectionCategory::None};
+        std::filesystem::path m_LastSelectedSourceAsset;
         bool                m_BuildRunActive {false};
         bool                m_BuildRunPopupPendingOpen {false};
         bool                m_BuildRunConfigureOpen {false};

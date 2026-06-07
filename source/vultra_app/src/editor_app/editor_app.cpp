@@ -26,6 +26,7 @@
 #include <vultra/core/i18n/i18n.hpp>
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/asset/asset_system.hpp>
+#include <vultra/function/material_graph/material_graph_compiler.hpp>
 #include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/imgui/imgui_theme.hpp>
 #include <vultra/function/rendering/runtime_profiler.hpp>
@@ -583,6 +584,7 @@ namespace vultra_app
             beginDockSpace();
             buildDefaultDockLayout();
         }
+        updateSelectionFocus(ctx);
         {
             vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::windowManager"};
             m_WindowManager.draw(ctx);
@@ -1084,6 +1086,7 @@ namespace vultra_app
         m_ImportTask     = std::make_unique<vtask::TaskSet>(
             1, 1, [this,
                    progress,
+                   rootPath,
                    assetRootPath,
                    importedFolder,
                    registryFile,
@@ -1146,6 +1149,14 @@ namespace vultra_app
                     vbase::Result<void, vasset::AssetError>::ok();
                 if (importPaths.empty())
                 {
+                    // Project init: compile material graphs to their generated .vshader
+                    // first, so the shader-library import below cooks them (surfacing
+                    // any shader errors) without needing the graph editor to be opened.
+                    const int compiledGraphs =
+                        vultra::material_graph::compileProjectMaterialGraphs(rootPath, assetRootPath);
+                    if (compiledGraphs > 0)
+                        VULTRA_CLIENT_INFO("[EditorApp] Compiled {} material graph(s) on import", compiledGraphs);
+
                     importResult = importer.importOrReimportAssetFolder(result.assetRoot, forceReimport);
                 }
                 else
@@ -2029,8 +2040,8 @@ namespace vultra_app
             dockWindow("Render Graph", mainId);
             dockWindow("Material Graph", mainId);
             dockWindow("Animator Graph", mainId);
-            // Dock AI Chat first so Inspector (docked last) wins the node's selected tab - the
-            // Inspector should be the panel facing the user on a fresh layout, not the chat.
+            // Inspector + AI Chat share the right node; AI Chat is the default front tab.
+            // Selecting an entity auto-focuses the Inspector (see updateSelectionFocus).
             dockWindow("AI Chat", rightId);
             dockWindow("Inspector", rightId);
             dockWindow("History", historyId);
@@ -2051,5 +2062,28 @@ namespace vultra_app
         ImGui::DockBuilderRemoveNode(dockSpaceId());
         m_DefaultLayoutBuilt = false;
 #endif
+    }
+
+    void EditorApp::updateSelectionFocus(EditorContext& ctx)
+    {
+        const auto  id          = Selection::lastId();
+        const auto  category    = Selection::lastCategory();
+        const auto& sourceAsset = ctx.state.selectedSourceAsset;
+
+        const bool changed = id != m_LastSelectionId || category != m_LastSelectionCategory ||
+                             sourceAsset != m_LastSelectedSourceAsset;
+        m_LastSelectionId         = id;
+        m_LastSelectionCategory   = category;
+        m_LastSelectedSourceAsset = sourceAsset;
+
+        // Any selection - scene entity (hierarchy / scene view), imported asset, or a
+        // content-browser source file - brings the Inspector forward so the user sees its
+        // properties (AI Chat is the default front tab otherwise). Skip a pure deselect,
+        // and don't override a focus another window already requested this frame (e.g.
+        // opening a graph editor, which should keep its own window in front).
+        const bool hasSelection =
+            (category != SelectionCategory::None && id.valid()) || !sourceAsset.empty();
+        if (changed && hasSelection && ctx.state.editorWindowFocusRequested.empty())
+            ctx.state.editorWindowFocusRequested = "Inspector";
     }
 } // namespace vultra_app

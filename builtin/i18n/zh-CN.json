@@ -797,6 +797,13 @@
 },
 
 "aiChat": {
+  "welcome": {
+    "greeting": "你好，我是 {}，你的编辑器内助手。",
+    "capabilities": "我可以帮你制作游戏——编辑场景与实体、编写和调试 Lua 脚本、创作材质与渲染通道，并解答关于项目的问题。",
+    "exampleLabel": "试试这个示例：",
+    "example": "在玩家上方添加一个点光源，并让它轻微闪烁。",
+    "useExample": "使用此示例"
+  },
   "thinking": "思考中",
   "you": "你",
   "restart": "重启",

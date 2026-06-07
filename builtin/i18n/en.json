@@ -797,6 +797,13 @@
 },
 
 "aiChat": {
+  "welcome": {
+    "greeting": "Hi, I'm {}, your in-editor assistant.",
+    "capabilities": "I can help you build your game - edit the scene and entities, write and debug Lua scripts, author materials and render passes, and answer questions about your project.",
+    "exampleLabel": "Try an example:",
+    "example": "Add a point light above the player and make it gently flicker.",
+    "useExample": "Use this example"
+  },
   "thinking": "Thinking",
   "you": "You",
   "restart": "Restart",

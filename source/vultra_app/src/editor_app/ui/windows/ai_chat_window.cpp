@@ -9,10 +9,12 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <variant>
 #include <vector>
@@ -28,6 +30,23 @@ namespace vultra_app
         constexpr ImVec4 kErrorColor {1.00f, 0.40f, 0.35f, 1.0f};
         constexpr ImVec4 kHeadingColor {0.62f, 0.82f, 1.00f, 1.0f};
         constexpr ImVec4 kInlineCodeColor {0.95f, 0.82f, 0.55f, 1.0f};
+
+        // Friendly name of the agent backing the chat, derived from its CLI. "claude" -> "Claude";
+        // any other agent CLI -> its capitalized stem, so the panel introduces itself correctly.
+        std::string agentDisplayName(std::string_view cliPath)
+        {
+            std::string stem = std::filesystem::path(cliPath).stem().generic_string();
+            if (stem.empty())
+                stem = "claude";
+            std::string lower = stem;
+            std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            if (lower == "claude")
+                return "Claude";
+            stem[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(stem[0])));
+            return stem;
+        }
 
         void wrappedText(const std::string& text, const ImVec4& color)
         {
@@ -621,6 +640,38 @@ namespace vultra_app
         }
     }
 
+    void AiChatWindow::drawWelcome(EditorContext& ctx)
+    {
+        static_cast<void>(ctx);
+        // Friendly empty-state: who the assistant is, what it can do, and a clickable example.
+        ImGui::Dummy(ImVec2(0.0f, vultra::ui::dp(6.0f)));
+
+        ImGui::PushStyleColor(ImGuiCol_Text, kHeadingColor);
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextWrapped("%s %s",
+                           ICON_MDI_HAND_WAVE,
+                           vultra::trf("aiChat.welcome.greeting", m_AgentName).c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::PopStyleColor();
+
+        ImGui::Dummy(ImVec2(0.0f, vultra::ui::dp(4.0f)));
+        wrappedText(vultra::tr("aiChat.welcome.capabilities"), kAssistantColor);
+
+        ImGui::Dummy(ImVec2(0.0f, vultra::ui::dp(8.0f)));
+        ImGui::PushStyleColor(ImGuiCol_Text, kSystemColor);
+        ImGui::TextWrapped("%s %s", ICON_MDI_LIGHTBULB_ON_OUTLINE, vultra::tr("aiChat.welcome.exampleLabel"));
+        ImGui::PopStyleColor();
+
+        // The example prompt, quoted; a button drops it straight into the composer.
+        const char* example = vultra::tr("aiChat.welcome.example");
+        wrappedText(std::string {"\""} + example + "\"", kUserColor);
+        if (ImGui::SmallButton(
+                (std::string {ICON_MDI_ARROW_UP_BOLD " "} + vultra::tr("aiChat.welcome.useExample")).c_str()))
+        {
+            std::snprintf(m_InputBuffer.data(), m_InputBuffer.size(), "%s", example);
+        }
+    }
+
     void AiChatWindow::drawToolCard(const ToolInvocation& tool)
     {
         const char* icon = ICON_MDI_WRENCH;
@@ -672,7 +723,7 @@ namespace vultra_app
         // Avatar + name header, so every turn is unmistakably one speaker.
         ImGui::PushStyleColor(ImGuiCol_Text, accent);
         ImGui::TextUnformatted(isUser ? (std::string {ICON_MDI_ACCOUNT " "} + vultra::tr("aiChat.you")).c_str()
-                                      : ICON_MDI_ROBOT " Claude");
+                                      : (std::string {ICON_MDI_ROBOT " "} + m_AgentName).c_str());
         ImGui::PopStyleColor();
 
         // The turn's body sits in a rounded, tinted bubble so replies read as distinct cards
@@ -829,6 +880,9 @@ namespace vultra_app
             return;
         }
 
+        // Keep the displayed agent identity in sync with the configured CLI (e.g. "Claude").
+        m_AgentName = agentDisplayName(ctx.state.editorSettings.agentCliPath);
+
         drawStatusBanner(ctx);
 
         // Reserve exactly the composer's stack: 3-line input + control-button row + hint line.
@@ -841,6 +895,8 @@ namespace vultra_app
             const bool wasAtBottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - vultra::ui::dp(8.0f);
 
             ImGui::PushTextWrapPos(0.0f);
+            if (m_Messages.empty())
+                drawWelcome(ctx);
             for (std::size_t i = 0; i < m_Messages.size(); ++i)
             {
                 if (i > 0)
