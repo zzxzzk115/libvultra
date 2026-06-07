@@ -22,6 +22,59 @@ namespace vultra::material_graph
 
     bool NodeRegistry::contains(const std::string_view typeId) const { return find(typeId) != nullptr; }
 
+    const std::vector<std::string>& surfaceOutputTypeIds()
+    {
+        static const std::vector<std::string> ids {
+            "vultra.output.pbr_mr",
+            "vultra.output.pbr_sg",
+            "vultra.output.phong",
+            "vultra.output.unlit",
+            "vultra.output.toon",
+            "vultra.output.custom",
+        };
+        return ids;
+    }
+
+    bool isSurfaceOutputType(const std::string_view typeId)
+    {
+        const auto& ids = surfaceOutputTypeIds();
+        return std::ranges::find(ids, typeId) != ids.end();
+    }
+
+    std::optional<ShadingModel> shadingModelForOutputType(const std::string_view typeId)
+    {
+        if (typeId == "vultra.output.pbr_mr")
+            return ShadingModel::ePBRMetallicRoughness;
+        if (typeId == "vultra.output.pbr_sg")
+            return ShadingModel::ePBRSpecularGlossiness;
+        if (typeId == "vultra.output.phong")
+            return ShadingModel::ePhong;
+        if (typeId == "vultra.output.unlit")
+            return ShadingModel::eUnlit;
+        if (typeId == "vultra.output.toon")
+            return ShadingModel::eToonLike;
+        // vultra.output.custom: model resolved by name against the registry.
+        return std::nullopt;
+    }
+
+    std::string_view outputTypeForShadingModel(const ShadingModel model)
+    {
+        switch (model)
+        {
+            case ShadingModel::ePBRSpecularGlossiness:
+                return "vultra.output.pbr_sg";
+            case ShadingModel::ePhong:
+                return "vultra.output.phong";
+            case ShadingModel::eUnlit:
+                return "vultra.output.unlit";
+            case ShadingModel::eToonLike:
+                return "vultra.output.toon";
+            case ShadingModel::ePBRMetallicRoughness:
+            default:
+                return "vultra.output.pbr_mr";
+        }
+    }
+
     std::vector<std::string> NodeRegistry::typeIds() const
     {
         std::vector<std::string> ids;
@@ -351,30 +404,97 @@ namespace vultra::material_graph
             {pin("normalWS", ValueType::eVec3), pin("viewDirWS", ValueType::eVec3), pin("power", ValueType::eFloat)},
             {pin("factor", ValueType::eFloat)}));
 
-        add(desc("vultra.output.surface",
-                 "Surface Output",
+        // Per-model surface output nodes. The shading model is the node identity
+        // (typeId), so each node exposes ONLY the pins relevant to its model. See
+        // surfaceOutputTypeIds() / shadingModelForOutputType() below for the single
+        // source of truth shared with the validator, compiler, and render system.
+        const auto baseColorPin   = [] { return pin("baseColor", ValueType::eColor, nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})); };
+        const auto normalPin      = [] { return pin("normal", ValueType::eVec3); };
+        const auto aoPin          = [] { return pin("ao", ValueType::eFloat, 1.0f); };
+        const auto emissivePin    = [] { return pin("emissive", ValueType::eVec3, nlohmann::json::array({0.0f, 0.0f, 0.0f})); };
+        const auto alphaPin       = [] { return pin("alpha", ValueType::eFloat, 1.0f); };
+        const auto alphaCutoffPin = [] { return pin("alphaCutoff", ValueType::eFloat, 0.5f); };
+
+        add(desc("vultra.output.pbr_mr",
+                 "PBR (Metallic-Roughness)",
                  {
-                     pin("baseColor", ValueType::eColor, nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})),
-                     pin("normal", ValueType::eVec3),
+                     baseColorPin(),
+                     normalPin(),
                      pin("metallic", ValueType::eFloat, 0.0f),
                      pin("roughness", ValueType::eFloat, 1.0f),
-                     pin("ao", ValueType::eFloat, 1.0f),
-                     pin("emissive", ValueType::eVec3, nlohmann::json::array({0.0f, 0.0f, 0.0f})),
-                     pin("alpha", ValueType::eFloat, 1.0f),
-                     pin("alphaCutoff", ValueType::eFloat, 0.5f),
+                     aoPin(),
+                     emissivePin(),
+                     alphaPin(),
+                     alphaCutoffPin(),
                  },
                  {},
+                 {{"alphaMode", "Opaque"}}));
+
+        add(desc("vultra.output.pbr_sg",
+                 "PBR (Specular-Glossiness)",
                  {
-                     {"baseColor", {1.0f, 1.0f, 1.0f, 1.0f}},
-                     {"metallic", 0.0f},
-                     {"roughness", 1.0f},
-                     {"ao", 1.0f},
-                     {"emissive", {0.0f, 0.0f, 0.0f}},
-                     {"alpha", 1.0f},
-                     {"alphaCutoff", 0.5f},
-                     {"shadingModel", "PBR_MR"},
-                     {"alphaMode", "Opaque"},
-                 }));
+                     baseColorPin(),
+                     normalPin(),
+                     pin("specular", ValueType::eColor, nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})),
+                     pin("glossiness", ValueType::eFloat, 1.0f),
+                     aoPin(),
+                     emissivePin(),
+                     alphaPin(),
+                     alphaCutoffPin(),
+                 },
+                 {},
+                 {{"alphaMode", "Opaque"}}));
+
+        add(desc("vultra.output.phong",
+                 "Phong",
+                 {
+                     baseColorPin(),
+                     normalPin(),
+                     pin("specular", ValueType::eColor, nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})),
+                     pin("shininess", ValueType::eFloat, 32.0f),
+                     aoPin(),
+                     emissivePin(),
+                     alphaPin(),
+                     alphaCutoffPin(),
+                 },
+                 {},
+                 {{"alphaMode", "Opaque"}}));
+
+        add(desc("vultra.output.unlit",
+                 "Unlit",
+                 {
+                     baseColorPin(),
+                     alphaPin(),
+                     alphaCutoffPin(),
+                 },
+                 {},
+                 {{"alphaMode", "Opaque"}}));
+
+        add(desc("vultra.output.toon",
+                 "Toon",
+                 {
+                     baseColorPin(),
+                     normalPin(),
+                     aoPin(),
+                     emissivePin(),
+                     alphaPin(),
+                     alphaCutoffPin(),
+                 },
+                 {},
+                 {{"alphaMode", "Opaque"}}));
+
+        add(desc("vultra.output.custom",
+                 "Custom Shading Model",
+                 {
+                     baseColorPin(),
+                     normalPin(),
+                     aoPin(),
+                     emissivePin(),
+                     alphaPin(),
+                     alphaCutoffPin(),
+                 },
+                 {},
+                 {{"alphaMode", "Opaque"}, {"shadingModelName", ""}}));
 
         return registry;
     }
@@ -534,10 +654,15 @@ namespace vultra::material_graph
                     {.message = "Link references missing target node", .nodeId = link.to.nodeId, .pin = link.to.pin});
         }
 
-        const bool hasSurfaceOutput =
-            std::ranges::any_of(graph.nodes, [](const Node& node) { return node.typeId == "vultra.output.surface"; });
-        if (graph.domain == Domain::eSurface && !hasSurfaceOutput)
-            diagnostics.push_back({.message = "Surface material graph requires a Surface Output node"});
+        if (graph.domain == Domain::eSurface)
+        {
+            const auto outputCount = std::ranges::count_if(
+                graph.nodes, [](const Node& node) { return isSurfaceOutputType(node.typeId); });
+            if (outputCount == 0)
+                diagnostics.push_back({.message = "Surface material graph requires a surface output node"});
+            else if (outputCount > 1)
+                diagnostics.push_back({.message = "Surface material graph must contain exactly one surface output node"});
+        }
 
         return diagnostics;
     }

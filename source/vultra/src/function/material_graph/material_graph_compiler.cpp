@@ -89,7 +89,7 @@ namespace vultra::material_graph
         const Node* surfaceOutputNode(const Graph& graph)
         {
             for (const auto& node : graph.nodes)
-                if (node.typeId == "vultra.output.surface")
+                if (isSurfaceOutputType(node.typeId))
                     return &node;
             return nullptr;
         }
@@ -126,7 +126,7 @@ namespace vultra::material_graph
                 if (const auto* link = findInputLink(m_Graph, node.id, pinName))
                     return outputExpr(link->from.nodeId, link->from.pin);
 
-                if (node.typeId == "vultra.output.surface" && pinName == "normal")
+                if (isSurfaceOutputType(node.typeId) && pinName == "normal")
                     return "normalWS";
 
                 if (node.params.contains(std::string(pinName)))
@@ -455,10 +455,75 @@ namespace vultra::material_graph
                 static_cast<uint32_t>(alphaModeFromString(output.params.value("alphaMode", std::string {"Opaque"}))));
         }
 
-        std::string shadingModelCode(const Node& output)
+        // GBuffer / deferred-lighting model codes (must match VULTRA_MAT_* in the
+        // shaders and GpuMaterialModel): PBR_MR=1, PBR_SG=2, Unlit=3, Phong=4,
+        // ToonLike=6. Custom (registered) codes are >= 8 and resolved by name.
+        uint32_t gbufferModelCode(const Node& output, const CompileInput& input)
         {
-            return std::to_string(static_cast<uint32_t>(
-                shadingModelFromString(output.params.value("shadingModel", std::string {"PBR_MR"}))));
+            const std::string_view typeId = output.typeId;
+            if (typeId == "vultra.output.pbr_sg")
+                return 2u;
+            if (typeId == "vultra.output.unlit")
+                return 3u;
+            if (typeId == "vultra.output.phong")
+                return 4u;
+            if (typeId == "vultra.output.toon")
+                return 6u;
+            if (typeId == "vultra.output.custom")
+            {
+                const auto name = output.params.value("shadingModelName", std::string {});
+                if (const auto it = input.customShadingModelCodes.find(name); it != input.customShadingModelCodes.end())
+                    return it->second;
+                return 1u; // unresolved custom model -> render as PBR Metallic-Roughness
+            }
+            return 1u; // vultra.output.pbr_mr (and any unknown output)
+        }
+
+        // Emits the GLSL that fills surface.metallic / surface.roughness / surface.ao
+        // for the output node's model. The GBuffer is metallic-roughness shaped, so SG
+        // and Phong are converted here exactly as the parametric/asset path does in
+        // thin_gbuffer.frag (material_mra), keeping both render paths pixel-consistent.
+        void emitSurfaceMra(std::ostringstream& src, const Node& output, GlslEmitter& emitter)
+        {
+            const std::string_view typeId = output.typeId;
+            const auto             ao     = emitter.inputExpr(output, "ao");
+            if (typeId == "vultra.output.pbr_mr")
+            {
+                src << "    surface.metallic = clamp(" << emitter.inputExpr(output, "metallic") << ", 0.0, 1.0);\n";
+                src << "    surface.roughness = clamp(" << emitter.inputExpr(output, "roughness") << ", 0.045, 1.0);\n";
+                src << "    surface.ao = clamp(" << ao << ", 0.0, 1.0);\n";
+            }
+            else if (typeId == "vultra.output.pbr_sg")
+            {
+                const auto specular   = emitter.inputExpr(output, "specular");
+                const auto glossiness = emitter.inputExpr(output, "glossiness");
+                src << "    vec3 sgSpecular = (" << specular << ").rgb;\n";
+                src << "    surface.metallic = clamp(dot(sgSpecular, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);\n";
+                src << "    surface.roughness = clamp(1.0 - (" << glossiness << "), 0.02, 1.0);\n";
+                src << "    surface.ao = clamp(" << ao << ", 0.0, 1.0);\n";
+            }
+            else if (typeId == "vultra.output.phong")
+            {
+                const auto specular  = emitter.inputExpr(output, "specular");
+                const auto shininess = emitter.inputExpr(output, "shininess");
+                src << "    vec3 phongSpecular = (" << specular << ").rgb;\n";
+                src << "    surface.metallic = clamp(dot(phongSpecular, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);\n";
+                src << "    surface.roughness = clamp(1.0 / sqrt(max(" << shininess << ", 1.0)), 0.02, 1.0);\n";
+                src << "    surface.ao = clamp(" << ao << ", 0.0, 1.0);\n";
+            }
+            else if (typeId == "vultra.output.toon")
+            {
+                // Toon lighting ignores metallic/roughness; keep dielectric-matte defaults.
+                src << "    surface.metallic = 0.0;\n";
+                src << "    surface.roughness = 1.0;\n";
+                src << "    surface.ao = clamp(" << ao << ", 0.0, 1.0);\n";
+            }
+            else // unlit + custom: lighting either skipped (unlit) or handled by the BXDF (custom)
+            {
+                src << "    surface.metallic = 0.0;\n";
+                src << "    surface.roughness = 1.0;\n";
+                src << "    surface.ao = 1.0;\n";
+            }
         }
     } // namespace
 
@@ -484,11 +549,11 @@ namespace vultra::material_graph
             return std::unexpected {diagnostics};
 
         GlslEmitter emitter {input.graph, registry};
+        // metallic/roughness/ao are emitted per-model by emitSurfaceMra (SG/Phong are
+        // converted to the metallic-roughness GBuffer shape). The shared pins below
+        // exist on every output node type.
         const auto  baseColor   = emitter.inputExpr(*output, "baseColor");
         const auto  normal      = emitter.inputExpr(*output, "normal");
-        const auto  metallic    = emitter.inputExpr(*output, "metallic");
-        const auto  roughness   = emitter.inputExpr(*output, "roughness");
-        const auto  ao          = emitter.inputExpr(*output, "ao");
         const auto  emissive    = emitter.inputExpr(*output, "emissive");
         const auto  alpha       = emitter.inputExpr(*output, "alpha");
         const auto  alphaCutoff = emitter.inputExpr(*output, "alphaCutoff");
@@ -563,28 +628,15 @@ namespace vultra::material_graph
         src << "    vec3 normalWS = ctx.normalWS;\n";
         src << "    surface.baseColor = " << baseColor << ";\n";
         src << "    surface.normalWS = normalize(" << normal << ");\n";
-        src << "    surface.metallic = clamp(" << metallic << ", 0.0, 1.0);\n";
-        src << "    surface.roughness = clamp(" << roughness << ", 0.045, 1.0);\n";
-        src << "    surface.ao = clamp(" << ao << ", 0.0, 1.0);\n";
+        emitSurfaceMra(src, *output, emitter);
         src << "    surface.emissive = " << emissive << ";\n";
         src << "    surface.alpha = clamp(" << alpha << ", 0.0, 1.0);\n";
         src << "    surface.alphaCutoff = clamp(" << alphaCutoff << ", 0.0, 1.0);\n";
         src << "    surface.alphaMode = " << alphaModeCode(*output) << "u;\n";
-        src << "    surface.shadingModel = " << shadingModelCode(*output) << "u;\n";
-        src << "    if (surface.shadingModel == 3u)\n";
-        src << "    {\n";
-        src << "        surface.metallic = 0.0;\n";
-        src << "    }\n";
-        src << "    if (surface.shadingModel == 4u)\n";
-        src << "    {\n";
-        src << "        surface.metallic = 0.0;\n";
-        src << "        surface.roughness = clamp(surface.roughness, 0.25, 1.0);\n";
-        src << "    }\n";
-        src << "    if (surface.shadingModel == 1u)\n";
-        src << "    {\n";
-        src << "        surface.metallic = 0.0;\n";
-        src << "        surface.roughness = 1.0;\n";
-        src << "    }\n";
+        // surface.shadingModel stores the GBuffer / deferred-lighting model code directly
+        // (per-model output node identity), so the mesh-material backend can pass it
+        // through without a runtime enum->code remap.
+        src << "    surface.shadingModel = " << gbufferModelCode(*output, input) << "u;\n";
         src << "    return surface;\n";
         src << "}\n";
         src << "\n";
@@ -642,16 +694,8 @@ namespace vultra::material_graph
         src << "#include \"include/vultra/mesh_material.glsl\"\n\n";
         // The graph eval functions + any node helper #includes.
         src << surfaceResult->vshaderSource << "\n";
-        // Map the material-graph shading-model enum (0=PBR_MR,1=Unlit,2=ToonLike,
-        // 3=SpecGloss,4=Phong) to the GBuffer model code, mirroring the parametric
-        // path's graphShadingModelCode().
-        src << "uint vultra_graph_to_gbuffer_model(uint m)\n{\n";
-        src << "    if (m == 1u) return 3u; // Unlit\n";
-        src << "    if (m == 2u) return 6u; // ToonLike\n";
-        src << "    if (m == 3u) return 2u; // PBR Specular-Glossiness\n";
-        src << "    if (m == 4u) return 4u; // Phong\n";
-        src << "    return 1u; // PBR Metallic-Roughness\n";
-        src << "}\n\n";
+        // MaterialGraphSurface.shadingModel already holds the GBuffer model code (the
+        // per-model output node baked it in), so pass it through unchanged.
         src << "void vultraGraphMaterial(in VultraMaterialInput IN, inout VultraMaterialEval OUT)\n{\n";
         src << "    MaterialGraphSurface s = eval_material_graph_" << graphSymbol
             << "(0u, IN.uv0, IN.positionWS, IN.normalWS, IN.viewDirWS, IN.frame.time);\n";
@@ -663,7 +707,7 @@ namespace vultra::material_graph
         src << "    OUT.emissive = s.emissive;\n";
         src << "    OUT.alpha = s.alpha;\n";
         src << "    OUT.alphaCutoff = s.alphaCutoff;\n";
-        src << "    OUT.shadingModel = vultra_graph_to_gbuffer_model(s.shadingModel);\n";
+        src << "    OUT.shadingModel = s.shadingModel;\n";
         src << "}\n\n";
         src << "VULTRA_MATERIAL_MAIN(vultraGraphMaterial)\n";
 

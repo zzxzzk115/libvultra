@@ -45,4 +45,19 @@ namespace vultra::material_graph
     [[nodiscard]] NodeDescriptorParseResult nodeDescriptorFromJson(const nlohmann::json& root);
     [[nodiscard]] NodeDescriptorParseResult loadNodeDescriptorFromText(std::string_view text);
     [[nodiscard]] std::vector<Diagnostic> validateGraph(const Graph& graph, const NodeRegistry& registry);
+
+    // Per-model surface output node type ids. A surface graph must contain exactly
+    // one node from this family; its typeId (not a param) selects the shading model.
+    // Single source of truth shared by the validator, compiler, render system, and editor.
+    [[nodiscard]] const std::vector<std::string>& surfaceOutputTypeIds();
+    [[nodiscard]] bool                             isSurfaceOutputType(std::string_view typeId);
+
+    // Maps a surface output node typeId to its ShadingModel. Returns std::nullopt for
+    // non-output nodes. vultra.output.custom returns std::nullopt (its model is resolved
+    // by name against the ShadingModelRegistry at compile/render time).
+    [[nodiscard]] std::optional<ShadingModel> shadingModelForOutputType(std::string_view typeId);
+
+    // Inverse of shadingModelForOutputType: the builtin output node typeId for a model.
+    // Used by legacy-graph migration (the old vultra.output.surface + shadingModel param).
+    [[nodiscard]] std::string_view outputTypeForShadingModel(ShadingModel model);
 } // namespace vultra::material_graph

@@ -180,7 +180,9 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_HZB_STORAGE_BINDING, r32f) unifo
 #define VULTRA_MAT_PBRSG   2u
 #define VULTRA_MAT_UNLIT   3u
 #define VULTRA_MAT_PHONG   4u
-#define VULTRA_MAT_GRAPH   5u
+// 5 reserved (was the removed material-graph parametric model; graphs now pack a
+// real per-model block). Toon is 6 to match deferred_lighting's VULTRA_MAT_TOONLIKE.
+#define VULTRA_MAT_TOON    6u
 
 // Render queue IDs shared between GPU build passes and CPU-side inspection.
 #define VULTRA_RENDER_QUEUE_OPAQUE      0u
@@ -320,8 +322,9 @@ struct MaterialParamsPBRSG
     float glossinessFactor;
     uint diffuseColorTex;
     uint specularGlossinessTex;
-    uint pad0;
-    uint pad1;
+    uint pad0;            // C++: glossinessTex (unused here)
+    uint pad1;            // C++: normalTex (unused here)
+    vec4 emissiveFactor;  // rgb = emissive color x strength; a unused
 };
 struct MaterialParamsUnlit
 {
@@ -341,17 +344,16 @@ struct MaterialParamsPhong
     uint pad0;
     uint pad1;
     uint pad2;
+    vec4 emissiveFactor;  // rgb = emissive color x strength; a unused
 };
-struct MaterialParamsGraph
+struct MaterialParamsToon
 {
     vec4 baseColor;
-    vec4 emissiveAlpha;
-    vec4 metallicRoughnessAoCutoff;
-    uvec4 textureInfo; // x = baseColorTex
-    uint graphId;
-    uint alphaMode;
-    uint shadingModel;
-    uint flags;
+    vec4 emissiveAo; // rgb = emissive color x strength, a = ambient occlusion
+    uint baseColorTex;
+    uint pad0;
+    uint pad1;
+    uint pad2;
 };
 
 // --------------------------------------------------------------------------
@@ -454,6 +456,9 @@ MaterialParamsPBRSG get_pbrsg_params(uint materialIndex)
     // offset + 36 : uint specularGlossinessTex
     params.specularGlossinessTex = _load_u32(m.blockOffsetBytes, 36u);
 
+    // offset + 48 : vec4 emissiveFactor (40/44 are glossinessTex/normalTex, unused here)
+    params.emissiveFactor = load_vec4_bytes(m.blockOffsetBytes, 48u);
+
     return params;
 }
 
@@ -487,27 +492,20 @@ MaterialParamsPhong get_phong_params(uint materialIndex)
     // offset + 32 : uint diffuseTex
     params.diffuseTex = _load_u32(m.blockOffsetBytes, 32u);
 
+    // offset + 48 : vec4 emissiveFactor (36/40/44 are padding)
+    params.emissiveFactor = load_vec4_bytes(m.blockOffsetBytes, 48u);
+
     return params;
 }
 
-MaterialParamsGraph get_graph_params(uint materialIndex)
+MaterialParamsToon get_toon_params(uint materialIndex)
 {
     MaterialEntry m = s_Materials.materials[materialIndex];
 
-    MaterialParamsGraph params;
+    MaterialParamsToon params;
     params.baseColor = load_vec4_bytes(m.blockOffsetBytes, 0u);
-    params.emissiveAlpha = load_vec4_bytes(m.blockOffsetBytes, 16u);
-    params.metallicRoughnessAoCutoff = load_vec4_bytes(m.blockOffsetBytes, 32u);
-    params.textureInfo = uvec4(
-        _load_u32(m.blockOffsetBytes, 48u),
-        _load_u32(m.blockOffsetBytes, 52u),
-        _load_u32(m.blockOffsetBytes, 56u),
-        _load_u32(m.blockOffsetBytes, 60u)
-    );
-    params.graphId = _load_u32(m.blockOffsetBytes, 64u);
-    params.alphaMode = _load_u32(m.blockOffsetBytes, 68u);
-    params.shadingModel = _load_u32(m.blockOffsetBytes, 72u);
-    params.flags = _load_u32(m.blockOffsetBytes, 76u);
+    params.emissiveAo = load_vec4_bytes(m.blockOffsetBytes, 16u);
+    params.baseColorTex = _load_u32(m.blockOffsetBytes, 32u);
     return params;
 }
 

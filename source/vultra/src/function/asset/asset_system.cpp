@@ -391,27 +391,9 @@ namespace vultra
             return std::clamp(std::sqrt(2.0f / (shininess + 2.0f)), 0.045f, 1.0f);
         }
 
-        struct alignas(16) MaterialParamsPBRSG
-        {
-            glm::vec4 diffuseColor {1, 1, 1, 1};
-            glm::vec3 specularFactor {1, 1, 1};
-            float     glossinessFactor {1.0f};
-            uint32_t  diffuseColorTex {0};
-            uint32_t  specularGlossinessTex {0};
-            uint32_t  glossinessTex {0};
-            uint32_t  normalTex {0};
-        };
-        static_assert(sizeof(MaterialParamsPBRSG) % 16 == 0);
-
-        struct alignas(16) MaterialParamsUnlit
-        {
-            glm::vec4 color {1, 1, 1, 1};
-            uint32_t  colorTex {0};
-            uint32_t  pad0 {0};
-            uint32_t  pad1 {0};
-            uint32_t  pad2 {0};
-        };
-        static_assert(sizeof(MaterialParamsUnlit) % 16 == 0);
+        // MaterialParamsPBRSG / MaterialParamsUnlit / MaterialParamsPhong now live in
+        // vultra/function/material/material_params.hpp (single byte-layout source of
+        // truth shared with the render system and the graph constant path).
 
 #ifdef VULTRA_HAS_VASSET_IMPORT
         vasset::VAssetImporter::ImportOptions
@@ -447,17 +429,6 @@ namespace vultra
             return options;
         }
 #endif
-
-        struct alignas(16) MaterialParamsPhong
-        {
-            glm::vec4 diffuse {1, 1, 1, 1};
-            glm::vec4 specularShininess {1, 1, 1, 32}; // xyz = specular, w = shininess
-            uint32_t  diffuseTex {0};
-            uint32_t  pad0 {0};
-            uint32_t  pad1 {0};
-            uint32_t  pad2 {0};
-        };
-        static_assert(sizeof(MaterialParamsPhong) % 16 == 0);
 
         constexpr std::size_t kMaxUploadCommandsPerFrame        = 2;
         constexpr std::size_t kMaxMaterialRefreshChecksPerFrame = 8;

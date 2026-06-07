@@ -70,49 +70,10 @@ namespace vultra
             std::vector<std::byte>          paramBytes;
         };
 
-        // MaterialParamsPBRMR now lives in vultra/function/material/material_params.hpp.
-
-        struct alignas(16) MaterialParamsPBRSG
-        {
-            glm::vec4 diffuseColor {1.0f};
-            glm::vec3 specularFactor {1.0f};
-            float     glossinessFactor {1.0f};
-            uint32_t  diffuseColorTex {0};
-            uint32_t  specularGlossinessTex {0};
-            uint32_t  glossinessTex {0};
-            uint32_t  normalTex {0};
-        };
-
-        struct alignas(16) MaterialParamsUnlit
-        {
-            glm::vec4 color {1.0f};
-            uint32_t  colorTex {0};
-            uint32_t  pad0 {0};
-            uint32_t  pad1 {0};
-            uint32_t  pad2 {0};
-        };
-
-        struct alignas(16) MaterialParamsPhong
-        {
-            glm::vec4 diffuse {1.0f};
-            glm::vec4 specularShininess {1.0f};
-            uint32_t  diffuseTex {0};
-            uint32_t  pad0 {0};
-            uint32_t  pad1 {0};
-            uint32_t  pad2 {0};
-        };
-
-        struct alignas(16) MaterialParamsGraph
-        {
-            glm::vec4 baseColor {1.0f};
-            glm::vec4 emissiveAlpha {0.0f, 0.0f, 0.0f, 1.0f};
-            glm::vec4 metallicRoughnessAoCutoff {0.0f, 1.0f, 1.0f, 0.5f};
-            glm::uvec4 textureInfo {0u};
-            uint32_t   graphId {0};
-            uint32_t   alphaMode {0};
-            uint32_t   shadingModel {0};
-            uint32_t   flags {0};
-        };
+        // MaterialParamsPBRMR / PBRSG / Unlit / Phong / Toon now live in
+        // vultra/function/material/material_params.hpp (single byte-layout source of
+        // truth). The removed MaterialParamsGraph mirror is gone with the eMaterialGraph
+        // parametric path: material graphs now pack a real per-model block.
 
         template<typename T>
         [[nodiscard]] T loadMaterialParams(const resource::MaterialBuffer& materialBuffer, const uint32_t byteOffset)
@@ -127,26 +88,6 @@ namespace vultra
         [[nodiscard]] float materialModelCode(const resource::GpuMaterialModel model)
         {
             return static_cast<float>(static_cast<uint32_t>(model));
-        }
-
-        [[nodiscard]] float graphShadingModelCode(const uint32_t shadingModel)
-        {
-            // Material graph shading model enum:
-            // 0=PBR_MR, 1=Unlit, 2=ToonLike, 3=PBR_SpecGloss, 4=Phong.
-            switch (shadingModel)
-            {
-                case 1u:
-                    return materialModelCode(resource::GpuMaterialModel::eUnlit);
-                case 2u:
-                    return 6.0f;
-                case 3u:
-                    return materialModelCode(resource::GpuMaterialModel::ePBRSpecularGlossiness);
-                case 4u:
-                    return materialModelCode(resource::GpuMaterialModel::ePhong);
-                case 0u:
-                default:
-                    return materialModelCode(resource::GpuMaterialModel::ePBRMetallicRoughness);
-            }
         }
 
         [[nodiscard]] float luminance(const glm::vec3& value)
@@ -210,6 +151,7 @@ namespace vultra
                                                 glm::clamp(1.0f - p.glossinessFactor, 0.045f, 1.0f),
                                                 1.0f,
                                                 materialModelCode(material.model));
+                    out.emissiveFactor  = p.emissiveFactor;
                     out.materialTextureInfo0.y = validTexture(p.diffuseColorTex);       // base color (diffuse)
                     out.materialTextureInfo0.z = validTexture(p.normalTex);             // normal map
                     out.materialTextureInfo0.w = validTexture(p.specularGlossinessTex); // specular (F0) map
@@ -236,22 +178,22 @@ namespace vultra
                                                            1.0f),
                                                 1.0f,
                                                 materialModelCode(material.model));
+                    out.emissiveFactor  = p.emissiveFactor;
                     out.materialTextureInfo0.y = validTexture(p.diffuseTex);
                     break;
                 }
-                case resource::GpuMaterialModel::eMaterialGraph:
+                case resource::GpuMaterialModel::eToon:
                 {
-                    const auto p = loadMaterialParams<MaterialParamsGraph>(resources.materialParams,
-                                                                           material.blockOffsetBytes);
-                    out.baseColorFactor = glm::vec4(glm::vec3(p.baseColor), p.baseColor.a * p.emissiveAlpha.a);
-                    out.emissiveFactor  = glm::vec4(glm::vec3(p.emissiveAlpha), 1.0f);
-                    out.materialTextureInfo0.y = validTexture(p.textureInfo.x);
-                    out.materialMRA = glm::vec4(p.metallicRoughnessAoCutoff.x,
-                                                p.metallicRoughnessAoCutoff.y,
-                                                p.metallicRoughnessAoCutoff.z,
-                                                graphShadingModelCode(p.shadingModel));
-                    out.entityInfo.y = p.alphaMode;
-                    out.entityInfo.z = static_cast<uint32_t>(glm::clamp(p.metallicRoughnessAoCutoff.w, 0.0f, 1.0f) * 255.0f);
+                    const auto p = loadMaterialParams<MaterialParamsToon>(resources.materialParams,
+                                                                          material.blockOffsetBytes);
+                    out.baseColorFactor = p.baseColor;
+                    // Toon lighting runs Cook-Torrance then quantizes; matte dielectric mra.
+                    out.materialMRA     = glm::vec4(0.0f,
+                                                1.0f,
+                                                glm::clamp(p.emissiveAo.a, 0.0f, 1.0f),
+                                                materialModelCode(material.model));
+                    out.emissiveFactor  = glm::vec4(glm::vec3(p.emissiveAo), 1.0f);
+                    out.materialTextureInfo0.y = validTexture(p.baseColorTex);
                     break;
                 }
                 case resource::GpuMaterialModel::eShaderMaterial:

@@ -2,6 +2,7 @@
 
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/rhi/graphics_pipeline.hpp"
+#include "vultra/function/material/shading_model_registry.hpp"
 #include "vultra/function/rendering/srp/renderer.hpp"
 
 #include <sol/sol.hpp>
@@ -25,7 +26,19 @@ namespace vultra
         ~DeclarativeRenderer() override;
 
         std::string_view name() const override { return m_RendererKey; }
-        void             init() override;
+
+        // Custom shading models registered by the pipeline asset's Lua `ShadingModel{}`
+        // descriptors. NOTE: registration + code assignment + extra-params metadata are
+        // in place, but the deferred lighting path does not yet dispatch custom BXDFs
+        // (it is a monolithic Cook-Torrance shader); custom-model *shading* lands with
+        // the forward/clustered path. Until then a custom-model material renders with
+        // the default PBR response.
+        [[nodiscard]] const material::ShadingModelRegistry& shadingModelRegistry() const
+        {
+            return m_ShadingModelRegistry;
+        }
+
+        void init() override;
         void             buildFrameGraph(FrameGraphBuildContext& ctx) override;
         bool             updateRenderGraph(std::string_view uri);
         void             invalidateShaderPipelines();
@@ -91,6 +104,7 @@ namespace vultra
             std::vector<std::string>                     renderGraphs;
             std::vector<Feature>                         features;
             std::vector<ScriptedPassDef>                  scriptedPasses;
+            std::vector<material::ShadingModelDesc>       shadingModels;
         };
 
         class FullscreenPassRuntime;
@@ -105,6 +119,7 @@ namespace vultra
         bool loadPipelineAsset();
         bool loadFeatureAsset(std::string_view uri, Feature& outFeature);
         bool parsePipelineTable(sol::table table, PipelineAsset& outAsset);
+        bool parseShadingModelTable(sol::table table, material::ShadingModelDesc& outModel);
         bool parseFeatureTable(sol::table table, Feature& outFeature);
         bool parseScriptedPassTable(sol::table table, ScriptedPassDef& outPass);
         void loadScriptedPasses();
@@ -121,6 +136,7 @@ namespace vultra
         std::unique_ptr<sol::state> m_RenderScriptState;
 
         PipelineAsset m_Asset;
+        material::ShadingModelRegistry m_ShadingModelRegistry;
         std::vector<std::unique_ptr<RuntimeFeature>> m_RuntimeFeatures;
         FrameGraphBuildContext* m_CurrentBuildContext {nullptr};
         bool m_CurrentFrameApplyToneMapping {true};

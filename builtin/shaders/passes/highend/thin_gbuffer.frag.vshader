@@ -111,12 +111,12 @@ vec4 base_color_for_material(uint materialIndex, vec2 uv, bool hasUv0)
             color *= texture(getBindlessTexture(params.diffuseTex), uv);
         return color;
     }
-    if (model == VULTRA_MAT_GRAPH)
+    if (model == VULTRA_MAT_TOON)
     {
-        MaterialParamsGraph params = get_graph_params(materialIndex);
-        vec4 color = vec4(params.baseColor.rgb, params.baseColor.a * params.emissiveAlpha.a);
-        if (hasUv0 && params.textureInfo.x != 0u)
-            color *= texture(getBindlessTexture(params.textureInfo.x), uv);
+        MaterialParamsToon params = get_toon_params(materialIndex);
+        vec4 color = params.baseColor;
+        if (hasUv0 && params.baseColorTex != 0u)
+            color *= texture(getBindlessTexture(params.baseColorTex), uv);
         return color;
     }
     return vec4(1.0);
@@ -133,10 +133,17 @@ vec3 material_emissive(uint materialIndex, vec2 uv, bool hasUv0)
             emissive *= texture(getBindlessTexture(params.emissiveTex), uv).rgb;
         return emissive;
     }
-    if (model == VULTRA_MAT_GRAPH)
+    if (model == VULTRA_MAT_PBRSG)
     {
-        MaterialParamsGraph params = get_graph_params(materialIndex);
-        return params.emissiveAlpha.rgb;
+        return get_pbrsg_params(materialIndex).emissiveFactor.rgb;
+    }
+    if (model == VULTRA_MAT_PHONG)
+    {
+        return get_phong_params(materialIndex).emissiveFactor.rgb;
+    }
+    if (model == VULTRA_MAT_TOON)
+    {
+        return get_toon_params(materialIndex).emissiveAo.rgb;
     }
     return vec3(0.0);
 }
@@ -173,33 +180,20 @@ vec3 material_mra(uint materialIndex, vec2 uv, bool hasUv0)
         float specularIntensity = dot(params.specularShininess.rgb, vec3(0.2126, 0.7152, 0.0722));
         return vec3(clamp(specularIntensity, 0.0, 1.0), roughness, 1.0);
     }
-    if (model == VULTRA_MAT_GRAPH)
+    if (model == VULTRA_MAT_TOON)
     {
-        MaterialParamsGraph params = get_graph_params(materialIndex);
-        if (params.shadingModel == 1u)
-            return vec3(0.0, 1.0, params.metallicRoughnessAoCutoff.z);
-        return params.metallicRoughnessAoCutoff.xyz;
+        // Toon lighting runs Cook-Torrance then quantizes; matte dielectric mra.
+        MaterialParamsToon params = get_toon_params(materialIndex);
+        return vec3(0.0, 1.0, clamp(params.emissiveAo.a, 0.0, 1.0));
     }
     return vec3(0.0, 1.0, 1.0);
 }
 
 float material_lighting_model(uint materialIndex)
 {
-    uint model = get_material_model(materialIndex);
-    if (model == VULTRA_MAT_GRAPH)
-    {
-        MaterialParamsGraph params = get_graph_params(materialIndex);
-        if (params.shadingModel == 1u)
-            return float(VULTRA_MAT_UNLIT);
-        if (params.shadingModel == 2u)
-            return 6.0;
-        if (params.shadingModel == 3u)
-            return float(VULTRA_MAT_PBRSG);
-        if (params.shadingModel == 4u)
-            return float(VULTRA_MAT_PHONG);
-        return float(VULTRA_MAT_PBRMR);
-    }
-    return float(model);
+    // The GpuMaterialModel value IS the deferred-lighting model code (the graph
+    // parametric path that needed remapping is gone; graphs pack a real per-model block).
+    return float(get_material_model(materialIndex));
 }
 
 vec2 encode_gbuffer_normal(vec3 normalWS)

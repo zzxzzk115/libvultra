@@ -635,8 +635,8 @@ void main()
     },
     {
       "id": "Surface",
-      "typeId": "vultra.output.surface",
-      "displayName": "Surface Output",
+      "typeId": "vultra.output.pbr_mr",
+      "displayName": "PBR Metallic-Roughness",
       "params": {
         "baseColor": [1.0, 1.0, 1.0, 1.0],
         "metallic": 0.0,
@@ -645,8 +645,7 @@ void main()
         "emissive": [0.0, 0.0, 0.0],
         "alpha": 1.0,
         "alphaCutoff": 0.5,
-        "alphaMode": "Opaque",
-        "shadingModel": "PBRMetallicRoughness"
+        "alphaMode": "Opaque"
       },
       "inputs": [
         { "name": "baseColor", "type": "color", "default": [1.0, 1.0, 1.0, 1.0] },

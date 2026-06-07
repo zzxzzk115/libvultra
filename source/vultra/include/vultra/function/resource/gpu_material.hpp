@@ -6,15 +6,23 @@
 
 namespace vultra::resource
 {
+    // Values are the GBuffer / deferred-lighting model codes: thin_gbuffer writes the
+    // raw enum value into GBufferMaterial.a and deferred_lighting branches on it
+    // (VULTRA_MAT_PBRMR=1, PBRSG=2, Unlit=3, Phong=4, ToonLike=6). Keep these in sync
+    // with the VULTRA_MAT_* shader constants and material_graph gbufferModelCode().
+    // (5 is reserved; it was the removed eMaterialGraph parametric path. Material
+    // graphs now pack a real per-model block, exactly like a hand-authored material.)
+    // eShaderMaterial's value is NOT a GBuffer code (shader materials write the GBuffer
+    // from their own eval.shadingModel), so it sits past the builtin lighting codes.
     enum class GpuMaterialModel : uint32_t
     {
-        eInvalid = 0,
-        ePBRMetallicRoughness,
-        ePBRSpecularGlossiness,
-        eUnlit,
-        ePhong,
-        eMaterialGraph,
-        eShaderMaterial,
+        eInvalid               = 0,
+        ePBRMetallicRoughness  = 1,
+        ePBRSpecularGlossiness = 2,
+        eUnlit                 = 3,
+        ePhong                 = 4,
+        eToon                  = 6,
+        eShaderMaterial        = 7,
     };
 
     struct GpuMaterial

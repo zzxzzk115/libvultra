@@ -16,6 +16,12 @@ namespace vultra::material_graph
         Graph graph;
         std::string shaderId;
         uint32_t graphId {0};
+
+        // Resolves a vultra.output.custom node's `shadingModelName` param to its GBuffer
+        // model code (>= material::kFirstCustomShadingModelCode). Populated from the
+        // ShadingModelRegistry by the caller; when a name is missing the compiler falls
+        // back to the PBR Metallic-Roughness code so the graph still renders.
+        std::unordered_map<std::string, uint32_t> customShadingModelCodes;
     };
 
     struct CompileOutput

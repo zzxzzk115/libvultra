@@ -80,21 +80,20 @@ namespace vultra
 {
     namespace
     {
-        struct alignas(16) MaterialGraphSurfaceParams
+        // A material graph whose surface reduces to constants (no texture-sample or
+        // procedural nodes feeding the lit attributes) is packed into the SAME per-model
+        // GPU block a hand-authored .vmat.json material uses, with the real model code.
+        // There is no separate "graph" GPU material path anymore. Graphs that need
+        // per-pixel evaluation go through the compiled eShaderMaterial fragment instead.
+        //
+        // The per-model param structs (MaterialParamsPBRMR / PBRSG / Unlit / Phong /
+        // Toon) live in vultra/function/material/material_params.hpp.
+        struct GraphConstantMaterial
         {
-            glm::vec4  baseColor {1.0f};
-            glm::vec4  emissiveAlpha {0.0f, 0.0f, 0.0f, 1.0f};
-            glm::vec4  metallicRoughnessAoCutoff {0.0f, 1.0f, 1.0f, 0.5f};
-            glm::uvec4 textureInfo {0u};
-            uint32_t   graphId {0};
-            uint32_t   alphaMode {0};
-            uint32_t   shadingModel {0};
-            uint32_t   flags {0};
+            resource::GpuMaterialModel model {resource::GpuMaterialModel::ePBRMetallicRoughness};
+            std::vector<std::byte>     bytes;
+            bool                       timeDependent {false};
         };
-
-        static_assert(sizeof(MaterialGraphSurfaceParams) % 16 == 0);
-
-        // MaterialParamsPBRMR now lives in vultra/function/material/material_params.hpp.
 
         void importPreparedFrameGraphUniforms(FrameGraph& fg, FrameRenderData& frameData, ViewRenderData& viewData)
         {
@@ -450,7 +449,7 @@ namespace vultra
 
             const auto output =
                 std::find_if(graph->nodes.begin(), graph->nodes.end(), [](const material_graph::Node& node) {
-                    return node.typeId == "vultra.output.surface";
+                    return material_graph::isSurfaceOutputType(node.typeId);
                 });
             if (output == graph->nodes.end())
                 return nullptr;
@@ -464,68 +463,129 @@ namespace vultra
             return &entry;
         }
 
-        [[nodiscard]] MaterialGraphSurfaceParams materialGraphSurfaceParams(IAssetService&   assets,
-                                                                            std::string_view materialGraphUri,
-                                                                            const uint32_t   graphId,
-                                                                            const uint64_t   contentRevision,
-                                                                            const float      timeSeconds,
-                                                                            const nlohmann::json* properties = nullptr,
-                                                                            bool*            timeDependent = nullptr)
+        template<typename T>
+        [[nodiscard]] std::vector<std::byte> materialParamsToBytes(const T& params)
         {
-            if (timeDependent)
-                *timeDependent = false;
-            MaterialGraphSurfaceParams params {};
-            params.graphId = graphId;
+            std::vector<std::byte> bytes(sizeof(T));
+            std::memcpy(bytes.data(), &params, sizeof(T));
+            return bytes;
+        }
+
+        // Reduces a constant-foldable material graph to the per-model GPU param block a
+        // hand-authored material of that model would produce. SG/Phong stay in their own
+        // authoring params (the shader collapses them to the metallic-roughness GBuffer
+        // at write time). Limitations vs the compiled eShaderMaterial path: constant ao is
+        // only carried by models whose block stores it (Toon); alphaMode/alphaCutoff are
+        // only carried by PBR-MR. Graphs needing per-pixel control use the compiled path.
+        [[nodiscard]] GraphConstantMaterial packGraphConstantMaterial(IAssetService&        assets,
+                                                                      std::string_view      materialGraphUri,
+                                                                      const uint64_t        contentRevision,
+                                                                      const float           timeSeconds,
+                                                                      const nlohmann::json* properties = nullptr)
+        {
+            GraphConstantMaterial out {};
 
             const auto* cached = cachedMaterialGraph(assets, materialGraphUri, contentRevision);
             if (!cached || !cached->graph || cached->outputIndex >= cached->graph->nodes.size())
-                return params;
+            {
+                out.bytes = materialParamsToBytes(MaterialParamsPBRMR {});
+                return out;
+            }
+            out.timeDependent = cached->timeDependent;
 
-            if (timeDependent)
-                *timeDependent = cached->timeDependent;
-
-            const auto& graph  = *cached->graph;
-            const auto& output = graph.nodes[cached->outputIndex];
-            params.textureInfo.x = materialGraphTextureIndex(assets, graph, output, "baseColor", properties);
-            params.alphaMode     = static_cast<uint32_t>(
-                material_graph::alphaModeFromString(output.params.value("alphaMode", std::string {"Opaque"})));
-            params.shadingModel = static_cast<uint32_t>(
-                material_graph::shadingModelFromString(output.params.value("shadingModel", std::string {"PBR_MR"})));
-
-            params.baseColor = jsonVec4(
+            const auto& graph     = *cached->graph;
+            const auto& output    = graph.nodes[cached->outputIndex];
+            const auto  baseColor = jsonVec4(
                 surfaceInputValue(
                     graph, output, "baseColor", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f}), timeSeconds, properties),
                 glm::vec4(1.0f));
             const glm::vec3 emissive = jsonVec3(
-                surfaceInputValue(
-                    graph, output, "emissive", nlohmann::json::array({0.0f, 0.0f, 0.0f}), timeSeconds, properties),
+                surfaceInputValue(graph, output, "emissive", nlohmann::json::array({0.0f, 0.0f, 0.0f}), timeSeconds, properties),
                 glm::vec3(0.0f));
-            params.emissiveAlpha = glm::vec4(
-                emissive,
-                glm::clamp(
-                    jsonFloat(surfaceInputValue(graph, output, "alpha", 1.0f, timeSeconds, properties), 1.0f), 0.0f, 1.0f));
-            params.metallicRoughnessAoCutoff = glm::vec4(
-                glm::clamp(
-                    jsonFloat(surfaceInputValue(graph, output, "metallic", 0.0f, timeSeconds, properties), 0.0f), 0.0f, 1.0f),
-                glm::clamp(
-                    jsonFloat(surfaceInputValue(graph, output, "roughness", 1.0f, timeSeconds, properties), 1.0f), 0.045f, 1.0f),
-                glm::clamp(jsonFloat(surfaceInputValue(graph, output, "ao", 1.0f, timeSeconds, properties), 1.0f), 0.0f, 1.0f),
-                glm::clamp(
-                    jsonFloat(surfaceInputValue(graph, output, "alphaCutoff", 0.5f, timeSeconds, properties), 0.5f), 0.0f, 1.0f));
-            if (params.shadingModel == static_cast<uint32_t>(material_graph::ShadingModel::ePBRSpecularGlossiness) ||
-                params.shadingModel == static_cast<uint32_t>(material_graph::ShadingModel::ePhong))
-                params.metallicRoughnessAoCutoff.x = 0.0f;
-            return params;
+            const float alpha = glm::clamp(
+                jsonFloat(surfaceInputValue(graph, output, "alpha", 1.0f, timeSeconds, properties), 1.0f), 0.0f, 1.0f);
+            const float alphaCutoff = glm::clamp(
+                jsonFloat(surfaceInputValue(graph, output, "alphaCutoff", 0.5f, timeSeconds, properties), 0.5f), 0.0f, 1.0f);
+            const auto alphaMode = static_cast<uint32_t>(
+                material_graph::alphaModeFromString(output.params.value("alphaMode", std::string {"Opaque"})));
+            const uint32_t baseColorTex = materialGraphTextureIndex(assets, graph, output, "baseColor", properties);
+            const float    ao           = glm::clamp(
+                jsonFloat(surfaceInputValue(graph, output, "ao", 1.0f, timeSeconds, properties), 1.0f), 0.0f, 1.0f);
+
+            const auto model = material_graph::shadingModelForOutputType(output.typeId);
+            if (model == material_graph::ShadingModel::ePBRSpecularGlossiness)
+            {
+                MaterialParamsPBRSG p {};
+                p.diffuseColor   = baseColor;
+                p.specularFactor = glm::vec3(jsonVec4(
+                    surfaceInputValue(graph, output, "specular", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f}), timeSeconds, properties),
+                    glm::vec4(1.0f)));
+                p.glossinessFactor = glm::clamp(
+                    jsonFloat(surfaceInputValue(graph, output, "glossiness", 1.0f, timeSeconds, properties), 1.0f), 0.0f, 1.0f);
+                p.diffuseColorTex = baseColorTex;
+                p.emissiveFactor  = glm::vec4(emissive, 1.0f);
+                out.model         = resource::GpuMaterialModel::ePBRSpecularGlossiness;
+                out.bytes         = materialParamsToBytes(p);
+            }
+            else if (model == material_graph::ShadingModel::ePhong)
+            {
+                MaterialParamsPhong p {};
+                p.diffuse           = baseColor;
+                const glm::vec3 spec = glm::vec3(jsonVec4(
+                    surfaceInputValue(graph, output, "specular", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f}), timeSeconds, properties),
+                    glm::vec4(1.0f)));
+                const float shininess = glm::max(
+                    jsonFloat(surfaceInputValue(graph, output, "shininess", 32.0f, timeSeconds, properties), 32.0f), 1.0f);
+                p.specularShininess = glm::vec4(spec, shininess);
+                p.diffuseTex        = baseColorTex;
+                p.emissiveFactor    = glm::vec4(emissive, 1.0f);
+                out.model           = resource::GpuMaterialModel::ePhong;
+                out.bytes           = materialParamsToBytes(p);
+            }
+            else if (model == material_graph::ShadingModel::eUnlit)
+            {
+                MaterialParamsUnlit p {};
+                p.color    = glm::vec4(glm::vec3(baseColor), baseColor.a * alpha);
+                p.colorTex = baseColorTex;
+                out.model  = resource::GpuMaterialModel::eUnlit;
+                out.bytes  = materialParamsToBytes(p);
+            }
+            else if (model == material_graph::ShadingModel::eToonLike)
+            {
+                MaterialParamsToon p {};
+                p.baseColor    = baseColor;
+                p.emissiveAo   = glm::vec4(emissive, ao);
+                p.baseColorTex = baseColorTex;
+                out.model      = resource::GpuMaterialModel::eToon;
+                out.bytes      = materialParamsToBytes(p);
+            }
+            else // PBR Metallic-Roughness (and custom, until the BXDF path resolves it)
+            {
+                MaterialParamsPBRMR p {};
+                p.baseColor      = baseColor;
+                p.metallicFactor = glm::clamp(
+                    jsonFloat(surfaceInputValue(graph, output, "metallic", 0.0f, timeSeconds, properties), 0.0f), 0.0f, 1.0f);
+                p.roughnessFactor = glm::clamp(
+                    jsonFloat(surfaceInputValue(graph, output, "roughness", 1.0f, timeSeconds, properties), 1.0f), 0.045f, 1.0f);
+                p.alphaCutoff    = alphaCutoff;
+                p.alphaMode      = alphaMode;
+                p.baseColorTex   = baseColorTex;
+                p.emissiveFactor = glm::vec4(emissive, 1.0f);
+                out.model        = resource::GpuMaterialModel::ePBRMetallicRoughness;
+                out.bytes        = materialParamsToBytes(p);
+            }
+            return out;
         }
 
-        void uploadMaterialGraphParams(resource::GpuResourcePool&        pool,
-                                       rhi::RenderDevice&                rd,
-                                       resource::GpuMaterial&            material,
-                                       const MaterialGraphSurfaceParams& params)
+        void uploadGraphConstantMaterial(resource::GpuResourcePool&    pool,
+                                         rhi::RenderDevice&            rd,
+                                         resource::GpuMaterial&        material,
+                                         const GraphConstantMaterial&  packed)
         {
-            if (material.blockOffsetBytes + sizeof(params) <= pool.materialParams.cpu.size())
+            const auto size = static_cast<uint32_t>(packed.bytes.size());
+            if (material.blockOffsetBytes + size <= pool.materialParams.cpu.size())
             {
-                std::memcpy(pool.materialParams.cpu.data() + material.blockOffsetBytes, &params, sizeof(params));
+                std::memcpy(pool.materialParams.cpu.data() + material.blockOffsetBytes, packed.bytes.data(), size);
                 if (pool.materialParams.gpu)
                 {
                     rd.uploadS(*pool.materialParams.gpu,
@@ -536,7 +596,7 @@ namespace vultra
             }
             else
             {
-                material.blockOffsetBytes = pool.materialParams.allocAndUpload(rd, &params, sizeof(params));
+                material.blockOffsetBytes = pool.materialParams.allocAndUpload(rd, packed.bytes.data(), size);
                 pool.materialTableDirty   = true;
                 pool.uploadMaterialTable(rd);
             }
@@ -555,14 +615,18 @@ namespace vultra
 
             auto&          pool    = gpuResources.pool();
             const auto      keyText = materialKey.empty() ? std::string(materialGraphUri) : std::string(materialKey);
-            const uint32_t graphId = material_graph::stableGraphId(materialGraphUri);
             const uint32_t materialInstanceId = material_graph::stableGraphId(keyText);
             const uint64_t contentRevision = gpuResources.contentRevision();
+
+            // Graph-derived constant materials now carry a real per-model GpuMaterialModel
+            // (identical to a hand-authored material). GpuMaterial.padding tags them so the
+            // cache below can find them without colliding with hand-authored materials of
+            // the same model. (padding is unused by the shaders.)
+            constexpr uint32_t kGraphConstantTag = 0xC0DEu;
             for (uint32_t i = 0; i < static_cast<uint32_t>(pool.materials.size()); ++i)
             {
                 auto& material = pool.materials[i];
-                if (material.model == resource::GpuMaterialModel::eMaterialGraph &&
-                    material.tableIndex == materialInstanceId)
+                if (material.padding == kGraphConstantTag && material.tableIndex == materialInstanceId)
                 {
                     struct MaterialGraphCacheEntry
                     {
@@ -570,7 +634,8 @@ namespace vultra
                         bool                       timeDependent {false};
                         float                      timeSeconds {std::numeric_limits<float>::quiet_NaN()};
                         uint32_t                   materialIndex {std::numeric_limits<uint32_t>::max()};
-                        MaterialGraphSurfaceParams params {};
+                        resource::GpuMaterialModel model {resource::GpuMaterialModel::eInvalid};
+                        std::vector<std::byte>     bytes;
                     };
                     static std::unordered_map<std::string, MaterialGraphCacheEntry> cache;
                     auto& cached = cache[keyText];
@@ -580,42 +645,42 @@ namespace vultra
                         cached.materialIndex == i && cached.timeSeconds == timeSeconds)
                         return i;
 
-                    bool       timeDependent = false;
-                    const auto params =
-                        materialGraphSurfaceParams(
-                            assets, materialGraphUri, graphId, contentRevision, timeSeconds, properties, &timeDependent);
-                    if (material.blockOffsetBytes + sizeof(params) <= pool.materialParams.cpu.size() &&
-                        std::memcmp(pool.materialParams.cpu.data() + material.blockOffsetBytes, &params, sizeof(params)) == 0)
+                    auto packed = packGraphConstantMaterial(assets, materialGraphUri, contentRevision, timeSeconds, properties);
+                    const auto size = static_cast<uint32_t>(packed.bytes.size());
+                    const bool blockUnchanged =
+                        material.model == packed.model &&
+                        material.blockOffsetBytes + size <= pool.materialParams.cpu.size() &&
+                        std::memcmp(pool.materialParams.cpu.data() + material.blockOffsetBytes, packed.bytes.data(), size) == 0;
+                    if (!blockUnchanged)
                     {
-                        cached = {
-                            .contentRevision = contentRevision,
-                            .timeDependent   = timeDependent,
-                            .timeSeconds     = timeSeconds,
-                            .materialIndex   = i,
-                            .params          = params,
-                        };
-                        return i;
+                        if (material.model != packed.model)
+                        {
+                            material.model          = packed.model;
+                            pool.materialTableDirty = true;
+                        }
+                        uploadGraphConstantMaterial(pool, rd, material, packed);
+                        if (pool.materialTableDirty)
+                            pool.uploadMaterialTable(rd);
                     }
-
-                    uploadMaterialGraphParams(pool, rd, material, params);
                     cached = {
                         .contentRevision = contentRevision,
-                        .timeDependent   = timeDependent,
+                        .timeDependent   = packed.timeDependent,
                         .timeSeconds     = timeSeconds,
                         .materialIndex   = i,
-                        .params          = params,
+                        .model           = packed.model,
+                        .bytes           = std::move(packed.bytes),
                     };
                     return i;
                 }
             }
 
-            const auto params =
-                materialGraphSurfaceParams(assets, materialGraphUri, graphId, contentRevision, timeSeconds, properties);
+            auto                  packed = packGraphConstantMaterial(assets, materialGraphUri, contentRevision, timeSeconds, properties);
             resource::GpuMaterial material;
-            material.model            = resource::GpuMaterialModel::eMaterialGraph;
-            material.blockOffsetBytes = pool.materialParams.allocAndUpload(rd, &params, sizeof(params));
+            material.model            = packed.model;
+            material.blockOffsetBytes = pool.materialParams.allocAndUpload(
+                rd, packed.bytes.data(), static_cast<uint32_t>(packed.bytes.size()));
             material.tableIndex       = materialInstanceId;
-            material.padding          = 0u;
+            material.padding          = kGraphConstantTag;
 
             const uint32_t index = static_cast<uint32_t>(pool.materials.size());
             pool.materials.push_back(material);

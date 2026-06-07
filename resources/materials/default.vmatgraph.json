@@ -697,8 +697,8 @@
             "displayName": "Metallic",
             "editor": {
                 "pos": [
-                    644.0,
-                    122.0
+                    648.0,
+                    112.0
                 ]
             },
             "id": "Metallic",
@@ -812,10 +812,9 @@
                     0.0
                 ],
                 "metallic": 0.0,
-                "roughness": 1.0,
-                "shadingModel": "PBR_MR"
+                "roughness": 1.0
             },
-            "typeId": "vultra.output.surface"
+            "typeId": "vultra.output.pbr_mr"
         }
     ],
     "version": 1

@@ -685,6 +685,7 @@ namespace vultra
             lua.set_function("RenderFeature", [](sol::table t) { return t; });
             lua.set_function("RenderGraphPass", [](sol::table t) { return t; });
             lua.set_function("ShaderLibrary", [](sol::table t) { return t; });
+            lua.set_function("ShadingModel", [](sol::table t) { return t; });
             return lua;
         }
 
@@ -1200,7 +1201,7 @@ namespace vultra
     };
 
     // =====================================================================
-    // Scripted render pass (Lua `setup` + `execute`) support — the standard for
+    // Scripted render pass (Lua `setup` + `execute`) support - the standard for
     // project render passes.
     //
     // A scripted pass lets Lua drive the FrameGraph builder and the command
@@ -3706,6 +3707,12 @@ namespace vultra
         if (!m_RendererKeyOverride.empty())
             m_Asset.rendererKey = m_RendererKeyOverride;
         m_Asset.shaderLibraries.try_emplace("project", "res://shaders/project.vshaderlib.lua");
+        m_ShadingModelRegistry.clear();
+        for (const auto& model : m_Asset.shadingModels)
+        {
+            const uint32_t code = m_ShadingModelRegistry.registerModel(model);
+            VULTRA_CORE_INFO("[DeclarativeRenderer] Registered custom shading model '{}' as code {}", model.name, code);
+        }
         loadScriptedPasses();
         return true;
     }
@@ -3745,6 +3752,20 @@ namespace vultra
             }
         }
 
+        // Custom shading models: `shadingModels = { ShadingModel{ ... }, ... }`.
+        sol::object modelsObj = table["shadingModels"];
+        if (modelsObj.is<sol::table>())
+        {
+            sol::table models = modelsObj.as<sol::table>();
+            for (const auto& [_, value] : models)
+            {
+                static_cast<void>(_);
+                material::ShadingModelDesc model;
+                if (value.is<sol::table>() && parseShadingModelTable(value.as<sol::table>(), model))
+                    outAsset.shadingModels.push_back(std::move(model));
+            }
+        }
+
         sol::object featuresObj = table["features"];
         if (!featuresObj.is<sol::table>())
             return true;
@@ -3780,6 +3801,20 @@ namespace vultra
                 outAsset.features.push_back(std::move(feature));
             }
         }
+        return true;
+    }
+
+    bool DeclarativeRenderer::parseShadingModelTable(sol::table table, material::ShadingModelDesc& outModel)
+    {
+        outModel.name = getString(table, "name");
+        if (outModel.name.empty())
+            return false;
+        outModel.bxdfLibrary  = getString(table, "bxdfLibrary", "project");
+        outModel.bxdfArtifact = getString(table, "bxdfArtifact");
+        outModel.bxdfFunction = getString(table, "bxdfFunction");
+        outModel.extraParamSize = static_cast<uint32_t>(std::max(0, getInt(table, "extraParamSize", 0)));
+        // defaultExtraParams (a typed param block) is left empty here; it is wired with
+        // the ShadingModelParamsBuffer when the forward custom-BXDF shading path lands.
         return true;
     }
 

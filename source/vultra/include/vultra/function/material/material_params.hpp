@@ -1,5 +1,6 @@
 #pragma once
 
+#include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
 #include <cstdint>
@@ -36,4 +37,58 @@ namespace vultra
         glm::vec4 emissiveFactor {0, 0, 0, 1};
     };
     static_assert(sizeof(MaterialParamsPBRMR) % 16 == 0);
+
+    // PBR specular-glossiness. The GBuffer is metallic-roughness shaped, so the
+    // shader (thin_gbuffer material_mra) collapses specular/glossiness to mra at
+    // write time and the deferred lighting reads mra.x as F0 for this model.
+    struct alignas(16) MaterialParamsPBRSG
+    {
+        glm::vec4 diffuseColor {1, 1, 1, 1};
+        glm::vec3 specularFactor {1, 1, 1};
+        float     glossinessFactor {1.0f};
+        uint32_t  diffuseColorTex {0};
+        uint32_t  specularGlossinessTex {0};
+        uint32_t  glossinessTex {0};
+        uint32_t  normalTex {0};
+        // Appended at offset 48 (GLSL loader reads it there). rgb = emissive; a unused.
+        glm::vec4 emissiveFactor {0, 0, 0, 1};
+    };
+    static_assert(sizeof(MaterialParamsPBRSG) % 16 == 0);
+
+    struct alignas(16) MaterialParamsUnlit
+    {
+        glm::vec4 color {1, 1, 1, 1};
+        uint32_t  colorTex {0};
+        uint32_t  pad0 {0};
+        uint32_t  pad1 {0};
+        uint32_t  pad2 {0};
+    };
+    static_assert(sizeof(MaterialParamsUnlit) % 16 == 0);
+
+    struct alignas(16) MaterialParamsPhong
+    {
+        glm::vec4 diffuse {1, 1, 1, 1};
+        glm::vec4 specularShininess {1, 1, 1, 32}; // xyz = specular, w = shininess
+        uint32_t  diffuseTex {0};
+        uint32_t  pad0 {0};
+        uint32_t  pad1 {0};
+        uint32_t  pad2 {0};
+        // Appended at offset 48 (GLSL loader reads it there). rgb = emissive; a unused.
+        glm::vec4 emissiveFactor {0, 0, 0, 1};
+    };
+    static_assert(sizeof(MaterialParamsPhong) % 16 == 0);
+
+    // Toon / cel shading. Lighting runs Cook-Torrance then quantizes, so it reads
+    // the metallic-roughness GBuffer like PBR-MR; this block only needs the authored
+    // surface color, emissive, and ambient occlusion (metallic/roughness are fixed).
+    struct alignas(16) MaterialParamsToon
+    {
+        glm::vec4 baseColor {1, 1, 1, 1};
+        glm::vec4 emissiveAo {0, 0, 0, 1}; // rgb = emissive color x strength, a = ambient occlusion
+        uint32_t  baseColorTex {0};
+        uint32_t  pad0 {0};
+        uint32_t  pad1 {0};
+        uint32_t  pad2 {0};
+    };
+    static_assert(sizeof(MaterialParamsToon) % 16 == 0);
 } // namespace vultra

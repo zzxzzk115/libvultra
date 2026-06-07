@@ -319,6 +319,27 @@ namespace vultra::material_graph
             node.inputs      = pinsFromJson(item.value("inputs", nlohmann::json::array()));
             node.outputs     = pinsFromJson(item.value("outputs", nlohmann::json::array()));
             node.editor      = item.value("editor", nlohmann::json::object());
+
+            // Migrate the legacy single output node (vultra.output.surface + a
+            // shadingModel param) to the per-model output node identity. Old
+            // .vmatgraph.json files keep loading; the shadingModel param is dropped.
+            if (node.typeId == "vultra.output.surface")
+            {
+                const auto model = shadingModelFromString(
+                    node.params.is_object() ? node.params.value("shadingModel", std::string {"PBR_MR"}) : std::string {"PBR_MR"});
+                switch (model)
+                {
+                    case ShadingModel::ePBRSpecularGlossiness: node.typeId = "vultra.output.pbr_sg"; break;
+                    case ShadingModel::ePhong:                 node.typeId = "vultra.output.phong";  break;
+                    case ShadingModel::eUnlit:                 node.typeId = "vultra.output.unlit";  break;
+                    case ShadingModel::eToonLike:              node.typeId = "vultra.output.toon";   break;
+                    case ShadingModel::ePBRMetallicRoughness:
+                    default:                                   node.typeId = "vultra.output.pbr_mr"; break;
+                }
+                if (node.params.is_object())
+                    node.params.erase("shadingModel");
+            }
+
             if (node.id.empty() || node.typeId.empty())
             {
                 addDiag(diagnostics, Diagnostic::Severity::eWarning, "Skipped node with missing id or type");

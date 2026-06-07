@@ -39,10 +39,10 @@ namespace
             .params      = {{"value", {0.25f, 0.5f, 0.75f, 1.0f}}},
         });
         graph.nodes.push_back(Node {
-            .typeId      = "vultra.output.surface",
+            .typeId      = "vultra.output.unlit",
             .id          = "out",
-            .displayName = "Surface Output",
-            .params      = {{"shadingModel", "Unlit"}, {"alphaMode", "Mask"}, {"alphaCutoff", 0.4f}},
+            .displayName = "Unlit",
+            .params      = {{"alphaMode", "Mask"}, {"alphaCutoff", 0.4f}},
         });
         graph.links.push_back(Link {
             .from = {.nodeId = "color", .pin = "value"},
@@ -81,7 +81,7 @@ int main()
             "domain": "surface",
             "nodes": [
                 {
-                    "typeId": "vultra.output.surface",
+                    "typeId": "vultra.output.pbr_mr",
                     "id": "out",
                     "params": {"baseColor": [1.0, 0.0, 0.0, 1.0]}
                 }
@@ -92,7 +92,7 @@ int main()
         auto                    graph = loadGraphFromText(text, &diagnostics);
         require(graph.has_value(), "graph JSON using typeId should load");
         require(graph->nodes.size() == 1, "typeId should keep the node");
-        require(graph->nodes.front().typeId == "vultra.output.surface", "typeId should populate node type");
+        require(graph->nodes.front().typeId == "vultra.output.pbr_mr", "typeId should populate node type");
     }
 
     {
@@ -101,7 +101,7 @@ int main()
             "domain": "surface",
             "nodes": [
                 {"typeId": "vultra.param.color", "id": "color"},
-                {"typeId": "vultra.output.surface", "id": "out"}
+                {"typeId": "vultra.output.pbr_mr", "id": "out"}
             ],
             "links": [
                 {
@@ -132,7 +132,7 @@ int main()
             "domain": "surface",
             "nodes": [
                 {"type": "vultra.param.color", "id": "color"},
-                {"type": "vultra.output.surface", "id": "out"}
+                {"type": "vultra.output.pbr_mr", "id": "out"}
             ],
             "links": [
                 {
@@ -160,6 +160,55 @@ int main()
         graph.nodes.push_back(Node {.typeId = "test.unknown", .id = "unknown"});
         const auto diagnostics = validateGraph(graph, makeBuiltinNodeRegistry());
         require(hasErrorFor(diagnostics, "unknown"), "unknown node should produce a node-scoped error");
+    }
+
+    {
+        // Legacy migration: the old single vultra.output.surface node is rewritten to
+        // the per-model output node identity from its (now-dropped) shadingModel param.
+        const auto text = R"json({
+            "version": 1, "domain": "surface",
+            "nodes": [ {"typeId": "vultra.output.surface", "id": "out",
+                        "params": {"shadingModel": "PBR_SpecGloss", "alphaMode": "Opaque"}} ],
+            "links": []
+        })json";
+        auto graph = loadGraphFromText(text);
+        require(graph.has_value(), "legacy surface-output graph should load");
+        require(graph->nodes.front().typeId == "vultra.output.pbr_sg",
+                "legacy surface output should migrate to the per-model node by shadingModel");
+        require(!graph->nodes.front().params.contains("shadingModel"),
+                "migration should drop the legacy shadingModel param");
+        const auto diagnostics = validateGraph(*graph, makeBuiltinNodeRegistry());
+        require(!hasErrorFor(diagnostics, "out"), "migrated output node should validate");
+    }
+
+    {
+        // A surface graph must contain exactly one output-family node.
+        Graph graph = makeColorOnlyGraph(); // already has one (unlit) output
+        graph.nodes.push_back(Node {.typeId = "vultra.output.pbr_mr", .id = "out2"});
+        const auto diagnostics = validateGraph(graph, makeBuiltinNodeRegistry());
+        bool       rejectedTwoOutputs = false;
+        for (const auto& d : diagnostics)
+            if (d.message.find("exactly one") != std::string::npos)
+                rejectedTwoOutputs = true;
+        require(rejectedTwoOutputs, "two surface output nodes should be rejected");
+    }
+
+    {
+        // Per-model codegen: a specular-glossiness output bakes the SG GBuffer code (2)
+        // and converts specular/glossiness into the metallic-roughness GBuffer shape.
+        Graph graph;
+        graph.version = 1;
+        graph.domain  = Domain::eSurface;
+        graph.nodes.push_back(Node {.typeId = "vultra.output.pbr_sg", .id = "out"});
+        MaterialGraphCompiler  compiler;
+        SurfaceFunctionBackend backend;
+        auto                   result = compiler.compile(
+            CompileInput {.graph = graph, .shaderId = "sg/test", .graphId = stableGraphId("res://sg.vmatgraph")}, backend);
+        require(result.has_value(), "specular-glossiness graph should compile");
+        require(result->vshaderSource.find("surface.shadingModel = 2u;") != std::string::npos,
+                "pbr_sg output should bake the PBR Specular-Glossiness GBuffer code (2)");
+        require(result->vshaderSource.find("1.0 - (") != std::string::npos,
+                "pbr_sg output should convert glossiness to roughness");
     }
 
     {
@@ -215,10 +264,9 @@ int main()
             .displayName = "Project Tint",
         });
         compileGraph.nodes.push_back(Node {
-            .typeId      = "vultra.output.surface",
+            .typeId      = "vultra.output.unlit",
             .id          = "out",
-            .displayName = "Surface Output",
-            .params      = {{"shadingModel", "Unlit"}},
+            .displayName = "Unlit",
         });
         compileGraph.links.push_back(Link {
             .from = {.nodeId = "color", .pin = "value"},
@@ -286,10 +334,9 @@ int main()
         compileGraph.nodes.push_back(Node {
             .typeId = "project.bxdf.sheen", .id = "sheen", .displayName = "Sheen Rim"});
         compileGraph.nodes.push_back(Node {
-            .typeId      = "vultra.output.surface",
+            .typeId      = "vultra.output.unlit",
             .id          = "out",
-            .displayName = "Surface Output",
-            .params      = {{"shadingModel", "Unlit"}},
+            .displayName = "Unlit",
         });
         compileGraph.links.push_back(Link {.from = {.nodeId = "tint", .pin = "value"},
                                            .to   = {.nodeId = "sheen", .pin = "tint"}});
@@ -383,10 +430,9 @@ int main()
             .params      = {{"multiplier", 1.25f}},
         });
         compileGraph.nodes.push_back(Node {
-            .typeId      = "vultra.output.surface",
+            .typeId      = "vultra.output.unlit",
             .id          = "out",
-            .displayName = "Surface Output",
-            .params      = {{"shadingModel", "Unlit"}},
+            .displayName = "Unlit",
         });
         compileGraph.links.push_back(Link {
             .from = {.nodeId = "color", .pin = "value"},
@@ -478,8 +524,8 @@ int main()
                 "compiled graph function should expose time input for dynamic material nodes");
         require(result->vshaderSource.find("surface.normalWS = normalize(normalWS);") != std::string::npos,
                 "unconnected surface normal should use normalWS fallback");
-        require(result->vshaderSource.find("surface.shadingModel = 1u;") != std::string::npos,
-                "unlit shading model should compile into surface metadata");
+        require(result->vshaderSource.find("surface.shadingModel = 3u;") != std::string::npos,
+                "unlit output node should bake the Unlit GBuffer model code (3)");
         require(result->vshaderSource.find("surface.alphaMode = 1u;") != std::string::npos,
                 "mask alpha mode should compile into surface metadata");
     }
@@ -502,8 +548,8 @@ int main()
                 "mesh-material fragment should hook the GBuffer pass via VULTRA_MATERIAL_MAIN");
         require(result->vshaderSource.find("eval_material_graph_folder_color_only_vmatgraph(0u,") != std::string::npos,
                 "wrapper should call the graph eval function");
-        require(result->vshaderSource.find("OUT.shadingModel = vultra_graph_to_gbuffer_model(") != std::string::npos,
-                "wrapper should remap the graph shading model to a GBuffer model code");
+        require(result->vshaderSource.find("OUT.shadingModel = s.shadingModel;") != std::string::npos,
+                "wrapper should pass through the per-model GBuffer model code baked by the output node");
     }
 
     {
@@ -561,8 +607,7 @@ int main()
         graph.nodes.push_back(Node {.typeId = "vultra.param.color", .id = "sheenTint",
                                     .params = {{"value", {0.6f, 0.8f, 1.0f, 1.0f}}}});
         graph.nodes.push_back(Node {.typeId = "project.bxdf.sheen", .id = "sheen"});
-        graph.nodes.push_back(Node {.typeId = "vultra.output.surface", .id = "out",
-                                    .params = {{"shadingModel", "PBR_MR"}}});
+        graph.nodes.push_back(Node {.typeId = "vultra.output.pbr_mr", .id = "out"});
         graph.links.push_back(Link {.from = {.nodeId = "cold", .pin = "value"}, .to = {.nodeId = "duo", .pin = "colorA"}});
         graph.links.push_back(Link {.from = {.nodeId = "hot", .pin = "value"}, .to = {.nodeId = "duo", .pin = "colorB"}});
         graph.links.push_back(Link {.from = {.nodeId = "duo", .pin = "out"}, .to = {.nodeId = "out", .pin = "baseColor"}});
