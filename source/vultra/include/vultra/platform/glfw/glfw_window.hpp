@@ -104,6 +104,12 @@ namespace vultra::platform::glfw
         bool        m_ShouldClose {false};
         glm::vec2   m_LastCursorPosition {};
         bool        m_HasLastCursorPosition {false};
+        // Borderless windows can't use glfwMaximizeWindow (it fills the whole monitor, covering the OS
+        // task bar). maximize() instead resizes to the monitor work area and tracks that here so
+        // restore() can return to the windowed rect and isMaximized() reports the right state.
+        bool        m_PseudoMaximized {false};
+        Extent      m_RestoreExtent {};
+        Position    m_RestorePosition {};
 
         GLFWwindow*                                                      m_WindowHandle {nullptr};
         std::array<GLFWcursor*, static_cast<size_t>(CursorType::eCount)> m_CursorHandles {};

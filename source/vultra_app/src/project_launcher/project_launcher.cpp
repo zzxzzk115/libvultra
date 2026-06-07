@@ -856,14 +856,16 @@ This directory is an index, not the runtime asset root.
             {
                 if (maximized)
                 {
+                    // Drop any legacy fullscreen state first, then un-maximize back to the windowed rect.
                     if (windowService->window().isFullscreen())
                         windowService->window().setFullscreen(false);
-                    else
-                        windowService->window().restore();
+                    windowService->window().restore();
                 }
                 else
                 {
-                    windowService->window().setFullscreen(true);
+                    // Real maximize (not a fullscreen hack): SDL sizes a borderless window to the
+                    // monitor work area, so the OS task bar stays visible.
+                    windowService->window().maximize();
                 }
             }
             ImGui::SameLine(0.0f, 0.0f);

@@ -110,6 +110,12 @@ namespace vultra::platform::sdl
         bool        m_Visible {true};
         bool        m_ShouldClose {false};
         bool        m_IsMinimized {false};
+        // Borderless windows can't use SDL_MaximizeWindow (it fills the whole display, covering the OS
+        // task bar). maximize() instead resizes to the display work area and tracks that here so
+        // restore() can return to the windowed rect and isMaximized() reports the right state.
+        bool        m_PseudoMaximized {false};
+        Extent      m_RestoreExtent {};
+        Position    m_RestorePosition {};
 
         SDL_Window*              m_WindowHandle {nullptr};
         std::array<SDL_Cursor*, static_cast<size_t>(CursorType::eCount)> m_CursorHandles {};

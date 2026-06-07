@@ -533,6 +533,8 @@ namespace vultra::platform::glfw
 #if defined(__EMSCRIPTEN__)
         return false;
 #else
+        if (m_PseudoMaximized)
+            return true;
         return m_WindowHandle != nullptr && glfwGetWindowAttrib(m_WindowHandle, GLFW_MAXIMIZED) == GLFW_TRUE;
 #endif
     }
@@ -639,14 +641,72 @@ namespace vultra::platform::glfw
 
     void GLFWWindow::maximize()
     {
-        if (m_WindowHandle)
-            glfwMaximizeWindow(m_WindowHandle);
+        if (!m_WindowHandle)
+            return;
+
+#if !defined(__EMSCRIPTEN__)
+        // For a borderless window, glfwMaximizeWindow fills the whole monitor, covering the OS task
+        // bar -- and since the renderer clears to an opaque background, that strip just shows up as a
+        // solid block over where the task bar should be. Instead, size the window to the monitor work
+        // area (which excludes the task bar) and remember the windowed rect so restore() can return to
+        // it. Decorated windows keep the native maximize.
+        if (!m_Decorated)
+        {
+            GLFWmonitor* targetMonitor   = nullptr;
+            int          monitorCount    = 0;
+            GLFWmonitor** monitors       = glfwGetMonitors(&monitorCount);
+            const int     windowCenterX  = m_Position.x + m_Extent.x / 2;
+            const int     windowCenterY  = m_Position.y + m_Extent.y / 2;
+            for (int i = 0; monitors != nullptr && i < monitorCount; ++i)
+            {
+                int mx = 0, my = 0, mw = 0, mh = 0;
+                glfwGetMonitorWorkarea(monitors[i], &mx, &my, &mw, &mh);
+                if (windowCenterX >= mx && windowCenterX < mx + mw && windowCenterY >= my && windowCenterY < my + mh)
+                {
+                    targetMonitor = monitors[i];
+                    break;
+                }
+            }
+            if (!targetMonitor)
+                targetMonitor = glfwGetPrimaryMonitor();
+
+            if (targetMonitor)
+            {
+                int mx = 0, my = 0, mw = 0, mh = 0;
+                glfwGetMonitorWorkarea(targetMonitor, &mx, &my, &mw, &mh);
+                if (mw > 0 && mh > 0)
+                {
+                    if (!m_PseudoMaximized)
+                    {
+                        m_RestoreExtent   = m_Extent;
+                        m_RestorePosition = m_Position;
+                    }
+                    m_PseudoMaximized = true;
+                    setPosition({mx, my});
+                    setExtent({mw, mh});
+                    return;
+                }
+            }
+        }
+#endif
+
+        glfwMaximizeWindow(m_WindowHandle);
     }
 
     void GLFWWindow::restore()
     {
-        if (m_WindowHandle)
-            glfwRestoreWindow(m_WindowHandle);
+        if (!m_WindowHandle)
+            return;
+
+        if (m_PseudoMaximized)
+        {
+            m_PseudoMaximized = false;
+            setPosition(m_RestorePosition);
+            setExtent(m_RestoreExtent);
+            return;
+        }
+
+        glfwRestoreWindow(m_WindowHandle);
     }
 
     void GLFWWindow::applyCursorVisibility()

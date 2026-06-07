@@ -475,6 +475,8 @@ namespace vultra::platform::sdl
 
     bool SDLWindow::isMaximized() const
     {
+        if (m_PseudoMaximized)
+            return true;
         return m_WindowHandle != nullptr && (SDL_GetWindowFlags(m_WindowHandle) & SDL_WINDOW_MAXIMIZED) != 0;
     }
 
@@ -747,14 +749,53 @@ namespace vultra::platform::sdl
 
     void SDLWindow::maximize()
     {
-        if (m_WindowHandle)
-            SDL_MaximizeWindow(m_WindowHandle);
+        if (!m_WindowHandle)
+            return;
+
+        // For a borderless window, SDL_MaximizeWindow fills the entire display, covering the OS task
+        // bar -- and since the renderer clears to an opaque background, that strip just shows up as a
+        // solid block over where the task bar should be. Instead, size the window to the display's
+        // usable bounds (the work area, which excludes the task bar) and remember the windowed rect so
+        // restore() can return to it. Decorated windows keep the native maximize.
+        if (!m_Decorated)
+        {
+            if (!m_PseudoMaximized)
+            {
+                m_RestoreExtent   = m_Extent;
+                m_RestorePosition = m_Position;
+            }
+
+            SDL_DisplayID display = SDL_GetDisplayForWindow(m_WindowHandle);
+            if (display == 0)
+                display = SDL_GetPrimaryDisplay();
+
+            SDL_Rect usable {};
+            if (SDL_GetDisplayUsableBounds(display, &usable))
+            {
+                m_PseudoMaximized = true;
+                setPosition({usable.x, usable.y});
+                setExtent({usable.w, usable.h});
+                return;
+            }
+        }
+
+        SDL_MaximizeWindow(m_WindowHandle);
     }
 
     void SDLWindow::restore()
     {
-        if (m_WindowHandle)
-            SDL_RestoreWindow(m_WindowHandle);
+        if (!m_WindowHandle)
+            return;
+
+        if (m_PseudoMaximized)
+        {
+            m_PseudoMaximized = false;
+            setPosition(m_RestorePosition);
+            setExtent(m_RestoreExtent);
+            return;
+        }
+
+        SDL_RestoreWindow(m_WindowHandle);
     }
 
     void SDLWindow::shutdown() { SDL_Quit(); }
