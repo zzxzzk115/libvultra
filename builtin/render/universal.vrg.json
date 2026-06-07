@@ -8,6 +8,12 @@
             367.0
           ]
         },
+        "Bloom": {
+          "pos": [
+            2766.0,
+            -360.0
+          ]
+        },
         "DeferredLighting": {
           "pos": [
             1134.0,
@@ -153,6 +159,7 @@
         "ao": "Ssao.ao",
         "color": "DirectGBuffer.color",
         "depth": "DirectGBuffer.depth",
+        "emissive": "DirectGBuffer.emissive",
         "material": "DirectGBuffer.material",
         "normal": "DirectGBuffer.normal",
         "shadowData": "ShadowMap.shadowData",
@@ -221,9 +228,25 @@
     },
     {
       "enabled": true,
-      "id": "ToneMapping",
+      "id": "Bloom",
       "inputs": {
         "source": "SsrComposite.color"
+      },
+      "params": {
+        "enabled": true,
+        "intensity": 0.6,
+        "iterations": 1,
+        "knee": 0.5,
+        "scale": 1.0,
+        "threshold": 1.0
+      },
+      "type": "Bloom"
+    },
+    {
+      "enabled": true,
+      "id": "ToneMapping",
+      "inputs": {
+        "source": "Bloom.color"
       },
       "params": {
         "enabled": true,

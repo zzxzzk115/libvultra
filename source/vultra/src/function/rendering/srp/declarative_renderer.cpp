@@ -27,6 +27,8 @@
 #include "vultra/function/rendering/srp/builtin/passes/final_composition_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/fxaa_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/general_gaussian_splat_foveated_composite_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/bloom_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/gaussian_blur_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/general_gaussian_splat_preprocess_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/general_gaussian_splat_render_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/hzb_generate_pass.hpp"
@@ -736,28 +738,22 @@ namespace vultra
         }
     } // namespace
 
-    void registerBuiltinRenderGraphPasses(vrendergraph::RenderGraphRegistry& registry)
+    namespace
     {
-        const auto noop =
-            [](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext&) {};
-        const auto pass = [&](std::string                          type,
-                              std::vector<std::string>             inputs,
-                              std::vector<std::string>             outputs,
-                              std::vector<vrendergraph::ParamDesc> params = {}) {
-            if (registry.contains(type))
-                return;
-            registry.registerPass(vrendergraph::PassDefinition {
-                .type    = std::move(type),
-                .setup   = noop,
-                .inputs  = std::move(inputs),
-                .outputs = std::move(outputs),
-                .params  = std::move(params),
-            });
-        };
-
+        // Single source of truth for the builtin render-graph pass catalog: every pass type's
+        // input/output slot names and parameter descriptors. Both the editor-facing registry
+        // (registerBuiltinRenderGraphPasses) and the runtime renderer's registry derive their
+        // port/param layout from here, so a slot only ever needs to be declared once.
+        //
+        // `pass` is any callable of the shape
+        //   (std::string type, std::vector<std::string> inputs, std::vector<std::string> outputs,
+        //    std::vector<vrendergraph::ParamDesc> params = {})
+        template<typename PassFn>
+        void declareBuiltinRenderGraphPasses(PassFn&& pass)
+        {
         pass("CameraClear", {}, {"color"});
         pass("CompatibilityBaseColor", {}, {"color"});
-        pass("DirectGBuffer", {"depth"}, {"color", "depth", "normal", "material", "entityId"});
+        pass("DirectGBuffer", {"depth"}, {"color", "depth", "normal", "material", "emissive", "entityId"});
         pass("DirectDepthPre", {}, {"depth"});
         pass("DepthPre", {}, {"depth"});
         pass("ShadowMap",
@@ -777,7 +773,9 @@ namespace vultra
                  {.name = "normalBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.015f},
                  {.name = "pcssLightRadius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.5f},
              });
-        pass("DeferredLighting", {"color", "normal", "material", "depth", "ao", "shadowMap", "shadowData"}, {"color"});
+        pass("DeferredLighting",
+             {"color", "normal", "material", "emissive", "depth", "ao", "shadowMap", "shadowData"},
+             {"color"});
         pass("HzbGenerate", {"depth"}, {"hzb"});
         pass("Ssao",
              {"depth", "normal"},
@@ -800,6 +798,25 @@ namespace vultra
              {"source", "reflection"},
              {"color"},
              {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
+        pass("GaussianBlur",
+             {"source"},
+             {"color"},
+             {
+                 {.name = "scale", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f},
+                 // direction: 0 = both (horizontal then vertical), 1 = horizontal only, 2 = vertical only
+                 {.name = "direction", .type = vrendergraph::ParamType::eInt, .defaultValue = 0},
+             });
+        pass("Bloom",
+             {"source"},
+             {"color"},
+             {
+                 {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                 {.name = "threshold", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f},
+                 {.name = "knee", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.5f},
+                 {.name = "intensity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.6f},
+                 {.name = "scale", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f},
+                 {.name = "iterations", .type = vrendergraph::ParamType::eInt, .defaultValue = 1},
+             });
         pass("ToneMapping",
              {"source"},
              {"color"},
@@ -837,7 +854,7 @@ namespace vultra
         pass("FinalComposition", {"source"}, {"target"});
         pass("RayTracingPrimary", {}, {"color"});
         pass("VisibilityBuffer", {}, {"visibility", "depth"});
-        pass("ThinGBuffer", {"visibility", "depth"}, {"color", "normal", "material", "depth", "entityId"});
+        pass("ThinGBuffer", {"visibility", "depth"}, {"color", "normal", "material", "emissive", "depth", "entityId"});
         pass("CoarseInstanceCull", {}, {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"});
         pass("MeshletCull",
              {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"},
@@ -870,6 +887,27 @@ namespace vultra
         pass("GeneralGaussianSplatComposite", {"source"}, {"color"});
         pass("GeneralGaussianSplatFoveatedComposite", {"fovea", "mid", "outer", "base"}, {"color"});
         pass("ParticleRender", {"source", "depth"}, {"color"});
+        }
+    } // namespace
+
+    void registerBuiltinRenderGraphPasses(vrendergraph::RenderGraphRegistry& registry)
+    {
+        const auto noop =
+            [](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext&) {};
+        declareBuiltinRenderGraphPasses([&](std::string                          type,
+                                            std::vector<std::string>             inputs,
+                                            std::vector<std::string>             outputs,
+                                            std::vector<vrendergraph::ParamDesc> params = {}) {
+            if (registry.contains(type))
+                return;
+            registry.registerPass(vrendergraph::PassDefinition {
+                .type    = std::move(type),
+                .setup   = noop,
+                .inputs  = std::move(inputs),
+                .outputs = std::move(outputs),
+                .params  = std::move(params),
+            });
+        });
     }
 
     class DeclarativeRenderer::FullscreenPassRuntime
@@ -2318,21 +2356,40 @@ namespace vultra
                 });
             }
 
-            const auto registerBuiltin = [this](std::string               type,
-                                                std::vector<std::string>  inputs,
-                                                std::vector<std::string>  outputs,
-                                                vrendergraph::PassSetupFn setup) {
-                m_Registry.registerPass(vrendergraph::PassDefinition {
-                    .type    = std::move(type),
-                    .setup   = std::move(setup),
-                    .inputs  = std::move(inputs),
-                    .outputs = std::move(outputs),
-                });
+            // Port/param layout comes from the single-source declareBuiltinRenderGraphPasses()
+            // catalog; here we only attach the runtime setup callback by pass type.
+            std::unordered_map<std::string, vrendergraph::PassDefinition> builtinSpecs;
+            declareBuiltinRenderGraphPasses([&builtinSpecs](std::string                          type,
+                                                            std::vector<std::string>             inputs,
+                                                            std::vector<std::string>             outputs,
+                                                            std::vector<vrendergraph::ParamDesc> params = {}) {
+                vrendergraph::PassDefinition def {};
+                def.type    = type;
+                def.inputs  = std::move(inputs);
+                def.outputs = std::move(outputs);
+                def.params  = std::move(params);
+                builtinSpecs.emplace(std::move(type), std::move(def));
+            });
+
+            const auto registerBuiltin = [this, &builtinSpecs](std::string               type,
+                                                               vrendergraph::PassSetupFn setup) {
+                // A scripted/custom pass of the same name registered earlier wins.
+                if (m_Registry.contains(type))
+                    return;
+                const auto it = builtinSpecs.find(type);
+                if (it == builtinSpecs.end())
+                {
+                    VULTRA_CORE_ERROR("[DeclarativeRenderer] No port spec for builtin pass '{}' "
+                                      "(declare it in declareBuiltinRenderGraphPasses)",
+                                      type);
+                    return;
+                }
+                auto def  = it->second;
+                def.setup = std::move(setup);
+                m_Registry.registerPass(std::move(def));
             };
 
             registerBuiltin("CameraClear",
-                            {},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -2378,8 +2435,6 @@ namespace vultra
                             });
 
             registerBuiltin("CompatibilityBaseColor",
-                            {},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -2396,8 +2451,6 @@ namespace vultra
                             });
 
             registerBuiltin("DirectGBuffer",
-                            {"depth"},
-                            {"color", "depth", "normal", "material", "entityId"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -2423,6 +2476,8 @@ namespace vultra
                                     passCtx.setOutput("normal", res);
                                 if (auto res = ctx->data.tryGet(kResKey_GBufferMaterial))
                                     passCtx.setOutput("material", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GBufferEmissive))
+                                    passCtx.setOutput("emissive", res);
                                 if (auto res = ctx->data.tryGet(kResKey_GBufferEntityId))
                                     passCtx.setOutput("entityId", res);
                                 else
@@ -2431,9 +2486,7 @@ namespace vultra
 
             const auto registerDirectDepthPre = [this, &registerBuiltin](std::string_view type) {
                 registerBuiltin(std::string(type),
-                                {},
-                                {"depth"},
-                                [this](FrameGraph&,
+                            [this](FrameGraph&,
                                        FrameGraphBlackboard&,
                                        const vrendergraph::ParamBlock&,
                                        vrendergraph::PassBuildContext& passCtx) {
@@ -2452,11 +2505,8 @@ namespace vultra
             registerDirectDepthPre("DirectDepthPre");
             registerDirectDepthPre("DepthPre");
 
-            registerBuiltin(
-                "ShadowMap",
-                {},
-                {"shadowMap", "shadowData"},
-                [this](FrameGraph&,
+            registerBuiltin("ShadowMap",
+                            [this](FrameGraph&,
                        FrameGraphBlackboard&,
                        const vrendergraph::ParamBlock& params,
                        vrendergraph::PassBuildContext& passCtx) {
@@ -2494,11 +2544,8 @@ namespace vultra
                         passCtx.setOutput("shadowData", shadow.shadowData);
                 });
 
-            registerBuiltin(
-                "DeferredLighting",
-                {"color", "normal", "material", "depth", "ao", "shadowMap", "shadowData"},
-                {"color"},
-                [this](FrameGraph&,
+            registerBuiltin("DeferredLighting",
+                            [this](FrameGraph&,
                        FrameGraphBlackboard&,
                        const vrendergraph::ParamBlock& params,
                        vrendergraph::PassBuildContext& passCtx) {
@@ -2574,6 +2621,7 @@ namespace vultra
                                                                 passCtx.getInput("color"),
                                                                 passCtx.getInput("normal"),
                                                                 passCtx.getInput("material"),
+                                                                passCtx.getInput("emissive"),
                                                                 passCtx.getInput("depth"),
                                                                 passCtx.getInput("ao"),
                                                                 passCtx.getInput("shadowMap"),
@@ -2606,8 +2654,6 @@ namespace vultra
                 });
 
             registerBuiltin("SsrComposite",
-                            {"source", "reflection"},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock& params,
@@ -2632,8 +2678,6 @@ namespace vultra
                             });
 
             registerBuiltin("HzbGenerate",
-                            {"depth"},
-                            {"hzb"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -2647,8 +2691,6 @@ namespace vultra
                             });
 
             registerBuiltin("Ssao",
-                            {"depth", "normal"},
-                            {"ao"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock& params,
@@ -2681,8 +2723,6 @@ namespace vultra
                             });
 
             registerBuiltin("Ssr",
-                            {"color", "depth", "normal", "material"},
-                            {"reflection"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock& params,
@@ -2720,8 +2760,6 @@ namespace vultra
                             });
 
             registerBuiltin("Fxaa",
-                            {"source"},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock& params,
@@ -2742,9 +2780,58 @@ namespace vultra
                                 }
                             });
 
+            registerBuiltin("GaussianBlur",
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock& params,
+                                   vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                const auto  source    = passCtx.getInput("source");
+                                const float scale     = params.get<float>("scale", 1.0f);
+                                const int   direction = params.get<int>("direction", 0);
+                                FrameGraphResource color {};
+                                if (direction == 1)
+                                    color = m_GaussianBlurPass.addPass(*ctx, source, scale, true);
+                                else if (direction == 2)
+                                    color = m_GaussianBlurPass.addPass(*ctx, source, scale, false);
+                                else
+                                    color = m_GaussianBlurPass.addPass(*ctx, source, scale);
+                                if (color)
+                                    passCtx.setOutput("color", color);
+                            });
+
+            registerBuiltin("Bloom",
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock& params,
+                                   vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                if (!params.get<bool>("enabled", true))
+                                {
+                                    passCtx.setOutput("color", passCtx.getInput("source"));
+                                    return;
+                                }
+                                auto color = m_BloomPass.addPass(*ctx,
+                                                                 passCtx.getInput("source"),
+                                                                 params.get<float>("threshold", 1.0f),
+                                                                 params.get<float>("knee", 0.5f),
+                                                                 params.get<float>("intensity", 0.6f),
+                                                                 params.get<float>("scale", 1.0f),
+                                                                 params.get<int>("iterations", 1));
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                                        ctx->data.set(kResKey_StereoColor, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                            });
+
             registerBuiltin("ToneMapping",
-                            {"source"},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock& params,
@@ -2771,8 +2858,6 @@ namespace vultra
                             });
 
             registerBuiltin("SelectionOutline",
-                            {"source", "entityId", "depth"},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock& params,
@@ -2808,8 +2893,6 @@ namespace vultra
                             });
 
             registerBuiltin("DebugDraw",
-                            {"source", "depth"},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock& params,
@@ -2847,8 +2930,6 @@ namespace vultra
                             });
 
             registerBuiltin("UiOverlay",
-                            {"source"},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock& params,
@@ -2878,8 +2959,6 @@ namespace vultra
                             });
 
             registerBuiltin("XrGeometryWarp",
-                            {"source", "depth"},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock& params,
@@ -2912,8 +2991,6 @@ namespace vultra
                             });
 
             registerBuiltin("XrPullPushInpaint",
-                            {"source"},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock& params,
@@ -2940,8 +3017,6 @@ namespace vultra
                             });
 
             registerBuiltin("FinalComposition",
-                            {"source"},
-                            {"target"},
                             [this](FrameGraph& fg,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -2970,8 +3045,6 @@ namespace vultra
                             });
 
             registerBuiltin("RayTracingPrimary",
-                            {},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -2988,8 +3061,6 @@ namespace vultra
                             });
 
             registerBuiltin("VisibilityBuffer",
-                            {},
-                            {"visibility", "depth"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -3005,8 +3076,6 @@ namespace vultra
                             });
 
             registerBuiltin("ThinGBuffer",
-                            {"visibility", "depth"},
-                            {"color", "normal", "material", "depth", "entityId"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -3021,6 +3090,8 @@ namespace vultra
                                     passCtx.setOutput("normal", res);
                                 if (auto res = ctx->data.tryGet(kResKey_GBufferMaterial))
                                     passCtx.setOutput("material", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GBufferEmissive))
+                                    passCtx.setOutput("emissive", res);
                                 passCtx.setOutput("depth", passCtx.getInput("depth"));
                                 if (auto res = ctx->data.tryGet(kResKey_GBufferEntityId))
                                     passCtx.setOutput("entityId", res);
@@ -3029,8 +3100,6 @@ namespace vultra
                             });
 
             registerBuiltin("CoarseInstanceCull",
-                            {},
-                            {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -3048,8 +3117,6 @@ namespace vultra
                             });
 
             registerBuiltin("MeshletCull",
-                            {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"},
-                            {"visibleMeshlet", "visibleMeshletCount"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -3065,15 +3132,6 @@ namespace vultra
                             });
 
             registerBuiltin("BuildIndirect",
-                            {"visibleMeshlet", "visibleMeshletCount"},
-                            {"draw",
-                             "instance",
-                             "meshTable",
-                             "transform",
-                             "meshlets",
-                             "visibleMeshlet",
-                             "visibleMeshletCount",
-                             "materialTable"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -3101,8 +3159,6 @@ namespace vultra
                             });
 
             registerBuiltin("DrawsetBuild",
-                            {"draw", "meshlets"},
-                            {"draw", "meshlets", "indirect", "drawSet"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -3122,8 +3178,6 @@ namespace vultra
                             });
 
             registerBuiltin("MeshletHiZCull",
-                            {},
-                            {"visibleMeshlet", "visibleMeshletCount"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -3139,17 +3193,6 @@ namespace vultra
                             });
 
             registerBuiltin("GeneralGaussianSplatPreprocess",
-                            {},
-                            {"draw",
-                             "packedSource",
-                             "selectedSource",
-                             "visibleSplat",
-                             "sortKey",
-                             "sortIndex",
-                             "visibleCount",
-                             "indirect",
-                             "sortStorage",
-                             "sh"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -3181,8 +3224,6 @@ namespace vultra
                             });
 
             registerBuiltin("GeneralGaussianSplatRender",
-                            {},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -3199,8 +3240,6 @@ namespace vultra
                             });
 
             registerBuiltin("GeneralGaussianSplatComposite",
-                            {"source"},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -3232,8 +3271,6 @@ namespace vultra
                             });
 
             registerBuiltin("GeneralGaussianSplatFoveatedComposite",
-                            {"fovea", "mid", "outer", "base"},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -3254,8 +3291,6 @@ namespace vultra
                             });
 
             registerBuiltin("ParticleRender",
-                            {"source", "depth"},
-                            {"color"},
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock&,
@@ -3343,6 +3378,8 @@ namespace vultra
         SsaoPass                                                                m_SsaoPass;
         SsrPass                                                                 m_SsrPass;
         SsrCompositePass                                                        m_SsrCompositePass;
+        GaussianBlurPass                                                        m_GaussianBlurPass;
+        BloomPass                                                               m_BloomPass;
         FxaaPass                                                                m_FxaaPass;
         ToneMappingPass                                                         m_ToneMappingPass;
         SelectionOutlinePass                                                    m_SelectionOutlinePass;
