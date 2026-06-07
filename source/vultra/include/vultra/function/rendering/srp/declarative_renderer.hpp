@@ -61,25 +61,27 @@ namespace vultra
             std::vector<FullscreenPass> fullscreenPasses;
         };
 
-        struct ProjectGraphPass
+        // A fully script-authored render graph pass: Lua supplies `setup` and
+        // `execute` closures that drive the FrameGraph builder and the command
+        // recorder directly (see LuaPassBuildContext / LuaPassExecContext). This is
+        // the standard for project render passes.
+        struct ScriptedPassDef
         {
-            enum class Pipeline
-            {
-                eGraphics,
-                eCompute,
-                eRayTracing,
-            };
-
-            std::string type;
-            Pipeline    pipeline {Pipeline::eGraphics};
-            FullscreenPass fullscreen;
-            ShaderRef      shader;
-            std::vector<std::string> inputs;
-            std::vector<std::string> outputs;
-            uint32_t dispatchX {1};
-            uint32_t dispatchY {1};
-            uint32_t dispatchZ {1};
-            bool     dispatchByOutputSize {false};
+            std::string                          type;
+            std::vector<std::string>             inputs;
+            std::vector<std::string>             outputs;
+            std::vector<vrendergraph::ParamDesc> params;
+            sol::protected_function              setup;
+            sol::protected_function              execute;
+            // Optional static shader hint (from a `shader` table) used only to
+            // auto-expose the shader's reflected params on the graph node. The
+            // actual shader is still selected in `setup`.
+            std::string reflectLibrary;
+            std::string reflectFragment;
+            std::string reflectCompute;
+            // Source .lua logical path (res://...), used to key shader-resolution
+            // diagnostics back to the authoring file in the code editor.
+            std::string sourcePath;
         };
 
         struct PipelineAsset
@@ -88,20 +90,24 @@ namespace vultra
             std::unordered_map<std::string, std::string> shaderLibraries;
             std::vector<std::string>                     renderGraphs;
             std::vector<Feature>                         features;
-            std::vector<ProjectGraphPass>                 projectGraphPasses;
+            std::vector<ScriptedPassDef>                  scriptedPasses;
         };
 
         class FullscreenPassRuntime;
-        class ComputePassRuntime;
         class RenderGraphRuntime;
         struct RuntimeFeature;
+
+        // Lazily-created, renderer-lifetime sol::state that hosts scripted-pass
+        // closures. Kept persistent (unlike the throwaway makeAssetLuaState) so the
+        // captured `setup`/`execute` sol::functions stay valid across frames.
+        sol::state& renderScriptState();
 
         bool loadPipelineAsset();
         bool loadFeatureAsset(std::string_view uri, Feature& outFeature);
         bool parsePipelineTable(sol::table table, PipelineAsset& outAsset);
         bool parseFeatureTable(sol::table table, Feature& outFeature);
-        bool parseProjectGraphPassTable(sol::table table, ProjectGraphPass& outPass);
-        void loadProjectGraphPasses();
+        bool parseScriptedPassTable(sol::table table, ScriptedPassDef& outPass);
+        void loadScriptedPasses();
         bool loadShaderLibraries();
         bool buildRuntimeFeatures();
 
@@ -109,6 +115,10 @@ namespace vultra
         std::string m_PipelineUri;
         std::string m_RendererKeyOverride;
         std::string m_RendererKey {"custom"};
+
+        // Declared before m_Asset so it is destroyed AFTER it: m_Asset.scriptedPasses
+        // holds sol::protected_function handles that must outlive their owning state.
+        std::unique_ptr<sol::state> m_RenderScriptState;
 
         PipelineAsset m_Asset;
         std::vector<std::unique_ptr<RuntimeFeature>> m_RuntimeFeatures;

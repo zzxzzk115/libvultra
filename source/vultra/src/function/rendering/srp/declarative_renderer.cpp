@@ -59,6 +59,8 @@
 #include <vbase/core/hash.hpp>
 
 #include <algorithm>
+#include <atomic>
+#include <cassert>
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
@@ -67,6 +69,8 @@
 #include <fstream>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -1157,202 +1161,781 @@ namespace vultra
         std::unordered_map<uint64_t, rhi::GraphicsPipeline> m_Pipelines;
     };
 
-    class DeclarativeRenderer::ComputePassRuntime
+    // =====================================================================
+    // Scripted render pass (Lua `setup` + `execute`) support — the standard for
+    // project render passes.
+    //
+    // A scripted pass lets Lua drive the FrameGraph builder and the command
+    // recorder directly through LuaPassBuildContext / LuaPassExecContext. The
+    // closures live in DeclarativeRenderer::m_RenderScriptState (persistent), so
+    // they stay valid across frames.
+    // =====================================================================
+    namespace
     {
-    public:
-        explicit ComputePassRuntime(ProjectGraphPass desc, rhi::ShaderLibraryRuntime* shaderLibrary) :
-            m_Desc(std::move(desc)), m_ShaderLibrary(shaderLibrary)
-        {}
+        // Monotonic per-(pass,frame) tag used to reject FrameGraph handles that a
+        // script stashed and tried to reuse outside the setup call that made them.
+        std::atomic<uint64_t> s_ScriptedPassGeneration {0};
+        // Thread that owns the render-script sol::state (Option A invariant:
+        // framegraph execute, hence scripted execute, runs on this same thread).
+        std::thread::id s_RenderScriptThreadId {};
 
-        void update(ProjectGraphPass desc, rhi::ShaderLibraryRuntime* shaderLibrary)
+        void assertRenderScriptThread()
         {
-            const bool pipelineKeyChanged = shaderLibrary != m_ShaderLibrary ||
-                                            desc.shader.library != m_Desc.shader.library ||
-                                            desc.shader.compute != m_Desc.shader.compute;
-            m_Desc          = std::move(desc);
-            m_ShaderLibrary = shaderLibrary;
-            if (pipelineKeyChanged)
-                m_Pipeline.reset();
+            assert((s_RenderScriptThreadId == std::thread::id {} ||
+                    std::this_thread::get_id() == s_RenderScriptThreadId) &&
+                   "scripted pass execute must run on the render-script thread");
         }
 
-        void invalidatePipelines() { m_Pipeline.reset(); }
-
-        FrameGraphResource addPass(FrameGraphBuildContext&             ctx,
-                                   std::vector<FrameGraphResource>        inputs,
-                                   const std::string_view              outputSlot,
-                                   const vrendergraph::ParamBlock&     params)
+        void logScriptedPassError(const std::string& passType, const char* phase, const char* what)
         {
-            if (!ctx.view().target || !m_ShaderLibrary || m_Desc.shader.compute.empty())
-                return {};
-
-            struct PassData
-            {
-                std::vector<FrameGraphResource> inputs;
-                FrameGraphResource              output;
-            };
-
-            auto outputDesc = makeOutputDesc(ctx, inputs);
-            auto outputName = std::string {outputSlot};
-            auto pushConstants = makePushConstants(params);
-            FrameGraphResource output {};
-
-            ctx.fg.addCallbackPass<PassData>(
-                m_Desc.type.c_str(),
-                [this, inputs = std::move(inputs), outputDesc, outputName = std::move(outputName), &output](
-                    FrameGraph::Builder& builder, PassData& data) mutable {
-                    PASS_SETUP_ZONE;
-
-                    data.inputs.reserve(inputs.size());
-                    for (uint32_t i = 0; i < inputs.size(); ++i)
-                    {
-                        if (!inputs[i])
-                            continue;
-
-                        data.inputs.push_back(
-                            builder.read(inputs[i],
-                                         framegraph::TextureRead {
-                                             .binding =
-                                                 {
-                                                     .location      = {.set = 3, .binding = i},
-                                                     .pipelineStage = framegraph::PipelineStage::eComputeShader,
-                                                 },
-                                             .type        = framegraph::TextureRead::Type::eSampledImage,
-                                             .imageAspect = rhi::ImageAspect::eColor,
-                                         }));
-                    }
-
-                    output = builder.create<framegraph::FrameGraphTexture>(
-                        std::string {m_Desc.type} + " " + outputName, outputDesc);
-                    data.output = builder.write(output,
-                                                framegraph::ImageWrite {
-                                                    .binding =
-                                                        {
-                                                            .location = {.set = 3,
-                                                                         .binding = static_cast<uint32_t>(inputs.size())},
-                                                            .pipelineStage = framegraph::PipelineStage::eComputeShader,
-                                                        },
-                                                    .imageAspect = rhi::ImageAspect::eColor,
-                                                });
-                },
-                [this, outputDesc, pushConstants = std::move(pushConstants)](
-                    const PassData&, FrameGraphPassResources&, void* ctxPtr) {
-                    VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
-                    if (!m_ShaderLibrary)
-                        return;
-
-                    auto* pipeline = getPipeline(rc.rd);
-                    if (!pipeline)
-                        return;
-
-                    RHI_GPU_ZONE(rc.cb, m_Desc.type.c_str());
-                    rc.cb.bindPipeline(*pipeline);
-                    rc.bindDescriptorSets(*pipeline);
-                    if (!pushConstants.empty())
-                    {
-                        rc.cb.pushConstants(rhi::ShaderStages::eCompute,
-                                            0,
-                                            static_cast<uint32_t>(pushConstants.size()),
-                                            pushConstants.data());
-                    }
-                    rc.cb.dispatch(resolveDispatchSize(*pipeline, outputDesc.extent));
-                });
-
-            return output;
+            static std::unordered_set<std::string> reported;
+            const auto                             key = passType + "/" + phase;
+            if (!reported.insert(key).second)
+                return;
+            VULTRA_CORE_ERROR("[DeclarativeRenderer] Scripted pass '{}' {} error: {}", passType, phase, what);
         }
 
-    private:
-        framegraph::FrameGraphTexture::Desc makeOutputDesc(
-            FrameGraphBuildContext&                ctx,
-            const std::vector<FrameGraphResource>& inputs) const
+        [[nodiscard]] vshadersystem::ShaderStage scriptedShaderStage(std::string_view s)
         {
-            constexpr auto usage =
-                rhi::ImageUsage::eStorage | rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferSrc;
-            auto desc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F, usage);
+            if (s == "vertex" || s == "vert")
+                return vshadersystem::ShaderStage::eVert;
+            if (s == "compute" || s == "comp")
+                return vshadersystem::ShaderStage::eComp;
+            return vshadersystem::ShaderStage::eFrag;
+        }
 
-            for (const auto input : inputs)
+        [[nodiscard]] rhi::ShaderStages scriptedRhiStage(std::string_view s)
+        {
+            if (s == "vertex" || s == "vert")
+                return rhi::ShaderStages::eVertex;
+            if (s == "compute" || s == "comp")
+                return rhi::ShaderStages::eCompute;
+            return rhi::ShaderStages::eFragment;
+        }
+
+        [[nodiscard]] framegraph::PipelineStage scriptedPipelineStage(std::string_view s)
+        {
+            if (s == "compute" || s == "comp")
+                return framegraph::PipelineStage::eComputeShader;
+            return framegraph::PipelineStage::eFragmentShader;
+        }
+
+        [[nodiscard]] rhi::PixelFormat scriptedPixelFormat(std::string_view s, rhi::PixelFormat fallback)
+        {
+            if (s == "rgba16f")
+                return rhi::PixelFormat::eRGBA16F;
+            if (s == "rgba32f")
+                return rhi::PixelFormat::eRGBA32F;
+            if (s == "rgba8" || s == "rgba8_unorm")
+                return rhi::PixelFormat::eRGBA8_UNorm;
+            return fallback;
+        }
+
+        [[nodiscard]] std::optional<rhi::ShaderLibraryRuntime::LoadedShader>
+        loadScriptedShader(rhi::ShaderLibraryRuntime& lib, const std::string& id, const vshadersystem::ShaderStage stage)
+        {
+            std::vector<std::string> ids {id};
+            if (id.find('/') == std::string::npos && id.find('\\') == std::string::npos)
+                ids.push_back((stage == vshadersystem::ShaderStage::eComp ? std::string {"compute/"} :
+                                                                            std::string {"fullscreen/"}) +
+                              id);
+            for (const auto& candidate : ids)
             {
-                if (!input)
+                const auto hash = rhi::ShaderLibraryRuntime::computeVariantHash(candidate, stage, {});
+                if (!lib.hasVariant(hash, stage))
                     continue;
-
-                const auto inputDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(input);
-                desc                 = makeInheritedTextureDesc(inputDesc, rhi::PixelFormat::eRGBA16F, usage);
-                break;
+                if (auto sh = lib.load(hash, stage))
+                    return sh;
             }
-
-            return desc;
-        }
-
-        glm::uvec3 resolveDispatchSize(const rhi::ComputePipeline& pipeline, const rhi::Extent2D extent) const
-        {
-            glm::uvec3 dispatch {
-                std::max(m_Desc.dispatchX, 1u),
-                std::max(m_Desc.dispatchY, 1u),
-                std::max(m_Desc.dispatchZ, 1u),
-            };
-
-            if (!m_Desc.dispatchByOutputSize)
-                return dispatch;
-
-            const auto localSize = pipeline.getWorkGroupSize();
-            const auto localX    = std::max(localSize.x, 1u);
-            const auto localY    = std::max(localSize.y, 1u);
-            dispatch.x           = (extent.width + localX - 1u) / localX;
-            dispatch.y           = (extent.height + localY - 1u) / localY;
-            return dispatch;
-        }
-
-        rhi::ComputePipeline* getPipeline(rhi::RenderDevice& rd)
-        {
-            if (m_Pipeline)
-                return &m_Pipeline.value();
-
-            auto shader = loadShader(m_Desc.shader.compute);
-            if (!shader)
-                return nullptr;
-
-            m_Pipeline = rd.createComputePipelineBuiltin(*shader);
-            return &m_Pipeline.value();
-        }
-
-        std::optional<rhi::ShaderLibraryRuntime::LoadedShader> loadShader(const std::string& shaderId) const
-        {
-            if (!m_ShaderLibrary)
-                return std::nullopt;
-
-            std::vector<std::string> shaderIds {shaderId};
-            if (shaderId.find('/') == std::string::npos && shaderId.find('\\') == std::string::npos)
-                shaderIds.push_back("compute/" + shaderId);
-
-            for (const auto& id : shaderIds)
-            {
-                const auto hash =
-                    rhi::ShaderLibraryRuntime::computeVariantHash(id, vshadersystem::ShaderStage::eComp, {});
-                if (!m_ShaderLibrary->hasVariant(hash, vshadersystem::ShaderStage::eComp))
-                    continue;
-                auto shader = m_ShaderLibrary->load(hash, vshadersystem::ShaderStage::eComp);
-                if (shader)
-                    return shader;
-            }
-
-            VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to load compute shader '{}' for graph pass '{}'",
-                              shaderId,
-                              m_Desc.type);
             return std::nullopt;
         }
 
-        std::vector<std::byte> makePushConstants(const vrendergraph::ParamBlock& params) const
+        // Converts a shader's reflected material parameters (the .vshader
+        // [properties] block: name/type/default/range) into render-graph node
+        // params, so the editor exposes them and they serialize into the .vrg.json.
+        // packShaderParams then consumes the per-node overrides by name.
+        [[nodiscard]] std::vector<vrendergraph::ParamDesc>
+        paramsFromShaderReflection(const vshadersystem::MaterialDescription& md)
         {
-            auto shader = loadShader(m_Desc.shader.compute);
-            if (!shader)
-                return {};
-            return packShaderParams(shader->materialDesc, params);
+            std::vector<vrendergraph::ParamDesc> out;
+            out.reserve(md.params.size());
+            for (const auto& p : md.params)
+            {
+                vrendergraph::ParamDesc pd;
+                pd.name = p.name;
+                switch (p.type)
+                {
+                    case vshadersystem::ParamType::eFloat:
+                        pd.type         = vrendergraph::ParamType::eFloat;
+                        pd.defaultValue = p.hasDefault ? shaderParamDefaultValue<float>(p.defaultValue) : 0.0f;
+                        break;
+                    case vshadersystem::ParamType::eInt:
+                    case vshadersystem::ParamType::eUInt:
+                        pd.type         = vrendergraph::ParamType::eInt;
+                        pd.defaultValue = p.hasDefault ? shaderParamDefaultValue<int32_t>(p.defaultValue) : int32_t {0};
+                        break;
+                    case vshadersystem::ParamType::eBool:
+                        pd.type         = vrendergraph::ParamType::eBoolean;
+                        pd.defaultValue = p.hasDefault ? shaderParamDefaultValue<bool>(p.defaultValue) : false;
+                        break;
+                    default:
+                        continue; // vec/mat params are not exposed as scalar node params
+                }
+
+                if (p.hasRange)
+                {
+                    if (pd.type == vrendergraph::ParamType::eFloat)
+                    {
+                        pd.minValue = nlohmann::json(static_cast<float>(p.range.min));
+                        pd.maxValue = nlohmann::json(static_cast<float>(p.range.max));
+                    }
+                    else if (pd.type == vrendergraph::ParamType::eInt)
+                    {
+                        pd.minValue = nlohmann::json(static_cast<int32_t>(p.range.min));
+                        pd.maxValue = nlohmann::json(static_cast<int32_t>(p.range.max));
+                    }
+                }
+                else if (!p.enumOptions.empty() && pd.type == vrendergraph::ParamType::eInt)
+                {
+                    int32_t lo = p.enumOptions.front().value;
+                    int32_t hi = lo;
+                    for (const auto& o : p.enumOptions)
+                    {
+                        lo = std::min(lo, o.value);
+                        hi = std::max(hi, o.value);
+                    }
+                    pd.minValue = nlohmann::json(lo);
+                    pd.maxValue = nlohmann::json(hi);
+                }
+
+                out.push_back(std::move(pd));
+            }
+            return out;
         }
 
-    private:
-        ProjectGraphPass                       m_Desc;
-        rhi::ShaderLibraryRuntime*             m_ShaderLibrary {nullptr};
-        std::optional<rhi::ComputePipeline>    m_Pipeline;
-    };
+        // Reads push-constant values directly from a Lua table keyed by the
+        // shader-reflected parameter names. Mirrors packShaderParams but sources
+        // values from Lua instead of a vrendergraph::ParamBlock.
+        [[nodiscard]] std::vector<std::byte>
+        packShaderParamsFromLua(const vshadersystem::MaterialDescription& materialDesc, sol::table values)
+        {
+            if (materialDesc.materialParamSize == 0u || materialDesc.params.empty())
+                return {};
+
+            std::vector<std::byte> bytes(materialDesc.materialParamSize);
+            for (const auto& param : materialDesc.params)
+            {
+                sol::object v = values[param.name];
+                switch (param.type)
+                {
+                    case vshadersystem::ParamType::eFloat: {
+                        const float fb = param.hasDefault ? shaderParamDefaultValue<float>(param.defaultValue) : 0.0f;
+                        writePushConstantValue(bytes, param, v.is<float>() ? v.as<float>() : fb);
+                        break;
+                    }
+                    case vshadersystem::ParamType::eInt: {
+                        const int32_t fb =
+                            param.hasDefault ? shaderParamDefaultValue<int32_t>(param.defaultValue) : int32_t {0};
+                        writePushConstantValue(bytes, param, v.is<int>() ? v.as<int>() : fb);
+                        break;
+                    }
+                    case vshadersystem::ParamType::eUInt: {
+                        const uint32_t fb =
+                            param.hasDefault ? shaderParamDefaultValue<uint32_t>(param.defaultValue) : uint32_t {0};
+                        const uint32_t val =
+                            v.is<int>() ? static_cast<uint32_t>(std::max(v.as<int>(), 0)) : fb;
+                        writePushConstantValue(bytes, param, val);
+                        break;
+                    }
+                    case vshadersystem::ParamType::eBool: {
+                        const int32_t fb =
+                            param.hasDefault && shaderParamDefaultValue<bool>(param.defaultValue) ? 1 : 0;
+                        const int32_t val = v.is<bool>() ? (v.as<bool>() ? 1 : 0) : fb;
+                        writePushConstantValue(bytes, param, val);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            }
+            return bytes;
+        }
+
+        // A FrameGraph resource handle exposed to Lua, tagged with the generation
+        // of the setup call that produced it.
+        struct LuaResHandle
+        {
+            FrameGraphResource resource {};
+            uint64_t           generation {0};
+        };
+
+        struct ScriptedShaderSelection
+        {
+            bool                       compute {false};
+            rhi::ShaderLibraryRuntime* vertexLib {nullptr};
+            rhi::ShaderLibraryRuntime* fragmentLib {nullptr};
+            rhi::ShaderLibraryRuntime* computeLib {nullptr};
+            std::string                vertexId;
+            std::string                fragmentId;
+            std::string                computeId;
+            bool                       valid {false};
+        };
+
+        // Per-frame state carried from a scripted pass's setup to its execute.
+        struct ScriptedPassFrameData
+        {
+            ScriptedShaderSelection shader;
+            // Extent of the last created output texture, used by dispatchByOutputSize().
+            rhi::Extent2D outputExtent {0, 0};
+        };
+
+        struct ScriptedPassEnv
+        {
+            IShaderService*                                     shaderService {nullptr};
+            const std::unordered_map<std::string, std::string>* shaderLibraries {nullptr};
+            std::string                                         sourcePath; // pass .lua, for diagnostics
+        };
+
+        // Persistent (per pass type) pipeline cache for scripted passes.
+        class ScriptedPassPipelines
+        {
+        public:
+            void invalidate()
+            {
+                m_Graphics.clear();
+                m_Compute.reset();
+            }
+
+            rhi::GraphicsPipeline* getGraphics(rhi::RenderDevice&             rd,
+                                               const ScriptedShaderSelection& sel,
+                                               const rhi::PixelFormat         colorFormat,
+                                               const uint32_t                 viewMask)
+            {
+                if (!sel.vertexLib || !sel.fragmentLib)
+                    return nullptr;
+
+                const uint64_t key = static_cast<uint64_t>(colorFormat) | (static_cast<uint64_t>(viewMask) << 32u);
+                if (auto it = m_Graphics.find(key); it != m_Graphics.end())
+                    return &it->second;
+
+                auto vert = loadScriptedShader(*sel.vertexLib, sel.vertexId, vshadersystem::ShaderStage::eVert);
+                auto frag = loadScriptedShader(*sel.fragmentLib, sel.fragmentId, vshadersystem::ShaderStage::eFrag);
+                if (!vert || !frag)
+                    return nullptr;
+
+                auto builder = rhi::GraphicsPipeline::Builder {};
+                builder.setColorFormats({colorFormat})
+                    .setViewMask(viewMask)
+                    .setInputAssembly({})
+                    .setDepthStencil({.depthTest = false, .depthWrite = false})
+                    .setRasterizer({.polygonMode = rhi::PolygonMode::eFill, .cullMode = rhi::CullMode::eNone})
+                    .setBlending(0, {.enabled = false});
+
+                if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+                {
+                    builder
+                        .addShader(rhi::ShaderType::eVertex,
+                                   {.code           = vert->wgsl,
+                                    .entryPointName = "main",
+                                    .defines        = {},
+                                    .reflection     = vert->reflection})
+                        .addShader(rhi::ShaderType::eFragment,
+                                   {.code           = frag->wgsl,
+                                    .entryPointName = "main",
+                                    .defines        = {},
+                                    .reflection     = frag->reflection});
+                }
+                else
+                {
+                    builder.addBuiltinShader(rhi::ShaderType::eVertex, *vert)
+                        .addBuiltinShader(rhi::ShaderType::eFragment, *frag);
+                }
+
+                auto [it, inserted] = m_Graphics.emplace(key, builder.build(rd));
+                static_cast<void>(inserted);
+                return &it->second;
+            }
+
+            rhi::ComputePipeline* getCompute(rhi::RenderDevice& rd, const ScriptedShaderSelection& sel)
+            {
+                if (m_Compute)
+                    return &m_Compute.value();
+                if (!sel.computeLib)
+                    return nullptr;
+                auto comp = loadScriptedShader(*sel.computeLib, sel.computeId, vshadersystem::ShaderStage::eComp);
+                if (!comp)
+                    return nullptr;
+                m_Compute = rd.createComputePipelineBuiltin(*comp);
+                return &m_Compute.value();
+            }
+
+        private:
+            std::unordered_map<uint64_t, rhi::GraphicsPipeline> m_Graphics;
+            std::optional<rhi::ComputePipeline>                 m_Compute;
+        };
+
+        // -------- Lua-facing build context (valid only during setup) ----------
+        class LuaPassBuildContext
+        {
+        public:
+            LuaPassBuildContext(FrameGraph::Builder&            builder,
+                                FrameGraphBuildContext&         ctx,
+                                vrendergraph::PassBuildContext& passCtx,
+                                const vrendergraph::ParamBlock& params,
+                                ScriptedPassFrameData&          frame,
+                                ScriptedPassEnv                 env,
+                                const uint64_t                  generation) :
+                m_Builder(&builder),
+                m_Ctx(&ctx),
+                m_PassCtx(&passCtx),
+                m_Params(&params),
+                m_Frame(&frame),
+                m_Env(env),
+                m_Generation(generation)
+            {}
+
+            LuaResHandle getInput(const std::string& slot) { return make(m_PassCtx->getInput(slot)); }
+            void         setOutput(const std::string& slot, const LuaResHandle& h)
+            {
+                check(h);
+                m_PassCtx->setOutput(slot, h.resource);
+            }
+
+            sol::object getResource(const std::string& name, sol::this_state s)
+            {
+                const auto res = m_Ctx->data.tryGet(resourceKeyFor(name));
+                if (!res)
+                    return sol::nil;
+                return sol::make_object(s, make(res));
+            }
+            void setResource(const std::string& name, const LuaResHandle& h)
+            {
+                check(h);
+                m_Ctx->data.set(resourceKeyFor(name), h.resource);
+            }
+
+            LuaResHandle createColorTexture(sol::table opts)
+            {
+                const std::string name    = getString(opts, "name", "ScriptedPass Color");
+                const bool        storage = getBool(opts, "storage", false);
+                auto usage = rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferSrc;
+                if (storage)
+                    usage = usage | rhi::ImageUsage::eStorage;
+
+                framegraph::FrameGraphTexture::Desc desc;
+                sol::object                         inheritObj = opts["inherit"];
+                if (inheritObj.is<LuaResHandle>())
+                {
+                    const auto inherit     = inheritObj.as<LuaResHandle>();
+                    const auto inheritDesc = m_Ctx->fg.getDescriptor<framegraph::FrameGraphTexture>(inherit.resource);
+                    const auto fmt         = scriptedPixelFormat(getString(opts, "format", ""), inheritDesc.format);
+                    desc                   = makeInheritedTextureDesc(inheritDesc, fmt, usage);
+                }
+                else
+                {
+                    const auto fmt =
+                        scriptedPixelFormat(getString(opts, "format", "rgba16f"), rhi::PixelFormat::eRGBA16F);
+                    desc = makeRenderViewTextureDesc(m_Ctx->view(), fmt, usage);
+                }
+                m_Frame->outputExtent = desc.extent;
+                return make(m_Builder->create<framegraph::FrameGraphTexture>(name, desc));
+            }
+
+            void read(const LuaResHandle& h, sol::table binding)
+            {
+                check(h);
+                const uint32_t set        = static_cast<uint32_t>(getInt(binding, "set", 3));
+                const uint32_t bindingIx  = static_cast<uint32_t>(getInt(binding, "binding", 0));
+                const auto     stageName  = getString(binding, "stage", "fragment");
+                const auto     stage      = scriptedPipelineStage(stageName);
+                const bool     depth      = getBool(binding, "depth", false);
+                // Compute shaders sample via texelFetch (sampled image); fragment
+                // shaders use a combined image sampler. Match the existing runtimes.
+                const bool     isCompute  = stage == framegraph::PipelineStage::eComputeShader;
+                (void)m_Builder->read(
+                    h.resource,
+                    framegraph::TextureRead {
+                        .binding = {.location = {.set = set, .binding = bindingIx}, .pipelineStage = stage},
+                        .type    = isCompute ? framegraph::TextureRead::Type::eSampledImage :
+                                               framegraph::TextureRead::Type::eCombinedImageSampler,
+                        .imageAspect = depth ? rhi::ImageAspect::eDepth : rhi::ImageAspect::eColor,
+                    });
+            }
+
+            void writeColor(const LuaResHandle& h, sol::optional<int> index, sol::optional<bool> clear)
+            {
+                check(h);
+                (void)m_Builder->write(
+                    h.resource,
+                    framegraph::Attachment {
+                        .index       = static_cast<uint32_t>(index.value_or(0)),
+                        .imageAspect = rhi::ImageAspect::eColor,
+                        .clearValue  = clear.value_or(false) ?
+                                           std::optional<framegraph::ClearValue> {framegraph::ClearValue::eOpaqueBlack} :
+                                           std::optional<framegraph::ClearValue> {},
+                    });
+            }
+
+            void writeStorage(const LuaResHandle& h, sol::table binding)
+            {
+                check(h);
+                const uint32_t set       = static_cast<uint32_t>(getInt(binding, "set", 3));
+                const uint32_t bindingIx = static_cast<uint32_t>(getInt(binding, "binding", 0));
+                const auto     stage     = scriptedPipelineStage(getString(binding, "stage", "compute"));
+                (void)m_Builder->write(
+                    h.resource,
+                    framegraph::ImageWrite {
+                        .binding     = {.location = {.set = set, .binding = bindingIx}, .pipelineStage = stage},
+                        .imageAspect = rhi::ImageAspect::eColor,
+                    });
+            }
+
+            void useGraphicsShader(sol::table t)
+            {
+                ScriptedShaderSelection sel;
+                sel.compute                = false;
+                const auto library         = getString(t, "library", "project");
+                const auto vertexLibrary   = getString(t, "vertexLibrary", "builtin");
+                const auto fragmentLibrary = getString(t, "fragmentLibrary", library);
+                sel.vertexId               = getString(t, "vertex", "builtin/general/fullscreen_triangle.vert");
+                sel.fragmentId             = getString(t, "fragment", "");
+                sel.vertexLib              = resolveLibrary(vertexLibrary);
+                sel.fragmentLib            = resolveLibrary(fragmentLibrary);
+                sel.valid                  = sel.vertexLib && sel.fragmentLib && !sel.fragmentId.empty();
+                reportShaderDiagnostics({
+                    {vertexLibrary, sel.vertexId, sel.vertexLib, vshadersystem::ShaderStage::eVert, "vertex"},
+                    {fragmentLibrary, sel.fragmentId, sel.fragmentLib, vshadersystem::ShaderStage::eFrag, "fragment"},
+                });
+                m_Frame->shader = std::move(sel);
+            }
+
+            void useComputeShader(sol::table t)
+            {
+                ScriptedShaderSelection sel;
+                sel.compute        = true;
+                const auto library = getString(t, "library", "project");
+                sel.computeId      = getString(t, "compute", "");
+                sel.computeLib     = resolveLibrary(library);
+                sel.valid          = sel.computeLib && !sel.computeId.empty();
+                reportShaderDiagnostics(
+                    {{library, sel.computeId, sel.computeLib, vshadersystem::ShaderStage::eComp, "compute"}});
+                m_Frame->shader = std::move(sel);
+            }
+
+            float       paramFloat(const std::string& n, float d) const { return m_Params->get<float>(n, d); }
+            int         paramInt(const std::string& n, int d) const { return m_Params->get<int>(n, d); }
+            bool        paramBool(const std::string& n, bool d) const { return m_Params->get<bool>(n, d); }
+            std::string paramString(const std::string& n, std::string d) const
+            {
+                return m_Params->get<std::string>(n, std::move(d));
+            }
+
+            uint32_t sceneDrawCount() const
+            {
+                auto* v = m_Ctx->view().gpuSceneView;
+                return v ? v->getDispatchableDrawCount() : 0u;
+            }
+            bool hasGaussianSplats() const
+            {
+                auto* v = m_Ctx->view().gpuSceneView;
+                return v ? v->hasGeneralGaussianSplats() : false;
+            }
+            bool isGpuDriven() const
+            {
+                auto* v = m_Ctx->view().gpuSceneView;
+                return v ? v->isGpuDriven() : false;
+            }
+
+        private:
+            struct ShaderProbe
+            {
+                std::string                name; // library name (for the message)
+                std::string                id;
+                rhi::ShaderLibraryRuntime* lib;
+                vshadersystem::ShaderStage stage;
+                const char*                role;
+            };
+
+            // Validate the shaders a scripted pass selected in setup and publish
+            // any "not found" markers against the pass's source .lua so the code
+            // editor can show them. Passing an all-resolved set clears prior markers.
+            void reportShaderDiagnostics(std::initializer_list<ShaderProbe> probes)
+            {
+                if (!m_Env.shaderService || m_Env.sourcePath.empty())
+                    return;
+                std::vector<AssetDiagnostic> diagnostics;
+                for (const auto& probe : probes)
+                {
+                    if (probe.id.empty())
+                    {
+                        diagnostics.push_back({m_Env.sourcePath,
+                                               0,
+                                               0,
+                                               std::string {"Scripted pass: no "} + probe.role + " shader specified."});
+                        continue;
+                    }
+                    const auto hash = rhi::ShaderLibraryRuntime::computeVariantHash(probe.id, probe.stage, {});
+                    if (!probe.lib || !probe.lib->hasVariant(hash, probe.stage))
+                        diagnostics.push_back({m_Env.sourcePath,
+                                               0,
+                                               0,
+                                               std::string {"Scripted pass: "} + probe.role + " shader '" + probe.id +
+                                                   "' not found in library '" + probe.name + "'."});
+                }
+                m_Env.shaderService->setRenderPassDiagnostics(m_Env.sourcePath, std::move(diagnostics));
+            }
+
+            rhi::ShaderLibraryRuntime* resolveLibrary(const std::string& name) const
+            {
+                if (!m_Env.shaderService)
+                    return nullptr;
+                if (name == "builtin")
+                    return &m_Env.shaderService->builtinLibrary();
+                if (m_Env.shaderLibraries)
+                {
+                    if (auto it = m_Env.shaderLibraries->find(name); it != m_Env.shaderLibraries->end())
+                        return m_Env.shaderService->findProjectLibrary(it->second);
+                }
+                return nullptr;
+            }
+
+            LuaResHandle make(FrameGraphResource r) const { return LuaResHandle {r, m_Generation}; }
+            void         check(const LuaResHandle& h) const
+            {
+                if (h.generation != m_Generation)
+                    throw std::runtime_error("scripted pass: stale FrameGraph handle used outside its setup frame");
+            }
+
+            FrameGraph::Builder*            m_Builder;
+            FrameGraphBuildContext*         m_Ctx;
+            vrendergraph::PassBuildContext* m_PassCtx;
+            const vrendergraph::ParamBlock* m_Params;
+            ScriptedPassFrameData*          m_Frame;
+            ScriptedPassEnv                 m_Env;
+            uint64_t                        m_Generation;
+        };
+
+        // -------- Lua-facing execute context (valid only during execute) ------
+        class LuaPassExecContext
+        {
+        public:
+            LuaPassExecContext(FrameGraphExecContext&       rc,
+                               const ScriptedPassFrameData& frame,
+                               ScriptedPassPipelines&       pipelines) :
+                m_Rc(&rc), m_Frame(&frame), m_Pipelines(&pipelines)
+            {}
+
+            bool bindPipeline()
+            {
+                const auto& sel = m_Frame->shader;
+                if (!sel.valid)
+                    return false;
+
+                if (sel.compute)
+                {
+                    auto* p = m_Pipelines->getCompute(m_Rc->rd, sel);
+                    if (!p)
+                        return false;
+                    m_Rc->cb.bindPipeline(*p);
+                    m_CurrentPipeline     = p;
+                    m_ComputeLocalSize    = p->getWorkGroupSize();
+                    m_CurrentMaterialDesc = materialDescFor(sel);
+                    return true;
+                }
+
+                const auto fb = m_Rc->framebufferInfo();
+                if (!fb)
+                    return false;
+                auto* p = m_Pipelines->getGraphics(m_Rc->rd, sel, rhi::getColorFormat(fb.value(), 0), fb->viewMask);
+                if (!p)
+                    return false;
+                m_Rc->cb.bindPipeline(*p);
+                m_CurrentPipeline     = p;
+                m_CurrentMaterialDesc = materialDescFor(sel);
+                return true;
+            }
+
+            void bindDescriptorSets()
+            {
+                if (!m_CurrentPipeline)
+                    return;
+                if (m_Rc->resourceSet.contains(3) && m_Rc->resourceSet[3].contains(0) &&
+                    m_Rc->ext.samplers.contains("linear"))
+                    m_Rc->overrideSampler(m_Rc->resourceSet[3][0], m_Rc->ext.samplers["linear"]);
+                m_Rc->bindDescriptorSets(*m_CurrentPipeline);
+            }
+
+            void pushConstants(const std::string& stage, sol::table values)
+            {
+                if (!m_CurrentMaterialDesc)
+                    return;
+                const auto bytes = packShaderParamsFromLua(*m_CurrentMaterialDesc, values);
+                if (bytes.empty())
+                    return;
+                m_Rc->cb.pushConstants(
+                    scriptedRhiStage(stage), 0, static_cast<uint32_t>(bytes.size()), bytes.data());
+            }
+
+            void beginRendering()
+            {
+                const auto fb = m_Rc->framebufferInfo();
+                if (fb)
+                    m_Rc->cb.beginRendering(fb.value());
+            }
+            void drawFullscreen() { m_Rc->cb.drawFullScreenTriangle(); }
+            void endRendering() { m_Rc->cb.endRendering(); }
+
+            void dispatch(uint32_t x, uint32_t y, uint32_t z)
+            {
+                m_Rc->cb.dispatch(glm::uvec3 {std::max(x, 1u), std::max(y, 1u), std::max(z, 1u)});
+            }
+
+            // Dispatch one workgroup per output texel block, using the bound compute
+            // pipeline's local size and the extent of the last created output.
+            void dispatchByOutputSize()
+            {
+                const auto     ext = m_Frame->outputExtent;
+                const uint32_t lx  = std::max(m_ComputeLocalSize.x, 1u);
+                const uint32_t ly  = std::max(m_ComputeLocalSize.y, 1u);
+                const uint32_t gx  = (std::max(ext.width, 1u) + lx - 1u) / lx;
+                const uint32_t gy  = (std::max(ext.height, 1u) + ly - 1u) / ly;
+                m_Rc->cb.dispatch(glm::uvec3 {gx, gy, 1u});
+            }
+
+        private:
+            std::optional<vshadersystem::MaterialDescription> materialDescFor(const ScriptedShaderSelection& sel) const
+            {
+                if (sel.compute)
+                {
+                    if (!sel.computeLib)
+                        return std::nullopt;
+                    if (auto sh = loadScriptedShader(*sel.computeLib, sel.computeId, vshadersystem::ShaderStage::eComp))
+                        return sh->materialDesc;
+                    return std::nullopt;
+                }
+                if (!sel.fragmentLib)
+                    return std::nullopt;
+                if (auto sh = loadScriptedShader(*sel.fragmentLib, sel.fragmentId, vshadersystem::ShaderStage::eFrag))
+                    return sh->materialDesc;
+                return std::nullopt;
+            }
+
+            FrameGraphExecContext*                            m_Rc;
+            const ScriptedPassFrameData*                      m_Frame;
+            ScriptedPassPipelines*                            m_Pipelines;
+            rhi::BasePipeline*                                m_CurrentPipeline {nullptr};
+            glm::uvec3                                        m_ComputeLocalSize {1, 1, 1};
+            std::optional<vshadersystem::MaterialDescription> m_CurrentMaterialDesc;
+        };
+
+        void registerScriptedPassLuaBindings(sol::state& lua)
+        {
+            lua.new_usertype<LuaResHandle>("VultraFrameGraphResource", sol::no_constructor);
+
+            lua.new_usertype<LuaPassBuildContext>("VultraPassBuildContext",
+                                                  sol::no_constructor,
+                                                  "getInput",
+                                                  &LuaPassBuildContext::getInput,
+                                                  "setOutput",
+                                                  &LuaPassBuildContext::setOutput,
+                                                  "getResource",
+                                                  &LuaPassBuildContext::getResource,
+                                                  "setResource",
+                                                  &LuaPassBuildContext::setResource,
+                                                  "createColorTexture",
+                                                  &LuaPassBuildContext::createColorTexture,
+                                                  "read",
+                                                  &LuaPassBuildContext::read,
+                                                  "writeColor",
+                                                  &LuaPassBuildContext::writeColor,
+                                                  "writeStorage",
+                                                  &LuaPassBuildContext::writeStorage,
+                                                  "useGraphicsShader",
+                                                  &LuaPassBuildContext::useGraphicsShader,
+                                                  "useComputeShader",
+                                                  &LuaPassBuildContext::useComputeShader,
+                                                  "paramFloat",
+                                                  &LuaPassBuildContext::paramFloat,
+                                                  "paramInt",
+                                                  &LuaPassBuildContext::paramInt,
+                                                  "paramBool",
+                                                  &LuaPassBuildContext::paramBool,
+                                                  "paramString",
+                                                  &LuaPassBuildContext::paramString,
+                                                  "sceneDrawCount",
+                                                  &LuaPassBuildContext::sceneDrawCount,
+                                                  "hasGaussianSplats",
+                                                  &LuaPassBuildContext::hasGaussianSplats,
+                                                  "isGpuDriven",
+                                                  &LuaPassBuildContext::isGpuDriven);
+
+            lua.new_usertype<LuaPassExecContext>("VultraPassExecContext",
+                                                 sol::no_constructor,
+                                                 "bindPipeline",
+                                                 &LuaPassExecContext::bindPipeline,
+                                                 "bindDescriptorSets",
+                                                 &LuaPassExecContext::bindDescriptorSets,
+                                                 "pushConstants",
+                                                 &LuaPassExecContext::pushConstants,
+                                                 "beginRendering",
+                                                 &LuaPassExecContext::beginRendering,
+                                                 "drawFullscreen",
+                                                 &LuaPassExecContext::drawFullscreen,
+                                                 "endRendering",
+                                                 &LuaPassExecContext::endRendering,
+                                                 "dispatch",
+                                                 &LuaPassExecContext::dispatch,
+                                                 "dispatchByOutputSize",
+                                                 &LuaPassExecContext::dispatchByOutputSize);
+        }
+
+        // Parses a scripted pass `params` list (array of {name,type,default}).
+        [[nodiscard]] std::vector<vrendergraph::ParamDesc> parseScriptedPassParams(sol::table table)
+        {
+            std::vector<vrendergraph::ParamDesc> out;
+            sol::object                          paramsObj = table["params"];
+            if (!paramsObj.is<sol::table>())
+                return out;
+
+            sol::table params = paramsObj.as<sol::table>();
+            for (const auto& [_, entryObj] : params)
+            {
+                static_cast<void>(_);
+                if (!entryObj.is<sol::table>())
+                    continue;
+                sol::table entry = entryObj.as<sol::table>();
+                const auto name  = getString(entry, "name");
+                if (name.empty())
+                    continue;
+                const auto      type = normalizeId(getString(entry, "type", "float"));
+                sol::object     def  = entry["default"];
+                vrendergraph::ParamDesc pd;
+                pd.name = name;
+                if (type == "int")
+                {
+                    pd.type         = vrendergraph::ParamType::eInt;
+                    pd.defaultValue = getInt(entry, "default", 0);
+                }
+                else if (type == "bool" || type == "boolean")
+                {
+                    pd.type         = vrendergraph::ParamType::eBoolean;
+                    pd.defaultValue = getBool(entry, "default", false);
+                }
+                else if (type == "string")
+                {
+                    pd.type         = vrendergraph::ParamType::eString;
+                    pd.defaultValue = getString(entry, "default", "");
+                }
+                else
+                {
+                    pd.type         = vrendergraph::ParamType::eFloat;
+                    pd.defaultValue = def.is<double>() ? static_cast<float>(def.as<double>()) : 0.0f;
+                }
+                out.push_back(std::move(pd));
+            }
+            return out;
+        }
+    } // namespace
 
     class DeclarativeRenderer::RenderGraphRuntime
     {
@@ -1374,15 +1957,10 @@ namespace vultra
 
         void invalidateShaderPipelines()
         {
-            for (auto& [_, runtime] : m_ProjectPassRuntimes)
+            for (auto& [_, pipelines] : m_ScriptedPassPipelines)
             {
-                if (runtime)
-                    runtime->invalidatePipelines();
-            }
-            for (auto& [_, runtime] : m_ProjectComputePassRuntimes)
-            {
-                if (runtime)
-                    runtime->invalidatePipelines();
+                if (pipelines)
+                    pipelines->invalidate();
             }
         }
 
@@ -1607,167 +2185,136 @@ namespace vultra
             return true;
         }
 
+        // Drives one scripted pass's Lua setup/execute closures through the
+        // FrameGraph for the current frame. Called from the registry setup lambda
+        // (synchronously, while passCtx/params are alive).
+        void addScriptedPass(FrameGraphBuildContext&         ctx,
+                             vrendergraph::PassBuildContext& passCtx,
+                             const vrendergraph::ParamBlock& params,
+                             const size_t                    index)
+        {
+            if (index >= m_Owner.m_Asset.scriptedPasses.size())
+                return;
+            const auto& def = m_Owner.m_Asset.scriptedPasses[index];
+
+            auto* shaderService =
+                m_Owner.getServices() ? m_Owner.getServices()->tryGet<IShaderService>() : nullptr;
+            if (!shaderService)
+                return;
+
+            auto& pipelines = m_ScriptedPassPipelines[def.type];
+            if (!pipelines)
+                pipelines = std::make_unique<ScriptedPassPipelines>();
+
+            const ScriptedPassEnv env {shaderService, &m_Owner.m_Asset.shaderLibraries, def.sourcePath};
+            const uint64_t        generation = ++s_ScriptedPassGeneration;
+            const sol::protected_function setupFn  = def.setup;
+            const sol::protected_function execFn   = def.execute;
+            const std::string             passType = def.type;
+
+            ctx.fg.addCallbackPass<ScriptedPassFrameData>(
+                def.type.c_str(),
+                [&ctx, &passCtx, &params, env, generation, setupFn, passType](FrameGraph::Builder& builder,
+                                                                              ScriptedPassFrameData& frame) {
+                    PASS_SETUP_ZONE;
+                    LuaPassBuildContext buildCtx(builder, ctx, passCtx, params, frame, env, generation);
+                    const auto          r = setupFn(buildCtx);
+                    if (!r.valid())
+                    {
+                        const sol::error err = r;
+                        logScriptedPassError(passType, "setup", err.what());
+                    }
+                },
+                [execFn, passType, pipelinesPtr = pipelines.get()](
+                    const ScriptedPassFrameData& frame, FrameGraphPassResources&, void* ctxPtr) {
+                    VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
+                    assertRenderScriptThread();
+                    LuaPassExecContext execCtx(rc, frame, *pipelinesPtr);
+                    const auto         r = execFn(execCtx);
+                    if (!r.valid())
+                    {
+                        const sol::error err = r;
+                        logScriptedPassError(passType, "execute", err.what());
+                    }
+                });
+        }
+
         void registerPasses()
         {
-            for (size_t projectPassIndex = 0; projectPassIndex < m_Owner.m_Asset.projectGraphPasses.size();
-                 ++projectPassIndex)
+            // Registration-time shader resolver, used to introspect a pass's shader
+            // and expose its reflected params on the graph node. Shader libraries
+            // are already loaded at this point (init: loadShaderLibraries before
+            // buildRuntimeFeatures).
+            auto* regShaderService =
+                m_Owner.getServices() ? m_Owner.getServices()->tryGet<IShaderService>() : nullptr;
+            const auto resolveLibAtReg = [this, regShaderService](const std::string& name) -> rhi::ShaderLibraryRuntime* {
+                if (!regShaderService)
+                    return nullptr;
+                if (name == "builtin")
+                    return &regShaderService->builtinLibrary();
+                if (auto it = m_Owner.m_Asset.shaderLibraries.find(name); it != m_Owner.m_Asset.shaderLibraries.end())
+                    return regShaderService->findProjectLibrary(it->second);
+                return nullptr;
+            };
+            const auto reflectShaderParams =
+                [&resolveLibAtReg](const std::string&               libraryName,
+                                   const std::string&               shaderId,
+                                   const vshadersystem::ShaderStage stage) -> std::vector<vrendergraph::ParamDesc> {
+                if (shaderId.empty())
+                    return {};
+                auto* lib = resolveLibAtReg(libraryName);
+                if (!lib)
+                    return {};
+                auto shader = loadScriptedShader(*lib, shaderId, stage);
+                if (!shader)
+                    return {};
+                return paramsFromShaderReflection(shader->materialDesc);
+            };
+
+            for (size_t scriptedIndex = 0; scriptedIndex < m_Owner.m_Asset.scriptedPasses.size(); ++scriptedIndex)
             {
-                const auto& projectPass = m_Owner.m_Asset.projectGraphPasses[projectPassIndex];
-                if (projectPass.type.empty())
+                const auto& def = m_Owner.m_Asset.scriptedPasses[scriptedIndex];
+                if (def.type.empty() || !def.setup.valid() || !def.execute.valid())
+                    continue;
+                if (m_Registry.contains(def.type))
                     continue;
 
-                const auto inputs =
-                    projectPass.inputs.empty() ? std::vector<std::string> {"source"} : projectPass.inputs;
-                const auto outputs =
-                    projectPass.outputs.empty() ? std::vector<std::string> {"color"} : projectPass.outputs;
+                const auto inputs  = def.inputs.empty() ? std::vector<std::string> {"source"} : def.inputs;
+                const auto outputs = def.outputs.empty() ? std::vector<std::string> {"color"} : def.outputs;
 
-                if (projectPass.pipeline == ProjectGraphPass::Pipeline::eGraphics &&
-                    projectPass.fullscreen.shader.fragment.empty())
-                    continue;
-                if (projectPass.pipeline == ProjectGraphPass::Pipeline::eCompute && projectPass.shader.compute.empty())
-                    continue;
+                // Node params = reflected (from the optional `shader` hint) overlaid
+                // with any explicitly Lua-declared `params` (the latter win).
+                std::vector<vrendergraph::ParamDesc> passParams;
+                if (!def.reflectFragment.empty())
+                    passParams = reflectShaderParams(def.reflectLibrary, def.reflectFragment,
+                                                     vshadersystem::ShaderStage::eFrag);
+                else if (!def.reflectCompute.empty())
+                    passParams = reflectShaderParams(def.reflectLibrary, def.reflectCompute,
+                                                     vshadersystem::ShaderStage::eComp);
+                for (const auto& pd : def.params)
+                {
+                    auto it = std::find_if(passParams.begin(), passParams.end(),
+                                           [&](const auto& e) { return e.name == pd.name; });
+                    if (it != passParams.end())
+                        *it = pd;
+                    else
+                        passParams.push_back(pd);
+                }
 
                 m_Registry.registerPass(vrendergraph::PassDefinition {
-                    .type = projectPass.type,
-                    .setup =
-                        [this, projectPassIndex](FrameGraph&,
-                                                 FrameGraphBlackboard&,
-                                                 const vrendergraph::ParamBlock& params,
-                                                 vrendergraph::PassBuildContext& passCtx) {
-                            auto* ctx = m_Owner.m_CurrentBuildContext;
-                            if (!ctx)
-                                return;
-                            if (projectPassIndex >= m_Owner.m_Asset.projectGraphPasses.size())
-                                return;
-
-                            static const std::string kDefaultInputSlot {"source"};
-                            static const std::string kDefaultOutputSlot {"color"};
-                            const auto&              projectPass = m_Owner.m_Asset.projectGraphPasses[projectPassIndex];
-                            const auto inputCount = projectPass.inputs.empty() ? size_t {1} : projectPass.inputs.size();
-                            const auto outputCount =
-                                projectPass.outputs.empty() ? size_t {1} : projectPass.outputs.size();
-                            const auto inputSlot = [&](const size_t index) -> const std::string& {
-                                return projectPass.inputs.empty() ? kDefaultInputSlot : projectPass.inputs[index];
-                            };
-                            const auto outputSlot = [&](const size_t index) -> const std::string& {
-                                return projectPass.outputs.empty() ? kDefaultOutputSlot : projectPass.outputs[index];
-                            };
-                            if (inputCount == 0u || outputCount == 0u)
-                                return;
-
-                            auto* shaderService =
-                                m_Owner.getServices() ? m_Owner.getServices()->tryGet<IShaderService>() : nullptr;
-                            if (!shaderService)
-                                return;
-
-                            const auto resolveLibrary =
-                                [&](const std::string& libraryName) -> rhi::ShaderLibraryRuntime* {
-                                if (libraryName == "builtin")
-                                    return &shaderService->builtinLibrary();
-                                if (auto it = m_Owner.m_Asset.shaderLibraries.find(libraryName);
-                                    it != m_Owner.m_Asset.shaderLibraries.end())
-                                    return shaderService->findProjectLibrary(it->second);
-                                return nullptr;
-                            };
-
-                            if (projectPass.pipeline == ProjectGraphPass::Pipeline::eGraphics)
-                            {
-                                auto pass = projectPass.fullscreen;
-                                pass.name =
-                                    params.get<std::string>("name", pass.name.empty() ? projectPass.type : pass.name);
-
-                                const auto vertexLibraryName =
-                                    pass.shader.vertexLibrary.empty() ? pass.shader.library : pass.shader.vertexLibrary;
-                                const auto fragmentLibraryName = pass.shader.fragmentLibrary.empty() ?
-                                                                     pass.shader.library :
-                                                                     pass.shader.fragmentLibrary;
-                                auto* vertexLibrary   = resolveLibrary(vertexLibraryName);
-                                auto* fragmentLibrary = resolveLibrary(fragmentLibraryName);
-                                if (!vertexLibrary || !fragmentLibrary)
-                                {
-                                    VULTRA_CORE_ERROR("[DeclarativeRenderer] Shader libraries '{}/{}' are not loaded for "
-                                                      "project graph pass '{}'",
-                                                      vertexLibraryName,
-                                                      fragmentLibraryName,
-                                                      projectPass.type);
-                                    return;
-                                }
-
-                                auto& runtime = m_ProjectPassRuntimes[pass.name];
-                                if (!runtime)
-                                    runtime = std::make_unique<FullscreenPassRuntime>(
-                                        pass, vertexLibrary, fragmentLibrary);
-                                else
-                                    runtime->update(pass, vertexLibrary, fragmentLibrary);
-
-                                const auto input = passCtx.getInput(pass.input.empty() ? inputSlot(0) : pass.input);
-
-                                // Bind any additional declared input slots (depth, gbuffer,
-                                // ao, ...) at fragment set=3 bindings 1.. so script fragment
-                                // shaders are no longer limited to a single source texture.
-                                std::vector<FrameGraphResource> extraInputs;
-                                for (size_t i = 1; i < inputCount; ++i)
-                                    extraInputs.push_back(passCtx.getInput(inputSlot(i)));
-
-                                const auto output =
-                                    runtime->addPass(*ctx, input, {}, false, params, std::move(extraInputs));
-                                if (output)
-                                    passCtx.setOutput(pass.output.empty() ? outputSlot(0) : pass.output, output);
-                                return;
-                            }
-
-                            if (projectPass.pipeline == ProjectGraphPass::Pipeline::eCompute)
-                            {
-                                auto pass = projectPass;
-                                pass.type = params.get<std::string>("name", pass.type);
-
-                                auto* library = resolveLibrary(pass.shader.library);
-                                if (!library)
-                                {
-                                    VULTRA_CORE_ERROR("[DeclarativeRenderer] Shader library '{}' is not loaded for "
-                                                      "project compute pass '{}'",
-                                                      pass.shader.library,
-                                                      projectPass.type);
-                                    return;
-                                }
-
-                                auto& runtime = m_ProjectComputePassRuntimes[pass.type];
-                                if (!runtime)
-                                    runtime = std::make_unique<ComputePassRuntime>(pass, library);
-                                else
-                                    runtime->update(pass, library);
-
-                                std::vector<FrameGraphResource> inputResources;
-                                inputResources.reserve(inputCount);
-                                for (size_t i = 0; i < inputCount; ++i)
-                                    inputResources.push_back(passCtx.getInput(inputSlot(i)));
-
-                                const auto output = runtime->addPass(
-                                    *ctx, std::move(inputResources), outputSlot(0), params);
-                                if (output)
-                                    passCtx.setOutput(outputSlot(0), output);
-                                return;
-                            }
-
-                            if (!m_UnsupportedRayTracingPasses.contains(projectPass.type))
-                            {
-                                VULTRA_CORE_ERROR("[DeclarativeRenderer] Project graph pass '{}' declares a "
-                                                  "raytracing pipeline, but script-defined raytracing passes need TLAS/"
-                                                  "SBT binding support before execution",
-                                                  projectPass.type);
-                                m_UnsupportedRayTracingPasses.insert(projectPass.type);
-                            }
-
-                            passCtx.setOutput(outputSlot(0), passCtx.getInput(inputSlot(0)));
-                        },
+                    .type  = def.type,
+                    .setup = [this, scriptedIndex](FrameGraph&,
+                                                   FrameGraphBlackboard&,
+                                                   const vrendergraph::ParamBlock& params,
+                                                   vrendergraph::PassBuildContext& passCtx) {
+                        auto* ctx = m_Owner.m_CurrentBuildContext;
+                        if (!ctx)
+                            return;
+                        addScriptedPass(*ctx, passCtx, params, scriptedIndex);
+                    },
                     .inputs  = inputs,
                     .outputs = outputs,
-                    .params =
-                        {
-                            {.name         = "name",
-                             .type         = vrendergraph::ParamType::eString,
-                             .defaultValue = projectPass.type},
-                        },
+                    .params  = std::move(passParams),
                 });
             }
 
@@ -2783,8 +3330,7 @@ namespace vultra
         std::string                                                             m_Uri;
         vrendergraph::RenderGraphDesc                                           m_Desc;
         vrendergraph::RenderGraphRegistry                                       m_Registry;
-        std::unordered_map<std::string, std::unique_ptr<FullscreenPassRuntime>> m_ProjectPassRuntimes;
-        std::unordered_map<std::string, std::unique_ptr<ComputePassRuntime>>    m_ProjectComputePassRuntimes;
+        std::unordered_map<std::string, std::unique_ptr<ScriptedPassPipelines>> m_ScriptedPassPipelines;
         std::unordered_set<std::string>                                         m_UnsupportedRayTracingPasses;
         std::string                                                             m_LastValidationError;
         CompatibilityBaseColorPass                                              m_CompatibilityBaseColorPass;
@@ -3004,6 +3550,61 @@ namespace vultra
         }
     }
 
+    sol::state& DeclarativeRenderer::renderScriptState()
+    {
+        if (!m_RenderScriptState)
+        {
+            m_RenderScriptState = std::make_unique<sol::state>();
+            auto& lua           = *m_RenderScriptState;
+            lua.open_libraries(sol::lib::base, sol::lib::table, sol::lib::string, sol::lib::math);
+            lua.set_function("RenderPipelineAsset", [](sol::table t) { return t; });
+            lua.set_function("RenderFeature", [](sol::table t) { return t; });
+            lua.set_function("RenderGraphPass", [](sol::table t) { return t; });
+            lua.set_function("ShaderLibrary", [](sol::table t) { return t; });
+            registerScriptedPassLuaBindings(lua);
+            // Option A invariant: scripted execute runs on the thread that built the
+            // state (the render-script thread). Recorded for the exec-time assertion.
+            s_RenderScriptThreadId = std::this_thread::get_id();
+        }
+        return *m_RenderScriptState;
+    }
+
+    bool DeclarativeRenderer::parseScriptedPassTable(sol::table table, ScriptedPassDef& outPass)
+    {
+        outPass.type = getString(table, "type");
+        if (outPass.type.empty())
+            outPass.type = getString(table, "name");
+        if (outPass.type.empty())
+            return false;
+
+        sol::object setupObj = table["setup"];
+        sol::object execObj  = table["execute"];
+        if (setupObj.get_type() != sol::type::function || execObj.get_type() != sol::type::function)
+            return false;
+
+        outPass.setup   = setupObj.as<sol::protected_function>();
+        outPass.execute = execObj.as<sol::protected_function>();
+        outPass.inputs  = getStringList(table, "inputs");
+        outPass.outputs = getStringList(table, "outputs");
+        if (outPass.inputs.empty())
+            outPass.inputs.push_back(getString(table, "input", "source"));
+        if (outPass.outputs.empty())
+            outPass.outputs.push_back(getString(table, "output", "color"));
+        outPass.params = parseScriptedPassParams(table);
+
+        // Optional `shader` hint: used only to auto-expose the shader's reflected
+        // params on the graph node (the real shader is still chosen in `setup`).
+        sol::object shaderObj = table["shader"];
+        if (shaderObj.is<sol::table>())
+        {
+            sol::table st           = shaderObj.as<sol::table>();
+            outPass.reflectLibrary  = getString(st, "fragmentLibrary", getString(st, "library", "project"));
+            outPass.reflectFragment = getString(st, "fragment");
+            outPass.reflectCompute  = getString(st, "compute");
+        }
+        return true;
+    }
+
     bool DeclarativeRenderer::loadPipelineAsset()
     {
         auto* services     = getServices();
@@ -3034,7 +3635,7 @@ namespace vultra
                 if (!builtinGraph)
                 {
                     m_Asset.shaderLibraries.try_emplace("project", "res://shaders/project.vshaderlib.lua");
-                    loadProjectGraphPasses();
+                    loadScriptedPasses();
                 }
                 m_Asset.features.push_back(std::move(feature));
                 return true;
@@ -3068,7 +3669,7 @@ namespace vultra
         if (!m_RendererKeyOverride.empty())
             m_Asset.rendererKey = m_RendererKeyOverride;
         m_Asset.shaderLibraries.try_emplace("project", "res://shaders/project.vshaderlib.lua");
-        loadProjectGraphPasses();
+        loadScriptedPasses();
         return true;
     }
 
@@ -3194,119 +3795,74 @@ namespace vultra
         return true;
     }
 
-    bool DeclarativeRenderer::parseProjectGraphPassTable(sol::table table, ProjectGraphPass& outPass)
-    {
-        outPass.type = getString(table, "type");
-        if (outPass.type.empty())
-            outPass.type = getString(table, "name");
-        if (outPass.type.empty())
-            return false;
-
-        sol::object shaderObj = table["shader"];
-        if (!shaderObj.is<sol::table>())
-            return false;
-
-        sol::table shaderTable     = shaderObj.as<sol::table>();
-        outPass.shader.library     = getString(shaderTable, "library", "project");
-        outPass.shader.vertex      = getString(shaderTable, "vertex", "fullscreen_triangle.vert");
-        outPass.shader.fragment    = getString(shaderTable, "fragment");
-        const auto defaultVertexLibrary =
-            outPass.shader.vertex == "fullscreen_triangle.vert" ? std::string {"builtin"} : outPass.shader.library;
-        outPass.shader.vertexLibrary =
-            getString(shaderTable, "vertexLibrary", getString(shaderTable, "vertex_library", defaultVertexLibrary));
-        outPass.shader.fragmentLibrary =
-            getString(shaderTable, "fragmentLibrary", getString(shaderTable, "fragment_library", outPass.shader.library));
-        outPass.shader.compute     = getString(shaderTable, "compute");
-        outPass.shader.raygen      = getString(shaderTable, "raygen");
-        outPass.shader.miss        = getString(shaderTable, "miss");
-        outPass.shader.closestHit  = getString(shaderTable, "closestHit");
-        outPass.shader.anyHit      = getString(shaderTable, "anyHit");
-
-        const auto pipeline = normalizeId(getString(table, "pipeline", getString(table, "stage")));
-        if (pipeline == "compute" || !outPass.shader.compute.empty())
-            outPass.pipeline = ProjectGraphPass::Pipeline::eCompute;
-        else if (pipeline == "raytracing" || pipeline == "ray_tracing" || pipeline == "rt" ||
-                 !outPass.shader.raygen.empty())
-            outPass.pipeline = ProjectGraphPass::Pipeline::eRayTracing;
-        else
-            outPass.pipeline = ProjectGraphPass::Pipeline::eGraphics;
-
-        const bool hasInputList  = table["inputs"].valid();
-        const bool hasOutputList = table["outputs"].valid();
-        outPass.inputs           = getStringList(table, "inputs");
-        outPass.outputs          = getStringList(table, "outputs");
-
-        if (outPass.inputs.empty() && (!hasInputList || outPass.pipeline == ProjectGraphPass::Pipeline::eGraphics))
-            outPass.inputs.push_back(getString(table, "input", "source"));
-        if (outPass.outputs.empty() && (!hasOutputList || outPass.pipeline == ProjectGraphPass::Pipeline::eGraphics))
-            outPass.outputs.push_back(getString(table, "output", "color"));
-
-        if (outPass.pipeline == ProjectGraphPass::Pipeline::eCompute)
-        {
-            auto dispatchX = getInt(table, "dispatchX", static_cast<int>(outPass.dispatchX));
-            auto dispatchY = getInt(table, "dispatchY", static_cast<int>(outPass.dispatchY));
-            auto dispatchZ = getInt(table, "dispatchZ", static_cast<int>(outPass.dispatchZ));
-            outPass.dispatchByOutputSize = getBool(table, "dispatchByOutputSize", outPass.dispatchByOutputSize);
-
-            sol::object dispatchObj = table["dispatch"];
-            if (dispatchObj.is<sol::table>())
-            {
-                sol::table dispatch = dispatchObj.as<sol::table>();
-                dispatchX = getInt(dispatch, "x", dispatchX);
-                dispatchY = getInt(dispatch, "y", dispatchY);
-                dispatchZ = getInt(dispatch, "z", dispatchZ);
-                outPass.dispatchByOutputSize =
-                    getBool(dispatch, "byOutputSize", outPass.dispatchByOutputSize);
-            }
-
-            outPass.dispatchX = static_cast<uint32_t>(std::max(dispatchX, 1));
-            outPass.dispatchY = static_cast<uint32_t>(std::max(dispatchY, 1));
-            outPass.dispatchZ = static_cast<uint32_t>(std::max(dispatchZ, 1));
-
-            if (outPass.outputs.empty())
-                outPass.outputs.push_back(getString(table, "output", "color"));
-            return !outPass.shader.compute.empty();
-        }
-
-        if (outPass.pipeline == ProjectGraphPass::Pipeline::eRayTracing)
-            return !outPass.shader.raygen.empty();
-
-        auto& pass         = outPass.fullscreen;
-        pass.name          = getString(table, "passName", outPass.type);
-        pass.shader        = outPass.shader;
-        pass.input         = outPass.inputs.front();
-        pass.output        = outPass.outputs.front();
-        return !pass.shader.vertex.empty() && !pass.shader.fragment.empty();
-    }
-
-    void DeclarativeRenderer::loadProjectGraphPasses()
+    void DeclarativeRenderer::loadScriptedPasses()
     {
         auto* services     = getServices();
         auto* assetService = services ? services->tryGet<IAssetService>() : nullptr;
         if (!assetService)
             return;
+        auto* shaderService = services ? services->tryGet<IShaderService>() : nullptr;
+
+        // Pass-definition diagnostics are rebuilt on every (re)load. Shader-
+        // resolution diagnostics are re-published per frame from each pass's setup.
+        if (shaderService)
+            shaderService->clearRenderPassDiagnostics();
 
         std::unordered_set<std::string> loadedLogicalPaths;
-        const auto parsePassText = [this](std::string_view label, std::string_view text) {
+        const auto parsePassText = [this, shaderService](std::string_view label,
+                                                         std::string_view text,
+                                                         std::string      sourcePath) {
+            // Report (and log) an invalid pass definition against its source .lua so
+            // the code editor can mark it. label is for the log, sourcePath keys the UI.
+            const auto reportDefinitionError = [&](std::string message) {
+                VULTRA_CORE_ERROR("[DeclarativeRenderer] Invalid render pass '{}': {}", label, message);
+                if (shaderService && !sourcePath.empty())
+                    shaderService->setRenderPassDiagnostics(sourcePath,
+                                                            {AssetDiagnostic {sourcePath, 0, 0, std::move(message)}});
+            };
+
             if (text.find("RenderGraphPass") == std::string_view::npos)
                 return;
 
-            auto lua    = makeAssetLuaState();
-            auto result = lua.safe_script(std::string(text), &sol::script_pass_on_error);
+            // Run in the persistent render-script state inside a fresh environment:
+            // a scripted pass returns `setup`/`execute` sol::functions that must
+            // outlive parsing (they execute every frame), and per-file environments
+            // keep each pass file's globals from leaking into the next.
+            auto&            lua = renderScriptState();
+            sol::environment env(lua, sol::create, lua.globals());
+            auto             result = lua.safe_script(std::string(text), env, &sol::script_pass_on_error);
             if (!result.valid())
             {
-                sol::error err = result;
-                VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to parse project graph pass '{}': {}", label, err.what());
+                const sol::error err = result;
+                reportDefinitionError(std::string {"Lua error: "} + err.what());
                 return;
             }
 
             sol::object obj = result;
             if (!obj.is<sol::table>())
+            {
+                reportDefinitionError("script must return a RenderGraphPass { ... } table.");
                 return;
+            }
 
-            ProjectGraphPass pass;
-            if (parseProjectGraphPassTable(obj.as<sol::table>(), pass))
-                m_Asset.projectGraphPasses.push_back(std::move(pass));
+            sol::table table = obj.as<sol::table>();
+            if (table["setup"].get_type() == sol::type::function &&
+                table["execute"].get_type() == sol::type::function)
+            {
+                ScriptedPassDef def;
+                if (parseScriptedPassTable(table, def))
+                {
+                    def.sourcePath = sourcePath;
+                    m_Asset.scriptedPasses.push_back(std::move(def));
+                }
+                else
+                {
+                    reportDefinitionError("missing a required 'type' (or 'name') field.");
+                }
+                return;
+            }
+
+            reportDefinitionError("missing setup/execute functions. See doc/scripted_render_passes.md.");
         };
 
         const auto assetRoot = std::filesystem::path(assetService->resolveUri("res://")).lexically_normal();
@@ -3351,10 +3907,14 @@ namespace vultra
 
                 std::error_code relEc;
                 const auto      rel = std::filesystem::relative(file, assetRoot, relEc);
+                std::string     logical;
                 if (!relEc && !rel.empty())
-                    loadedLogicalPaths.insert(rel.generic_string());
+                {
+                    logical = rel.generic_string();
+                    loadedLogicalPaths.insert(logical);
+                }
 
-                parsePassText(file.generic_string(), buffer.str());
+                parsePassText(file.generic_string(), buffer.str(), logical);
             }
         }
 
@@ -3385,7 +3945,7 @@ namespace vultra
                     "[DeclarativeRenderer] Failed to load project graph pass '{}': {}", uri, std::move(text).error());
                 continue;
             }
-            parsePassText(uri, text.value());
+            parsePassText(uri, text.value(), uri);
         }
     }
 
