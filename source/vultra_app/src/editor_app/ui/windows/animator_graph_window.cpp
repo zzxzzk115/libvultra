@@ -214,6 +214,7 @@ namespace vultra_app
         m_SelectedState       = 0;
         m_SelTransitionSource = -1000;
         markDirty();
+        resetHistory();
         (void)ctx;
     }
 
@@ -236,7 +237,45 @@ namespace vultra_app
         m_Status          = vultra::tr("animatorGraph.status.loaded");
         m_SelectedState   = m_Graph.states.empty() ? -1 : 0;
         m_SelTransitionSource = -1000;
+        resetHistory();
         return true;
+    }
+
+    void AnimatorGraphWindow::resetHistory()
+    {
+        if (!m_HistoryReady)
+        {
+            m_History.setRestore(
+                [this](EditorContext& ctx, const std::string& snapshot) { applyHistorySnapshot(ctx, snapshot); });
+            m_History.setDefaultLabel("history.edit");
+            m_HistoryReady = true;
+        }
+        m_History.reset(ag::saveGraphToText(m_Graph), "history.loaded");
+        m_HistoryPending = false;
+    }
+
+    void AnimatorGraphWindow::recordHistory()
+    {
+        // Coalesce drags: only record when the edit has settled (no active ImGui item).
+        if (m_ApplyingHistory || !m_HistoryPending || ImGui::IsAnyItemActive())
+            return;
+        m_History.record(ag::saveGraphToText(m_Graph));
+        m_HistoryPending = false;
+    }
+
+    void AnimatorGraphWindow::applyHistorySnapshot(EditorContext&, const std::string& snapshot)
+    {
+        auto restored = ag::loadGraphFromText(snapshot);
+        if (!restored)
+            return;
+        m_ApplyingHistory     = true;
+        m_Graph               = std::move(*restored);
+        m_SelectedState       = m_Graph.states.empty() ? -1 : 0;
+        m_SelTransitionSource = -1000;
+        m_SelTransitionIndex  = -1;
+        m_Dirty               = true; // restored state differs from the saved file
+        m_HistoryPending      = false;
+        m_ApplyingHistory     = false;
     }
 
     bool AnimatorGraphWindow::saveGraph(EditorContext& ctx)
@@ -314,6 +353,8 @@ namespace vultra_app
             return;
         }
         const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+        // Become the active undo/redo document while focused (sticky; see EditorContext).
+        claimActiveDocument(ctx, &m_History, focused);
 
         drawToolbar(ctx);
         ImGui::Separator();
@@ -336,6 +377,9 @@ namespace vultra_app
         if (!ImGui::GetIO().WantTextInput && focused && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))
             saveGraph(ctx);
 
+        // Undo/redo run globally on ctx.history (claimed above while focused). Capture a
+        // coalesced snapshot once this frame's edits have settled.
+        recordHistory();
         ImGui::End();
     }
 

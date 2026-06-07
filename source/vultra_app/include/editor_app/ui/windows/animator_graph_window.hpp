@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor_app/ui/editor_window.hpp"
+#include "editor_app/ui/graph_history.hpp"
 
 #include <vultra/function/animation/animator_graph.hpp>
 
@@ -34,7 +35,16 @@ namespace vultra_app
         void drawInspector(EditorContext& ctx);
         void drawStateInspector(EditorContext& ctx, vultra::animator_graph::State& state);
         void drawTransitionInspector(EditorContext& ctx, vultra::animator_graph::Transition& transition);
-        void markDirty() { m_Dirty = true; }
+        void markDirty()
+        {
+            m_Dirty          = true;
+            m_HistoryPending = true;
+        }
+
+        // Undo/redo via the shared SnapshotHistory (same pattern as the material graph).
+        void resetHistory();
+        void recordHistory();
+        void applyHistorySnapshot(EditorContext& ctx, const std::string& snapshot);
 
         std::string addState(EditorContext& ctx, const std::string& base);
         void        removeState(EditorContext& ctx, const std::string& name);
@@ -57,6 +67,10 @@ namespace vultra_app
         std::string                   m_Status;
         bool                          m_Loaded {false};
         bool                          m_Dirty {false};
+        SnapshotHistory               m_History;
+        bool                          m_HistoryReady {false};
+        bool                          m_HistoryPending {false};
+        bool                          m_ApplyingHistory {false};
 
         int  m_SelectedState {-1};          // index into m_Graph.states, or -1
         int  m_SelTransitionSource {-1000}; // state index, kAnyStateIndex, or -1000 = none

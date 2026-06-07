@@ -176,7 +176,8 @@ namespace vultra_app
 
         ctx.state.sceneDirty = true;
         if (ctx.history)
-            ctx.history->setNextLabel(ctx.state.statusMessage.empty() ? "Instantiate Asset" : ctx.state.statusMessage);
+            ctx.history->setNextLabel(ctx.state.statusMessage.empty() ? std::string {"history.instantiateAsset"} :
+                                                                        ctx.state.statusMessage);
         if (out)
         {
             *out = entityJson(world, entity);

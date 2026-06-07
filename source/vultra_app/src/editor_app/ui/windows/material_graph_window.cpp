@@ -264,7 +264,7 @@ namespace vultra_app
                         (56.0f +
                          static_cast<float>(node.inputs.size() + node.outputs.size() + node.params.size()) * 24.0f) /
                             120.0f),
-                    .sink = node.typeId == "vultra.output.surface",
+                    .sink = vultra::material_graph::isSurfaceOutputType(node.typeId),
                 });
             }
 
@@ -589,20 +589,8 @@ namespace vultra_app
 
         bool drawKnownEnumParam(const vultra::material_graph::Node& node, const std::string& key, nlohmann::json& value)
         {
-            if (node.typeId != "vultra.output.surface")
+            if (!vultra::material_graph::isSurfaceOutputType(node.typeId))
                 return false;
-
-            if (key == "shadingModel")
-            {
-                static constexpr std::array options {
-                    "PBR_MR",
-                    "PBR_SpecGloss",
-                    "Phong",
-                    "Unlit",
-                    "ToonLike",
-                };
-                return drawStringCombo(value, key.c_str(), options);
-            }
 
             if (key == "alphaMode")
             {
@@ -655,6 +643,64 @@ namespace vultra_app
             if (typeId.starts_with("vultra.output."))
                 return "Output";
             return "Other";
+        }
+
+        // Per-category node title-bar colors so the graph reads at a glance: inputs
+        // (Time/normals) and constant parameters get their own hues, the single surface
+        // output is a distinct warm color, and operators are grouped by kind.
+        struct NodeTitleColors
+        {
+            ImU32 bar;
+            ImU32 hovered;
+            ImU32 selected;
+        };
+
+        NodeTitleColors nodeTitleColors(std::string_view category)
+        {
+            const auto make = [](int r, int g, int b) {
+                const auto lift = [](int c, int d) { return c + d > 255 ? 255 : c + d; };
+                return NodeTitleColors {
+                    IM_COL32(r, g, b, 255),
+                    IM_COL32(lift(r, 35), lift(g, 35), lift(b, 35), 255),
+                    IM_COL32(lift(r, 60), lift(g, 60), lift(b, 60), 255),
+                };
+            };
+            if (category == "Inputs")
+                return make(20, 110, 120); // teal  - engine inputs / constants (Time, normals)
+            if (category == "Parameters")
+                return make(40, 120, 70); // green - authored constant values (Float/Color)
+            if (category == "Math")
+                return make(45, 85, 150); // blue  - math operators
+            if (category == "Logic")
+                return make(95, 70, 150); // purple - bool/int/enum logic
+            if (category == "Texture")
+                return make(170, 95, 35); // orange - texture sampling
+            if (category == "Shading")
+                return make(150, 60, 110); // magenta - shading utilities (normal map, fresnel)
+            if (category == "Output")
+                return make(165, 55, 55); // red   - the single surface output (special)
+            return make(80, 80, 88);      // gray  - uncategorized
+        }
+
+        // Outlined, slightly larger node title text - matches the Render Graph editor's
+        // drawNodeTitleText so the two graph canvases read with a consistent node style.
+        void drawNodeTitleText(const char* text, const float fontSize = vultra::ui::dp(18.0f))
+        {
+            const ImVec2 pos      = ImGui::GetCursorScreenPos();
+            ImDrawList*  drawList = ImGui::GetWindowDrawList();
+            ImFont*      font     = ImGui::GetFont();
+            const ImU32  outline  = IM_COL32(0, 0, 0, 220);
+            const ImU32  main     = ImGui::GetColorU32(ImGuiCol_Text);
+
+            drawList->AddText(font, fontSize, ImVec2(pos.x - vultra::ui::dp(1.0f), pos.y), outline, text);
+            drawList->AddText(font, fontSize, ImVec2(pos.x + vultra::ui::dp(1.0f), pos.y), outline, text);
+            drawList->AddText(font, fontSize, ImVec2(pos.x, pos.y - vultra::ui::dp(1.0f)), outline, text);
+            drawList->AddText(font, fontSize, ImVec2(pos.x, pos.y + vultra::ui::dp(1.0f)), outline, text);
+            drawList->AddText(font, fontSize, pos, main, text);
+
+            const float  scale    = fontSize / ImGui::GetFontSize();
+            const ImVec2 textSize = ImGui::CalcTextSize(text);
+            ImGui::Dummy(ImVec2 {textSize.x * scale, textSize.y * scale});
         }
 
         std::string_view nodeMenuSubcategory(std::string_view typeId)
@@ -826,6 +872,10 @@ namespace vultra_app
             return;
         }
         const bool windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+        // Become the active document (owner) for undo/redo while focused: the global Ctrl+Z,
+        // the History window, and editor.undo/redo then all act on this graph's history.
+        // Ownership is sticky, so clicking the History panel does not hand it back to scene.
+        claimActiveDocument(ctx, &m_History, windowFocused);
 
         drawToolbar(ctx);
         ImGui::Separator();
@@ -848,6 +898,11 @@ namespace vultra_app
 
         if (!ImGui::GetIO().WantTextInput && windowFocused && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))
             saveGraph(ctx);
+
+        // Undo/redo are handled globally on ctx.history (claimed above while focused), so
+        // no per-window key handling is needed. Just capture a coalesced snapshot once
+        // this frame's edits have settled.
+        recordHistory();
 
         ImGui::End();
     }
@@ -976,7 +1031,7 @@ namespace vultra_app
         m_Graph.name       = "Default Material Graph";
         m_CurrentUri       = "res://materials/default.vmatgraph.json";
         const auto* color  = m_Registry.find("vultra.param.color");
-        const auto* output = m_Registry.find("vultra.output.surface");
+        const auto* output = m_Registry.find("vultra.output.pbr_mr");
         if (color && output)
         {
             m_Graph.nodes.push_back(makeNode(*color, "Color", ImVec2(-220.0f, 20.0f)));
@@ -985,6 +1040,7 @@ namespace vultra_app
                 {.from = {.nodeId = "Color", .pin = "value"}, .to = {.nodeId = "Surface", .pin = "baseColor"}});
         }
         markDirty(ctx);
+        resetHistory();
     }
 
     bool MaterialGraphWindow::loadGraph(EditorContext& ctx, std::string uri)
@@ -1008,6 +1064,7 @@ namespace vultra_app
         m_Status     = vultra::tr("materialGraph.status.loaded");
         m_LoadedAssetGeneration = ctx.state.assetFileGeneration;
         m_LoadedWriteStamp      = fileWriteStamp(pathForUri(ctx, m_CurrentUri));
+        resetHistory();
         return true;
     }
 
@@ -1147,6 +1204,20 @@ namespace vultra_app
         if (ImGui::Button((std::string {ICON_MDI_FILE_PLUS " "} + vultra::tr("materialGraph.toolbar.new")).c_str()))
             newGraph(ctx);
         ImGui::SameLine();
+        ImGui::BeginDisabled(!m_History.canUndo());
+        if (ImGui::Button(ICON_MDI_UNDO "###materialGraphUndo"))
+            undo(ctx);
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", vultra::tr("history.undo"));
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!m_History.canRedo());
+        if (ImGui::Button(ICON_MDI_REDO "###materialGraphRedo"))
+            redo(ctx);
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", vultra::tr("history.redo"));
+        ImGui::SameLine();
         if (ImGui::Button((std::string {ICON_MDI_CONTENT_SAVE " "} + vultra::tr("common.save")).c_str()))
             saveGraph(ctx);
         ImGui::SameLine();
@@ -1177,6 +1248,12 @@ namespace vultra_app
         {
             ensureNodePorts(node);
             const int id = nodeId(node.id);
+
+            const auto titleColors = nodeTitleColors(nodeMenuCategory(node.typeId));
+            ImNodes::PushColorStyle(ImNodesCol_TitleBar, titleColors.bar);
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, titleColors.hovered);
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, titleColors.selected);
+
             ImNodes::BeginNode(id);
             ImNodes::BeginNodeTitleBar();
             {
@@ -1185,13 +1262,16 @@ namespace vultra_app
                 const std::string typeName = titleDesc && !titleDesc->displayName.empty() ?
                                                  titleDesc->displayName :
                                                  (!node.displayName.empty() ? node.displayName : node.typeId);
-                ImGui::TextUnformatted(typeName.c_str());
+                drawNodeTitleText(typeName.c_str());
                 // Line 2: the user note (falls back to a legacy displayName label if distinct).
                 const std::string noteText =
                     !node.note.empty() ? node.note : (node.displayName != typeName ? node.displayName : std::string {});
                 if (!noteText.empty())
                 {
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                    // The title bar is now category-colored, so a disabled-gray note is
+                    // unreadable. Use a near-white that contrasts on every title hue while
+                    // staying a touch dimmer than the type name to keep the hierarchy.
+                    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(236, 238, 245, 230));
                     ImGui::TextUnformatted(noteText.c_str());
                     ImGui::PopStyleColor();
                 }
@@ -1201,15 +1281,31 @@ namespace vultra_app
             for (const auto& pin : node.inputs)
             {
                 ImNodes::BeginInputAttribute(pinId(node.id, pin.name, true), ImNodesPinShape_CircleFilled);
-                ImGui::TextUnformatted(pin.name.c_str());
+                // When the pin has no incoming link and carries an editable default, draw
+                // its value editor inline on the pin row instead of a separate param row
+                // below (and instead of a bare name). A linked pin shows just its name.
+                if (!hasInputLink(m_Graph, node.id, pin.name) && node.params.contains(pin.name))
+                {
+                    auto& value = node.params[pin.name];
+                    ImGui::PushID(pin.name.c_str());
+                    const bool changed = drawKnownEnumParam(node, pin.name, value) ||
+                                         drawJsonValue(ctx, m_TextureSelector, pin.type, value, pin.name.c_str());
+                    ImGui::PopID();
+                    if (changed)
+                        markDirty(ctx);
+                }
+                else
+                {
+                    ImGui::TextUnformatted(pin.name.c_str());
+                }
                 ImNodes::EndInputAttribute();
             }
 
+            // Param-only rows: params with no matching input pin (e.g. alphaMode,
+            // shadingModelName). Pin-backed params are edited inline on the pin row above.
             for (const auto& [key, raw] : node.params.items())
             {
-                if (std::ranges::any_of(node.inputs, [&](const auto& pin) {
-                        return pin.name == key && hasInputLink(m_Graph, node.id, pin.name);
-                    }))
+                if (std::ranges::any_of(node.inputs, [&](const auto& pin) { return pin.name == key; }))
                     continue;
                 auto*                             desc = m_Registry.find(node.typeId);
                 vultra::material_graph::ValueType type = vultra::material_graph::ValueType::eUnknown;
@@ -1229,16 +1325,31 @@ namespace vultra_app
             // comes from the previous frame's layout; nodes are static so it converges.
             const float nodeContentWidth =
                 ImNodes::GetNodeDimensions(id).x - ImNodes::GetStyle().NodePadding.x * 2.0f;
+            // A single-output node's pin is unambiguous, so its name label is redundant
+            // (e.g. a Float/Color node already shows its value editor); draw just the pin.
+            // Multi-output nodes keep right-aligned labels to tell the pins apart.
+            const bool labelOutputs = node.outputs.size() > 1;
             for (const auto& pin : node.outputs)
             {
                 ImNodes::BeginOutputAttribute(pinId(node.id, pin.name, false), ImNodesPinShape_CircleFilled);
-                const float labelWidth = ImGui::CalcTextSize(pin.name.c_str()).x;
-                if (nodeContentWidth > labelWidth)
-                    ImGui::Indent(nodeContentWidth - labelWidth);
-                ImGui::TextUnformatted(pin.name.c_str());
+                if (labelOutputs)
+                {
+                    const float labelWidth = ImGui::CalcTextSize(pin.name.c_str()).x;
+                    if (nodeContentWidth > labelWidth)
+                        ImGui::Indent(nodeContentWidth - labelWidth);
+                    ImGui::TextUnformatted(pin.name.c_str());
+                }
+                else
+                {
+                    // Reserve a row so the pin marker keeps a sensible vertical position.
+                    ImGui::Dummy(ImVec2(1.0f, ImGui::GetTextLineHeight()));
+                }
                 ImNodes::EndOutputAttribute();
             }
             ImNodes::EndNode();
+            ImNodes::PopColorStyle(); // TitleBarSelected
+            ImNodes::PopColorStyle(); // TitleBarHovered
+            ImNodes::PopColorStyle(); // TitleBar
 
             if (node.editor.contains("pos"))
             {
@@ -1761,8 +1872,11 @@ namespace vultra_app
             const auto* desc = m_Registry.find(typeId);
             if (!desc)
                 return;
-            if (typeId == "vultra.output.surface" && std::ranges::any_of(m_Graph.nodes, [](const auto& node) {
-                    return node.typeId == "vultra.output.surface";
+            // A surface graph must contain exactly one output node, so disable adding
+            // any output-family node once one already exists.
+            if (vultra::material_graph::isSurfaceOutputType(typeId) &&
+                std::ranges::any_of(m_Graph.nodes, [](const auto& node) {
+                    return vultra::material_graph::isSurfaceOutputType(node.typeId);
                 }))
             {
                 ImGui::BeginDisabled();
@@ -1891,11 +2005,57 @@ namespace vultra_app
 
     void MaterialGraphWindow::markDirty(EditorContext& ctx)
     {
-        m_Dirty = true;
+        m_Dirty          = true;
+        m_HistoryPending = true; // a coalesced snapshot will be recorded once the edit settles
         if (auto* assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
             assets->setTextAssetOverride(m_CurrentUri, vultra::material_graph::saveGraphToText(m_Graph));
         m_Status = m_LiveApply ? vultra::tr("materialGraph.status.livePreviewUpdated") : vultra::tr("materialGraph.status.edited");
     }
+
+    void MaterialGraphWindow::resetHistory()
+    {
+        if (!m_HistoryReady)
+        {
+            // Install the deserialize-into-graph callback once; the shared SnapshotHistory
+            // (driven by the global Ctrl+Z / History window via IHistory) calls it on
+            // undo/redo/jumpTo.
+            m_History.setRestore([this](EditorContext& ctx, const std::string& snapshot) {
+                applyHistorySnapshot(ctx, snapshot);
+            });
+            m_HistoryReady = true;
+        }
+        // Labels are i18n keys; the History window resolves them at draw time.
+        m_History.setDefaultLabel("history.edit");
+        m_History.reset(vultra::material_graph::saveGraphToText(m_Graph), "history.loaded");
+        m_HistoryPending = false;
+    }
+
+    void MaterialGraphWindow::recordHistory()
+    {
+        // Skip while restoring a snapshot, when nothing changed, or mid-interaction (a
+        // slider/color drag keeps an item active) so a drag collapses to one undo step.
+        if (m_ApplyingHistory || !m_HistoryPending || ImGui::IsAnyItemActive())
+            return;
+        m_History.record(vultra::material_graph::saveGraphToText(m_Graph));
+        m_HistoryPending = false;
+    }
+
+    void MaterialGraphWindow::applyHistorySnapshot(EditorContext& ctx, const std::string& snapshot)
+    {
+        auto restored = vultra::material_graph::loadGraphFromText(snapshot);
+        if (!restored)
+            return;
+        m_ApplyingHistory = true;
+        m_Graph           = std::move(*restored);
+        m_Pins.clear(); // rebuilt from the restored graph on the next draw
+        markDirty(ctx); // refresh the live-preview override; node positions reapply from JSON
+        m_HistoryPending  = false; // the restored state itself must not be re-recorded
+        m_ApplyingHistory = false;
+    }
+
+    void MaterialGraphWindow::undo(EditorContext& ctx) { m_History.undo(ctx); }
+
+    void MaterialGraphWindow::redo(EditorContext& ctx) { m_History.redo(ctx); }
 
     void MaterialGraphWindow::ensurePreviewWorld(EditorContext&)
     {

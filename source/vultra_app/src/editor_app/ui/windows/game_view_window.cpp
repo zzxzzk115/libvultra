@@ -499,7 +499,7 @@ namespace vultra_app
                     ctx.state.sceneDirty    = true;
                     ctx.state.statusMessage = vultra::tr("gameView.cameraCreated");
                     if (ctx.history)
-                        ctx.history->setNextLabel("Create Primary Camera");
+                        ctx.history->setNextLabel("history.createPrimaryCamera");
                 }
             }
         }

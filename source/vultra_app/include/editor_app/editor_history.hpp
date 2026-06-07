@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor_app/editor_context.hpp"
+#include "editor_app/i_history.hpp"
 
 #include <vultra/core/base/uuid.hpp>
 
@@ -20,32 +21,28 @@ namespace vultra_app
         virtual void execute(EditorContext& ctx)         = 0;
     };
 
-    class EditorHistory
+    class EditorHistory final : public IHistory
     {
     public:
-        struct Entry
-        {
-            std::string label;
-            bool        dirty {false};
-        };
+        using Entry = IHistory::Entry;
 
         void reset(EditorContext& ctx, std::string label = "Scene Loaded");
         void clear();
         void observeScene(EditorContext& ctx);
         void execute(EditorContext& ctx, EditorCommand& command);
-        void setNextLabel(std::string label);
+        void setNextLabel(std::string label) override;
         void syncCurrent(EditorContext& ctx);
         void markCurrentClean(EditorContext& ctx);
 
-        bool undo(EditorContext& ctx);
-        bool redo(EditorContext& ctx);
-        bool jumpTo(EditorContext& ctx, std::size_t index);
+        bool undo(EditorContext& ctx) override;
+        bool redo(EditorContext& ctx) override;
+        bool jumpTo(EditorContext& ctx, std::size_t index) override;
 
-        [[nodiscard]] bool canUndo() const;
-        [[nodiscard]] bool canRedo() const;
+        [[nodiscard]] bool canUndo() const override;
+        [[nodiscard]] bool canRedo() const override;
         [[nodiscard]] bool applying() const { return m_Applying; }
-        [[nodiscard]] std::size_t currentIndex() const { return m_Current; }
-        [[nodiscard]] const std::vector<Entry>& entries() const { return m_Entries; }
+        [[nodiscard]] std::size_t currentIndex() const override { return m_Current; }
+        [[nodiscard]] const std::vector<Entry>& entries() const override { return m_Entries; }
 
     private:
         struct SceneState

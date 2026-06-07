@@ -502,7 +502,12 @@ namespace vultra_app
     {
         vultra::RuntimeProfiler::ExternalScope perf {"EditorApp::draw"};
         ctx.thumbnails = &m_ThumbnailService;
-        ctx.history    = &m_History;
+        // The active document's history (the owner). Sticky: stays on the last focused
+        // document window even while an auxiliary panel (History, Inspector, Content
+        // Browser) is focused. Document windows re-claim it during their draw.
+        ctx.history        = m_ActiveHistory ? m_ActiveHistory : &m_History;
+        ctx.claimedHistory = nullptr;
+        ctx.sceneHistory   = &m_History;
         {
             vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::applySettings"};
             ui::applyEditorSettingsRuntime(ctx.state.editorSettings);
@@ -560,12 +565,10 @@ namespace vultra_app
 
         if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))
             (void)executeCommand(ctx, "editor.save_scene", nlohmann::json::object());
-        if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z))
-            (void)executeCommand(ctx, "editor.redo", nlohmann::json::object());
-        else if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Z))
-            (void)executeCommand(ctx, "editor.undo", nlohmann::json::object());
         if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F5))
             (void)executeCommand(ctx, "editor.build_and_run", nlohmann::json::object());
+        // Undo/redo are handled AFTER the windows draw (see below) so ctx.history reflects
+        // this frame's focused document.
 
         if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
         {
@@ -593,6 +596,23 @@ namespace vultra_app
             vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::endDockSpace"};
             endDockSpace();
         }
+        // Undo/redo run AFTER the windows draw so ctx.history reflects this frame's focused
+        // document: a focused graph editor pointed ctx.history at its own IHistory during
+        // its draw; otherwise it is the scene history. One global path serves all editors.
+        if (ctx.history && !ImGui::GetIO().WantTextInput)
+        {
+            if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z))
+                ctx.history->redo(ctx);
+            else if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Z))
+                ctx.history->undo(ctx);
+        }
+        // Commit the active document (owner) for next frame. Sticky: keep the previous
+        // owner when nothing claimed this frame, so focusing the History panel / Inspector
+        // / Content Browser does not steal ownership from the document being edited.
+        if (ctx.claimedHistory)
+            m_ActiveHistory = ctx.claimedHistory;
+        if (!m_ActiveHistory)
+            m_ActiveHistory = &m_History;
         {
             vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::commandsAndHistory"};
             processEditorCommands(ctx);
@@ -793,7 +813,7 @@ namespace vultra_app
         ctx.state.sceneDirty          = false;
         ctx.state.statusMessage       = vultra::trf("editorApp.status.openScene.opened", sceneUri);
         requestSceneViewAlignToPrimaryCamera(ctx, world);
-        m_History.reset(ctx, vultra::tr("editorApp.history.sceneOpened"));
+        m_History.reset(ctx, "editorApp.history.sceneOpened");
         return true;
     }
 
@@ -1652,7 +1672,7 @@ namespace vultra_app
                     sceneService->releaseSceneLoad(m_Loading.sceneLoad);
                     m_Loading.sceneLoad = {};
                 }
-                m_History.reset(ctx, vultra::tr("editorApp.history.sceneLoaded"));
+                m_History.reset(ctx, "editorApp.history.sceneLoaded");
 
                 m_Loading.phase    = LoadingPhase::Finalize;
                 m_Loading.progress = 0.98f;
@@ -2132,7 +2152,10 @@ namespace vultra_app
             ImGui::DockBuilderFinish(id);
         }
 
-        ImGui::DockSpace(id, ImVec2 {0.0f, 0.0f}, ImGuiDockNodeFlags_None);
+        // Hide the per-dock-node window/docking menu button (the small triangle at the
+        // left of every tab bar). It is a shared flag (SharedFlagsInheritMask_ = ~0), so
+        // setting it on the dockspace root propagates to all child nodes.
+        ImGui::DockSpace(id, ImVec2 {0.0f, 0.0f}, ImGuiDockNodeFlags_NoWindowMenuButton);
 #endif
     }
 

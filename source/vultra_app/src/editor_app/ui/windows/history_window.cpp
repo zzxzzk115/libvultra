@@ -67,7 +67,11 @@ namespace vultra_app
                 const auto  index    = static_cast<std::size_t>(row);
                 const auto& entry    = entries[index];
                 const bool  selected = index == history->currentIndex();
-                const auto  label    = entry.dirty ? entry.label + " *" : entry.label;
+                // Entry labels are stored as i18n keys and resolved here at draw time, so a
+                // language switch re-translates the whole history on the next frame. tr()
+                // returns the key itself on a miss, so dynamic/literal labels pass through.
+                const std::string text  = vultra::tr(entry.label.c_str());
+                const auto        label = entry.dirty ? text + " *" : text;
                 ImGui::PushID(row);
                 if (ImGui::Selectable(label.c_str(), selected))
                     history->jumpTo(ctx, index);

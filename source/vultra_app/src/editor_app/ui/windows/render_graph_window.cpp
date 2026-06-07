@@ -1,6 +1,7 @@
 #include "editor_app/ui/windows/render_graph_window.hpp"
 
 #include "editor_app/project_asset_utils.hpp"
+#include "editor_app/ui/graph_history.hpp"
 #include "editor_app/ui/graph_layout.hpp"
 #include "editor_app/ui/texture_preview_utils.hpp"
 #include "common/ui_widgets.hpp"
@@ -3374,15 +3375,72 @@ namespace vultra_app
 
         void markDirty()
         {
-            dirty        = true;
-            runtimeDirty = true;
+            dirty          = true;
+            runtimeDirty   = true;
+            historyPending = true;
         }
 
         void markPipelineDirty()
         {
-            dirty         = true;
-            pipelineDirty = true;
-            runtimeDirty  = true;
+            dirty          = true;
+            pipelineDirty  = true;
+            runtimeDirty   = true;
+            historyPending = true;
+        }
+
+        // --- Undo/redo (shared SnapshotHistory; same pattern as the material graph) ---
+        SnapshotHistory history;
+        bool            historyReady {false};
+        bool            historyPending {false};
+        bool            applyingHistory {false};
+
+        [[nodiscard]] std::string serializeGraph() const { return vrendergraph::saveRenderGraph(graph).dump(); }
+
+        void restoreFromSnapshot(EditorContext& /*ctx*/, const std::string& json)
+        {
+            vrendergraph::RenderGraphDesc restored;
+            try
+            {
+                restored = vrendergraph::loadRenderGraph(nlohmann::json::parse(json));
+            }
+            catch (const std::exception&)
+            {
+                return;
+            }
+            applyingHistory = true;
+            graph           = std::move(restored);
+            for (auto& pass : graph.passes)
+                if (registry.contains(pass.type))
+                    ensureSlots(pass, registry.get(pass.type));
+            applyPositions  = true; // reapply node layout from the restored metadata
+            dirty           = true;
+            runtimeDirty    = true; // the live-apply path re-pushes to the runtime next frame
+            historyPending  = false;
+            applyingHistory = false;
+        }
+
+        void resetHistory()
+        {
+            if (!historyReady)
+            {
+                history.setRestore(
+                    [this](EditorContext& ctx, const std::string& json) { restoreFromSnapshot(ctx, json); });
+                history.setDefaultLabel("history.edit");
+                historyReady = true;
+            }
+            // The freshly-loaded graph already carries node positions in its metadata, so
+            // the baseline snapshot does not need storeMeta() (the canvas has not drawn yet).
+            history.reset(serializeGraph(), "history.loaded");
+            historyPending = false;
+        }
+
+        void recordHistory()
+        {
+            if (applyingHistory || !historyPending || ImGui::IsAnyItemActive())
+                return;
+            storeMeta(); // bake current node positions into the graph before snapshotting
+            history.record(serializeGraph());
+            historyPending = false;
         }
 
         bool isFeatureNode(int node, std::string* outFeature = nullptr) const
@@ -3631,7 +3689,16 @@ namespace vultra_app
         }
         m_RuntimeGraphSuspended = false;
 
+        // Become the active undo/redo document while focused (sticky; see EditorContext).
+        if (m_GraphEditor && m_GraphEditor->loaded)
+            claimActiveDocument(
+                ctx, &m_GraphEditor->history, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
+
         drawGraphEditor(ctx);
+
+        // Capture a coalesced undo snapshot once this frame's edits have settled.
+        if (m_GraphEditor && m_GraphEditor->loaded)
+            m_GraphEditor->recordHistory();
         ImGui::End();
     }
 
@@ -5067,6 +5134,7 @@ namespace vultra_app
                         state.runtimeDirty   = false;
                         state.applyPositions = true;
                         state.status         = vultra::tr("renderGraph.status.loadedBuiltin");
+                        state.resetHistory();
                     }
                     catch (const std::exception& e)
                     {
@@ -5107,6 +5175,7 @@ namespace vultra_app
                     state.runtimeDirty   = false;
                     state.applyPositions = true;
                     state.status         = vultra::tr("renderGraph.status.loaded");
+                    state.resetHistory();
                 }
                 catch (const std::exception& e)
                 {

@@ -148,6 +148,10 @@ namespace vultra_app
 
         EditorWindowManager m_WindowManager;
         EditorHistory       m_History;
+        // The document whose history is active (focused). Defaults to the scene history; a
+        // focused graph editor claims it via EditorContext::claimedHistory. Committed at
+        // the end of each frame and read at the start of the next.
+        IHistory*           m_ActiveHistory {&m_History};
         ui::AssetThumbnailService m_ThumbnailService;
         ProjectFileWatcher m_FileWatcher;
         std::filesystem::path m_SyncedProject;

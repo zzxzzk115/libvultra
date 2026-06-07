@@ -1228,13 +1228,14 @@ namespace vultra_app
                     {
                         ctx.state.sceneDirty = true;
                         if (ctx.history)
+                            // Pass i18n keys (resolved in the History window at draw time).
                             ctx.history->setNextLabel(dragState.operation == SceneViewWindow::Ui2DDragOperation::Move ?
-                                                          vultra::tr("sceneView.history.moveUiRect") :
+                                                          "sceneView.history.moveUiRect" :
                                                       dragState.operation == SceneViewWindow::Ui2DDragOperation::Rotate ?
-                                                          vultra::tr("sceneView.history.rotateUiRect") :
+                                                          "sceneView.history.rotateUiRect" :
                                                       dragState.operation == SceneViewWindow::Ui2DDragOperation::Rect ?
-                                                          vultra::tr("sceneView.history.resizeUiRect") :
-                                                          vultra::tr("sceneView.history.scaleUiRect"));
+                                                          "sceneView.history.resizeUiRect" :
+                                                          "sceneView.history.scaleUiRect");
                     }
                     ImGui::SetNextFrameWantCaptureMouse(true);
                 }
@@ -1770,6 +1771,8 @@ namespace vultra_app
 
         const bool visible =
             ImGui::Begin(title().c_str(), &m_Open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        // Editing the scene view makes the scene the active undo/redo document.
+        claimActiveDocument(ctx, ctx.sceneHistory, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
         const bool collapsed            = visible && ImGui::IsWindowCollapsed();
         const bool dockTabVisible       = visible && currentWindowDockTabVisible();
         ctx.state.sceneViewVisible      = visible && !collapsed && dockTabVisible;
@@ -2344,7 +2347,7 @@ namespace vultra_app
                             {
                                 ctx.state.sceneDirty = true;
                                 if (ctx.history)
-                                    ctx.history->setNextLabel(vultra::tr("sceneView.history.transformEntity"));
+                                    ctx.history->setNextLabel("sceneView.history.transformEntity");
                             }
                         }
                     }

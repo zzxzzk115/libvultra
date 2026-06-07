@@ -5028,6 +5028,8 @@ namespace vultra_app
             ImGui::End();
             return;
         }
+        // Editing entity/component properties makes the scene the active undo/redo document.
+        claimActiveDocument(ctx, ctx.sceneHistory, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
 
         bool keepModelPreview = false;
         if (Selection::lastCategory() == SelectionCategory::Asset && ctx.services)

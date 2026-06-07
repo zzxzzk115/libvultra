@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor_app/ui/editor_window.hpp"
+#include "editor_app/ui/graph_history.hpp"
 #include "editor_app/ui/mesh_selector.hpp"
 #include "editor_app/ui/texture_selector.hpp"
 
@@ -65,6 +66,14 @@ namespace vultra_app
         void drawPreview(EditorContext& ctx);
         void drawAddNodePopup(EditorContext& ctx);
         void markDirty(EditorContext& ctx);
+
+        // Snapshot-based undo/redo. resetHistory seeds after load/new; recordHistory
+        // captures a coalesced snapshot once an edit settles; undo/redo restore one.
+        void resetHistory();
+        void recordHistory();
+        void applyHistorySnapshot(EditorContext& ctx, const std::string& snapshot);
+        void undo(EditorContext& ctx);
+        void redo(EditorContext& ctx);
         void updatePreviewFocusAnimation();
         bool focusPreviewMesh(EditorContext& ctx, float aspect, bool resetAngle);
         void refreshNodeRegistry(EditorContext& ctx);
@@ -92,6 +101,10 @@ namespace vultra_app
         bool                                    m_Loaded {false};
         bool                                    m_Dirty {false};
         bool                                    m_LiveApply {true};
+        SnapshotHistory                         m_History;
+        bool                                    m_HistoryReady {false};    // restore callback installed
+        bool                                    m_HistoryPending {false};  // an edit awaits a coalesced snapshot
+        bool                                    m_ApplyingHistory {false}; // guard: undo/redo restore in progress
         int                                     m_ContextNode {0};
         std::string                             m_NoteEditNode;          // node id being annotated
         std::array<char, 256>                   m_NoteEditBuffer {};     // edit buffer for the note popup
