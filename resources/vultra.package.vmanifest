@@ -4,3 +4,4 @@ name = "example"
 entry_scene = "res://scenes/sponza.vscn"
 build_scene.0 = "res://scenes/sponza.vscn"
 build_scene_enabled.0 = true
+plugin_dirs = "res://plugins/hello"

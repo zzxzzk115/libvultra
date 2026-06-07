@@ -58,6 +58,7 @@ namespace vultra
             uint32_t                      shaderMaterialBlockOffset {0u};
             uint32_t                      shaderMaterialBlockSize {0u};
             uint64_t                      fragmentVariantHash {0u};
+            uint64_t                      fragmentVariantHashEntityId {0u};
             bool                          fragmentFromBuiltinLibrary {false};
         };
 
@@ -404,6 +405,7 @@ namespace vultra
                         .shaderMaterialBlockOffset = material.blockOffsetBytes,
                         .shaderMaterialBlockSize = shaderInfo ? shaderInfo->materialParamSize : 0u,
                         .fragmentVariantHash = shaderInfo ? shaderInfo->fragmentVariantHash : 0u,
+                        .fragmentVariantHashEntityId = shaderInfo ? shaderInfo->fragmentVariantHashEntityId : 0u,
                         .fragmentFromBuiltinLibrary = shaderInfo && shaderInfo->shaderLibraryUri == "builtin",
                     });
                 };
@@ -807,7 +809,16 @@ namespace vultra
                         gpuSceneDatabase->resources->materialParams.gpu)
                     {
                         fragmentVariantHash = record.fragmentVariantHash;
-                        useShaderMaterial   = true;
+                        // When this pass also writes the entity-id attachment, select the
+                        // WRITE_ENTITY_ID=1 fragment permutation so the shader-material
+                        // object writes all four attachments (needed for selection/picking).
+                        if (writeEntityId && record.fragmentVariantHashEntityId != 0u &&
+                            fragmentLibrary->hasVariant(record.fragmentVariantHashEntityId,
+                                                        vshadersystem::ShaderStage::eFrag))
+                        {
+                            fragmentVariantHash = record.fragmentVariantHashEntityId;
+                        }
+                        useShaderMaterial = true;
                     }
                     if (!fragmentLibrary)
                         fragmentLibrary = rc.ext.builtinHighendShaderLib ? rc.ext.builtinHighendShaderLib :
@@ -846,11 +857,19 @@ namespace vultra
                     };
                     if (useShaderMaterial)
                     {
-                        rc.resourceSet[1][1] = rhi::bindings::StorageBuffer {
-                            .buffer = gpuSceneDatabase->resources->materialParams.gpu.get(),
-                            .offset = record.shaderMaterialBlockOffset,
-                            .range  = std::max<uint32_t>(record.shaderMaterialBlockSize, 16u),
-                        };
+                        // Only bind the material-param block when the shader actually
+                        // declares one (it has [properties] -> cook injects set=1
+                        // binding=1). A graph-derived mesh-material fragment has no
+                        // params; binding a descriptor its layout lacks corrupts the
+                        // whole set-1 bind (drops draw params -> zeroed transforms).
+                        if (record.shaderMaterialBlockSize > 0u)
+                        {
+                            rc.resourceSet[1][1] = rhi::bindings::StorageBuffer {
+                                .buffer = gpuSceneDatabase->resources->materialParams.gpu.get(),
+                                .offset = record.shaderMaterialBlockOffset,
+                                .range  = std::max<uint32_t>(record.shaderMaterialBlockSize, 16u),
+                            };
+                        }
                         if (rc.frame.frameData.frameBlock.buffer)
                         {
                             rc.resourceSet[0][1] = rhi::bindings::UniformBuffer {

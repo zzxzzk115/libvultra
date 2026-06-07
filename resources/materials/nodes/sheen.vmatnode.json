@@ -1,0 +1,29 @@
+{
+  "type": "MaterialGraphNode",
+  "version": 1,
+  "typeId": "project.bxdf.sheen",
+  "displayName": "Sheen Rim",
+
+  "//": "Custom material-graph node that calls a whole helper/BXDF FUNCTION pulled",
+  "//includes": "in by name from a shader-library artifact (implementation.includes),",
+  "//note": "instead of inlining the math. Wire normalWS/viewDirWS from the World",
+  "//wire": "Normal / View Direction input nodes; feed the rgb output into e.g. emissive.",
+
+  "inputs": [
+    { "name": "tint",      "type": "color", "default": [1.0, 1.0, 1.0, 1.0] },
+    { "name": "normalWS",  "type": "vec3",  "default": [0.0, 1.0, 0.0] },
+    { "name": "viewDirWS", "type": "vec3",  "default": [0.0, 0.0, 1.0] },
+    { "name": "intensity", "type": "float", "default": 1.0 }
+  ],
+  "outputs": [
+    { "name": "rgb", "type": "vec3" }
+  ],
+
+  "implementation": {
+    "language": "glsl",
+    "includes": [ "bxdf/sheen.glsl" ],
+    "outputs": {
+      "rgb": "vultra_node_sheen({{input:tint}}.rgb, {{input:normalWS}}, {{input:viewDirWS}}, {{input:intensity}})"
+    }
+  }
+}

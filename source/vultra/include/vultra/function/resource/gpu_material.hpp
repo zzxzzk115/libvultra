@@ -39,6 +39,10 @@ namespace vultra::resource
         std::string shaderLibraryUri;
         std::string fragmentShaderId;
         uint64_t    fragmentVariantHash {0};
+        // Entity-id-writing variant of the fragment, used when the GBuffer pass
+        // also writes the entity-id attachment (selection/picking). 0 when there
+        // is no such variant (e.g. plain shader materials).
+        uint64_t    fragmentVariantHashEntityId {0};
         uint32_t    materialParamSize {0};
     };
 

@@ -1895,9 +1895,14 @@ namespace vultra_app
                                                                  editorSettings.clearMode,
                                                                  editorSettings.clearValue);
         const auto applyEditorPlaybackTime = [&ctx](vultra::RenderCamera& camera) {
-            camera.overrideFrameTime  = true;
-            camera.frameTimeSeconds   = ctx.state.editorPlaying ? ctx.state.editorGameTimeSeconds : 0.0f;
-            camera.frameDeltaSeconds  = ctx.state.editorPlaying ? ctx.state.editorGameDeltaSeconds : 0.0f;
+            camera.overrideFrameTime = true;
+            // In edit mode (not playing) drive shader/material time with the editor's
+            // wall clock so time-driven materials animate in the scene view without
+            // entering play. During play, use the gameplay clock.
+            camera.frameTimeSeconds  = ctx.state.editorPlaying ? ctx.state.editorGameTimeSeconds :
+                                                                static_cast<float>(ImGui::GetTime());
+            camera.frameDeltaSeconds = ctx.state.editorPlaying ? ctx.state.editorGameDeltaSeconds :
+                                                                ImGui::GetIO().DeltaTime;
         };
         ctx.state.sceneCamera.valid       = true;
         const auto editorCameraWorld      = glm::inverse(editorCamera.view);

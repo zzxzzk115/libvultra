@@ -1,0 +1,26 @@
+{
+  "type": "MaterialGraphNode",
+  "version": 1,
+  "typeId": "project.color.duotone",
+  "displayName": "Duotone Gradient",
+
+  "//": "Second custom node demo: calls a whole helper FUNCTION pulled in by name",
+  "//includes": "via implementation.includes (color/duotone.glsl), not inlined.",
+
+  "inputs": [
+    { "name": "colorA", "type": "color", "default": [0.02, 0.16, 1.0, 1.0] },
+    { "name": "colorB", "type": "color", "default": [1.0, 0.08, 0.0, 1.0] },
+    { "name": "t",      "type": "float", "default": 0.5 }
+  ],
+  "outputs": [
+    { "name": "out", "type": "color" }
+  ],
+
+  "implementation": {
+    "language": "glsl",
+    "includes": [ "color/duotone.glsl" ],
+    "outputs": {
+      "out": "vultra_node_duotone({{input:colorA}}, {{input:colorB}}, {{input:t}})"
+    }
+  }
+}

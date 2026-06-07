@@ -3,76 +3,6 @@
     "links": [
         {
             "from": {
-                "nodeId": "ColdPulseColor",
-                "pin": "value"
-            },
-            "to": {
-                "nodeId": "BaseMix",
-                "pin": "a"
-            }
-        },
-        {
-            "from": {
-                "nodeId": "HotPulseColor",
-                "pin": "value"
-            },
-            "to": {
-                "nodeId": "BaseMix",
-                "pin": "b"
-            }
-        },
-        {
-            "from": {
-                "nodeId": "BaseMix",
-                "pin": "out"
-            },
-            "to": {
-                "nodeId": "Surface",
-                "pin": "baseColor"
-            }
-        },
-        {
-            "from": {
-                "nodeId": "Roughness",
-                "pin": "value"
-            },
-            "to": {
-                "nodeId": "Surface",
-                "pin": "roughness"
-            }
-        },
-        {
-            "from": {
-                "nodeId": "Metallic",
-                "pin": "value"
-            },
-            "to": {
-                "nodeId": "Surface",
-                "pin": "metallic"
-            }
-        },
-        {
-            "from": {
-                "nodeId": "AO",
-                "pin": "value"
-            },
-            "to": {
-                "nodeId": "Surface",
-                "pin": "ao"
-            }
-        },
-        {
-            "from": {
-                "nodeId": "RimEmissive",
-                "pin": "value"
-            },
-            "to": {
-                "nodeId": "Surface",
-                "pin": "emissive"
-            }
-        },
-        {
-            "from": {
                 "nodeId": "Time",
                 "pin": "seconds"
             },
@@ -143,225 +73,136 @@
         },
         {
             "from": {
+                "nodeId": "ColdColor",
+                "pin": "value"
+            },
+            "to": {
+                "nodeId": "Duotone",
+                "pin": "colorA"
+            }
+        },
+        {
+            "from": {
+                "nodeId": "HotColor",
+                "pin": "value"
+            },
+            "to": {
+                "nodeId": "Duotone",
+                "pin": "colorB"
+            }
+        },
+        {
+            "from": {
                 "nodeId": "Pulse01",
                 "pin": "out"
             },
             "to": {
-                "nodeId": "BaseMix",
+                "nodeId": "Duotone",
                 "pin": "t"
+            }
+        },
+        {
+            "from": {
+                "nodeId": "Duotone",
+                "pin": "out"
+            },
+            "to": {
+                "nodeId": "Surface",
+                "pin": "baseColor"
+            }
+        },
+        {
+            "from": {
+                "nodeId": "WorldNormal",
+                "pin": "normal"
+            },
+            "to": {
+                "nodeId": "Sheen",
+                "pin": "normalWS"
+            }
+        },
+        {
+            "from": {
+                "nodeId": "ViewDir",
+                "pin": "direction"
+            },
+            "to": {
+                "nodeId": "Sheen",
+                "pin": "viewDirWS"
+            }
+        },
+        {
+            "from": {
+                "nodeId": "SheenTint",
+                "pin": "value"
+            },
+            "to": {
+                "nodeId": "Sheen",
+                "pin": "tint"
+            }
+        },
+        {
+            "from": {
+                "nodeId": "SheenIntensity",
+                "pin": "value"
+            },
+            "to": {
+                "nodeId": "Sheen",
+                "pin": "intensity"
+            }
+        },
+        {
+            "from": {
+                "nodeId": "Sheen",
+                "pin": "rgb"
+            },
+            "to": {
+                "nodeId": "Surface",
+                "pin": "emissive"
+            }
+        },
+        {
+            "from": {
+                "nodeId": "Roughness",
+                "pin": "value"
+            },
+            "to": {
+                "nodeId": "Surface",
+                "pin": "roughness"
+            }
+        },
+        {
+            "from": {
+                "nodeId": "Metallic",
+                "pin": "value"
+            },
+            "to": {
+                "nodeId": "Surface",
+                "pin": "metallic"
+            }
+        },
+        {
+            "from": {
+                "nodeId": "AO",
+                "pin": "value"
+            },
+            "to": {
+                "nodeId": "Surface",
+                "pin": "ao"
             }
         }
     ],
     "metadata": {
-        "description": "Default complex material graph exercising a high-contrast time-driven color pulse and PBR surface fields."
+        "description": "Demo graph exercising TWO project custom nodes: project.color.duotone (time-driven base color) and project.bxdf.sheen (view-dependent rim emissive). Both call helper functions pulled in by name via implementation.includes."
     },
     "name": "Default Material Graph",
     "nodes": [
         {
-            "displayName": "Cold Pulse Color",
-            "editor": {
-                "pos": [
-                    280.0,
-                    -120.0
-                ]
-            },
-            "id": "ColdPulseColor",
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "value",
-                    "type": "color"
-                }
-            ],
-            "params": {
-                "value": [
-                    0.02,
-                    0.16,
-                    1.0,
-                    1.0
-                ]
-            },
-            "typeId": "vultra.param.color"
-        },
-        {
-            "displayName": "Hot Pulse Color",
-            "editor": {
-                "pos": [
-                    280.0,
-                    18.000015258789063
-                ]
-            },
-            "id": "HotPulseColor",
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "value",
-                    "type": "color"
-                }
-            ],
-            "params": {
-                "value": [
-                    1.0,
-                    0.08,
-                    0.0,
-                    1.0
-                ]
-            },
-            "typeId": "vultra.param.color"
-        },
-        {
-            "displayName": "Mix",
-            "editor": {
-                "pos": [
-                    540.0,
-                    0.0
-                ]
-            },
-            "id": "BaseMix",
-            "inputs": [
-                {
-                    "default": [
-                        0.0,
-                        0.0,
-                        0.0,
-                        1.0
-                    ],
-                    "name": "a",
-                    "type": "vec4"
-                },
-                {
-                    "default": [
-                        1.0,
-                        1.0,
-                        1.0,
-                        1.0
-                    ],
-                    "name": "b",
-                    "type": "vec4"
-                },
-                {
-                    "default": 0.5,
-                    "name": "t",
-                    "type": "float"
-                }
-            ],
-            "outputs": [
-                {
-                    "name": "out",
-                    "type": "vec4"
-                }
-            ],
-            "params": {
-                "a": [
-                    0.0,
-                    0.0,
-                    0.0,
-                    1.0
-                ],
-                "b": [
-                    1.0,
-                    1.0,
-                    1.0,
-                    1.0
-                ],
-                "t": 0.5
-            },
-            "typeId": "vultra.math.mix"
-        },
-        {
-            "displayName": "Roughness",
-            "editor": {
-                "pos": [
-                    758.0,
-                    594.0
-                ]
-            },
-            "id": "Roughness",
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "value",
-                    "type": "float"
-                }
-            ],
-            "params": {
-                "value": 0.42
-            },
-            "typeId": "vultra.param.float"
-        },
-        {
-            "displayName": "Metallic",
-            "editor": {
-                "pos": [
-                    754.0,
-                    456.0
-                ]
-            },
-            "id": "Metallic",
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "value",
-                    "type": "float"
-                }
-            ],
-            "params": {
-                "value": 0.08
-            },
-            "typeId": "vultra.param.float"
-        },
-        {
-            "displayName": "AO",
-            "editor": {
-                "pos": [
-                    765.0,
-                    737.0
-                ]
-            },
-            "id": "AO",
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "value",
-                    "type": "float"
-                }
-            ],
-            "params": {
-                "value": 1.0
-            },
-            "typeId": "vultra.param.float"
-        },
-        {
-            "displayName": "Rim Emissive",
-            "editor": {
-                "pos": [
-                    770.0,
-                    876.0
-                ]
-            },
-            "id": "RimEmissive",
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "value",
-                    "type": "vec3"
-                }
-            ],
-            "params": {
-                "value": [
-                    0.025,
-                    0.012,
-                    0.004
-                ]
-            },
-            "typeId": "vultra.param.vec3"
-        },
-        {
             "displayName": "Time",
             "editor": {
                 "pos": [
-                    -760.0,
-                    -60.0
+                    -820.0,
+                    -40.0
                 ]
             },
             "id": "Time",
@@ -379,8 +220,8 @@
             "displayName": "Pulse Speed",
             "editor": {
                 "pos": [
-                    -760.0,
-                    78.00001525878906
+                    -820.0,
+                    90.0
                 ]
             },
             "id": "PulseSpeed",
@@ -400,7 +241,7 @@
             "displayName": "Multiply",
             "editor": {
                 "pos": [
-                    -500.0,
+                    -560.0,
                     0.0
                 ]
             },
@@ -433,7 +274,7 @@
             "displayName": "Sine",
             "editor": {
                 "pos": [
-                    -240.0,
+                    -320.0,
                     0.0
                 ]
             },
@@ -460,8 +301,8 @@
             "displayName": "Pulse Amplitude",
             "editor": {
                 "pos": [
-                    -240.0,
-                    146.0
+                    -320.0,
+                    150.0
                 ]
             },
             "id": "PulseAmplitude",
@@ -478,31 +319,10 @@
             "typeId": "vultra.param.float"
         },
         {
-            "displayName": "Pulse Bias",
-            "editor": {
-                "pos": [
-                    20.0,
-                    254.0
-                ]
-            },
-            "id": "PulseBias",
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "value",
-                    "type": "float"
-                }
-            ],
-            "params": {
-                "value": 0.5
-            },
-            "typeId": "vultra.param.float"
-        },
-        {
             "displayName": "Multiply",
             "editor": {
                 "pos": [
-                    20.0,
+                    -80.0,
                     60.0
                 ]
             },
@@ -532,11 +352,32 @@
             "typeId": "vultra.math.multiply"
         },
         {
+            "displayName": "Pulse Bias",
+            "editor": {
+                "pos": [
+                    -80.0,
+                    220.0
+                ]
+            },
+            "id": "PulseBias",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "value": 0.5
+            },
+            "typeId": "vultra.param.float"
+        },
+        {
             "displayName": "Add",
             "editor": {
                 "pos": [
-                    280.0,
-                    156.00003051757813
+                    180.0,
+                    120.0
                 ]
             },
             "id": "Pulse01",
@@ -565,11 +406,341 @@
             "typeId": "vultra.math.add"
         },
         {
+            "displayName": "Cold Color",
+            "editor": {
+                "pos": [
+                    180.0,
+                    -160.0
+                ]
+            },
+            "id": "ColdColor",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "color"
+                }
+            ],
+            "params": {
+                "value": [
+                    0.02,
+                    0.16,
+                    1.0,
+                    1.0
+                ]
+            },
+            "typeId": "vultra.param.color"
+        },
+        {
+            "displayName": "Hot Color",
+            "editor": {
+                "pos": [
+                    180.0,
+                    -30.0
+                ]
+            },
+            "id": "HotColor",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "color"
+                }
+            ],
+            "params": {
+                "value": [
+                    1.0,
+                    0.08,
+                    0.0,
+                    1.0
+                ]
+            },
+            "typeId": "vultra.param.color"
+        },
+        {
+            "displayName": "Duotone Gradient",
+            "editor": {
+                "pos": [
+                    480.0,
+                    -40.0
+                ]
+            },
+            "id": "Duotone",
+            "inputs": [
+                {
+                    "default": [
+                        0.02,
+                        0.16,
+                        1.0,
+                        1.0
+                    ],
+                    "name": "colorA",
+                    "type": "color"
+                },
+                {
+                    "default": [
+                        1.0,
+                        0.08,
+                        0.0,
+                        1.0
+                    ],
+                    "name": "colorB",
+                    "type": "color"
+                },
+                {
+                    "default": 0.5,
+                    "name": "t",
+                    "type": "float"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "out",
+                    "type": "color"
+                }
+            ],
+            "params": {
+                "colorA": [
+                    0.02,
+                    0.16,
+                    1.0,
+                    1.0
+                ],
+                "colorB": [
+                    1.0,
+                    0.08,
+                    0.0,
+                    1.0
+                ],
+                "t": 0.5
+            },
+            "typeId": "project.color.duotone"
+        },
+        {
+            "displayName": "World Normal",
+            "editor": {
+                "pos": [
+                    177.0,
+                    603.0
+                ]
+            },
+            "id": "WorldNormal",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "normal",
+                    "type": "vec3"
+                }
+            ],
+            "params": {},
+            "typeId": "vultra.input.world_normal"
+        },
+        {
+            "displayName": "View Direction",
+            "editor": {
+                "pos": [
+                    178.0,
+                    708.0
+                ]
+            },
+            "id": "ViewDir",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "direction",
+                    "type": "vec3"
+                }
+            ],
+            "params": {},
+            "typeId": "vultra.input.view_direction"
+        },
+        {
+            "displayName": "Sheen Tint",
+            "editor": {
+                "pos": [
+                    178.0,
+                    432.0
+                ]
+            },
+            "id": "SheenTint",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "color"
+                }
+            ],
+            "params": {
+                "value": [
+                    0.6,
+                    0.8,
+                    1.0,
+                    1.0
+                ]
+            },
+            "typeId": "vultra.param.color"
+        },
+        {
+            "displayName": "Sheen Intensity",
+            "editor": {
+                "pos": [
+                    177.0,
+                    806.0
+                ]
+            },
+            "id": "SheenIntensity",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "value": 0.25
+            },
+            "typeId": "vultra.param.float"
+        },
+        {
+            "displayName": "Sheen Rim",
+            "editor": {
+                "pos": [
+                    773.0,
+                    609.0
+                ]
+            },
+            "id": "Sheen",
+            "inputs": [
+                {
+                    "default": [
+                        1.0,
+                        1.0,
+                        1.0,
+                        1.0
+                    ],
+                    "name": "tint",
+                    "type": "color"
+                },
+                {
+                    "default": [
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "name": "normalWS",
+                    "type": "vec3"
+                },
+                {
+                    "default": [
+                        0.0,
+                        0.0,
+                        1.0
+                    ],
+                    "name": "viewDirWS",
+                    "type": "vec3"
+                },
+                {
+                    "default": 1.0,
+                    "name": "intensity",
+                    "type": "float"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "rgb",
+                    "type": "vec3"
+                }
+            ],
+            "params": {
+                "intensity": 0.25,
+                "normalWS": [
+                    0.0,
+                    1.0,
+                    0.0
+                ],
+                "tint": [
+                    0.6,
+                    0.8,
+                    1.0,
+                    1.0
+                ],
+                "viewDirWS": [
+                    0.0,
+                    0.0,
+                    1.0
+                ]
+            },
+            "typeId": "project.bxdf.sheen"
+        },
+        {
+            "displayName": "Roughness",
+            "editor": {
+                "pos": [
+                    646.0,
+                    257.0
+                ]
+            },
+            "id": "Roughness",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "value": 0.4
+            },
+            "typeId": "vultra.param.float"
+        },
+        {
+            "displayName": "Metallic",
+            "editor": {
+                "pos": [
+                    644.0,
+                    122.0
+                ]
+            },
+            "id": "Metallic",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "value": 0.0
+            },
+            "typeId": "vultra.param.float"
+        },
+        {
+            "displayName": "AO",
+            "editor": {
+                "pos": [
+                    648.0,
+                    400.0
+                ]
+            },
+            "id": "AO",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "value": 1.0
+            },
+            "typeId": "vultra.param.float"
+        },
+        {
             "displayName": "Surface Output",
             "editor": {
                 "pos": [
-                    1460.0,
-                    420.0
+                    1184.0,
+                    115.0
                 ]
             },
             "id": "Surface",
@@ -642,7 +813,7 @@
                 ],
                 "metallic": 0.0,
                 "roughness": 1.0,
-                "shadingModel": "ToonLike"
+                "shadingModel": "PBR_MR"
             },
             "typeId": "vultra.output.surface"
         }

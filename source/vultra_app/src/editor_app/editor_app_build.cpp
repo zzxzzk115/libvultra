@@ -7,6 +7,7 @@
 
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/i18n/i18n.hpp>
+#include <vultra/function/material_graph/material_graph_compiler.hpp>
 #include <vultra/function/plugin/plugin_manifest.hpp>
 #include <vultra/function/services/scene_service.hpp>
 
@@ -399,6 +400,10 @@ namespace vultra_app
 
             setBuildRunProgress(progress, 0.25f, vultra::tr("editorBuild.progress.reimportingPacking"));
 #ifdef VULTRA_HAS_VASSET_IMPORT
+            // Regenerate material-graph shaders before the cook so graph edits ship in the
+            // package. runAssetTool() calls run_vasset_cli() in-process, bypassing main.cpp's
+            // dispatch (which does this for the standalone CLI), so do it explicitly here.
+            vultra::material_graph::compileProjectMaterialGraphs(projectRoot, assetRootPath);
             const int importResult = runAssetTool({"vultra asset", "import", assetRootPath.generic_string()});
             if (importResult != 0)
                 return {.ok      = false,

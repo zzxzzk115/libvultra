@@ -922,6 +922,8 @@ namespace vultra
             rhi::ShaderLibraryRuntime*              library {nullptr};
             std::string                             libraryUri;
             uint64_t                                variantHash {0};
+            // Entity-id-writing sibling variant ("...material_eid.frag"), if cooked (0 otherwise).
+            uint64_t                                entityIdVariantHash {0};
             vshadersystem::MaterialDescription      materialDesc;
         };
 
@@ -961,6 +963,18 @@ namespace vultra
                 rhi::ShaderLibraryRuntime::computeVariantHash(source.id, vshadersystem::ShaderStage::eFrag, {});
             if (!out.library->hasVariant(out.variantHash, vshadersystem::ShaderStage::eFrag))
                 return std::nullopt;
+
+            // Graph mesh-material fragments ship a sibling entity-id-writing variant under
+            // "<id-with-.material_eid.frag>"; resolve it for the selection / picking pass.
+            if (const auto pos = source.id.rfind(".material.frag"); pos != std::string::npos)
+            {
+                auto eidId = source.id;
+                eidId.replace(pos, std::string_view {".material.frag"}.size(), ".material_eid.frag");
+                const auto entityIdHash =
+                    rhi::ShaderLibraryRuntime::computeVariantHash(eidId, vshadersystem::ShaderStage::eFrag, {});
+                if (out.library->hasVariant(entityIdHash, vshadersystem::ShaderStage::eFrag))
+                    out.entityIdVariantHash = entityIdHash;
+            }
 
             auto shader = out.library->load(out.variantHash, vshadersystem::ShaderStage::eFrag);
             if (!shader)
@@ -1150,6 +1164,13 @@ namespace vultra
         {
             std::vector<std::byte>  bytes;
             std::vector<std::string> diagnostics;
+            // Bytes actually declared by the shader's material block (0 when the
+            // shader has no [properties]). Distinct from bytes.size(), which is
+            // padded up to a 16-byte SSBO minimum for allocation. Callers use this
+            // to decide whether the fragment declares a set=1,binding=1 material
+            // block at all -- binding that descriptor when the shader lacks it
+            // corrupts set 1 (drops draw params -> zeroed transforms).
+            uint32_t declaredSize {0u};
         };
 
         [[nodiscard]] ShaderMaterialParamPackResult
@@ -1162,6 +1183,7 @@ namespace vultra
                 size = std::max(size, param.offset + std::max(param.size, shaderParamTypeByteSize(param.type)));
 
             ShaderMaterialParamPackResult result;
+            result.declaredSize = size;
             auto& bytes = result.bytes;
             bytes.resize(std::max<uint32_t>(size, 16u), std::byte {0});
             for (const auto& param : desc.params)
@@ -1279,7 +1301,8 @@ namespace vultra
                         .shaderLibraryUri     = resolved->libraryUri,
                         .fragmentShaderId     = shaderSource->source.id,
                         .fragmentVariantHash  = resolved->variantHash,
-                        .materialParamSize    = static_cast<uint32_t>(bytes.size()),
+                        .fragmentVariantHashEntityId = resolved->entityIdVariantHash,
+                        .materialParamSize    = packed.declaredSize,
                     };
                     return i;
                 }
@@ -1306,7 +1329,8 @@ namespace vultra
                     .shaderLibraryUri     = resolved->libraryUri,
                     .fragmentShaderId     = shaderSource->source.id,
                     .fragmentVariantHash  = resolved->variantHash,
-                    .materialParamSize    = static_cast<uint32_t>(bytes.size()),
+                    .fragmentVariantHashEntityId = resolved->entityIdVariantHash,
+                    .materialParamSize    = packed.declaredSize,
                 };
                 return i;
             }
@@ -1324,8 +1348,108 @@ namespace vultra
                 .shaderLibraryUri     = resolved->libraryUri,
                 .fragmentShaderId     = shaderSource->source.id,
                 .fragmentVariantHash  = resolved->variantHash,
-                .materialParamSize    = static_cast<uint32_t>(bytes.size()),
+                .fragmentVariantHashEntityId = resolved->entityIdVariantHash,
+                .materialParamSize    = packed.declaredSize,
             };
+            pool.materialTableDirty = true;
+            pool.uploadMaterialTable(rd);
+            gpuResources.markContentDirty();
+            return index;
+        }
+
+        // Enabler A: render a material GRAPH through its compiled per-pixel GLSL by
+        // routing it to the eShaderMaterial path, pointing at the mesh-material
+        // fragment the editor cooks to .vultra/generated/shaders/material_graph/.
+        // Only triggers when that cooked fragment variant exists (i.e. the graph was
+        // compiled with the current editor); otherwise returns max() so the caller
+        // falls back to the parametric path. Portable: the cooked variant carries
+        // both SPIR-V and WGSL.
+        [[nodiscard]] uint32_t ensureMaterialGraphShaderMaterial(IAssetService&        assets,
+                                                                 IShaderService*       shaders,
+                                                                 IGpuResourceService&  gpuResources,
+                                                                 rhi::RenderDevice&    rd,
+                                                                 std::string_view      graphUri,
+                                                                 const nlohmann::json* properties,
+                                                                 std::string_view      materialKey)
+        {
+            if (!shaders || graphUri.empty())
+                return std::numeric_limits<uint32_t>::max();
+
+            const auto sym =
+                material_graph::sanitizeShaderId(std::filesystem::path(std::string(graphUri)).stem().generic_string());
+            // The mesh-material backend emits an explicit [vshader] id of
+            // "project/material_graph/<sym>.material.frag" (MeshMaterialBackend),
+            // which is the cooked variant id we resolve here.
+            const std::vector<std::string> candidateIds {
+                "project/material_graph/" + sym + ".material.frag",
+            };
+
+            std::optional<ResolvedShaderMaterialVariant> resolved;
+            material::MaterialSourceRef                   source;
+            source.shaderLibrary = "res://shaders/project.vshaderlib.lua";
+            for (const auto& id : candidateIds)
+            {
+                source.id = id;
+                resolved  = resolveShaderMaterialVariant(shaders, source);
+                if (resolved)
+                    break;
+            }
+            if (!resolved)
+                return std::numeric_limits<uint32_t>::max(); // not compiled -> parametric fallback
+
+            auto& pool = gpuResources.pool();
+            const auto keyText = materialKey.empty() ? std::string(graphUri) : std::string(materialKey);
+            const uint32_t materialInstanceId =
+                material_graph::stableGraphId(keyText + "#graph-shader#" + std::to_string(resolved->variantHash));
+
+            auto packed = packShaderMaterialParams(
+                assets, resolved->materialDesc, properties ? *properties : nlohmann::json::object());
+            auto& bytes = packed.bytes;
+
+            const auto makeRuntimeInfo = [&] {
+                return resource::ShaderMaterialRuntimeInfo {
+                    .shaderLibraryUri    = resolved->libraryUri,
+                    .fragmentShaderId    = source.id,
+                    .fragmentVariantHash = resolved->variantHash,
+                    .fragmentVariantHashEntityId = resolved->entityIdVariantHash,
+                    .materialParamSize   = packed.declaredSize,
+                };
+            };
+
+            for (uint32_t i = 0; i < static_cast<uint32_t>(pool.materials.size()); ++i)
+            {
+                auto& material = pool.materials[i];
+                if (material.model != resource::GpuMaterialModel::eShaderMaterial ||
+                    material.tableIndex != materialInstanceId)
+                    continue;
+
+                if (material.blockOffsetBytes + bytes.size() <= pool.materialParams.cpu.size())
+                {
+                    if (!bytes.empty())
+                    {
+                        std::memcpy(
+                            pool.materialParams.cpu.data() + material.blockOffsetBytes, bytes.data(), bytes.size());
+                        if (pool.materialParams.gpu)
+                            rd.uploadS(*pool.materialParams.gpu,
+                                       0,
+                                       static_cast<uint64_t>(pool.materialParams.cpu.size()),
+                                       pool.materialParams.cpu.data());
+                    }
+                }
+                pool.shaderMaterials[material.tableIndex] = makeRuntimeInfo();
+                return i;
+            }
+
+            resource::GpuMaterial material;
+            material.model            = resource::GpuMaterialModel::eShaderMaterial;
+            material.blockOffsetBytes = pool.materialParams.allocAndUpload(
+                rd, bytes.data(), static_cast<uint32_t>(std::max<size_t>(bytes.size(), 16)), 16);
+            material.tableIndex = materialInstanceId;
+            material.padding    = static_cast<uint32_t>(resolved->variantHash);
+
+            const uint32_t index = static_cast<uint32_t>(pool.materials.size());
+            pool.materials.push_back(material);
+            pool.shaderMaterials[material.tableIndex] = makeRuntimeInfo();
             pool.materialTableDirty = true;
             pool.uploadMaterialTable(rd);
             gpuResources.markContentDirty();
@@ -1538,6 +1662,20 @@ namespace vultra
                 for (const auto& [key, value] : overrides->items())
                     graphProperties[key] = value;
             }
+
+            // Prefer the graph's compiled per-pixel GLSL (eShaderMaterial) when the
+            // editor has cooked a mesh-material fragment for it; otherwise use the
+            // parametric (constant) reduction.
+            const uint32_t graphShaderMaterial = ensureMaterialGraphShaderMaterial(
+                assets,
+                shaders,
+                gpuResources,
+                rd,
+                graphSource->graphUri,
+                &graphProperties,
+                materialKey.empty() ? materialUri : materialKey);
+            if (graphShaderMaterial != std::numeric_limits<uint32_t>::max())
+                return graphShaderMaterial;
 
             return ensureMaterialGraphGpuMaterial(assets,
                                                   gpuResources,
@@ -2790,14 +2928,24 @@ namespace vultra
                                     std::string(materialOverride.materialGraph) :
                                     std::string(materialOverride.materialGraph) + "#slot" +
                                         std::to_string(materialOverride.slot) + "#" + propertyBlock.dump();
-                            materialIndex = ensureMaterialGraphGpuMaterial(
+                            // Prefer the graph's compiled per-pixel GLSL when cooked; else parametric.
+                            materialIndex = ensureMaterialGraphShaderMaterial(
                                 assets,
+                                shaderService,
                                 gpuResources,
                                 rd,
                                 materialOverride.materialGraph,
-                                timeSeconds,
                                 propertyBlock.empty() ? nullptr : &propertyBlock,
                                 materialKey);
+                            if (materialIndex == std::numeric_limits<uint32_t>::max())
+                                materialIndex = ensureMaterialGraphGpuMaterial(
+                                    assets,
+                                    gpuResources,
+                                    rd,
+                                    materialOverride.materialGraph,
+                                    timeSeconds,
+                                    propertyBlock.empty() ? nullptr : &propertyBlock,
+                                    materialKey);
                         }
                         if (materialIndex != std::numeric_limits<uint32_t>::max())
                         {
@@ -3402,9 +3550,9 @@ namespace vultra
         }
 
         const auto vertexHash = rhi::ShaderLibraryRuntime::computeVariantHash(
-            "fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert, {});
+            "builtin/general/fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert, {});
         const auto fragmentHash = rhi::ShaderLibraryRuntime::computeVariantHash(
-            "frame_debugger_texture_preview.frag", vshadersystem::ShaderStage::eFrag, {});
+            "builtin/general/frame_debugger_texture_preview.frag", vshadersystem::ShaderStage::eFrag, {});
         auto vertexShader   = shaderLib.load(vertexHash, vshadersystem::ShaderStage::eVert);
         auto fragmentShader = shaderLib.load(fragmentHash, vshadersystem::ShaderStage::eFrag);
         if (!vertexShader || !fragmentShader)

@@ -22,6 +22,7 @@
 #include <vultra/function/asset/asset_system.hpp>
 #include <vultra/function/animation/animation_system.hpp>
 #include <vultra/function/jobs/job_system.hpp>
+#include <vultra/function/material_graph/material_graph_compiler.hpp>
 #include <vultra/function/physics/physics_system.hpp>
 #include <vultra/function/plugin/plugin_manifest.hpp>
 #include <vultra/core/services/i18n_service.hpp>
@@ -85,6 +86,33 @@ namespace
         const std::string_view command {argv[1]};
         if (command == "asset" || command == "vasset" || command == "vasset-cli")
         {
+            // Material graphs cook to generated .vshader files under
+            // <projectRoot>/.vultra/generated/shaders, which the shader-library
+            // cook then picks up. The editor regenerates them as part of its
+            // import task; mirror that here so `vultra asset import <root>`
+            // produces an up-to-date library out of the box (otherwise a stale
+            // generated graph would be re-cooked).
+            if (argc > 2 && argv[2] != nullptr && std::string_view {argv[2]} == "import")
+            {
+                std::filesystem::path assetRoot;
+                for (int i = 3; i < argc && argv[i] != nullptr; ++i)
+                {
+                    const std::string_view arg {argv[i]};
+                    if (!arg.empty() && arg.front() != '-')
+                    {
+                        assetRoot = std::filesystem::path(std::string(arg));
+                        break;
+                    }
+                }
+                if (!assetRoot.empty())
+                {
+                    const auto assetRootPath = assetRoot.lexically_normal();
+                    auto       projectRoot   = assetRootPath.parent_path();
+                    if (projectRoot.empty())
+                        projectRoot = std::filesystem::path(".");
+                    vultra::material_graph::compileProjectMaterialGraphs(projectRoot, assetRootPath);
+                }
+            }
             exitCode = vasset::tool::run_vasset_cli(argc - 1, argv + 1, makeToolAssetImportOptions());
             return true;
         }

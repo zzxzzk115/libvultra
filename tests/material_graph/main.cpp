@@ -246,6 +246,71 @@ int main()
     }
 
     {
+        // A custom node that references a whole helper/BXDF function by name via
+        // implementation.includes (not inlined). The compiler must emit the
+        // #include and the call into the generated surface source.
+        const auto nodeText = R"json({
+            "type": "MaterialGraphNode",
+            "version": 1,
+            "typeId": "project.bxdf.sheen",
+            "displayName": "Sheen Rim",
+            "inputs": [
+                {"name": "tint", "type": "color", "defaultValue": [1.0, 1.0, 1.0, 1.0]}
+            ],
+            "outputs": [
+                {"name": "rgb", "type": "vec3"}
+            ],
+            "implementation": {
+                "language": "glsl",
+                "includes": ["bxdf/sheen.glsl"],
+                "outputs": {
+                    "rgb": "vultra_node_sheen({{input:tint}}.rgb, vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), 1.0)"
+                }
+            }
+        })json";
+        auto parsed = loadNodeDescriptorFromText(nodeText);
+        require(parsed.ok(), "custom node with includes should parse");
+
+        auto registry = makeBuiltinNodeRegistry();
+        require(registry.registerNode(std::move(parsed.descriptor)), "sheen node should register");
+
+        Graph compileGraph;
+        compileGraph.version = 1;
+        compileGraph.domain  = Domain::eSurface;
+        compileGraph.nodes.push_back(Node {
+            .typeId      = "vultra.param.color",
+            .id          = "tint",
+            .displayName = "Tint",
+            .params      = {{"value", {1.0f, 1.0f, 1.0f, 1.0f}}},
+        });
+        compileGraph.nodes.push_back(Node {
+            .typeId = "project.bxdf.sheen", .id = "sheen", .displayName = "Sheen Rim"});
+        compileGraph.nodes.push_back(Node {
+            .typeId      = "vultra.output.surface",
+            .id          = "out",
+            .displayName = "Surface Output",
+            .params      = {{"shadingModel", "Unlit"}},
+        });
+        compileGraph.links.push_back(Link {.from = {.nodeId = "tint", .pin = "value"},
+                                           .to   = {.nodeId = "sheen", .pin = "tint"}});
+        compileGraph.links.push_back(Link {.from = {.nodeId = "sheen", .pin = "rgb"},
+                                           .to   = {.nodeId = "out", .pin = "emissive"}});
+
+        MaterialGraphCompiler  compiler {registry};
+        SurfaceFunctionBackend backend;
+        auto                   result = compiler.compile(
+            CompileInput {.graph    = compileGraph,
+                                            .shaderId = "custom/sheen",
+                                            .graphId  = stableGraphId("res://materials/custom-sheen.vmatgraph.json")},
+            backend);
+        require(result.has_value(), "sheen node graph should compile");
+        require(result->vshaderSource.find("#include \"bxdf/sheen.glsl\"") != std::string::npos,
+                "node implementation.includes should emit an #include directive");
+        require(result->vshaderSource.find("vultra_node_sheen(") != std::string::npos,
+                "custom node should call the included helper function");
+    }
+
+    {
         const auto tintText = R"json({
             "type": "MaterialGraphNode",
             "version": 1,
@@ -417,6 +482,112 @@ int main()
                 "unlit shading model should compile into surface metadata");
         require(result->vshaderSource.find("surface.alphaMode = 1u;") != std::string::npos,
                 "mask alpha mode should compile into surface metadata");
+    }
+
+    {
+        // MeshMaterialBackend wraps the surface eval into a full mesh-material
+        // fragment (.vshader) that writes the GBuffer via VULTRA_MATERIAL_MAIN, so
+        // a graph can render through the eShaderMaterial path (per-pixel GLSL).
+        MaterialGraphCompiler compiler;
+        MeshMaterialBackend   backend;
+        auto                  result = compiler.compile(
+            CompileInput {.graph    = makeColorOnlyGraph(),
+                                           .shaderId = "folder/color-only.vmatgraph",
+                                           .graphId  = stableGraphId("res://materials/color-only.vmatgraph")},
+            backend);
+        require(result.has_value(), "mesh-material backend should compile a color-only graph");
+        require(result->vshaderSource.find("#include \"include/vultra/mesh_material.glsl\"") != std::string::npos,
+                "mesh-material fragment should include the mesh-material ABI");
+        require(result->vshaderSource.find("VULTRA_MATERIAL_MAIN(vultraGraphMaterial)") != std::string::npos,
+                "mesh-material fragment should hook the GBuffer pass via VULTRA_MATERIAL_MAIN");
+        require(result->vshaderSource.find("eval_material_graph_folder_color_only_vmatgraph(0u,") != std::string::npos,
+                "wrapper should call the graph eval function");
+        require(result->vshaderSource.find("OUT.shadingModel = vultra_graph_to_gbuffer_model(") != std::string::npos,
+                "wrapper should remap the graph shading model to a GBuffer model code");
+    }
+
+    {
+        // Demo parity: a graph driving TWO project custom nodes (duotone -> baseColor,
+        // sheen -> emissive), each calling a helper FUNCTION pulled in by name. Mirrors
+        // resources/materials/default.vmatgraph.json + nodes/{duotone,sheen}.vmatnode.json.
+        const auto duotoneText = R"json({
+            "type": "MaterialGraphNode", "version": 1,
+            "typeId": "project.color.duotone", "displayName": "Duotone Gradient",
+            "inputs": [
+                {"name": "colorA", "type": "color", "default": [0.0, 0.0, 1.0, 1.0]},
+                {"name": "colorB", "type": "color", "default": [1.0, 0.0, 0.0, 1.0]},
+                {"name": "t", "type": "float", "default": 0.5}
+            ],
+            "outputs": [ {"name": "out", "type": "color"} ],
+            "implementation": {
+                "language": "glsl",
+                "includes": ["color/duotone.glsl"],
+                "outputs": { "out": "vultra_node_duotone({{input:colorA}}, {{input:colorB}}, {{input:t}})" }
+            }
+        })json";
+        const auto sheenText = R"json({
+            "type": "MaterialGraphNode", "version": 1,
+            "typeId": "project.bxdf.sheen", "displayName": "Sheen Rim",
+            "inputs": [
+                {"name": "tint", "type": "color", "default": [1.0, 1.0, 1.0, 1.0]},
+                {"name": "normalWS", "type": "vec3", "default": [0.0, 1.0, 0.0]},
+                {"name": "viewDirWS", "type": "vec3", "default": [0.0, 0.0, 1.0]},
+                {"name": "intensity", "type": "float", "default": 1.0}
+            ],
+            "outputs": [ {"name": "rgb", "type": "vec3"} ],
+            "implementation": {
+                "language": "glsl",
+                "includes": ["bxdf/sheen.glsl"],
+                "outputs": { "rgb": "vultra_node_sheen({{input:tint}}.rgb, {{input:normalWS}}, {{input:viewDirWS}}, {{input:intensity}})" }
+            }
+        })json";
+        auto duotoneParsed = loadNodeDescriptorFromText(duotoneText);
+        auto sheenParsed   = loadNodeDescriptorFromText(sheenText);
+        require(duotoneParsed.ok(), "duotone custom node should parse");
+        require(sheenParsed.ok(), "sheen custom node should parse");
+
+        auto registry = makeBuiltinNodeRegistry();
+        require(registry.registerNode(std::move(duotoneParsed.descriptor)), "duotone should register");
+        require(registry.registerNode(std::move(sheenParsed.descriptor)), "sheen should register");
+
+        Graph graph;
+        graph.version = 1;
+        graph.domain  = Domain::eSurface;
+        graph.nodes.push_back(Node {.typeId = "vultra.param.color", .id = "cold",
+                                    .params = {{"value", {0.02f, 0.16f, 1.0f, 1.0f}}}});
+        graph.nodes.push_back(Node {.typeId = "vultra.param.color", .id = "hot",
+                                    .params = {{"value", {1.0f, 0.08f, 0.0f, 1.0f}}}});
+        graph.nodes.push_back(Node {.typeId = "project.color.duotone", .id = "duo"});
+        graph.nodes.push_back(Node {.typeId = "vultra.param.color", .id = "sheenTint",
+                                    .params = {{"value", {0.6f, 0.8f, 1.0f, 1.0f}}}});
+        graph.nodes.push_back(Node {.typeId = "project.bxdf.sheen", .id = "sheen"});
+        graph.nodes.push_back(Node {.typeId = "vultra.output.surface", .id = "out",
+                                    .params = {{"shadingModel", "PBR_MR"}}});
+        graph.links.push_back(Link {.from = {.nodeId = "cold", .pin = "value"}, .to = {.nodeId = "duo", .pin = "colorA"}});
+        graph.links.push_back(Link {.from = {.nodeId = "hot", .pin = "value"}, .to = {.nodeId = "duo", .pin = "colorB"}});
+        graph.links.push_back(Link {.from = {.nodeId = "duo", .pin = "out"}, .to = {.nodeId = "out", .pin = "baseColor"}});
+        graph.links.push_back(Link {.from = {.nodeId = "sheenTint", .pin = "value"}, .to = {.nodeId = "sheen", .pin = "tint"}});
+        graph.links.push_back(Link {.from = {.nodeId = "sheen", .pin = "rgb"}, .to = {.nodeId = "out", .pin = "emissive"}});
+
+        const auto diagnostics = validateGraph(graph, registry);
+        require(!hasErrorFor(diagnostics, "duo"), "duotone node should validate");
+        require(!hasErrorFor(diagnostics, "sheen"), "sheen node should validate");
+
+        MaterialGraphCompiler compiler {registry};
+        MeshMaterialBackend   backend;
+        auto                  result = compiler.compile(
+            CompileInput {.graph    = graph,
+                                           .shaderId = "default.vmatgraph",
+                                           .graphId  = stableGraphId("res://materials/default.vmatgraph.json")},
+            backend);
+        require(result.has_value(), "two-custom-node demo graph should compile");
+        const auto& src = result->vshaderSource;
+        require(src.find("#include \"color/duotone.glsl\"") != std::string::npos, "duotone include emitted");
+        require(src.find("#include \"bxdf/sheen.glsl\"") != std::string::npos, "sheen include emitted");
+        require(src.find("vultra_node_duotone(") != std::string::npos, "duotone helper call emitted");
+        require(src.find("vultra_node_sheen(") != std::string::npos, "sheen helper call emitted");
+        require(src.find("VULTRA_MATERIAL_MAIN(vultraGraphMaterial)") != std::string::npos,
+                "mesh-material wrapper emitted for the demo graph");
     }
 
     std::cout << "material_graph tests passed\n";
