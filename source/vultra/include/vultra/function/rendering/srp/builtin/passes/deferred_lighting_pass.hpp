@@ -22,6 +22,7 @@ namespace vultra
                                    FrameGraphResource      color,
                                    FrameGraphResource      normal,
                                    FrameGraphResource      material,
+                                   FrameGraphResource      emissive,
                                    FrameGraphResource      depth,
                                    FrameGraphResource      ssao,
                                    FrameGraphResource      shadowMap,

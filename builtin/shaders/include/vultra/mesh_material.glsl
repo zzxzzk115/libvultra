@@ -65,6 +65,8 @@ layout(set = 1, binding = 0) uniform VultraDrawParams
     uvec4 materialTextureInfo1;
     uvec4 entityInfo;
     uvec4 skinInfo;
+    vec4 emissiveFactor;
+    uvec4 emissiveInfo;
 } u_VultraDraw;
 
 layout(set = 3, binding = 4) uniform sampler2D u_BindlessTextures[];
@@ -79,8 +81,9 @@ layout(location = 3) in vec4 v_TangentWS;
 layout(location = 0) out vec4 GBufferColor;
 layout(location = 1) out vec4 GBufferNormal;
 layout(location = 2) out vec4 GBufferMaterial;
+layout(location = 3) out vec4 GBufferEmissive;
 #if WRITE_ENTITY_ID
-layout(location = 3) out vec4 GBufferEntityId;
+layout(location = 4) out vec4 GBufferEntityId;
 #endif
 
 #define VULTRA_CAMERA u_VultraCameraBlock.data
@@ -183,9 +186,10 @@ void vultra_write_direct_gbuffer(VultraMaterialEval eval)
                     clamp(eval.roughness, 0.045, 1.0),
                     clamp(eval.ao, 0.0, 1.0));
 
-    GBufferColor = vec4(sRGBToLinear(eval.baseColor.rgb + eval.emissive), alpha);
+    GBufferColor = vec4(sRGBToLinear(eval.baseColor.rgb), alpha);
     GBufferNormal = vec4(vultra_encode_gbuffer_normal(eval.normalWS), 0.0, 1.0);
     GBufferMaterial = vec4(mra, vultra_encode_material_model(float(eval.shadingModel)));
+    GBufferEmissive = vec4(max(eval.emissive, vec3(0.0)), 1.0);
 
 #if WRITE_ENTITY_ID
     uint id = u_VultraDraw.entityInfo.x;

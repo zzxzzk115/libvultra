@@ -349,6 +349,8 @@ namespace vultra::material
                 materialFloatParam("metallic", "Metallic", 0.0f, 0.0f, 1.0f),
                 materialFloatParam("roughness", "Roughness", 0.5f, 0.045f, 1.0f),
                 materialFloatParam("alphaCutoff", "Alpha Cutoff", 0.5f, 0.0f, 1.0f),
+                materialColorParam("emissiveColor", "Emissive Color", glm::vec4 {0.0f, 0.0f, 0.0f, 1.0f}),
+                materialFloatParam("emissiveStrength", "Emissive Strength", 1.0f, 0.0f, 16.0f),
                 materialBoolParam("doubleSided", "Double Sided", false),
                 materialTextureParam("baseColorTexture", "Base Color Texture"),
                 materialTextureParam("normalTexture", "Normal Texture"),

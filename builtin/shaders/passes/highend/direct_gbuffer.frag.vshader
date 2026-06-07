@@ -35,6 +35,9 @@ layout(set = 1, binding = 0) uniform DrawParams
     uvec4 materialTextureInfo0;
     uvec4 materialTextureInfo1;
     uvec4 entityInfo;
+    uvec4 skinInfo;
+    vec4 emissiveFactor;
+    uvec4 emissiveInfo;
 } u_Draw;
 
 layout(set = 3, binding = 4) uniform sampler2D u_BindlessTextures[];
@@ -49,8 +52,9 @@ layout(location = 3) in vec4 v_TangentWS;
 layout(location = 0) out vec4 GBufferColor;
 layout(location = 1) out vec4 GBufferNormal;
 layout(location = 2) out vec4 GBufferMaterial;
+layout(location = 3) out vec4 GBufferEmissive;
 #if WRITE_ENTITY_ID
-layout(location = 3) out vec4 GBufferEntityId;
+layout(location = 4) out vec4 GBufferEntityId;
 #endif
 
 vec4 sampleBindless(uint textureIndex, vec2 uv)
@@ -139,9 +143,16 @@ void main()
 #endif
     mra.y = clamp(mra.y, 0.045, 1.0);
 
+    vec3 emissive = u_Draw.emissiveFactor.rgb;
+#if VTX_HAS_UV0
+    if (u_Draw.emissiveInfo.x != 0u)
+        emissive *= sampleBindless(u_Draw.emissiveInfo.x, v_TexCoord0).rgb;
+#endif
+
     GBufferColor = vec4(sRGBToLinear(baseColor.rgb), baseColor.a);
     GBufferNormal = vec4(encodeGBufferNormal(normalWS), 0.0, 1.0);
     GBufferMaterial = vec4(clamp(mra, 0.0, 1.0), encodeMaterialModel(u_Draw.materialMRA.w));
+    GBufferEmissive = vec4(max(emissive, vec3(0.0)), 1.0);
 
 #if WRITE_ENTITY_ID
     uint id = u_Draw.entityInfo.x;

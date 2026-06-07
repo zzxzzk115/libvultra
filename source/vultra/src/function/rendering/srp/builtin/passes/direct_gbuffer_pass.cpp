@@ -39,6 +39,8 @@ namespace vultra
             glm::uvec4 materialTextureInfo1 {0u};
             glm::uvec4 entityInfo {0u};
             glm::uvec4 skinInfo {0xFFFFFFFFu, 0u, 0u, 0u};
+            glm::vec4  emissiveFactor {0.0f, 0.0f, 0.0f, 1.0f};
+            glm::uvec4 emissiveInfo {0u}; // x = emissive texture index
         };
 
         struct PreparedDirectDraw
@@ -183,6 +185,8 @@ namespace vultra
                                                 p.roughnessFactor,
                                                 1.0f,
                                                 materialModelCode(material.model));
+                    out.emissiveFactor = p.emissiveFactor;
+                    out.emissiveInfo.x = validTexture(p.emissiveTex);
                     out.materialTextureInfo0.y = validTexture(p.baseColorTex);
                     out.materialTextureInfo0.z = validTexture(p.normalTex);
                     out.materialTextureInfo0.w = validTexture(p.mrTex);
@@ -239,8 +243,8 @@ namespace vultra
                 {
                     const auto p = loadMaterialParams<MaterialParamsGraph>(resources.materialParams,
                                                                            material.blockOffsetBytes);
-                    out.baseColorFactor = glm::vec4(glm::vec3(p.baseColor) + glm::vec3(p.emissiveAlpha),
-                                                    p.baseColor.a * p.emissiveAlpha.a);
+                    out.baseColorFactor = glm::vec4(glm::vec3(p.baseColor), p.baseColor.a * p.emissiveAlpha.a);
+                    out.emissiveFactor  = glm::vec4(glm::vec3(p.emissiveAlpha), 1.0f);
                     out.materialTextureInfo0.y = validTexture(p.textureInfo.x);
                     out.materialMRA = glm::vec4(p.metallicRoughnessAoCutoff.x,
                                                 p.metallicRoughnessAoCutoff.y,
@@ -345,6 +349,7 @@ namespace vultra
             params.materialTextureInfo1.x = 0u;
             params.materialTextureInfo1.z = 0u;
             params.materialTextureInfo1.w = 0u;
+            params.emissiveInfo.x         = 0u;
         }
 
         [[nodiscard]] PreparedDirectDrawSet prepareDirectDrawSet(const RenderWorld&                renderWorld,
@@ -547,6 +552,7 @@ namespace vultra
                                                        rhi::PixelFormat::eUndefined,
                                                        rhi::PixelFormat::eUndefined,
                                                        rhi::PixelFormat::eUndefined,
+                                                       rhi::PixelFormat::eUndefined,
                                                        false,
                                                        false,
                                                        layout.attributeMask,
@@ -621,6 +627,7 @@ namespace vultra
             FrameGraphResource color;
             FrameGraphResource normal;
             FrameGraphResource material;
+            FrameGraphResource emissive;
             FrameGraphResource entityId;
             FrameGraphResource depth;
         };
@@ -628,6 +635,7 @@ namespace vultra
         const auto colorDesc    = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm);
         const auto normalDesc   = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRG8_UNorm);
         const auto materialDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm);
+        const auto emissiveDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F);
         const bool writeEntityId =
             ctx.view().camera != nullptr &&
             (ctx.view().camera->debugEntityIdOutput || ctx.view().camera->selectionOutlineEnabled);
@@ -641,6 +649,7 @@ namespace vultra
             [colorDesc,
              normalDesc,
              materialDesc,
+             emissiveDesc,
              entityIdDesc,
              depthDesc,
              writeEntityId,
@@ -700,6 +709,16 @@ namespace vultra
                                                 .clearValue  = framegraph::ClearValue::eTransparentWhite,
                                             });
 
+                pd.emissive = builder.create<framegraph::FrameGraphTexture>(
+                    "DirectGBufferEmissive",
+                    emissiveDesc);
+                pd.emissive = builder.write(pd.emissive,
+                                            framegraph::Attachment {
+                                                .index       = 3,
+                                                .imageAspect = rhi::ImageAspect::eColor,
+                                                .clearValue  = framegraph::ClearValue::eTransparentBlack,
+                                            });
+
                 if (writeEntityId)
                 {
                     pd.entityId = builder.create<framegraph::FrameGraphTexture>(
@@ -707,7 +726,7 @@ namespace vultra
                         entityIdDesc);
                     pd.entityId = builder.write(pd.entityId,
                                                 framegraph::Attachment {
-                                                    .index       = 3,
+                                                    .index       = 4,
                                                     .imageAspect = rhi::ImageAspect::eColor,
                                                     .clearValue  = framegraph::ClearValue::eTransparentBlack,
                                                 });
@@ -749,8 +768,9 @@ namespace vultra
                 const auto colorFormat     = rhi::getColorFormat(framebufferInfo, 0);
                 const auto normalFormat    = rhi::getColorFormat(framebufferInfo, 1);
                 const auto materialFormat  = rhi::getColorFormat(framebufferInfo, 2);
+                const auto emissiveFormat  = rhi::getColorFormat(framebufferInfo, 3);
                 const auto entityIdFormat  =
-                    writeEntityId ? rhi::getColorFormat(framebufferInfo, 3) : rhi::PixelFormat::eUndefined;
+                    writeEntityId ? rhi::getColorFormat(framebufferInfo, 4) : rhi::PixelFormat::eUndefined;
 
                 auto materialTextures = gpuSceneDatabase->resources->getBindlessTextureHandles();
                 if (!sanitizeBindlessTextures(materialTextures))
@@ -829,6 +849,7 @@ namespace vultra
                                                        colorFormat,
                                                        normalFormat,
                                                        materialFormat,
+                                                       emissiveFormat,
                                                        entityIdFormat,
                                                        writeEntityId,
                                                        readOnlyDepth,
@@ -921,6 +942,7 @@ namespace vultra
         ctx.data.set(kResKey_DepthTexture, data.depth);
         ctx.data.set(kResKey_GBufferNormal, data.normal);
         ctx.data.set(kResKey_GBufferMaterial, data.material);
+        ctx.data.set(kResKey_GBufferEmissive, data.emissive);
         if (data.entityId)
             ctx.data.set(kResKey_GBufferEntityId, data.entityId);
         return data.color;
@@ -946,6 +968,7 @@ namespace vultra
                                                             const rhi::PixelFormat colorFormat,
                                                             const rhi::PixelFormat normalFormat,
                                                             const rhi::PixelFormat materialFormat,
+                                                            const rhi::PixelFormat emissiveFormat,
                                                             const rhi::PixelFormat entityIdFormat,
                                                             const bool             writeEntityId,
                                                             const bool             readOnlyDepth,
@@ -1004,8 +1027,12 @@ namespace vultra
                                      std::vector<rhi::PixelFormat> {colorFormat,
                                                                     normalFormat,
                                                                     materialFormat,
+                                                                    emissiveFormat,
                                                                     entityIdFormat} :
-                                     std::vector<rhi::PixelFormat> {colorFormat, normalFormat, materialFormat})
+                                     std::vector<rhi::PixelFormat> {colorFormat,
+                                                                    normalFormat,
+                                                                    materialFormat,
+                                                                    emissiveFormat})
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
             .setViewMask(viewMask)
             .setInputAssembly(resource::buildInputAssemblyVertexAttributes(layout, true, true, true))
@@ -1027,6 +1054,8 @@ namespace vultra
                 .setBlending(1, {.enabled = false})
                 .setBlending(2, {.enabled = false})
                 .setBlending(3, {.enabled = false});
+            if (writeEntityId)
+                builder.setBlending(4, {.enabled = false});
         }
         return builder.build(getRenderDevice());
     }

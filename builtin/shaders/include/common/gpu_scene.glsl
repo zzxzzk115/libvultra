@@ -308,9 +308,10 @@ struct MaterialParamsPBRMR
     uint occlusionTex;
     uint emissiveTex;
     uint doubleSided;
-    uint pad0;
+    uint mrTextureMode;
     uint pad1;
     uint pad2;
+    vec4 emissiveFactor; // rgb = emissive color x strength
 };
 struct MaterialParamsPBRSG
 {
@@ -418,6 +419,12 @@ MaterialParamsPBRMR get_pbrmr_params(uint materialIndex)
 
     // offset + 60 : uint doubleSided
     params.doubleSided = _load_u32(m.blockOffsetBytes, 60u);
+
+    // offset + 64 : uint mrTextureMode
+    params.mrTextureMode = _load_u32(m.blockOffsetBytes, 64u);
+
+    // offset + 80 : vec4 emissiveFactor (rgb = emissive color x strength)
+    params.emissiveFactor = load_vec4_bytes(m.blockOffsetBytes, 80u);
 
     return params;
 }

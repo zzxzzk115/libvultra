@@ -1155,6 +1155,7 @@ namespace vultra_app
                      "gbuffer_color",
                      "gbuffer_normal",
                      "gbuffer_material",
+                     "gbuffer_emissive",
                      "gbuffer_entity_id",
                      "ssao",
                      "ao",

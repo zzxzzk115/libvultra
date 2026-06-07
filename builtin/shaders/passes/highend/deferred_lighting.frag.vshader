@@ -8,7 +8,7 @@ ambientIntensity : float = 1.0 range(0.0, 8.0)
 shadowStrength : float = 0.85 range(0.0, 1.0)
 shadowFilterMode : enum(Hard=0,PCF=1,PCSS=2) = PCF
 shadowDebugMode : enum(Off=0,Cascade=1,Visibility=2,ShadowDepth=3,ShadowCoord=4,AtlasUV=5) = Off
-debugViewMode : enum(Lit=0,Albedo=1,Normal=2,Metallic=3,Roughness=4,AO=5,LinearDepth=6) = Lit
+debugViewMode : enum(Lit=0,Albedo=1,Normal=2,Metallic=3,Roughness=4,AO=5,LinearDepth=6,Emissive=7) = Lit
 pcfRadius : int = 2 range(0, 4)
 pcssBlockerSamples : int = 12 range(1, 32)
 iblIntensity : float = 0.0 range(0.0, 8.0)
@@ -82,6 +82,7 @@ layout(set = 3, binding = 7) uniform sampler2D u_BrdfLUT;
 layout(set = 3, binding = 8) uniform samplerCube u_IrradianceMap;
 layout(set = 3, binding = 9) uniform samplerCube u_PrefilteredEnvMap;
 layout(set = 3, binding = 10) uniform VULTRA_GBUFFER_TEXTURE u_SSAO;
+layout(set = 3, binding = 11) uniform VULTRA_GBUFFER_TEXTURE u_GBufferEmissive;
 
 layout(set = 1, binding = 0, std140) uniform LightBlock
 {
@@ -358,6 +359,7 @@ void main()
     vec4 mraSample = VULTRA_GBUFFER_SAMPLE(u_GBufferMaterial, v_TexCoord);
     vec3 mra = mraSample.xyz;
     uint materialModel = decodeMaterialModel(mraSample.w);
+    vec3 emissive = VULTRA_GBUFFER_SAMPLE(u_GBufferEmissive, v_TexCoord).rgb;
     vec3 positionWS = worldPositionFromDepth(depth, v_TexCoord);
     vec3 cameraWS = VULTRA_ACTIVE_CAMERA.inverseView[3].xyz;
 
@@ -396,10 +398,15 @@ void main()
         FragColor = vec4(vec3(linearDepth), 1.0);
         return;
     }
+    if (u_Push.debugViewMode == 7)
+    {
+        FragColor = vec4(emissive, 1.0);
+        return;
+    }
 
     if (materialModel == VULTRA_MAT_UNLIT)
     {
-        FragColor = baseColor;
+        FragColor = vec4(baseColor.rgb + emissive, baseColor.a);
         return;
     }
 
@@ -464,13 +471,13 @@ void main()
         for (int i = 0; i < u_Lights.counts.z; ++i)
             direct += calPhongSpotLight(u_Lights.spotLights[i], baseColor.rgb, specularIntensity, shininess, normalWS, viewDir, positionWS);
         vec3 ambient = baseColor.rgb * u_Push.ambientColorIntensity.rgb * u_Push.ambientColorIntensity.a * ao;
-        FragColor = vec4(ambient + direct, baseColor.a);
+        FragColor = vec4(ambient + direct + emissive, baseColor.a);
         return;
     }
 
     PBRMaterial material;
     material.albedo = baseColor.rgb;
-    material.emissive = vec3(0.0);
+    material.emissive = emissive;
     material.metallic = materialModel == VULTRA_MAT_PBRSG ? 0.0 : metallic;
     material.roughness = roughness;
     material.ao = ao;
@@ -520,6 +527,6 @@ void main()
         vec3 ibl = calIBLAmbient(diffuseColor, F0, normalWS, viewDir, material, u_BrdfLUT, u_IrradianceMap, u_PrefilteredEnvMap);
         ambient += ibl * u_Push.iblColorIntensity.rgb * u_Push.iblColorIntensity.a;
     }
-    vec3 lit = ambient + direct;
+    vec3 lit = ambient + direct + material.emissive;
     FragColor = vec4(lit, baseColor.a);
 }

@@ -34,7 +34,7 @@ Move free helpers into `render_system_internal.hpp` (shared declarations) plus f
 
 | New unit | Contents | Notes |
 |---|---|---|
-| `material/material_params.hpp` | `MaterialParamsPBRMR` (+ alpha-mode helpers) | **Done**: extracted to `vultra/function/material/material_params.hpp` and shared by `render_system.cpp`, `asset_system.cpp`, `direct_gbuffer_pass.cpp` (3 byte-identical copies). NOTE: `compatibility_basecolor_pass.cpp` keeps its own *different, smaller* `MaterialParamsPBRMR` layout (a distinct GPU ABI) and must NOT use this header. |
+| `material/material_params.hpp` | `MaterialParamsPBRMR` (+ alpha-mode helpers) | **Done**: extracted to `vultra/function/material/material_params.hpp` and shared by `render_system.cpp`, `asset_system.cpp`, `direct_gbuffer_pass.cpp` (3 byte-identical copies). NOTE: `compatibility_basecolor_pass.cpp` keeps its own *different, smaller* `MaterialParamsPBRMR` layout (a distinct GPU ABI) and must NOT use this header. NOTE: `emissiveFactor` (rgb = emissive colour x strength) is appended at the **end** of the struct (offset 80) so the hand-written byte offsets in `gpu_scene.glsl`'s `get_pbrmr_params` stay valid — never insert fields mid-struct. |
 | `rendering/material_graph_cook.cpp` | graph evaluation + `cachedMaterialGraph` + graph→GPU material | Owns the graph cache; expose a small accessor instead of a TU-local static. |
 | `rendering/shader_material_cook.cpp` | shader-source material cooking + param serialization | Owns the shader-material cache and `warnShaderMaterialOnce` dedup set. |
 | `rendering/render_world_cook.cpp` | `RenderWorldCooker::cook`, splat sort/select | Self-contained; depends on the two cook units above. |

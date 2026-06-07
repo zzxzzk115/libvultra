@@ -26,8 +26,9 @@ layout(location = 0) in vec2 v_TexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 GBufferNormal;
 layout(location = 2) out vec4 GBufferMaterial;
+layout(location = 3) out vec4 GBufferEmissive;
 #if WRITE_ENTITY_ID
-layout(location = 3) out vec4 GBufferEntityId;
+layout(location = 4) out vec4 GBufferEntityId;
 #endif
 
 layout(push_constant) uniform ThinGBufferPushConstants
@@ -113,12 +114,31 @@ vec4 base_color_for_material(uint materialIndex, vec2 uv, bool hasUv0)
     if (model == VULTRA_MAT_GRAPH)
     {
         MaterialParamsGraph params = get_graph_params(materialIndex);
-        vec4 color = vec4(params.baseColor.rgb + params.emissiveAlpha.rgb, params.baseColor.a * params.emissiveAlpha.a);
+        vec4 color = vec4(params.baseColor.rgb, params.baseColor.a * params.emissiveAlpha.a);
         if (hasUv0 && params.textureInfo.x != 0u)
             color *= texture(getBindlessTexture(params.textureInfo.x), uv);
         return color;
     }
     return vec4(1.0);
+}
+
+vec3 material_emissive(uint materialIndex, vec2 uv, bool hasUv0)
+{
+    uint model = get_material_model(materialIndex);
+    if (model == VULTRA_MAT_PBRMR)
+    {
+        MaterialParamsPBRMR params = get_pbrmr_params(materialIndex);
+        vec3 emissive = params.emissiveFactor.rgb;
+        if (hasUv0 && params.emissiveTex != 0u)
+            emissive *= texture(getBindlessTexture(params.emissiveTex), uv).rgb;
+        return emissive;
+    }
+    if (model == VULTRA_MAT_GRAPH)
+    {
+        MaterialParamsGraph params = get_graph_params(materialIndex);
+        return params.emissiveAlpha.rgb;
+    }
+    return vec3(0.0);
 }
 
 vec3 material_mra(uint materialIndex, vec2 uv, bool hasUv0)
@@ -284,10 +304,12 @@ void main()
     bool hasUv0 = vertex_has_attribute(d.vertexAttributeMask, VULTRA_VERTEX_ATTR_UV0);
     vec4 color = base_color_for_material(d.materialIndex, uv, hasUv0);
     vec3 mra = material_mra(d.materialIndex, uv, hasUv0);
+    vec3 emissive = material_emissive(d.materialIndex, uv, hasUv0);
 
     FragColor = color;
     GBufferNormal = vec4(encode_gbuffer_normal(normalWS), 0.0, 1.0);
     GBufferMaterial = vec4(clamp(mra, 0.0, 1.0), encode_material_model(material_lighting_model(d.materialIndex)));
+    GBufferEmissive = vec4(max(emissive, vec3(0.0)), 1.0);
 #if WRITE_ENTITY_ID
     uint id = d.entityPickingId & 0x00FFFFFFu;
     GBufferEntityId = vec4(

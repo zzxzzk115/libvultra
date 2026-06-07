@@ -126,6 +126,7 @@ namespace vultra
                                                      FrameGraphResource      color,
                                                      FrameGraphResource      normal,
                                                      FrameGraphResource      material,
+                                                     FrameGraphResource      emissive,
                                                      FrameGraphResource      depth,
                                                      FrameGraphResource      ssao,
                                                      FrameGraphResource      shadowMap,
@@ -152,6 +153,7 @@ namespace vultra
             FrameGraphResource colorIn;
             FrameGraphResource normal;
             FrameGraphResource material;
+            FrameGraphResource emissive;
             FrameGraphResource depth;
             FrameGraphResource ssao;
             FrameGraphResource shadowMap;
@@ -166,6 +168,7 @@ namespace vultra
              color,
              normal,
              material,
+             emissive,
              depth,
              ssao,
              shadowMap,
@@ -215,6 +218,16 @@ namespace vultra
                                                .binding =
                                                    {
                                                        .location      = {.set = 3, .binding = 2},
+                                                       .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                                   },
+                                               .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                               .imageAspect = rhi::ImageAspect::eColor,
+                                           });
+                pd.emissive = builder.read(emissive,
+                                           framegraph::TextureRead {
+                                               .binding =
+                                                   {
+                                                       .location      = {.set = 3, .binding = 11},
                                                        .pipelineStage = framegraph::PipelineStage::eFragmentShader,
                                                    },
                                                .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
@@ -293,6 +306,7 @@ namespace vultra
                 rc.overrideSampler(rc.resourceSet[3][1], rc.ext.samplers["nearest"]);
                 rc.overrideSampler(rc.resourceSet[3][2], rc.ext.samplers["nearest"]);
                 rc.overrideSampler(rc.resourceSet[3][3], rc.ext.samplers["nearest"]);
+                rc.overrideSampler(rc.resourceSet[3][11], rc.ext.samplers["nearest"]);
                 rc.overrideSampler(rc.resourceSet[3][4], rc.ext.samplers.count("shadow_map") > 0 ?
                                                           rc.ext.samplers["shadow_map"] :
                                                           rc.ext.samplers["nearest"]);

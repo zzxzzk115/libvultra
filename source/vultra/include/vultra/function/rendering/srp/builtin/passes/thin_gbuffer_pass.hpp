@@ -17,6 +17,7 @@ namespace vultra
         rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat,
                                              rhi::PixelFormat normalFormat,
                                              rhi::PixelFormat materialFormat,
+                                             rhi::PixelFormat emissiveFormat,
                                              rhi::PixelFormat entityIdFormat,
                                              bool             writeEntityId,
                                              uint32_t         viewMask) const;

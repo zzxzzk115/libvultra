@@ -1453,6 +1453,15 @@ namespace vultra
                 p.occlusionTex =
                     resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.ambientOcclusionTexture.uuid));
                 p.emissiveTex    = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.emissiveTexture.uuid));
+                {
+                    glm::vec3 emissiveColor = glm::vec3(material.core.pbrMR.emissiveColorIntensity);
+                    // Texture present but factor came through black (assimp glTF quirk): emissive
+                    // = factor * texture would be zero, so default the factor to white.
+                    if (p.emissiveTex != 0u && emissiveColor == glm::vec3(0.0f))
+                        emissiveColor = glm::vec3(1.0f);
+                    p.emissiveFactor =
+                        glm::vec4(emissiveColor * material.core.pbrMR.emissiveColorIntensity.a, 1.0f);
+                }
                 p.doubleSided    = material.core.pbrMR.doubleSided ? 1u : 0u;
                 p.mrTextureMode  = static_cast<uint32_t>(pbrMrTextureMode(material.core.pbrMR));
                 uploadBlock(gpuMaterial, &p, sizeof(p));
@@ -1574,6 +1583,14 @@ namespace vultra
                 p.roughnessTex    = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.roughnessTexture.uuid));
                 p.occlusionTex    = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.ambientOcclusionTexture.uuid));
                 p.emissiveTex     = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.emissiveTexture.uuid));
+                {
+                    glm::vec3 emissiveColor = glm::vec3(m.core.pbrMR.emissiveColorIntensity);
+                    // Texture present but factor came through black (assimp glTF quirk): emissive
+                    // = factor * texture would be zero, so default the factor to white.
+                    if (p.emissiveTex != 0u && emissiveColor == glm::vec3(0.0f))
+                        emissiveColor = glm::vec3(1.0f);
+                    p.emissiveFactor = glm::vec4(emissiveColor * m.core.pbrMR.emissiveColorIntensity.a, 1.0f);
+                }
                 p.doubleSided     = m.core.pbrMR.doubleSided ? 1u : 0u;
                 p.mrTextureMode   = static_cast<uint32_t>(pbrMrTextureMode(m.core.pbrMR));
                 blockOffset       = allocBlock(&p, sizeof(p));
@@ -1670,6 +1687,9 @@ namespace vultra
             p.occlusionTex =
                 resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.ambientOcclusionTexture.uuid));
             p.emissiveTex   = resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.emissiveTexture.uuid));
+            p.emissiveFactor = glm::vec4(glm::vec3(fallback.core.pbrMR.emissiveColorIntensity) *
+                                             fallback.core.pbrMR.emissiveColorIntensity.a,
+                                         1.0f);
             p.doubleSided   = fallback.core.pbrMR.doubleSided ? 1u : 0u;
             p.mrTextureMode = static_cast<uint32_t>(pbrMrTextureMode(fallback.core.pbrMR));
         }
@@ -1719,6 +1739,21 @@ namespace vultra
             {
                 if (const auto value = jsonBoolValue((*properties)["doubleSided"]))
                     p.doubleSided = *value ? 1u : 0u;
+            }
+            {
+                glm::vec3 emissiveColor {glm::vec3(p.emissiveFactor)};
+                float     emissiveStrength {1.0f};
+                if (properties->contains("emissiveColor"))
+                {
+                    if (const auto value = jsonVec4Value((*properties)["emissiveColor"]))
+                        emissiveColor = glm::vec3(*value);
+                }
+                if (properties->contains("emissiveStrength"))
+                {
+                    if (const auto value = jsonFloatValue((*properties)["emissiveStrength"]))
+                        emissiveStrength = *value;
+                }
+                p.emissiveFactor = glm::vec4(emissiveColor * emissiveStrength, 1.0f);
             }
 
             p.baseColorTex = textureIndexForUri(*properties, "baseColorTexture");

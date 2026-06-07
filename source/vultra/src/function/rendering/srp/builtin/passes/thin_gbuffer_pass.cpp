@@ -36,6 +36,7 @@ namespace vultra
             FrameGraphResource color;
             FrameGraphResource normal;
             FrameGraphResource material;
+            FrameGraphResource emissive;
             FrameGraphResource entityId;
 
             FrameGraphResource drawBuffer;
@@ -52,6 +53,8 @@ namespace vultra
             makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRG8_UNorm, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
         const auto materialDesc =
             makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
+        const auto emissiveDesc =
+            makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
         const bool writeEntityId =
             ctx.view().camera != nullptr &&
             (ctx.view().camera->debugEntityIdOutput || ctx.view().camera->selectionOutlineEnabled);
@@ -69,6 +72,7 @@ namespace vultra
             [colorDesc,
              normalDesc,
              materialDesc,
+             emissiveDesc,
              entityIdDesc,
              writeEntityId,
              cameraBlock,
@@ -168,6 +172,16 @@ namespace vultra
                                                 .imageAspect = rhi::ImageAspect::eColor,
                                                 .clearValue  = framegraph::ClearValue::eTransparentWhite,
                                             });
+
+                pd.emissive = builder.create<framegraph::FrameGraphTexture>(
+                    "ThinGBufferEmissive",
+                    emissiveDesc);
+                pd.emissive = builder.write(pd.emissive,
+                                            framegraph::Attachment {
+                                                .index       = 3,
+                                                .imageAspect = rhi::ImageAspect::eColor,
+                                                .clearValue  = framegraph::ClearValue::eTransparentBlack,
+                                            });
                 if (writeEntityId)
                 {
                     pd.entityId = builder.create<framegraph::FrameGraphTexture>(
@@ -175,7 +189,7 @@ namespace vultra
                         entityIdDesc);
                     pd.entityId = builder.write(pd.entityId,
                                                 framegraph::Attachment {
-                                                    .index       = 3,
+                                                    .index       = 4,
                                                     .imageAspect = rhi::ImageAspect::eColor,
                                                     .clearValue  = framegraph::ClearValue::eTransparentBlack,
                                                 });
@@ -200,7 +214,8 @@ namespace vultra
                 const auto* pipeline       = getPipeline(rhi::getColorFormat(framebufferInfo, 0),
                                                    rhi::getColorFormat(framebufferInfo, 1),
                                                    rhi::getColorFormat(framebufferInfo, 2),
-                                                   writeEntityId ? rhi::getColorFormat(framebufferInfo, 3) :
+                                                   rhi::getColorFormat(framebufferInfo, 3),
+                                                   writeEntityId ? rhi::getColorFormat(framebufferInfo, 4) :
                                                                    rhi::PixelFormat::eUndefined,
                                                    writeEntityId,
                                                    framebufferInfo.viewMask);
@@ -235,6 +250,7 @@ namespace vultra
         ctx.data.set(kResKey_ThinGBufferColor, data.color);
         ctx.data.set(kResKey_GBufferNormal, data.normal);
         ctx.data.set(kResKey_GBufferMaterial, data.material);
+        ctx.data.set(kResKey_GBufferEmissive, data.emissive);
         if (data.entityId)
             ctx.data.set(kResKey_GBufferEntityId, data.entityId);
         return data.color;
@@ -243,6 +259,7 @@ namespace vultra
     rhi::GraphicsPipeline ThinGBufferPass::createPipeline(const rhi::PixelFormat colorFormat,
                                                           const rhi::PixelFormat normalFormat,
                                                           const rhi::PixelFormat materialFormat,
+                                                          const rhi::PixelFormat emissiveFormat,
                                                           const rhi::PixelFormat entityIdFormat,
                                                           const bool             writeEntityId,
                                                           const uint32_t         viewMask) const
@@ -268,8 +285,12 @@ namespace vultra
                                       std::vector<rhi::PixelFormat> {colorFormat,
                                                                      normalFormat,
                                                                      materialFormat,
+                                                                     emissiveFormat,
                                                                      entityIdFormat} :
-                                      std::vector<rhi::PixelFormat> {colorFormat, normalFormat, materialFormat};
+                                      std::vector<rhi::PixelFormat> {colorFormat,
+                                                                     normalFormat,
+                                                                     materialFormat,
+                                                                     emissiveFormat};
         rhi::GraphicsPipeline::Builder builder;
         builder.setColorFormats(colorFormats)
             .setViewMask(viewMask)
@@ -286,9 +307,10 @@ namespace vultra
             })
             .setBlending(0, {.enabled = false})
             .setBlending(1, {.enabled = false})
-            .setBlending(2, {.enabled = false});
+            .setBlending(2, {.enabled = false})
+            .setBlending(3, {.enabled = false});
         if (writeEntityId)
-            builder.setBlending(3, {.enabled = false});
+            builder.setBlending(4, {.enabled = false});
         return builder.build(getRenderDevice());
     }
 } // namespace vultra

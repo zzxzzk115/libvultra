@@ -63,6 +63,8 @@ layout(set = 1, binding = 0) uniform DrawParams
     uvec4 materialTextureInfo1;
     uvec4 entityInfo;
     uvec4 skinInfo;
+    vec4 emissiveFactor;
+    uvec4 emissiveInfo;
 } u_Draw;
 
 #if VTX_HAS_SKIN

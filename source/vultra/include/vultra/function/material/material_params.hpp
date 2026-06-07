@@ -31,6 +31,9 @@ namespace vultra
         uint32_t  mrTextureMode {0};
         uint32_t  pad1 {0};
         uint32_t  pad2 {0};
+        // Appended at the end (offset 80) so existing byte offsets stay stable for
+        // the GLSL loader in gpu_scene.glsl. rgb = emissive color x strength; a unused.
+        glm::vec4 emissiveFactor {0, 0, 0, 1};
     };
     static_assert(sizeof(MaterialParamsPBRMR) % 16 == 0);
 } // namespace vultra

@@ -696,6 +696,18 @@ namespace vultra
                 if (auto index = textureIndex(sourceProperties, "emissiveTexture"); index != 0u)
                     params.emissiveTex = index;
             };
+            const auto applyEmissiveProperties = [&](const nlohmann::json& sourceProperties) {
+                if (!sourceProperties.is_object())
+                    return;
+                glm::vec3 color    = glm::vec3(params.emissiveFactor);
+                float     strength = 1.0f;
+                if (sourceProperties.contains("emissiveColor"))
+                    color = glm::vec3(jsonVec4(sourceProperties.value("emissiveColor", nlohmann::json::array()),
+                                               glm::vec4(color, 1.0f)));
+                if (sourceProperties.contains("emissiveStrength"))
+                    strength = jsonFloat(sourceProperties.value("emissiveStrength", strength), strength);
+                params.emissiveFactor = glm::vec4(color * strength, 1.0f);
+            };
             if (properties.is_object())
             {
                 params.baseColor       = jsonVec4(properties.value("baseColor", nlohmann::json::array()), params.baseColor);
@@ -712,6 +724,7 @@ namespace vultra
                                                    0.0f,
                                                    1.0f);
                 params.doubleSided     = properties.value("doubleSided", false) ? 1u : 0u;
+                applyEmissiveProperties(properties);
                 applyTextureProperties(properties);
             }
             if (overrides && overrides->is_object())
@@ -729,6 +742,7 @@ namespace vultra
                                                              params.alphaCutoff),
                                                    0.0f,
                                                    1.0f);
+                applyEmissiveProperties(*overrides);
                 applyTextureProperties(*overrides);
             }
             return params;
@@ -1479,6 +1493,8 @@ namespace vultra
             params.roughnessFactor = 1.0f;
 
             auto schema = resolveShaderMaterialSchema(shaders, shaderSource->source);
+            glm::vec3 emissiveColor {0.0f};
+            float     emissiveStrength {1.0f};
             const auto applySchemaProperty = [&](const material::MaterialPropertySchema& property) {
                 switch (property.type)
                 {
@@ -1496,6 +1512,12 @@ namespace vultra
                             params.baseColor =
                                 jsonVec4(properties.value(property.name, nlohmann::json::array()),
                                          schemaVec4Default(property, params.baseColor));
+                        }
+                        else if (nameMatchesAny(property.name, {"emissive", "emissivecolor", "emissivefactor"}))
+                        {
+                            emissiveColor = glm::vec3(
+                                jsonVec4(properties.value(property.name, nlohmann::json::array()),
+                                         schemaVec4Default(property, glm::vec4(emissiveColor, 1.0f))));
                         }
                         break;
                     case material::MaterialPropertyType::eFloat:
@@ -1522,6 +1544,11 @@ namespace vultra
                                                      schemaFloatDefault(property, params.alphaCutoff)),
                                            0.0f,
                                            1.0f);
+                        }
+                        else if (nameMatchesAny(property.name, {"emissivestrength", "emissiveintensity"}))
+                        {
+                            emissiveStrength = jsonFloat(properties.value(property.name, nlohmann::json {}),
+                                                         schemaFloatDefault(property, emissiveStrength));
                         }
                         break;
                     case material::MaterialPropertyType::eBool:
@@ -1598,7 +1625,12 @@ namespace vultra
                                                              params.roughnessFactor),
                                                    0.045f,
                                                    1.0f);
+                emissiveColor = glm::vec3(jsonVec4(properties.value("emissiveColor", nlohmann::json::array()),
+                                                   glm::vec4(emissiveColor, 1.0f)));
+                emissiveStrength = jsonFloat(properties.value("emissiveStrength", emissiveStrength), emissiveStrength);
             }
+
+            params.emissiveFactor = glm::vec4(emissiveColor * emissiveStrength, 1.0f);
 
             return params;
         }
