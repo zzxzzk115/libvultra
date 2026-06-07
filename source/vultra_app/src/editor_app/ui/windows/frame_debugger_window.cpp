@@ -656,7 +656,10 @@ namespace vultra_app
                         label += " [import]";
                     if (!texture.capturable)
                         label += " [no preview]";
-                    label += "##" + texture.key;
+                    // transientResourceKey (R<node>_<version>/layer) is unique per framegraph
+                    // resource, so it keeps the ImGui ID distinct even when several transient
+                    // textures share a display name (e.g. ping-pong Gaussian blur outputs).
+                    label += "##" + texture.key + "/" + texture.transientResourceKey;
                     if (ImGui::Selectable(label.c_str(), selected))
                         m_SelectedTextureKey = texture.resourceKey;
                     if (selected)
