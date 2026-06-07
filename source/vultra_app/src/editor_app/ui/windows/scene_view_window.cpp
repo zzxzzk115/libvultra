@@ -407,26 +407,85 @@ namespace vultra_app
             return false;
         }
 
+        // Transform the 8 corners of a local-space AABB by worldMatrix and fold them into bounds.
+        void includeWorldBox(Bounds& bounds, const glm::vec3& min, const glm::vec3& max, const glm::mat4& worldMatrix)
+        {
+            for (uint32_t corner = 0; corner < 8u; ++corner)
+            {
+                const glm::vec3 p {
+                    (corner & 1u) ? max.x : min.x,
+                    (corner & 2u) ? max.y : min.y,
+                    (corner & 4u) ? max.z : min.z,
+                };
+                bounds.include(glm::vec3(worldMatrix * glm::vec4(p, 1.0f)));
+            }
+        }
+
+        // Local-space AABB of each builtin primitive (see geometry_factory.cpp). Builtin meshes carry no
+        // mesh asset and therefore no VMesh local bounds, so the selection box has to fall back to these
+        // -- otherwise it ends up sized from an unrelated entity-scale guess and dwarfs the geometry.
+        // Kinds match MeshComponent::builtinGeometry / BuiltinGeometryKind: 0=quad, 1=cube, 2=sphere, 3=capsule.
+        bool builtinGeometryLocalBounds(uint32_t kind, glm::vec3& outMin, glm::vec3& outMax)
+        {
+            switch (kind)
+            {
+            case 0u: // quad: lies in the XZ plane (zero thickness on Y)
+                outMin = glm::vec3 {-0.5f, 0.0f, -0.5f};
+                outMax = glm::vec3 {0.5f, 0.0f, 0.5f};
+                return true;
+            case 1u: // cube
+            case 2u: // sphere
+                outMin = glm::vec3 {-0.5f};
+                outMax = glm::vec3 {0.5f};
+                return true;
+            case 3u: // capsule: 0.5-radius body with hemispherical caps reaching +/-1.0 on Y
+                outMin = glm::vec3 {-0.5f, -1.0f, -0.5f};
+                outMax = glm::vec3 {0.5f, 1.0f, 0.5f};
+                return true;
+            default:
+                return false;
+            }
+        }
+
         void includeMeshWorldBounds(Bounds& bounds, const vasset::VMesh& mesh, const glm::mat4& worldMatrix)
         {
             if (mesh.hasLocalBounds)
             {
-                const glm::vec3 min = mesh.localBoundsMin;
-                const glm::vec3 max = mesh.localBoundsMax;
-                for (uint32_t corner = 0; corner < 8u; ++corner)
-                {
-                    const glm::vec3 p {
-                        (corner & 1u) ? max.x : min.x,
-                        (corner & 2u) ? max.y : min.y,
-                        (corner & 4u) ? max.z : min.z,
-                    };
-                    bounds.include(glm::vec3(worldMatrix * glm::vec4(p, 1.0f)));
-                }
+                includeWorldBox(bounds, mesh.localBoundsMin, mesh.localBoundsMax, worldMatrix);
                 return;
             }
 
             for (const auto& p : mesh.positions)
                 bounds.include(glm::vec3(worldMatrix * glm::vec4(p, 1.0f)));
+        }
+
+        // World-space bounds of a single mesh entity, covering both VMesh-asset meshes and builtin
+        // primitives (which have no asset). Returns false when neither source yields geometry.
+        bool includeMeshEntityWorldBounds(Bounds&                      bounds,
+                                          vultra::IAssetService&       assets,
+                                          const vultra::MeshComponent& meshComponent,
+                                          const glm::mat4&             worldMatrix)
+        {
+            if (meshComponent.mesh.valid())
+            {
+                auto mesh = assets.loadMeshAsync(meshComponent.mesh);
+                if (mesh.cpu())
+                {
+                    includeMeshWorldBounds(bounds, *mesh.cpu(), worldMatrix);
+                    return true;
+                }
+            }
+
+            glm::vec3 localMin {};
+            glm::vec3 localMax {};
+            if (meshComponent.builtinGeometry != UINT32_MAX &&
+                builtinGeometryLocalBounds(meshComponent.builtinGeometry, localMin, localMax))
+            {
+                includeWorldBox(bounds, localMin, localMax, worldMatrix);
+                return true;
+            }
+
+            return false;
         }
 
         Bounds computeEntityFocusBounds(vultra::World& world, vultra::IAssetService& assets, entt::entity root)
@@ -443,15 +502,8 @@ namespace vultra_app
                     continue;
 
                 const auto& meshComponent = meshView.get<vultra::MeshComponent>(e);
-                if (!meshComponent.mesh.valid())
-                    continue;
-
-                auto mesh = assets.loadMeshAsync(meshComponent.mesh);
-                if (!mesh.cpu())
-                    continue;
-
-                const auto worldMatrix = makeWorldTransformMatrix(reg, e);
-                includeMeshWorldBounds(bounds, *mesh.cpu(), worldMatrix);
+                const auto  worldMatrix   = makeWorldTransformMatrix(reg, e);
+                includeMeshEntityWorldBounds(bounds, assets, meshComponent, worldMatrix);
             }
 
             if (!bounds.valid)
@@ -505,13 +557,8 @@ namespace vultra_app
             for (auto e : reg.view<vultra::TransformComponent, vultra::MeshComponent>())
             {
                 const auto& meshComponent = reg.get<vultra::MeshComponent>(e);
-                if (!meshComponent.mesh.valid())
-                    continue;
-                auto mesh = assets.loadMeshAsync(meshComponent.mesh);
-                if (!mesh.cpu())
-                    continue;
-                Bounds bounds;
-                includeMeshWorldBounds(bounds, *mesh.cpu(), makeWorldTransformMatrix(reg, e));
+                Bounds      bounds;
+                includeMeshEntityWorldBounds(bounds, assets, meshComponent, makeWorldTransformMatrix(reg, e));
                 if (!bounds.valid)
                     continue;
                 if (const auto t = rayAabb(ray, bounds.min, bounds.max); t && (!best || *t < *best))
