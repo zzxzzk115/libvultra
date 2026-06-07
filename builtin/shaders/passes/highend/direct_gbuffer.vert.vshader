@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/direct_gbuffer.vert"
 language = glsl
 version = 460
 

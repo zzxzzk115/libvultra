@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/general/ui_overlay.frag"
 language = glsl
 version = 460
 

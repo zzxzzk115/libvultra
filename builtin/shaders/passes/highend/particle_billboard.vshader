@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/particle_billboard"
 language = glsl
 version = 460
 

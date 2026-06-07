@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/visibility_buffer"
 language = glsl
 version = 460
 

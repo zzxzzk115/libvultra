@@ -431,6 +431,10 @@ namespace vultra
                     });
                 };
             }
+            // Builtin GLSL includes are provided to the importer as a single VFS
+            // mount (see runShaderCompiler). Each include is exposed once by its
+            // canonical "include/..." path; the VFS resolves it by absolute path
+            // from any shader directory, so no per-path duplication is needed.
             options.shaderVirtualIncludes.reserve(builtin_shader_include_sources_count);
             for (size_t i = 0; i < builtin_shader_include_sources_count; ++i)
             {
@@ -439,14 +443,6 @@ namespace vultra
                     .virtualPath = source.path,
                     .sourceText  = std::string(reinterpret_cast<const char*>(source.data), source.size),
                 });
-                constexpr std::string_view includePrefix = "include/";
-                if (std::string_view(source.path).starts_with(includePrefix))
-                {
-                    options.shaderVirtualIncludes.push_back({
-                        .virtualPath = std::string(source.path).substr(includePrefix.size()),
-                        .sourceText  = std::string(reinterpret_cast<const char*>(source.data), source.size),
-                    });
-                }
             }
             return options;
         }

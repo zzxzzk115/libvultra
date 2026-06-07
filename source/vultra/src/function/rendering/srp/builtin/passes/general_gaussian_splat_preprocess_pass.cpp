@@ -641,9 +641,9 @@ namespace vultra
                         {"USE_FOVEATED_LAYER_OUTPUT", useFoveatedLayerOutput ? 1u : 0u},
                     };
                     auto writeIndirectVariantHash =
-                        computeShaderVariantHash("gaussian_splat_write_indirect.comp",
-                                                 vshadersystem::ShaderStage::eComp,
-                                                 writeIndirectKeywords);
+                        computeGeneralVariantHash("gaussian_splat_write_indirect.comp",
+                                                  vshadersystem::ShaderStage::eComp,
+                                                  writeIndirectKeywords);
                     const auto* writeIndirectPipeline = getPipeline(writeIndirectVariantHash);
                     if (!writeIndirectPipeline)
                     {

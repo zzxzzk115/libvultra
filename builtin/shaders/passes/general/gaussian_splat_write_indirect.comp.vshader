@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/general/gaussian_splat_write_indirect.comp"
 language = glsl
 version = 460
 

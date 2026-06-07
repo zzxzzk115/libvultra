@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/general/final_composition.frag"
 language = glsl
 version = 460
 

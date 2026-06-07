@@ -110,7 +110,7 @@ namespace vultra
                                      typeid(TargetPass).name(),
                                      getShaderProfileName());
                 }
-                return computeShaderVariantHash(shaderId, stage, keywordValues);
+                return computeShaderVariantHash(std::string("builtin/general/").append(shaderId), stage, keywordValues);
             }
 
             [[nodiscard]] uint64_t
@@ -124,7 +124,7 @@ namespace vultra
                                      typeid(TargetPass).name(),
                                      getShaderProfileName());
                 }
-                return computeShaderVariantHash(shaderId, stage, keywordValues);
+                return computeShaderVariantHash(std::string("builtin/highend/").append(shaderId), stage, keywordValues);
             }
 
             [[nodiscard]] uint64_t
@@ -138,7 +138,7 @@ namespace vultra
                                      typeid(TargetPass).name(),
                                      getShaderProfileName());
                 }
-                return computeShaderVariantHash(shaderId, stage, keywordValues);
+                return computeShaderVariantHash(std::string("builtin/compatibility/").append(shaderId), stage, keywordValues);
             }
 
             [[nodiscard]] std::optional<ShaderLibraryRuntime::LoadedShader>
@@ -185,7 +185,7 @@ namespace vultra
                                      typeid(TargetPass).name(),
                                      getShaderProfileName());
                 }
-                return loadShader(shaderId, stage, keywordValues);
+                return loadShader(std::string("builtin/general/").append(shaderId), stage, keywordValues);
             }
 
             [[nodiscard]] std::optional<ShaderLibraryRuntime::LoadedShader>
@@ -211,7 +211,7 @@ namespace vultra
                                      typeid(TargetPass).name(),
                                      getShaderProfileName());
                 }
-                return loadShader(shaderId, stage, keywordValues);
+                return loadShader(std::string("builtin/highend/").append(shaderId), stage, keywordValues);
             }
 
             [[nodiscard]] std::optional<ShaderLibraryRuntime::LoadedShader>
@@ -237,7 +237,7 @@ namespace vultra
                                      typeid(TargetPass).name(),
                                      getShaderProfileName());
                 }
-                return loadShader(shaderId, stage, keywordValues);
+                return loadShader(std::string("builtin/compatibility/").append(shaderId), stage, keywordValues);
             }
 
             [[nodiscard]] std::optional<ShaderLibraryRuntime::LoadedShader>

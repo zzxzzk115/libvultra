@@ -237,14 +237,24 @@ task("shader_task")
             return processed_root, collect_shader_files(processed_root, shader_patterns)
         end
 
+        -- Pack the builtin GLSL include tree into a .vshglsl library and mount it
+        -- at the VFS root, so shaders resolve `#include "include/..."` by absolute
+        -- VFS path regardless of their own directory (the clean, unambiguous path).
+        local function pack_include_library(processed_root)
+            local inc_lib = processed_root .. ".includes.vshglsl"
+            os.execv(vshaderc, {"pack-glsl", "--root", processed_root, "-o", inc_lib})
+            return inc_lib
+        end
+
         local function build_vulkan_library(label, shader_root, shader_patterns, keywords_file, output_file)
             local processed_root, processed_shader_files =
                 prepare_shader_root("libvultra_vulkan_shader_root", shader_root, shader_patterns, false, false)
 
+            local inc_lib = pack_include_library(processed_root)
             local argv = {
                 "build",
                 "--shader_root", processed_root,
-                "-I", processed_root,
+                "--mount", "=" .. inc_lib,
             }
             for _, file in ipairs(processed_shader_files) do
                 table.insert(argv, "--shader")
@@ -263,12 +273,13 @@ task("shader_task")
             local processed_root, processed_shader_files =
                 prepare_shader_root("libvultra_webgpu_shader_root", shader_root, shader_patterns, true, true)
 
+            local inc_lib = pack_include_library(processed_root)
             local argv = {
                 "build",
                 "--webgpu",
                 "--material-mode", "ubo",
                 "--shader_root", processed_root,
-                "-I", processed_root,
+                "--mount", "=" .. inc_lib,
             }
             for _, file in ipairs(processed_shader_files) do
                 table.insert(argv, "--shader")
@@ -856,8 +867,8 @@ if is_plat("android") then
     add_requires("vshadersystem v0.6.2", { configs = vshadersystem_configs })
     add_requires("vshadersystem~host v0.6.2", { host = true, kind = "binary", configs = vshadersystem_configs })
 else
-    add_requires("vshadersystem v0.10.2", { configs = vshadersystem_configs })
-    add_requires("vshadersystem~host v0.10.2", { host = true, kind = "binary", configs = vshadersystem_configs })
+    add_requires("vshadersystem v0.11.0", { configs = vshadersystem_configs })
+    add_requires("vshadersystem~host v0.11.0", { host = true, kind = "binary", configs = vshadersystem_configs })
 end
 
 target("vultra_builtin_assets")

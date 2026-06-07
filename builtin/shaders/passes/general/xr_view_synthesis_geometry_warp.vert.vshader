@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/general/xr_view_synthesis_geometry_warp.vert"
 language = glsl
 version = 460
 

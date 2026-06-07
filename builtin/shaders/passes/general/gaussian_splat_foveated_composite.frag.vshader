@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/general/gaussian_splat_foveated_composite.frag"
 language = glsl
 version = 460
 

@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/depth_pre.frag"
 language = glsl
 version = 460
 

@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/particle_simulate.comp"
 language = glsl
 version = 460
 

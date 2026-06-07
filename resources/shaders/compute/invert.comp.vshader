@@ -1,4 +1,5 @@
 [vshader]
+id       = "project/compute/invert.comp"
 language = glsl
 version = 460
 

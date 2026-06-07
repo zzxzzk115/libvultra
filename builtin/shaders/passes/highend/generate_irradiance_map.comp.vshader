@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/generate_irradiance_map.comp"
 language = glsl
 version = 460
 

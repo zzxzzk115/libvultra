@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/hzb_generate.comp"
 language = glsl
 version = 460
 

@@ -3,7 +3,7 @@
 
 #extension GL_EXT_nonuniform_qualifier : require
 
-#include "common/color.glsl"
+#include "include/common/color.glsl"
 
 #ifndef VTX_HAS_TANGENT
 #define VTX_HAS_TANGENT 0
@@ -112,6 +112,9 @@ struct VultraMaterialEval
     vec3 emissive;
     float alpha;
     float alphaCutoff;
+    // GBuffer material-model code (see deferred_lighting VULTRA_MAT_*). Defaulted
+    // to PBR metallic-roughness; a graph-derived fragment overrides it.
+    uint shadingModel;
 };
 
 vec4 VULTRA_SAMPLE2D(uint textureIndex, vec2 uv)
@@ -166,6 +169,7 @@ VultraMaterialEval vultra_default_material_eval(VultraMaterialInput inData)
     outEval.emissive = vec3(0.0);
     outEval.alpha = 1.0;
     outEval.alphaCutoff = 0.5;
+    outEval.shadingModel = 1u; // VULTRA_MAT_PBRMR
     return outEval;
 }
 
@@ -181,7 +185,7 @@ void vultra_write_direct_gbuffer(VultraMaterialEval eval)
 
     GBufferColor = vec4(sRGBToLinear(eval.baseColor.rgb + eval.emissive), alpha);
     GBufferNormal = vec4(vultra_encode_gbuffer_normal(eval.normalWS), 0.0, 1.0);
-    GBufferMaterial = vec4(mra, vultra_encode_material_model(1.0));
+    GBufferMaterial = vec4(mra, vultra_encode_material_model(float(eval.shadingModel)));
 
 #if WRITE_ENTITY_ID
     uint id = u_VultraDraw.entityInfo.x;

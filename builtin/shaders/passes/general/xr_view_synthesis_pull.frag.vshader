@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/general/xr_view_synthesis_pull.frag"
 language = glsl
 version = 460
 

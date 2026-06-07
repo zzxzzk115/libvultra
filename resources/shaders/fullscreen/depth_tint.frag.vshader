@@ -1,4 +1,5 @@
 [vshader]
+id       = "project/fullscreen/depth_tint.frag"
 language = glsl
 version = 460
 

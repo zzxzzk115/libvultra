@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/shadow_map.vert"
 language = glsl
 version = 460
 

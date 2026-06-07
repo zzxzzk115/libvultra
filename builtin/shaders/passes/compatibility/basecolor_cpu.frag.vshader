@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/compatibility/basecolor_cpu.frag"
 language = glsl
 version = 460
 

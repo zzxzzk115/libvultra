@@ -69,10 +69,10 @@ namespace vultra
             builder.setDepthFormat(depthFormat).setDepthStencil({.depthTest = true, .depthWrite = false});
         }
 
-        const auto vertexHash =
-            rhi::ShaderLibraryRuntime::computeVariantHash("debug_draw.vert", vshadersystem::ShaderStage::eVert, {});
-        const auto fragmentHash =
-            rhi::ShaderLibraryRuntime::computeVariantHash("debug_draw.frag", vshadersystem::ShaderStage::eFrag, {});
+        const auto vertexHash = rhi::ShaderLibraryRuntime::computeVariantHash(
+            "builtin/general/debug_draw.vert", vshadersystem::ShaderStage::eVert, {});
+        const auto fragmentHash = rhi::ShaderLibraryRuntime::computeVariantHash(
+            "builtin/general/debug_draw.frag", vshadersystem::ShaderStage::eFrag, {});
         const auto vertexShader   = m_ShaderLibrary.load(vertexHash, vshadersystem::ShaderStage::eVert);
         const auto fragmentShader = m_ShaderLibrary.load(fragmentHash, vshadersystem::ShaderStage::eFrag);
         if (!vertexShader || !fragmentShader)

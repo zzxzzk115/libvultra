@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/ssao.frag"
 language = glsl
 version = 460
 

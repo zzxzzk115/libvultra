@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/skybox.vert"
 language = glsl
 version = 460
 

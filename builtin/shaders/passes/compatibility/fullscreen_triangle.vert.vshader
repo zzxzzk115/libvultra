@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/compatibility/fullscreen_triangle.vert"
 language = glsl
 version = 460
 

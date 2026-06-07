@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/thin_gbuffer.frag"
 language = glsl
 version = 460
 

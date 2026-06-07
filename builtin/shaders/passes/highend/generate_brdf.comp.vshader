@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/generate_brdf.comp"
 language = glsl
 version = 460
 

@@ -262,14 +262,26 @@ namespace vultra_app
                      "[--renderdoc|--no-renderdoc]\n"
                   << "  vultra --project <project-dir>\n"
                   << "  vultra --export --project <project-dir> [--export-output <dir>] [--scene res://...] [--export-run]\n"
-                  << "  vultra help\n\n"
+                  << "  vultra help | version\n\n"
+                  << "Tool subcommands (integrated; bypass the engine UI):\n"
+                  << "  vultra asset import <asset-root> [--reimport]\n"
+                  << "        Import/reimport a project's source assets (cook shaders, textures, meshes,\n"
+                  << "        scenes...) into <asset-root>/imported. --reimport forces a full recook.\n"
+                  << "  vultra asset pack <asset-root> <out.vpk> [--zstd N] [--include logical/path] [--root res://...]\n"
+                  << "        Bundle the imported assets into a .vpk package.\n"
+                  << "  vultra asset validate-vpk <resources.vpk> [--asset-root <root>] [--registry <asset_registry.tsv>]\n"
+                  << "        Verify a .vpk against its source asset tree.\n"
+                  << "  vultra shader <vshaderc args>\n"
+                  << "        Run the shader compiler CLI (build | compile | pack-glsl | wgsl | ...).\n"
+                  << "        Try `vultra shader --help` for its options.\n"
+                  << "  vultra mcp-stdio-bridge [--host 127.0.0.1] [--port 8848]\n"
+                  << "        Stdio<->HTTP bridge to the editor's MCP server (launched by MCP clients).\n\n"
                   << "Notes:\n"
                   << "  Without --vpk, Vultra first tries <executable-name>.vpk next to the executable.\n"
                   << "  Without a VPK, Vultra opens the Project Launcher.\n"
                   << "  --editor requires --project; no-project editor sessions are invalid.\n"
                   << "  --rpc is an alias for --mcp; --render-mode=none runs no-window simulation services and disables visual capture tools.\n"
-                  << "  --render-mode=offscreen hides the window but keeps render services active for visual capture.\n"
-                  << "  CLI subcommands are reserved for the integrated tool workflow.\n";
+                  << "  --render-mode=offscreen hides the window but keeps render services active for visual capture.\n";
     }
 
     int runCliOnly(const LaunchOptions& options)

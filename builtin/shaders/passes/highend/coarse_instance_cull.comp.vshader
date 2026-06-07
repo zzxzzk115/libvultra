@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/coarse_instance_cull.comp"
 language = glsl
 version = 460
 

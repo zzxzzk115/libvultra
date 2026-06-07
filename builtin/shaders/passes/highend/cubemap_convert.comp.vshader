@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/cubemap_convert.comp"
 language = glsl
 version = 460
 

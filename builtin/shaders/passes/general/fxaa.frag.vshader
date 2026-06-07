@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/general/fxaa.frag"
 language = glsl
 version = 460
 

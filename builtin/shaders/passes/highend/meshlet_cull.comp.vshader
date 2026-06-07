@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/meshlet_cull.comp"
 language = glsl
 version = 460
 

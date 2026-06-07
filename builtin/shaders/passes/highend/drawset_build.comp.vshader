@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/drawset_build.comp"
 language = glsl
 version = 460
 

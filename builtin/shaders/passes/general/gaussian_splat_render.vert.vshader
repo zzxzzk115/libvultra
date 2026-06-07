@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/general/gaussian_splat_render.vert"
 language = glsl
 version = 460
 

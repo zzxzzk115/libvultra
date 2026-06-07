@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/general/tone_mapping.frag"
 language = glsl
 version = 460
 

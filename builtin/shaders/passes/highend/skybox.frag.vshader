@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/skybox.frag"
 language = glsl
 version = 460
 

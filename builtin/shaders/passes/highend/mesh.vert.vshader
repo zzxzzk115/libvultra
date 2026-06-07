@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/mesh.vert"
 language = glsl
 version = 460
 

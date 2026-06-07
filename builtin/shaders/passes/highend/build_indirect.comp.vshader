@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/build_indirect.comp"
 language = glsl
 version = 460
 

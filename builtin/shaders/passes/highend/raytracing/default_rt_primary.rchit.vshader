@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/default_rt_primary.rchit"
 language = glsl
 version = 460
 

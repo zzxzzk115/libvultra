@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/prefilter_envmap.comp"
 language = glsl
 version = 460
 

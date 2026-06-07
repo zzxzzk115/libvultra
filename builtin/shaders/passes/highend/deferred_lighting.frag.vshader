@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/highend/deferred_lighting.frag"
 language = glsl
 version = 460
 

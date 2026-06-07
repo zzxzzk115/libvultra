@@ -1,4 +1,5 @@
 [vshader]
+id       = "builtin/general/debug_draw.vert"
 language = glsl
 version = 460
 

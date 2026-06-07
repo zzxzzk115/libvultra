@@ -1,4 +1,5 @@
 [vshader]
+id       = "project/fullscreen/pixelate.frag"
 language = glsl
 version = 460
 
