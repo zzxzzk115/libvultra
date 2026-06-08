@@ -278,6 +278,7 @@ void shade(in VultraMaterialInput IN, inout VultraMaterialEval OUT)
 )shader";
 
         vshadersystem::BuildRequest request;
+        request.id                 = "test/material_asset/schema_probe";
         request.source.virtualPath = "tests/material_asset/schema_probe.frag.vshader";
         request.source.sourceText  = std::string(shaderText);
         request.options.stage      = vshadersystem::ShaderStage::eFrag;
@@ -306,11 +307,11 @@ void shade(in VultraMaterialInput IN, inout VultraMaterialEval OUT)
             .sourceText  = meshMaterialInclude,
         });
         request.options.virtualIncludeFiles.push_back({
-            .virtualPath = "common/color.glsl",
+            .virtualPath = "include/common/color.glsl",
             .sourceText  = colorInclude,
         });
         request.options.virtualIncludeFiles.push_back({
-            .virtualPath = "common/math.glsl",
+            .virtualPath = "include/common/math.glsl",
             .sourceText  = mathInclude,
         });
         request.enableCache        = false;
@@ -370,6 +371,7 @@ void shade(in VultraMaterialInput IN, inout VultraMaterialEval OUT)
 )shader";
 
         vshadersystem::BuildRequest constantOnlyRequest;
+        constantOnlyRequest.id                 = "test/material_asset/constant_only";
         constantOnlyRequest.source.virtualPath = "tests/material_asset/constant_only.frag.vshader";
         constantOnlyRequest.source.sourceText  = std::string(constantOnlyShaderText);
         constantOnlyRequest.options.stage      = vshadersystem::ShaderStage::eFrag;
