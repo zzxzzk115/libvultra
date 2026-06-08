@@ -888,6 +888,7 @@ target("vultra_builtin_assets")
         task.run("shader_task")
         task.run("rendergraph_task")
         task.run("texture_task")
-        task.run("font_task")
+        -- Fonts are no longer embedded as C-array headers; they ship in builtin.vpk (the
+        -- builtinpack tool reads builtin/fonts/*.ttf,*.otf directly). font_task is retired.
         task.run("i18n_task")
     end)

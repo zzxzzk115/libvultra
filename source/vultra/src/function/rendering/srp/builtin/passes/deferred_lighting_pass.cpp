@@ -1,6 +1,7 @@
 #include "vultra/function/rendering/srp/builtin/passes/deferred_lighting_pass.hpp"
 
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/builtin/builtin_resources.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/core/rhi/util.hpp"
@@ -10,8 +11,6 @@
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
 #include "vultra/function/resource/vtexture_loader.hpp"
 
-#include <texture_headers/ltc_1.dds.bintex.h>
-#include <texture_headers/ltc_2.dds.bintex.h>
 #include <vasset/vtexture.hpp>
 
 #include <algorithm>
@@ -413,9 +412,19 @@ namespace vultra
             return texture;
         };
 
+        // LTC LUTs come from the mounted builtin:: pack (self-contained binaries mount it via the
+        // vultra.builtin_pack rule; the export-template runtime gets it from the project VPK).
+        auto ltcBytes = [](std::string_view logicalPath) -> std::vector<uint8_t> {
+            std::vector<std::byte> b;
+            if (builtin::read(logicalPath, b) && !b.empty())
+                return std::vector<uint8_t>(reinterpret_cast<const uint8_t*>(b.data()),
+                                            reinterpret_cast<const uint8_t*>(b.data()) + b.size());
+            return {};
+        };
+
         if (!m_LtcMat)
         {
-            auto loaded = resource::loadTextureFromVTexture(makeTexture(ltc_1_dds_bintex), rd);
+            auto loaded = resource::loadTextureFromVTexture(makeTexture(ltcBytes("textures/ltc_1.dds")), rd);
             if (!loaded)
             {
                 VULTRA_CORE_ERROR("[DeferredLightingPass] Failed to load builtin LTC matrix LUT: {}",
@@ -427,7 +436,7 @@ namespace vultra
 
         if (!m_LtcMag)
         {
-            auto loaded = resource::loadTextureFromVTexture(makeTexture(ltc_2_dds_bintex), rd);
+            auto loaded = resource::loadTextureFromVTexture(makeTexture(ltcBytes("textures/ltc_2.dds")), rd);
             if (!loaded)
             {
                 VULTRA_CORE_ERROR("[DeferredLightingPass] Failed to load builtin LTC magnitude LUT: {}",

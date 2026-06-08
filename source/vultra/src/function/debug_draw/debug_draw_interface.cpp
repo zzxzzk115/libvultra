@@ -1,11 +1,13 @@
 #include "vultra/function/debug_draw/debug_draw_interface.hpp"
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/builtin/builtin_resources.hpp"
 #include "vultra/core/rhi/render_device.hpp"
-
-#include "builtin_shaders.hpp"
 
 #define DEBUG_DRAW_IMPLEMENTATION
 #include <debug_draw.hpp>
+
+#include <cstddef>
+#include <vector>
 
 using namespace dd; // contained to this translation unit
 
@@ -16,7 +18,11 @@ namespace vultra
         m_RenderDevice = &renderDevice;
         m_ColorFormat  = colorFormat;
         m_VertexBuffer = renderDevice.createVertexBuffer(sizeof(DrawVertex), 4 * 1024 * 1024 / sizeof(DrawVertex));
-        m_ShaderLibrary.loadFromMemory(builtin_shaders_highend_vshlib, builtin_shaders_highend_vshlib_size);
+        std::vector<std::byte> shaderBytes;
+        if (builtin::read("shaders/builtin_highend.vshlib", shaderBytes) && !shaderBytes.empty())
+            m_ShaderLibrary.loadFromMemory(reinterpret_cast<const uint8_t*>(shaderBytes.data()), shaderBytes.size());
+        else
+            VULTRA_CORE_WARN("[DebugDraw] builtin highend shader library missing from builtin pack");
 
         m_NeedsPipelineRebuild = true; // Lazy-build
     }

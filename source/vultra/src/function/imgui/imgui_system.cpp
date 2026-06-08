@@ -15,14 +15,14 @@
 #else
 #endif
 
-#include <font_headers/materialdesignicons_webfont.ttf.binfont.h>
-#include <font_headers/color_emoji.ttf.binfont.h>  // bundled colour-emoji font (builtin/fonts)
-#include <font_headers/noto_sans_cjk.otf.binfont.h>  // bundled pan-CJK font (Noto Sans CJK SC subset, OFL)
+#include "vultra/core/builtin/builtin_resources.hpp"
 
 #include <vbase/core/exe_path.hpp>
 
+#include <cstring>
 #include <filesystem>
 #include <type_traits>
+#include <vector>
 
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiAl/fonts/CousineRegular.inl>
@@ -38,8 +38,6 @@
 #ifdef IMGUI_ENABLE_FREETYPE
 #include <imgui_freetype.h> // ImGuiFreeTypeLoaderFlags_LoadColor (colorful emoji)
 #endif
-
-#include <lz4.h> // decompress lz4-block-compressed embedded fonts (builtin font_task)
 
 namespace
 {
@@ -65,33 +63,29 @@ namespace
     }
 
     // Merge the bundled colour-emoji font into the current default font so the UI (notably the AI
-    // Decompress an lz4-block-compressed TTF (a `<sym>_lz4` / `<sym>_lz4_size` / `<sym>_size` blob
-    // emitted by builtin/xmake.lua's font_task) and hand it to the atlas. ImGui takes ownership of
-    // the decompressed buffer (allocated with ImGui::MemAlloc) and frees it with the atlas.
-    ImFont* addCompressedFontTTF(ImGuiIO&             io,
-                                 const unsigned char* compressed,
-                                 int                  compressedSize,
-                                 int                  rawSize,
-                                 float                sizePixels,
-                                 const ImFontConfig*  cfgIn,
-                                 const ImWchar*       ranges = nullptr)
+    // Load a builtin font (raw ttf/otf bytes) from the mounted builtin:: pack. Self-contained
+    // binaries mount the pack via the vultra.builtin_pack rule; the export-template runtime gets
+    // it from the project VPK. ImGui takes ownership of the buffer (ImGui::MemAlloc) and frees it
+    // with the atlas. No embedded fallback -- the lz4 byte arrays no longer compile into the binary.
+    ImFont* addBuiltinFontTTF(ImGuiIO&            io,
+                              std::string_view    packLogicalPath,
+                              float               sizePixels,
+                              const ImFontConfig* cfgIn,
+                              const ImWchar*      ranges = nullptr)
     {
-        void* raw = ImGui::MemAlloc(static_cast<std::size_t>(rawSize));
+        std::vector<std::byte> bytes;
+        if (!vultra::builtin::read(packLogicalPath, bytes) || bytes.empty())
+            return nullptr;
+        void* raw = ImGui::MemAlloc(bytes.size());
         if (!raw)
             return nullptr;
-        const int n = LZ4_decompress_safe(
-            reinterpret_cast<const char*>(compressed), static_cast<char*>(raw), compressedSize, rawSize);
-        if (n != rawSize) // corrupt blob / size mismatch: don't hand a bad buffer to the atlas
-        {
-            ImGui::MemFree(raw);
-            return nullptr;
-        }
+        std::memcpy(raw, bytes.data(), bytes.size());
         ImFontConfig cfg         = cfgIn ? *cfgIn : ImFontConfig {};
         cfg.FontDataOwnedByAtlas = true; // ImGui frees `raw` (ImGui::MemAlloc) when the atlas dies
-        return io.Fonts->AddFontFromMemoryTTF(raw, rawSize, sizePixels, &cfg, ranges);
+        return io.Fonts->AddFontFromMemoryTTF(raw, static_cast<int>(bytes.size()), sizePixels, &cfg, ranges);
     }
 
-    // chat) renders emoji instead of tofu boxes. Same compiled-in font on every platform — FreeType
+    // chat) renders emoji instead of tofu boxes. Same font on every platform — FreeType
     // rasterises the COLR/CPAL colour glyphs identically on Windows/Linux/macOS/Android/web, so no
     // per-platform system font is needed. Requires the FreeType loader (IMGUI_ENABLE_FREETYPE) and a
     // 32-bit ImWchar (IMGUI_USE_WCHAR32 — emoji live above U+FFFF); a no-op otherwise.
@@ -108,12 +102,7 @@ namespace
         cfg.MergeMode = true; // fold emoji glyphs into the preceding (default) font
         cfg.FontLoaderFlags |= ImGuiFreeTypeLoaderFlags_LoadColor;
         // 1.92 dynamic fonts load glyphs on demand, so no explicit emoji glyph range is needed.
-        return addCompressedFontTTF(io,
-                                    color_emoji_ttf_lz4,
-                                    static_cast<int>(color_emoji_ttf_lz4_size),
-                                    static_cast<int>(color_emoji_ttf_size),
-                                    sizePixels,
-                                    &cfg) != nullptr;
+        return addBuiltinFontTTF(io, "fonts/color_emoji.ttf", sizePixels, &cfg) != nullptr;
 #else
         return false;
 #endif
@@ -424,13 +413,7 @@ namespace vultra
         ImFontConfig         iconsConfig {};
         iconsConfig.MergeMode  = true;
         iconsConfig.PixelSnapH = true;
-        addCompressedFontTTF(io,
-                             materialdesignicons_webfont_ttf_lz4,
-                             static_cast<int>(materialdesignicons_webfont_ttf_lz4_size),
-                             static_cast<int>(materialdesignicons_webfont_ttf_size),
-                             16.0f,
-                             &iconsConfig,
-                             iconsRanges);
+        addBuiltinFontTTF(io, "fonts/materialdesignicons_webfont.ttf", 16.0f, &iconsConfig, iconsRanges);
 
         // Colour emoji folded into the default font (after icons, before the other faces) so chat
         // and UI text render emoji rather than tofu. Requires the FreeType-enabled imgui package.
@@ -444,12 +427,7 @@ namespace vultra
         {
             ImFontConfig cjkConfig {};
             cjkConfig.MergeMode = true;
-            addCompressedFontTTF(io,
-                                 noto_sans_cjk_otf_lz4,
-                                 static_cast<int>(noto_sans_cjk_otf_lz4_size),
-                                 static_cast<int>(noto_sans_cjk_otf_size),
-                                 fontSize,
-                                 &cjkConfig);
+            addBuiltinFontTTF(io, "fonts/noto_sans_cjk.otf", fontSize, &cjkConfig);
         }
 
         io.Fonts->AddFontFromMemoryCompressedTTF(

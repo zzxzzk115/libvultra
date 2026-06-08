@@ -185,9 +185,13 @@ add_repositories("my-xmake-repo https://github.com/zzxzzk115/xmake-repo.git back
 
 -- shared rules (defined before any target that uses them)
 includes("xmake/rules/wasm.lua")
+includes("xmake/rules/builtin_pack.lua")
 
 -- include external libraries
 includes("external")
+
+-- build-time host tools (builtinpack, ...)
+includes("tools")
 
 -- bulitin tasks and targets
 includes("builtin")

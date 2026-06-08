@@ -1,0 +1,5 @@
+#include "vultra/function/asset/builtin_resource_ids.hpp"
+
+// The builtin engine resource pack (zstd VPK), produced by the builtinpack tool.
+// Path is relative to this .rc file: builtin/embed/ -> builtin/generated/builtin.vpk
+VULTRA_BUILTIN_RESOURCE_PACK RCDATA "../generated/builtin.vpk"

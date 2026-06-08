@@ -72,6 +72,11 @@ tracky*.csv
 # Vultra
 .vultra/
 *.vpk
+# Generated builtin resources: shader/texture/i18n/rendergraph headers, compiled shader
+# libraries (builtin/xmake.lua tasks), and the embedded resource pack (tools/builtinpack).
+# All reproduced on configure. The hand-written embed sources in builtin/embed/ ARE tracked.
+builtin/generated/
+builtin/shader_lib/
 
 # AI Agents
 .claude/

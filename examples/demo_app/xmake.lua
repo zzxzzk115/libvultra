@@ -1,10 +1,11 @@
-if not is_plat("android") then
+﻿if not is_plat("android") then
     local vultra_project_dir = get_config("project_dir") or path.join(os.scriptdir(), "..", "..")
 
     target("example-demo-app")
         set_kind("binary")
         add_files("main.cpp")
         add_deps("vultra")
+        add_rules("vultra.builtin_pack")
 
         if is_plat("wasm") then
             add_rules("resources.vpk_pack", "wasm.link")

@@ -1,5 +1,6 @@
 #include "vultra/function/asset/asset_system.hpp"
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/builtin/builtin_resources.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/structs/render_mesh.hpp"
 #include "vultra/core/rhi/structs/vertex_attributes.hpp"
@@ -1268,16 +1269,30 @@ namespace vultra
     {
         if (isBuiltinTextureUri(uri))
         {
+            // Packaged runtime has no builtin/ folder on disk: fall back to the mounted builtin::
+            // pack (logical path = uri without the "builtin://" scheme), then to the legacy
+            // embedded resource (editor .rc / linker symbols) for backward compatibility.
+            const auto builtinFallback = [&]() -> vbase::Result<std::vector<std::byte>, std::string> {
+                std::string_view logical = uri;
+                constexpr std::string_view kScheme = "builtin://";
+                if (logical.starts_with(kScheme))
+                    logical.remove_prefix(kScheme.size());
+                std::vector<std::byte> packed;
+                if (builtin::read(logical, packed) && !packed.empty())
+                    return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(packed));
+                return readResourceBuiltinTextureBytes(uri);
+            };
+
             const auto path = builtinTexturePathForUri(uri);
             std::ifstream file(path, std::ios::binary | std::ios::ate);
             if (!file)
-                return readResourceBuiltinTextureBytes(uri);
+                return builtinFallback();
 
             const auto          size = static_cast<std::streamsize>(file.tellg());
             std::vector<std::byte> bytes(static_cast<size_t>(std::max<std::streamsize>(size, 0)));
             file.seekg(0);
             if (!bytes.empty() && !file.read(reinterpret_cast<char*>(bytes.data()), size))
-                return readResourceBuiltinTextureBytes(uri);
+                return builtinFallback();
             return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(bytes));
         }
 

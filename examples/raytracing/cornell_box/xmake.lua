@@ -1,7 +1,8 @@
-target("example-raytracing-cornell-box")
+﻿target("example-raytracing-cornell-box")
     set_kind("binary")
     add_files("main.cpp")
     add_deps("vultra")
+    add_rules("vultra.builtin_pack")
 
     add_files("imgui.ini")
 

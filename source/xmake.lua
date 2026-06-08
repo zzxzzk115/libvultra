@@ -286,6 +286,7 @@ if not is_plat("android") and not is_plat("wasm") then
             add_files("vultra_app/resources/**.S")
         end
         add_deps("vultra", "vasset-import")
+        add_rules("vultra.builtin_pack")
         add_packages("argparse")
         if is_plat("windows") then
             add_syslinks("ws2_32")
@@ -339,6 +340,13 @@ target("vultra-runtime")
               "vultra_app/src/vproject.cpp",
               "vultra_app/src/launch_options.cpp")
     add_deps("vultra")
+    -- Interim: the desktop runtime embeds builtin.vpk (self-contained), like the examples.
+    -- Phase 2 (export injects builtin resources into the project VPK + runtime mounts them)
+    -- will make this the fully-thin template and is the only path for wasm/android, where
+    -- .rc/.S embedding does not apply. See doc/runtime_size_export_template_plan.md.
+    if not is_plat("wasm") and not is_plat("android") then
+        add_rules("vultra.builtin_pack")
+    end
     add_packages("argparse")
     if is_plat("windows") then
         add_syslinks("ws2_32")

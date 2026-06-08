@@ -1,16 +1,33 @@
 #include "vultra/function/rendering/shader_system.hpp"
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/builtin/builtin_resources.hpp"
 #include "vultra/core/rhi/structs/render_backend_api.hpp"
 #include "vultra/function/services/asset_service.hpp"
 
-#include <builtin_shaders.hpp>
-
 #include <vasset/vasset_type.hpp>
+
+#include <cstddef>
+#include <vector>
 
 namespace vultra
 {
     namespace
     {
+        // Load a builtin shader library from the mounted builtin:: pack. Self-contained binaries
+        // mount the pack (vultra.builtin_pack rule); the export-template runtime gets it from the
+        // project VPK. No embedded fallback -- the byte arrays no longer compile into the binary.
+        bool loadBuiltinShaderLib(rhi::ShaderLibraryRuntime& lib, std::string_view logicalPath)
+        {
+            std::vector<std::byte> bytes;
+            if (!builtin::read(logicalPath, bytes) || bytes.empty())
+            {
+                VULTRA_CORE_ERROR("[ShaderSystem] builtin shader library '{}' missing from builtin pack", logicalPath);
+                return false;
+            }
+            VULTRA_CORE_TRACE("[ShaderSystem] {} from builtin pack ({} bytes)", logicalPath, bytes.size());
+            return lib.loadFromMemory(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size());
+        }
+
         [[nodiscard]] std::string logicalPathFromUri(std::string_view uri)
         {
             constexpr std::string_view kResPrefix = "res://";
@@ -45,8 +62,7 @@ namespace vultra
 
         if (useWebGpuLibrary)
         {
-            if (!m_BuiltinCompatibilityShaderLibrary.loadFromMemory(builtin_shaders_compatibility_web_vshweblib,
-                                                                    builtin_shaders_compatibility_web_vshweblib_size))
+            if (!loadBuiltinShaderLib(m_BuiltinCompatibilityShaderLibrary, "shaders/builtin_compatibility.vshweblib"))
             {
                 VULTRA_CORE_ERROR("[ShaderSystem] Failed to load WebGPU compatibility builtin shader library");
                 return false;
@@ -56,22 +72,19 @@ namespace vultra
         else
         {
 #if defined(__ANDROID__)
-            if (!m_BuiltinCompatibilityShaderLibrary.loadFromMemory(builtin_shaders_compatibility_vshlib,
-                                                                    builtin_shaders_compatibility_vshlib_size))
+            if (!loadBuiltinShaderLib(m_BuiltinCompatibilityShaderLibrary, "shaders/builtin_compatibility.vshlib"))
             {
                 VULTRA_CORE_ERROR("[ShaderSystem] Failed to load Android compatibility builtin shader library");
                 return false;
             }
             m_DefaultBuiltinShaderLibrary = &m_BuiltinCompatibilityShaderLibrary;
 #else
-            if (!m_BuiltinHighendShaderLibrary.loadFromMemory(builtin_shaders_highend_vshlib,
-                                                              builtin_shaders_highend_vshlib_size))
+            if (!loadBuiltinShaderLib(m_BuiltinHighendShaderLibrary, "shaders/builtin_highend.vshlib"))
             {
                 VULTRA_CORE_ERROR("[ShaderSystem] Failed to load highend builtin shader library");
                 return false;
             }
-            if (!m_BuiltinCompatibilityShaderLibrary.loadFromMemory(builtin_shaders_compatibility_vshlib,
-                                                                    builtin_shaders_compatibility_vshlib_size))
+            if (!loadBuiltinShaderLib(m_BuiltinCompatibilityShaderLibrary, "shaders/builtin_compatibility.vshlib"))
             {
                 VULTRA_CORE_ERROR("[ShaderSystem] Failed to load compatibility builtin shader library");
                 return false;
