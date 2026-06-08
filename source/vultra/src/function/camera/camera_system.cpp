@@ -15,12 +15,7 @@
 #include "vultra/function/world/components/xr_view_component.hpp"
 #include "vultra/function/world/world.hpp"
 
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/hand_closed.png.bintex.h>
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/look_b.png.bintex.h>
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/pointer_a.png.bintex.h>
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/rotate_cw.png.bintex.h>
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/zoom_in.png.bintex.h>
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/zoom_out.png.bintex.h>
+#include "vultra/core/builtin/builtin_resources.hpp"
 
 #include <glm/common.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
@@ -38,39 +33,44 @@ namespace vultra
     {
         constexpr glm::vec3 kWorldUp {0.0f, 1.0f, 0.0f};
 
+        std::span<const std::uint8_t> cursorBytes(const char* name)
+        {
+            return builtin::cachedBytes(std::string("textures/kenney_cursor-pack/PNG/Outline/Default/") + name);
+        }
+
         const os::Window::CursorImage* orbitCursorImage()
         {
-            static const auto cursor = os::Window::decodeCursorImage(rotate_cw_png_bintex, 8, 8);
+            static const auto cursor = os::Window::decodeCursorImage(cursorBytes("rotate_cw.png"), 8, 8);
             return cursor ? &(*cursor) : nullptr;
         }
 
         const os::Window::CursorImage* arrowCursorImage()
         {
-            static const auto cursor = os::Window::decodeCursorImage(pointer_a_png_bintex, 8, 8);
+            static const auto cursor = os::Window::decodeCursorImage(cursorBytes("pointer_a.png"), 8, 8);
             return cursor ? &(*cursor) : nullptr;
         }
 
         const os::Window::CursorImage* grabCursorImage()
         {
-            static const auto cursor = os::Window::decodeCursorImage(hand_closed_png_bintex, 8, 8);
+            static const auto cursor = os::Window::decodeCursorImage(cursorBytes("hand_closed.png"), 8, 8);
             return cursor ? &(*cursor) : nullptr;
         }
 
         const os::Window::CursorImage* lookCursorImage()
         {
-            static const auto cursor = os::Window::decodeCursorImage(look_b_png_bintex, 8, 8);
+            static const auto cursor = os::Window::decodeCursorImage(cursorBytes("look_b.png"), 8, 8);
             return cursor ? &(*cursor) : nullptr;
         }
 
         const os::Window::CursorImage* zoomInCursorImage()
         {
-            static const auto cursor = os::Window::decodeCursorImage(zoom_in_png_bintex, 8, 8);
+            static const auto cursor = os::Window::decodeCursorImage(cursorBytes("zoom_in.png"), 8, 8);
             return cursor ? &(*cursor) : nullptr;
         }
 
         const os::Window::CursorImage* zoomOutCursorImage()
         {
-            static const auto cursor = os::Window::decodeCursorImage(zoom_out_png_bintex, 8, 8);
+            static const auto cursor = os::Window::decodeCursorImage(cursorBytes("zoom_out.png"), 8, 8);
             return cursor ? &(*cursor) : nullptr;
         }
 

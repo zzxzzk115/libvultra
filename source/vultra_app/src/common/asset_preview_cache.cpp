@@ -8,7 +8,7 @@
 #include <vultra/function/services/imgui_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 
-#include <texture_headers/editor/folder_icon.png.bintex.h>
+#include <vultra/core/builtin/builtin_resources.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -44,7 +44,8 @@ namespace vultra_app::ui
             vasset::VTexture texture {};
             texture.fileFormat = vasset::VTextureFileFormat::ePNG;
             texture.format     = vasset::VTextureFormat::eRGBA8;
-            texture.data       = folder_icon_png_bintex;
+            const auto bytes   = vultra::builtin::cachedBytes("textures/editor/folder_icon.png");
+            texture.data.assign(bytes.begin(), bytes.end());
             return texture;
         }
 

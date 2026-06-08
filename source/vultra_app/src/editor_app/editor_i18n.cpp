@@ -1,16 +1,14 @@
 #include "editor_app/editor_i18n.hpp"
 
+#include <vultra/core/builtin/builtin_resources.hpp>
 #include <vultra/core/services/i18n_service.hpp>
-
-#include <i18n_headers/en.json.binjson.h>
-#include <i18n_headers/ja.json.binjson.h>
-#include <i18n_headers/ko.json.binjson.h>
-#include <i18n_headers/zh-CN.json.binjson.h>
 
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <cstdlib>
 #include <string_view>
+#include <vector>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -62,14 +60,16 @@ namespace vultra_app
 
     void registerBuiltinEditorCatalogs(vultra::II18nService& i18n)
     {
-        // Editor catalogs ship lz4-embedded (builtin/i18n -> i18n_headers). The service owns lz4, so
-        // we hand it the compressed blobs directly. Domain "editor" / priority 100 (above engine 0,
-        // below any game catalog at 200) so a game can still override editor strings if it wants.
-        i18n.registerCompressedCatalog("en", en_json_lz4, en_json_lz4_size, en_json_size, "editor", 100);
-        i18n.registerCompressedCatalog(
-            "zh-CN", zh_CN_json_lz4, zh_CN_json_lz4_size, zh_CN_json_size, "editor", 100);
-        i18n.registerCompressedCatalog("ja", ja_json_lz4, ja_json_lz4_size, ja_json_size, "editor", 100);
-        i18n.registerCompressedCatalog("ko", ko_json_lz4, ko_json_lz4_size, ko_json_size, "editor", 100);
+        // Editor catalogs live in the builtin pack (builtin/i18n -> builtin://i18n/<locale>.json).
+        // Register the raw JSON at domain "editor" / priority 100 (above engine 0, below any game
+        // catalog at 200) so a game can still override editor strings if it wants.
+        for (const char* locale : {"en", "zh-CN", "ja", "ko"})
+        {
+            std::vector<std::byte> raw;
+            if (vultra::builtin::read(std::string {"i18n/"} + locale + ".json", raw) && !raw.empty())
+                i18n.registerCatalog(
+                    locale, std::string {reinterpret_cast<const char*>(raw.data()), raw.size()}, "editor", 100);
+        }
     }
 
     std::string detectSystemLocale()

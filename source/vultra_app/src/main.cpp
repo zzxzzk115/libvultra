@@ -7,7 +7,6 @@
 #include "project_launcher/project_launcher.hpp"
 #include "vproject.hpp"
 
-#include <builtin_shaders.hpp>
 #include <vasset/vpk.hpp>
 
 #include <vasset/tool_cli.hpp>
@@ -16,6 +15,7 @@
 
 #include <vultra/core/app/app_host.hpp>
 #include <vultra/core/app/demo_app_host.hpp>
+#include <vultra/core/builtin/builtin_resources.hpp>
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/input/input_system.hpp>
 #include <vultra/core/timing/timing_system.hpp>
@@ -66,13 +66,11 @@ namespace
     vasset::VAssetImporter::ImportOptions makeToolAssetImportOptions()
     {
         vasset::VAssetImporter::ImportOptions options;
-        options.shaderVirtualIncludes.reserve(builtin_shader_include_sources_count);
-        for (size_t i = 0; i < builtin_shader_include_sources_count; ++i)
+        for (auto& [virtualPath, sourceText] : vultra::builtin::shaderIncludeSources())
         {
-            const auto& source = builtin_shader_include_sources[i];
             options.shaderVirtualIncludes.push_back({
-                .virtualPath = source.path,
-                .sourceText  = std::string(reinterpret_cast<const char*>(source.data), source.size),
+                .virtualPath = std::move(virtualPath),
+                .sourceText  = std::move(sourceText),
             });
         }
         return options;

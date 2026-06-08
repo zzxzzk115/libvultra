@@ -9,9 +9,9 @@ namespace vultra
 
 namespace vultra_app
 {
-    // Decode the builtin lz4-embedded editor catalogs (builtin/i18n/*.json -> i18n_headers/*) and
-    // register them with the i18n service under the "editor" domain. Call once at editor startup,
-    // before applying the persisted language.
+    // Read the builtin editor catalogs from the builtin pack (builtin/i18n/*.json ->
+    // builtin://i18n/<locale>.json) and register them with the i18n service under the "editor"
+    // domain. Call once at editor startup, before applying the persisted language.
     void registerBuiltinEditorCatalogs(vultra::II18nService& i18n);
 
     // Best-effort OS UI language as a lowercase BCP-47-ish string (e.g. "zh-cn", "en-us"); empty if

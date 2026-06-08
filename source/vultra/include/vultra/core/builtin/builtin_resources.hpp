@@ -13,8 +13,12 @@
 // through here and stay oblivious to where the bytes come from.
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <span>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace vfilesystem
@@ -25,8 +29,9 @@ namespace vfilesystem
 namespace vultra::builtin
 {
     // Install the backend that serves builtin resources. Logical paths passed to read()
-    // are resolved against this backend (e.g. "shaders/builtin_highend.vshlib").
-    void setSource(std::shared_ptr<vfilesystem::IFileSystem> backend);
+    // are resolved against this backend (e.g. "shaders/builtin_highend.vshlib"). `logicalPaths`
+    // is the full set of entry paths in the source, used by list() for enumeration.
+    void setSource(std::shared_ptr<vfilesystem::IFileSystem> backend, std::vector<std::string> logicalPaths = {});
 
     // True once a source has been installed.
     bool hasSource();
@@ -34,6 +39,18 @@ namespace vultra::builtin
     // Read a builtin resource by logical path (no scheme prefix). Returns false if no
     // source is installed or the entry does not exist; `out` is untouched on failure.
     bool read(std::string_view logicalPath, std::vector<std::byte>& out);
+
+    // Logical paths of all builtin entries that start with `prefix` (e.g. "render/").
+    std::vector<std::string> list(std::string_view prefix);
+
+    // Read a builtin resource ONCE and return a stable span into an internal cache. For APIs
+    // that key on the data pointer (e.g. cursor decode caches). Empty span if missing.
+    std::span<const std::uint8_t> cachedBytes(std::string_view logicalPath);
+
+    // Builtin GLSL shader include sources for the asset importer: (virtualPath, sourceText) pairs
+    // read from "shaders/include/**.glsl". virtualPath drops the "shaders/" prefix so it matches the
+    // "include/..." path shaders #include (e.g. "include/common/color.glsl").
+    std::vector<std::pair<std::string, std::string>> shaderIncludeSources();
 } // namespace vultra::builtin
 
 namespace vultra

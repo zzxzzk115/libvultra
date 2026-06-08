@@ -15,7 +15,8 @@
 #include "vultra/function/services/render_backend_service.hpp"
 
 #ifdef VULTRA_HAS_VASSET_IMPORT
-#include <builtin_shaders.hpp>
+#include "vultra/core/builtin/builtin_resources.hpp"
+
 #include <vasset/editor_filesystem.hpp>
 #include <vasset/vasset_importers.hpp>
 #endif
@@ -418,13 +419,11 @@ namespace vultra
             // mount (see runShaderCompiler). Each include is exposed once by its
             // canonical "include/..." path; the VFS resolves it by absolute path
             // from any shader directory, so no per-path duplication is needed.
-            options.shaderVirtualIncludes.reserve(builtin_shader_include_sources_count);
-            for (size_t i = 0; i < builtin_shader_include_sources_count; ++i)
+            for (auto& [virtualPath, sourceText] : builtin::shaderIncludeSources())
             {
-                const auto& source = builtin_shader_include_sources[i];
                 options.shaderVirtualIncludes.push_back({
-                    .virtualPath = source.path,
-                    .sourceText  = std::string(reinterpret_cast<const char*>(source.data), source.size),
+                    .virtualPath = std::move(virtualPath),
+                    .sourceText  = std::move(sourceText),
                 });
             }
             return options;

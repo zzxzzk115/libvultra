@@ -53,7 +53,18 @@ namespace vultra
 
         auto fs = std::make_shared<vasset::VpkFileSystem>(std::move(blob));
         if (fs->openPackage())
-            builtin::setSource(std::move(fs));
+        {
+            // Hand the provider the full entry list so builtin::list() can enumerate.
+            std::vector<std::string> paths;
+            const auto&              vpk = fs->getVpk();
+            paths.reserve(vpk.entries.size());
+            for (const auto& e : vpk.entries)
+            {
+                if (static_cast<size_t>(e.pathOffset) + e.pathSize <= vpk.stringTable.size())
+                    paths.emplace_back(vpk.stringTable.data() + e.pathOffset, e.pathSize);
+            }
+            builtin::setSource(std::move(fs), std::move(paths));
+        }
     }
 } // namespace vultra
 

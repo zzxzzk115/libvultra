@@ -10,14 +10,7 @@
 #include "vultra/core/rhi/swapchain.hpp"
 #include "vultra/core/rhi/texture.hpp"
 
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/cursor_disabled.png.bintex.h>
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/hand_open.png.bintex.h>
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/pointer_a.png.bintex.h>
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/pointer_i.png.bintex.h>
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/resize_a_diagonal.png.bintex.h>
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/resize_a_diagonal_mirror.png.bintex.h>
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/resize_horizontal.png.bintex.h>
-#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/resize_vertical.png.bintex.h>
+#include "vultra/core/builtin/builtin_resources.hpp"
 
 #include "vultra/platform/android/android_native_window.hpp"
 #include "vultra/platform/sdl/sdl_window.hpp"
@@ -81,27 +74,32 @@ namespace vultra::rhi
             }
         }
 
+        std::span<const std::uint8_t> cursorBytes(const char* name)
+        {
+            return builtin::cachedBytes(std::string("textures/kenney_cursor-pack/PNG/Outline/Default/") + name);
+        }
+
         const os::Window::CursorImage* kennyImGuiCursor(const ImGuiMouseCursor cursor)
         {
             switch (cursor)
             {
                 case ImGuiMouseCursor_TextInput:
-                    return decodeImGuiCursor(pointer_i_png_bintex, 8, 8);
+                    return decodeImGuiCursor(cursorBytes("pointer_i.png"), 8, 8);
                 case ImGuiMouseCursor_ResizeNS:
-                    return decodeImGuiCursor(resize_horizontal_png_bintex, 8, 8);
+                    return decodeImGuiCursor(cursorBytes("resize_horizontal.png"), 8, 8);
                 case ImGuiMouseCursor_ResizeEW:
-                    return decodeImGuiCursor(resize_vertical_png_bintex, 8, 8);
+                    return decodeImGuiCursor(cursorBytes("resize_vertical.png"), 8, 8);
                 case ImGuiMouseCursor_ResizeNESW:
-                    return decodeImGuiCursor(resize_a_diagonal_png_bintex, 8, 8);
+                    return decodeImGuiCursor(cursorBytes("resize_a_diagonal.png"), 8, 8);
                 case ImGuiMouseCursor_ResizeNWSE:
-                    return decodeImGuiCursor(resize_a_diagonal_mirror_png_bintex, 8, 8);
+                    return decodeImGuiCursor(cursorBytes("resize_a_diagonal_mirror.png"), 8, 8);
                 case ImGuiMouseCursor_Hand:
-                    return decodeImGuiCursor(hand_open_png_bintex, 8, 8);
+                    return decodeImGuiCursor(cursorBytes("hand_open.png"), 8, 8);
                 case ImGuiMouseCursor_NotAllowed:
-                    return decodeImGuiCursor(cursor_disabled_png_bintex, 8, 8);
+                    return decodeImGuiCursor(cursorBytes("cursor_disabled.png"), 8, 8);
                 case ImGuiMouseCursor_Arrow:
                 default:
-                    return decodeImGuiCursor(pointer_a_png_bintex, 8, 8);
+                    return decodeImGuiCursor(cursorBytes("pointer_a.png"), 8, 8);
             }
         }
     } // namespace

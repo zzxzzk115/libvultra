@@ -29,32 +29,48 @@ rule("vultra.builtin_pack")
         local outvpk     = path.join(projectdir, "builtin", "generated", "builtin.vpk")
 
         -- (logicalPath, sourceFile) manifest. Logical paths are read by the engine under the
-        -- builtin:// scheme. Shaders + render graphs + fonts + LTC textures; cursors/render-graph
-        -- JSON readers still use their headers and are migrated later.
+        -- builtin:// scheme. Everything that previously compiled in as a C-array header ships here.
         local entries = {}
         local function add(logical_dir, files)
             for _, f in ipairs(files) do
                 table.insert(entries, { logical_dir .. "/" .. path.filename(f), f })
             end
         end
+        -- Keyed by each file's path relative to `root`, under logical prefix `prefix`.
+        local function addrel(prefix, root, files)
+            for _, f in ipairs(files) do
+                local rel = path.relative(f, root):gsub("\\", "/")
+                table.insert(entries, { prefix .. "/" .. rel, f })
+            end
+        end
+
         add("shaders", os.files(path.join(projectdir, "builtin/shader_lib/*.vshlib")))
         add("shaders", os.files(path.join(projectdir, "builtin/shader_lib/*.vshweblib")))
         add("render",  os.files(path.join(projectdir, "builtin/render/*.vrg.json")))
         add("fonts",   os.files(path.join(projectdir, "builtin/fonts/*.ttf")))
         add("fonts",   os.files(path.join(projectdir, "builtin/fonts/*.otf")))
-        for _, name in ipairs({ "ltc_1.dds", "ltc_2.dds" }) do
-            local f = path.join(projectdir, "builtin/textures", name)
-            if os.isfile(f) then
-                table.insert(entries, { "textures/" .. name, f })
-            end
-        end
-        -- Builtin environment maps (default skybox etc.), addressed as builtin://textures/...
-        for _, f in ipairs(os.files(path.join(projectdir, "builtin/textures/environment_maps/*.vtexture"))) do
-            table.insert(entries, { "textures/environment_maps/" .. path.filename(f), f })
-        end
+        add("i18n",    os.files(path.join(projectdir, "builtin/i18n/*.json")))
 
-        -- mtime guard: skip regeneration when the pack is newer than every source.
-        local newest = 0
+        -- Textures keyed by path relative to builtin/textures: LTC LUTs, environment maps,
+        -- ImGui/camera cursors, and editor icons. Addressed as builtin://textures/...
+        local texroot = path.join(projectdir, "builtin/textures")
+        for _, name in ipairs({ "ltc_1.dds", "ltc_2.dds" }) do
+            local f = path.join(texroot, name)
+            if os.isfile(f) then table.insert(entries, { "textures/" .. name, f }) end
+        end
+        addrel("textures", texroot, os.files(path.join(texroot, "environment_maps/*.vtexture")))
+        addrel("textures", texroot, os.files(path.join(texroot, "kenney_cursor-pack/PNG/Outline/Default/*.png")))
+        addrel("textures", texroot, os.files(path.join(texroot, "editor/*.png")))
+
+        -- Shader GLSL include sources for the editor's asset importer (virtual includes),
+        -- under builtin://shaders/include/...
+        addrel("shaders", path.join(projectdir, "builtin/shaders"),
+               os.files(path.join(projectdir, "builtin/shaders/include/**.glsl")))
+
+        -- mtime guard: skip regeneration when the pack is newer than every source. The rule script
+        -- itself is included so that editing the manifest (adding/removing entries) forces a rebuild
+        -- even when every packed source file is older than the existing pack.
+        local newest = os.mtime(path.join(projectdir, "xmake/rules/builtin_pack.lua")) or 0
         for _, e in ipairs(entries) do
             local m = os.mtime(e[2])
             if m and m > newest then newest = m end
