@@ -367,6 +367,18 @@
     "saveFailed": "Texture import settings save failed.",
     "applied": "Applied texture import settings and queued reimport: {}"
   },
+  "meshImport": {
+    "title": "Mesh Import",
+    "calcTangentSpace": "Generate Tangents + Bitangents",
+    "genSmoothNormals": "Generate Smooth Normals",
+    "genUVCoords": "Generate UV Coords",
+    "flipUVs": "Flip UVs",
+    "preTransformVertices": "Pre-transform Vertices",
+    "generateMeshlets": "Generate Meshlets",
+    "revert": "Revert",
+    "saveFailed": "Mesh import settings save failed.",
+    "applied": "Applied mesh import settings and queued reimport: {}"
+  },
   "modelPreview": {
     "servicesUnavailable": "Preview services are unavailable.",
     "empty": "Preview scene is empty."

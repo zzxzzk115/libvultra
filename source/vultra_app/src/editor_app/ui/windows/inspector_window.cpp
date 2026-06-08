@@ -50,6 +50,7 @@
 
 #include <vasset/vanimation.hpp>
 #include <vasset/vmesh.hpp>
+#include <vasset/mesh_import_params.hpp>
 #include <vasset/vimport.hpp>
 
 #include <entt/meta/meta.hpp>
@@ -5816,6 +5817,8 @@ namespace vultra_app
         else if (!isDir && isModelSourceAsset(path))
         {
             ImGui::Spacing();
+            drawSourceMeshImportInspector(ctx, path);
+            ImGui::Spacing();
             drawSourceModelPreview(ctx, path);
         }
         else if (sourceAssetHasExtension(path, {".vscn"}))
@@ -6661,6 +6664,87 @@ namespace vultra_app
                 m_TextureImportEdit.originalParams = loaded.value().params;
             m_TextureImportEdit.saved = vasset::resolveTextureImportParams(m_TextureImportEdit.originalParams);
             m_TextureImportEdit.edit  = m_TextureImportEdit.saved;
+        }
+        ImGui::EndDisabled();
+        if (dirty)
+        {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", vultra::tr("inspector.unsaved"));
+        }
+    }
+
+    void InspectorWindow::drawSourceMeshImportInspector(EditorContext& ctx, const std::filesystem::path& path)
+    {
+        const auto normalizedPath = path.lexically_normal();
+        if (m_MeshImportEdit.path != normalizedPath || !m_MeshImportEdit.valid)
+        {
+            m_MeshImportEdit      = {};
+            m_MeshImportEdit.path = normalizedPath;
+            auto sidecar          = textureImportSidecarPath(normalizedPath); // generic: <source>.vimport
+            if (auto loaded = vasset::loadVImport(sidecar.generic_string()))
+                m_MeshImportEdit.originalParams = loaded.value().params;
+            m_MeshImportEdit.saved = vasset::resolveMeshImportParams(m_MeshImportEdit.originalParams);
+            m_MeshImportEdit.edit  = m_MeshImportEdit.saved;
+            m_MeshImportEdit.valid = true;
+        }
+
+        ui::sectionTitle(ICON_MDI_CUBE_OUTLINE, vultra::tr("inspector.meshImport.title"));
+
+        auto&      edit       = m_MeshImportEdit.edit;
+        const auto checkboxRow = [&](const char* label, bool& field) {
+            ui::beginPropertyRow(label);
+            ImGui::Checkbox("##value", &field);
+            ui::endPropertyRow();
+        };
+
+        checkboxRow(vultra::tr("inspector.meshImport.calcTangentSpace"), edit.calcTangentSpace);
+        checkboxRow(vultra::tr("inspector.meshImport.genSmoothNormals"), edit.genSmoothNormals);
+        checkboxRow(vultra::tr("inspector.meshImport.genUVCoords"), edit.genUVCoords);
+        checkboxRow(vultra::tr("inspector.meshImport.flipUVs"), edit.flipUVs);
+        checkboxRow(vultra::tr("inspector.meshImport.preTransformVertices"), edit.preTransformVertices);
+        checkboxRow(vultra::tr("inspector.meshImport.generateMeshlets"), edit.generateMeshlets);
+
+        const auto& s     = m_MeshImportEdit.saved;
+        const bool  dirty = s.calcTangentSpace != edit.calcTangentSpace || s.genSmoothNormals != edit.genSmoothNormals ||
+                           s.genUVCoords != edit.genUVCoords || s.flipUVs != edit.flipUVs ||
+                           s.preTransformVertices != edit.preTransformVertices ||
+                           s.generateMeshlets != edit.generateMeshlets;
+
+        ImGui::BeginDisabled(!dirty);
+        if (ImGui::Button((std::string {ICON_MDI_CHECK " "} + vultra::tr("common.apply")).c_str()))
+        {
+            auto            sidecar = textureImportSidecarPath(normalizedPath);
+            vasset::VImport vimport {};
+            if (auto loaded = vasset::loadVImport(sidecar.generic_string()))
+                vimport = std::move(loaded.value()); // preserve importer/source/output/uid from the cook
+            vimport.params = vasset::normalizedMeshImportParams(m_MeshImportEdit.originalParams, edit);
+
+            if (auto saved = vasset::saveVImport(vimport, sidecar.generic_string()); !saved)
+            {
+                ctx.state.statusMessage = vultra::tr("inspector.meshImport.saveFailed");
+            }
+            else
+            {
+                m_MeshImportEdit.originalParams = vimport.params;
+                m_MeshImportEdit.saved          = vasset::resolveMeshImportParams(m_MeshImportEdit.originalParams);
+                m_MeshImportEdit.edit           = m_MeshImportEdit.saved;
+                queueTextureImport(ctx, normalizedPath, true); // generic reimport queue
+                ctx.state.statusMessage =
+                    vultra::trf("inspector.meshImport.applied", normalizedPath.filename().generic_string());
+            }
+        }
+        ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!dirty);
+        if (ImGui::Button((std::string {ICON_MDI_RESTORE " "} + vultra::tr("inspector.meshImport.revert")).c_str()))
+        {
+            auto sidecar = textureImportSidecarPath(normalizedPath);
+            m_MeshImportEdit.originalParams.clear();
+            if (auto loaded = vasset::loadVImport(sidecar.generic_string()))
+                m_MeshImportEdit.originalParams = loaded.value().params;
+            m_MeshImportEdit.saved = vasset::resolveMeshImportParams(m_MeshImportEdit.originalParams);
+            m_MeshImportEdit.edit  = m_MeshImportEdit.saved;
         }
         ImGui::EndDisabled();
         if (dirty)

@@ -519,6 +519,18 @@
       "saveFailed": "텍스처 가져오기 설정 저장에 실패했습니다.",
       "applied": "텍스처 가져오기 설정을 적용하고 다시 가져오기를 대기열에 추가했습니다: {}"
     },
+    "meshImport": {
+      "title": "메시 가져오기",
+      "calcTangentSpace": "탄젠트 + 바이탄젠트 생성",
+      "genSmoothNormals": "부드러운 노멀 생성",
+      "genUVCoords": "UV 좌표 생성",
+      "flipUVs": "UV 뒤집기",
+      "preTransformVertices": "정점 사전 변환",
+      "generateMeshlets": "메시렛 생성",
+      "revert": "되돌리기",
+      "saveFailed": "메시 가져오기 설정 저장에 실패했습니다.",
+      "applied": "메시 가져오기 설정을 적용하고 다시 가져오기를 대기열에 추가했습니다: {}"
+    },
     "modelPreview": {
       "servicesUnavailable": "미리보기 서비스를 사용할 수 없습니다.",
       "empty": "미리보기 씬이 비어 있습니다."

@@ -519,6 +519,18 @@
       "saveFailed": "テクスチャインポート設定の保存に失敗しました。",
       "applied": "テクスチャインポート設定を適用し、再インポートをキューに追加しました: {}"
     },
+    "meshImport": {
+      "title": "メッシュインポート",
+      "calcTangentSpace": "接線 + 従接線を生成",
+      "genSmoothNormals": "スムーズ法線を生成",
+      "genUVCoords": "UV座標を生成",
+      "flipUVs": "UVを反転",
+      "preTransformVertices": "頂点を事前変換",
+      "generateMeshlets": "メッシュレットを生成",
+      "revert": "元に戻す",
+      "saveFailed": "メッシュインポート設定の保存に失敗しました。",
+      "applied": "メッシュインポート設定を適用し、再インポートをキューに追加しました: {}"
+    },
     "modelPreview": {
       "servicesUnavailable": "プレビューサービスを利用できません。",
       "empty": "プレビューシーンが空です。"

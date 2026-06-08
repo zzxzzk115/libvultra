@@ -367,6 +367,18 @@
     "saveFailed": "纹理导入设置保存失败。",
     "applied": "已应用纹理导入设置并排队重新导入：{}"
   },
+  "meshImport": {
+    "title": "网格导入",
+    "calcTangentSpace": "生成切线 + 副切线",
+    "genSmoothNormals": "生成平滑法线",
+    "genUVCoords": "生成 UV 坐标",
+    "flipUVs": "翻转 UV",
+    "preTransformVertices": "预变换顶点",
+    "generateMeshlets": "生成 Meshlet",
+    "revert": "还原",
+    "saveFailed": "网格导入设置保存失败。",
+    "applied": "已应用网格导入设置并排队重新导入：{}"
+  },
   "modelPreview": {
     "servicesUnavailable": "预览服务不可用。",
     "empty": "预览场景为空。"

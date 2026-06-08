@@ -53,6 +53,7 @@ namespace vultra_app
         bool drawMaterialGraphNodeSourceInspector(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceTextureImportInspector(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceTexturePreview(EditorContext& ctx, const std::filesystem::path& path);
+        void drawSourceMeshImportInspector(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceModelPreview(EditorContext& ctx, const std::filesystem::path& path);
         void drawMeshAssetPreview(EditorContext& ctx,
                                   const vultra::CoreUUID& uuid,
@@ -87,6 +88,17 @@ namespace vultra_app
         };
 
         TextureImportEditState m_TextureImportEdit;
+
+        struct MeshImportEditState
+        {
+            std::filesystem::path                         path;
+            std::unordered_map<std::string, std::string>  originalParams;
+            vasset::VMeshImporter::ImportOptions          saved;
+            vasset::VMeshImporter::ImportOptions          edit;
+            bool                                          valid {false};
+        };
+
+        MeshImportEditState m_MeshImportEdit;
 
         struct RenderTargetSlot
         {
