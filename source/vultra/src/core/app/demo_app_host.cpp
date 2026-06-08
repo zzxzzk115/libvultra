@@ -1,6 +1,7 @@
 #include "vultra/core/app/demo_app_host.hpp"
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/builtin/builtin_resources.hpp"
 #include "vultra/core/i18n/i18n_system.hpp"
 #include "vultra/core/input/input_system.hpp"
 #include "vultra/core/os/window_system.hpp"
@@ -37,6 +38,15 @@
 #include <glm/trigonometric.hpp>
 
 #include <vbase/core/scoped_enum_flags.hpp>
+
+#if defined(__ANDROID__)
+#include <android/asset_manager.h>
+#include <android/log.h>
+
+#include <cstddef>
+#include <cstring>
+#include <vector>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -249,6 +259,32 @@ namespace vultra
     void DemoAppHost::setAndroidRuntimeContext(const platform::android::AndroidAppRuntimeContext& runtimeContext)
     {
         m_AndroidRuntimeContext = runtimeContext;
+
+        // Install the builtin resource pack from the APK before the engine initializes (every Android
+        // entry routes through here). The single-binary embed path (builtin_pack_mount.cpp) is a
+        // no-op on Android because the AAssetManager isn't available at static-init time, so the pack
+        // -- bundled into the APK assets as builtin.vpk -- is read here instead.
+        if (runtimeContext.assetManager != nullptr && !builtin::hasSource())
+        {
+            if (AAsset* asset = AAssetManager_open(runtimeContext.assetManager, "builtin.vpk", AASSET_MODE_BUFFER))
+            {
+                const off_t            size = AAsset_getLength(asset);
+                const void*            data = AAsset_getBuffer(asset);
+                std::vector<std::byte> blob;
+                if (data != nullptr && size > 0)
+                {
+                    blob.resize(static_cast<size_t>(size));
+                    std::memcpy(blob.data(), data, static_cast<size_t>(size));
+                }
+                AAsset_close(asset);
+                mountBuiltinPackFromBytes(std::move(blob));
+            }
+            else
+            {
+                __android_log_print(
+                    ANDROID_LOG_ERROR, "VULTRA_CORE", "[DemoAppHost] builtin.vpk missing from APK assets");
+            }
+        }
     }
 #endif
 

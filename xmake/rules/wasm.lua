@@ -106,7 +106,9 @@ rule("resources.vpk_pack")
         target:data_set("vpk.output_vpk", output_vpk)
     end)
 
-    before_build(function (target)
+    on_build(function (target)
+        import("core.project.depend")
+
         local project_dir   = target:data("vpk.project_dir")
         local resources_dir = target:data("vpk.resources_dir")
         local generated_dir = target:data("vpk.generated_dir")
@@ -127,61 +129,53 @@ rule("resources.vpk_pack")
 
         os.mkdir(generated_dir)
 
-        if is_host("windows") then
-            if import_enabled then
-                os.execv("powershell.exe",
-                         {
-                            "-NoProfile",
-                            "-ExecutionPolicy",
-                            "Bypass",
-                            "-File",
-                             _vpk_setting(target, "vpk.import_script", "wasm_vpk.import_script")
-                                 or path.join(project_dir, "scripts", "import.ps1"),
-                             "-NoBootstrap",
-                             project_dir,
-                             resources_dir
-                          })
+        -- One host-vultra invocation per mode (no double import): cook = import + pack, or a single
+        -- import-only / pack-only when only one is enabled. The scripts locate the host `vultra`
+        -- executable and run `vultra asset <verb>`.
+        local stem = (import_enabled and pack_enabled) and "cook" or (import_enabled and "import" or "pack")
+        local script = _vpk_setting(target, "vpk." .. stem .. "_script", "wasm_vpk." .. stem .. "_script")
+            or path.join(project_dir, "scripts", stem .. (is_host("windows") and ".ps1" or ".sh"))
+        local wants_outvpk = pack_enabled -- import-only takes no output vpk
+
+        local function cook()
+            local script_args = { project_dir, resources_dir }
+            if wants_outvpk then
+                table.insert(script_args, output_vpk)
             end
-            if pack_enabled then
-                os.execv("powershell.exe",
-                         {
-                            "-NoProfile",
-                            "-ExecutionPolicy",
-                            "Bypass",
-                            "-File",
-                             _vpk_setting(target, "vpk.pack_script", "wasm_vpk.pack_script")
-                                 or path.join(project_dir, "scripts", "pack.ps1"),
-                             "-NoBootstrap",
-                             project_dir,
-                             resources_dir,
-                             output_vpk,
-                            table.unpack(pack_args)
-                         })
-            end
-        else
-            if import_enabled then
-                os.execv("sh",
-                         {
-                             _vpk_setting(target, "vpk.import_script", "wasm_vpk.import_script")
-                                 or path.join(project_dir, "scripts", "import.sh"),
-                             project_dir,
-                             resources_dir,
-                             "--no-bootstrap"
-                          })
-            end
-            if pack_enabled then
-                os.execv("sh",
-                         {
-                             _vpk_setting(target, "vpk.pack_script", "wasm_vpk.pack_script")
-                                 or path.join(project_dir, "scripts", "pack.sh"),
-                             project_dir,
-                             resources_dir,
-                             output_vpk,
-                             "--no-bootstrap",
-                             table.unpack(pack_args)
-                          })
+            if is_host("windows") then
+                local ps = { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-NoBootstrap" }
+                table.join2(ps, script_args)
+                if wants_outvpk then table.join2(ps, pack_args) end
+                os.execv("powershell.exe", ps)
+            else
+                local sh = table.join({ script }, script_args)
+                table.insert(sh, "--no-bootstrap")
+                if wants_outvpk then table.join2(sh, pack_args) end
+                os.execv("sh", sh)
             end
         end
+
+        -- Input guard: only re-import/pack when the raw resources, pack args, the cook scripts or the
+        -- output target change. Without this the cook re-ran on every `xmake build`/`xmake run`.
+        -- Exclude resources/imported/** -- that is the importer's OWN output (asset_registry.tsv +
+        -- cooked assets); including it would make every cook invalidate the next one (mtime churn).
+        local inputs = {}
+        for _, f in ipairs(os.files(path.join(resources_dir, "**"))) do
+            local rel = path.relative(f, resources_dir):gsub("\\", "/")
+            if not (rel == "imported" or rel:startswith("imported/")) then
+                table.insert(inputs, f)
+            end
+        end
+        if os.isfile(script) then table.insert(inputs, script) end
+        local values = { output_vpk, tostring(import_enabled), tostring(pack_enabled) }
+        for _, a in ipairs(pack_args) do table.insert(values, a) end
+
+        depend.on_changed(function ()
+            cook()
+            if not os.isfile(output_vpk) then
+                raise("resources.vpk_pack: cook did not produce %s", output_vpk)
+            end
+        end, { files = inputs, values = values, dependfile = path.join(generated_dir, ".vpk_cook.d") })
     end)
 rule_end()
 
@@ -278,5 +272,14 @@ rule("wasm.link")
                 target:add("ldflags", flag .. src .. "@/builtin/" .. rel, {force = true})
             end
         end
+
+        -- Bake the unified builtin resource pack into MEMFS at /builtin.vpk, where
+        -- builtin_pack_mount.cpp's wasm path reads it at startup and installs it as the builtin::
+        -- source. The vultra.builtin_pack rule (added to the same target) produces the file in its
+        -- before_build, so it exists by link time; no os.isfile guard is needed (and must not be,
+        -- since a clean build links after the pack is generated, not before this on_load runs).
+        local builtin_pack = path.join(os.projectdir(), "builtin", "generated", "builtin.vpk")
+        local pack_flag    = has_preload and "--preload-file=" or "--embed-file="
+        target:add("ldflags", pack_flag .. builtin_pack .. "@/builtin.vpk", {force = true})
     end)
 rule_end()

@@ -51,7 +51,6 @@ $assetRootPath = if ([System.IO.Path]::IsPathRooted($AssetRoot)) { $AssetRoot } 
 $outVpkPath = if ([System.IO.Path]::IsPathRooted($OutVpk)) { $OutVpk } else { Join-Path $repoRootPath $OutVpk }
 $vultra = Find-VultraExecutable $repoRootPath
 
-# Pack only -- assumes the asset folder is already imported (run import.ps1 first, or use cook.ps1
-# to import + pack in one pass).
-& $vultra asset pack $assetRootPath $outVpkPath --zstd 6 @ExtraArgs
+# Import + pack in a single host-vultra invocation (one import, one pack -- no double scan).
+& $vultra asset cook $assetRootPath $outVpkPath --reimport --zstd 6 @ExtraArgs
 exit $LASTEXITCODE

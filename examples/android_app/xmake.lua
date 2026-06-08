@@ -4,6 +4,10 @@ if is_plat("android") then
         set_basename("vultra_android_runtime")
         add_files("runtime_main.cpp")
         add_deps("vultra")
+        -- Compiles builtin_pack_mount.cpp (provides mountBuiltinPackFromBytes, called from
+        -- DemoAppHost::setAndroidRuntimeContext) and builds builtin/generated/builtin.vpk, which
+        -- the app's gradle bundles into the APK assets.
+        add_rules("vultra.builtin_pack")
         add_syslinks("android", "log")
         on_load(function (target)
             local user_home = os.getenv("USERPROFILE") or os.getenv("HOME") or ""

@@ -6,6 +6,9 @@ def vultraRoot = rootDir.parentFile.parentFile
 def vultraResourcesDir = new File(vultraRoot, "resources")
 def generatedAssetsDir = file("${buildDir}/generated/assets")
 def vultraResourcesVpk = new File(generatedAssetsDir, "resources.vpk")
+// Engine builtin resource pack, produced by the xmake build (vultra.builtin_pack rule) at
+// builtin/generated/builtin.vpk. Bundled into the APK assets so the runtime can mount it.
+def vultraBuiltinVpk = new File(vultraRoot, "builtin/generated/builtin.vpk")
 def hostOsName = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT)
 def hostArchName = System.getProperty("os.arch").toLowerCase(java.util.Locale.ROOT)
 def hostPlatform = hostOsName.contains("mac") || hostOsName.contains("darwin") ? "macosx" : (hostOsName.contains("win") ? "windows" : "linux")
@@ -171,9 +174,18 @@ def prepareVultraRuntimeJniLibs = tasks.register("prepareVultraRuntimeJniLibs", 
     }
 }
 
+def prepareVultraBuiltinVpk = tasks.register("prepareVultraBuiltinVpk", Copy) {
+    from(vultraBuiltinVpk)
+    into(generatedAssetsDir)
+    doFirst {
+        generatedAssetsDir.mkdirs()
+    }
+}
+
 tasks.named("preBuild") {
     dependsOn(tasks.named("prepareVultraResourcesImport"))
     dependsOn(tasks.named("prepareVultraResourcesVpk"))
+    dependsOn(prepareVultraBuiltinVpk)
     dependsOn(prepareVultraRuntimeJniLibs)
 }
 

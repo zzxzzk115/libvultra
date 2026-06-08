@@ -90,7 +90,8 @@ namespace
             // import task; mirror that here so `vultra asset import <root>`
             // produces an up-to-date library out of the box (otherwise a stale
             // generated graph would be re-cooked).
-            if (argc > 2 && argv[2] != nullptr && std::string_view {argv[2]} == "import")
+            if (argc > 2 && argv[2] != nullptr &&
+                (std::string_view {argv[2]} == "import" || std::string_view {argv[2]} == "cook"))
             {
                 std::filesystem::path assetRoot;
                 for (int i = 3; i < argc && argv[i] != nullptr; ++i)

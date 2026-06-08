@@ -328,7 +328,8 @@ extern "C" void vultra_android_run(const vultra::platform::android::AndroidAppRu
 try
 {
     // Android delivers assets via the APK; the launcher extracts resources.vpk to the app files
-    // dir and the default VPK scan picks it up. (Android export wiring is planned; see plan.)
+    // dir and the default VPK scan picks it up. The builtin resource pack (builtin.vpk) is mounted
+    // from the APK inside DemoAppHost::setAndroidRuntimeContext, before the engine initializes.
     vultra_app::LaunchOptions options;
     VultraRuntimeApp          app {std::move(options)};
     if (runtimeContext != nullptr)

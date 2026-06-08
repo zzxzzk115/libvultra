@@ -1,19 +1,29 @@
--- vultra.builtin_pack: makes a target a self-contained binary that embeds builtin.vpk.
+-- vultra.builtin_pack: makes a target a self-contained binary that ships builtin.vpk.
 --
 -- Adds to the target:
---   * a dependency on `builtinpack` (the host tool that writes builtin/generated/builtin.vpk),
---   * the platform embed file (Windows .rc / Linux+macOS .incbin .S),
+--   * a dependency on `builtinpack` (the HOST tool that writes builtin/generated/builtin.vpk;
+--     it is pinned to the host platform in tools/xmake.lua so wasm/android cross-builds still get
+--     a runnable binary);
+--   * the platform embed file (Windows .rc / Linux+macOS .incbin .S) for desktop single-binary
+--     embedding -- wasm bakes the pack into MEMFS via wasm.link, android reads it from the APK;
 --   * the per-binary mount accessor (builtin_pack_mount.cpp) that installs the pack as the
 --     builtin:: resource source via vultra::mountBuiltinPack().
 --
--- before_build regenerates builtin.vpk (mtime-guarded) BEFORE the target's embed file compiles,
--- so the embedded copy is always fresh. The thin export-template runtime does NOT add this rule;
--- it mounts a project VPK instead.
+-- The pack is cooked in before_build (not a separate target) on purpose: the desktop .rc/.S embed
+-- reads builtin.vpk at COMPILE time, so it must exist before any of this target's files compile --
+-- a dep-target would only guarantee "before link". The cook is mtime-guarded, so it is a silent
+-- no-op (no repack) on incremental builds and `xmake run` when nothing changed.
 rule("vultra.builtin_pack")
     on_load(function (target)
         local embed = path.join(os.projectdir(), "builtin", "embed")
 
-        target:add("deps", "builtinpack")
+        -- builtinpack is a host packer; only build it where host == target (desktop). On cross
+        -- builds (wasm/android) the pack is produced by a prior host build and consumed as-is, so we
+        -- do NOT depend on / build builtinpack under the cross toolchain (it would resolve the wrong
+        -- toolchain/packages and fail).
+        if not (target:is_plat("wasm") or target:is_plat("android")) then
+            target:add("deps", "builtinpack")
+        end
 
         if target:is_plat("windows") then
             target:add("files", path.join(embed, "builtin_pack.rc"))
@@ -27,6 +37,19 @@ rule("vultra.builtin_pack")
     before_build(function (target)
         local projectdir = os.projectdir()
         local outvpk     = path.join(projectdir, "builtin", "generated", "builtin.vpk")
+
+        -- Cross builds (wasm/android) consume a host-cooked pack rather than running the host packer
+        -- under the cross toolchain. The host `vultra`/editor build that cross workflows already
+        -- require (e.g. for the resource cook) produces it, so just require it to exist here.
+        if target:is_plat("wasm") or target:is_plat("android") then
+            if not os.isfile(outvpk) then
+                raise("builtin.vpk not found at %s.\n" ..
+                      "Cross-compiling consumes a host-cooked builtin pack. Build a desktop target " ..
+                      "first to produce it, e.g.: xmake f -p <host> -a <arch> -m release && xmake build vultra-app",
+                      outvpk)
+            end
+            return
+        end
 
         -- (logicalPath, sourceFile) manifest. Logical paths are read by the engine under the
         -- builtin:// scheme. Everything that previously compiled in as a C-array header ships here.
@@ -67,9 +90,8 @@ rule("vultra.builtin_pack")
         addrel("shaders", path.join(projectdir, "builtin/shaders"),
                os.files(path.join(projectdir, "builtin/shaders/include/**.glsl")))
 
-        -- mtime guard: skip regeneration when the pack is newer than every source. The rule script
-        -- itself is included so that editing the manifest (adding/removing entries) forces a rebuild
-        -- even when every packed source file is older than the existing pack.
+        -- mtime guard: skip the repack when the pack is newer than every source. This rule script is
+        -- included so editing the manifest forces a repack even when the packed sources are older.
         local newest = os.mtime(path.join(projectdir, "xmake/rules/builtin_pack.lua")) or 0
         for _, e in ipairs(entries) do
             local m = os.mtime(e[2])
@@ -86,11 +108,12 @@ rule("vultra.builtin_pack")
             table.insert(args, e[2])
         end
         os.execv(target:dep("builtinpack"):targetfile(), args)
+        cprint("${green}[PACK]${clear} builtin.vpk (%d entries)", #entries)
 
         -- NOTE: xmake compiles the embed file (.rc RCDATA / .S .incbin) based on that file's own
-        -- mtime, not the embedded builtin.vpk payload. A clean or `xmake build -r <target>` always
-        -- embeds the fresh pack; an *incremental* build after changing a builtin resource's content
-        -- may keep a stale embed until the embed file or its object is rebuilt. Builtin engine
-        -- resources are stable, so this is an accepted, documented limitation.
+        -- mtime, not the embedded payload. A clean or `xmake build -r <target>` always embeds the
+        -- fresh pack; an incremental build after changing a builtin resource may keep a stale embed
+        -- until the embed file/object is rebuilt. Builtin engine resources are stable, so this is an
+        -- accepted, documented limitation.
     end)
 rule_end()

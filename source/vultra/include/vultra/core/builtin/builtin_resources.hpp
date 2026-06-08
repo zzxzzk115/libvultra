@@ -58,6 +58,14 @@ namespace vultra
     // Installs the embedded builtin.vpk as the builtin:: resource source. Defined per
     // self-contained binary by the `vultra.builtin_pack` xmake rule (it embeds the pack
     // and compiles the platform accessor). Call once at startup, before engine init.
-    // Not available in the thin export-template runtime (which mounts a project VPK).
+    //   - desktop: reads the pack embedded in the binary (.rc RCDATA / .incbin);
+    //   - wasm: reads /builtin.vpk baked into MEMFS by the build;
+    //   - android: a no-op here (AAssetManager isn't available at static-init time) -- the
+    //     Android runtime entry reads the pack from the APK and calls mountBuiltinPackFromBytes().
     void mountBuiltinPack();
+
+    // Installs an in-memory builtin.vpk blob as the builtin:: resource source. Used by platforms
+    // (Android) that obtain the pack bytes at runtime rather than from the binary. No-op if the
+    // blob is empty or not a valid VPK. Call once at startup, before engine init.
+    void mountBuiltinPackFromBytes(std::vector<std::byte> blob);
 } // namespace vultra

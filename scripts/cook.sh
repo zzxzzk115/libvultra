@@ -42,6 +42,5 @@ find_vultra() {
 }
 
 vultra="$(find_vultra)"
-# Pack only -- assumes the asset folder is already imported (run import.sh first, or use cook.sh
-# to import + pack in one pass).
-exec "$vultra" asset pack "$asset_root" "$out_vpk" --zstd 6 "$@"
+# Import + pack in a single host-vultra invocation (one import, one pack -- no double scan).
+exec "$vultra" asset cook "$asset_root" "$out_vpk" --reimport --zstd 6 "$@"
