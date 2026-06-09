@@ -21,6 +21,9 @@ list small — these are the files a fresh agent should actually open.
 
 - [codex-debt-review-2026-06-03.md](codex-debt-review-2026-06-03.md) — engineering-debt
   audit and the current cleanup roadmap (P0/P1/P2).
+- [codex-debt-review-round2-2026-06-09.md](codex-debt-review-round2-2026-06-09.md) —
+  Round 2 audit: duplication/abstraction/interface debt in the editor UI layer, asset
+  loaders, and render passes (P0/P1/P2); extends the roadmap above.
 - [codex-debt-cleanup-execution.md](codex-debt-cleanup-execution.md) — execution log for
   the roadmap above (P0/P1 done, safe P2 done; build verification pending).
 - [asset-dependency-residency-handoff.md](asset-dependency-residency-handoff.md) —
