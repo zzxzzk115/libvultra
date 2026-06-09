@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/file_dialog.hpp"
+#include "common/render_target_pool.hpp"
 #include "editor_app/ui/editor_window.hpp"
 
 #include <vultra/core/rhi/structs/extent2d.hpp>
@@ -32,15 +33,7 @@ namespace vultra_app
     private:
         struct GraphEditorState;
         struct RuntimeGraphState;
-        struct RenderTargetSlot
-        {
-            std::optional<vultra::rhi::Texture> texture;
-            vultra::rhi::Extent2D               extent {};
-            uint32_t                            layerCount {1};
-            vultra::IImGuiService::TextureID    textureId {};
-            uint64_t                            frameCreated {0};
-            uint64_t                            releaseFrame {0};
-        };
+        using RenderTargetSlot = ui::RenderTargetSlot;
         struct TextureThumbnailEntry
         {
             const vultra::rhi::Texture*      texture {nullptr};
@@ -73,7 +66,7 @@ namespace vultra_app
         std::unique_ptr<GraphEditorState> m_GraphEditor;
         RenderTargetSlot              m_OverlayActiveRenderTarget;
         RenderTargetSlot              m_OverlayPendingRenderTarget;
-        std::vector<RenderTargetSlot> m_OverlayRetiredRenderTargets;
+        ui::RetiredRenderTargets      m_OverlayRetiredRenderTargets;
         std::unordered_map<std::string, TextureThumbnailEntry> m_TextureThumbnailCache;
         std::vector<TextureThumbnailEntry> m_RetiredTextureThumbnails;
         float m_OverlayZoom {1.0f};

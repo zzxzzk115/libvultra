@@ -2136,27 +2136,14 @@ namespace vultra_app
                 if (m_PreviewTarget.textureId)
                     imgui->removeTexture(m_PreviewTarget.textureId);
         m_PreviewTarget = {};
-        m_RetiredPreviewTargets.clear();
+        m_RetiredPreviewTargets.releaseAll(ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr);
     }
 
     void MaterialGraphWindow::collectRetiredPreviewTargets(EditorContext& ctx)
     {
-        const auto  frame = static_cast<uint64_t>(ImGui::GetFrameCount());
-        auto*       imgui = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
-        std::size_t out   = 0;
-        for (auto& slot : m_RetiredPreviewTargets)
-        {
-            if (frame >= slot.releaseFrame)
-            {
-                if (imgui && slot.textureId)
-                    imgui->removeTexture(slot.textureId);
-            }
-            else
-            {
-                m_RetiredPreviewTargets[out++] = std::move(slot);
-            }
-        }
-        m_RetiredPreviewTargets.resize(out);
+        const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
+        auto*      imgui = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+        m_RetiredPreviewTargets.reclaim(imgui, frame);
     }
 
     int MaterialGraphWindow::nodeId(std::string_view id) const { return stableImNodesId(id); }

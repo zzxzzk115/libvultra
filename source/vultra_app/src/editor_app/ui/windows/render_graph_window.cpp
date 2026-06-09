@@ -6112,34 +6112,15 @@ namespace vultra_app
 
     void RenderGraphWindow::retireOverlayRenderTarget(RenderTargetSlot& slot)
     {
-        if (!slot.texture && !slot.textureId)
-            return;
-
-        slot.releaseFrame = static_cast<uint64_t>(ImGui::GetFrameCount()) + kRenderTargetReleaseDelayFrames;
-        m_OverlayRetiredRenderTargets.push_back(std::move(slot));
-        slot = {};
+        m_OverlayRetiredRenderTargets.retire(
+            slot, static_cast<uint64_t>(ImGui::GetFrameCount()), kRenderTargetReleaseDelayFrames);
     }
 
     void RenderGraphWindow::collectRetiredOverlayRenderTargets(EditorContext& ctx)
     {
         const auto frame        = static_cast<uint64_t>(ImGui::GetFrameCount());
         auto*      imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
-
-        std::size_t out = 0;
-        for (auto& slot : m_OverlayRetiredRenderTargets)
-        {
-            if (frame >= slot.releaseFrame)
-            {
-                if (imguiService && slot.textureId)
-                    imguiService->removeTexture(slot.textureId);
-                slot.texture.reset();
-            }
-            else
-            {
-                m_OverlayRetiredRenderTargets[out++] = std::move(slot);
-            }
-        }
-        m_OverlayRetiredRenderTargets.resize(out);
+        m_OverlayRetiredRenderTargets.reclaim(imguiService, frame);
     }
 
     void RenderGraphWindow::releaseOverlayRenderTarget(EditorContext& ctx)
@@ -6159,16 +6140,12 @@ namespace vultra_app
                     imguiService->removeTexture(m_OverlayActiveRenderTarget.textureId);
                 if (m_OverlayPendingRenderTarget.textureId)
                     imguiService->removeTexture(m_OverlayPendingRenderTarget.textureId);
-                for (auto& slot : m_OverlayRetiredRenderTargets)
-                {
-                    if (slot.textureId)
-                        imguiService->removeTexture(slot.textureId);
-                }
+                m_OverlayRetiredRenderTargets.releaseAll(imguiService);
             }
         }
         m_OverlayActiveRenderTarget  = {};
         m_OverlayPendingRenderTarget = {};
-        m_OverlayRetiredRenderTargets.clear();
+        m_OverlayRetiredRenderTargets.releaseAll(ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr);
     }
 
     void RenderGraphWindow::collectRetiredTextureThumbnails(EditorContext& ctx)

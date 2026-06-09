@@ -1073,115 +1073,29 @@ namespace vultra_app
         bool
         drawVec3Control(const char* label, glm::vec3& value, const glm::vec3& resetValue, const float speed = 0.05f)
         {
-            bool       changed           = false;
-            const auto cleanDisplayValue = [](float& v) {
-                if (std::abs(v) < 0.0005f)
-                    v = 0.0f;
+            // Explicit per-axis hover/active palette (RGB-coded XYZ).
+            const ui::VectorAxisSpec axes[] = {
+                {"X", &value.x, resetValue.x, {0.55f, 0.16f, 0.18f, 1.0f}, {0.75f, 0.22f, 0.24f, 1.0f},
+                 {0.9f, 0.28f, 0.32f, 1.0f}},
+                {"Y", &value.y, resetValue.y, {0.20f, 0.46f, 0.20f, 1.0f}, {0.28f, 0.64f, 0.28f, 1.0f},
+                 {0.34f, 0.78f, 0.34f, 1.0f}},
+                {"Z", &value.z, resetValue.z, {0.16f, 0.28f, 0.58f, 1.0f}, {0.22f, 0.38f, 0.78f, 1.0f},
+                 {0.30f, 0.48f, 0.94f, 1.0f}},
             };
-            cleanDisplayValue(value.x);
-            cleanDisplayValue(value.y);
-            cleanDisplayValue(value.z);
-
-            ImGui::PushID(label);
-            ImGui::Columns(2, nullptr, false);
-            ImGui::SetColumnWidth(0, vultra::ui::dp(92.0f));
-            ImGui::TextUnformatted(label);
-            ImGui::NextColumn();
-
-            const float  lineHeight = ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2.0f;
-            const ImVec2 buttonSize {lineHeight + vultra::ui::dp(3.0f), lineHeight};
-            const float  itemWidth = std::max(
-                vultra::ui::dp(42.0f),
-                (ImGui::GetContentRegionAvail().x - buttonSize.x * 3.0f - ImGui::GetStyle().ItemSpacing.x * 6.0f) /
-                    3.0f);
-
-            auto axis =
-                [&](const char* axisLabel, float& axisValue, float reset, ImVec4 color, ImVec4 hovered, ImVec4 active) {
-                    ImGui::PushStyleColor(ImGuiCol_Button, color);
-                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hovered);
-                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, active);
-                    if (ImGui::Button(axisLabel, buttonSize))
-                    {
-                        axisValue = reset;
-                        changed   = true;
-                    }
-                    ImGui::PopStyleColor(3);
-                    ImGui::SameLine();
-                    ImGui::SetNextItemWidth(itemWidth);
-                    changed |= ImGui::DragFloat(
-                        (std::string("##") + axisLabel).c_str(), &axisValue, speed, 0.0f, 0.0f, "%.3f");
-                    ImGui::SameLine();
-                };
-
-            axis("X",
-                 value.x,
-                 resetValue.x,
-                 {0.55f, 0.16f, 0.18f, 1.0f},
-                 {0.75f, 0.22f, 0.24f, 1.0f},
-                 {0.9f, 0.28f, 0.32f, 1.0f});
-            axis("Y",
-                 value.y,
-                 resetValue.y,
-                 {0.20f, 0.46f, 0.20f, 1.0f},
-                 {0.28f, 0.64f, 0.28f, 1.0f},
-                 {0.34f, 0.78f, 0.34f, 1.0f});
-            axis("Z",
-                 value.z,
-                 resetValue.z,
-                 {0.16f, 0.28f, 0.58f, 1.0f},
-                 {0.22f, 0.38f, 0.78f, 1.0f},
-                 {0.30f, 0.48f, 0.94f, 1.0f});
-            ImGui::NewLine();
-
-            ImGui::Columns(1);
-            ImGui::PopID();
-            return changed;
+            return ui::drawVectorControl(label, axes, speed, 42.0f);
         }
 
         bool drawVec2Control(const char* label, glm::vec2& value, const glm::vec2& resetValue, const float speed = 0.05f)
         {
-            bool changed = false;
-            if (std::abs(value.x) < 0.0005f)
-                value.x = 0.0f;
-            if (std::abs(value.y) < 0.0005f)
-                value.y = 0.0f;
-
-            ImGui::PushID(label);
-            ImGui::Columns(2, nullptr, false);
-            ImGui::SetColumnWidth(0, vultra::ui::dp(92.0f));
-            ImGui::TextUnformatted(label);
-            ImGui::NextColumn();
-
-            const float  lineHeight = ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2.0f;
-            const ImVec2 buttonSize {lineHeight + vultra::ui::dp(3.0f), lineHeight};
-            const float  itemWidth = std::max(
-                vultra::ui::dp(48.0f),
-                (ImGui::GetContentRegionAvail().x - buttonSize.x * 2.0f - ImGui::GetStyle().ItemSpacing.x * 4.0f) /
-                    2.0f);
-
-            auto axis = [&](const char* axisLabel, float& axisValue, float reset, ImVec4 color) {
-                ImGui::PushStyleColor(ImGuiCol_Button, color);
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {color.x + 0.12f, color.y + 0.12f, color.z + 0.12f, 1.0f});
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4 {color.x + 0.20f, color.y + 0.20f, color.z + 0.20f, 1.0f});
-                if (ImGui::Button(axisLabel, buttonSize))
-                {
-                    axisValue = reset;
-                    changed   = true;
-                }
-                ImGui::PopStyleColor(3);
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(itemWidth);
-                changed |= ImGui::DragFloat((std::string("##") + axisLabel).c_str(), &axisValue, speed, 0.0f, 0.0f, "%.3f");
-                ImGui::SameLine();
+            // Hover/active derived from the base color (+0.12 / +0.20), matching the original vec2 styling.
+            const auto             lighten = [](ImVec4 c, float d) { return ImVec4 {c.x + d, c.y + d, c.z + d, 1.0f}; };
+            const ImVec4           cx {0.55f, 0.16f, 0.18f, 1.0f};
+            const ImVec4           cy {0.20f, 0.46f, 0.20f, 1.0f};
+            const ui::VectorAxisSpec axes[] = {
+                {"X", &value.x, resetValue.x, cx, lighten(cx, 0.12f), lighten(cx, 0.20f)},
+                {"Y", &value.y, resetValue.y, cy, lighten(cy, 0.12f), lighten(cy, 0.20f)},
             };
-
-            axis("X", value.x, resetValue.x, {0.55f, 0.16f, 0.18f, 1.0f});
-            axis("Y", value.y, resetValue.y, {0.20f, 0.46f, 0.20f, 1.0f});
-            ImGui::NewLine();
-
-            ImGui::Columns(1);
-            ImGui::PopID();
-            return changed;
+            return ui::drawVectorControl(label, axes, speed, 48.0f);
         }
 
         bool drawAnchorPresetPreview(vultra::RectTransformComponent& rect)
@@ -3809,6 +3723,53 @@ namespace vultra_app
             return changed;
         }
 
+        // Field-name -> ordered i18n keys for the simple "uint32 enum -> Combo" inspector fields. Replaces a
+        // long if-chain of near-identical Combo blocks; the special enums (render-layer mask, and
+        // builtinGeometry's offset mapping) stay inline in drawMetaValue.
+        const std::unordered_map<std::string_view, std::vector<const char*>>& enumFieldTable()
+        {
+            static const std::unordered_map<std::string_view, std::vector<const char*>> table = {
+                {"projection", {"inspector.enum.projection.perspective", "inspector.enum.projection.orthographic"}},
+                {"clearMode", {"inspector.enum.clearMode.color", "inspector.enum.clearMode.skybox"}},
+                {"kind",
+                 {"inspector.light.kind.directional", "inspector.light.kind.point", "inspector.light.kind.spot",
+                  "inspector.light.kind.rectangleArea"}},
+                {"motionType",
+                 {"inspector.enum.motionType.static", "inspector.enum.motionType.kinematic",
+                  "inspector.enum.motionType.dynamic"}},
+                {"objectLayer", {"inspector.enum.objectLayer.nonMoving", "inspector.enum.objectLayer.moving"}},
+                {"motionQuality", {"inspector.enum.motionQuality.discrete", "inspector.enum.motionQuality.linearCast"}},
+                {"scaleMode", {"inspector.enum.scaleMode.constantPixels", "inspector.enum.scaleMode.scaleWithScreen"}},
+                {"fitMode",
+                 {"inspector.enum.fitMode.stretch", "inspector.enum.fitMode.contain", "inspector.enum.fitMode.cover"}},
+                {"horizontalAlign",
+                 {"inspector.enum.hAlign.left", "inspector.enum.hAlign.center", "inspector.enum.hAlign.right"}},
+                {"verticalAlign",
+                 {"inspector.enum.vAlign.top", "inspector.enum.vAlign.middle", "inspector.enum.vAlign.bottom"}},
+                {"shape", {"inspector.enum.shape.box", "inspector.enum.shape.sphere"}},
+            };
+            return table;
+        }
+
+        // Build the '\0'-joined Combo item list from localized keys (rebuilt each frame so language switches
+        // take effect), select by clamped current value, and write back the chosen index.
+        bool drawEnumCombo(const char* label, uint32_t& v, const std::vector<const char*>& keys)
+        {
+            std::string labels;
+            for (const char* key : keys)
+            {
+                labels += std::string {vultra::tr(key)};
+                labels.push_back('\0');
+            }
+            int index = static_cast<int>(std::min(v, static_cast<uint32_t>(keys.size() - 1)));
+            if (ImGui::Combo(label, &index, labels.c_str()))
+            {
+                v = static_cast<uint32_t>(index);
+                return true;
+            }
+            return false;
+        }
+
         bool drawMetaValue(EditorContext*            ctx,
                            ui::TextureSelectorState* textureSelector,
                            ui::MeshSelectorState*    meshSelector,
@@ -3834,89 +3795,6 @@ namespace vultra_app
                 if (std::strcmp(fieldName, "mask") == 0 || std::strcmp(fieldName, "cullingMask") == 0)
                     return drawRenderLayerMaskField(label, *v);
 
-                if (std::strcmp(fieldName, "projection") == 0)
-                {
-                    const std::string projectionLabels =
-                        std::string {vultra::tr("inspector.enum.projection.perspective")} + '\0' +
-                        vultra::tr("inspector.enum.projection.orthographic") + '\0';
-                    int projectionIndex = static_cast<int>(std::min(*v, 1u));
-                    if (ImGui::Combo(label, &projectionIndex, projectionLabels.c_str()))
-                    {
-                        *v      = static_cast<uint32_t>(projectionIndex);
-                        changed = true;
-                    }
-                    return changed;
-                }
-
-                if (std::strcmp(fieldName, "clearMode") == 0)
-                {
-                    const std::string clearModeLabels =
-                        std::string {vultra::tr("inspector.enum.clearMode.color")} + '\0' +
-                        vultra::tr("inspector.enum.clearMode.skybox") + '\0';
-                    int clearModeIndex = static_cast<int>(std::min(*v, 1u));
-                    if (ImGui::Combo(label, &clearModeIndex, clearModeLabels.c_str()))
-                    {
-                        *v      = static_cast<uint32_t>(clearModeIndex);
-                        changed = true;
-                    }
-                    return changed;
-                }
-
-                if (std::strcmp(fieldName, "kind") == 0)
-                {
-                    const std::string lightKindLabels =
-                        std::string {vultra::tr("inspector.light.kind.directional")} + '\0' +
-                        vultra::tr("inspector.light.kind.point") + '\0' + vultra::tr("inspector.light.kind.spot") +
-                        '\0' + vultra::tr("inspector.light.kind.rectangleArea") + '\0';
-                    int kindIndex = static_cast<int>(std::min(*v, 3u));
-                    if (ImGui::Combo(label, &kindIndex, lightKindLabels.c_str()))
-                    {
-                        *v      = static_cast<uint32_t>(std::clamp(kindIndex, 0, 3));
-                        changed = true;
-                    }
-                    return changed;
-                }
-
-                if (std::strcmp(fieldName, "motionType") == 0)
-                {
-                    const std::string labels = std::string {vultra::tr("inspector.enum.motionType.static")} + '\0' +
-                                               vultra::tr("inspector.enum.motionType.kinematic") + '\0' +
-                                               vultra::tr("inspector.enum.motionType.dynamic") + '\0';
-                    int index = static_cast<int>(std::min(*v, 2u));
-                    if (ImGui::Combo(label, &index, labels.c_str()))
-                    {
-                        *v      = static_cast<uint32_t>(std::clamp(index, 0, 2));
-                        changed = true;
-                    }
-                    return changed;
-                }
-
-                if (std::strcmp(fieldName, "objectLayer") == 0)
-                {
-                    const std::string labels = std::string {vultra::tr("inspector.enum.objectLayer.nonMoving")} + '\0' +
-                                               vultra::tr("inspector.enum.objectLayer.moving") + '\0';
-                    int index = static_cast<int>(std::min(*v, 1u));
-                    if (ImGui::Combo(label, &index, labels.c_str()))
-                    {
-                        *v      = static_cast<uint32_t>(index);
-                        changed = true;
-                    }
-                    return changed;
-                }
-
-                if (std::strcmp(fieldName, "motionQuality") == 0)
-                {
-                    const std::string labels = std::string {vultra::tr("inspector.enum.motionQuality.discrete")} + '\0' +
-                                               vultra::tr("inspector.enum.motionQuality.linearCast") + '\0';
-                    int index = static_cast<int>(std::min(*v, 1u));
-                    if (ImGui::Combo(label, &index, labels.c_str()))
-                    {
-                        *v      = static_cast<uint32_t>(index);
-                        changed = true;
-                    }
-                    return changed;
-                }
-
                 if (std::strcmp(fieldName, "builtinGeometry") == 0)
                 {
                     const std::string geometryLabels =
@@ -3933,74 +3811,8 @@ namespace vultra_app
                     return changed;
                 }
 
-                if (std::strcmp(fieldName, "scaleMode") == 0)
-                {
-                    const std::string labels =
-                        std::string {vultra::tr("inspector.enum.scaleMode.constantPixels")} + '\0' +
-                        vultra::tr("inspector.enum.scaleMode.scaleWithScreen") + '\0';
-                    int index = static_cast<int>(std::min(*v, 1u));
-                    if (ImGui::Combo(label, &index, labels.c_str()))
-                    {
-                        *v      = static_cast<uint32_t>(index);
-                        changed = true;
-                    }
-                    return changed;
-                }
-
-                if (std::strcmp(fieldName, "fitMode") == 0)
-                {
-                    const std::string labels = std::string {vultra::tr("inspector.enum.fitMode.stretch")} + '\0' +
-                                               vultra::tr("inspector.enum.fitMode.contain") + '\0' +
-                                               vultra::tr("inspector.enum.fitMode.cover") + '\0';
-                    int index = static_cast<int>(std::min(*v, 2u));
-                    if (ImGui::Combo(label, &index, labels.c_str()))
-                    {
-                        *v      = static_cast<uint32_t>(std::clamp(index, 0, 2));
-                        changed = true;
-                    }
-                    return changed;
-                }
-
-                if (std::strcmp(fieldName, "horizontalAlign") == 0)
-                {
-                    const std::string labels = std::string {vultra::tr("inspector.enum.hAlign.left")} + '\0' +
-                                               vultra::tr("inspector.enum.hAlign.center") + '\0' +
-                                               vultra::tr("inspector.enum.hAlign.right") + '\0';
-                    int index = static_cast<int>(std::min(*v, 2u));
-                    if (ImGui::Combo(label, &index, labels.c_str()))
-                    {
-                        *v      = static_cast<uint32_t>(std::clamp(index, 0, 2));
-                        changed = true;
-                    }
-                    return changed;
-                }
-
-                if (std::strcmp(fieldName, "verticalAlign") == 0)
-                {
-                    const std::string labels = std::string {vultra::tr("inspector.enum.vAlign.top")} + '\0' +
-                                               vultra::tr("inspector.enum.vAlign.middle") + '\0' +
-                                               vultra::tr("inspector.enum.vAlign.bottom") + '\0';
-                    int index = static_cast<int>(std::min(*v, 2u));
-                    if (ImGui::Combo(label, &index, labels.c_str()))
-                    {
-                        *v      = static_cast<uint32_t>(std::clamp(index, 0, 2));
-                        changed = true;
-                    }
-                    return changed;
-                }
-
-                if (std::strcmp(fieldName, "shape") == 0)
-                {
-                    const std::string shapeLabels = std::string {vultra::tr("inspector.enum.shape.box")} + '\0' +
-                                                    vultra::tr("inspector.enum.shape.sphere") + '\0';
-                    int shapeIndex = static_cast<int>(std::min(*v, 1u));
-                    if (ImGui::Combo(label, &shapeIndex, shapeLabels.c_str()))
-                    {
-                        *v      = static_cast<uint32_t>(shapeIndex);
-                        changed = true;
-                    }
-                    return changed;
-                }
+                if (const auto it = enumFieldTable().find(fieldName); it != enumFieldTable().end())
+                    return drawEnumCombo(label, *v, it->second);
 
                 int temp = static_cast<int>(*v);
                 if (ImGui::InputInt(label, &temp))
@@ -6959,23 +6771,9 @@ namespace vultra_app
         if (!ctx.services || width == 0u || height == 0u)
             return;
 
-        const auto  frame                  = static_cast<uint64_t>(ImGui::GetFrameCount());
-        auto*       imguiServiceForCleanup = ctx.services->tryGet<vultra::IImGuiService>();
-        std::size_t out                    = 0;
-        for (auto& slot : m_RetiredModelPreviewTargets)
-        {
-            if (frame >= slot.releaseFrame)
-            {
-                if (imguiServiceForCleanup && slot.textureId)
-                    imguiServiceForCleanup->removeTexture(slot.textureId);
-                slot.texture.reset();
-            }
-            else
-            {
-                m_RetiredModelPreviewTargets[out++] = std::move(slot);
-            }
-        }
-        m_RetiredModelPreviewTargets.resize(out);
+        const auto frame                  = static_cast<uint64_t>(ImGui::GetFrameCount());
+        auto*      imguiServiceForCleanup = ctx.services->tryGet<vultra::IImGuiService>();
+        m_RetiredModelPreviewTargets.reclaim(imguiServiceForCleanup, frame);
 
         if (m_ModelPreviewTarget.texture && m_ModelPreviewTarget.extent.width == width &&
             m_ModelPreviewTarget.extent.height == height && m_ModelPreviewTarget.textureId)
@@ -6983,12 +6781,7 @@ namespace vultra_app
             return;
         }
 
-        if (m_ModelPreviewTarget.texture || m_ModelPreviewTarget.textureId)
-        {
-            m_ModelPreviewTarget.releaseFrame = frame + kModelPreviewTargetReleaseDelayFrames;
-            m_RetiredModelPreviewTargets.push_back(std::move(m_ModelPreviewTarget));
-            m_ModelPreviewTarget = {};
-        }
+        m_RetiredModelPreviewTargets.retire(m_ModelPreviewTarget, frame, kModelPreviewTargetReleaseDelayFrames);
 
         auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>();
         auto* imguiService   = ctx.services->tryGet<vultra::IImGuiService>();
@@ -7031,15 +6824,11 @@ namespace vultra_app
             {
                 if (m_ModelPreviewTarget.textureId)
                     imguiService->removeTexture(m_ModelPreviewTarget.textureId);
-                for (auto& slot : m_RetiredModelPreviewTargets)
-                {
-                    if (slot.textureId)
-                        imguiService->removeTexture(slot.textureId);
-                }
+                m_RetiredModelPreviewTargets.releaseAll(imguiService);
             }
         }
         m_ModelPreviewTarget = {};
-        m_RetiredModelPreviewTargets.clear();
+        m_RetiredModelPreviewTargets.releaseAll(ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr);
         m_ModelPreviewDirty           = true;
         m_ModelPreviewCameraSubmitted = false;
         m_ModelPreviewAnimated        = false;

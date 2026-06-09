@@ -4,6 +4,8 @@
 #include "editor_app/ui/mesh_selector.hpp"
 #include "editor_app/ui/texture_selector.hpp"
 #include "common/asset_preview_cache.hpp"
+#include "common/render_target_pool.hpp"
+#include "common/vector_control.hpp"
 
 #include <vultra/core/base/uuid.hpp>
 #include <vultra/core/rhi/structs/extent2d.hpp>
@@ -100,16 +102,10 @@ namespace vultra_app
 
         MeshImportEditState m_MeshImportEdit;
 
-        struct RenderTargetSlot
-        {
-            std::optional<vultra::rhi::Texture> texture;
-            vultra::rhi::Extent2D               extent {};
-            vultra::IImGuiService::TextureID    textureId {};
-            uint64_t                            releaseFrame {0};
-        };
+        using RenderTargetSlot = ui::RenderTargetSlot;
 
-        RenderTargetSlot      m_ModelPreviewTarget;
-        std::vector<RenderTargetSlot> m_RetiredModelPreviewTargets;
+        RenderTargetSlot         m_ModelPreviewTarget;
+        ui::RetiredRenderTargets m_RetiredModelPreviewTargets;
         std::filesystem::path m_ModelPreviewPath;
         std::string           m_ModelPreviewKey;
         vultra::World         m_ModelPreviewWorld;

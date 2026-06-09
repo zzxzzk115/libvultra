@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor_app/ui/editor_window.hpp"
+#include "common/render_target_pool.hpp"
 
 #include "editor_app/selection.hpp"
 
@@ -77,14 +78,7 @@ namespace vultra_app
         };
 
     private:
-        struct RenderTargetSlot
-        {
-            std::optional<vultra::rhi::Texture> texture;
-            vultra::rhi::Extent2D               extent {};
-            vultra::IImGuiService::TextureID    textureId {};
-            uint64_t                            frameCreated {0};
-            uint64_t                            releaseFrame {0};
-        };
+        using RenderTargetSlot = ui::RenderTargetSlot;
 
         struct ResizeRequest
         {
@@ -137,13 +131,13 @@ namespace vultra_app
 
         RenderTargetSlot              m_ActiveRenderTarget;
         RenderTargetSlot              m_PendingRenderTarget;
-        std::vector<RenderTargetSlot> m_RetiredRenderTargets;
+        ui::RetiredRenderTargets      m_RetiredRenderTargets;
         ResizeRequest                 m_RenderTargetResizeRequest;
         RenderTargetSlot              m_PickingRenderTarget;
-        std::vector<RenderTargetSlot> m_RetiredPickingRenderTargets;
+        ui::RetiredRenderTargets      m_RetiredPickingRenderTargets;
         RenderTargetSlot              m_GameOverlayActiveRenderTarget;
         RenderTargetSlot              m_GameOverlayPendingRenderTarget;
-        std::vector<RenderTargetSlot> m_GameOverlayRetiredRenderTargets;
+        ui::RetiredRenderTargets      m_GameOverlayRetiredRenderTargets;
         uint64_t                      m_GameOverlayLastRenderSignature {0};
         bool                          m_GameOverlayStaticFrameValid {false};
         bool                          m_GameOverlayLastSceneDirty {false};

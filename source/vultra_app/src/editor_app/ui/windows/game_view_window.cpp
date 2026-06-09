@@ -818,34 +818,15 @@ namespace vultra_app
 
     void GameViewWindow::retireRenderTarget(RenderTargetSlot& slot)
     {
-        if (!slot.texture && !slot.textureId)
-            return;
-
-        slot.releaseFrame = static_cast<uint64_t>(ImGui::GetFrameCount()) + kRenderTargetReleaseDelayFrames;
-        m_RetiredRenderTargets.push_back(std::move(slot));
-        slot = {};
+        m_RetiredRenderTargets.retire(
+            slot, static_cast<uint64_t>(ImGui::GetFrameCount()), kRenderTargetReleaseDelayFrames);
     }
 
     void GameViewWindow::collectRetiredRenderTargets(EditorContext& ctx)
     {
         const auto frame        = static_cast<uint64_t>(ImGui::GetFrameCount());
         auto*      imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
-
-        std::size_t out = 0;
-        for (auto& slot : m_RetiredRenderTargets)
-        {
-            if (frame >= slot.releaseFrame)
-            {
-                if (imguiService && slot.textureId)
-                    imguiService->removeTexture(slot.textureId);
-                slot.texture.reset();
-            }
-            else
-            {
-                m_RetiredRenderTargets[out++] = std::move(slot);
-            }
-        }
-        m_RetiredRenderTargets.resize(out);
+        m_RetiredRenderTargets.reclaim(imguiService, frame);
     }
 
     void GameViewWindow::releaseRenderTarget(EditorContext& ctx)
@@ -871,16 +852,12 @@ namespace vultra_app
                     imguiService->removeTexture(m_ActiveRenderTarget.textureId);
                 if (m_PendingRenderTarget.textureId)
                     imguiService->removeTexture(m_PendingRenderTarget.textureId);
-                for (auto& slot : m_RetiredRenderTargets)
-                {
-                    if (slot.textureId)
-                        imguiService->removeTexture(slot.textureId);
-                }
+                m_RetiredRenderTargets.releaseAll(imguiService);
             }
         }
         m_ActiveRenderTarget  = {};
         m_PendingRenderTarget = {};
-        m_RetiredRenderTargets.clear();
+        m_RetiredRenderTargets.releaseAll(ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr);
         m_RenderTargetResizeRequest = {};
         m_StaticFrameValid          = false;
         m_LastStaticRenderSignature = 0;

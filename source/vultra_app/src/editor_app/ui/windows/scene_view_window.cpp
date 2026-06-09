@@ -2919,95 +2919,41 @@ namespace vultra_app
 
     void SceneViewWindow::retireRenderTarget(RenderTargetSlot& slot)
     {
-        if (!slot.texture && !slot.textureId)
-            return;
-
-        slot.releaseFrame = static_cast<uint64_t>(ImGui::GetFrameCount()) + kRenderTargetReleaseDelayFrames;
-        m_RetiredRenderTargets.push_back(std::move(slot));
-        slot = {};
+        m_RetiredRenderTargets.retire(
+            slot, static_cast<uint64_t>(ImGui::GetFrameCount()), kRenderTargetReleaseDelayFrames);
     }
 
     void SceneViewWindow::retirePickingRenderTarget(RenderTargetSlot& slot)
     {
-        if (!slot.texture)
-            return;
-
-        slot.releaseFrame = static_cast<uint64_t>(ImGui::GetFrameCount()) + kRenderTargetReleaseDelayFrames;
-        m_RetiredPickingRenderTargets.push_back(std::move(slot));
-        slot = {};
+        m_RetiredPickingRenderTargets.retire(
+            slot, static_cast<uint64_t>(ImGui::GetFrameCount()), kRenderTargetReleaseDelayFrames);
     }
 
     void SceneViewWindow::retireGameOverlayRenderTarget(RenderTargetSlot& slot)
     {
-        if (!slot.texture && !slot.textureId)
-            return;
-
-        slot.releaseFrame = static_cast<uint64_t>(ImGui::GetFrameCount()) + kRenderTargetReleaseDelayFrames;
-        m_GameOverlayRetiredRenderTargets.push_back(std::move(slot));
-        slot = {};
+        m_GameOverlayRetiredRenderTargets.retire(
+            slot, static_cast<uint64_t>(ImGui::GetFrameCount()), kRenderTargetReleaseDelayFrames);
     }
 
     void SceneViewWindow::collectRetiredRenderTargets(EditorContext& ctx)
     {
         const auto frame        = static_cast<uint64_t>(ImGui::GetFrameCount());
         auto*      imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
-
-        std::size_t out = 0;
-        for (auto& slot : m_RetiredRenderTargets)
-        {
-            if (frame >= slot.releaseFrame)
-            {
-                if (imguiService && slot.textureId)
-                    imguiService->removeTexture(slot.textureId);
-                slot.texture.reset();
-            }
-            else
-            {
-                m_RetiredRenderTargets[out++] = std::move(slot);
-            }
-        }
-        m_RetiredRenderTargets.resize(out);
+        m_RetiredRenderTargets.reclaim(imguiService, frame);
     }
 
     void SceneViewWindow::collectRetiredPickingRenderTargets()
     {
-        const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
-
-        std::size_t out = 0;
-        for (auto& slot : m_RetiredPickingRenderTargets)
-        {
-            if (frame >= slot.releaseFrame)
-            {
-                slot.texture.reset();
-            }
-            else
-            {
-                m_RetiredPickingRenderTargets[out++] = std::move(slot);
-            }
-        }
-        m_RetiredPickingRenderTargets.resize(out);
+        // Picking targets are never registered with ImGui (offscreen entity-id readback), so there is
+        // no texture id to free here -- pass nullptr.
+        m_RetiredPickingRenderTargets.reclaim(nullptr, static_cast<uint64_t>(ImGui::GetFrameCount()));
     }
 
     void SceneViewWindow::collectRetiredGameOverlayRenderTargets(EditorContext& ctx)
     {
         const auto frame        = static_cast<uint64_t>(ImGui::GetFrameCount());
         auto*      imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
-
-        std::size_t out = 0;
-        for (auto& slot : m_GameOverlayRetiredRenderTargets)
-        {
-            if (frame >= slot.releaseFrame)
-            {
-                if (imguiService && slot.textureId)
-                    imguiService->removeTexture(slot.textureId);
-                slot.texture.reset();
-            }
-            else
-            {
-                m_GameOverlayRetiredRenderTargets[out++] = std::move(slot);
-            }
-        }
-        m_GameOverlayRetiredRenderTargets.resize(out);
+        m_GameOverlayRetiredRenderTargets.reclaim(imguiService, frame);
     }
 
     void SceneViewWindow::releaseRenderTarget(EditorContext& ctx)
@@ -3027,16 +2973,12 @@ namespace vultra_app
                     imguiService->removeTexture(m_ActiveRenderTarget.textureId);
                 if (m_PendingRenderTarget.textureId)
                     imguiService->removeTexture(m_PendingRenderTarget.textureId);
-                for (auto& slot : m_RetiredRenderTargets)
-                {
-                    if (slot.textureId)
-                        imguiService->removeTexture(slot.textureId);
-                }
+                m_RetiredRenderTargets.releaseAll(imguiService);
             }
         }
         m_ActiveRenderTarget  = {};
         m_PendingRenderTarget = {};
-        m_RetiredRenderTargets.clear();
+        m_RetiredRenderTargets.releaseAll(ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr);
         m_RenderTargetResizeRequest = {};
     }
 
@@ -3048,7 +2990,7 @@ namespace vultra_app
                 backendService->renderDevice().waitIdle();
         }
         m_PickingRenderTarget = {};
-        m_RetiredPickingRenderTargets.clear();
+        m_RetiredPickingRenderTargets.releaseAll(nullptr);
     }
 
     void SceneViewWindow::releaseGameOverlayRenderTarget(EditorContext& ctx)
@@ -3074,16 +3016,13 @@ namespace vultra_app
                     imguiService->removeTexture(m_GameOverlayActiveRenderTarget.textureId);
                 if (m_GameOverlayPendingRenderTarget.textureId)
                     imguiService->removeTexture(m_GameOverlayPendingRenderTarget.textureId);
-                for (auto& slot : m_GameOverlayRetiredRenderTargets)
-                {
-                    if (slot.textureId)
-                        imguiService->removeTexture(slot.textureId);
-                }
+                m_GameOverlayRetiredRenderTargets.releaseAll(imguiService);
             }
         }
         m_GameOverlayActiveRenderTarget  = {};
         m_GameOverlayPendingRenderTarget = {};
-        m_GameOverlayRetiredRenderTargets.clear();
+        m_GameOverlayRetiredRenderTargets.releaseAll(ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() :
+                                                                    nullptr);
         m_GameOverlayStaticFrameValid    = false;
         m_GameOverlayLastRenderSignature = 0;
     }

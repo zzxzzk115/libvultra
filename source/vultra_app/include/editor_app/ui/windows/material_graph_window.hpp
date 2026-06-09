@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/render_target_pool.hpp"
 #include "editor_app/ui/editor_window.hpp"
 #include "editor_app/ui/graph_history.hpp"
 #include "editor_app/ui/mesh_selector.hpp"
@@ -38,13 +39,7 @@ namespace vultra_app
         void onDestroy(EditorContext& ctx) override;
 
     private:
-        struct RenderTargetSlot
-        {
-            std::optional<vultra::rhi::Texture> texture;
-            vultra::rhi::Extent2D               extent {};
-            vultra::IImGuiService::TextureID    textureId {};
-            uint64_t                            releaseFrame {0};
-        };
+        using RenderTargetSlot = ui::RenderTargetSlot;
 
         struct PinRef
         {
@@ -114,7 +109,7 @@ namespace vultra_app
         uint64_t                                m_LoadedWriteStamp {0};
 
         RenderTargetSlot              m_PreviewTarget;
-        std::vector<RenderTargetSlot> m_RetiredPreviewTargets;
+        ui::RetiredRenderTargets      m_RetiredPreviewTargets;
         ui::TextureSelectorState      m_TextureSelector;
         ui::MeshSelectorState         m_MeshSelector;
         vultra::World                 m_PreviewWorld;
