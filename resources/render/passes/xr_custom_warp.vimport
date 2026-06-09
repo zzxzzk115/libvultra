@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="script_lua"
+uid="3b847dd0c9c166ada07f18a90ccbd932"
+
+[source]
+file="render/passes/xr_custom_warp.lua"
+
+[output]
+file="imported/script_lua/render/passes/xr_custom_warp.lua"
+
+[params]
