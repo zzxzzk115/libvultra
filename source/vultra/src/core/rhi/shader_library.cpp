@@ -105,7 +105,31 @@ namespace vultra
             auto br = vshadersystem::extract_vshlib_blob(m_Lib, variantHash, stage);
             if (!br.isOk())
             {
-                VULTRA_CORE_WARN("[ShaderLibraryRuntime] Failed to extract vshlib blob: {}", br.error().message);
+                // Diagnose the miss: a same-keyHash entry under a different stage means a
+                // stage-value skew (e.g. the lib was built by a vshaderc whose ShaderStage
+                // enum differs from this binary's); a same-stage-but-no-keyHash situation
+                // means a variant/keyword/id-hash mismatch; neither means the entry is absent.
+                size_t        sameHash = 0, sameStage = 0;
+                vshadersystem::ShaderStage otherStage = vshadersystem::ShaderStage::eUnknown;
+                for (const auto& e : m_Lib.entries)
+                {
+                    if (e.keyHash == variantHash)
+                    {
+                        ++sameHash;
+                        otherStage = e.stage;
+                    }
+                    if (e.stage == stage)
+                        ++sameStage;
+                }
+                VULTRA_CORE_WARN("[ShaderLibraryRuntime] Failed to extract vshlib blob: {} "
+                                 "(variantHash={}, stage={}; entries={}, sameKeyHash={} (atStage={}), sameStage={})",
+                                 br.error().message,
+                                 variantHash,
+                                 static_cast<int>(stage),
+                                 m_Lib.entries.size(),
+                                 sameHash,
+                                 static_cast<int>(otherStage),
+                                 sameStage);
                 return std::nullopt;
             }
 

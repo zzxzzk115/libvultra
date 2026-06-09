@@ -21,7 +21,7 @@ namespace vultra
                     case ShaderType::eVertex:
                         return SS::eVert;
                     case ShaderType::eGeometry:
-                        return SS::eUnknown; // not supported by vshadersystem currently
+                        return SS::eGeom;
                     case ShaderType::eFragment:
                         return SS::eFrag;
                     case ShaderType::eCompute:
