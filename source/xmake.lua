@@ -336,7 +336,7 @@ target("vultra-runtime")
         set_basename("vultra-runtime")
     end
     add_includedirs("vultra_app/include")
-    add_files("vultra_app/src/runtime/**.cpp",
+    add_files("vultra_app/src/runtime/runtime_main.cpp",
               "vultra_app/src/vproject.cpp",
               "vultra_app/src/launch_options.cpp")
     add_deps("vultra")
