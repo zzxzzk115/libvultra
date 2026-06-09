@@ -845,13 +845,30 @@ namespace vultra
                  {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
                  {.name = "sourceView", .type = vrendergraph::ParamType::eString, .defaultValue = "left"},
                  {.name = "targetView", .type = vrendergraph::ParamType::eString, .defaultValue = "right"},
-                 {.name = "gridSize", .type = vrendergraph::ParamType::eInt, .defaultValue = 4},
-                 {.name = "warpStrength", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.035f},
+                 {.name        = "gridSize",
+                  .type        = vrendergraph::ParamType::eInt,
+                  .defaultValue = 1,
+                  .minValue    = 1,
+                  .maxValue    = 16},
+                 {.name        = "sideLenThreshold",
+                  .type        = vrendergraph::ParamType::eFloat,
+                  .defaultValue = 0.01f,
+                  .minValue    = 0.0f,
+                  .maxValue    = 0.5f},
+                 {.name = "useDepthAware", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
              });
         pass("XrPullPushInpaint",
              {"source"},
              {"color"},
-             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
+             {
+                 {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                 {.name = "useDepthAware", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                 {.name        = "depthThreshold",
+                  .type        = vrendergraph::ParamType::eFloat,
+                  .defaultValue = 0.01f,
+                  .minValue    = 0.0f,
+                  .maxValue    = 0.1f},
+             });
         pass("FinalComposition", {"source"}, {"target"});
         pass("RayTracingPrimary", {}, {"color"});
         pass("VisibilityBuffer", {}, {"visibility", "depth"});
@@ -2977,9 +2994,10 @@ namespace vultra
                                 settings.enabled    = true;
                                 settings.sourceView = params.get<std::string>("sourceView", settings.sourceView);
                                 settings.targetView = params.get<std::string>("targetView", settings.targetView);
-                                settings.gridSize = static_cast<uint32_t>(std::max(params.get<int>("gridSize", 4), 1));
-                                settings.warpStrength =
-                                    std::max(params.get<float>("warpStrength", settings.warpStrength), 0.0f);
+                                settings.gridSize = static_cast<uint32_t>(std::max(params.get<int>("gridSize", 1), 1));
+                                settings.sideLenThreshold =
+                                    std::max(params.get<float>("sideLenThreshold", settings.sideLenThreshold), 0.0f);
+                                settings.useDepthAware = params.get<bool>("useDepthAware", settings.useDepthAware);
                                 auto color = m_XrGeometryWarpPass.addPass(
                                     *ctx, passCtx.getInput("source"), passCtx.getInput("depth"), settings);
                                 if (color)
@@ -3006,7 +3024,10 @@ namespace vultra
                                 }
 
                                 XrViewSynthesisSettings settings;
-                                auto                    color =
+                                settings.useDepthAware = params.get<bool>("useDepthAware", settings.useDepthAware);
+                                settings.depthThreshold =
+                                    std::max(params.get<float>("depthThreshold", settings.depthThreshold), 0.0f);
+                                auto color =
                                     m_XrPullPushInpaintPass.addPass(*ctx, passCtx.getInput("source"), settings);
                                 if (color)
                                 {

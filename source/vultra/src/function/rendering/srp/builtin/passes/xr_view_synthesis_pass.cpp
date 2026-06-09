@@ -5,12 +5,17 @@
 #include "vultra/core/rhi/structs/geometry_info.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/core/rhi/texture.hpp"
+#include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/rendering/framework/resource_uploader.hpp"
+#include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
+#include "vultra/function/rendering/srp/render_view.hpp"
 
 #include <fg/FrameGraph.hpp>
 #include <glm/ext/vector_float2.hpp>
+#include <glm/mat4x4.hpp>
 
 #include <algorithm>
 #include <array>
@@ -25,12 +30,14 @@ namespace vultra
         constexpr auto GEOMETRY_WARP_PASS_NAME = "XRGeometryWarp";
 
         constexpr std::array<XrViewSynthesisPass::BackendInfo, 2> kWarpingBackends {{
-            {"geometry", "Geometry", "Fixed-grid geometry-based stereo warping."},
+            {"geometry",
+             "Geometry",
+             "Geometry-shader warping with disocclusion-hole detection (desktop/Vulkan profile)."},
             {"none", "None", "Forward source color without warping."},
         }};
 
         constexpr std::array<XrViewSynthesisPass::BackendInfo, 2> kInpaintingBackends {{
-            {"pull_push", "Pull Push", "Non-depth-aware pull-push repair using alpha validity."},
+            {"pull_push", "Pull Push", "Depth-aware pull-push repair using alpha validity."},
             {"none", "None", "Keep warped holes visible."},
         }};
 
@@ -61,12 +68,21 @@ namespace vultra
             uint32_t  sourceView {static_cast<uint32_t>(XrSynthesisView::eLeft)};
             uint32_t  targetView {static_cast<uint32_t>(XrSynthesisView::eRight)};
             uint32_t  gridSize {4};
-            float     warpStrength {0.035f};
+            float     sideLenThreshold {0.05f};
+            uint32_t  useDepthAware {1u};
+        };
+
+        // Matches XrWarpBlock in xr_view_synthesis_geometry_warp.vert (std140 UBO).
+        struct XrWarpBlock
+        {
+            glm::mat4 sourceInvViewProj {1.0f};
+            glm::mat4 targetViewProj[2] {glm::mat4 {1.0f}, glm::mat4 {1.0f}};
         };
 
         struct XrPullPushConstants
         {
             int32_t lod {0};
+            float   depthThreshold {0.0f};
         };
 
         [[nodiscard]] uint32_t divRoundUp(const uint32_t x, const uint32_t y) { return y == 0u ? x : (x + y - 1u) / y; }
@@ -163,10 +179,49 @@ namespace vultra
                                   targetView == "primary" ? 0u :
                                   targetView == "stereo"  ? 3u :
                                                              2u;
-        const auto warpStrength = std::max(settings.warpStrength, 0.0f);
+        const auto sideLenThreshold = std::max(settings.sideLenThreshold, 0.0f);
+        const auto useDepthAware    = settings.useDepthAware ? 1u : 0u;
+
+        // Build the source->target reprojection block from the per-eye cameras.
+        // Stereo uses both eye cameras; without them (mono/preview) the warp is an
+        // identity pass-through since there is no second viewpoint to synthesize.
+        const auto&    view     = ctx.view();
+        const uint32_t srcLayer = sourceViewId == 2u ? 1u : 0u;
+        const bool     haveStereoCameras =
+            view.multiviewCameraCount >= 2u && view.multiviewCameras[0] && view.multiviewCameras[1];
+
+        XrWarpBlock         warpBlock {};
+        const RenderCamera* srcCam = haveStereoCameras ? view.multiviewCameras[srcLayer] : view.camera;
+        if (srcCam)
+            warpBlock.sourceInvViewProj = srcCam->inverseViewProjection;
+        for (uint32_t i = 0; i < 2u; ++i)
+        {
+            const RenderCamera* tgt = haveStereoCameras ? view.multiviewCameras[i] : srcCam;
+            if (tgt)
+                warpBlock.targetViewProj[i] = tgt->viewProjection;
+        }
+        if (!haveStereoCameras)
+        {
+            static bool warnedMono = false;
+            if (!warnedMono)
+            {
+                warnedMono = true;
+                VULTRA_CORE_WARN(
+                    "[XrGeometryWarp] No stereo cameras available; warp passes source through (mono/preview).");
+            }
+        }
+
+        const auto warpBlockResource = uploadFrameGraphStruct(ctx.fg,
+                                                              ctx.frameResources,
+                                                              ctx.rd,
+                                                              "UploadXrWarpBlock",
+                                                              "XrWarpBlock",
+                                                              framegraph::BufferType::eUniformBuffer,
+                                                              warpBlock);
 
         struct PassData
         {
+            FrameGraphResource warpBlock;
             FrameGraphResource source;
             FrameGraphResource depth;
             FrameGraphResource warped;
@@ -175,9 +230,14 @@ namespace vultra
 
         const auto data = ctx.fg.addCallbackPass<PassData>(
             GEOMETRY_WARP_PASS_NAME,
-            [source, depth, sourceDesc, depthDesc](FrameGraph::Builder& builder, PassData& pd) {
+            [source, depth, sourceDesc, depthDesc, warpBlockResource](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
+                pd.warpBlock = builder.read(warpBlockResource,
+                                            framegraph::BindingInfo {
+                                                .location      = {.set = 1, .binding = 0},
+                                                .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                            });
                 pd.source = builder.read(source,
                                          framegraph::TextureRead {
                                              .binding =
@@ -207,7 +267,8 @@ namespace vultra
                                           framegraph::Attachment {
                                               .index       = 0,
                                               .imageAspect = rhi::ImageAspect::eColor,
-                                              .clearValue  = framegraph::ClearValue::eTransparentBlack,
+                                              // Uncovered pixels stay alpha=1 (hole) for the pull-push stage.
+                                              .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                           });
 
                 auto depthOutputDesc       = makeInheritedTextureDesc(sourceDesc, rhi::PixelFormat::eDepth32F);
@@ -219,7 +280,7 @@ namespace vultra
                                                    .clearValue  = framegraph::ClearValue::eOne,
                                                });
             },
-            [this, sourceDesc, vertexCount, gridSize, warpStrength, sourceViewId, targetViewId](
+            [this, sourceDesc, vertexCount, gridSize, sideLenThreshold, useDepthAware, sourceViewId, targetViewId](
                 const PassData&, FrameGraphPassResources&, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
@@ -236,19 +297,21 @@ namespace vultra
                     return;
 
                 XrGeometryWarpPushConstants pc {
-                    .resolution   = glm::vec2(static_cast<float>(sourceDesc.extent.width),
+                    .resolution       = glm::vec2(static_cast<float>(sourceDesc.extent.width),
                                             static_cast<float>(sourceDesc.extent.height)),
-                    .sourceView   = sourceViewId,
-                    .targetView   = targetViewId,
-                    .gridSize     = gridSize,
-                    .warpStrength = warpStrength,
+                    .sourceView       = sourceViewId,
+                    .targetView       = targetViewId,
+                    .gridSize         = gridSize,
+                    .sideLenThreshold = sideLenThreshold,
+                    .useDepthAware    = useDepthAware,
                 };
 
                 rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["bilinear"]);
                 rc.overrideSampler(rc.resourceSet[3][1], rc.ext.samplers["nearest"]);
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
-                rc.cb.pushConstants(rhi::ShaderStages::eVertex | rhi::ShaderStages::eFragment, 0, &pc);
+                rc.cb.pushConstants(
+                    rhi::ShaderStages::eVertex | rhi::ShaderStages::eGeometry | rhi::ShaderStages::eFragment, 0, &pc);
                 rc.cb.beginRendering(framebufferInfo)
                     .draw({.topology = rhi::PrimitiveTopology::eTriangleList, .numVertices = vertexCount})
                     .endRendering();
@@ -271,6 +334,16 @@ namespace vultra
             return {};
         }
 
+        auto geometryShader =
+            loadGeneralShader("xr_view_synthesis_geometry_warp.geom", vshadersystem::ShaderStage::eGeom, keywords);
+        if (!geometryShader)
+        {
+            // Geometry shaders are unavailable on the WebGPU/compatibility profile
+            // (warn-skipped by the toolchain). Select a different warp backend there.
+            VULTRA_CORE_ERROR("[XrGeometryWarpPass] Failed to load geometry shader (unsupported on this profile?)");
+            return {};
+        }
+
         auto fragmentShader =
             loadGeneralShader("xr_view_synthesis_geometry_warp.frag", vshadersystem::ShaderStage::eFrag, keywords);
         if (!fragmentShader)
@@ -286,6 +359,7 @@ namespace vultra
             .setInputAssembly({})
             .setTopology(rhi::PrimitiveTopology::eTriangleList)
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
+            .addBuiltinShader(rhi::ShaderType::eGeometry, *geometryShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
             .setDepthStencil({
                 .depthTest      = true,
@@ -305,7 +379,9 @@ namespace vultra
     XrPullPushMipData XrPullPyramidPass::addPass(FrameGraphBuildContext&  ctx,
                                                  const FrameGraphResource pyramid,
                                                  const uint32_t           lod,
-                                                 const rhi::Extent2D      dstExtent)
+                                                 const rhi::Extent2D      dstExtent,
+                                                 const bool               useDepthAware,
+                                                 const float              depthThreshold)
     {
         const auto pyramidDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(pyramid);
 
@@ -358,7 +434,8 @@ namespace vultra
                                           });
                 pd.pyramid        = builder.write(pyramid);
             },
-            [this, lod, passName](const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
+            [this, lod, passName, useDepthAware, depthThreshold](
+                const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -369,11 +446,12 @@ namespace vultra
 
                 assert(rc.framebufferInfo().has_value());
                 const auto  framebufferInfo = rc.framebufferInfo().value();
-                const auto* pipeline = getPipeline(rhi::getColorFormat(framebufferInfo, 0), framebufferInfo.viewMask);
+                const auto* pipeline =
+                    getPipeline(rhi::getColorFormat(framebufferInfo, 0), framebufferInfo.viewMask, useDepthAware);
                 if (!pipeline)
                     return;
 
-                XrPullPushConstants pc {.lod = static_cast<int32_t>(lod)};
+                XrPullPushConstants pc {.lod = static_cast<int32_t>(lod), .depthThreshold = depthThreshold};
 
                 auto& pyramidTexture = *resources.get<framegraph::FrameGraphTexture>(data.pyramid).texture;
                 rhi::prepareForReading(rc.cb, pyramidTexture, lod);
@@ -395,7 +473,8 @@ namespace vultra
     }
 
     rhi::GraphicsPipeline XrPullPyramidPass::createPipeline(const rhi::PixelFormat colorFormat,
-                                                            const uint32_t         viewMask) const
+                                                            const uint32_t         viewMask,
+                                                            const bool             useDepthAware) const
     {
         auto vertexShader = loadGeneralShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
@@ -406,6 +485,7 @@ namespace vultra
 
         rhi::ShaderLibraryRuntime::KeywordValues fragmentKeywords {
             {"USE_MULTIVIEW", viewMask != 0u ? 1u : 0u},
+            {"USE_DEPTH_AWARE", useDepthAware ? 1u : 0u},
         };
         auto fragmentShader =
             loadGeneralShader("xr_view_synthesis_pull.frag", vshadersystem::ShaderStage::eFrag, fragmentKeywords);
@@ -438,7 +518,9 @@ namespace vultra
     XrPullPushMipData XrPushPyramidPass::addPass(FrameGraphBuildContext&  ctx,
                                                  const FrameGraphResource pyramid,
                                                  const uint32_t           lod,
-                                                 const rhi::Extent2D      dstExtent)
+                                                 const rhi::Extent2D      dstExtent,
+                                                 const bool               useDepthAware,
+                                                 const float              depthThreshold)
     {
         const auto pyramidDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(pyramid);
 
@@ -480,7 +562,8 @@ namespace vultra
                                           });
                 pd.pyramid        = builder.write(pyramid);
             },
-            [this, lod, passName](const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
+            [this, lod, passName, useDepthAware, depthThreshold](
+                const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -491,11 +574,12 @@ namespace vultra
 
                 assert(rc.framebufferInfo().has_value());
                 const auto  framebufferInfo = rc.framebufferInfo().value();
-                const auto* pipeline = getPipeline(rhi::getColorFormat(framebufferInfo, 0), framebufferInfo.viewMask);
+                const auto* pipeline =
+                    getPipeline(rhi::getColorFormat(framebufferInfo, 0), framebufferInfo.viewMask, useDepthAware);
                 if (!pipeline)
                     return;
 
-                XrPullPushConstants pc {.lod = static_cast<int32_t>(lod)};
+                XrPullPushConstants pc {.lod = static_cast<int32_t>(lod), .depthThreshold = depthThreshold};
 
                 auto& pyramidTexture = *resources.get<framegraph::FrameGraphTexture>(data.pyramid).texture;
                 rhi::prepareForReading(rc.cb, pyramidTexture, lod);
@@ -515,7 +599,8 @@ namespace vultra
     }
 
     rhi::GraphicsPipeline XrPushPyramidPass::createPipeline(const rhi::PixelFormat colorFormat,
-                                                            const uint32_t         viewMask) const
+                                                            const uint32_t         viewMask,
+                                                            const bool             useDepthAware) const
     {
         auto vertexShader = loadGeneralShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
@@ -526,6 +611,7 @@ namespace vultra
 
         rhi::ShaderLibraryRuntime::KeywordValues fragmentKeywords {
             {"USE_MULTIVIEW", viewMask != 0u ? 1u : 0u},
+            {"USE_DEPTH_AWARE", useDepthAware ? 1u : 0u},
         };
         auto fragmentShader =
             loadGeneralShader("xr_view_synthesis_push.frag", vshadersystem::ShaderStage::eFrag, fragmentKeywords);
@@ -555,11 +641,13 @@ namespace vultra
 
     std::string_view XrPullPushInpaintPass::name() const { return "pull_push"; }
 
-    FrameGraphResource XrPullPushInpaintPass::addPass(FrameGraphBuildContext&  ctx,
-                                                      const FrameGraphResource warped,
-                                                      const XrViewSynthesisSettings&)
+    FrameGraphResource XrPullPushInpaintPass::addPass(FrameGraphBuildContext&        ctx,
+                                                      const FrameGraphResource       warped,
+                                                      const XrViewSynthesisSettings& settings)
     {
-        const auto warpedDesc    = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(warped);
+        const auto useDepthAware  = settings.useDepthAware;
+        const auto depthThreshold = std::max(settings.depthThreshold, 0.0f);
+        const auto warpedDesc     = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(warped);
         const auto sizes         = makeMipSizes(warpedDesc.extent);
         const auto mipLevels     = static_cast<uint32_t>(sizes.size());
         auto       pyramidDesc   = makeInheritedTextureDesc(warpedDesc, rhi::PixelFormat::eRGBA16F);
@@ -605,12 +693,12 @@ namespace vultra
 
         FrameGraphResource pyramid = initData.pyramid;
         for (uint32_t lod = 0u; lod + 1u < mipLevels; ++lod)
-            pyramid = m_PushPass.addPass(ctx, pyramid, lod, sizes[lod + 1u]).pyramid;
+            pyramid = m_PushPass.addPass(ctx, pyramid, lod, sizes[lod + 1u], useDepthAware, depthThreshold).pyramid;
 
         FrameGraphResource repaired = pyramid;
         for (uint32_t lod = mipLevels - 1u; lod > 0u; --lod)
         {
-            const auto pullData = m_PullPass.addPass(ctx, repaired, lod - 1u, sizes[lod - 1u]);
+            const auto pullData = m_PullPass.addPass(ctx, repaired, lod - 1u, sizes[lod - 1u], useDepthAware, depthThreshold);
             repaired            = pullData.pyramid;
             if (lod == 1u)
                 return pullData.output;

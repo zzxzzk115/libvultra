@@ -1207,9 +1207,11 @@ namespace vultra
             queueCreateInfo.pQueuePriorities = &queuePriority;
 
             const auto                  physicalDeviceFeatures = backendOf(m_Backend).m_PhysicalDevice.getFeatures();
-            vk::PhysicalDeviceFeatures2 supportedFeatures2 {};
+            vk::PhysicalDeviceFeatures2        supportedFeatures2 {};
             vk::PhysicalDeviceVulkan12Features supportedVk12Features {};
-            supportedFeatures2.pNext = &supportedVk12Features;
+            vk::PhysicalDeviceVulkan11Features supportedVk11Features {};
+            supportedFeatures2.pNext    = &supportedVk12Features;
+            supportedVk12Features.pNext = &supportedVk11Features;
             backendOf(m_Backend).m_PhysicalDevice.getFeatures2(&supportedFeatures2);
             const bool useVulkan13CoreFeatures =
                 !backendOf(m_Backend).m_UseKhrDynamicRendering && !backendOf(m_Backend).m_UseKhrSynchronization2;
@@ -1297,6 +1299,11 @@ namespace vultra
                               RenderDeviceFeatureReportFlagBits::eMultiview))
             {
                 vk11Features.multiview = VK_TRUE;
+                // Geometry shaders inside a multiview render pass (e.g. the XR
+                // single-graph-stereo geometry warp) require this feature; enable it
+                // only when both the geometry shader feature and device support exist.
+                if (enabledFeatures.geometryShader && supportedVk11Features.multiviewGeometryShader)
+                    vk11Features.multiviewGeometryShader = VK_TRUE;
             }
             featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk11Features));
 

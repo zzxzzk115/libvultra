@@ -18,8 +18,18 @@ namespace vultra
         std::string sourceView {"left"};
         std::string targetView {"right"};
 
-        uint32_t gridSize {4};
-        float    warpStrength {0.035f};
+        // Geometry warp: grid cell size in pixels, and the warped-edge NDC length
+        // above which a stretched primitive is treated as a disocclusion hole.
+        // Defaults match pixelwise-viewpoint-warping GraphicsWarpingSettings
+        // (gridSize 1 = per-pixel mesh, sideLenThreshold 0.01).
+        uint32_t gridSize {1};
+        float    sideLenThreshold {0.01f};
+
+        // Shared depth-aware mode (warp hole classification + depth-aware pull-push)
+        // and the pull-push depth-difference selection threshold. Defaults match the
+        // reference InpaintingSettings (useDepthAware true, depthThreshold 0.01).
+        bool  useDepthAware {true};
+        float depthThreshold {0.01f};
     };
 
     struct XrPullPushMipData
@@ -74,11 +84,16 @@ namespace vultra
     public:
         XrPullPyramidPass();
 
-        [[nodiscard]] XrPullPushMipData
-        addPass(FrameGraphBuildContext& ctx, FrameGraphResource pyramid, uint32_t lod, rhi::Extent2D dstExtent);
+        [[nodiscard]] XrPullPushMipData addPass(FrameGraphBuildContext& ctx,
+                                                FrameGraphResource      pyramid,
+                                                uint32_t                lod,
+                                                rhi::Extent2D           dstExtent,
+                                                bool                    useDepthAware,
+                                                float                   depthThreshold);
 
     private:
-        [[nodiscard]] rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, uint32_t viewMask) const;
+        [[nodiscard]] rhi::GraphicsPipeline
+        createPipeline(rhi::PixelFormat colorFormat, uint32_t viewMask, bool useDepthAware) const;
     };
 
     class XrPushPyramidPass final : public rhi::RenderPass<XrPushPyramidPass>
@@ -88,11 +103,16 @@ namespace vultra
     public:
         XrPushPyramidPass();
 
-        [[nodiscard]] XrPullPushMipData
-        addPass(FrameGraphBuildContext& ctx, FrameGraphResource pyramid, uint32_t lod, rhi::Extent2D dstExtent);
+        [[nodiscard]] XrPullPushMipData addPass(FrameGraphBuildContext& ctx,
+                                                FrameGraphResource      pyramid,
+                                                uint32_t                lod,
+                                                rhi::Extent2D           dstExtent,
+                                                bool                    useDepthAware,
+                                                float                   depthThreshold);
 
     private:
-        [[nodiscard]] rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, uint32_t viewMask) const;
+        [[nodiscard]] rhi::GraphicsPipeline
+        createPipeline(rhi::PixelFormat colorFormat, uint32_t viewMask, bool useDepthAware) const;
     };
 
     class XrPullPushInpaintPass final : public IXrInpaintingBackend
