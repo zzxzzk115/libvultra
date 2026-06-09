@@ -12,21 +12,14 @@ namespace vultra
 {
     MeshletFeature::MeshletFeature()
     {
-        m_CoarseInstanceCullPass = new CoarseInstanceCullPass();
-        m_MeshletCullPass        = new MeshletCullPass();
-        m_BuildIndirectPass      = new BuildIndirectPass();
-        m_DrawsetBuildPass       = new DrawsetBuildPass();
-        m_DepthPrePass           = new DepthPrePass();
+        m_CoarseInstanceCullPass = std::make_unique<CoarseInstanceCullPass>();
+        m_MeshletCullPass        = std::make_unique<MeshletCullPass>();
+        m_BuildIndirectPass      = std::make_unique<BuildIndirectPass>();
+        m_DrawsetBuildPass       = std::make_unique<DrawsetBuildPass>();
+        m_DepthPrePass           = std::make_unique<DepthPrePass>();
     }
 
-    MeshletFeature::~MeshletFeature()
-    {
-        delete m_CoarseInstanceCullPass;
-        delete m_MeshletCullPass;
-        delete m_BuildIndirectPass;
-        delete m_DrawsetBuildPass;
-        delete m_DepthPrePass;
-    }
+    MeshletFeature::~MeshletFeature() = default;
 
     void MeshletFeature::addPasses(FrameGraphBuildContext& ctx)
     {

@@ -1,6 +1,7 @@
 #include "vultra/function/rendering/srp/builtin/passes/visibility_buffer_pass.hpp"
 
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/meshlet_draw_push_constants.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
@@ -18,14 +19,6 @@ namespace vultra
     namespace
     {
         constexpr auto PASS_NAME = "VisibilityBufferPass";
-
-        struct VisibilityPushConstants
-        {
-            uint32_t maxDraws {0};
-            uint32_t maxMeshlets {0};
-            uint32_t maxMeshletVertices {0};
-            uint32_t maxMeshletTriangles {0};
-        };
     }
 
     FrameGraphResource VisibilityBufferPass::addPass(FrameGraphBuildContext& ctx)
@@ -181,7 +174,7 @@ namespace vultra
                         rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->skinMatrixBuffer.get()};
                 rc.cb.beginRendering(framebufferInfo).bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
-                const VisibilityPushConstants pc {
+                const MeshletDrawPushConstants pc {
                     .maxDraws            = gpuSceneView->maxDraws,
                     .maxMeshlets         = static_cast<uint32_t>(gpuSceneDatabase->resources->meshlets.cpuMeshlets.size()),
                     .maxMeshletVertices  = static_cast<uint32_t>(

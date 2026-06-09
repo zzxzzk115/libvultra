@@ -2,6 +2,8 @@
 
 #include "vultra/function/rendering/srp/render_feature.hpp"
 
+#include <memory>
+
 namespace vultra
 {
     class GeneralGaussianSplatPreprocessPass;
@@ -19,8 +21,8 @@ namespace vultra
         void addPasses(FrameGraphBuildContext& ctx) override;
 
     private:
-        GeneralGaussianSplatPreprocessPass*          m_PreprocessPass {nullptr};
-        GeneralGaussianSplatRenderPass*              m_RenderPass {nullptr};
-        GeneralGaussianSplatFoveatedCompositePass*   m_FoveatedCompositePass {nullptr};
+        std::unique_ptr<GeneralGaussianSplatPreprocessPass>        m_PreprocessPass;
+        std::unique_ptr<GeneralGaussianSplatRenderPass>           m_RenderPass;
+        std::unique_ptr<GeneralGaussianSplatFoveatedCompositePass> m_FoveatedCompositePass;
     };
 } // namespace vultra

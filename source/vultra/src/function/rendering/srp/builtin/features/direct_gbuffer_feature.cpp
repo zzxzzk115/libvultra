@@ -41,21 +41,14 @@ namespace vultra
 
     DirectGBufferFeature::DirectGBufferFeature(IRenderService& renderService) : m_RenderService(renderService)
     {
-        m_GBufferPass    = new DirectGBufferPass();
-        m_ShadowPass     = new ShadowMapPass();
-        m_SsaoPass       = new SsaoPass();
-        m_LightingPass   = new DeferredLightingPass();
-        m_SkyboxPass     = new SkyboxPass();
+        m_GBufferPass  = std::make_unique<DirectGBufferPass>();
+        m_ShadowPass   = std::make_unique<ShadowMapPass>();
+        m_SsaoPass     = std::make_unique<SsaoPass>();
+        m_LightingPass = std::make_unique<DeferredLightingPass>();
+        m_SkyboxPass   = std::make_unique<SkyboxPass>();
     }
 
-    DirectGBufferFeature::~DirectGBufferFeature()
-    {
-        delete m_GBufferPass;
-        delete m_ShadowPass;
-        delete m_SsaoPass;
-        delete m_LightingPass;
-        delete m_SkyboxPass;
-    }
+    DirectGBufferFeature::~DirectGBufferFeature() = default;
 
     void DirectGBufferFeature::addPasses(FrameGraphBuildContext& ctx)
     {

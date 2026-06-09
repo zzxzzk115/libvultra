@@ -2,6 +2,8 @@
 
 #include "vultra/function/rendering/srp/render_feature.hpp"
 
+#include <memory>
+
 namespace vultra
 {
     class CoarseInstanceCullPass;
@@ -21,10 +23,10 @@ namespace vultra
         void addPasses(FrameGraphBuildContext& ctx) override;
 
     private:
-        CoarseInstanceCullPass* m_CoarseInstanceCullPass {nullptr};
-        MeshletCullPass*        m_MeshletCullPass {nullptr};
-        BuildIndirectPass*      m_BuildIndirectPass {nullptr};
-        DrawsetBuildPass*       m_DrawsetBuildPass {nullptr};
-        DepthPrePass*           m_DepthPrePass {nullptr};
+        std::unique_ptr<CoarseInstanceCullPass> m_CoarseInstanceCullPass;
+        std::unique_ptr<MeshletCullPass>        m_MeshletCullPass;
+        std::unique_ptr<BuildIndirectPass>      m_BuildIndirectPass;
+        std::unique_ptr<DrawsetBuildPass>       m_DrawsetBuildPass;
+        std::unique_ptr<DepthPrePass>           m_DepthPrePass;
     };
 } // namespace vultra

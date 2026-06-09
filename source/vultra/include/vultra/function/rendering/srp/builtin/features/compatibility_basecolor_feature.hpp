@@ -2,6 +2,8 @@
 
 #include "vultra/function/rendering/srp/render_feature.hpp"
 
+#include <memory>
+
 namespace vultra
 {
     class CompatibilityBaseColorPass;
@@ -17,6 +19,6 @@ namespace vultra
         void addPasses(FrameGraphBuildContext& ctx) override;
 
     private:
-        CompatibilityBaseColorPass* m_BaseColorPass {nullptr};
+        std::unique_ptr<CompatibilityBaseColorPass> m_BaseColorPass;
     };
 } // namespace vultra

@@ -1,6 +1,7 @@
 #include "vultra/function/rendering/srp/builtin/passes/thin_gbuffer_pass.hpp"
 
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/meshlet_draw_push_constants.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
@@ -17,14 +18,6 @@ namespace vultra
     namespace
     {
         constexpr auto PASS_NAME = "ThinGBufferPass";
-
-        struct ThinGBufferPushConstants
-        {
-            uint32_t maxDraws {0};
-            uint32_t maxMeshlets {0};
-            uint32_t maxMeshletVertices {0};
-            uint32_t maxMeshletTriangles {0};
-        };
     }
 
     FrameGraphResource ThinGBufferPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource visibility)
@@ -235,7 +228,7 @@ namespace vultra
                 rc.overrideSampler(rc.resourceSet[3][1], rc.ext.samplers["nearest"]);
                 rc.cb.beginRendering(framebufferInfo).bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
-                const ThinGBufferPushConstants pc {
+                const MeshletDrawPushConstants pc {
                     .maxDraws            = gpuSceneView->maxDraws,
                     .maxMeshlets         = static_cast<uint32_t>(gpuSceneDatabase->resources->meshlets.cpuMeshlets.size()),
                     .maxMeshletVertices  = static_cast<uint32_t>(

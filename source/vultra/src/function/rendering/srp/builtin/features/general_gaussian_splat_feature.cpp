@@ -24,17 +24,12 @@ namespace vultra
 
     GeneralGaussianSplatFeature::GeneralGaussianSplatFeature()
     {
-        m_PreprocessPass        = new GeneralGaussianSplatPreprocessPass();
-        m_RenderPass            = new GeneralGaussianSplatRenderPass();
-        m_FoveatedCompositePass = new GeneralGaussianSplatFoveatedCompositePass();
+        m_PreprocessPass        = std::make_unique<GeneralGaussianSplatPreprocessPass>();
+        m_RenderPass            = std::make_unique<GeneralGaussianSplatRenderPass>();
+        m_FoveatedCompositePass = std::make_unique<GeneralGaussianSplatFoveatedCompositePass>();
     }
 
-    GeneralGaussianSplatFeature::~GeneralGaussianSplatFeature()
-    {
-        delete m_FoveatedCompositePass;
-        delete m_RenderPass;
-        delete m_PreprocessPass;
-    }
+    GeneralGaussianSplatFeature::~GeneralGaussianSplatFeature() = default;
 
     void GeneralGaussianSplatFeature::addPasses(FrameGraphBuildContext& ctx)
     {

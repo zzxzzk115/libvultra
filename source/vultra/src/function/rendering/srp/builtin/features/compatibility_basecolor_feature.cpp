@@ -8,10 +8,10 @@ namespace vultra
 {
     CompatibilityBaseColorFeature::CompatibilityBaseColorFeature()
     {
-        m_BaseColorPass = new CompatibilityBaseColorPass();
+        m_BaseColorPass = std::make_unique<CompatibilityBaseColorPass>();
     }
 
-    CompatibilityBaseColorFeature::~CompatibilityBaseColorFeature() { delete m_BaseColorPass; }
+    CompatibilityBaseColorFeature::~CompatibilityBaseColorFeature() = default;
 
     void CompatibilityBaseColorFeature::addPasses(FrameGraphBuildContext& ctx)
     {

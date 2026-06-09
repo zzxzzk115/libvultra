@@ -6,9 +6,12 @@
 
 namespace vultra
 {
-    FinalCompositionFeature::FinalCompositionFeature() { m_FinalCompositionPass = new FinalCompositionPass(); }
+    FinalCompositionFeature::FinalCompositionFeature()
+    {
+        m_FinalCompositionPass = std::make_unique<FinalCompositionPass>();
+    }
 
-    FinalCompositionFeature::~FinalCompositionFeature() { delete m_FinalCompositionPass; }
+    FinalCompositionFeature::~FinalCompositionFeature() = default;
 
     void FinalCompositionFeature::addPasses(FrameGraphBuildContext& ctx)
     {

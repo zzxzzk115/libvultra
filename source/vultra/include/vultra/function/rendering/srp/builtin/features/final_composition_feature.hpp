@@ -2,6 +2,8 @@
 
 #include "vultra/function/rendering/srp/render_feature.hpp"
 
+#include <memory>
+
 namespace vultra
 {
     class FinalCompositionPass;
@@ -17,6 +19,6 @@ namespace vultra
         void addPasses(FrameGraphBuildContext& ctx) override;
 
     private:
-        FinalCompositionPass* m_FinalCompositionPass {nullptr};
+        std::unique_ptr<FinalCompositionPass> m_FinalCompositionPass;
     };
 } // namespace vultra

@@ -2,6 +2,8 @@
 
 #include "vultra/function/rendering/srp/render_feature.hpp"
 
+#include <memory>
+
 namespace vultra
 {
     class ThinGBufferPass;
@@ -18,7 +20,7 @@ namespace vultra
         void addPasses(FrameGraphBuildContext& ctx) override;
 
     private:
-        VisibilityBufferPass* m_VisibilityBufferPass {nullptr};
-        ThinGBufferPass*      m_ThinGBufferPass {nullptr};
+        std::unique_ptr<VisibilityBufferPass> m_VisibilityBufferPass;
+        std::unique_ptr<ThinGBufferPass>      m_ThinGBufferPass;
     };
 } // namespace vultra

@@ -23,6 +23,7 @@
 #include <vtask/task_set.hpp>
 
 #include <atomic>
+#include <functional>
 #include <mutex>
 #include <memory>
 #include <string>
@@ -150,7 +151,9 @@ namespace vultra
 
         bool resolveUUIDToUri(const CoreUUID& uuid, std::string& outUri) const;
         bool resolveUriToUUID(std::string_view uri, CoreUUID& outUUID) const;
-        vbase::Result<std::vector<std::byte>, std::string> readTextureAssetBytes(std::string_view uri);
+        // Generic asset byte reader. For ordinary URIs this is just a VFS read; builtin-texture URIs get
+        // special on-disk/pack/embedded-resource resolution (the only texture-specific branch inside).
+        vbase::Result<std::vector<std::byte>, std::string> readAssetBytes(std::string_view uri);
         void enqueueUploadOnce(UploadCmd::Kind kind, const CoreUUID& uuid, std::atomic_bool& queuedFlag);
         void collectFinishedCpuLoadTasks();
         void waitForCpuLoadTasks();
@@ -158,6 +161,48 @@ namespace vultra
         void startTextureCpuLoadAsync(AssetRecord<vasset::VTexture, resource::GpuTexture>& rec, const CoreUUID& uuid);
         void startGaussianSplatCpuLoadAsync(AssetRecord<vasset::VGaussianSplat, resource::GpuGaussianSplat>& rec,
                                             const CoreUUID& uuid);
+
+        // Shared CPU async-load lifecycle for all GPU asset types: resolve uri -> schedule a retrying
+        // read+parse task -> on success transition the record and enqueue the GPU upload. Only the byte
+        // reader, the parser, and the upload kind differ per asset type, so the three start*CpuLoadAsync
+        // wrappers above inject those and share this body. ReadFn is
+        // vbase::Result<std::vector<std::byte>, std::string>(std::string_view uri); ParseFn is
+        // std::unique_ptr<TCpu>(std::string_view uri, std::vector<std::byte>& bytes) (null on failure).
+        template<typename TCpu, typename TGpu, typename ReadFn, typename ParseFn>
+        void startAssetCpuLoadAsync(AssetRecord<TCpu, TGpu>& rec,
+                                    const CoreUUID&          uuid,
+                                    UploadCmd::Kind          kind,
+                                    const char*              logName,
+                                    ReadFn                   readFn,
+                                    ParseFn                  parseFn);
+
+        // Shared async-load entry for the GPU asset types: find/create the cache record, then drive the
+        // CPU-load -> upload-enqueue state machine. Only the cache, the CPU-load starter, and the upload
+        // kind differ; the three loadXxxAsync wrappers inject those. StartFn is
+        // void(AssetRecord<TCpu, TGpu>& rec, const CoreUUID& uuid).
+        template<typename TCpu, typename TGpu, uint32_t ShardCount, typename StartFn>
+        AssetHandle<TCpu, TGpu> loadGpuAssetAsync(const CoreUUID&                     uuid,
+                                                  AssetCache<TCpu, TGpu, ShardCount>& cache,
+                                                  UploadCmd::Kind                     kind,
+                                                  StartFn                             startCpuLoad);
+
+        // Shared sync-load entry for the GPU asset types: find/create record, return if already resident,
+        // otherwise run the blocking CPU read+parse and enqueue + drain the upload immediately. ReadFn and
+        // ParseFn match startAssetCpuLoadAsync's (the per-type byte reader and null-on-failure parser).
+        template<typename TCpu, typename TGpu, uint32_t ShardCount, typename ReadFn, typename ParseFn>
+        AssetHandle<TCpu, TGpu> loadGpuAssetSync(const CoreUUID&                     uuid,
+                                                 AssetCache<TCpu, TGpu, ShardCount>& cache,
+                                                 UploadCmd::Kind                     kind,
+                                                 const char*                         logName,
+                                                 ReadFn                              readFn,
+                                                 ParseFn                             parseFn);
+
+        // Shared GPU-upload skeleton for draining the upload queue: find the record, gate on state, mark it
+        // uploading, and run `upload(rec)` only when a CPU copy exists (else mark failed). `upload` performs
+        // the type-specific GPU upload, stores the gpuIndex, sets eReady, and releases the CPU copy per
+        // policy. UploadFn is void(AssetRecord<TCpu, TGpu>& rec).
+        template<typename TCpu, typename TGpu, uint32_t ShardCount, typename UploadFn>
+        void processUpload(AssetCache<TCpu, TGpu, ShardCount>& cache, const CoreUUID& uuid, UploadFn upload);
         uint32_t resolveBindlessTextureIndexAsync(const CoreUUID& texUUID);
         bool     materialTextureDependenciesReady(const vasset::VMaterial& material);
         bool     refreshGpuMaterialParams(uint32_t materialIndex, const vasset::VMaterial& material);

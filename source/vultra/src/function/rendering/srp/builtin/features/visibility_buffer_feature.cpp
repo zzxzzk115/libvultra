@@ -9,15 +9,11 @@ namespace vultra
 {
     VisibilityBufferFeature::VisibilityBufferFeature()
     {
-        m_VisibilityBufferPass = new VisibilityBufferPass();
-        m_ThinGBufferPass      = new ThinGBufferPass();
+        m_VisibilityBufferPass = std::make_unique<VisibilityBufferPass>();
+        m_ThinGBufferPass      = std::make_unique<ThinGBufferPass>();
     }
 
-    VisibilityBufferFeature::~VisibilityBufferFeature()
-    {
-        delete m_VisibilityBufferPass;
-        delete m_ThinGBufferPass;
-    }
+    VisibilityBufferFeature::~VisibilityBufferFeature() = default;
 
     void VisibilityBufferFeature::addPasses(FrameGraphBuildContext& ctx)
     {

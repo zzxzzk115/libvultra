@@ -15,23 +15,15 @@ namespace vultra
 {
     BuiltinScreenSpaceFeature::BuiltinScreenSpaceFeature(IRenderService& renderService) : m_RenderService(renderService)
     {
-        m_SsrPass  = new SsrPass();
-        m_SsrCompositePass = new SsrCompositePass();
-        m_ToneMappingPass = new ToneMappingPass();
-        m_SelectionOutlinePass = new SelectionOutlinePass();
-        m_FxaaPass = new FxaaPass();
-        m_UiOverlayPass = new UiOverlayPass();
+        m_SsrPass              = std::make_unique<SsrPass>();
+        m_SsrCompositePass     = std::make_unique<SsrCompositePass>();
+        m_ToneMappingPass      = std::make_unique<ToneMappingPass>();
+        m_SelectionOutlinePass = std::make_unique<SelectionOutlinePass>();
+        m_FxaaPass             = std::make_unique<FxaaPass>();
+        m_UiOverlayPass        = std::make_unique<UiOverlayPass>();
     }
 
-    BuiltinScreenSpaceFeature::~BuiltinScreenSpaceFeature()
-    {
-        delete m_SsrPass;
-        delete m_SsrCompositePass;
-        delete m_ToneMappingPass;
-        delete m_SelectionOutlinePass;
-        delete m_FxaaPass;
-        delete m_UiOverlayPass;
-    }
+    BuiltinScreenSpaceFeature::~BuiltinScreenSpaceFeature() = default;
 
     void BuiltinScreenSpaceFeature::addPasses(FrameGraphBuildContext& ctx)
     {

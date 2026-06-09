@@ -5,6 +5,7 @@
 #include "vultra/core/rhi/structs/render_mesh.hpp"
 #include "vultra/core/rhi/structs/vertex_attributes.hpp"
 #include "vultra/function/asset/builtin_assets.hpp"
+#include "vultra/function/asset/builtin_assets_io.hpp"
 #include "vultra/function/asset/asset_memory_estimate.hpp"
 #include "vultra/function/asset/builtin_resource_ids.hpp"
 #include "vultra/function/asset/mesh_vertex_packing.hpp"
@@ -54,16 +55,13 @@
 #include <Windows.h>
 #endif
 
-#if !defined(_WIN32) && !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
-extern "C"
-{
-    extern const std::byte vultra_builtin_citrus_orchard_sky_texture_start[];
-    extern const std::byte vultra_builtin_citrus_orchard_sky_texture_end[];
-}
-#endif
 
 namespace vultra
 {
+    // Builtin-asset URI classification + loading was split out to builtin_assets_io.{hpp,cpp}; bring those
+    // helpers into scope so the existing unqualified call sites keep resolving.
+    using namespace asset_io;
+
     namespace
     {
         constexpr uint32_t kAssetLoadMaxAttempts = 3;
@@ -95,195 +93,6 @@ namespace vultra
             });
         }
 
-        bool isBuiltinCitrusOrchardSkyTextureUri(std::string_view uri)
-        {
-            return uri == kBuiltinCitrusOrchardSkyTextureUri;
-        }
-
-        bool isBuiltinTextureUri(std::string_view uri)
-        {
-            return uri.starts_with(kBuiltinTextureUriPrefix);
-        }
-
-        bool isBuiltinMaterialUri(std::string_view uri)
-        {
-            return uri.starts_with(kBuiltinMaterialUriPrefix);
-        }
-
-        std::filesystem::path builtinTexturePathForUri(std::string_view uri)
-        {
-            if (!isBuiltinTextureUri(uri))
-                return {};
-            const auto rel = std::string(uri.substr(kBuiltinTextureUriPrefix.size()));
-            return (std::filesystem::path("builtin") / "textures" / std::filesystem::path(rel)).lexically_normal();
-        }
-
-        std::filesystem::path builtinMaterialPathForUri(std::string_view uri)
-        {
-            if (!isBuiltinMaterialUri(uri))
-                return {};
-            const auto rel = std::string(uri.substr(kBuiltinMaterialUriPrefix.size()));
-            return (std::filesystem::path("builtin") / "materials" / std::filesystem::path(rel)).lexically_normal();
-        }
-
-        vbase::Result<std::string, std::string> readBuiltinTextFile(const std::filesystem::path& path)
-        {
-            std::ifstream file(path, std::ios::binary | std::ios::ate);
-            if (!file)
-                return vbase::Result<std::string, std::string>::err("builtin text asset not found");
-
-            const auto  size = static_cast<std::streamsize>(file.tellg());
-            std::string text(static_cast<size_t>(std::max<std::streamsize>(size, 0)), '\0');
-            file.seekg(0);
-            if (!text.empty() && !file.read(text.data(), size))
-                return vbase::Result<std::string, std::string>::err("failed to read builtin text asset");
-            return vbase::Result<std::string, std::string>::ok(std::move(text));
-        }
-
-        bool isLoadableBuiltinTexturePath(const std::filesystem::path& path)
-        {
-            const auto ext = path.extension().generic_string();
-            return ext == ".vtexture" || ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" ||
-                   ext == ".tga" || ext == ".hdr" || ext == ".pic" || ext == ".exr" || ext == ".ktx" ||
-                   ext == ".ktx2" || ext == ".dds";
-        }
-
-        std::string builtinTextureUriForPath(const std::filesystem::path& path)
-        {
-            std::error_code ec;
-            const auto rel = std::filesystem::relative(path.lexically_normal(),
-                                                       (std::filesystem::path("builtin") / "textures").lexically_normal(),
-                                                       ec);
-            if (ec || rel.empty())
-                return {};
-            return std::string(kBuiltinTextureUriPrefix) + rel.generic_string();
-        }
-
-        std::string builtinTextureUriForUuid(const CoreUUID& uuid)
-        {
-            if (uuid == builtinCitrusOrchardSkyTextureUuid())
-                return std::string(kBuiltinCitrusOrchardSkyTextureUri);
-
-            const auto root = std::filesystem::path("builtin") / "textures";
-            std::error_code ec;
-            if (!std::filesystem::exists(root, ec) || ec)
-                return {};
-            for (auto it = std::filesystem::recursive_directory_iterator(
-                     root, std::filesystem::directory_options::skip_permission_denied, ec);
-                 it != std::filesystem::recursive_directory_iterator {};
-                 it.increment(ec))
-            {
-                if (ec)
-                {
-                    ec.clear();
-                    continue;
-                }
-                const auto& entry = *it;
-                if (!entry.is_regular_file(ec) || ec || !isLoadableBuiltinTexturePath(entry.path()))
-                {
-                    ec.clear();
-                    continue;
-                }
-                const auto uri = builtinTextureUriForPath(entry.path());
-                if (!uri.empty() && builtinTextureUuidForUri(uri) == uuid)
-                    return uri;
-            }
-            return {};
-        }
-
-        vbase::Result<std::vector<std::byte>, std::string> readResourceBuiltinTextureBytes(std::string_view uri)
-        {
-            if (!isBuiltinCitrusOrchardSkyTextureUri(uri))
-                return vbase::Result<std::vector<std::byte>, std::string>::err("builtin texture resource not found");
-
-#if defined(_WIN32)
-            HMODULE module = GetModuleHandleW(nullptr);
-            HRSRC   res    = FindResourceW(module,
-                                           MAKEINTRESOURCEW(kBuiltinResourceCitrusOrchardSkyTexture),
-                                           MAKEINTRESOURCEW(10));
-            if (!res)
-                return vbase::Result<std::vector<std::byte>, std::string>::err("builtin texture resource not found");
-
-            HGLOBAL loaded = LoadResource(module, res);
-            const auto* data = loaded ? static_cast<const std::byte*>(LockResource(loaded)) : nullptr;
-            const DWORD size = SizeofResource(module, res);
-            if (!data || size == 0)
-                return vbase::Result<std::vector<std::byte>, std::string>::err("builtin texture resource is empty");
-
-            std::vector<std::byte> bytes(size);
-            std::memcpy(bytes.data(), data, size);
-            return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(bytes));
-#elif !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
-            const auto* begin = vultra_builtin_citrus_orchard_sky_texture_start;
-            const auto* end   = vultra_builtin_citrus_orchard_sky_texture_end;
-            if (!begin || !end || end <= begin)
-                return vbase::Result<std::vector<std::byte>, std::string>::err("builtin texture resource is empty");
-
-            std::vector<std::byte> bytes(static_cast<size_t>(end - begin));
-            std::memcpy(bytes.data(), begin, bytes.size());
-            return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(bytes));
-#else
-            return vbase::Result<std::vector<std::byte>, std::string>::err("builtin texture resource not available");
-#endif
-        }
-
-        vasset::VTextureFileFormat textureFileFormatForExtension(const std::filesystem::path& path)
-        {
-            const auto ext = path.extension().generic_string();
-            using enum vasset::VTextureFileFormat;
-            if (ext == ".jpg")
-                return eJPG;
-            if (ext == ".jpeg")
-                return eJPEG;
-            if (ext == ".png")
-                return ePNG;
-            if (ext == ".tga")
-                return eTGA;
-            if (ext == ".bmp")
-                return eBMP;
-            if (ext == ".hdr")
-                return eHDR;
-            if (ext == ".pic")
-                return ePIC;
-            if (ext == ".exr")
-                return eEXR;
-            if (ext == ".ktx")
-                return eKTX;
-            if (ext == ".dds")
-                return eDDS;
-            if (ext == ".ktx2")
-                return eKTX2;
-            return eUnknown;
-        }
-
-        std::unique_ptr<vasset::VTexture> makeTextureFromBytes(std::string_view               uri,
-                                                               const std::filesystem::path&   path,
-                                                               const std::vector<std::byte>& bytes)
-        {
-            if (path.extension() == ".vtexture")
-            {
-                auto cpu = std::make_unique<vasset::VTexture>();
-                auto r   = vasset::loadTextureFromMemory(bytes, *cpu);
-                return r ? std::move(cpu) : nullptr;
-            }
-
-            auto fileFormat = textureFileFormatForExtension(path);
-            if (fileFormat == vasset::VTextureFileFormat::eUnknown)
-                return nullptr;
-
-            auto cpu       = std::make_unique<vasset::VTexture>();
-            cpu->uuid      = builtinTextureUuidForUri(uri).native();
-            cpu->fileFormat = fileFormat;
-            cpu->data.resize(bytes.size());
-            std::memcpy(cpu->data.data(), bytes.data(), bytes.size());
-            return cpu;
-        }
-
-        std::unique_ptr<vasset::VTexture> makeTextureFromBytes(std::string_view               uri,
-                                                               const std::vector<std::byte>& bytes)
-        {
-            return makeTextureFromBytes(uri, builtinTexturePathForUri(uri), bytes);
-        }
 
         // Fixed builtin/imported PBR parameter block lives in
         // vultra/function/material/material_params.hpp. Shader-backed materials use
@@ -838,6 +647,28 @@ namespace vultra
                          m_Registry.getRegistry().size());
     }
 
+    template<typename TCpu, typename TGpu, uint32_t ShardCount, typename UploadFn>
+    void AssetSystem::processUpload(AssetCache<TCpu, TGpu, ShardCount>& cache, const CoreUUID& uuid, UploadFn upload)
+    {
+        auto* rec = cache.findOrCreate(uuid);
+        if (!rec)
+            return;
+
+        const auto st = rec->state.load(std::memory_order_acquire);
+        if (st != AssetState::eUploadQueued && st != AssetState::eCPUReady)
+            return;
+
+        rec->state.store(AssetState::eUploadingGPU, std::memory_order_release);
+
+        if (!rec->cpu)
+        {
+            rec->state.store(AssetState::eFailed, std::memory_order_release);
+            return;
+        }
+
+        upload(*rec);
+    }
+
     void AssetSystem::update(uint64_t frameIndex)
     {
         m_LastUpdateFrame = std::max(m_LastUpdateFrame, frameIndex);
@@ -870,34 +701,16 @@ namespace vultra
         {
             switch (cmd.kind)
             {
-                case UploadCmd::Kind::eMesh: {
-                    auto* rec = m_MeshCache.findOrCreate(cmd.uuid);
-                    if (!rec)
-                        break;
-
-                    auto st = rec->state.load(std::memory_order_acquire);
-                    if (st != AssetState::eUploadQueued && st != AssetState::eCPUReady)
-                        break;
-
-                    rec->state.store(AssetState::eUploadingGPU, std::memory_order_release);
-
-                    // TODO (deferred upload):
-                    // - Create GPU materials (may trigger texture loads)
-                    // - Upload mesh buffers + append to resource pool
-                    // - Store gpuIndex and transition to eReady
-                    //
-                    // For now we keep the original sync upload logic here so rendering bring-up keeps working.
-
-                    if (rec->cpu)
-                    {
+                case UploadCmd::Kind::eMesh:
+                    processUpload(m_MeshCache, cmd.uuid, [this, &cmd](auto& rec) {
                         auto&          pool           = m_GpuResourceService->pool();
                         const uint32_t materialOffset = static_cast<uint32_t>(pool.materials.size());
                         const auto     meshEntry      = m_Registry.lookup(cmd.uuid.native());
-                        for (uint32_t materialSlot = 0; materialSlot < static_cast<uint32_t>(rec->cpu->materials.size());
+                        for (uint32_t materialSlot = 0; materialSlot < static_cast<uint32_t>(rec.cpu->materials.size());
                              ++materialSlot)
                         {
-                            const auto& mat = rec->cpu->materials[materialSlot];
-                            uint32_t materialIndex = std::numeric_limits<uint32_t>::max();
+                            const auto& mat           = rec.cpu->materials[materialSlot];
+                            uint32_t    materialIndex = std::numeric_limits<uint32_t>::max();
                             if (!meshEntry.importedPath.empty())
                             {
                                 const auto relativeMaterialPath =
@@ -915,84 +728,42 @@ namespace vultra
                                 createAndAppendGpuMaterial(mat);
                         }
 
-                        const uint32_t meshIndex = uploadMesh(*rec->cpu, materialOffset);
+                        const uint32_t meshIndex = uploadMesh(*rec.cpu, materialOffset);
 
-                        rec->gpuIndex.store(meshIndex, std::memory_order_release);
-                        rec->state.store(AssetState::eReady, std::memory_order_release);
+                        rec.gpuIndex.store(meshIndex, std::memory_order_release);
+                        rec.state.store(AssetState::eReady, std::memory_order_release);
 
                         // Release CPU copy if not requested - but keep it for skinned meshes so the
                         // animation system can resolve the mesh's bundled skeleton (resolveSkeletonFor
                         // reads cpu->skeleton) in packaged builds, which otherwise drop CPU mesh data
                         // after GPU upload (keepCpuCopy defaults to false outside the editor).
-                        if (!m_Desc.keepCpuCopy && !(rec->cpu && rec->cpu->hasSkin))
-                            rec->cpu.reset();
-                    }
-                    else
-                    {
-                        rec->state.store(AssetState::eFailed, std::memory_order_release);
-                    }
-                }
-                break;
+                        if (!m_Desc.keepCpuCopy && !(rec.cpu && rec.cpu->hasSkin))
+                            rec.cpu.reset();
+                    });
+                    break;
 
-                case UploadCmd::Kind::eTexture: {
-                    auto* rec = m_TextureCache.findOrCreate(cmd.uuid);
-                    if (!rec)
-                        break;
+                case UploadCmd::Kind::eTexture:
+                    processUpload(m_TextureCache, cmd.uuid, [this](auto& rec) {
+                        const uint32_t texIndex = uploadTexture(*rec.cpu);
 
-                    auto st = rec->state.load(std::memory_order_acquire);
-                    if (st != AssetState::eUploadQueued && st != AssetState::eCPUReady)
-                        break;
-
-                    rec->state.store(AssetState::eUploadingGPU, std::memory_order_release);
-
-                    // TODO (deferred upload):
-                    // - Transcode/prepare texture formats if needed
-                    // - Upload to GPU and create bindless entry
-                    // - Store gpuIndex and transition to eReady
-
-                    if (rec->cpu)
-                    {
-                        const uint32_t texIndex = uploadTexture(*rec->cpu);
-
-                        rec->gpuIndex.store(texIndex, std::memory_order_release);
-                        rec->state.store(AssetState::eReady, std::memory_order_release);
+                        rec.gpuIndex.store(texIndex, std::memory_order_release);
+                        rec.state.store(AssetState::eReady, std::memory_order_release);
 
                         if (!m_Desc.keepCpuCopy)
-                            rec->cpu.reset();
-                    }
-                    else
-                    {
-                        rec->state.store(AssetState::eFailed, std::memory_order_release);
-                    }
-                }
-                break;
+                            rec.cpu.reset();
+                    });
+                    break;
 
-                case UploadCmd::Kind::eGaussianSplat: {
-                    auto* rec = m_GaussianSplatCache.findOrCreate(cmd.uuid);
-                    if (!rec)
-                        break;
-
-                    const auto st = rec->state.load(std::memory_order_acquire);
-                    if (st != AssetState::eUploadQueued && st != AssetState::eCPUReady)
-                        break;
-
-                    rec->state.store(AssetState::eUploadingGPU, std::memory_order_release);
-
-                    if (rec->cpu)
-                    {
-                        const uint32_t splatIndex = uploadGaussianSplat(*rec->cpu);
-                        rec->gpuIndex.store(splatIndex, std::memory_order_release);
-                        rec->state.store(AssetState::eReady, std::memory_order_release);
+                case UploadCmd::Kind::eGaussianSplat:
+                    processUpload(m_GaussianSplatCache, cmd.uuid, [this](auto& rec) {
+                        const uint32_t splatIndex = uploadGaussianSplat(*rec.cpu);
+                        rec.gpuIndex.store(splatIndex, std::memory_order_release);
+                        rec.state.store(AssetState::eReady, std::memory_order_release);
 
                         if (!m_Desc.keepCpuCopy)
-                            rec->cpu.reset();
-                    }
-                    else
-                    {
-                        rec->state.store(AssetState::eFailed, std::memory_order_release);
-                    }
-                }
-                break;
+                            rec.cpu.reset();
+                    });
+                    break;
             }
         }
 
@@ -1060,53 +831,55 @@ namespace vultra
         m_CpuLoadTasks.clear();
     }
 
-    void AssetSystem::startMeshCpuLoadAsync(AssetRecord<vasset::VMesh, resource::GpuMesh>& rec, const CoreUUID& uuid)
+    template<typename TCpu, typename TGpu, typename ReadFn, typename ParseFn>
+    void AssetSystem::startAssetCpuLoadAsync(AssetRecord<TCpu, TGpu>& rec,
+                                             const CoreUUID&          uuid,
+                                             UploadCmd::Kind          kind,
+                                             const char*              logName,
+                                             ReadFn                   readFn,
+                                             ParseFn                  parseFn)
     {
         std::string uri;
         if (!resolveUUIDToUri(uuid, uri))
         {
-            VULTRA_CLIENT_ERROR("loadMeshAsync: cannot resolve uuid {}", uuid.toString());
+            VULTRA_CLIENT_ERROR("{}: cannot resolve uuid {}", logName, uuid.toString());
             rec.state.store(AssetState::eFailed, std::memory_order_release);
             return;
         }
 
-        auto cpuLoadTask = std::make_unique<CpuLoadTask>();
-        auto* taskState  = cpuLoadTask.get();
-        cpuLoadTask->task = std::make_unique<vtask::TaskSet>(1, 1, [this, &rec, uuid, uri, taskState](vtask::Range) {
-            for (uint32_t attempt = 1; attempt <= kAssetLoadMaxAttempts; ++attempt)
-            {
-                auto br = readTextureAssetBytes(uri);
-                if (!br)
+        auto  cpuLoadTask = std::make_unique<CpuLoadTask>();
+        auto* taskState   = cpuLoadTask.get();
+        cpuLoadTask->task = std::make_unique<vtask::TaskSet>(
+            1, 1, [this, &rec, uuid, uri, kind, logName, readFn, parseFn, taskState](vtask::Range) {
+                for (uint32_t attempt = 1; attempt <= kAssetLoadMaxAttempts; ++attempt)
                 {
-                    VULTRA_CLIENT_ERROR("loadMeshAsync: failed to read {} (attempt {}/{})",
-                                        uri,
-                                        attempt,
-                                        kAssetLoadMaxAttempts);
-                    continue;
+                    auto br = readFn(uri);
+                    if (!br)
+                    {
+                        VULTRA_CLIENT_ERROR(
+                            "{}: failed to read {} (attempt {}/{})", logName, uri, attempt, kAssetLoadMaxAttempts);
+                        continue;
+                    }
+
+                    auto cpu = parseFn(uri, br.value());
+                    if (!cpu)
+                    {
+                        VULTRA_CLIENT_ERROR(
+                            "{}: parse failed: {} (attempt {}/{})", logName, uri, attempt, kAssetLoadMaxAttempts);
+                        continue;
+                    }
+
+                    rec.cpu = std::move(cpu);
+                    rec.state.store(AssetState::eCPUReady, std::memory_order_release);
+                    rec.state.store(AssetState::eUploadQueued, std::memory_order_release);
+                    enqueueUploadOnce(kind, uuid, rec.uploadQueued);
+                    taskState->done.store(true, std::memory_order_release);
+                    return;
                 }
 
-                auto cpu = std::make_unique<vasset::VMesh>();
-                auto r   = vasset::loadMeshFromMemory(br.value(), *cpu);
-                if (!r)
-                {
-                    VULTRA_CLIENT_ERROR("loadMeshAsync: vasset::loadMeshFromMemory failed: {} (attempt {}/{})",
-                                        uri,
-                                        attempt,
-                                        kAssetLoadMaxAttempts);
-                    continue;
-                }
-
-                rec.cpu = std::move(cpu);
-                rec.state.store(AssetState::eCPUReady, std::memory_order_release);
-                rec.state.store(AssetState::eUploadQueued, std::memory_order_release);
-                enqueueUploadOnce(UploadCmd::Kind::eMesh, uuid, rec.uploadQueued);
+                rec.state.store(AssetState::eFailed, std::memory_order_release);
                 taskState->done.store(true, std::memory_order_release);
-                return;
-            }
-
-            rec.state.store(AssetState::eFailed, std::memory_order_release);
-            taskState->done.store(true, std::memory_order_release);
-        });
+            });
 
         if (!m_CpuLoadScheduler)
             m_CpuLoadScheduler = std::make_unique<vtask::Scheduler>();
@@ -1114,121 +887,63 @@ namespace vultra
 
         std::scoped_lock lock(m_CpuLoadTasksMutex);
         m_CpuLoadTasks.push_back(std::move(cpuLoadTask));
+    }
+
+    void AssetSystem::startMeshCpuLoadAsync(AssetRecord<vasset::VMesh, resource::GpuMesh>& rec, const CoreUUID& uuid)
+    {
+        startAssetCpuLoadAsync(
+            rec,
+            uuid,
+            UploadCmd::Kind::eMesh,
+            "loadMeshAsync",
+            [this](std::string_view uri) { return readAssetBytes(uri); },
+            [](std::string_view, std::vector<std::byte>& bytes) -> std::unique_ptr<vasset::VMesh> {
+                auto cpu = std::make_unique<vasset::VMesh>();
+                if (!vasset::loadMeshFromMemory(bytes, *cpu))
+                    return nullptr;
+                return cpu;
+            });
     }
 
     void AssetSystem::startTextureCpuLoadAsync(AssetRecord<vasset::VTexture, resource::GpuTexture>& rec,
                                                const CoreUUID& uuid)
     {
-        std::string uri;
-        if (!resolveUUIDToUri(uuid, uri))
-        {
-            VULTRA_CLIENT_ERROR("loadTextureAsync: cannot resolve uuid {}", uuid.toString());
-            rec.state.store(AssetState::eFailed, std::memory_order_release);
-            return;
-        }
-
-        auto cpuLoadTask = std::make_unique<CpuLoadTask>();
-        auto* taskState  = cpuLoadTask.get();
-        cpuLoadTask->task = std::make_unique<vtask::TaskSet>(1, 1, [this, &rec, uuid, uri, taskState](vtask::Range) {
-            for (uint32_t attempt = 1; attempt <= kAssetLoadMaxAttempts; ++attempt)
-            {
-                auto br = readTextureAssetBytes(uri);
-                if (!br)
-                {
-                    VULTRA_CLIENT_ERROR("loadTextureAsync: failed to read {} (attempt {}/{})",
-                                        uri,
-                                        attempt,
-                                        kAssetLoadMaxAttempts);
-                    continue;
-                }
-
-                auto cpu = isBuiltinTextureUri(uri) ? makeTextureFromBytes(uri, br.value()) :
+        startAssetCpuLoadAsync(
+            rec,
+            uuid,
+            UploadCmd::Kind::eTexture,
+            "loadTextureAsync",
+            [this](std::string_view uri) { return readAssetBytes(uri); },
+            [](std::string_view uri, std::vector<std::byte>& bytes) -> std::unique_ptr<vasset::VTexture> {
+                auto cpu = isBuiltinTextureUri(uri) ? makeTextureFromBytes(uri, bytes) :
                                                       std::make_unique<vasset::VTexture>();
-                if (!cpu || (!isBuiltinTextureUri(uri) && !vasset::loadTextureFromMemory(br.value(), *cpu)))
-                {
-                    VULTRA_CLIENT_ERROR("loadTextureAsync: vasset::loadTextureFromMemory failed: {} (attempt {}/{})",
-                                        uri,
-                                        attempt,
-                                        kAssetLoadMaxAttempts);
-                    continue;
-                }
-
-                rec.cpu = std::move(cpu);
-                rec.state.store(AssetState::eCPUReady, std::memory_order_release);
-                rec.state.store(AssetState::eUploadQueued, std::memory_order_release);
-                enqueueUploadOnce(UploadCmd::Kind::eTexture, uuid, rec.uploadQueued);
-                taskState->done.store(true, std::memory_order_release);
-                return;
-            }
-
-            rec.state.store(AssetState::eFailed, std::memory_order_release);
-            taskState->done.store(true, std::memory_order_release);
-        });
-
-        if (!m_CpuLoadScheduler)
-            m_CpuLoadScheduler = std::make_unique<vtask::Scheduler>();
-        m_CpuLoadScheduler->run(*cpuLoadTask->task);
-
-        std::scoped_lock lock(m_CpuLoadTasksMutex);
-        m_CpuLoadTasks.push_back(std::move(cpuLoadTask));
+                if (!cpu || (!isBuiltinTextureUri(uri) && !vasset::loadTextureFromMemory(bytes, *cpu)))
+                    return nullptr;
+                return cpu;
+            });
     }
 
     void AssetSystem::startGaussianSplatCpuLoadAsync(
         AssetRecord<vasset::VGaussianSplat, resource::GpuGaussianSplat>& rec, const CoreUUID& uuid)
     {
-        std::string uri;
-        if (!resolveUUIDToUri(uuid, uri))
-        {
-            VULTRA_CLIENT_ERROR("loadGaussianSplatAsync: cannot resolve uuid {}", uuid.toString());
-            rec.state.store(AssetState::eFailed, std::memory_order_release);
-            return;
-        }
-
-        auto cpuLoadTask = std::make_unique<CpuLoadTask>();
-        auto* taskState  = cpuLoadTask.get();
-        cpuLoadTask->task = std::make_unique<vtask::TaskSet>(1, 1, [this, &rec, uuid, uri, taskState](vtask::Range) {
-            for (uint32_t attempt = 1; attempt <= kAssetLoadMaxAttempts; ++attempt)
-            {
+        startAssetCpuLoadAsync(
+            rec,
+            uuid,
+            UploadCmd::Kind::eGaussianSplat,
+            "loadGaussianSplatAsync",
+            [this](std::string_view uri) -> vbase::Result<std::vector<std::byte>, std::string> {
                 auto br = m_VFS.readAll(uri);
                 if (!br)
-                {
-                    VULTRA_CLIENT_ERROR("loadGaussianSplatAsync: failed to read {} (attempt {}/{})",
-                                        uri,
-                                        attempt,
-                                        kAssetLoadMaxAttempts);
-                    continue;
-                }
-
+                    return vbase::Result<std::vector<std::byte>, std::string>::err("failed to read " +
+                                                                                   std::string(uri));
+                return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(br.value()));
+            },
+            [](std::string_view, std::vector<std::byte>& bytes) -> std::unique_ptr<vasset::VGaussianSplat> {
                 auto cpu = std::make_unique<vasset::VGaussianSplat>();
-                auto r   = vasset::loadGaussianSplatFromMemory(br.value(), *cpu);
-                if (!r)
-                {
-                    VULTRA_CLIENT_ERROR(
-                        "loadGaussianSplatAsync: vasset::loadGaussianSplatFromMemory failed: {} (attempt {}/{})",
-                        uri,
-                        attempt,
-                        kAssetLoadMaxAttempts);
-                    continue;
-                }
-
-                rec.cpu = std::move(cpu);
-                rec.state.store(AssetState::eCPUReady, std::memory_order_release);
-                rec.state.store(AssetState::eUploadQueued, std::memory_order_release);
-                enqueueUploadOnce(UploadCmd::Kind::eGaussianSplat, uuid, rec.uploadQueued);
-                taskState->done.store(true, std::memory_order_release);
-                return;
-            }
-
-            rec.state.store(AssetState::eFailed, std::memory_order_release);
-            taskState->done.store(true, std::memory_order_release);
-        });
-
-        if (!m_CpuLoadScheduler)
-            m_CpuLoadScheduler = std::make_unique<vtask::Scheduler>();
-        m_CpuLoadScheduler->run(*cpuLoadTask->task);
-
-        std::scoped_lock lock(m_CpuLoadTasksMutex);
-        m_CpuLoadTasks.push_back(std::move(cpuLoadTask));
+                if (!vasset::loadGaussianSplatFromMemory(bytes, *cpu))
+                    return nullptr;
+                return cpu;
+            });
     }
 
     bool AssetSystem::resolveUUIDToUri(const CoreUUID& uuid, std::string& outUri) const
@@ -1264,7 +979,7 @@ namespace vultra
         return m_Resolver.reverseResolve(uri, outUUID);
     }
 
-    vbase::Result<std::vector<std::byte>, std::string> AssetSystem::readTextureAssetBytes(std::string_view uri)
+    vbase::Result<std::vector<std::byte>, std::string> AssetSystem::readAssetBytes(std::string_view uri)
     {
         if (isBuiltinTextureUri(uri))
         {
@@ -1394,6 +1109,76 @@ namespace vultra
         }
     }
 
+    namespace
+    {
+        // GPU material-param packers shared by createAndAppendGpuMaterial (alloc-new) and
+        // refreshGpuMaterialParams (upload-in-place), which previously held byte-identical copies of these
+        // switches. `resolveTex` maps a texture UUID to its bindless index (resolveBindlessTextureIndexAsync
+        // at both call sites). createAndAppendGpuMaterialFromAsset is intentionally NOT routed through these:
+        // it omits the emissive black->white fixup and layers JSON overrides on top.
+        template<typename ResolveTex>
+        MaterialParamsPBRMR packMaterialParamsPBRMR(const vasset::VMaterial& m, ResolveTex&& resolveTex)
+        {
+            MaterialParamsPBRMR p;
+            p.baseColor       = m.core.pbrMR.baseColor;
+            p.metallicFactor  = m.core.pbrMR.metallicFactor;
+            p.roughnessFactor = m.core.pbrMR.roughnessFactor;
+            p.alphaCutoff     = m.core.pbrMR.alphaCutoff;
+            p.alphaMode       = static_cast<uint32_t>(m.core.pbrMR.alphaMode);
+            p.baseColorTex    = resolveTex(CoreUUID(m.core.pbrMR.baseColorTexture.uuid));
+            p.normalTex       = resolveTex(CoreUUID(m.core.pbrMR.normalTexture.uuid));
+            p.mrTex           = resolveTex(pbrMrCombinedTextureUuid(m.core.pbrMR));
+            p.metallicTex     = resolveTex(CoreUUID(m.core.pbrMR.metallicTexture.uuid));
+            p.roughnessTex    = resolveTex(CoreUUID(m.core.pbrMR.roughnessTexture.uuid));
+            p.occlusionTex    = resolveTex(CoreUUID(m.core.pbrMR.ambientOcclusionTexture.uuid));
+            p.emissiveTex     = resolveTex(CoreUUID(m.core.pbrMR.emissiveTexture.uuid));
+            {
+                glm::vec3 emissiveColor = glm::vec3(m.core.pbrMR.emissiveColorIntensity);
+                // Texture present but factor came through black (assimp glTF quirk): emissive
+                // = factor * texture would be zero, so default the factor to white.
+                if (p.emissiveTex != 0u && emissiveColor == glm::vec3(0.0f))
+                    emissiveColor = glm::vec3(1.0f);
+                p.emissiveFactor = glm::vec4(emissiveColor * m.core.pbrMR.emissiveColorIntensity.a, 1.0f);
+            }
+            p.doubleSided   = m.core.pbrMR.doubleSided ? 1u : 0u;
+            p.mrTextureMode = static_cast<uint32_t>(pbrMrTextureMode(m.core.pbrMR));
+            return p;
+        }
+
+        template<typename ResolveTex>
+        MaterialParamsPBRSG packMaterialParamsPBRSG(const vasset::VMaterial& m, ResolveTex&& resolveTex)
+        {
+            MaterialParamsPBRSG p;
+            p.diffuseColor          = m.core.pbrSG.diffuseColor;
+            p.specularFactor        = m.core.pbrSG.specularFactor;
+            p.glossinessFactor      = m.core.pbrSG.glossinessFactor;
+            p.diffuseColorTex       = resolveTex(CoreUUID(m.core.pbrSG.diffuseTexture.uuid));
+            p.specularGlossinessTex = resolveTex(CoreUUID(m.core.pbrSG.specularGlossinessTexture.uuid));
+            p.glossinessTex         = resolveTex(CoreUUID(m.core.pbrSG.glossinessTexture.uuid));
+            p.normalTex             = resolveTex(CoreUUID(m.core.pbrSG.normalTexture.uuid));
+            return p;
+        }
+
+        template<typename ResolveTex>
+        MaterialParamsUnlit packMaterialParamsUnlit(const vasset::VMaterial& m, ResolveTex&& resolveTex)
+        {
+            MaterialParamsUnlit p;
+            p.color    = m.core.unlit.color;
+            p.colorTex = resolveTex(CoreUUID(m.core.unlit.colorTexture.uuid));
+            return p;
+        }
+
+        template<typename ResolveTex>
+        MaterialParamsPhong packMaterialParamsPhong(const vasset::VMaterial& m, ResolveTex&& resolveTex)
+        {
+            MaterialParamsPhong p;
+            p.diffuse           = m.core.phong.diffuse;
+            p.specularShininess = glm::vec4(m.core.phong.specular, m.core.phong.shininess);
+            p.diffuseTex        = resolveTex(CoreUUID(m.core.phong.diffuseTexture.uuid));
+            return p;
+        }
+    } // namespace
+
     bool AssetSystem::refreshGpuMaterialParams(const uint32_t materialIndex, const vasset::VMaterial& material)
     {
         auto& pool = m_GpuResourceService->pool();
@@ -1420,65 +1205,28 @@ namespace vultra
             }
         };
 
-        auto& gpuMaterial = pool.materials[materialIndex];
+        const auto resolveTex  = [this](const CoreUUID& uuid) { return resolveBindlessTextureIndexAsync(uuid); };
+        auto&      gpuMaterial = pool.materials[materialIndex];
         switch (material.model)
         {
             case vasset::VMaterialModel::ePBRMetallicRoughness: {
-                MaterialParamsPBRMR p;
-                p.baseColor       = material.core.pbrMR.baseColor;
-                p.metallicFactor  = material.core.pbrMR.metallicFactor;
-                p.roughnessFactor = material.core.pbrMR.roughnessFactor;
-                p.alphaCutoff     = material.core.pbrMR.alphaCutoff;
-                p.alphaMode       = static_cast<uint32_t>(material.core.pbrMR.alphaMode);
-                p.baseColorTex    = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.baseColorTexture.uuid));
-                p.normalTex       = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.normalTexture.uuid));
-                p.mrTex           = resolveBindlessTextureIndexAsync(pbrMrCombinedTextureUuid(material.core.pbrMR));
-                p.metallicTex     = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.metallicTexture.uuid));
-                p.roughnessTex    = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.roughnessTexture.uuid));
-                p.occlusionTex =
-                    resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.ambientOcclusionTexture.uuid));
-                p.emissiveTex    = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.emissiveTexture.uuid));
-                {
-                    glm::vec3 emissiveColor = glm::vec3(material.core.pbrMR.emissiveColorIntensity);
-                    // Texture present but factor came through black (assimp glTF quirk): emissive
-                    // = factor * texture would be zero, so default the factor to white.
-                    if (p.emissiveTex != 0u && emissiveColor == glm::vec3(0.0f))
-                        emissiveColor = glm::vec3(1.0f);
-                    p.emissiveFactor =
-                        glm::vec4(emissiveColor * material.core.pbrMR.emissiveColorIntensity.a, 1.0f);
-                }
-                p.doubleSided    = material.core.pbrMR.doubleSided ? 1u : 0u;
-                p.mrTextureMode  = static_cast<uint32_t>(pbrMrTextureMode(material.core.pbrMR));
+                const auto p = packMaterialParamsPBRMR(material, resolveTex);
                 uploadBlock(gpuMaterial, &p, sizeof(p));
                 break;
             }
             case vasset::VMaterialModel::ePBRSpecularGlossiness: {
-                MaterialParamsPBRSG p;
-                p.diffuseColor     = material.core.pbrSG.diffuseColor;
-                p.specularFactor   = material.core.pbrSG.specularFactor;
-                p.glossinessFactor = material.core.pbrSG.glossinessFactor;
-                p.diffuseColorTex  = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrSG.diffuseTexture.uuid));
-                p.specularGlossinessTex =
-                    resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrSG.specularGlossinessTexture.uuid));
-                p.glossinessTex =
-                    resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrSG.glossinessTexture.uuid));
-                p.normalTex = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrSG.normalTexture.uuid));
+                const auto p = packMaterialParamsPBRSG(material, resolveTex);
                 uploadBlock(gpuMaterial, &p, sizeof(p));
                 break;
             }
             case vasset::VMaterialModel::eUnlit: {
-                MaterialParamsUnlit p;
-                p.color    = material.core.unlit.color;
-                p.colorTex = resolveBindlessTextureIndexAsync(CoreUUID(material.core.unlit.colorTexture.uuid));
+                const auto p = packMaterialParamsUnlit(material, resolveTex);
                 uploadBlock(gpuMaterial, &p, sizeof(p));
                 break;
             }
             case vasset::VMaterialModel::ePhong:
             default: {
-                MaterialParamsPhong p;
-                p.diffuse           = material.core.phong.diffuse;
-                p.specularShininess = glm::vec4(material.core.phong.specular, material.core.phong.shininess);
-                p.diffuseTex        = resolveBindlessTextureIndexAsync(CoreUUID(material.core.phong.diffuseTexture.uuid));
+                const auto p = packMaterialParamsPhong(material, resolveTex);
                 uploadBlock(gpuMaterial, &p, sizeof(p));
                 break;
             }
@@ -1550,68 +1298,33 @@ namespace vultra
         auto allocBlock = [&](const void* src, uint32_t size) {
             return pool.materialParams.allocAndUpload(*m_RenderDevice, src, size, 16);
         };
+        const auto resolveTex = [this](const CoreUUID& uuid) { return resolveBindlessTextureIndexAsync(uuid); };
 
         switch (m.model)
         {
             case vasset::VMaterialModel::ePBRMetallicRoughness: {
-                gm.model = GpuMaterialModel::ePBRMetallicRoughness;
-                MaterialParamsPBRMR p;
-                p.baseColor       = m.core.pbrMR.baseColor;
-                p.metallicFactor  = m.core.pbrMR.metallicFactor;
-                p.roughnessFactor = m.core.pbrMR.roughnessFactor;
-                p.alphaCutoff     = m.core.pbrMR.alphaCutoff;
-                p.alphaMode       = static_cast<uint32_t>(m.core.pbrMR.alphaMode);
-                p.baseColorTex    = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.baseColorTexture.uuid));
-                p.normalTex       = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.normalTexture.uuid));
-                p.mrTex           = resolveBindlessTextureIndexAsync(pbrMrCombinedTextureUuid(m.core.pbrMR));
-                p.metallicTex     = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.metallicTexture.uuid));
-                p.roughnessTex    = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.roughnessTexture.uuid));
-                p.occlusionTex    = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.ambientOcclusionTexture.uuid));
-                p.emissiveTex     = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.emissiveTexture.uuid));
-                {
-                    glm::vec3 emissiveColor = glm::vec3(m.core.pbrMR.emissiveColorIntensity);
-                    // Texture present but factor came through black (assimp glTF quirk): emissive
-                    // = factor * texture would be zero, so default the factor to white.
-                    if (p.emissiveTex != 0u && emissiveColor == glm::vec3(0.0f))
-                        emissiveColor = glm::vec3(1.0f);
-                    p.emissiveFactor = glm::vec4(emissiveColor * m.core.pbrMR.emissiveColorIntensity.a, 1.0f);
-                }
-                p.doubleSided     = m.core.pbrMR.doubleSided ? 1u : 0u;
-                p.mrTextureMode   = static_cast<uint32_t>(pbrMrTextureMode(m.core.pbrMR));
-                blockOffset       = allocBlock(&p, sizeof(p));
+                gm.model     = GpuMaterialModel::ePBRMetallicRoughness;
+                const auto p = packMaterialParamsPBRMR(m, resolveTex);
+                blockOffset  = allocBlock(&p, sizeof(p));
                 break;
             }
             case vasset::VMaterialModel::ePBRSpecularGlossiness: {
-                gm.model = GpuMaterialModel::ePBRSpecularGlossiness;
-                MaterialParamsPBRSG p;
-                p.diffuseColor     = m.core.pbrSG.diffuseColor;
-                p.specularFactor   = m.core.pbrSG.specularFactor;
-                p.glossinessFactor = m.core.pbrSG.glossinessFactor;
-                p.diffuseColorTex  = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrSG.diffuseTexture.uuid));
-                p.specularGlossinessTex =
-                    resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrSG.specularGlossinessTexture.uuid));
-                p.glossinessTex =
-                    resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrSG.glossinessTexture.uuid));
-                p.normalTex = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrSG.normalTexture.uuid));
-                blockOffset = allocBlock(&p, sizeof(p));
+                gm.model     = GpuMaterialModel::ePBRSpecularGlossiness;
+                const auto p = packMaterialParamsPBRSG(m, resolveTex);
+                blockOffset  = allocBlock(&p, sizeof(p));
                 break;
             }
             case vasset::VMaterialModel::eUnlit: {
-                gm.model = GpuMaterialModel::eUnlit;
-                MaterialParamsUnlit p;
-                p.color     = m.core.unlit.color;
-                p.colorTex  = resolveBindlessTextureIndexAsync(CoreUUID(m.core.unlit.colorTexture.uuid));
-                blockOffset = allocBlock(&p, sizeof(p));
+                gm.model     = GpuMaterialModel::eUnlit;
+                const auto p = packMaterialParamsUnlit(m, resolveTex);
+                blockOffset  = allocBlock(&p, sizeof(p));
                 break;
             }
             case vasset::VMaterialModel::ePhong:
             default: {
-                gm.model = GpuMaterialModel::ePhong;
-                MaterialParamsPhong p;
-                p.diffuse           = m.core.phong.diffuse;
-                p.specularShininess = glm::vec4(m.core.phong.specular, m.core.phong.shininess);
-                p.diffuseTex        = resolveBindlessTextureIndexAsync(CoreUUID(m.core.phong.diffuseTexture.uuid));
-                blockOffset         = allocBlock(&p, sizeof(p));
+                gm.model     = GpuMaterialModel::ePhong;
+                const auto p = packMaterialParamsPhong(m, resolveTex);
+                blockOffset  = allocBlock(&p, sizeof(p));
                 break;
             }
         }
@@ -2213,12 +1926,13 @@ namespace vultra
         return index;
     }
 
-    AssetHandle<vasset::VTexture, resource::GpuTexture> AssetSystem::loadTextureAsync(const CoreUUID& uuid)
+    template<typename TCpu, typename TGpu, uint32_t ShardCount, typename StartFn>
+    AssetHandle<TCpu, TGpu> AssetSystem::loadGpuAssetAsync(const CoreUUID&                     uuid,
+                                                           AssetCache<TCpu, TGpu, ShardCount>& cache,
+                                                           UploadCmd::Kind                     kind,
+                                                           StartFn                             startCpuLoad)
     {
-        if (!m_Desc.asyncLoading)
-            return loadTextureSync(uuid);
-
-        auto* rec = m_TextureCache.findOrCreate(uuid);
+        auto* rec = cache.findOrCreate(uuid);
         if (!rec)
             return {};
         markAssetUsed(*rec, m_LastUpdateFrame);
@@ -2230,45 +1944,38 @@ namespace vultra
             if (rec->state.compare_exchange_strong(
                     expected, AssetState::eLoadingCPU, std::memory_order_acq_rel, std::memory_order_acquire))
             {
-                startTextureCpuLoadAsync(*rec, uuid);
+                startCpuLoad(*rec, uuid);
             }
         }
         else if (st == AssetState::eCPUReady)
         {
             rec->state.store(AssetState::eUploadQueued, std::memory_order_release);
-            enqueueUploadOnce(UploadCmd::Kind::eTexture, uuid, rec->uploadQueued);
+            enqueueUploadOnce(kind, uuid, rec->uploadQueued);
         }
 
-        return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
+        return AssetHandle<TCpu, TGpu>(rec);
+    }
+
+    AssetHandle<vasset::VTexture, resource::GpuTexture> AssetSystem::loadTextureAsync(const CoreUUID& uuid)
+    {
+        if (!m_Desc.asyncLoading)
+            return loadTextureSync(uuid);
+        return loadGpuAssetAsync(
+            uuid, m_TextureCache, UploadCmd::Kind::eTexture,
+            [this](AssetRecord<vasset::VTexture, resource::GpuTexture>& rec, const CoreUUID& u) {
+                startTextureCpuLoadAsync(rec, u);
+            });
     }
 
     AssetHandle<vasset::VMesh, resource::GpuMesh> AssetSystem::loadMeshAsync(const CoreUUID& uuid)
     {
         if (!m_Desc.asyncLoading)
             return loadMeshSync(uuid);
-
-        auto* rec = m_MeshCache.findOrCreate(uuid);
-        if (!rec)
-            return {};
-        markAssetUsed(*rec, m_LastUpdateFrame);
-
-        auto st = rec->state.load(std::memory_order_acquire);
-        if (st == AssetState::eUnloaded)
-        {
-            AssetState expected = AssetState::eUnloaded;
-            if (rec->state.compare_exchange_strong(
-                    expected, AssetState::eLoadingCPU, std::memory_order_acq_rel, std::memory_order_acquire))
-            {
-                startMeshCpuLoadAsync(*rec, uuid);
-            }
-        }
-        else if (st == AssetState::eCPUReady)
-        {
-            rec->state.store(AssetState::eUploadQueued, std::memory_order_release);
-            enqueueUploadOnce(UploadCmd::Kind::eMesh, uuid, rec->uploadQueued);
-        }
-
-        return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
+        return loadGpuAssetAsync(
+            uuid, m_MeshCache, UploadCmd::Kind::eMesh,
+            [this](AssetRecord<vasset::VMesh, resource::GpuMesh>& rec, const CoreUUID& u) {
+                startMeshCpuLoadAsync(rec, u);
+            });
     }
 
     AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
@@ -2276,29 +1983,11 @@ namespace vultra
     {
         if (!m_Desc.asyncLoading)
             return loadGaussianSplatSync(uuid);
-
-        auto* rec = m_GaussianSplatCache.findOrCreate(uuid);
-        if (!rec)
-            return {};
-        markAssetUsed(*rec, m_LastUpdateFrame);
-
-        auto st = rec->state.load(std::memory_order_acquire);
-        if (st == AssetState::eUnloaded)
-        {
-            AssetState expected = AssetState::eUnloaded;
-            if (rec->state.compare_exchange_strong(
-                    expected, AssetState::eLoadingCPU, std::memory_order_acq_rel, std::memory_order_acquire))
-            {
-                startGaussianSplatCpuLoadAsync(*rec, uuid);
-            }
-        }
-        else if (st == AssetState::eCPUReady)
-        {
-            rec->state.store(AssetState::eUploadQueued, std::memory_order_release);
-            enqueueUploadOnce(UploadCmd::Kind::eGaussianSplat, uuid, rec->uploadQueued);
-        }
-
-        return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
+        return loadGpuAssetAsync(
+            uuid, m_GaussianSplatCache, UploadCmd::Kind::eGaussianSplat,
+            [this](AssetRecord<vasset::VGaussianSplat, resource::GpuGaussianSplat>& rec, const CoreUUID& u) {
+                startGaussianSplatCpuLoadAsync(rec, u);
+            });
     }
 
     AssetHandle<vasset::VSkeleton, resource::CpuAsset> AssetSystem::loadSkeletonAsync(const CoreUUID& uuid)
@@ -2405,17 +2094,24 @@ namespace vultra
         return AssetHandle<vasset::VAnimation, resource::CpuAsset>(rec);
     }
 
-    AssetHandle<vasset::VTexture, resource::GpuTexture> AssetSystem::loadTextureSync(const CoreUUID& uuid)
+    template<typename TCpu, typename TGpu, uint32_t ShardCount, typename ReadFn, typename ParseFn>
+    AssetHandle<TCpu, TGpu> AssetSystem::loadGpuAssetSync(const CoreUUID&                     uuid,
+                                                          AssetCache<TCpu, TGpu, ShardCount>& cache,
+                                                          UploadCmd::Kind                     kind,
+                                                          const char*                         logName,
+                                                          ReadFn                              readFn,
+                                                          ParseFn                             parseFn)
     {
-        auto* rec = m_TextureCache.findOrCreate(uuid);
+        auto* rec = cache.findOrCreate(uuid);
         if (!rec)
             return {};
         markAssetUsed(*rec, m_LastUpdateFrame);
 
+        // Already resident on GPU
         if (rec->state.load(std::memory_order_acquire) == AssetState::eReady &&
             rec->gpuIndex.load(std::memory_order_acquire) != std::numeric_limits<uint32_t>::max())
         {
-            return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
+            return AssetHandle<TCpu, TGpu>(rec);
         }
 
         if (rec->state.load(std::memory_order_acquire) == AssetState::eLoadingCPU)
@@ -2429,26 +2125,25 @@ namespace vultra
             std::string uri;
             if (!resolveUUIDToUri(uuid, uri))
             {
-                VULTRA_CLIENT_ERROR("loadTextureSync: cannot resolve uuid {}", uuid.toString());
+                VULTRA_CLIENT_ERROR("{}: cannot resolve uuid {}", logName, uuid.toString());
                 rec->state.store(AssetState::eFailed, std::memory_order_release);
-                return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
+                return AssetHandle<TCpu, TGpu>(rec);
             }
 
-            auto br = readTextureAssetBytes(uri);
+            auto br = readFn(uri);
             if (!br)
             {
-                VULTRA_CLIENT_ERROR("loadTextureSync: failed to read {}", uri);
+                VULTRA_CLIENT_ERROR("{}: failed to read {}", logName, uri);
                 rec->state.store(AssetState::eFailed, std::memory_order_release);
-                return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
+                return AssetHandle<TCpu, TGpu>(rec);
             }
 
-            auto cpu = isBuiltinTextureUri(uri) ? makeTextureFromBytes(uri, br.value()) :
-                                                  std::make_unique<vasset::VTexture>();
-            if (!cpu || (!isBuiltinTextureUri(uri) && !vasset::loadTextureFromMemory(br.value(), *cpu)))
+            auto cpu = parseFn(uri, br.value());
+            if (!cpu)
             {
-                VULTRA_CLIENT_ERROR("loadTextureSync: vasset::loadTextureFromMemory failed: {}", uri);
+                VULTRA_CLIENT_ERROR("{}: parse failed: {}", logName, uri);
                 rec->state.store(AssetState::eFailed, std::memory_order_release);
-                return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
+                return AssetHandle<TCpu, TGpu>(rec);
             }
 
             rec->cpu = std::move(cpu);
@@ -2464,13 +2159,29 @@ namespace vultra
                 rec->state.store(AssetState::eUploadQueued, std::memory_order_release);
 
                 std::scoped_lock lock(m_UploadQueueMutex);
-                m_UploadQueue.push_back(UploadCmd {UploadCmd::Kind::eTexture, uuid});
+                m_UploadQueue.push_back(UploadCmd {kind, uuid});
             }
         }
 
+        // Sync baseline: execute uploads immediately. In async mode, the engine main loop calls update()
+        // once per frame.
         update(/*frameIndex*/ 0);
 
-        return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
+        return AssetHandle<TCpu, TGpu>(rec);
+    }
+
+    AssetHandle<vasset::VTexture, resource::GpuTexture> AssetSystem::loadTextureSync(const CoreUUID& uuid)
+    {
+        return loadGpuAssetSync(
+            uuid, m_TextureCache, UploadCmd::Kind::eTexture, "loadTextureSync",
+            [this](std::string_view u) { return readAssetBytes(u); },
+            [](std::string_view u, std::vector<std::byte>& bytes) -> std::unique_ptr<vasset::VTexture> {
+                auto cpu = isBuiltinTextureUri(u) ? makeTextureFromBytes(u, bytes) :
+                                                    std::make_unique<vasset::VTexture>();
+                if (!cpu || (!isBuiltinTextureUri(u) && !vasset::loadTextureFromMemory(bytes, *cpu)))
+                    return nullptr;
+                return cpu;
+            });
     }
 
     AssetHandle<vasset::VTexture, resource::GpuTexture> AssetSystem::loadTextureSync(std::string_view uri)
@@ -2523,74 +2234,21 @@ namespace vultra
 
     AssetHandle<vasset::VMesh, resource::GpuMesh> AssetSystem::loadMeshSync(const CoreUUID& uuid)
     {
-        auto* rec = m_MeshCache.findOrCreate(uuid);
-        if (!rec)
-            return {};
-        markAssetUsed(*rec, m_LastUpdateFrame);
-
-        // Already resident on GPU
-        if (rec->state.load(std::memory_order_acquire) == AssetState::eReady &&
-            rec->gpuIndex.load(std::memory_order_acquire) != std::numeric_limits<uint32_t>::max())
-        {
-            return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
-        }
-
-        if (rec->state.load(std::memory_order_acquire) == AssetState::eLoadingCPU)
-            waitForCpuLoadTasks();
-
-        // CPU stage (sync baseline)
-        if (rec->state.load(std::memory_order_acquire) == AssetState::eUnloaded)
-        {
-            rec->state.store(AssetState::eLoadingCPU, std::memory_order_release);
-
-            std::string uri;
-            if (!resolveUUIDToUri(uuid, uri))
-            {
-                VULTRA_CLIENT_ERROR("loadMeshSync: cannot resolve uuid {}", uuid.toString());
-                rec->state.store(AssetState::eFailed, std::memory_order_release);
-                return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
-            }
-
-            auto br = m_VFS.readAll(uri);
-            if (!br)
-            {
-                VULTRA_CLIENT_ERROR("loadMeshSync: failed to read {}", uri);
-                rec->state.store(AssetState::eFailed, std::memory_order_release);
-                return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
-            }
-
-            auto cpu = std::make_unique<vasset::VMesh>();
-            auto r   = vasset::loadMeshFromMemory(br.value(), *cpu);
-            if (!r)
-            {
-                VULTRA_CLIENT_ERROR("loadMeshSync: vasset::loadMeshFromMemory failed: {}", uri);
-                rec->state.store(AssetState::eFailed, std::memory_order_release);
-                return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
-            }
-
-            // Store CPU copy (needed for deferred GPU upload).
-            rec->cpu = std::move(cpu);
-            rec->state.store(AssetState::eCPUReady, std::memory_order_release);
-        }
-
-        // Enqueue GPU upload (sync bring-up still goes through the queue so we can migrate to async later).
-        if (rec->state.load(std::memory_order_acquire) == AssetState::eCPUReady)
-        {
-            bool expected = false;
-            if (rec->uploadQueued.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
-            {
-                rec->state.store(AssetState::eUploadQueued, std::memory_order_release);
-
-                std::scoped_lock lock(m_UploadQueueMutex);
-                m_UploadQueue.push_back(UploadCmd {UploadCmd::Kind::eMesh, uuid});
-            }
-        }
-
-        // Sync baseline: execute uploads immediately. In async mode, the engine main loop calls update() once per
-        // frame.
-        update(/*frameIndex*/ 0);
-
-        return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
+        return loadGpuAssetSync(
+            uuid, m_MeshCache, UploadCmd::Kind::eMesh, "loadMeshSync",
+            [this](std::string_view u) -> vbase::Result<std::vector<std::byte>, std::string> {
+                auto br = m_VFS.readAll(u);
+                if (!br)
+                    return vbase::Result<std::vector<std::byte>, std::string>::err("failed to read " +
+                                                                                   std::string(u));
+                return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(br.value()));
+            },
+            [](std::string_view, std::vector<std::byte>& bytes) -> std::unique_ptr<vasset::VMesh> {
+                auto cpu = std::make_unique<vasset::VMesh>();
+                if (!vasset::loadMeshFromMemory(bytes, *cpu))
+                    return nullptr;
+                return cpu;
+            });
     }
 
     AssetHandle<vasset::VMesh, resource::GpuMesh> AssetSystem::loadMeshSync(std::string_view uri)
@@ -2612,68 +2270,21 @@ namespace vultra
     AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
     AssetSystem::loadGaussianSplatSync(const CoreUUID& uuid)
     {
-        auto* rec = m_GaussianSplatCache.findOrCreate(uuid);
-        if (!rec)
-            return {};
-        markAssetUsed(*rec, m_LastUpdateFrame);
-
-        if (rec->state.load(std::memory_order_acquire) == AssetState::eReady &&
-            rec->gpuIndex.load(std::memory_order_acquire) != std::numeric_limits<uint32_t>::max())
-        {
-            return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
-        }
-
-        if (rec->state.load(std::memory_order_acquire) == AssetState::eLoadingCPU)
-            waitForCpuLoadTasks();
-
-        if (rec->state.load(std::memory_order_acquire) == AssetState::eUnloaded)
-        {
-            rec->state.store(AssetState::eLoadingCPU, std::memory_order_release);
-
-            std::string uri;
-            if (!resolveUUIDToUri(uuid, uri))
-            {
-                VULTRA_CLIENT_ERROR("loadGaussianSplatSync: cannot resolve uuid {}", uuid.toString());
-                rec->state.store(AssetState::eFailed, std::memory_order_release);
-                return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
-            }
-
-            auto br = m_VFS.readAll(uri);
-            if (!br)
-            {
-                VULTRA_CLIENT_ERROR("loadGaussianSplatSync: failed to read {}", uri);
-                rec->state.store(AssetState::eFailed, std::memory_order_release);
-                return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
-            }
-
-            auto cpu = std::make_unique<vasset::VGaussianSplat>();
-            auto r   = vasset::loadGaussianSplatFromMemory(br.value(), *cpu);
-            if (!r)
-            {
-                VULTRA_CLIENT_ERROR("loadGaussianSplatSync: vasset::loadGaussianSplatFromMemory failed: {}", uri);
-                rec->state.store(AssetState::eFailed, std::memory_order_release);
-                return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
-            }
-
-            rec->cpu = std::move(cpu);
-            rec->state.store(AssetState::eCPUReady, std::memory_order_release);
-        }
-
-        if (rec->state.load(std::memory_order_acquire) == AssetState::eCPUReady)
-        {
-            bool expected = false;
-            if (rec->uploadQueued.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
-            {
-                rec->state.store(AssetState::eUploadQueued, std::memory_order_release);
-
-                std::scoped_lock lock(m_UploadQueueMutex);
-                m_UploadQueue.push_back(UploadCmd {UploadCmd::Kind::eGaussianSplat, uuid});
-            }
-        }
-
-        update(/*frameIndex*/ 0);
-
-        return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
+        return loadGpuAssetSync(
+            uuid, m_GaussianSplatCache, UploadCmd::Kind::eGaussianSplat, "loadGaussianSplatSync",
+            [this](std::string_view u) -> vbase::Result<std::vector<std::byte>, std::string> {
+                auto br = m_VFS.readAll(u);
+                if (!br)
+                    return vbase::Result<std::vector<std::byte>, std::string>::err("failed to read " +
+                                                                                   std::string(u));
+                return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(br.value()));
+            },
+            [](std::string_view, std::vector<std::byte>& bytes) -> std::unique_ptr<vasset::VGaussianSplat> {
+                auto cpu = std::make_unique<vasset::VGaussianSplat>();
+                if (!vasset::loadGaussianSplatFromMemory(bytes, *cpu))
+                    return nullptr;
+                return cpu;
+            });
     }
 
     AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>

@@ -2,6 +2,8 @@
 
 #include "vultra/function/rendering/srp/render_feature.hpp"
 
+#include <memory>
+
 namespace vultra
 {
     class DeferredLightingPass;
@@ -22,11 +24,11 @@ namespace vultra
         void addPasses(FrameGraphBuildContext& ctx) override;
 
     private:
-        IRenderService&        m_RenderService;
-        DirectGBufferPass*     m_GBufferPass {nullptr};
-        ShadowMapPass*         m_ShadowPass {nullptr};
-        SsaoPass*              m_SsaoPass {nullptr};
-        DeferredLightingPass*  m_LightingPass {nullptr};
-        SkyboxPass*            m_SkyboxPass {nullptr};
+        IRenderService&                       m_RenderService;
+        std::unique_ptr<DirectGBufferPass>    m_GBufferPass;
+        std::unique_ptr<ShadowMapPass>        m_ShadowPass;
+        std::unique_ptr<SsaoPass>             m_SsaoPass;
+        std::unique_ptr<DeferredLightingPass> m_LightingPass;
+        std::unique_ptr<SkyboxPass>           m_SkyboxPass;
     };
 } // namespace vultra

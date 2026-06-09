@@ -2,6 +2,8 @@
 
 #include "vultra/function/rendering/srp/render_feature.hpp"
 
+#include <memory>
+
 namespace vultra
 {
     class FxaaPass;
@@ -23,12 +25,12 @@ namespace vultra
         void addPasses(FrameGraphBuildContext& ctx) override;
 
     private:
-        IRenderService& m_RenderService;
-        SsrPass*        m_SsrPass {nullptr};
-        SsrCompositePass* m_SsrCompositePass {nullptr};
-        ToneMappingPass*  m_ToneMappingPass {nullptr};
-        SelectionOutlinePass* m_SelectionOutlinePass {nullptr};
-        FxaaPass*       m_FxaaPass {nullptr};
-        UiOverlayPass*  m_UiOverlayPass {nullptr};
+        IRenderService&                       m_RenderService;
+        std::unique_ptr<SsrPass>              m_SsrPass;
+        std::unique_ptr<SsrCompositePass>     m_SsrCompositePass;
+        std::unique_ptr<ToneMappingPass>      m_ToneMappingPass;
+        std::unique_ptr<SelectionOutlinePass> m_SelectionOutlinePass;
+        std::unique_ptr<FxaaPass>             m_FxaaPass;
+        std::unique_ptr<UiOverlayPass>        m_UiOverlayPass;
     };
 } // namespace vultra
