@@ -269,6 +269,57 @@ on `xmake build` alone:
 - Structural god-file splits **A3** (render_graph), **B6** (asset_system), **C4** (render_system /
   RenderWorldCooker): large multi-file refactors; dedicated passes.
 
+## Round 8 (2026-06-10, Round 3 audit + execution — all P0 + all P1 landed)
+
+Audit: `codex-debt-review-round3-2026-06-10.md` (sub-agent corrections, P0-P3 tiers, clean-bill items).
+Every item below is an individual commit, `xmake build -y vultra` + `vultra-app` green before
+each; runtime checks via the editor + Runtime MCP as noted.
+
+- **P0-1** scene_system prefab lookup dedup: `findPrefabInstanceRef` (shared head) +
+  `SceneSystem::resolvePrefabSource` (const lookup incl. doc lifetime via the returned
+  shared_ptr) + the const/mutable `collectPrefabSourceByUuid` pair folded into one
+  `template<typename NodeT>` (explicit NodeT at call sites — deduction conflicts between
+  the node and map args in the const case).
+- **P0-2** `EditorApp::executeCommand` table-dispatch: 30 `cmdXxx` member handlers (bodies
+  moved in place, unchanged; uniform `(ctx, name, args)` signature, aliased commands share a
+  handler and branch on `name`), `static const unordered_map<string_view, member-ptr>` table.
+  MCP-smoked: add_entity (with name), remove_entity, playback, component_metadata, and the
+  unknown-command error path. (One smoke false-alarm worth remembering: PowerShell functions
+  cannot use `$args` as a parameter name — the automatic variable wins and the tool receives
+  empty arguments.)
+- **P0-3** declarative_renderer split: the 30 builtin adapters moved verbatim into
+  `builtin_passes_scene/post_process/gpu_scene.cpp` (each exposes appendXxx...Passes), the
+  factory + registerBuiltinRenderGraphPasses into `builtin_render_graph_pass_factory.cpp`,
+  the backbuffer-view cluster into public `render_graph_backbuffer.{hpp,cpp}`
+  (`normalizeId` → `normalizeRenderGraphId`). Actual adapter↔file coupling was 5 helpers
+  (2 shared), far less than the in-file comment claimed. Runtime-verified: full Sponza
+  pipeline (DepthPre/GBuffer/ShadowMap/DeferredLighting/SSR/Bloom/FXAA → backbuffer)
+  captured correctly via MCP texture dump.
+- **P1-1** `SnapshotHistoryHost<Derived>` CRTP in `graph_history.hpp`; material/animator
+  windows + render-graph `GraphEditorState` now provide only historySnapshot/
+  applyHistorySnapshot (+ render-graph's onBeforeHistoryRecord storeMeta hook); external
+  IHistory access via `snapshotHistory()`. Deliberately NOT the Round-2 `SnapshotGraphEditor`
+  mega-base — load/save/URI flows differ per window.
+- **P1-2** `render_device_facade.cpp` buffer factories: one `makeBackendBuffer` (separate
+  per-backend usage masks on purpose; TU-local `VkMemoryDomain` keeps the signature valid
+  without Vulkan); ByCount forwards to BySize with a static_assert pinning command strides
+  to the vk struct sizes. ~290 → ~130 lines.
+- **P1-3** `packMaterialParamsPBRMR(..., bool emissiveBlackToWhiteFixup = true)`;
+  FromAsset seeds through it with `false` — the audit's "just reuse the packer" suggestion
+  would have changed emissive behavior (honesty note recorded in the Round 3 doc).
+- **P1-4** Lua pipeline-asset loading → `declarative_renderer_asset_loader.cpp` + internal
+  `declarative_lua_utils.hpp`. Boundary correction during execution: `renderScriptState` /
+  `parseScriptedPassTable` must STAY in declarative_renderer.cpp (they touch its
+  anon-namespace scripted-pass state: `s_RenderScriptThreadId`, the Lua bindings,
+  `parseScriptedPassParams`); moving them would have forked cross-TU mutable state.
+  declarative_renderer.cpp: 4434 → ~2290 lines across P0-3 + P1-4. Runtime-verified: all 7
+  .vrp.lua renderer keys load; the live viewport renders Sponza correctly (user-confirmed).
+
+**New open issue found while verifying:** the MCP `vultra.runtime.dump_frame_textures`
+path intermittently produces blank/garbage PNGs while the live viewport is correct —
+unreliable for pixel-compare automation. Logged as Round 3 P2-7; suspect capture-timing/
+readback in the frame-graph debug texture path.
+
 ## Next steps
 
 - **#8 follow-up**: parallelize `RenderWorldCooker::cook` via vtask (the one remaining

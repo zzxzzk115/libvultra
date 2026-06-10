@@ -24,8 +24,11 @@ list small — these are the files a fresh agent should actually open.
 - [codex-debt-review-round2-2026-06-09.md](codex-debt-review-round2-2026-06-09.md) —
   Round 2 audit: duplication/abstraction/interface debt in the editor UI layer, asset
   loaders, and render passes (P0/P1/P2); extends the roadmap above.
+- [codex-debt-review-round3-2026-06-10.md](codex-debt-review-round3-2026-06-10.md) —
+  Round 3 audit (P0-P3): post-Round-2 new code (prefabs, declarative_renderer, XR view
+  synthesis) + deferred items; all P0/P1 executed same-session (execution log Round 8).
 - [codex-debt-cleanup-execution.md](codex-debt-cleanup-execution.md) — execution log for
-  the roadmap above (P0/P1 done, safe P2 done; build verification pending).
+  the roadmap above (Rounds 1-8; Round 8 = Round 3 audit's P0+P1, all landed).
 - [asset-dependency-residency-handoff.md](asset-dependency-residency-handoff.md) —
   asset dependency graph and residency-pin architecture.
 - [async-asset-loading-phase1.md](async-asset-loading-phase1.md) — non-blocking asset
