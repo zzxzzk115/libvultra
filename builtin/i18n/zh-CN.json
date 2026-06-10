@@ -490,6 +490,7 @@
   },
   "canvas": {
     "importedResource": "导入资源",
+    "outputTarget": "输出 RT",
     "shader": "着色器：{}"
   },
   "param": {

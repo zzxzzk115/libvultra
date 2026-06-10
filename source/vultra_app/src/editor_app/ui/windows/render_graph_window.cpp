@@ -12,6 +12,7 @@
 #include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/rendering/srp/builtin/builtin_rendergraph_registry.hpp>
+#include <vultra/function/rendering/srp/builtin/render_graph_resource_names.hpp>
 #include <vultra/function/rendering/srp/declarative_renderer.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
@@ -947,14 +948,19 @@ namespace vultra_app
             ImNodes::PopColorStyle();
         }
 
-        vultra::rhi::Sampler makeLinearClampSampler(EditorContext& ctx)
+        // Unified sampler for every scalable texture-viewer control: nearest on magnification
+        // (display scale > 1 -> crisp texels) and linear/bilinear on minification (scale < 1 ->
+        // smooth downscale). The GPU picks mag vs min per draw from the actual displayed-vs-native
+        // size, so this gives the "<1 bilinear, >1 nearest" rule automatically without tracking the
+        // zoom slider.
+        vultra::rhi::Sampler makeTexturePreviewSampler(EditorContext& ctx)
         {
             auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
             if (!backendService)
                 return {};
 
             return backendService->renderDevice().getSampler(vultra::rhi::SamplerInfo {
-                .magFilter    = vultra::rhi::TexelFilter::eLinear,
+                .magFilter    = vultra::rhi::TexelFilter::eNearest,
                 .minFilter    = vultra::rhi::TexelFilter::eLinear,
                 .mipmapMode   = vultra::rhi::MipmapMode::eLinear,
                 .addressModeS = vultra::rhi::SamplerAddressMode::eClampToEdge,
@@ -1149,10 +1155,10 @@ namespace vultra_app
                      "color",
                      "camera_color",
                      "depth",
-                     "backbuffer",
-                     "target",
-                     "left_backbuffer",
-                     "right_backbuffer",
+                     vultra::render_graph_names::kBackbuffer.data(),
+                     vultra::render_graph_names::kTarget.data(),
+                     vultra::render_graph_names::kLeftBackbuffer.data(),
+                     vultra::render_graph_names::kRightBackbuffer.data(),
                      "gbuffer_color",
                      "gbuffer_normal",
                      "gbuffer_material",
@@ -3225,6 +3231,120 @@ namespace vultra_app
                     return a.kind < b.kind;
                 return a.label < b.label;
             });
+
+            // Hide resources that nothing references (0 reads/writes) from the runtime viewer:
+            // imported GPU-scene buffers / declared eye targets this capture never used. The
+            // node-list layout path and the raw-dot layout path use DIFFERENT id namespaces (parsed
+            // node ids vs the dot's synthetic R#/P# ids), so filter each from its own data.
+
+            // (a) Node-list layout path: drop non-pass nodes not referenced by any parsed edge.
+            if (!edges.empty())
+            {
+                std::unordered_set<std::string> referenced;
+                for (const auto& e : edges)
+                {
+                    referenced.insert(e.from);
+                    referenced.insert(e.to);
+                }
+                std::erase_if(nodes,
+                              [&](const Node& n) { return n.kind != "pass" && !referenced.contains(n.id); });
+            }
+
+            // (b) Raw-dot layout path: the dot is self-contained with synthetic ids (R#/P#). A
+            // resource node (R#) appearing in no edge ("->") line is unused; remove its declaration
+            // AND its mention in the imported-resources cluster membership line (otherwise graphviz
+            // re-creates it as an empty default node).
+            if (!rawDot.empty())
+            {
+                const auto isIdChar = [](char c) {
+                    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+                };
+                const auto isNodeId = [](std::string_view id) {
+                    return id.size() >= 2 && (id.front() == 'R' || id.front() == 'P') && id[1] >= '0' && id[1] <= '9';
+                };
+                const auto collectIds = [&](std::string_view s, std::unordered_set<std::string>& out) {
+                    for (size_t i = 0; i < s.size();)
+                    {
+                        if ((s[i] == 'R' || s[i] == 'P') && i + 1 < s.size() && s[i + 1] >= '0' && s[i + 1] <= '9')
+                        {
+                            size_t j = i;
+                            while (j < s.size() && isIdChar(s[j]))
+                                ++j;
+                            out.emplace(s.substr(i, j - i));
+                            i = j;
+                        }
+                        else
+                            ++i;
+                    }
+                };
+
+                std::unordered_set<std::string> refd;
+                std::vector<std::string_view>   lines;
+                for (size_t ls = 0; ls < rawDot.size();)
+                {
+                    const size_t le      = rawDot.find('\n', ls);
+                    const size_t lineLen = (le == std::string::npos ? rawDot.size() : le) - ls;
+                    const std::string_view line {rawDot.data() + ls, lineLen};
+                    lines.push_back(line);
+                    if (line.find("->") != std::string_view::npos)
+                        collectIds(line, refd);
+                    if (le == std::string::npos)
+                        break;
+                    ls = le + 1;
+                }
+
+                std::string out;
+                out.reserve(rawDot.size());
+                for (const auto line : lines)
+                {
+                    const auto t       = trim(line);
+                    const bool isEdge  = t.find("->") != std::string::npos;
+                    const bool isDecl  = !isEdge && t.find("[label=") != std::string::npos;
+                    // leading id (resource decls and the cluster list both start with a bare id)
+                    size_t e = 0;
+                    while (e < t.size() && isIdChar(t[e]))
+                        ++e;
+                    const std::string leadId = t.substr(0, e);
+
+                    if (isDecl && isNodeId(leadId) && leadId.front() == 'R' && !refd.contains(leadId))
+                        continue; // drop unused resource declaration
+
+                    const bool isBareIdList = !isEdge && !isDecl && isNodeId(leadId) &&
+                                              t.find('{') == std::string::npos && t.find('}') == std::string::npos &&
+                                              t.find('=') == std::string::npos;
+                    if (isBareIdList)
+                    {
+                        // imported-resources cluster membership: keep only ids still referenced.
+                        std::string kept;
+                        for (size_t i = 0; i < t.size();)
+                        {
+                            if (isIdChar(t[i]))
+                            {
+                                size_t j = i;
+                                while (j < t.size() && isIdChar(t[j]))
+                                    ++j;
+                                const std::string id = t.substr(i, j - i);
+                                if (!(isNodeId(id) && id.front() == 'R') || refd.contains(id))
+                                {
+                                    if (!kept.empty())
+                                        kept.push_back(' ');
+                                    kept += id;
+                                }
+                                i = j;
+                            }
+                            else
+                                ++i;
+                        }
+                        out += kept;
+                        out.push_back('\n');
+                        continue;
+                    }
+
+                    out.append(line.data(), line.size());
+                    out.push_back('\n');
+                }
+                rawDot = std::move(out);
+            }
         }
     };
 
@@ -4216,7 +4336,7 @@ namespace vultra_app
                                 }
                                 cached.texture = debugTexture->texture;
                                 cached.textureId =
-                                    imguiService->addTexture(*debugTexture->texture, makeLinearClampSampler(ctx));
+                                    imguiService->addTexture(*debugTexture->texture, makeTexturePreviewSampler(ctx));
                                 cached.retireFrame = 0;
                             }
                             style.textureId  = cached.textureId;
@@ -4427,7 +4547,7 @@ namespace vultra_app
                     m_RetiredTextureThumbnails.push_back(cached);
                 }
                 cached.texture     = texture.texture;
-                cached.textureId   = texture.texture ? imguiService->addTexture(*texture.texture, makeLinearClampSampler(ctx)) :
+                cached.textureId   = texture.texture ? imguiService->addTexture(*texture.texture, makeTexturePreviewSampler(ctx)) :
                                                         vultra::IImGuiService::TextureID {};
                 cached.retireFrame = 0;
             }
@@ -5639,6 +5759,42 @@ namespace vultra_app
                             state.markDirty();
                     }
                 }
+                // FinalComposition chooses which render target its `target` output writes to.
+                // The set is fixed (the engine-known backbuffer / per-eye targets); custom
+                // imported RTs are not offered yet.
+                if (pass.type == "FinalComposition")
+                {
+                    const EditorCpuScope rtPerf {ctx, "Editor::RenderGraph/CanvasOutputRt"};
+                    static constexpr std::array<std::string_view, 3> kOutputRtOptions {
+                        vultra::render_graph_names::kBackbuffer,
+                        vultra::render_graph_names::kLeftBackbuffer,
+                        vultra::render_graph_names::kRightBackbuffer,
+                    };
+                    const auto        it      = pass.outputs.find("target");
+                    const std::string current = (it != pass.outputs.end() && !it->second.resource.empty()) ?
+                                                    it->second.resource :
+                                                    std::string(vultra::render_graph_names::kBackbuffer);
+                    ImGui::PushID("FinalCompositionTarget");
+                    ImGui::TextUnformatted(vultra::tr("renderGraph.canvas.outputTarget"));
+                    ImGui::PushItemWidth(paramValueWidth);
+                    if (ImGui::BeginCombo("##outputRt", current.c_str()))
+                    {
+                        for (const auto opt : kOutputRtOptions)
+                        {
+                            const bool selected = current == opt;
+                            if (ImGui::Selectable(std::string(opt).c_str(), selected))
+                            {
+                                pass.outputs["target"] = std::string(opt);
+                                state.markDirty();
+                            }
+                            if (selected)
+                                ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::PopItemWidth();
+                    ImGui::PopID();
+                }
                 {
                     const EditorCpuScope pinsPerf {ctx, "Editor::RenderGraph/CanvasPins"};
                     if (!def.inputs.empty())
@@ -5997,7 +6153,7 @@ namespace vultra_app
                         m_RetiredTextureThumbnails.push_back(cached);
                     }
                     cached.texture     = texture.texture;
-                    cached.textureId   = imguiService->addTexture(*texture.texture, makeLinearClampSampler(ctx));
+                    cached.textureId   = imguiService->addTexture(*texture.texture, makeTexturePreviewSampler(ctx));
                     cached.retireFrame = 0;
                 }
                 return cached.textureId;
@@ -6092,9 +6248,10 @@ namespace vultra_app
                                   std::nullopt)
                 .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled)
                 .build(rd);
-        m_OverlayPendingRenderTarget.textureId = m_OverlayPendingRenderTarget.layerCount > 1u ?
-                                                     vultra::IImGuiService::TextureID {} :
-                                                     imguiService->addTexture(*m_OverlayPendingRenderTarget.texture);
+        m_OverlayPendingRenderTarget.textureId =
+            m_OverlayPendingRenderTarget.layerCount > 1u ?
+                vultra::IImGuiService::TextureID {} :
+                imguiService->addTexture(*m_OverlayPendingRenderTarget.texture, makeTexturePreviewSampler(ctx));
         m_OverlayPendingRenderTarget.frameCreated = static_cast<uint64_t>(ImGui::GetFrameCount());
         m_OverlayPendingRenderTarget.releaseFrame = 0;
     }

@@ -642,6 +642,7 @@
     },
     "canvas": {
       "importedResource": "インポート済みリソース",
+      "outputTarget": "出力 RT",
       "shader": "シェーダー: {}"
     },
     "param": {

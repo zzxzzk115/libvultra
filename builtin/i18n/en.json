@@ -490,6 +490,7 @@
   },
   "canvas": {
     "importedResource": "imported resource",
+    "outputTarget": "Output RT",
     "shader": "shader: {}"
   },
   "param": {
