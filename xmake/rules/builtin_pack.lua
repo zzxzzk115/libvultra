@@ -67,5 +67,22 @@ rule("vultra.builtin_pack")
                   "The builtinpack host tool must build first (it is an add_deps dependency). " ..
                   "Try `xmake build builtinpack` and check its output.", outvpk)
         end
+
+        -- The embed file (.rc RCDATA / .S .incbin) bakes builtin.vpk into the binary at COMPILE
+        -- time, but neither xmake nor the RC/assembler tracks that incbin dependency. So when only
+        -- the pack content changes (e.g. a shader-only edit repacks the vpk but no .rc/.cpp source
+        -- changed), the embed object is considered up to date, the binary relinks with the STALE
+        -- embedded pack, and the runtime keeps loading old builtin resources/shaders. Force the embed
+        -- source to be newer than the pack so it recompiles and re-embeds the fresh vpk.
+        local embed     = path.join(os.projectdir(), "builtin", "embed")
+        local embedfile = nil
+        if target:is_plat("windows") then
+            embedfile = path.join(embed, "builtin_pack.rc")
+        elseif target:is_plat("linux") or target:is_plat("macosx") then
+            embedfile = path.join(embed, "builtin_pack_unix.S")
+        end
+        if embedfile and os.isfile(embedfile) and os.mtime(outvpk) > os.mtime(embedfile) then
+            os.touch(embedfile, {mtime = os.time()})
+        end
     end)
 rule_end()
