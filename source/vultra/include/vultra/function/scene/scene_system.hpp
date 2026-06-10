@@ -131,6 +131,17 @@ namespace vultra
                                      const std::filesystem::path&                        baseDir,
                                      const std::unordered_map<std::string, std::string>& assets);
 
+        // Resolves the prefab source node corresponding to `e` inside the prefab instance
+        // containing it; `doc` keeps `srcNode` alive. Shared by the prefab field-diff APIs.
+        struct PrefabSourceLookup
+        {
+            std::shared_ptr<const SceneDocument> doc;
+            const SceneNode*                     srcNode {nullptr};
+            CoreUUID                             entityUuid;
+            std::string                          prefabUri;
+        };
+        bool resolvePrefabSource(World& world, entt::entity e, PrefabSourceLookup& out);
+
         // World -> Scene
         BuildNodeResult buildNodeFromWorldR(World& world, entt::entity e);
 
