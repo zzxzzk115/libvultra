@@ -2,6 +2,8 @@
 
 #include "editor_app/i_history.hpp"
 
+#include <imgui.h>
+
 #include <functional>
 #include <string>
 #include <utility>
@@ -117,5 +119,56 @@ namespace vultra_app
         std::string              m_NextLabel;
         std::string              m_DefaultLabel {"Edit"};
         RestoreFn                m_Restore;
+    };
+
+    // CRTP host carrying the SnapshotHistory wiring every snapshot-based graph editor
+    // repeats (material / animator / render-graph): lazy restore-callback install, the
+    // loaded-baseline reset, and drag-coalesced recording. Derived provides
+    //   std::string historySnapshot();                                  // serialize
+    //   void applyHistorySnapshot(EditorContext&, const std::string&);  // restore
+    // and may shadow onBeforeHistoryRecord() to run a pre-snapshot hook (e.g. baking
+    // node positions into the graph). A private Derived grants access with
+    // `friend SnapshotHistoryHost<Derived>;`.
+    template<typename Derived>
+    class SnapshotHistoryHost
+    {
+    public:
+        // Seed a fresh history with the current document (after load / new).
+        void resetHistory()
+        {
+            if (!m_HistoryReady)
+            {
+                m_History.setRestore([this](EditorContext& ctx, const std::string& snapshot) {
+                    static_cast<Derived&>(*this).applyHistorySnapshot(ctx, snapshot);
+                });
+                m_History.setDefaultLabel("history.edit");
+                m_HistoryReady = true;
+            }
+            m_History.reset(static_cast<Derived&>(*this).historySnapshot(), "history.loaded");
+            m_HistoryPending = false;
+        }
+
+        // Coalesce drags: only record once the edit settles (no active ImGui item), and
+        // never while a restore is being applied.
+        void recordHistory()
+        {
+            if (m_ApplyingHistory || !m_HistoryPending || ImGui::IsAnyItemActive())
+                return;
+            static_cast<Derived&>(*this).onBeforeHistoryRecord();
+            m_History.record(static_cast<Derived&>(*this).historySnapshot());
+            m_HistoryPending = false;
+        }
+
+        // The window manager / claimedHistory plumbing needs the IHistory itself.
+        [[nodiscard]] SnapshotHistory&       snapshotHistory() { return m_History; }
+        [[nodiscard]] const SnapshotHistory& snapshotHistory() const { return m_History; }
+
+    protected:
+        void onBeforeHistoryRecord() {} // optional Derived shadow point
+
+        SnapshotHistory m_History;
+        bool            m_HistoryReady {false};    // restore callback installed
+        bool            m_HistoryPending {false};  // an edit awaits a coalesced snapshot
+        bool            m_ApplyingHistory {false}; // guard: undo/redo restore in progress
     };
 } // namespace vultra_app

@@ -106,8 +106,8 @@ namespace vultra_app
             };
             // Generic/auto-generated clip names that carry no useful info on their own.
             const auto isGenericClip = [](const std::string& a) {
-                return a.empty() || a == "mixamo_com" || a == "mixamo.com" || a == "Take 001" ||
-                       a == "Animation" || a == "default" || a == "Unnamed";
+                return a.empty() || a == "mixamo_com" || a == "mixamo.com" || a == "Take 001" || a == "Animation" ||
+                       a == "default" || a == "Unnamed";
             };
             if (const auto h = sourcePath.find("#animation/"); h != std::string::npos)
             {
@@ -118,14 +118,15 @@ namespace vultra_app
                 if (file.empty())
                     return anim.empty() ? sourcePath : anim;
                 if (isGenericClip(anim))
-                    return file; // drop the useless clip name, show the descriptive model name
+                    return file;            // drop the useless clip name, show the descriptive model name
                 return file + " / " + anim; // "File / Clip"
             }
             return stripDirExt(sourcePath);
         }
     } // namespace
 
-    AnimatorGraphWindow::AnimatorGraphWindow() : EditorWindow("Animator Graph", ICON_MDI_RUN_FAST, "window.animatorGraph")
+    AnimatorGraphWindow::AnimatorGraphWindow() :
+        EditorWindow("Animator Graph", ICON_MDI_RUN_FAST, "window.animatorGraph")
     {
         // Hidden by default: only shown when an animator graph is double-clicked in the content
         // browser, or toggled on from the top bar's "Window" menu.
@@ -150,7 +151,8 @@ namespace vultra_app
     }
     int AnimatorGraphWindow::transitionLinkId(int sourceStateIndex, int transitionIndex) const
     {
-        const uint32_t src = sourceStateIndex == kAnyStateIndex ? 0xFFFu : static_cast<uint32_t>(sourceStateIndex & 0xFFF);
+        const uint32_t src =
+            sourceStateIndex == kAnyStateIndex ? 0xFFFu : static_cast<uint32_t>(sourceStateIndex & 0xFFF);
         return static_cast<int>(0x50000000u | (src << 12) | (static_cast<uint32_t>(transitionIndex) & 0xFFFu));
     }
     bool AnimatorGraphWindow::decodeTransitionLink(int linkId, int& sourceStateIndex, int& transitionIndex) const
@@ -190,7 +192,7 @@ namespace vultra_app
         if (!ctx.state.animatorGraphOpenRequested)
             return;
         ctx.state.animatorGraphOpenRequested = false;
-        const auto uri = ctx.state.currentEditingAnimatorGraph;
+        const auto uri                       = ctx.state.currentEditingAnimatorGraph;
         if (uri.empty())
             return;
         m_Loaded = true;
@@ -207,10 +209,10 @@ namespace vultra_app
 
     void AnimatorGraphWindow::newGraph(EditorContext& ctx)
     {
-        m_Graph        = {};
-        m_Graph.name   = "Animator Graph";
+        m_Graph      = {};
+        m_Graph.name = "Animator Graph";
         m_Graph.states.push_back(ag::State {.name = "Idle"});
-        m_Graph.entry  = "Idle";
+        m_Graph.entry         = "Idle";
         m_SelectedState       = 0;
         m_SelTransitionSource = -1000;
         markDirty();
@@ -227,41 +229,21 @@ namespace vultra_app
         if (!text)
             return false;
         std::vector<std::string> diagnostics;
-        auto graph = ag::loadGraphFromText(text.value(), &diagnostics);
+        auto                     graph = ag::loadGraphFromText(text.value(), &diagnostics);
         if (!graph)
             return false;
         m_Graph      = std::move(*graph);
         m_CurrentUri = std::move(uri);
         std::snprintf(m_UriBuffer.data(), m_UriBuffer.size(), "%s", m_CurrentUri.c_str());
-        m_Dirty           = false;
-        m_Status          = vultra::tr("animatorGraph.status.loaded");
-        m_SelectedState   = m_Graph.states.empty() ? -1 : 0;
+        m_Dirty               = false;
+        m_Status              = vultra::tr("animatorGraph.status.loaded");
+        m_SelectedState       = m_Graph.states.empty() ? -1 : 0;
         m_SelTransitionSource = -1000;
         resetHistory();
         return true;
     }
 
-    void AnimatorGraphWindow::resetHistory()
-    {
-        if (!m_HistoryReady)
-        {
-            m_History.setRestore(
-                [this](EditorContext& ctx, const std::string& snapshot) { applyHistorySnapshot(ctx, snapshot); });
-            m_History.setDefaultLabel("history.edit");
-            m_HistoryReady = true;
-        }
-        m_History.reset(ag::saveGraphToText(m_Graph), "history.loaded");
-        m_HistoryPending = false;
-    }
-
-    void AnimatorGraphWindow::recordHistory()
-    {
-        // Coalesce drags: only record when the edit has settled (no active ImGui item).
-        if (m_ApplyingHistory || !m_HistoryPending || ImGui::IsAnyItemActive())
-            return;
-        m_History.record(ag::saveGraphToText(m_Graph));
-        m_HistoryPending = false;
-    }
+    std::string AnimatorGraphWindow::historySnapshot() const { return ag::saveGraphToText(m_Graph); }
 
     void AnimatorGraphWindow::applyHistorySnapshot(EditorContext&, const std::string& snapshot)
     {
@@ -308,7 +290,7 @@ namespace vultra_app
 
     std::string AnimatorGraphWindow::addState(EditorContext& ctx, const std::string& base)
     {
-        std::string name = base.empty() ? "State" : base;
+        std::string name   = base.empty() ? "State" : base;
         int         suffix = 1;
         while (m_Graph.stateIndex(name) >= 0)
             name = (base.empty() ? "State" : base) + std::to_string(++suffix);
@@ -361,8 +343,8 @@ namespace vultra_app
 
         const float rightWidth =
             std::clamp(ImGui::GetContentRegionAvail().x * 0.32f, vultra::ui::dp(320.0f), vultra::ui::dp(480.0f));
-        const float leftWidth = std::max(vultra::ui::dp(240.0f),
-                                         ImGui::GetContentRegionAvail().x - rightWidth - ImGui::GetStyle().ItemSpacing.x);
+        const float leftWidth = std::max(
+            vultra::ui::dp(240.0f), ImGui::GetContentRegionAvail().x - rightWidth - ImGui::GetStyle().ItemSpacing.x);
         ImGui::BeginChild("##AnimatorGraphCanvas",
                           ImVec2(leftWidth, 0.0f),
                           true,
@@ -386,8 +368,8 @@ namespace vultra_app
     void AnimatorGraphWindow::drawToolbar(EditorContext& ctx)
     {
         ImGui::SetNextItemWidth(vultra::ui::dp(360.0f));
-        if (ImGui::InputText("##AnimatorGraphUri", m_UriBuffer.data(), m_UriBuffer.size(),
-                             ImGuiInputTextFlags_EnterReturnsTrue))
+        if (ImGui::InputText(
+                "##AnimatorGraphUri", m_UriBuffer.data(), m_UriBuffer.size(), ImGuiInputTextFlags_EnterReturnsTrue))
             loadGraph(ctx, m_UriBuffer.data());
         ImGui::SameLine();
         if (ImGui::Button((std::string {ICON_MDI_FILE_PLUS " "} + vultra::tr("animatorGraph.toolbar.new")).c_str()))
@@ -427,10 +409,9 @@ namespace vultra_app
             ImNodes::EndOutputAttribute();
             ImNodes::EndNode();
             pinLookup[outPin] = {kAnyStateIndex, false};
-            if (auto it = m_Graph.metadata.find("anyStatePos"); it != m_Graph.metadata.end() && it->is_array() &&
-                                                                it->size() == 2)
-                ImNodes::SetNodeGridSpacePos(anyNode,
-                                             ImVec2((*it)[0].get<float>(), (*it)[1].get<float>()));
+            if (auto it = m_Graph.metadata.find("anyStatePos");
+                it != m_Graph.metadata.end() && it->is_array() && it->size() == 2)
+                ImNodes::SetNodeGridSpacePos(anyNode, ImVec2((*it)[0].get<float>(), (*it)[1].get<float>()));
         }
 
         const int entryIndex = m_Graph.stateIndex(m_Graph.entry);
@@ -458,14 +439,14 @@ namespace vultra_app
             ImGui::TextDisabled("%s",
                                 vultra::trf("animatorGraph.node.clip",
                                             state.animation.valid() ? shortUuid(state.animation) :
-                                                                       std::string {vultra::tr("common.none")})
+                                                                      std::string {vultra::tr("common.none")})
                                     .c_str());
-            ImGui::TextDisabled("%s",
-                                vultra::trf("animatorGraph.node.speed",
-                                            state.speed,
-                                            state.loop ? std::string {vultra::tr("animatorGraph.node.loopSuffix")} :
-                                                         std::string {})
-                                    .c_str());
+            ImGui::TextDisabled(
+                "%s",
+                vultra::trf("animatorGraph.node.speed",
+                            state.speed,
+                            state.loop ? std::string {vultra::tr("animatorGraph.node.loopSuffix")} : std::string {})
+                    .c_str());
 
             const int outPin = statePinId(state.name, false);
             ImNodes::BeginOutputAttribute(outPin);
@@ -507,12 +488,12 @@ namespace vultra_app
 
         // Persist node positions back into the graph.
         {
-            const auto anyPos = ImNodes::GetNodeGridSpacePos(nodeIdForState("::any::"));
+            const auto anyPos               = ImNodes::GetNodeGridSpacePos(nodeIdForState("::any::"));
             m_Graph.metadata["anyStatePos"] = {anyPos.x, anyPos.y};
         }
         for (auto& state : m_Graph.states)
         {
-            const auto pos     = ImNodes::GetNodeGridSpacePos(nodeIdForState(state.name));
+            const auto pos      = ImNodes::GetNodeGridSpacePos(nodeIdForState(state.name));
             state.editor["pos"] = {pos.x, pos.y};
         }
 
@@ -531,7 +512,7 @@ namespace vultra_app
                 if (!out.second && in.second && in.first >= 0)
                 {
                     const std::string destName = m_Graph.states[static_cast<size_t>(in.first)].name;
-                    auto&             list      = transitionsFor(out.first);
+                    auto&             list     = transitionsFor(out.first);
                     list.push_back(ag::Transition {.to = destName, .duration = 0.2f});
                     m_SelTransitionSource = out.first;
                     m_SelTransitionIndex  = static_cast<int>(list.size()) - 1;
@@ -588,10 +569,10 @@ namespace vultra_app
         // --- Right-click context menus ---
         const bool canvasHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows |
                                                           ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
-        int        hoveredNode = 0;
-        int        hoveredLink = 0;
-        const bool nodeHovered = ImNodes::IsNodeHovered(&hoveredNode);
-        const bool linkHovered = ImNodes::IsLinkHovered(&hoveredLink);
+        int        hoveredNode   = 0;
+        int        hoveredLink   = 0;
+        const bool nodeHovered   = ImNodes::IsNodeHovered(&hoveredNode);
+        const bool linkHovered   = ImNodes::IsLinkHovered(&hoveredLink);
         if (canvasHovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
         {
             if (nodeHovered)
@@ -630,17 +611,18 @@ namespace vultra_app
                 auto& state = m_Graph.states[static_cast<size_t>(si)];
                 ImGui::TextDisabled("%s", state.name.c_str());
                 ImGui::Separator();
-                if (ImGui::MenuItem((std::string {ICON_MDI_FLAG " "} + vultra::tr("animatorGraph.menu.setAsEntry")).c_str(),
-                                    nullptr,
-                                    false,
-                                    m_Graph.entry != state.name))
+                if (ImGui::MenuItem(
+                        (std::string {ICON_MDI_FLAG " "} + vultra::tr("animatorGraph.menu.setAsEntry")).c_str(),
+                        nullptr,
+                        false,
+                        m_Graph.entry != state.name))
                 {
                     m_Graph.entry = state.name;
                     markDirty();
                 }
-                if (ImGui::MenuItem(
-                        (std::string {ICON_MDI_ARROW_RIGHT_BOLD " "} + vultra::tr("animatorGraph.menu.addTransitionFromHere"))
-                            .c_str()))
+                if (ImGui::MenuItem((std::string {ICON_MDI_ARROW_RIGHT_BOLD " "} +
+                                     vultra::tr("animatorGraph.menu.addTransitionFromHere"))
+                                        .c_str()))
                 {
                     // Connect to the next state (or itself) as a starting point the user can retarget.
                     const int dest = (si + 1) % static_cast<int>(m_Graph.states.size());
@@ -648,7 +630,8 @@ namespace vultra_app
                         ag::Transition {.to = m_Graph.states[static_cast<size_t>(dest)].name, .duration = 0.2f});
                     markDirty();
                 }
-                if (ImGui::MenuItem((std::string {ICON_MDI_DELETE " "} + vultra::tr("animatorGraph.menu.deleteState")).c_str()))
+                if (ImGui::MenuItem(
+                        (std::string {ICON_MDI_DELETE " "} + vultra::tr("animatorGraph.menu.deleteState")).c_str()))
                     removeState(ctx, state.name);
             }
             ImGui::EndPopup();
@@ -690,8 +673,8 @@ namespace vultra_app
         {
             std::array<char, 128> name {};
             std::snprintf(name.data(), name.size(), "%s", m_Graph.name.c_str());
-            if (ImGui::InputText((std::string {vultra::tr("common.name")} + "##graphName").c_str(), name.data(),
-                                 name.size()))
+            if (ImGui::InputText(
+                    (std::string {vultra::tr("common.name")} + "##graphName").c_str(), name.data(), name.size()))
             {
                 m_Graph.name = name.data();
                 markDirty();
@@ -737,8 +720,8 @@ namespace vultra_app
             ImGui::SetNextItemWidth(vultra::ui::dp(80.0f));
             if (ImGui::BeginCombo("##ptype", parameterTypeLabel(p.type)))
             {
-                const ag::ParameterType types[] = {ag::ParameterType::eFloat, ag::ParameterType::eBool,
-                                                   ag::ParameterType::eTrigger};
+                const ag::ParameterType types[] = {
+                    ag::ParameterType::eFloat, ag::ParameterType::eBool, ag::ParameterType::eTrigger};
                 for (auto t : types)
                     if (ImGui::Selectable(parameterTypeLabel(t), t == p.type))
                     {
@@ -791,11 +774,13 @@ namespace vultra_app
 
     void AnimatorGraphWindow::drawStateInspector(EditorContext& ctx, ag::State& state)
     {
-        const std::string oldName = state.name;
+        const std::string    oldName = state.name;
         std::array<char, 96> nameBuf {};
         std::snprintf(nameBuf.data(), nameBuf.size(), "%s", state.name.c_str());
-        if (ImGui::InputText((std::string {vultra::tr("common.name")} + "##stateName").c_str(), nameBuf.data(),
-                             nameBuf.size(), ImGuiInputTextFlags_EnterReturnsTrue))
+        if (ImGui::InputText((std::string {vultra::tr("common.name")} + "##stateName").c_str(),
+                             nameBuf.data(),
+                             nameBuf.size(),
+                             ImGuiInputTextFlags_EnterReturnsTrue))
         {
             const std::string newName = nameBuf.data();
             if (!newName.empty() && m_Graph.stateIndex(newName) < 0)
@@ -821,7 +806,7 @@ namespace vultra_app
             auto*             assets     = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
             const std::string currentKey = state.animation.valid() ? state.animation.toString() : std::string {};
             std::string       preview    = vultra::tr("common.none");
-            std::string currentSource;
+            std::string       currentSource;
             if (assets && state.animation.valid())
             {
                 const auto& reg = assets->registry().getRegistry();
@@ -895,7 +880,11 @@ namespace vultra_app
                                       m_Graph.states[static_cast<size_t>(m_SelTransitionSource)].name.c_str();
         ImGui::TextUnformatted(vultra::trf("animatorGraph.transition.route", sourceLabel, transition.to).c_str());
 
-        if (ImGui::DragFloat(vultra::tr("animatorGraph.transition.duration"), &transition.duration, 0.01f, 0.0f, 5.0f,
+        if (ImGui::DragFloat(vultra::tr("animatorGraph.transition.duration"),
+                             &transition.duration,
+                             0.01f,
+                             0.0f,
+                             5.0f,
                              vultra::tr("animatorGraph.transition.durationFormat")))
             markDirty();
         if (ImGui::Checkbox(vultra::tr("animatorGraph.transition.hasExitTime"), &transition.hasExitTime))
@@ -911,8 +900,9 @@ namespace vultra_app
             auto& c = transition.conditions[static_cast<size_t>(i)];
             ImGui::PushID(i);
             ImGui::SetNextItemWidth(vultra::ui::dp(100.0f));
-            if (ImGui::BeginCombo("##cparam", c.parameter.empty() ? vultra::tr("animatorGraph.transition.paramPlaceholder") :
-                                                                    c.parameter.c_str()))
+            if (ImGui::BeginCombo("##cparam",
+                                  c.parameter.empty() ? vultra::tr("animatorGraph.transition.paramPlaceholder") :
+                                                        c.parameter.c_str()))
             {
                 for (const auto& p : m_Graph.parameters)
                     if (ImGui::Selectable(p.name.c_str(), p.name == c.parameter))
@@ -926,9 +916,12 @@ namespace vultra_app
             ImGui::SetNextItemWidth(vultra::ui::dp(110.0f));
             if (ImGui::BeginCombo("##ctype", conditionTypeLabel(c.type)))
             {
-                const ag::ConditionType all[] = {ag::ConditionType::eGreater, ag::ConditionType::eLess,
-                                                 ag::ConditionType::eEqual,   ag::ConditionType::eNotEqual,
-                                                 ag::ConditionType::eTrue,    ag::ConditionType::eFalse,
+                const ag::ConditionType all[] = {ag::ConditionType::eGreater,
+                                                 ag::ConditionType::eLess,
+                                                 ag::ConditionType::eEqual,
+                                                 ag::ConditionType::eNotEqual,
+                                                 ag::ConditionType::eTrue,
+                                                 ag::ConditionType::eFalse,
                                                  ag::ConditionType::eTrigger};
                 for (auto t : all)
                     if (ImGui::Selectable(conditionTypeLabel(t), t == c.type))
@@ -957,7 +950,8 @@ namespace vultra_app
             transition.conditions.erase(transition.conditions.begin() + removeCond);
             markDirty();
         }
-        if (ImGui::SmallButton((std::string {ICON_MDI_PLUS " "} + vultra::tr("animatorGraph.transition.addCondition")).c_str()))
+        if (ImGui::SmallButton(
+                (std::string {ICON_MDI_PLUS " "} + vultra::tr("animatorGraph.transition.addCondition")).c_str()))
         {
             ag::Condition c;
             if (!m_Graph.parameters.empty())
@@ -967,7 +961,8 @@ namespace vultra_app
         }
 
         ImGui::Separator();
-        if (ImGui::Button((std::string {ICON_MDI_DELETE " "} + vultra::tr("animatorGraph.menu.deleteTransition")).c_str()))
+        if (ImGui::Button(
+                (std::string {ICON_MDI_DELETE " "} + vultra::tr("animatorGraph.menu.deleteTransition")).c_str()))
         {
             auto& list = transitionsFor(m_SelTransitionSource);
             if (m_SelTransitionIndex >= 0 && m_SelTransitionIndex < static_cast<int>(list.size()))

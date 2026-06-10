@@ -29,7 +29,7 @@
 
 namespace vultra_app
 {
-    class MaterialGraphWindow final : public EditorWindow
+    class MaterialGraphWindow final : public EditorWindow, public SnapshotHistoryHost<MaterialGraphWindow>
     {
     public:
         MaterialGraphWindow();
@@ -62,16 +62,16 @@ namespace vultra_app
         void drawAddNodePopup(EditorContext& ctx);
         void markDirty(EditorContext& ctx);
 
-        // Snapshot-based undo/redo. resetHistory seeds after load/new; recordHistory
-        // captures a coalesced snapshot once an edit settles; undo/redo restore one.
-        void resetHistory();
-        void recordHistory();
-        void applyHistorySnapshot(EditorContext& ctx, const std::string& snapshot);
-        void undo(EditorContext& ctx);
-        void redo(EditorContext& ctx);
-        void updatePreviewFocusAnimation();
-        bool focusPreviewMesh(EditorContext& ctx, float aspect, bool resetAngle);
-        void refreshNodeRegistry(EditorContext& ctx);
+        // Snapshot-based undo/redo via the shared SnapshotHistoryHost; only the
+        // serialize/restore hooks are window-specific.
+        friend SnapshotHistoryHost<MaterialGraphWindow>;
+        std::string historySnapshot() const;
+        void        applyHistorySnapshot(EditorContext& ctx, const std::string& snapshot);
+        void        undo(EditorContext& ctx);
+        void        redo(EditorContext& ctx);
+        void        updatePreviewFocusAnimation();
+        bool        focusPreviewMesh(EditorContext& ctx, float aspect, bool resetAngle);
+        void        refreshNodeRegistry(EditorContext& ctx);
 
         void ensurePreviewWorld(EditorContext& ctx);
         void ensurePreviewRenderTarget(EditorContext& ctx, uint32_t width, uint32_t height);
@@ -82,57 +82,53 @@ namespace vultra_app
         int pinId(std::string_view node, std::string_view pin, bool input);
         int linkId(const vultra::material_graph::Link& link) const;
 
-        vultra::material_graph::Node* findNode(std::string_view id);
+        vultra::material_graph::Node*       findNode(std::string_view id);
         const vultra::material_graph::Node* findNode(std::string_view id) const;
-        void ensureNodePorts(vultra::material_graph::Node& node);
+        void                                ensureNodePorts(vultra::material_graph::Node& node);
 
-        vultra::material_graph::NodeRegistry    m_Registry;
-        vultra::material_graph::Graph           m_Graph;
+        vultra::material_graph::NodeRegistry            m_Registry;
+        vultra::material_graph::Graph                   m_Graph;
         std::vector<vultra::material_graph::Diagnostic> m_Diagnostics;
-        std::unordered_map<int, PinRef>         m_Pins;
-        ImNodesEditorContext*                   m_NodeEditor {nullptr};
-        std::string                             m_CurrentUri {"res://materials/default.vmatgraph.json"};
-        std::string                             m_Status;
-        bool                                    m_Loaded {false};
-        bool                                    m_Dirty {false};
-        bool                                    m_LiveApply {true};
-        SnapshotHistory                         m_History;
-        bool                                    m_HistoryReady {false};    // restore callback installed
-        bool                                    m_HistoryPending {false};  // an edit awaits a coalesced snapshot
-        bool                                    m_ApplyingHistory {false}; // guard: undo/redo restore in progress
-        int                                     m_ContextNode {0};
-        std::string                             m_NoteEditNode;          // node id being annotated
-        std::array<char, 256>                   m_NoteEditBuffer {};     // edit buffer for the note popup
-        bool                                    m_OpenNoteEditor {false};
-        uint64_t                                m_NodeRegistryAssetGeneration {std::numeric_limits<uint64_t>::max()};
-        uint64_t                                m_LoadedAssetGeneration {0};
-        uint64_t                                m_LoadedWriteStamp {0};
+        std::unordered_map<int, PinRef>                 m_Pins;
+        ImNodesEditorContext*                           m_NodeEditor {nullptr};
+        std::string                                     m_CurrentUri {"res://materials/default.vmatgraph.json"};
+        std::string                                     m_Status;
+        bool                                            m_Loaded {false};
+        bool                                            m_Dirty {false};
+        bool                                            m_LiveApply {true};
+        int                                             m_ContextNode {0};
+        std::string                                     m_NoteEditNode;      // node id being annotated
+        std::array<char, 256>                           m_NoteEditBuffer {}; // edit buffer for the note popup
+        bool                                            m_OpenNoteEditor {false};
+        uint64_t m_NodeRegistryAssetGeneration {std::numeric_limits<uint64_t>::max()};
+        uint64_t m_LoadedAssetGeneration {0};
+        uint64_t m_LoadedWriteStamp {0};
 
-        RenderTargetSlot              m_PreviewTarget;
-        ui::RetiredRenderTargets      m_RetiredPreviewTargets;
-        ui::TextureSelectorState      m_TextureSelector;
-        ui::MeshSelectorState         m_MeshSelector;
-        vultra::World                 m_PreviewWorld;
-        entt::entity                  m_PreviewSphere {entt::null};
-        entt::entity                  m_PreviewLight {entt::null};
-        entt::entity                  m_PreviewEnvironment {entt::null};
-        vultra::CoreUUID              m_PreviewMesh;
-        vultra::CoreUUID              m_LastPreviewMesh;
-        vultra::CoreUUID              m_PreviewSkybox;
-        glm::vec3                     m_PreviewCameraPosition {0.0f, 0.35f, 3.1f};
-        glm::vec3                     m_PreviewFocusStartPosition {0.0f};
-        glm::vec3                     m_PreviewFocusTargetPosition {0.0f};
-        float                         m_PreviewCameraFovY {45.0f};
-        glm::quat                     m_PreviewObjectRotation {1.0f, 0.0f, 0.0f, 0.0f};
-        glm::vec3                     m_PreviewArcballVector {0.0f, 0.0f, 1.0f};
-        glm::vec3                     m_PreviewBoundsCenter {0.0f};
-        float                         m_PreviewFitDistance {3.0f};
-        float                         m_PreviewDistanceScale {1.0f};
-        float                         m_PreviewFocusElapsed {0.0f};
-        float                         m_PreviewFocusDuration {0.28f};
-        float                         m_PreviewTimeSeconds {0.0f};
-        bool                          m_PreviewTimePlaying {true}; // auto-play so time-driven graphs animate
-        bool                          m_PreviewFocusActive {false};
-        bool                          m_PreviewArcballActive {false};
+        RenderTargetSlot         m_PreviewTarget;
+        ui::RetiredRenderTargets m_RetiredPreviewTargets;
+        ui::TextureSelectorState m_TextureSelector;
+        ui::MeshSelectorState    m_MeshSelector;
+        vultra::World            m_PreviewWorld;
+        entt::entity             m_PreviewSphere {entt::null};
+        entt::entity             m_PreviewLight {entt::null};
+        entt::entity             m_PreviewEnvironment {entt::null};
+        vultra::CoreUUID         m_PreviewMesh;
+        vultra::CoreUUID         m_LastPreviewMesh;
+        vultra::CoreUUID         m_PreviewSkybox;
+        glm::vec3                m_PreviewCameraPosition {0.0f, 0.35f, 3.1f};
+        glm::vec3                m_PreviewFocusStartPosition {0.0f};
+        glm::vec3                m_PreviewFocusTargetPosition {0.0f};
+        float                    m_PreviewCameraFovY {45.0f};
+        glm::quat                m_PreviewObjectRotation {1.0f, 0.0f, 0.0f, 0.0f};
+        glm::vec3                m_PreviewArcballVector {0.0f, 0.0f, 1.0f};
+        glm::vec3                m_PreviewBoundsCenter {0.0f};
+        float                    m_PreviewFitDistance {3.0f};
+        float                    m_PreviewDistanceScale {1.0f};
+        float                    m_PreviewFocusElapsed {0.0f};
+        float                    m_PreviewFocusDuration {0.28f};
+        float                    m_PreviewTimeSeconds {0.0f};
+        bool                     m_PreviewTimePlaying {true}; // auto-play so time-driven graphs animate
+        bool                     m_PreviewFocusActive {false};
+        bool                     m_PreviewArcballActive {false};
     };
 } // namespace vultra_app

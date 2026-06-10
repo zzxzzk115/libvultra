@@ -1,8 +1,8 @@
 #include "editor_app/ui/windows/material_graph_window.hpp"
 
+#include "common/ui_widgets.hpp"
 #include "editor_app/asset_thumbnail_service.hpp"
 #include "editor_app/ui/graph_layout.hpp"
-#include "common/ui_widgets.hpp"
 
 #include <vultra/core/i18n/i18n.hpp>
 #include <vultra/core/rhi/structs/render_device_structs.hpp>
@@ -141,7 +141,7 @@ namespace vultra_app
         bool inputStringField(const char* label, std::string& value)
         {
             std::array<char, 256> buffer {};
-            const auto count = std::min(buffer.size() - 1, value.size());
+            const auto            count = std::min(buffer.size() - 1, value.size());
             std::memcpy(buffer.data(), value.data(), count);
             buffer[count] = '\0';
             if (!ImGui::InputText(label, buffer.data(), buffer.size()))
@@ -172,21 +172,33 @@ namespace vultra_app
                 }
                 case eVec2: {
                     float value[2] {
-                        param.defaultValue.is_array() && param.defaultValue.size() > 0 ? param.defaultValue[0].get<float>() : 0.0f,
-                        param.defaultValue.is_array() && param.defaultValue.size() > 1 ? param.defaultValue[1].get<float>() : 0.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 0 ?
+                            param.defaultValue[0].get<float>() :
+                            0.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 1 ?
+                            param.defaultValue[1].get<float>() :
+                            0.0f,
                     };
-                    if (!ImGui::DragFloat2(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), value, 0.01f))
+                    if (!ImGui::DragFloat2(
+                            vultra::trId("materialGraph.blackboard.defaultValue", "Default"), value, 0.01f))
                         return false;
                     param.defaultValue = nlohmann::json::array({value[0], value[1]});
                     return true;
                 }
                 case eVec3: {
                     float value[3] {
-                        param.defaultValue.is_array() && param.defaultValue.size() > 0 ? param.defaultValue[0].get<float>() : 0.0f,
-                        param.defaultValue.is_array() && param.defaultValue.size() > 1 ? param.defaultValue[1].get<float>() : 0.0f,
-                        param.defaultValue.is_array() && param.defaultValue.size() > 2 ? param.defaultValue[2].get<float>() : 0.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 0 ?
+                            param.defaultValue[0].get<float>() :
+                            0.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 1 ?
+                            param.defaultValue[1].get<float>() :
+                            0.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 2 ?
+                            param.defaultValue[2].get<float>() :
+                            0.0f,
                     };
-                    if (!ImGui::DragFloat3(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), value, 0.01f))
+                    if (!ImGui::DragFloat3(
+                            vultra::trId("materialGraph.blackboard.defaultValue", "Default"), value, 0.01f))
                         return false;
                     param.defaultValue = nlohmann::json::array({value[0], value[1], value[2]});
                     return true;
@@ -194,21 +206,32 @@ namespace vultra_app
                 case eVec4:
                 case eColor: {
                     float value[4] {
-                        param.defaultValue.is_array() && param.defaultValue.size() > 0 ? param.defaultValue[0].get<float>() : 1.0f,
-                        param.defaultValue.is_array() && param.defaultValue.size() > 1 ? param.defaultValue[1].get<float>() : 1.0f,
-                        param.defaultValue.is_array() && param.defaultValue.size() > 2 ? param.defaultValue[2].get<float>() : 1.0f,
-                        param.defaultValue.is_array() && param.defaultValue.size() > 3 ? param.defaultValue[3].get<float>() : 1.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 0 ?
+                            param.defaultValue[0].get<float>() :
+                            1.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 1 ?
+                            param.defaultValue[1].get<float>() :
+                            1.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 2 ?
+                            param.defaultValue[2].get<float>() :
+                            1.0f,
+                        param.defaultValue.is_array() && param.defaultValue.size() > 3 ?
+                            param.defaultValue[3].get<float>() :
+                            1.0f,
                     };
                     const bool changed =
-                        param.type == eColor ? ImGui::ColorEdit4(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), value) :
-                                               ImGui::DragFloat4(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), value, 0.01f);
+                        param.type == eColor ?
+                            ImGui::ColorEdit4(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), value) :
+                            ImGui::DragFloat4(
+                                vultra::trId("materialGraph.blackboard.defaultValue", "Default"), value, 0.01f);
                     if (!changed)
                         return false;
                     param.defaultValue = nlohmann::json::array({value[0], value[1], value[2], value[3]});
                     return true;
                 }
                 case eTexture2D: {
-                    std::string value = param.defaultValue.is_string() ? param.defaultValue.get<std::string>() : std::string {};
+                    std::string value =
+                        param.defaultValue.is_string() ? param.defaultValue.get<std::string>() : std::string {};
                     if (!inputStringField(vultra::trId("materialGraph.blackboard.defaultUri", "Default URI"), value))
                         return false;
                     param.defaultValue = value;
@@ -216,9 +239,15 @@ namespace vultra_app
                 }
                 case eFloat:
                 default: {
-                    float value = param.defaultValue.is_number() ? param.defaultValue.get<float>() : 0.0f;
-                    const bool changed = param.hasUiRange ? ImGui::SliderFloat(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), &value, param.uiMin, param.uiMax) :
-                                                            ImGui::DragFloat(vultra::trId("materialGraph.blackboard.defaultValue", "Default"), &value, 0.01f);
+                    float      value = param.defaultValue.is_number() ? param.defaultValue.get<float>() : 0.0f;
+                    const bool changed =
+                        param.hasUiRange ?
+                            ImGui::SliderFloat(vultra::trId("materialGraph.blackboard.defaultValue", "Default"),
+                                               &value,
+                                               param.uiMin,
+                                               param.uiMax) :
+                            ImGui::DragFloat(
+                                vultra::trId("materialGraph.blackboard.defaultValue", "Default"), &value, 0.01f);
                     if (!changed)
                         return false;
                     param.defaultValue = value;
@@ -375,7 +404,7 @@ namespace vultra_app
         {
             std::vector<std::string> out;
             const auto               root = assetRoot(ctx);
-            std::error_code ec;
+            std::error_code          ec;
             if (root.empty() || !std::filesystem::exists(root, ec))
                 return out;
 
@@ -518,7 +547,8 @@ namespace vultra_app
                         for (int i = 0; i < 4 && i < static_cast<int>(value.size()); ++i)
                             v[i] = jsonFloat(value[i], 1.0f);
                     drawControlLabel(label);
-                    ImGui::SetNextItemWidth(type == vultra::material_graph::ValueType::eColor ? vultra::ui::dp(92.0f) : vultra::ui::dp(188.0f));
+                    ImGui::SetNextItemWidth(type == vultra::material_graph::ValueType::eColor ? vultra::ui::dp(92.0f) :
+                                                                                                vultra::ui::dp(188.0f));
                     const bool changed =
                         type == vultra::material_graph::ValueType::eColor ?
                             ImGui::ColorEdit4(
@@ -534,8 +564,11 @@ namespace vultra_app
                 case vultra::material_graph::ValueType::eTexture2D: {
                     std::string uri = value.is_string() ? value.get<std::string>() : std::string {};
                     drawControlLabel(label);
-                    if (ui::drawTextureUriSelector(
-                            ctx, "TextureSelectorPopup", uri, textureSelector, ImVec2(vultra::ui::dp(184.0f), vultra::ui::dp(40.0f))))
+                    if (ui::drawTextureUriSelector(ctx,
+                                                   "TextureSelectorPopup",
+                                                   uri,
+                                                   textureSelector,
+                                                   ImVec2(vultra::ui::dp(184.0f), vultra::ui::dp(40.0f))))
                     {
                         value = uri;
                         return true;
@@ -749,9 +782,8 @@ namespace vultra_app
         std::string lowerAscii(std::string_view text)
         {
             std::string out(text);
-            std::ranges::transform(out, out.begin(), [](const unsigned char c) {
-                return static_cast<char>(std::tolower(c));
-            });
+            std::ranges::transform(
+                out, out.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
             return out;
         }
 
@@ -880,9 +912,10 @@ namespace vultra_app
         drawToolbar(ctx);
         ImGui::Separator();
 
-        const float rightWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.30f, vultra::ui::dp(320.0f), vultra::ui::dp(460.0f));
-        const float leftWidth =
-            std::max(vultra::ui::dp(240.0f), ImGui::GetContentRegionAvail().x - rightWidth - ImGui::GetStyle().ItemSpacing.x);
+        const float rightWidth =
+            std::clamp(ImGui::GetContentRegionAvail().x * 0.30f, vultra::ui::dp(320.0f), vultra::ui::dp(460.0f));
+        const float leftWidth = std::max(
+            vultra::ui::dp(240.0f), ImGui::GetContentRegionAvail().x - rightWidth - ImGui::GetStyle().ItemSpacing.x);
         ImGui::BeginChild("##MaterialGraphCanvas",
                           ImVec2(leftWidth, 0.0f),
                           true,
@@ -929,7 +962,7 @@ namespace vultra_app
         m_NodeRegistryAssetGeneration = ctx.state.assetFileGeneration;
         m_Registry                    = vultra::material_graph::makeBuiltinNodeRegistry();
 
-        const auto assetRoot = (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
+        const auto      assetRoot = (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
         std::error_code ec;
         if (assetRoot.empty() || !std::filesystem::is_directory(assetRoot, ec))
             return;
@@ -1001,14 +1034,14 @@ namespace vultra_app
         if (!ctx.state.materialGraphOpenRequested)
             return;
 
-        const auto uri = ctx.state.currentEditingMaterialGraph;
+        const auto uri                       = ctx.state.currentEditingMaterialGraph;
         ctx.state.materialGraphOpenRequested = false;
         if (uri.empty())
             return;
 
         if (uri == m_CurrentUri && m_Loaded)
         {
-            m_Status = vultra::tr("materialGraph.status.alreadyOpen");
+            m_Status                = vultra::tr("materialGraph.status.alreadyOpen");
             ctx.state.statusMessage = vultra::trf("materialGraph.status.alreadyOpenMessage", uri);
             return;
         }
@@ -1059,9 +1092,9 @@ namespace vultra_app
         m_Graph = std::move(*graph);
         for (auto& node : m_Graph.nodes)
             ensureNodePorts(node);
-        m_CurrentUri = std::move(uri);
-        m_Dirty      = false;
-        m_Status     = vultra::tr("materialGraph.status.loaded");
+        m_CurrentUri            = std::move(uri);
+        m_Dirty                 = false;
+        m_Status                = vultra::tr("materialGraph.status.loaded");
         m_LoadedAssetGeneration = ctx.state.assetFileGeneration;
         m_LoadedWriteStamp      = fileWriteStamp(pathForUri(ctx, m_CurrentUri));
         resetHistory();
@@ -1087,8 +1120,8 @@ namespace vultra_app
             assets->clearTextAssetOverride(m_CurrentUri);
             assets->reimportAsset(m_CurrentUri, true);
         }
-        m_Dirty  = false;
-        m_Status = vultra::tr("materialGraph.status.saved");
+        m_Dirty                 = false;
+        m_Status                = vultra::tr("materialGraph.status.saved");
         m_LoadedAssetGeneration = ctx.state.assetFileGeneration;
         m_LoadedWriteStamp      = fileWriteStamp(path);
         (void)saveThumbnail(ctx, path);
@@ -1148,7 +1181,8 @@ namespace vultra_app
             m_Status = vultra::tr("materialGraph.status.writeShaderFailed");
             return false;
         }
-        file << "[vshader]\nid = \"project/material_graph/" << shaderId << ".frag\"\nlanguage = glsl\nversion = 460\n\n[frag]\n";
+        file << "[vshader]\nid = \"project/material_graph/" << shaderId
+             << ".frag\"\nlanguage = glsl\nversion = 460\n\n[frag]\n";
         file << "#extension GL_EXT_nonuniform_qualifier : require\n\n";
         file << "#define VULTRA_DECLARE_BINDLESS_TEXTURES\n";
         file << "#include \"include/common/gpu_scene.glsl\"\n\n";
@@ -1168,11 +1202,10 @@ namespace vultra_app
         // it for both Vulkan (.vshlib) and WebGPU (.vshweblib).
         {
             vultra::material_graph::MeshMaterialBackend meshBackend;
-            auto                                        meshResult = compiler.compile(
-                {.graph    = m_Graph,
-                                            .shaderId = shaderId,
-                                            .graphId  = vultra::material_graph::stableGraphId(m_CurrentUri)},
-                meshBackend);
+            auto meshResult = compiler.compile({.graph    = m_Graph,
+                                                .shaderId = shaderId,
+                                                .graphId  = vultra::material_graph::stableGraphId(m_CurrentUri)},
+                                               meshBackend);
             if (meshResult)
             {
                 const auto    meshPath = outDir / (shaderId + ".material.frag.vshader");
@@ -1258,10 +1291,10 @@ namespace vultra_app
             ImNodes::BeginNodeTitleBar();
             {
                 // Line 1: the node TYPE name (so a Multiply still reads as "Multiply").
-                const auto* titleDesc = m_Registry.find(node.typeId);
-                const std::string typeName = titleDesc && !titleDesc->displayName.empty() ?
-                                                 titleDesc->displayName :
-                                                 (!node.displayName.empty() ? node.displayName : node.typeId);
+                const auto*       titleDesc = m_Registry.find(node.typeId);
+                const std::string typeName  = titleDesc && !titleDesc->displayName.empty() ?
+                                                  titleDesc->displayName :
+                                                  (!node.displayName.empty() ? node.displayName : node.typeId);
                 drawNodeTitleText(typeName.c_str());
                 // Line 2: the user note (falls back to a legacy displayName label if distinct).
                 const std::string noteText =
@@ -1323,8 +1356,7 @@ namespace vultra_app
             // Output pins sit on the node's right edge, so right-align their labels
             // (inputs stay left-aligned next to their left-edge pins). The node width
             // comes from the previous frame's layout; nodes are static so it converges.
-            const float nodeContentWidth =
-                ImNodes::GetNodeDimensions(id).x - ImNodes::GetStyle().NodePadding.x * 2.0f;
+            const float nodeContentWidth = ImNodes::GetNodeDimensions(id).x - ImNodes::GetStyle().NodePadding.x * 2.0f;
             // A single-output node's pin is unambiguous, so its name label is redundant
             // (e.g. a Float/Color node already shows its value editor); draw just the pin.
             // Multi-output nodes keep right-aligned labels to tell the pins apart.
@@ -1461,7 +1493,8 @@ namespace vultra_app
         if (ImGui::BeginPopup("MaterialGraphNodeMenu"))
         {
             const std::string node = contextNodeId();
-            if (ImGui::MenuItem((std::string {ICON_MDI_NOTE_EDIT " "} + vultra::tr("materialGraph.nodeMenu.editNote")).c_str()))
+            if (ImGui::MenuItem(
+                    (std::string {ICON_MDI_NOTE_EDIT " "} + vultra::tr("materialGraph.nodeMenu.editNote")).c_str()))
             {
                 m_NoteEditNode = node;
                 m_NoteEditBuffer.fill('\0');
@@ -1474,7 +1507,8 @@ namespace vultra_app
             }
             if (auto* n = findNode(node); n && (!n->note.empty() || !n->displayName.empty()))
             {
-                if (ImGui::MenuItem((std::string {ICON_MDI_NOTE_OFF " "} + vultra::tr("materialGraph.nodeMenu.clearNote")).c_str()))
+                if (ImGui::MenuItem(
+                        (std::string {ICON_MDI_NOTE_OFF " "} + vultra::tr("materialGraph.nodeMenu.clearNote")).c_str()))
                 {
                     n->note.clear();
                     n->displayName.clear();
@@ -1504,10 +1538,8 @@ namespace vultra_app
         {
             ImGui::TextUnformatted(vultra::tr("materialGraph.nodeMenu.note"));
             ImGui::SetNextItemWidth(vultra::ui::dp(240.0f));
-            const bool entered = ImGui::InputText("##note",
-                                                  m_NoteEditBuffer.data(),
-                                                  m_NoteEditBuffer.size(),
-                                                  ImGuiInputTextFlags_EnterReturnsTrue);
+            const bool entered = ImGui::InputText(
+                "##note", m_NoteEditBuffer.data(), m_NoteEditBuffer.size(), ImGuiInputTextFlags_EnterReturnsTrue);
             const bool apply = ImGui::Button(vultra::tr("common.ok")) || entered;
             ImGui::SameLine();
             const bool cancel = ImGui::Button(vultra::tr("common.cancel"));
@@ -1534,9 +1566,10 @@ namespace vultra_app
     void MaterialGraphWindow::drawInspector(EditorContext& ctx)
     {
         ImGui::TextUnformatted(vultra::tr("materialGraph.inspector.blackboard"));
-        if (ImGui::SmallButton((std::string {ICON_MDI_PLUS " "} + vultra::tr("materialGraph.inspector.addParameter")).c_str()))
+        if (ImGui::SmallButton(
+                (std::string {ICON_MDI_PLUS " "} + vultra::tr("materialGraph.inspector.addParameter")).c_str()))
         {
-            std::string name = "param";
+            std::string name   = "param";
             int         suffix = 1;
             const auto  exists = [&]() {
                 return std::any_of(m_Graph.blackboard.begin(), m_Graph.blackboard.end(), [&](const auto& p) {
@@ -1574,11 +1607,15 @@ namespace vultra_app
                 {
                     if (inputStringField(vultra::trId("common.name", "Name"), param.name))
                         markDirty(ctx);
-                    if (inputStringField(vultra::trId("materialGraph.inspector.displayName", "Display Name"), param.displayName))
+                    if (inputStringField(vultra::trId("materialGraph.inspector.displayName", "Display Name"),
+                                         param.displayName))
                         markDirty(ctx);
 
                     int typeIndex = blackboardTypeIndex(param.type);
-                    if (ImGui::Combo(vultra::trId("common.type", "Type"), &typeIndex, kBlackboardTypeLabels, IM_ARRAYSIZE(kBlackboardTypeLabels)))
+                    if (ImGui::Combo(vultra::trId("common.type", "Type"),
+                                     &typeIndex,
+                                     kBlackboardTypeLabels,
+                                     IM_ARRAYSIZE(kBlackboardTypeLabels)))
                     {
                         param.type         = blackboardTypeFromIndex(typeIndex);
                         param.defaultValue = defaultBlackboardValue(param.type);
@@ -1605,7 +1642,8 @@ namespace vultra_app
                     }
                     ImGui::EndDisabled();
 
-                    if (ImGui::SmallButton((std::string {ICON_MDI_DELETE_OUTLINE " "} + vultra::tr("common.remove")).c_str()))
+                    if (ImGui::SmallButton(
+                            (std::string {ICON_MDI_DELETE_OUTLINE " "} + vultra::tr("common.remove")).c_str()))
                         removeIndex = i;
                 }
                 ImGui::PopID();
@@ -1707,7 +1745,7 @@ namespace vultra_app
                 tr->worldMatrix = glm::translate(glm::mat4 {1.0f}, m_PreviewBoundsCenter) *
                                   glm::mat4_cast(tr->rotation) *
                                   glm::translate(glm::mat4 {1.0f}, -m_PreviewBoundsCenter);
-                tr->dirty = false;
+                tr->dirty       = false;
             }
             if (m_PreviewEnvironment != entt::null && reg.valid(m_PreviewEnvironment))
             {
@@ -1749,8 +1787,7 @@ namespace vultra_app
 
         ensurePreviewRenderTarget(
             ctx, static_cast<uint32_t>(std::max(size, 32.0f)), static_cast<uint32_t>(std::max(size, 32.0f)));
-        const float previewDeltaTime =
-            m_PreviewTimePlaying ? std::max(ImGui::GetIO().DeltaTime, 0.0f) : 0.0f;
+        const float previewDeltaTime = m_PreviewTimePlaying ? std::max(ImGui::GetIO().DeltaTime, 0.0f) : 0.0f;
         if (m_PreviewTimePlaying)
             m_PreviewTimeSeconds = std::max(0.0f, m_PreviewTimeSeconds + previewDeltaTime);
         if (ctx.services && m_PreviewTarget.texture)
@@ -1758,13 +1795,13 @@ namespace vultra_app
             if (auto* cameras = ctx.services->tryGet<vultra::ICameraService>())
             {
                 cameras->removeManualCamerasByName("Material Graph Preview");
-                auto cam          = makePreviewCamera(m_PreviewCameraPosition,
-                                             m_PreviewBoundsCenter,
-                                             m_PreviewCameraFovY,
-                                             aspect,
-                                             &*m_PreviewTarget.texture,
-                                             m_PreviewSkybox.valid());
-                cam.worldOverride = &m_PreviewWorld;
+                auto cam              = makePreviewCamera(m_PreviewCameraPosition,
+                                                          m_PreviewBoundsCenter,
+                                                          m_PreviewCameraFovY,
+                                                          aspect,
+                                                          &*m_PreviewTarget.texture,
+                                                          m_PreviewSkybox.valid());
+                cam.worldOverride     = &m_PreviewWorld;
                 cam.overrideFrameTime = true;
                 cam.frameTimeSeconds  = m_PreviewTimeSeconds;
                 cam.frameDeltaSeconds = previewDeltaTime;
@@ -1818,7 +1855,8 @@ namespace vultra_app
                                                vultra::tr("materialGraph.status.previewMeshReset");
             focusPreviewMesh(ctx, aspect, true);
         }
-        if (ui::drawTextureUuidField(ctx, vultra::tr("materialGraph.preview.skybox"), m_PreviewSkybox, m_TextureSelector))
+        if (ui::drawTextureUuidField(
+                ctx, vultra::tr("materialGraph.preview.skybox"), m_PreviewSkybox, m_TextureSelector))
             m_Status = m_PreviewSkybox.valid() ? vultra::tr("materialGraph.status.previewSkyboxChanged") :
                                                  vultra::tr("materialGraph.status.previewSkyboxCleared");
 
@@ -1849,7 +1887,8 @@ namespace vultra_app
 
         static std::array<char, 128> search {};
         ImGui::SetNextItemWidth(vultra::ui::dp(260.0f));
-        ImGui::InputTextWithHint("##NodeSearch", vultra::tr("materialGraph.addNode.searchHint"), search.data(), search.size());
+        ImGui::InputTextWithHint(
+            "##NodeSearch", vultra::tr("materialGraph.addNode.searchHint"), search.data(), search.size());
         ImGui::Separator();
 
         const auto addNodeItem = [&](const vultra::material_graph::NodeDescriptor& desc) {
@@ -2009,35 +2048,13 @@ namespace vultra_app
         m_HistoryPending = true; // a coalesced snapshot will be recorded once the edit settles
         if (auto* assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
             assets->setTextAssetOverride(m_CurrentUri, vultra::material_graph::saveGraphToText(m_Graph));
-        m_Status = m_LiveApply ? vultra::tr("materialGraph.status.livePreviewUpdated") : vultra::tr("materialGraph.status.edited");
+        m_Status = m_LiveApply ? vultra::tr("materialGraph.status.livePreviewUpdated") :
+                                 vultra::tr("materialGraph.status.edited");
     }
 
-    void MaterialGraphWindow::resetHistory()
+    std::string MaterialGraphWindow::historySnapshot() const
     {
-        if (!m_HistoryReady)
-        {
-            // Install the deserialize-into-graph callback once; the shared SnapshotHistory
-            // (driven by the global Ctrl+Z / History window via IHistory) calls it on
-            // undo/redo/jumpTo.
-            m_History.setRestore([this](EditorContext& ctx, const std::string& snapshot) {
-                applyHistorySnapshot(ctx, snapshot);
-            });
-            m_HistoryReady = true;
-        }
-        // Labels are i18n keys; the History window resolves them at draw time.
-        m_History.setDefaultLabel("history.edit");
-        m_History.reset(vultra::material_graph::saveGraphToText(m_Graph), "history.loaded");
-        m_HistoryPending = false;
-    }
-
-    void MaterialGraphWindow::recordHistory()
-    {
-        // Skip while restoring a snapshot, when nothing changed, or mid-interaction (a
-        // slider/color drag keeps an item active) so a drag collapses to one undo step.
-        if (m_ApplyingHistory || !m_HistoryPending || ImGui::IsAnyItemActive())
-            return;
-        m_History.record(vultra::material_graph::saveGraphToText(m_Graph));
-        m_HistoryPending = false;
+        return vultra::material_graph::saveGraphToText(m_Graph);
     }
 
     void MaterialGraphWindow::applyHistorySnapshot(EditorContext& ctx, const std::string& snapshot)
@@ -2047,8 +2064,8 @@ namespace vultra_app
             return;
         m_ApplyingHistory = true;
         m_Graph           = std::move(*restored);
-        m_Pins.clear(); // rebuilt from the restored graph on the next draw
-        markDirty(ctx); // refresh the live-preview override; node positions reapply from JSON
+        m_Pins.clear();            // rebuilt from the restored graph on the next draw
+        markDirty(ctx);            // refresh the live-preview override; node positions reapply from JSON
         m_HistoryPending  = false; // the restored state itself must not be re-recorded
         m_ApplyingHistory = false;
     }

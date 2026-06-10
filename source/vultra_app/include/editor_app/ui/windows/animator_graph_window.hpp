@@ -15,7 +15,7 @@ namespace vultra_app
 {
     // Visual editor for `.vanimgraph.json` animator graphs: states are nodes, transitions are
     // links, with an inspector for parameters, state clips, and transition conditions.
-    class AnimatorGraphWindow final : public EditorWindow
+    class AnimatorGraphWindow final : public EditorWindow, public SnapshotHistoryHost<AnimatorGraphWindow>
     {
     public:
         AnimatorGraphWindow();
@@ -41,10 +41,11 @@ namespace vultra_app
             m_HistoryPending = true;
         }
 
-        // Undo/redo via the shared SnapshotHistory (same pattern as the material graph).
-        void resetHistory();
-        void recordHistory();
-        void applyHistorySnapshot(EditorContext& ctx, const std::string& snapshot);
+        // Undo/redo via the shared SnapshotHistoryHost; only the serialize/restore
+        // hooks are window-specific.
+        friend SnapshotHistoryHost<AnimatorGraphWindow>;
+        std::string historySnapshot() const;
+        void        applyHistorySnapshot(EditorContext& ctx, const std::string& snapshot);
 
         std::string addState(EditorContext& ctx, const std::string& base);
         void        removeState(EditorContext& ctx, const std::string& name);
@@ -58,7 +59,7 @@ namespace vultra_app
         std::vector<vultra::animator_graph::Transition>&       transitionsFor(int sourceStateIndex);
         const std::vector<vultra::animator_graph::Transition>& transitionsFor(int sourceStateIndex) const;
 
-        static constexpr int kAnyStateIndex = -2;
+        static constexpr int kAnyStateIndex  = -2;
         static constexpr int kAnyStateNodeId = 1;
 
         vultra::animator_graph::Graph m_Graph;
@@ -67,18 +68,14 @@ namespace vultra_app
         std::string                   m_Status;
         bool                          m_Loaded {false};
         bool                          m_Dirty {false};
-        SnapshotHistory               m_History;
-        bool                          m_HistoryReady {false};
-        bool                          m_HistoryPending {false};
-        bool                          m_ApplyingHistory {false};
 
-        int  m_SelectedState {-1};          // index into m_Graph.states, or -1
-        int  m_SelTransitionSource {-1000}; // state index, kAnyStateIndex, or -1000 = none
-        int  m_SelTransitionIndex {-1};
-        int  m_ContextNode {0};
+        int m_SelectedState {-1};          // index into m_Graph.states, or -1
+        int m_SelTransitionSource {-1000}; // state index, kAnyStateIndex, or -1000 = none
+        int m_SelTransitionIndex {-1};
+        int m_ContextNode {0};
 
-        std::array<char, 256> m_UriBuffer {};
-        std::array<char, 128> m_NewStateBuffer {};
+        std::array<char, 256>                        m_UriBuffer {};
+        std::array<char, 128>                        m_NewStateBuffer {};
         std::unordered_map<int, std::pair<int, int>> m_LinkLookup; // linkId -> (sourceStateIndex, transitionIndex)
     };
 } // namespace vultra_app
