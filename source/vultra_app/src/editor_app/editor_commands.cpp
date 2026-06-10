@@ -6,33 +6,33 @@
 #include "project_templates.hpp"
 #include "vproject.hpp"
 
+#include <vbase/core/uuid.hpp>
+#include <vultra/core/services/window_service.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
-#include <vultra/core/services/window_service.hpp>
 #include <vultra/function/services/world_service.hpp>
-#include <vultra/function/world/components/prefab_instance_component.hpp>
-#include <vultra/function/world/components/box_shape_component.hpp>
 #include <vultra/function/world/components/animator_component.hpp>
+#include <vultra/function/world/components/box_shape_component.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/components/capsule_shape_component.hpp>
 #include <vultra/function/world/components/character_controller_component.hpp>
 #include <vultra/function/world/components/cylinder_shape_component.hpp>
 #include <vultra/function/world/components/entity_status_component.hpp>
-#include <vultra/function/world/components/mesh_shape_component.hpp>
 #include <vultra/function/world/components/environment_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
 #include <vultra/function/world/components/layer_component.hpp>
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
+#include <vultra/function/world/components/mesh_shape_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/particle_emitter_component.hpp>
+#include <vultra/function/world/components/prefab_instance_component.hpp>
 #include <vultra/function/world/components/rigid_body_component.hpp>
 #include <vultra/function/world/components/script_component.hpp>
 #include <vultra/function/world/components/sphere_shape_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
 #include <vultra/function/world/components/ui_components.hpp>
 #include <vultra/function/world/components/xr_view_component.hpp>
-#include <vbase/core/uuid.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -44,7 +44,9 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <string>
+#include <string_view>
 #include <system_error>
+#include <unordered_map>
 
 namespace vultra_app
 {
@@ -58,9 +60,8 @@ namespace vultra_app
             return value;
         }
 
-        std::string stringArg(const nlohmann::json& args,
-                              std::initializer_list<const char*> keys,
-                              const std::string& fallback = {})
+        std::string
+        stringArg(const nlohmann::json& args, std::initializer_list<const char*> keys, const std::string& fallback = {})
         {
             for (const char* key : keys)
             {
@@ -155,8 +156,7 @@ namespace vultra_app
             return vultra::MaterialPropertyBlockValueType::eFloat;
         }
 
-        std::vector<vultra::MaterialPropertyBlockEntry>
-        materialPropertyBlockEntriesArg(const nlohmann::json& values)
+        std::vector<vultra::MaterialPropertyBlockEntry> materialPropertyBlockEntriesArg(const nlohmann::json& values)
         {
             std::vector<vultra::MaterialPropertyBlockEntry> out;
             if (!values.is_array())
@@ -179,7 +179,8 @@ namespace vultra_app
                         entry.colorValue = vec4Arg(value, "value", vec4Arg(value, "color", entry.colorValue));
                         break;
                     case vultra::MaterialPropertyBlockValueType::eTexture2D:
-                        entry.textureUri = value.value("value", value.value("textureUri", value.value("texture", entry.textureUri)));
+                        entry.textureUri =
+                            value.value("value", value.value("textureUri", value.value("texture", entry.textureUri)));
                         break;
                     case vultra::MaterialPropertyBlockValueType::eFloat:
                     default:
@@ -192,8 +193,7 @@ namespace vultra_app
         }
 
         std::vector<vultra::MaterialSlotOverride>
-        materialSlotOverridesArg(const nlohmann::json& args,
-                                 const std::vector<vultra::MaterialSlotOverride>& fallback)
+        materialSlotOverridesArg(const nlohmann::json& args, const std::vector<vultra::MaterialSlotOverride>& fallback)
         {
             if (!args.contains("materialOverrides"))
                 return fallback;
@@ -311,7 +311,7 @@ namespace vultra_app
                 return entt::null;
 
             vbase::UUID parsed {};
-            const bool   hasUuid = vbase::try_parse_uuid(text.c_str(), parsed);
+            const bool  hasUuid = vbase::try_parse_uuid(text.c_str(), parsed);
             for (auto entity : reg.view<vultra::IDComponent>())
             {
                 const auto& id = reg.get<vultra::IDComponent>(entity);
@@ -410,7 +410,8 @@ namespace vultra_app
         uint32_t builtinGeometryArg(const nlohmann::json& args, const uint32_t fallback)
         {
             uint32_t geometry = fallback;
-            if (uintArg(args, {"builtinGeometry", "builtin_geometry", "primitive", "primitive_kind", "primitiveKind"},
+            if (uintArg(args,
+                        {"builtinGeometry", "builtin_geometry", "primitive", "primitive_kind", "primitiveKind"},
                         geometry))
                 return geometry;
 
@@ -483,7 +484,7 @@ namespace vultra_app
 
         nlohmann::json windowStateJson(vultra::os::Window& window)
         {
-            const auto extent = window.getExtent();
+            const auto extent   = window.getExtent();
             const auto fbExtent = window.getFrameBufferExtent();
             const auto position = window.getPosition();
             return {{"title", std::string(window.getTitle())},
@@ -503,7 +504,7 @@ namespace vultra_app
 
         nlohmann::json entityReferenceJson(vultra::World& world, const entt::entity entity)
         {
-            auto& reg = world.registry();
+            auto&          reg = world.registry();
             nlohmann::json out {{"entity", static_cast<uint32_t>(entity)}};
             if (const auto* id = reg.try_get<vultra::IDComponent>(entity))
                 out["uuid"] = id->uuid.toString();
@@ -512,15 +513,9 @@ namespace vultra_app
             return out;
         }
 
-        nlohmann::json vec2Json(const glm::vec2& value)
-        {
-            return nlohmann::json::array({value.x, value.y});
-        }
+        nlohmann::json vec2Json(const glm::vec2& value) { return nlohmann::json::array({value.x, value.y}); }
 
-        nlohmann::json vec3Json(const glm::vec3& value)
-        {
-            return nlohmann::json::array({value.x, value.y, value.z});
-        }
+        nlohmann::json vec3Json(const glm::vec3& value) { return nlohmann::json::array({value.x, value.y, value.z}); }
 
         nlohmann::json vec4Json(const glm::vec4& value)
         {
@@ -532,19 +527,16 @@ namespace vultra_app
             return nlohmann::json::array({value.w, value.x, value.y, value.z});
         }
 
-        nlohmann::json uuidJson(const vultra::CoreUUID& value)
-        {
-            return value.toString();
-        }
+        nlohmann::json uuidJson(const vultra::CoreUUID& value) { return value.toString(); }
 
-        nlohmann::json fieldJson(const char* name,
-                                 const char* type,
+        nlohmann::json fieldJson(const char*                        name,
+                                 const char*                        type,
                                  std::initializer_list<const char*> aliases = {},
-                                 nlohmann::json extra = nlohmann::json::object())
+                                 nlohmann::json                     extra   = nlohmann::json::object())
         {
             nlohmann::json out = std::move(extra);
-            out["name"]       = name;
-            out["type"]       = type;
+            out["name"]        = name;
+            out["type"]        = type;
             if (aliases.size() > 0)
             {
                 auto aliasJson = nlohmann::json::array();
@@ -558,34 +550,13 @@ namespace vultra_app
         nlohmann::json componentKindListJson()
         {
             return nlohmann::json::array({
-                "transform",
-                "name",
-                "entity_status",
-                "mesh",
-                "particle_emitter",
-                "rigid_body",
-                "sphere_shape",
-                "box_shape",
-                "capsule_shape",
-                "cylinder_shape",
-                "mesh_shape",
-                "character_controller",
-                "animator",
-                "camera",
-                "light",
-                "environment",
-                "xr_view",
-                "script",
-                "canvas",
-                "rect_transform",
-                "ui_panel",
-                "ui_image",
-                "ui_text",
-                "ui_button",
-                "ui_toggle",
-                "ui_slider",
-                "ui_progress_bar",
-                "ui_layout",
+                "transform",        "name",           "entity_status",   "mesh",
+                "particle_emitter", "rigid_body",     "sphere_shape",    "box_shape",
+                "capsule_shape",    "cylinder_shape", "mesh_shape",      "character_controller",
+                "animator",         "camera",         "light",           "environment",
+                "xr_view",          "script",         "canvas",          "rect_transform",
+                "ui_panel",         "ui_image",       "ui_text",         "ui_button",
+                "ui_toggle",        "ui_slider",      "ui_progress_bar", "ui_layout",
             });
         }
 
@@ -625,16 +596,16 @@ namespace vultra_app
 
         nlohmann::json componentMetadataJson(const std::string& kind)
         {
-            const auto k = componentKindArg({{"kind", kind}});
+            const auto     k = componentKindArg({{"kind", kind}});
             nlohmann::json out {{"kind", k}, {"updateCommand", "vultra.scene.update_component"}};
-            auto fields = nlohmann::json::array();
+            auto           fields = nlohmann::json::array();
 
             if (k == "transform")
             {
                 out["cxxComponent"] = "TransformComponent";
                 fields.push_back(fieldJson("position", "vec3"));
-                fields.push_back(fieldJson("rotation", "quat", {},
-                                           {{"format", "array [w, x, y, z] or object {w,x,y,z}"}}));
+                fields.push_back(
+                    fieldJson("rotation", "quat", {}, {{"format", "array [w, x, y, z] or object {w,x,y,z}"}}));
                 fields.push_back(fieldJson("scale", "vec3"));
             }
             else if (k == "name")
@@ -654,35 +625,33 @@ namespace vultra_app
             {
                 out["cxxComponent"] = "MeshComponent";
                 fields.push_back(fieldJson("mesh", "uuid", {}, {{"readOnly", true}}));
-                fields.push_back(fieldJson("builtinGeometry", "uint32", {"builtin_geometry", "primitive", "primitiveKind"},
-                                           {{"enum",
-                                             nlohmann::json::array({{{"value", 0}, {"name", "quad"}},
-                                                                   {{"value", 1}, {"name", "cube"}},
-                                                                   {{"value", 2}, {"name", "sphere"}},
-                                                                   {{"value", 3}, {"name", "capsule"}},
-                                                                   {{"value", 4294967295u}, {"name", "external_mesh"}}})}}));
+                fields.push_back(
+                    fieldJson("builtinGeometry",
+                              "uint32",
+                              {"builtin_geometry", "primitive", "primitiveKind"},
+                              {{"enum",
+                                nlohmann::json::array({{{"value", 0}, {"name", "quad"}},
+                                                       {{"value", 1}, {"name", "cube"}},
+                                                       {{"value", 2}, {"name", "sphere"}},
+                                                       {{"value", 3}, {"name", "capsule"}},
+                                                       {{"value", 4294967295u}, {"name", "external_mesh"}}})}}));
                 nlohmann::json propertyEntry {
                     {"type", "object"},
                     {"fields",
-                     nlohmann::json::array({fieldJson("name", "string"),
-                                            fieldJson("type",
-                                                      "enum",
-                                                      {},
-                                                      {{"enum",
-                                                        nlohmann::json::array({"float", "color", "texture2D"})}}),
-                                            fieldJson("value",
-                                                      "number|vec4|uri",
-                                                      {"floatValue", "color", "textureUri"})})}};
+                     nlohmann::json::array(
+                         {fieldJson("name", "string"),
+                          fieldJson(
+                              "type", "enum", {}, {{"enum", nlohmann::json::array({"float", "color", "texture2D"})}}),
+                          fieldJson("value", "number|vec4|uri", {"floatValue", "color", "textureUri"})})}};
                 nlohmann::json slotEntry {
                     {"type", "object"},
                     {"fields",
-                     nlohmann::json::array({fieldJson("slot", "uint32"),
-                                            fieldJson("material", "uri", {}, {{"asset", ".vmat.json"}}),
-                                            fieldJson("materialGraph",
-                                                      "uri",
-                                                      {"graph"},
-                                                      {{"asset", ".vmatgraph.json"}, {"legacy", true}}),
-                                            fieldJson("properties", "array", {}, {{"items", propertyEntry}})})}};
+                     nlohmann::json::array(
+                         {fieldJson("slot", "uint32"),
+                          fieldJson("material", "uri", {}, {{"asset", ".vmat.json"}}),
+                          fieldJson(
+                              "materialGraph", "uri", {"graph"}, {{"asset", ".vmatgraph.json"}, {"legacy", true}}),
+                          fieldJson("properties", "array", {}, {{"items", propertyEntry}})})}};
                 fields.push_back(fieldJson(
                     "materialOverrides",
                     "array",
@@ -714,8 +683,8 @@ namespace vultra_app
             else if (k == "rigid_body")
             {
                 out["cxxComponent"] = "RigidBodyComponent";
-                fields.push_back(fieldJson("motionType", "uint32|string", {},
-                                           {{"enum", {"static", "kinematic", "dynamic"}}}));
+                fields.push_back(
+                    fieldJson("motionType", "uint32|string", {}, {{"enum", {"static", "kinematic", "dynamic"}}}));
                 fields.push_back(fieldJson("objectLayer", "uint32"));
                 fields.push_back(fieldJson("isSensor", "bool"));
                 fields.push_back(fieldJson("motionQuality", "uint32"));
@@ -792,18 +761,23 @@ namespace vultra_app
             {
                 out["cxxComponent"] = "CameraComponent";
                 fields.push_back(fieldJson("primary", "bool"));
-                fields.push_back(fieldJson("projection", "uint32", {},
+                fields.push_back(fieldJson("projection",
+                                           "uint32",
+                                           {},
                                            {{"enum",
                                              nlohmann::json::array({{{"value", 0}, {"name", "perspective"}},
-                                                                   {{"value", 1}, {"name", "orthographic"}}})}}));
+                                                                    {{"value", 1}, {"name", "orthographic"}}})}}));
                 fields.push_back(fieldJson("fovYDegrees", "float"));
                 fields.push_back(fieldJson("orthographicHeight", "float"));
                 fields.push_back(fieldJson("zNear", "float"));
                 fields.push_back(fieldJson("zFar", "float"));
-                fields.push_back(fieldJson("clearMode", "uint32", {},
-                                           {{"enum",
-                                             nlohmann::json::array({{{"value", 0}, {"name", "solid_color"}},
-                                                                   {{"value", 1}, {"name", "environment_skybox"}}})}}));
+                fields.push_back(
+                    fieldJson("clearMode",
+                              "uint32",
+                              {},
+                              {{"enum",
+                                nlohmann::json::array({{{"value", 0}, {"name", "solid_color"}},
+                                                       {{"value", 1}, {"name", "environment_skybox"}}})}}));
                 fields.push_back(fieldJson("clearColor", "vec4/color"));
                 fields.push_back(fieldJson("priority", "int"));
                 fields.push_back(fieldJson("cullingMask", "uint32"));
@@ -812,12 +786,14 @@ namespace vultra_app
             else if (k == "light")
             {
                 out["cxxComponent"] = "LightComponent";
-                fields.push_back(fieldJson("kind", "uint32", {"lightKind", "kindValue"},
+                fields.push_back(fieldJson("kind",
+                                           "uint32",
+                                           {"lightKind", "kindValue"},
                                            {{"enum",
                                              nlohmann::json::array({{{"value", 0}, {"name", "directional"}},
-                                                                   {{"value", 1}, {"name", "point"}},
-                                                                   {{"value", 2}, {"name", "spot"}},
-                                                                   {{"value", 3}, {"name", "area"}}})}}));
+                                                                    {{"value", 1}, {"name", "point"}},
+                                                                    {{"value", 2}, {"name", "spot"}},
+                                                                    {{"value", 3}, {"name", "area"}}})}}));
                 fields.push_back(fieldJson("color", "vec3/color"));
                 fields.push_back(fieldJson("intensity", "float"));
                 fields.push_back(fieldJson("range", "float"));
@@ -859,8 +835,8 @@ namespace vultra_app
                 fields.push_back(fieldJson("anchorMin", "vec2", {"anchor_min"}));
                 fields.push_back(fieldJson("anchorMax", "vec2", {"anchor_max"}));
                 fields.push_back(fieldJson("pivot", "vec2"));
-                fields.push_back(fieldJson("anchoredPositionPx", "vec2",
-                                           {"anchored_position_px", "anchoredPosition", "position"}));
+                fields.push_back(
+                    fieldJson("anchoredPositionPx", "vec2", {"anchored_position_px", "anchoredPosition", "position"}));
                 fields.push_back(fieldJson("sizeDeltaPx", "vec2", {"size_delta_px", "sizeDelta", "size"}));
                 fields.push_back(fieldJson("rotationDegrees", "float", {"rotation_degrees", "rotation"}));
                 fields.push_back(fieldJson("scale", "vec2"));
@@ -951,20 +927,22 @@ namespace vultra_app
             return out;
         }
 
-        nlohmann::json componentValueJson(vultra::World& world,
+        nlohmann::json componentValueJson(vultra::World&     world,
                                           const entt::entity entity,
                                           const std::string& kind,
-                                          std::string& errorMessage)
+                                          std::string&       errorMessage)
         {
-            auto& reg = world.registry();
-            const auto k = componentKindArg({{"kind", kind}});
+            auto&      reg = world.registry();
+            const auto k   = componentKindArg({{"kind", kind}});
             if (k == "transform")
             {
                 const auto* c = reg.try_get<vultra::TransformComponent>(entity);
                 if (!c)
                     errorMessage = "entity does not have TransformComponent";
                 else
-                    return {{"position", vec3Json(c->position)}, {"rotation", quatJson(c->rotation)}, {"scale", vec3Json(c->scale)}};
+                    return {{"position", vec3Json(c->position)},
+                            {"rotation", quatJson(c->rotation)},
+                            {"scale", vec3Json(c->scale)}};
             }
             else if (k == "name")
             {
@@ -980,7 +958,10 @@ namespace vultra_app
                 if (!c)
                     errorMessage = "entity does not have EntityStatusComponent";
                 else
-                    return {{"active", c->active}, {"visible", c->visible}, {"locked", c->locked}, {"selectable", c->selectable}};
+                    return {{"active", c->active},
+                            {"visible", c->visible},
+                            {"locked", c->locked},
+                            {"selectable", c->selectable}};
             }
             else if (k == "mesh")
             {
@@ -1207,7 +1188,8 @@ namespace vultra_app
                 if (!c)
                     errorMessage = "entity does not have UiPanelComponent";
                 else
-                    return {{"enabled", c->enabled}, {"color", vec4Json(c->color)}, {"borderRadiusPx", c->borderRadiusPx}};
+                    return {
+                        {"enabled", c->enabled}, {"color", vec4Json(c->color)}, {"borderRadiusPx", c->borderRadiusPx}};
             }
             else if (k == "ui_image")
             {
@@ -1320,22 +1302,20 @@ namespace vultra_app
 
         void applyRectTransformArgs(vultra::RectTransformComponent& rect, const nlohmann::json& args)
         {
-            rect.anchorMin          = vec2Arg(args, "anchorMin", vec2Arg(args, "anchor_min", rect.anchorMin));
-            rect.anchorMax          = vec2Arg(args, "anchorMax", vec2Arg(args, "anchor_max", rect.anchorMax));
-            rect.pivot              = vec2Arg(args, "pivot", rect.pivot);
-            rect.anchoredPositionPx = vec2Arg(args,
-                                              "anchoredPositionPx",
-                                              vec2Arg(args,
-                                                      "anchored_position_px",
-                                                      vec2Arg(args,
-                                                              "anchoredPosition",
-                                                              vec2Arg(args, "position", rect.anchoredPositionPx))));
-            rect.sizeDeltaPx        = vec2Arg(args,
-                                              "sizeDeltaPx",
-                                              vec2Arg(args,
-                                                      "size_delta_px",
-                                                      vec2Arg(args, "sizeDelta", vec2Arg(args, "size", rect.sizeDeltaPx))));
-            rect.scale              = vec2Arg(args, "scale", rect.scale);
+            rect.anchorMin = vec2Arg(args, "anchorMin", vec2Arg(args, "anchor_min", rect.anchorMin));
+            rect.anchorMax = vec2Arg(args, "anchorMax", vec2Arg(args, "anchor_max", rect.anchorMax));
+            rect.pivot     = vec2Arg(args, "pivot", rect.pivot);
+            rect.anchoredPositionPx =
+                vec2Arg(args,
+                        "anchoredPositionPx",
+                        vec2Arg(args,
+                                "anchored_position_px",
+                                vec2Arg(args, "anchoredPosition", vec2Arg(args, "position", rect.anchoredPositionPx))));
+            rect.sizeDeltaPx = vec2Arg(
+                args,
+                "sizeDeltaPx",
+                vec2Arg(args, "size_delta_px", vec2Arg(args, "sizeDelta", vec2Arg(args, "size", rect.sizeDeltaPx))));
+            rect.scale = vec2Arg(args, "scale", rect.scale);
             if (args.contains("rotationDegrees"))
                 rect.rotationDegrees = args.value("rotationDegrees", rect.rotationDegrees);
             if (args.contains("rotation_degrees"))
@@ -1344,12 +1324,12 @@ namespace vultra_app
                 rect.rotationDegrees = args["rotation"].get<float>();
         }
 
-        bool addOrUpdateComponent(vultra::World& world,
-                                  const entt::entity entity,
-                                  const std::string& kind,
+        bool addOrUpdateComponent(vultra::World&        world,
+                                  const entt::entity    entity,
+                                  const std::string&    kind,
                                   const nlohmann::json& args,
-                                  const bool requireExisting,
-                                  std::string& errorMessage)
+                                  const bool            requireExisting,
+                                  std::string&          errorMessage)
         {
             auto& reg = world.registry();
             if (kind == "transform")
@@ -1374,16 +1354,15 @@ namespace vultra_app
                     errorMessage = "entity does not have CanvasComponent";
                     return false;
                 }
-                auto& canvas                 = reg.get_or_emplace<vultra::CanvasComponent>(entity);
-                canvas.enabled               = args.value("enabled", canvas.enabled);
-                canvas.sortOrder             = args.value("sortOrder", args.value("sort_order", canvas.sortOrder));
-                canvas.referenceResolutionPx = vec2Arg(args,
-                                                        "referenceResolutionPx",
-                                                        vec2Arg(args,
-                                                                "reference_resolution_px",
-                                                                canvas.referenceResolutionPx));
-                canvas.scaleMode             = args.value("scaleMode", args.value("scale_mode", canvas.scaleMode));
-                canvas.renderMode            = args.value("renderMode", args.value("render_mode", canvas.renderMode));
+                auto& canvas     = reg.get_or_emplace<vultra::CanvasComponent>(entity);
+                canvas.enabled   = args.value("enabled", canvas.enabled);
+                canvas.sortOrder = args.value("sortOrder", args.value("sort_order", canvas.sortOrder));
+                canvas.referenceResolutionPx =
+                    vec2Arg(args,
+                            "referenceResolutionPx",
+                            vec2Arg(args, "reference_resolution_px", canvas.referenceResolutionPx));
+                canvas.scaleMode     = args.value("scaleMode", args.value("scale_mode", canvas.scaleMode));
+                canvas.renderMode    = args.value("renderMode", args.value("render_mode", canvas.renderMode));
                 canvas.pixelsPerUnit = args.value("pixelsPerUnit", args.value("pixels_per_unit", canvas.pixelsPerUnit));
                 (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
                 return true;
@@ -1405,10 +1384,11 @@ namespace vultra_app
                     errorMessage = "entity does not have UiPanelComponent";
                     return false;
                 }
-                auto& panel          = reg.get_or_emplace<vultra::UiPanelComponent>(entity);
-                panel.enabled        = args.value("enabled", panel.enabled);
-                panel.color          = vec4Arg(args, "color", panel.color);
-                panel.borderRadiusPx = args.value("borderRadiusPx", args.value("border_radius_px", panel.borderRadiusPx));
+                auto& panel   = reg.get_or_emplace<vultra::UiPanelComponent>(entity);
+                panel.enabled = args.value("enabled", panel.enabled);
+                panel.color   = vec4Arg(args, "color", panel.color);
+                panel.borderRadiusPx =
+                    args.value("borderRadiusPx", args.value("border_radius_px", panel.borderRadiusPx));
                 (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
                 return true;
             }
@@ -1435,13 +1415,14 @@ namespace vultra_app
                     errorMessage = "entity does not have UiTextComponent";
                     return false;
                 }
-                auto& text           = reg.get_or_emplace<vultra::UiTextComponent>(entity);
-                text.enabled         = args.value("enabled", text.enabled);
-                text.text            = args.value("text", text.text);
-                text.color           = vec4Arg(args, "color", text.color);
-                text.fontSizePx      = args.value("fontSizePx", args.value("font_size_px", text.fontSizePx));
-                text.horizontalAlign = args.value("horizontalAlign", args.value("horizontal_align", text.horizontalAlign));
-                text.verticalAlign   = args.value("verticalAlign", args.value("vertical_align", text.verticalAlign));
+                auto& text      = reg.get_or_emplace<vultra::UiTextComponent>(entity);
+                text.enabled    = args.value("enabled", text.enabled);
+                text.text       = args.value("text", text.text);
+                text.color      = vec4Arg(args, "color", text.color);
+                text.fontSizePx = args.value("fontSizePx", args.value("font_size_px", text.fontSizePx));
+                text.horizontalAlign =
+                    args.value("horizontalAlign", args.value("horizontal_align", text.horizontalAlign));
+                text.verticalAlign = args.value("verticalAlign", args.value("vertical_align", text.verticalAlign));
                 (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
                 return true;
             }
@@ -1523,12 +1504,12 @@ namespace vultra_app
                     errorMessage = "entity does not have UiLayoutComponent";
                     return false;
                 }
-                auto& layout     = reg.get_or_emplace<vultra::UiLayoutComponent>(entity);
-                layout.enabled   = args.value("enabled", layout.enabled);
-                layout.kind      = args.value("kind", layout.kind);
-                layout.paddingPx = vec4Arg(args, "paddingPx", vec4Arg(args, "padding_px", layout.paddingPx));
-                layout.marginPx  = vec4Arg(args, "marginPx", vec4Arg(args, "margin_px", layout.marginPx));
-                layout.spacingPx = args.value("spacingPx", args.value("spacing_px", layout.spacingPx));
+                auto& layout      = reg.get_or_emplace<vultra::UiLayoutComponent>(entity);
+                layout.enabled    = args.value("enabled", layout.enabled);
+                layout.kind       = args.value("kind", layout.kind);
+                layout.paddingPx  = vec4Arg(args, "paddingPx", vec4Arg(args, "padding_px", layout.paddingPx));
+                layout.marginPx   = vec4Arg(args, "marginPx", vec4Arg(args, "margin_px", layout.marginPx));
+                layout.spacingPx  = args.value("spacingPx", args.value("spacing_px", layout.spacingPx));
                 layout.cellSizePx = vec2Arg(args, "cellSizePx", vec2Arg(args, "cell_size_px", layout.cellSizePx));
                 return true;
             }
@@ -1568,7 +1549,7 @@ namespace vultra_app
                     errorMessage = "entity does not have MeshComponent";
                     return false;
                 }
-                auto& mesh = reg.get_or_emplace<vultra::MeshComponent>(entity);
+                auto& mesh             = reg.get_or_emplace<vultra::MeshComponent>(entity);
                 mesh.builtinGeometry   = builtinGeometryArg(args, mesh.builtinGeometry);
                 mesh.materialOverrides = materialSlotOverridesArg(args, mesh.materialOverrides);
                 return true;
@@ -1604,22 +1585,22 @@ namespace vultra_app
                     errorMessage = "entity does not have RigidBodyComponent";
                     return false;
                 }
-                auto& body          = reg.get_or_emplace<vultra::RigidBodyComponent>(entity);
-                body.motionType     = motionTypeArg(args, body);
-                body.objectLayer    = args.value("objectLayer", body.motionType == 0u ? 0u : body.objectLayer);
-                body.isSensor       = args.value("isSensor", body.isSensor);
-                body.motionQuality  = args.value("motionQuality", body.motionQuality);
-                body.allowSleeping  = args.value("allowSleeping", body.allowSleeping);
-                body.friction       = args.value("friction", body.friction);
-                body.restitution    = args.value("restitution", body.restitution);
-                body.linearDamping  = args.value("linearDamping", body.linearDamping);
-                body.angularDamping = args.value("angularDamping", body.angularDamping);
-                body.gravityFactor  = args.value("gravityFactor", body.gravityFactor);
-                body.linearVelocity = vec3Arg(args, "linearVelocity", body.linearVelocity);
-                body.angularVelocity = vec3Arg(args, "angularVelocity", body.angularVelocity);
-                body.mass            = args.value("mass", body.mass);
-                body.overrideMass    = args.value("overrideMass", body.overrideMass);
-                body.maxLinearVelocity = args.value("maxLinearVelocity", body.maxLinearVelocity);
+                auto& body              = reg.get_or_emplace<vultra::RigidBodyComponent>(entity);
+                body.motionType         = motionTypeArg(args, body);
+                body.objectLayer        = args.value("objectLayer", body.motionType == 0u ? 0u : body.objectLayer);
+                body.isSensor           = args.value("isSensor", body.isSensor);
+                body.motionQuality      = args.value("motionQuality", body.motionQuality);
+                body.allowSleeping      = args.value("allowSleeping", body.allowSleeping);
+                body.friction           = args.value("friction", body.friction);
+                body.restitution        = args.value("restitution", body.restitution);
+                body.linearDamping      = args.value("linearDamping", body.linearDamping);
+                body.angularDamping     = args.value("angularDamping", body.angularDamping);
+                body.gravityFactor      = args.value("gravityFactor", body.gravityFactor);
+                body.linearVelocity     = vec3Arg(args, "linearVelocity", body.linearVelocity);
+                body.angularVelocity    = vec3Arg(args, "angularVelocity", body.angularVelocity);
+                body.mass               = args.value("mass", body.mass);
+                body.overrideMass       = args.value("overrideMass", body.overrideMass);
+                body.maxLinearVelocity  = args.value("maxLinearVelocity", body.maxLinearVelocity);
                 body.maxAngularVelocity = args.value("maxAngularVelocity", body.maxAngularVelocity);
                 return true;
             }
@@ -1630,7 +1611,7 @@ namespace vultra_app
                     errorMessage = "entity does not have SphereShapeComponent";
                     return false;
                 }
-                auto& shape = reg.get_or_emplace<vultra::SphereShapeComponent>(entity);
+                auto& shape  = reg.get_or_emplace<vultra::SphereShapeComponent>(entity);
                 shape.radius = args.value("radius", shape.radius);
                 return true;
             }
@@ -1652,7 +1633,7 @@ namespace vultra_app
                     errorMessage = "entity does not have CapsuleShapeComponent";
                     return false;
                 }
-                auto& shape                 = reg.get_or_emplace<vultra::CapsuleShapeComponent>(entity);
+                auto& shape                = reg.get_or_emplace<vultra::CapsuleShapeComponent>(entity);
                 shape.halfHeightOfCylinder = args.value("halfHeightOfCylinder", shape.halfHeightOfCylinder);
                 shape.radius               = args.value("radius", shape.radius);
                 return true;
@@ -1687,19 +1668,19 @@ namespace vultra_app
                     errorMessage = "entity does not have CharacterControllerComponent";
                     return false;
                 }
-                auto& cc = reg.get_or_emplace<vultra::CharacterControllerComponent>(entity);
-                cc.radius = args.value("radius", cc.radius);
-                cc.height = args.value("height", cc.height);
+                auto& cc                = reg.get_or_emplace<vultra::CharacterControllerComponent>(entity);
+                cc.radius               = args.value("radius", cc.radius);
+                cc.height               = args.value("height", cc.height);
                 cc.maxSlopeAngleDegrees = args.value("maxSlopeAngleDegrees", cc.maxSlopeAngleDegrees);
-                cc.stepHeight = args.value("stepHeight", cc.stepHeight);
-                cc.gravityFactor = args.value("gravityFactor", cc.gravityFactor);
-                cc.mass = args.value("mass", cc.mass);
-                cc.jumpSpeed = args.value("jumpSpeed", cc.jumpSpeed);
-                cc.objectLayer = args.value("objectLayer", cc.objectLayer);
-                cc.inputMove = vec3Arg(args, "inputMove", cc.inputMove);
-                cc.jumpRequested = args.value("jumpRequested", cc.jumpRequested);
-                cc.velocity = vec3Arg(args, "velocity", cc.velocity);
-                cc.grounded = args.value("grounded", cc.grounded);
+                cc.stepHeight           = args.value("stepHeight", cc.stepHeight);
+                cc.gravityFactor        = args.value("gravityFactor", cc.gravityFactor);
+                cc.mass                 = args.value("mass", cc.mass);
+                cc.jumpSpeed            = args.value("jumpSpeed", cc.jumpSpeed);
+                cc.objectLayer          = args.value("objectLayer", cc.objectLayer);
+                cc.inputMove            = vec3Arg(args, "inputMove", cc.inputMove);
+                cc.jumpRequested        = args.value("jumpRequested", cc.jumpRequested);
+                cc.velocity             = vec3Arg(args, "velocity", cc.velocity);
+                cc.grounded             = args.value("grounded", cc.grounded);
                 return true;
             }
             if (kind == "animator")
@@ -1793,7 +1774,7 @@ namespace vultra_app
                     errorMessage = "entity does not have ScriptComponent";
                     return false;
                 }
-                auto& script = reg.get_or_emplace<vultra::ScriptComponent>(entity);
+                auto& script     = reg.get_or_emplace<vultra::ScriptComponent>(entity);
                 script.scriptUri = args.value("scriptUri", args.value("uri", script.scriptUri));
                 script.enabled   = args.value("enabled", script.enabled);
                 return true;
@@ -1803,10 +1784,10 @@ namespace vultra_app
             return false;
         }
 
-        bool removeComponent(vultra::World& world,
+        bool removeComponent(vultra::World&     world,
                              const entt::entity entity,
                              const std::string& kind,
-                             std::string& errorMessage)
+                             std::string&       errorMessage)
         {
             auto& reg = world.registry();
             if (kind == "id" || kind == "transform")
@@ -1880,16 +1861,15 @@ namespace vultra_app
 
         CreateEntityResult createSceneEntityFromKind(vultra::World& world, const std::string& kind, entt::entity parent)
         {
-            auto& reg    = world.registry();
+            auto&      reg        = world.registry();
             const auto normalized = lowerString(kind);
-            const auto isUiElement = normalized == "ui_panel" || normalized == "uipanel" || normalized == "ui_text" ||
-                                     normalized == "uitext" || normalized == "ui_image" || normalized == "uiimage" ||
-                                     normalized == "ui_button" || normalized == "uibutton" ||
-                                     normalized == "ui_toggle" || normalized == "uitoggle" ||
-                                     normalized == "ui_checkbox" || normalized == "uicheckbox" ||
-                                     normalized == "ui_slider" || normalized == "uislider" ||
-                                     normalized == "ui_progress_bar" || normalized == "uiprogressbar" ||
-                                     normalized == "ui_progress";
+            const auto isUiElement =
+                normalized == "ui_panel" || normalized == "uipanel" || normalized == "ui_text" ||
+                normalized == "uitext" || normalized == "ui_image" || normalized == "uiimage" ||
+                normalized == "ui_button" || normalized == "uibutton" || normalized == "ui_toggle" ||
+                normalized == "uitoggle" || normalized == "ui_checkbox" || normalized == "uicheckbox" ||
+                normalized == "ui_slider" || normalized == "uislider" || normalized == "ui_progress_bar" ||
+                normalized == "uiprogressbar" || normalized == "ui_progress";
             CreateEntityResult result {};
             if (isUiElement && parent == entt::null)
             {
@@ -1904,29 +1884,27 @@ namespace vultra_app
                     parent = world.createEntity();
                     addCommonEntityComponents(world, parent, "Canvas");
                     (void)reg.get_or_emplace<vultra::TransformComponent>(parent);
-                    auto& rect       = reg.emplace_or_replace<vultra::RectTransformComponent>(parent);
-                    rect.anchorMin   = {0.0f, 0.0f};
-                    rect.anchorMax   = {1.0f, 1.0f};
-                    rect.pivot       = {0.5f, 0.5f};
-                    rect.sizeDeltaPx = {0.0f, 0.0f};
-                    rect.scale       = {1.0f, 1.0f};
-                    auto& canvas     = reg.emplace_or_replace<vultra::CanvasComponent>(parent);
+                    auto& rect                   = reg.emplace_or_replace<vultra::RectTransformComponent>(parent);
+                    rect.anchorMin               = {0.0f, 0.0f};
+                    rect.anchorMax               = {1.0f, 1.0f};
+                    rect.pivot                   = {0.5f, 0.5f};
+                    rect.sizeDeltaPx             = {0.0f, 0.0f};
+                    rect.scale                   = {1.0f, 1.0f};
+                    auto& canvas                 = reg.emplace_or_replace<vultra::CanvasComponent>(parent);
                     canvas.referenceResolutionPx = {1920.0f, 1080.0f};
                     canvas.scaleMode             = 1u;
                     reg.emplace_or_replace<vultra::LayerComponent>(parent).mask = vultra::kRenderLayerUiMask;
-                    result.createdCanvas          = parent;
+                    result.createdCanvas                                        = parent;
                 }
             }
-            auto  entity = parent == entt::null ? world.createEntity() : world.createChild(parent);
+            auto  entity    = parent == entt::null ? world.createEntity() : world.createChild(parent);
             auto& transform = reg.get_or_emplace<vultra::TransformComponent>(entity);
 
-            const auto setName = [&](const char* name) {
-                addCommonEntityComponents(world, entity, name);
-            };
+            const auto setName        = [&](const char* name) { addCommonEntityComponents(world, entity, name); };
             const auto addBuiltinMesh = [&](const char* name, uint32_t geometry) {
                 setName(name);
-                reg.emplace_or_replace<vultra::MeshComponent>(
-                    entity, vultra::MeshComponent {.builtinGeometry = geometry});
+                reg.emplace_or_replace<vultra::MeshComponent>(entity,
+                                                              vultra::MeshComponent {.builtinGeometry = geometry});
             };
             const auto addLight = [&](const char* name, uint32_t lightKind) {
                 setName(name);
@@ -1940,17 +1918,16 @@ namespace vultra_app
                     light.height   = 2.0f;
                 }
                 if (lightKind == 0u)
-                    transform.rotation =
-                        glm::quatLookAtRH(glm::normalize(glm::vec3 {-0.35f, -0.8f, -0.25f}),
-                                          glm::vec3 {0.0f, 1.0f, 0.0f});
+                    transform.rotation = glm::quatLookAtRH(glm::normalize(glm::vec3 {-0.35f, -0.8f, -0.25f}),
+                                                           glm::vec3 {0.0f, 1.0f, 0.0f});
                 else
                     transform.position = glm::vec3 {0.0f, 2.0f, 0.0f};
                 transform.dirty = true;
             };
             const auto addCamera = [&](const char* name, bool xr) {
                 setName(name);
-                auto& camera    = reg.emplace_or_replace<vultra::CameraComponent>(entity);
-                camera.primary  = !hasPrimaryCamera(world);
+                auto& camera       = reg.emplace_or_replace<vultra::CameraComponent>(entity);
+                camera.primary     = !hasPrimaryCamera(world);
                 transform.position = glm::vec3 {0.0f, 1.6f, 5.0f};
                 transform.rotation = glm::quat(glm::radians(glm::vec3 {-12.0f, 180.0f, 0.0f}));
                 transform.dirty    = true;
@@ -1965,9 +1942,9 @@ namespace vultra_app
             };
             const auto addUiBase = [&](const char* name, const glm::vec2 size) -> vultra::RectTransformComponent& {
                 setName(name);
-                auto& rect        = reg.emplace_or_replace<vultra::RectTransformComponent>(entity);
-                rect.sizeDeltaPx  = size;
-                rect.scale        = glm::vec2 {1.0f, 1.0f};
+                auto& rect       = reg.emplace_or_replace<vultra::RectTransformComponent>(entity);
+                rect.sizeDeltaPx = size;
+                rect.scale       = glm::vec2 {1.0f, 1.0f};
                 reg.emplace_or_replace<vultra::LayerComponent>(entity).mask = vultra::kRenderLayerUiMask;
                 return rect;
             };
@@ -2009,14 +1986,14 @@ namespace vultra_app
             {
                 addUiBase("Button", {180.0f, 48.0f});
                 reg.emplace_or_replace<vultra::UiImageComponent>(entity);
-                auto& button       = reg.emplace_or_replace<vultra::UiButtonComponent>(entity);
+                auto& button         = reg.emplace_or_replace<vultra::UiButtonComponent>(entity);
                 button.targetGraphic = reg.get<vultra::IDComponent>(entity).uuid;
-                button.normalColor = {1.0f, 1.0f, 1.0f, 1.0f};
-                button.hoveredColor = {0.90f, 0.94f, 1.0f, 1.0f};
-                button.pressedColor = {0.72f, 0.80f, 0.92f, 1.0f};
+                button.normalColor   = {1.0f, 1.0f, 1.0f, 1.0f};
+                button.hoveredColor  = {0.90f, 0.94f, 1.0f, 1.0f};
+                button.pressedColor  = {0.72f, 0.80f, 0.92f, 1.0f};
             }
-            else if (normalized == "ui_toggle" || normalized == "uitoggle" ||
-                     normalized == "ui_checkbox" || normalized == "uicheckbox")
+            else if (normalized == "ui_toggle" || normalized == "uitoggle" || normalized == "ui_checkbox" ||
+                     normalized == "uicheckbox")
             {
                 addUiBase("Toggle", {36.0f, 36.0f});
                 reg.emplace_or_replace<vultra::UiToggleComponent>(entity);
@@ -2089,866 +2066,976 @@ namespace vultra_app
             return result;
         }
 
-    } // namespace
-
-    nlohmann::json EditorApp::executeCommand(EditorContext& ctx,
-                                             const std::string_view name,
-                                             const nlohmann::json&  args)
-    {
-        const auto ok = [](nlohmann::json payload = nlohmann::json::object()) {
+        // Shared response envelope for all editor command handlers.
+        nlohmann::json ok(nlohmann::json payload = nlohmann::json::object())
+        {
             payload["ok"] = true;
             return payload;
-        };
-        const auto error = [](std::string message) {
+        }
+
+        nlohmann::json error(std::string message)
+        {
             return nlohmann::json {{"ok", false}, {"error", std::move(message)}};
+        }
+
+    } // namespace
+
+    nlohmann::json EditorApp::cmdEditorNewScene([[maybe_unused]] EditorContext&         ctx,
+                                                [[maybe_unused]] const std::string_view name,
+                                                [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return error("world service is unavailable");
+        auto& world = worldService->world();
+        world.clear();
+        Selection::clear(SelectionCategory::Entity);
+        ctx.state.currentEditingPrefab.clear();
+        ctx.state.sceneDirty    = true;
+        ctx.state.statusMessage = "Created an empty scene workspace.";
+        m_History.reset(ctx, "New Empty Scene");
+        return ok({{"statusMessage", ctx.state.statusMessage}});
+    }
+
+    nlohmann::json EditorApp::cmdEditorSaveScene([[maybe_unused]] EditorContext&         ctx,
+                                                 [[maybe_unused]] const std::string_view name,
+                                                 [[maybe_unused]] const nlohmann::json&  args)
+    {
+        const auto uri         = args.value("uri", std::string {});
+        const auto previousUri = ctx.state.currentDefaultScene;
+        if (!uri.empty())
+            ctx.state.currentDefaultScene = uri;
+        saveCurrentScene(ctx);
+        if (!uri.empty() && ctx.state.sceneDirty && !previousUri.empty())
+            ctx.state.currentDefaultScene = previousUri;
+        return ok({{"uri", ctx.state.currentDefaultScene},
+                   {"sceneDirty", ctx.state.sceneDirty},
+                   {"statusMessage", ctx.state.statusMessage}});
+    }
+
+    nlohmann::json EditorApp::cmdEditorOpenScene([[maybe_unused]] EditorContext&         ctx,
+                                                 [[maybe_unused]] const std::string_view name,
+                                                 [[maybe_unused]] const nlohmann::json&  args)
+    {
+        const auto uri = args.value("uri", std::string {});
+        if (uri.empty())
+            return error("editor.open_scene requires uri");
+        const bool requireConfirmation = args.value("requireConfirmation", true);
+        if (requireConfirmation && ctx.state.sceneDirty)
+        {
+            m_PendingOpenSceneUri      = uri;
+            m_PendingOpenSceneIsPrefab = false;
+            m_OpenSceneConfirmPopup    = true;
+            ctx.state.statusMessage    = "Open scene pending confirmation: " + uri;
+            return ok({{"pendingConfirmation", true}, {"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
+        }
+        if (!openSceneFromCommand(ctx, uri))
+            return error(ctx.state.statusMessage.empty() ? "open scene failed" : ctx.state.statusMessage);
+        return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
+    }
+
+    nlohmann::json EditorApp::cmdEditorOpenPrefab([[maybe_unused]] EditorContext&         ctx,
+                                                  [[maybe_unused]] const std::string_view name,
+                                                  [[maybe_unused]] const nlohmann::json&  args)
+    {
+        const auto uri = args.value("uri", std::string {});
+        if (uri.empty())
+            return error("editor.open_prefab requires uri");
+        const bool requireConfirmation = args.value("requireConfirmation", true);
+        if (requireConfirmation && ctx.state.sceneDirty)
+        {
+            m_PendingOpenSceneUri      = uri;
+            m_PendingOpenSceneIsPrefab = true;
+            m_OpenSceneConfirmPopup    = true;
+            ctx.state.statusMessage    = "Open prefab pending confirmation: " + uri;
+            return ok({{"pendingConfirmation", true}, {"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
+        }
+        if (!openSceneFromCommand(ctx, uri, true))
+            return error(ctx.state.statusMessage.empty() ? "open prefab failed" : ctx.state.statusMessage);
+        return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
+    }
+
+    nlohmann::json EditorApp::cmdEditorOpenRenderGraph([[maybe_unused]] EditorContext&         ctx,
+                                                       [[maybe_unused]] const std::string_view name,
+                                                       [[maybe_unused]] const nlohmann::json&  args)
+    {
+        const auto uri = args.value("uri", std::string {});
+        if (uri.empty())
+            return error("editor.open_render_graph requires uri");
+        ctx.state.currentEditingRenderGraph = uri;
+        ctx.state.renderGraphOpenRequested  = true;
+        ctx.state.statusMessage             = "Opening render graph: " + uri;
+        return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
+    }
+
+    nlohmann::json EditorApp::cmdEditorOpenMaterialGraph([[maybe_unused]] EditorContext&         ctx,
+                                                         [[maybe_unused]] const std::string_view name,
+                                                         [[maybe_unused]] const nlohmann::json&  args)
+    {
+        const auto uri = args.value("uri", std::string {});
+        if (uri.empty())
+            return error("editor.open_material_graph requires uri");
+        ctx.state.currentEditingMaterialGraph = uri;
+        ctx.state.materialGraphOpenRequested  = true;
+        ctx.state.statusMessage               = "Opening material graph: " + uri;
+        return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
+    }
+
+    nlohmann::json EditorApp::cmdEditorOpenAnimatorGraph([[maybe_unused]] EditorContext&         ctx,
+                                                         [[maybe_unused]] const std::string_view name,
+                                                         [[maybe_unused]] const nlohmann::json&  args)
+    {
+        const auto uri = args.value("uri", std::string {});
+        if (uri.empty())
+            return error("editor.open_animator_graph requires uri");
+        ctx.state.currentEditingAnimatorGraph = uri;
+        ctx.state.animatorGraphOpenRequested  = true;
+        ctx.state.editorWindowFocusRequested  = "Animator Graph";
+        ctx.state.statusMessage               = "Opening animator graph: " + uri;
+        return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
+    }
+
+    nlohmann::json EditorApp::cmdProjectCreateEmpty([[maybe_unused]] EditorContext&         ctx,
+                                                    [[maybe_unused]] const std::string_view name,
+                                                    [[maybe_unused]] const nlohmann::json&  args)
+    {
+        if (!args.value("allowCreate", false))
+            return error("project.create_empty requires allowCreate=true");
+        const auto projectDirArg = args.value("projectDir", std::string {});
+        if (projectDirArg.empty())
+            return error("project.create_empty requires projectDir");
+
+        namespace fs        = std::filesystem;
+        fs::path projectDir = fs::path(projectDirArg).lexically_normal();
+        if (!projectDir.is_absolute())
+            projectDir = (fs::current_path() / projectDir).lexically_normal();
+
+        std::error_code ec;
+        if (fs::exists(projectDir, ec) && (!fs::is_directory(projectDir, ec) || !fs::is_empty(projectDir, ec)))
+            return error("projectDir must be empty or not exist: " + projectDir.generic_string());
+        fs::create_directories(projectDir / "resources" / "scenes", ec);
+        if (ec)
+            return error("failed to create project directories: " + ec.message());
+
+        auto projectName = args.value("name", projectDir.filename().generic_string());
+        if (projectName.empty())
+            projectName = "VultraProject";
+        for (auto& ch : projectName)
+        {
+            const auto uch = static_cast<unsigned char>(ch);
+            if (!std::isalnum(uch) && ch != '-' && ch != '_')
+                ch = '_';
+        }
+
+        const auto templateKind =
+            projectTemplateKindFromString(args.value("template", args.value("templateKind", std::string {"empty"})));
+
+        VProject project {
+            .projectDir         = projectDir,
+            .name               = projectName,
+            .assetRoot          = "resources",
+            .defaultScene       = "res://scenes/main.vscn",
+            .buildScenes        = {VBuildScene {.index = 0, .uri = "res://scenes/main.vscn", .enabled = true}},
+            .editingRenderGraph = templateKind == ProjectTemplateKind::Empty ?
+                                      std::string {} :
+                                      std::string {"res://render/default.vrg.json"},
+        };
+        std::string message;
+        if (!saveVProject(project, &message))
+            return error("failed to write .vproject: " + message);
+        if (!writeProjectTemplateAssets(projectDir, templateKind, message))
+            return error("failed to write project template assets: " + message);
+        if (!saveVPackageManifest(projectDir / project.assetRoot,
+                                  VPackageManifest {
+                                      .name        = project.name,
+                                      .entryScene  = project.defaultScene,
+                                      .buildScenes = project.buildScenes,
+                                  },
+                                  &message))
+            return error("failed to write package manifest: " + message);
+
+        ctx.state.currentProject      = project.projectDir;
+        ctx.state.currentProjectName  = project.name;
+        ctx.state.currentAssetRoot    = project.assetRoot;
+        ctx.state.currentDefaultScene = project.defaultScene;
+        ctx.state.currentEditingPrefab.clear();
+        ctx.state.currentBuildScenes          = project.buildScenes;
+        ctx.state.currentEditingRenderGraph   = project.editingRenderGraph;
+        ctx.state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
+        ctx.state.selectedSourceAsset.clear();
+        ctx.state.pendingEditorCommands.clear();
+        ctx.state.editorPlaying           = false;
+        ctx.state.editorPaused            = false;
+        ctx.state.editorStepRequested     = false;
+        ctx.state.editorShutdownRequested = false;
+        ctx.state.sceneDirty              = false;
+        ctx.state.mode                    = AppMode::Editor;
+        ctx.state.statusMessage           = "Created project: " + projectDir.generic_string();
+        ++ctx.state.projectGeneration;
+
+        return ok({{"mode", "editor"},
+                   {"project", projectDir.generic_string()},
+                   {"projectName", project.name},
+                   {"template", projectTemplateKindName(templateKind)},
+                   {"vprojectFile", vprojectFileFor(project.projectDir, project.name).generic_string()},
+                   {"defaultScene", project.defaultScene}});
+    }
+
+    nlohmann::json EditorApp::cmdSceneNew([[maybe_unused]] EditorContext&         ctx,
+                                          [[maybe_unused]] const std::string_view name,
+                                          [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return error("world service is unavailable");
+        if (ctx.state.currentProject.empty())
+            return error("no project is loaded");
+
+        const auto uri = args.value("uri",
+                                    ctx.state.currentDefaultScene.empty() ? std::string {"res://scenes/main.vscn"} :
+                                                                            ctx.state.currentDefaultScene);
+        worldService->world().clear();
+        nlohmann::json entities = nlohmann::json::array();
+        if (args.value("withDefaults", true))
+        {
+            entities.push_back(static_cast<uint32_t>(addDefaultSun(worldService->world())));
+            entities.push_back(static_cast<uint32_t>(addDefaultCamera(worldService->world())));
+            entities.push_back(static_cast<uint32_t>(addDefaultEnvironment(worldService->world())));
+            m_History.reset(ctx, "New Scene");
+        }
+        else
+        {
+            Selection::clear(SelectionCategory::Entity);
+            m_History.reset(ctx, "New Empty Scene");
+        }
+        ctx.state.currentDefaultScene = uri;
+        ctx.state.currentEditingPrefab.clear();
+        ctx.state.sceneDirty = true;
+        ++ctx.state.sceneContentGeneration;
+        return ok({{"uri", uri}, {"entities", std::move(entities)}});
+    }
+
+    nlohmann::json EditorApp::cmdSceneListEntityKinds([[maybe_unused]] EditorContext&         ctx,
+                                                      [[maybe_unused]] const std::string_view name,
+                                                      [[maybe_unused]] const nlohmann::json&  args)
+    {
+        return ok(
+            {{"entityKinds",
+              nlohmann::json::array({
+                  {{"kind", "empty"}, {"description", "Entity with transform, name, and status."}},
+                  {{"kind", "primitive"},
+                   {"description", "Builtin render primitive template."},
+                   {"primitiveKinds", {"quad", "plane", "cube", "sphere", "capsule"}}},
+                  {{"kind", "camera"}, {"description", "Camera entity template."}},
+                  {{"kind", "light"},
+                   {"description", "Light entity template."},
+                   {"lightKinds", {"directional", "point", "spot", "area"}}},
+                  {{"kind", "environment"}, {"description", "Environment entity template."}},
+                  {{"kind", "ui_canvas"}, {"description", "Screen-space UI canvas in reference pixels."}},
+                  {{"kind", "ui_panel"}, {"description", "UI panel with RectTransform pixel layout."}},
+                  {{"kind", "ui_text"}, {"description", "UI text with RectTransform pixel layout."}},
+                  {{"kind", "ui_image"}, {"description", "UI image with texture picker support."}},
+                  {{"kind", "ui_button"}, {"description", "UI button with Image target graphic and click state."}},
+                  {{"kind", "ui_toggle"}, {"description", "UI toggle/checkbox with click state."}},
+                  {{"kind", "ui_slider"}, {"description", "UI slider with draggable value."}},
+                  {{"kind", "ui_progress_bar"}, {"description", "UI progress bar display."}},
+              })}});
+    }
+
+    nlohmann::json EditorApp::cmdSceneListComponentKinds([[maybe_unused]] EditorContext&         ctx,
+                                                         [[maybe_unused]] const std::string_view name,
+                                                         [[maybe_unused]] const nlohmann::json&  args)
+    {
+        return ok({{"componentKinds", componentKindListJson()}});
+    }
+
+    nlohmann::json EditorApp::cmdSceneComponentMetadata([[maybe_unused]] EditorContext&         ctx,
+                                                        [[maybe_unused]] const std::string_view name,
+                                                        [[maybe_unused]] const nlohmann::json&  args)
+    {
+        const auto componentKind = componentKindArg(args);
+        if (!componentKind.empty())
+        {
+            auto metadata = componentMetadataJson(componentKind);
+            if (metadata.empty())
+                return error("unsupported component kind: " + componentKind);
+            return ok({{"component", std::move(metadata)}});
+        }
+
+        auto components = nlohmann::json::array();
+        for (const auto& kindValue : componentKindListJson())
+        {
+            const auto metadata = componentMetadataJson(kindValue.get<std::string>());
+            if (!metadata.empty())
+                components.push_back(metadata);
+        }
+        return ok({{"components", std::move(components)}});
+    }
+
+    nlohmann::json EditorApp::cmdSceneAddEntity([[maybe_unused]] EditorContext&         ctx,
+                                                [[maybe_unused]] const std::string_view name,
+                                                [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return error("world service is unavailable");
+        auto&      world  = worldService->world();
+        auto&      reg    = world.registry();
+        const auto kind   = lowerString(stringArg(args, {"entity_kind", "entityKind", "kind"}, "empty"));
+        auto       parent = entityArg(world, args, "parent");
+        if (args.contains("parent") && parent == entt::null)
+            return error("parent entity was not found");
+
+        entt::entity entity        = entt::null;
+        entt::entity createdCanvas = entt::null;
+        if (kind == "primitive")
+        {
+            entity = parent == entt::null ? world.createEntity() : world.createChild(parent);
+            addCommonEntityComponents(world, entity, args.value("name", std::string {"Primitive"}));
+            auto& transform = reg.get_or_emplace<vultra::TransformComponent>(entity);
+            applyTransformArgs(transform, args);
+            std::string message;
+            if (!addOrUpdateComponent(world, entity, "mesh", args, false, message))
+                return error(message);
+        }
+        else if (kind == "light")
+        {
+            const auto  lightKind    = lowerString(args.value("light_kind", std::string {"directional"}));
+            std::string templateKind = "directional_light";
+            if (lightKind == "point")
+                templateKind = "point_light";
+            else if (lightKind == "spot")
+                templateKind = "spot_light";
+            else if (lightKind == "area")
+                templateKind = "area_light";
+            auto result = createSceneEntityFromKind(world, templateKind, parent);
+            entity      = result.entity;
+        }
+        else
+        {
+            auto result   = createSceneEntityFromKind(world, kind, parent);
+            entity        = result.entity;
+            createdCanvas = result.createdCanvas;
+        }
+        if (entity == entt::null)
+            return error("unsupported scene entity kind: " + kind);
+
+        if (args.contains("name"))
+            reg.get_or_emplace<vultra::NameComponent>(entity).name = args.value("name", std::string {});
+        if (auto* rect = reg.try_get<vultra::RectTransformComponent>(entity))
+            applyRectTransformArgs(*rect, args);
+        else
+        {
+            auto& transform = reg.get_or_emplace<vultra::TransformComponent>(entity);
+            applyTransformArgs(transform, args);
+        }
+
+        const auto& id = reg.get<vultra::IDComponent>(entity);
+        Selection::select(SelectionCategory::Entity, id.uuid);
+        ctx.state.sceneDirty    = true;
+        ctx.state.statusMessage = "Created " + reg.get<vultra::NameComponent>(entity).name + ".";
+        m_History.setNextLabel(ctx.state.statusMessage);
+        ++ctx.state.sceneContentGeneration;
+        m_History.observeScene(ctx);
+        nlohmann::json payload {{"entity", static_cast<uint32_t>(entity)},
+                                {"uuid", id.uuid.toString()},
+                                {"name", reg.get<vultra::NameComponent>(entity).name},
+                                {"kind", kind}};
+        const auto     actualParent = world.parent(entity);
+        if (actualParent != entt::null)
+            payload["parent"] = static_cast<uint32_t>(actualParent);
+        if (createdCanvas != entt::null)
+        {
+            const auto& canvasId         = reg.get<vultra::IDComponent>(createdCanvas);
+            payload["createdCanvas"]     = static_cast<uint32_t>(createdCanvas);
+            payload["createdCanvasUuid"] = canvasId.uuid.toString();
+        }
+        return ok(std::move(payload));
+    }
+
+    nlohmann::json EditorApp::cmdSceneGetComponent([[maybe_unused]] EditorContext&         ctx,
+                                                   [[maybe_unused]] const std::string_view name,
+                                                   [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return error("world service is unavailable");
+        auto&      world  = worldService->world();
+        const auto entity = entityArg(world, args, "entity");
+        if (entity == entt::null)
+            return error("entity was not found");
+        const auto componentKind = componentKindArg(args);
+        if (componentKind.empty())
+            return error("scene.get_component requires component_kind");
+
+        std::string message;
+        auto        component = componentValueJson(world, entity, componentKind, message);
+        if (!message.empty())
+            return error(message);
+        auto result              = entityReferenceJson(world, entity);
+        result["component_kind"] = componentKind;
+        result["properties"]     = std::move(component);
+        return ok(std::move(result));
+    }
+
+    nlohmann::json EditorApp::cmdSceneRemoveEntity([[maybe_unused]] EditorContext&         ctx,
+                                                   [[maybe_unused]] const std::string_view name,
+                                                   [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return error("world service is unavailable");
+        auto&      world  = worldService->world();
+        const auto entity = entityArg(world, args, "entity");
+        if (entity == entt::null)
+            return error("entity was not found");
+        const auto entityJson = entityReferenceJson(world, entity);
+        world.destroyRecursive(entity);
+        Selection::clear(SelectionCategory::Entity);
+        ctx.state.sceneDirty    = true;
+        ctx.state.statusMessage = "Removed entity.";
+        m_History.setNextLabel(ctx.state.statusMessage);
+        ++ctx.state.sceneContentGeneration;
+        m_History.observeScene(ctx);
+        auto result       = entityJson;
+        result["removed"] = true;
+        return ok(std::move(result));
+    }
+
+    nlohmann::json EditorApp::cmdSceneSetComponent([[maybe_unused]] EditorContext&         ctx,
+                                                   [[maybe_unused]] const std::string_view name,
+                                                   [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return error("world service is unavailable");
+        auto&      world  = worldService->world();
+        const auto entity = entityArg(world, args, "entity");
+        if (entity == entt::null)
+            return error("entity was not found");
+        const auto componentKind = componentKindArg(args);
+        if (componentKind.empty())
+            return error(std::string(name) + " requires component_kind");
+
+        const auto componentArgs =
+            args.contains("properties") && args["properties"].is_object() ? args["properties"] : args;
+        std::string message;
+        if (!addOrUpdateComponent(
+                world, entity, componentKind, componentArgs, name == "scene.update_component", message))
+            return error(message);
+        ctx.state.sceneDirty = true;
+        m_History.setNextLabel(name == "scene.add_component" ? "Add Component" : "Update Component");
+        ++ctx.state.sceneContentGeneration;
+        m_History.observeScene(ctx);
+        auto result              = entityReferenceJson(world, entity);
+        result["component_kind"] = componentKind;
+        return ok(std::move(result));
+    }
+
+    nlohmann::json EditorApp::cmdSceneRemoveComponent([[maybe_unused]] EditorContext&         ctx,
+                                                      [[maybe_unused]] const std::string_view name,
+                                                      [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return error("world service is unavailable");
+        auto&      world  = worldService->world();
+        const auto entity = entityArg(world, args, "entity");
+        if (entity == entt::null)
+            return error("entity was not found");
+        const auto componentKind = componentKindArg(args);
+        if (componentKind.empty())
+            return error("scene.remove_component requires component_kind");
+        std::string message;
+        if (!removeComponent(world, entity, componentKind, message))
+            return error(message.empty() ? "component was not present: " + componentKind : message);
+        ctx.state.sceneDirty = true;
+        m_History.setNextLabel("Remove Component");
+        ++ctx.state.sceneContentGeneration;
+        m_History.observeScene(ctx);
+        auto result              = entityReferenceJson(world, entity);
+        result["component_kind"] = componentKind;
+        result["removed"]        = true;
+        return ok(std::move(result));
+    }
+
+    nlohmann::json EditorApp::cmdSceneSelectEntity([[maybe_unused]] EditorContext&         ctx,
+                                                   [[maybe_unused]] const std::string_view name,
+                                                   [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return error("world service is unavailable");
+        auto& world = worldService->world();
+        if (args.value("clear", false))
+        {
+            Selection::clear(SelectionCategory::Entity);
+            return ok({{"selected", false}});
+        }
+        const auto entity = entityArg(world, args, "entity");
+        if (entity == entt::null)
+            return error("entity was not found");
+        const auto* id = world.registry().try_get<vultra::IDComponent>(entity);
+        if (!id)
+            return error("entity has no IDComponent");
+        ctx.state.selectedSourceAsset.clear();
+        Selection::select(SelectionCategory::Entity, id->uuid);
+        return ok({{"entity", static_cast<uint32_t>(entity)}, {"uuid", id->uuid.toString()}, {"selected", true}});
+    }
+
+    nlohmann::json EditorApp::cmdSceneMoveEntity([[maybe_unused]] EditorContext&         ctx,
+                                                 [[maybe_unused]] const std::string_view name,
+                                                 [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return error("world service is unavailable");
+        auto&      world  = worldService->world();
+        auto&      reg    = world.registry();
+        const auto entity = entityArg(world, args, "entity");
+        if (entity == entt::null)
+            return error("entity was not found");
+        if (auto* status = reg.try_get<vultra::EntityStatusComponent>(entity); status && status->locked)
+            return error("entity is locked");
+
+        const auto mode = lowerString(args.value("mode", std::string {"parent"}));
+        if (mode == "root")
+        {
+            world.removeParent(entity);
+            ctx.state.statusMessage = "Moved entity to scene root.";
+        }
+        else if (mode == "parent")
+        {
+            const auto parent = entityArg(world, args, "parent");
+            if (!args.contains("parent"))
+                return error("scene.move_entity mode=parent requires parent");
+            if (parent == entt::null)
+                return error("parent entity was not found");
+            if (parent == entity || isDescendantOf(world, parent, entity))
+                return error("cannot parent an entity under itself or its descendant");
+            world.setParent(entity, parent);
+            ctx.state.statusMessage = "Reparented entity.";
+        }
+        else if (mode == "before" || mode == "after")
+        {
+            const auto sibling = entityArg(world, args, "sibling");
+            if (sibling == entt::null)
+                return error("sibling entity was not found");
+            const auto targetParent = world.parent(sibling);
+            if (targetParent == entity || (targetParent != entt::null && isDescendantOf(world, targetParent, entity)))
+                return error("cannot move an entity relative to its descendant");
+            if (mode == "before")
+            {
+                world.insertBefore(entity, sibling);
+                ctx.state.statusMessage = "Moved entity above sibling.";
+            }
+            else
+            {
+                world.insertAfter(entity, sibling);
+                ctx.state.statusMessage = "Moved entity below sibling.";
+            }
+        }
+        else
+        {
+            return error("unknown move mode: " + mode);
+        }
+
+        ctx.state.sceneDirty = true;
+        m_History.setNextLabel(ctx.state.statusMessage);
+        ++ctx.state.sceneContentGeneration;
+        m_History.observeScene(ctx);
+        return ok({{"entity", static_cast<uint32_t>(entity)}, {"statusMessage", ctx.state.statusMessage}});
+    }
+
+    nlohmann::json EditorApp::cmdSceneInstantiateAsset([[maybe_unused]] EditorContext&         ctx,
+                                                       [[maybe_unused]] const std::string_view name,
+                                                       [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return error("world service is unavailable");
+        auto& world = worldService->world();
+
+        std::string      message;
+        vultra::CoreUUID assetUuid {};
+        if (!resolveAssetRef(ctx, args, assetUuid, message))
+            return error(message);
+
+        AssetInstantiationOptions options {};
+        options.parent = entityArg(world, args, "parent");
+        if (args.contains("parent") && options.parent == entt::null)
+            return error("parent entity was not found");
+        options.beforeSibling = entityArg(world, args, "beforeSibling");
+        if (args.contains("beforeSibling") && options.beforeSibling == entt::null)
+            return error("beforeSibling entity was not found");
+        options.afterSibling = entityArg(world, args, "afterSibling");
+        if (args.contains("afterSibling") && options.afterSibling == entt::null)
+            return error("afterSibling entity was not found");
+        options.keepPosition = args.value("keepPosition", true);
+        options.keepRotation = args.value("keepRotation", true);
+        options.keepScale    = args.value("keepScale", true);
+
+        nlohmann::json payload;
+        const auto     entity = instantiateAssetInScene(ctx, world, assetUuid, options, &payload);
+        if (entity == entt::null)
+            return error(ctx.state.statusMessage.empty() ? "failed to instantiate asset" : ctx.state.statusMessage);
+
+        if (args.contains("name"))
+            world.registry().get_or_emplace<vultra::NameComponent>(entity).name = args.value("name", std::string {});
+        if (auto* transform = world.registry().try_get<vultra::TransformComponent>(entity))
+            applyTransformArgs(*transform, args);
+
+        ++ctx.state.sceneContentGeneration;
+        m_History.observeScene(ctx);
+        payload["statusMessage"] = ctx.state.statusMessage;
+        return ok(std::move(payload));
+    }
+
+    nlohmann::json EditorApp::cmdSceneCreatePrefab([[maybe_unused]] EditorContext&         ctx,
+                                                   [[maybe_unused]] const std::string_view name,
+                                                   [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return error("world service is unavailable");
+        auto&      world  = worldService->world();
+        const auto entity = entityArg(world, args, "entity");
+        if (entity == entt::null)
+            return error("entity was not found");
+        const auto pathStr = args.value("path", std::string {});
+        if (pathStr.empty())
+            return error("scene.create_prefab requires path");
+
+        auto res = createPrefabFromEntity(ctx, world, entity, std::filesystem::path(pathStr));
+        if (!res.success)
+            return error(res.message.empty() ? "failed to create prefab" : res.message);
+
+        ctx.state.sceneDirty    = true;
+        ctx.state.statusMessage = res.message;
+        m_History.setNextLabel(res.message);
+        ++ctx.state.sceneContentGeneration;
+        m_History.observeScene(ctx);
+
+        nlohmann::json payload {{"prefabUri", res.prefabUri}, {"statusMessage", res.message}};
+        if (auto* id = world.registry().try_get<vultra::IDComponent>(res.instanceRoot))
+            payload["uuid"] = id->uuid.toString();
+        return ok(std::move(payload));
+    }
+
+    nlohmann::json EditorApp::cmdSceneUnpackPrefab([[maybe_unused]] EditorContext&         ctx,
+                                                   [[maybe_unused]] const std::string_view name,
+                                                   [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return error("world service is unavailable");
+        auto&      world  = worldService->world();
+        const auto entity = entityArg(world, args, "entity");
+        if (entity == entt::null)
+            return error("entity was not found");
+
+        std::string message;
+        if (!unpackPrefab(ctx, world, entity, message))
+            return error(message);
+
+        ctx.state.sceneDirty    = true;
+        ctx.state.statusMessage = message;
+        m_History.setNextLabel(message);
+        ++ctx.state.sceneContentGeneration;
+        m_History.observeScene(ctx);
+        return ok({{"statusMessage", message}});
+    }
+
+    nlohmann::json EditorApp::cmdScenePrefabOverride([[maybe_unused]] EditorContext&         ctx,
+                                                     [[maybe_unused]] const std::string_view name,
+                                                     [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return error("world service is unavailable");
+        auto* sceneService = ctx.services ? ctx.services->tryGet<vultra::ISceneService>() : nullptr;
+        if (!sceneService)
+            return error("scene service is unavailable");
+        auto&      world  = worldService->world();
+        const auto entity = entityArg(world, args, "entity");
+        if (entity == entt::null)
+            return error("entity was not found");
+        const auto component = args.value("component", std::string {});
+        const auto field     = args.value("field", std::string {});
+        if (component.empty() || field.empty())
+            return error("requires component and field");
+
+        const bool isRevert = (name == "scene.revert_override");
+        const bool applied  = isRevert ? sceneService->revertPrefabField(world, entity, component, field) :
+                                         sceneService->applyPrefabField(world, entity, component, field);
+        if (!applied)
+            return error("override operation failed");
+
+        if (!isRevert)
+        {
+            // Re-register the modified prefab file so its imported copy stays current.
+            std::string  prefabUri;
+            auto&        reg = world.registry();
+            entt::entity cur = entity;
+            while (cur != entt::null && reg.valid(cur))
+            {
+                if (auto* pic = reg.try_get<vultra::PrefabInstanceComponent>(cur))
+                {
+                    prefabUri = pic->prefabUri;
+                    break;
+                }
+                cur = world.parent(cur);
+            }
+            if (!prefabUri.empty())
+                if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
+                    assetService->reimportAsset(prefabUri, false);
+        }
+
+        ctx.state.sceneDirty    = true;
+        ctx.state.statusMessage = isRevert ? "Reverted override." : "Applied override to prefab.";
+        m_History.setNextLabel(ctx.state.statusMessage);
+        ++ctx.state.sceneContentGeneration;
+        m_History.observeScene(ctx);
+        return ok({{"statusMessage", ctx.state.statusMessage}});
+    }
+
+    nlohmann::json EditorApp::cmdEditorBackToLauncher([[maybe_unused]] EditorContext&         ctx,
+                                                      [[maybe_unused]] const std::string_view name,
+                                                      [[maybe_unused]] const nlohmann::json&  args)
+    {
+        saveCurrentSceneThumbnail(ctx);
+        ctx.state.currentProject.clear();
+        ctx.state.currentProjectName.clear();
+        ctx.state.selectedSourceAsset.clear();
+        ctx.state.codeEditorPath.clear();
+        ctx.state.pendingEditorCommands.clear();
+        ctx.state.currentAssetRoot = "resources";
+        ctx.state.currentDefaultScene.clear();
+        ctx.state.currentEditingPrefab.clear();
+        ctx.state.currentBuildScenes.clear();
+        ctx.state.currentEditingRenderGraph   = "res://render/default.vrg.json";
+        ctx.state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
+        ++ctx.state.projectGeneration;
+        ctx.state.editorPlaying                        = false;
+        ctx.state.editorPaused                         = false;
+        ctx.state.editorStepRequested                  = false;
+        ctx.state.codeEditorOpenRequested              = false;
+        ctx.state.runtimeFrameGraphViewerOpenRequested = false;
+        ctx.state.materialGraphOpenRequested           = false;
+        ctx.state.editorShutdownRequested              = true;
+        ctx.state.sceneDirty                           = false;
+        ctx.state.mode                                 = AppMode::Launcher;
+        ctx.state.statusMessage                        = "Returned to Project Launcher.";
+        m_SyncedProject.clear();
+        m_SyncedProjectGeneration = std::numeric_limits<uint64_t>::max();
+        m_Loading                 = {};
+        m_PlayModeSnapshot.reset();
+        m_PlayModeSceneDirtySnapshot = false;
+        m_PlaybackWasPlaying         = false;
+        m_History.clear();
+        return ok({{"mode", "launcher"}, {"statusMessage", ctx.state.statusMessage}});
+    }
+
+    nlohmann::json EditorApp::cmdRuntimePlayback([[maybe_unused]] EditorContext&         ctx,
+                                                 [[maybe_unused]] const std::string_view name,
+                                                 [[maybe_unused]] const nlohmann::json&  args)
+    {
+        const auto action = args.value("action", std::string {});
+        if (action == "play" || action == "resume")
+        {
+            ctx.state.editorPlaying = true;
+            ctx.state.editorPaused  = false;
+        }
+        else if (action == "pause")
+        {
+            ctx.state.editorPlaying = true;
+            ctx.state.editorPaused  = true;
+        }
+        else if (action == "stop")
+        {
+            ctx.state.editorPlaying       = false;
+            ctx.state.editorPaused        = false;
+            ctx.state.editorStepRequested = false;
+        }
+        else if (action == "step")
+        {
+            ctx.state.editorPlaying       = true;
+            ctx.state.editorPaused        = true;
+            ctx.state.editorStepRequested = true;
+        }
+        else
+        {
+            return error("unknown playback action: " + action);
+        }
+        return ok({{"action", action},
+                   {"playing", ctx.state.editorPlaying},
+                   {"paused", ctx.state.editorPaused},
+                   {"stepRequested", ctx.state.editorStepRequested}});
+    }
+
+    nlohmann::json EditorApp::cmdEditorWindow([[maybe_unused]] EditorContext&         ctx,
+                                              [[maybe_unused]] const std::string_view name,
+                                              [[maybe_unused]] const nlohmann::json&  args)
+    {
+        auto* windowService = ctx.services ? ctx.services->tryGet<IWindowService>() : nullptr;
+        if (!windowService)
+            return error("window service is unavailable");
+        auto&      window = windowService->window();
+        const auto action = lowerString(args.value("action", std::string {"status"}));
+
+        if (action == "status")
+            return ok({{"window", windowStateJson(window)}});
+        if (action == "focus")
+        {
+            const auto target = args.value("target", args.value("window", args.value("name", std::string {})));
+            if (target.empty())
+                return error("editor.window focus requires target");
+            ctx.state.editorWindowFocusRequested = target;
+        }
+        else if (action == "fullscreen")
+        {
+            const bool enabled = args.value("enabled", args.value("fullscreen", true));
+            (void)window.setFullscreen(enabled);
+        }
+        else if (action == "resize")
+        {
+            const int width  = std::max(args.value("width", window.getExtent().x), 1);
+            const int height = std::max(args.value("height", window.getExtent().y), 1);
+            (void)window.setExtent(vultra::os::Window::Extent {width, height});
+        }
+        else if (action == "move")
+        {
+            (void)window.setPosition(vultra::os::Window::Position {args.value("x", window.getPosition().x),
+                                                                   args.value("y", window.getPosition().y)});
+        }
+        else if (action == "center")
+        {
+            (void)window.centerOnScreen();
+        }
+        else if (action == "maximize")
+        {
+            window.maximize();
+        }
+        else if (action == "minimize")
+        {
+            window.minimize();
+        }
+        else if (action == "restore")
+        {
+            if (window.isFullscreen())
+                (void)window.setFullscreen(false);
+            window.restore();
+        }
+        else if (action == "decorated")
+        {
+            (void)window.setDecorated(args.value("enabled", args.value("decorated", true)));
+        }
+        else if (action == "resizable")
+        {
+            (void)window.setResizable(args.value("enabled", args.value("resizable", true)));
+        }
+        else if (action == "visible")
+        {
+            (void)window.setVisible(args.value("enabled", args.value("visible", true)));
+        }
+        else if (action == "close")
+        {
+            window.close();
+        }
+        else
+        {
+            return error("unknown editor.window action: " + action);
+        }
+        return ok({{"action", action}, {"window", windowStateJson(window)}});
+    }
+
+    nlohmann::json EditorApp::cmdEditorUndo([[maybe_unused]] EditorContext&         ctx,
+                                            [[maybe_unused]] const std::string_view name,
+                                            [[maybe_unused]] const nlohmann::json&  args)
+    {
+        m_History.undo(ctx);
+        return ok();
+    }
+
+    nlohmann::json EditorApp::cmdEditorRedo([[maybe_unused]] EditorContext&         ctx,
+                                            [[maybe_unused]] const std::string_view name,
+                                            [[maybe_unused]] const nlohmann::json&  args)
+    {
+        m_History.redo(ctx);
+        return ok();
+    }
+
+    nlohmann::json EditorApp::cmdEditorHistory([[maybe_unused]] EditorContext&         ctx,
+                                               [[maybe_unused]] const std::string_view name,
+                                               [[maybe_unused]] const nlohmann::json&  args)
+    {
+        nlohmann::json entries        = nlohmann::json::array();
+        const auto&    historyEntries = m_History.entries();
+        for (std::size_t i = 0; i < historyEntries.size(); ++i)
+        {
+            entries.push_back({{"index", i},
+                               {"label", historyEntries[i].label},
+                               {"dirty", historyEntries[i].dirty},
+                               {"current", i == m_History.currentIndex()}});
+        }
+        return ok({{"currentIndex", m_History.currentIndex()},
+                   {"canUndo", m_History.canUndo()},
+                   {"canRedo", m_History.canRedo()},
+                   {"entries", std::move(entries)}});
+    }
+    nlohmann::json EditorApp::cmdEditorBuildAndRun([[maybe_unused]] EditorContext&         ctx,
+                                                   [[maybe_unused]] const std::string_view name,
+                                                   [[maybe_unused]] const nlohmann::json&  args)
+    {
+        startBuildAndRun(ctx);
+        return ok({{"statusMessage", ctx.state.statusMessage}});
+    }
+
+    nlohmann::json
+    EditorApp::executeCommand(EditorContext& ctx, const std::string_view name, const nlohmann::json& args)
+    {
+        using Handler = nlohmann::json (EditorApp::*)(EditorContext&, std::string_view, const nlohmann::json&);
+        // One handler per editor command; aliased names (add/update component, revert/apply
+        // override) share a handler and branch on `name`.
+        static const std::unordered_map<std::string_view, Handler> kHandlers = {
+            {"editor.new_scene", &EditorApp::cmdEditorNewScene},
+            {"editor.save_scene", &EditorApp::cmdEditorSaveScene},
+            {"editor.open_scene", &EditorApp::cmdEditorOpenScene},
+            {"editor.open_prefab", &EditorApp::cmdEditorOpenPrefab},
+            {"editor.open_render_graph", &EditorApp::cmdEditorOpenRenderGraph},
+            {"editor.open_material_graph", &EditorApp::cmdEditorOpenMaterialGraph},
+            {"editor.open_animator_graph", &EditorApp::cmdEditorOpenAnimatorGraph},
+            {"project.create_empty", &EditorApp::cmdProjectCreateEmpty},
+            {"scene.new", &EditorApp::cmdSceneNew},
+            {"scene.list_entity_kinds", &EditorApp::cmdSceneListEntityKinds},
+            {"scene.list_component_kinds", &EditorApp::cmdSceneListComponentKinds},
+            {"scene.component_metadata", &EditorApp::cmdSceneComponentMetadata},
+            {"scene.add_entity", &EditorApp::cmdSceneAddEntity},
+            {"scene.get_component", &EditorApp::cmdSceneGetComponent},
+            {"scene.remove_entity", &EditorApp::cmdSceneRemoveEntity},
+            {"scene.add_component", &EditorApp::cmdSceneSetComponent},
+            {"scene.update_component", &EditorApp::cmdSceneSetComponent},
+            {"scene.remove_component", &EditorApp::cmdSceneRemoveComponent},
+            {"scene.select_entity", &EditorApp::cmdSceneSelectEntity},
+            {"scene.move_entity", &EditorApp::cmdSceneMoveEntity},
+            {"scene.instantiate_asset", &EditorApp::cmdSceneInstantiateAsset},
+            {"scene.create_prefab", &EditorApp::cmdSceneCreatePrefab},
+            {"scene.unpack_prefab", &EditorApp::cmdSceneUnpackPrefab},
+            {"scene.revert_override", &EditorApp::cmdScenePrefabOverride},
+            {"scene.apply_override", &EditorApp::cmdScenePrefabOverride},
+            {"editor.back_to_launcher", &EditorApp::cmdEditorBackToLauncher},
+            {"runtime.playback", &EditorApp::cmdRuntimePlayback},
+            {"editor.window", &EditorApp::cmdEditorWindow},
+            {"editor.undo", &EditorApp::cmdEditorUndo},
+            {"editor.redo", &EditorApp::cmdEditorRedo},
+            {"editor.history", &EditorApp::cmdEditorHistory},
+            {"editor.build_and_run", &EditorApp::cmdEditorBuildAndRun},
         };
 
-        if (name == "editor.new_scene")
-        {
-            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
-            if (!worldService)
-                return error("world service is unavailable");
-            auto& world = worldService->world();
-            world.clear();
-            Selection::clear(SelectionCategory::Entity);
-            ctx.state.currentEditingPrefab.clear();
-            ctx.state.sceneDirty    = true;
-            ctx.state.statusMessage = "Created an empty scene workspace.";
-            m_History.reset(ctx, "New Empty Scene");
-            return ok({{"statusMessage", ctx.state.statusMessage}});
-        }
-
-        if (name == "editor.save_scene")
-        {
-            const auto uri = args.value("uri", std::string {});
-            const auto previousUri = ctx.state.currentDefaultScene;
-            if (!uri.empty())
-                ctx.state.currentDefaultScene = uri;
-            saveCurrentScene(ctx);
-            if (!uri.empty() && ctx.state.sceneDirty && !previousUri.empty())
-                ctx.state.currentDefaultScene = previousUri;
-            return ok({{"uri", ctx.state.currentDefaultScene}, {"sceneDirty", ctx.state.sceneDirty}, {"statusMessage", ctx.state.statusMessage}});
-        }
-
-        if (name == "editor.open_scene")
-        {
-            const auto uri = args.value("uri", std::string {});
-            if (uri.empty())
-                return error("editor.open_scene requires uri");
-            const bool requireConfirmation = args.value("requireConfirmation", true);
-            if (requireConfirmation && ctx.state.sceneDirty)
-            {
-                m_PendingOpenSceneUri      = uri;
-                m_PendingOpenSceneIsPrefab = false;
-                m_OpenSceneConfirmPopup    = true;
-                ctx.state.statusMessage    = "Open scene pending confirmation: " + uri;
-                return ok({{"pendingConfirmation", true}, {"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
-            }
-            if (!openSceneFromCommand(ctx, uri))
-                return error(ctx.state.statusMessage.empty() ? "open scene failed" : ctx.state.statusMessage);
-            return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
-        }
-
-        if (name == "editor.open_prefab")
-        {
-            const auto uri = args.value("uri", std::string {});
-            if (uri.empty())
-                return error("editor.open_prefab requires uri");
-            const bool requireConfirmation = args.value("requireConfirmation", true);
-            if (requireConfirmation && ctx.state.sceneDirty)
-            {
-                m_PendingOpenSceneUri      = uri;
-                m_PendingOpenSceneIsPrefab = true;
-                m_OpenSceneConfirmPopup    = true;
-                ctx.state.statusMessage    = "Open prefab pending confirmation: " + uri;
-                return ok({{"pendingConfirmation", true}, {"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
-            }
-            if (!openSceneFromCommand(ctx, uri, true))
-                return error(ctx.state.statusMessage.empty() ? "open prefab failed" : ctx.state.statusMessage);
-            return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
-        }
-
-        if (name == "editor.open_render_graph")
-        {
-            const auto uri = args.value("uri", std::string {});
-            if (uri.empty())
-                return error("editor.open_render_graph requires uri");
-            ctx.state.currentEditingRenderGraph = uri;
-            ctx.state.renderGraphOpenRequested  = true;
-            ctx.state.statusMessage             = "Opening render graph: " + uri;
-            return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
-        }
-
-        if (name == "editor.open_material_graph")
-        {
-            const auto uri = args.value("uri", std::string {});
-            if (uri.empty())
-                return error("editor.open_material_graph requires uri");
-            ctx.state.currentEditingMaterialGraph = uri;
-            ctx.state.materialGraphOpenRequested  = true;
-            ctx.state.statusMessage               = "Opening material graph: " + uri;
-            return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
-        }
-
-        if (name == "editor.open_animator_graph")
-        {
-            const auto uri = args.value("uri", std::string {});
-            if (uri.empty())
-                return error("editor.open_animator_graph requires uri");
-            ctx.state.currentEditingAnimatorGraph = uri;
-            ctx.state.animatorGraphOpenRequested  = true;
-            ctx.state.editorWindowFocusRequested  = "Animator Graph";
-            ctx.state.statusMessage               = "Opening animator graph: " + uri;
-            return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
-        }
-
-        if (name == "project.create_empty")
-        {
-            if (!args.value("allowCreate", false))
-                return error("project.create_empty requires allowCreate=true");
-            const auto projectDirArg = args.value("projectDir", std::string {});
-            if (projectDirArg.empty())
-                return error("project.create_empty requires projectDir");
-
-            namespace fs = std::filesystem;
-            fs::path projectDir = fs::path(projectDirArg).lexically_normal();
-            if (!projectDir.is_absolute())
-                projectDir = (fs::current_path() / projectDir).lexically_normal();
-
-            std::error_code ec;
-            if (fs::exists(projectDir, ec) && (!fs::is_directory(projectDir, ec) || !fs::is_empty(projectDir, ec)))
-                return error("projectDir must be empty or not exist: " + projectDir.generic_string());
-            fs::create_directories(projectDir / "resources" / "scenes", ec);
-            if (ec)
-                return error("failed to create project directories: " + ec.message());
-
-            auto projectName = args.value("name", projectDir.filename().generic_string());
-            if (projectName.empty())
-                projectName = "VultraProject";
-            for (auto& ch : projectName)
-            {
-                const auto uch = static_cast<unsigned char>(ch);
-                if (!std::isalnum(uch) && ch != '-' && ch != '_')
-                    ch = '_';
-            }
-
-            const auto templateKind =
-                projectTemplateKindFromString(args.value("template", args.value("templateKind", std::string {"empty"})));
-
-            VProject project {
-                .projectDir = projectDir,
-                .name = projectName,
-                .assetRoot = "resources",
-                .defaultScene = "res://scenes/main.vscn",
-                .buildScenes = {VBuildScene {.index = 0, .uri = "res://scenes/main.vscn", .enabled = true}},
-                .editingRenderGraph = templateKind == ProjectTemplateKind::Empty ? std::string {} :
-                                                                             std::string {"res://render/default.vrg.json"},
-            };
-            std::string message;
-            if (!saveVProject(project, &message))
-                return error("failed to write .vproject: " + message);
-            if (!writeProjectTemplateAssets(projectDir, templateKind, message))
-                return error("failed to write project template assets: " + message);
-            if (!saveVPackageManifest(projectDir / project.assetRoot,
-                                      VPackageManifest {
-                                          .name        = project.name,
-                                          .entryScene  = project.defaultScene,
-                                          .buildScenes = project.buildScenes,
-                                      },
-                                      &message))
-                return error("failed to write package manifest: " + message);
-
-            ctx.state.currentProject              = project.projectDir;
-            ctx.state.currentProjectName          = project.name;
-            ctx.state.currentAssetRoot            = project.assetRoot;
-            ctx.state.currentDefaultScene         = project.defaultScene;
-            ctx.state.currentEditingPrefab.clear();
-            ctx.state.currentBuildScenes          = project.buildScenes;
-            ctx.state.currentEditingRenderGraph   = project.editingRenderGraph;
-            ctx.state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
-            ctx.state.selectedSourceAsset.clear();
-            ctx.state.pendingEditorCommands.clear();
-            ctx.state.editorPlaying           = false;
-            ctx.state.editorPaused            = false;
-            ctx.state.editorStepRequested     = false;
-            ctx.state.editorShutdownRequested = false;
-            ctx.state.sceneDirty              = false;
-            ctx.state.mode                    = AppMode::Editor;
-            ctx.state.statusMessage           = "Created project: " + projectDir.generic_string();
-            ++ctx.state.projectGeneration;
-
-            return ok({{"mode", "editor"},
-                       {"project", projectDir.generic_string()},
-                       {"projectName", project.name},
-                       {"template", projectTemplateKindName(templateKind)},
-                       {"vprojectFile", vprojectFileFor(project.projectDir, project.name).generic_string()},
-                       {"defaultScene", project.defaultScene}});
-        }
-
-        if (name == "scene.new")
-        {
-            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
-            if (!worldService)
-                return error("world service is unavailable");
-            if (ctx.state.currentProject.empty())
-                return error("no project is loaded");
-
-            const auto uri = args.value("uri", ctx.state.currentDefaultScene.empty() ?
-                                                   std::string {"res://scenes/main.vscn"} :
-                                                   ctx.state.currentDefaultScene);
-            worldService->world().clear();
-            nlohmann::json entities = nlohmann::json::array();
-            if (args.value("withDefaults", true))
-            {
-                entities.push_back(static_cast<uint32_t>(addDefaultSun(worldService->world())));
-                entities.push_back(static_cast<uint32_t>(addDefaultCamera(worldService->world())));
-                entities.push_back(static_cast<uint32_t>(addDefaultEnvironment(worldService->world())));
-                m_History.reset(ctx, "New Scene");
-            }
-            else
-            {
-                Selection::clear(SelectionCategory::Entity);
-                m_History.reset(ctx, "New Empty Scene");
-            }
-            ctx.state.currentDefaultScene  = uri;
-            ctx.state.currentEditingPrefab.clear();
-            ctx.state.sceneDirty           = true;
-            ++ctx.state.sceneContentGeneration;
-            return ok({{"uri", uri}, {"entities", std::move(entities)}});
-        }
-
-        if (name == "scene.list_entity_kinds")
-        {
-            return ok({{"entityKinds",
-                        nlohmann::json::array({
-                            {{"kind", "empty"}, {"description", "Entity with transform, name, and status."}},
-                            {{"kind", "primitive"},
-                             {"description", "Builtin render primitive template."},
-                             {"primitiveKinds", {"quad", "plane", "cube", "sphere", "capsule"}}},
-                            {{"kind", "camera"}, {"description", "Camera entity template."}},
-                            {{"kind", "light"},
-                             {"description", "Light entity template."},
-                             {"lightKinds", {"directional", "point", "spot", "area"}}},
-                            {{"kind", "environment"}, {"description", "Environment entity template."}},
-                            {{"kind", "ui_canvas"}, {"description", "Screen-space UI canvas in reference pixels."}},
-                            {{"kind", "ui_panel"}, {"description", "UI panel with RectTransform pixel layout."}},
-                            {{"kind", "ui_text"}, {"description", "UI text with RectTransform pixel layout."}},
-                            {{"kind", "ui_image"}, {"description", "UI image with texture picker support."}},
-                            {{"kind", "ui_button"},
-                             {"description", "UI button with Image target graphic and click state."}},
-                            {{"kind", "ui_toggle"}, {"description", "UI toggle/checkbox with click state."}},
-                            {{"kind", "ui_slider"}, {"description", "UI slider with draggable value."}},
-                            {{"kind", "ui_progress_bar"}, {"description", "UI progress bar display."}},
-                        })}});
-        }
-
-        if (name == "scene.list_component_kinds")
-        {
-            return ok({{"componentKinds", componentKindListJson()}});
-        }
-
-        if (name == "scene.component_metadata")
-        {
-            const auto componentKind = componentKindArg(args);
-            if (!componentKind.empty())
-            {
-                auto metadata = componentMetadataJson(componentKind);
-                if (metadata.empty())
-                    return error("unsupported component kind: " + componentKind);
-                return ok({{"component", std::move(metadata)}});
-            }
-
-            auto components = nlohmann::json::array();
-            for (const auto& kindValue : componentKindListJson())
-            {
-                const auto metadata = componentMetadataJson(kindValue.get<std::string>());
-                if (!metadata.empty())
-                    components.push_back(metadata);
-            }
-            return ok({{"components", std::move(components)}});
-        }
-
-        if (name == "scene.add_entity")
-        {
-            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
-            if (!worldService)
-                return error("world service is unavailable");
-            auto&      world  = worldService->world();
-            auto&      reg    = world.registry();
-            const auto kind   = lowerString(stringArg(args, {"entity_kind", "entityKind", "kind"}, "empty"));
-            auto       parent = entityArg(world, args, "parent");
-            if (args.contains("parent") && parent == entt::null)
-                return error("parent entity was not found");
-
-            entt::entity entity = entt::null;
-            entt::entity createdCanvas = entt::null;
-            if (kind == "primitive")
-            {
-                entity = parent == entt::null ? world.createEntity() : world.createChild(parent);
-                addCommonEntityComponents(world, entity, args.value("name", std::string {"Primitive"}));
-                auto& transform = reg.get_or_emplace<vultra::TransformComponent>(entity);
-                applyTransformArgs(transform, args);
-                std::string message;
-                if (!addOrUpdateComponent(world, entity, "mesh", args, false, message))
-                    return error(message);
-            }
-            else if (kind == "light")
-            {
-                const auto lightKind = lowerString(args.value("light_kind", std::string {"directional"}));
-                std::string templateKind = "directional_light";
-                if (lightKind == "point")
-                    templateKind = "point_light";
-                else if (lightKind == "spot")
-                    templateKind = "spot_light";
-                else if (lightKind == "area")
-                    templateKind = "area_light";
-                auto result = createSceneEntityFromKind(world, templateKind, parent);
-                entity = result.entity;
-            }
-            else
-            {
-                auto result = createSceneEntityFromKind(world, kind, parent);
-                entity = result.entity;
-                createdCanvas = result.createdCanvas;
-            }
-            if (entity == entt::null)
-                return error("unsupported scene entity kind: " + kind);
-
-            if (args.contains("name"))
-                reg.get_or_emplace<vultra::NameComponent>(entity).name = args.value("name", std::string {});
-            if (auto* rect = reg.try_get<vultra::RectTransformComponent>(entity))
-                applyRectTransformArgs(*rect, args);
-            else
-            {
-                auto& transform = reg.get_or_emplace<vultra::TransformComponent>(entity);
-                applyTransformArgs(transform, args);
-            }
-
-            const auto& id = reg.get<vultra::IDComponent>(entity);
-            Selection::select(SelectionCategory::Entity, id.uuid);
-            ctx.state.sceneDirty    = true;
-            ctx.state.statusMessage = "Created " + reg.get<vultra::NameComponent>(entity).name + ".";
-            m_History.setNextLabel(ctx.state.statusMessage);
-            ++ctx.state.sceneContentGeneration;
-            m_History.observeScene(ctx);
-            nlohmann::json payload {{"entity", static_cast<uint32_t>(entity)},
-                                    {"uuid", id.uuid.toString()},
-                                    {"name", reg.get<vultra::NameComponent>(entity).name},
-                                    {"kind", kind}};
-            const auto actualParent = world.parent(entity);
-            if (actualParent != entt::null)
-                payload["parent"] = static_cast<uint32_t>(actualParent);
-            if (createdCanvas != entt::null)
-            {
-                const auto& canvasId = reg.get<vultra::IDComponent>(createdCanvas);
-                payload["createdCanvas"] = static_cast<uint32_t>(createdCanvas);
-                payload["createdCanvasUuid"] = canvasId.uuid.toString();
-            }
-            return ok(std::move(payload));
-        }
-
-        if (name == "scene.get_component")
-        {
-            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
-            if (!worldService)
-                return error("world service is unavailable");
-            auto& world = worldService->world();
-            const auto entity = entityArg(world, args, "entity");
-            if (entity == entt::null)
-                return error("entity was not found");
-            const auto componentKind = componentKindArg(args);
-            if (componentKind.empty())
-                return error("scene.get_component requires component_kind");
-
-            std::string message;
-            auto        component = componentValueJson(world, entity, componentKind, message);
-            if (!message.empty())
-                return error(message);
-            auto result = entityReferenceJson(world, entity);
-            result["component_kind"] = componentKind;
-            result["properties"]     = std::move(component);
-            return ok(std::move(result));
-        }
-
-        if (name == "scene.remove_entity")
-        {
-            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
-            if (!worldService)
-                return error("world service is unavailable");
-            auto& world = worldService->world();
-            const auto entity = entityArg(world, args, "entity");
-            if (entity == entt::null)
-                return error("entity was not found");
-            const auto entityJson = entityReferenceJson(world, entity);
-            world.destroyRecursive(entity);
-            Selection::clear(SelectionCategory::Entity);
-            ctx.state.sceneDirty    = true;
-            ctx.state.statusMessage = "Removed entity.";
-            m_History.setNextLabel(ctx.state.statusMessage);
-            ++ctx.state.sceneContentGeneration;
-            m_History.observeScene(ctx);
-            auto result = entityJson;
-            result["removed"] = true;
-            return ok(std::move(result));
-        }
-
-        if (name == "scene.add_component" || name == "scene.update_component")
-        {
-            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
-            if (!worldService)
-                return error("world service is unavailable");
-            auto& world = worldService->world();
-            const auto entity = entityArg(world, args, "entity");
-            if (entity == entt::null)
-                return error("entity was not found");
-            const auto componentKind = componentKindArg(args);
-            if (componentKind.empty())
-                return error(std::string(name) + " requires component_kind");
-
-            const auto componentArgs =
-                args.contains("properties") && args["properties"].is_object() ? args["properties"] : args;
-            std::string message;
-            if (!addOrUpdateComponent(world, entity, componentKind, componentArgs, name == "scene.update_component", message))
-                return error(message);
-            ctx.state.sceneDirty = true;
-            m_History.setNextLabel(name == "scene.add_component" ? "Add Component" : "Update Component");
-            ++ctx.state.sceneContentGeneration;
-            m_History.observeScene(ctx);
-            auto result = entityReferenceJson(world, entity);
-            result["component_kind"] = componentKind;
-            return ok(std::move(result));
-        }
-
-        if (name == "scene.remove_component")
-        {
-            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
-            if (!worldService)
-                return error("world service is unavailable");
-            auto& world = worldService->world();
-            const auto entity = entityArg(world, args, "entity");
-            if (entity == entt::null)
-                return error("entity was not found");
-            const auto componentKind = componentKindArg(args);
-            if (componentKind.empty())
-                return error("scene.remove_component requires component_kind");
-            std::string message;
-            if (!removeComponent(world, entity, componentKind, message))
-                return error(message.empty() ? "component was not present: " + componentKind : message);
-            ctx.state.sceneDirty = true;
-            m_History.setNextLabel("Remove Component");
-            ++ctx.state.sceneContentGeneration;
-            m_History.observeScene(ctx);
-            auto result = entityReferenceJson(world, entity);
-            result["component_kind"] = componentKind;
-            result["removed"]        = true;
-            return ok(std::move(result));
-        }
-
-        if (name == "scene.select_entity")
-        {
-            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
-            if (!worldService)
-                return error("world service is unavailable");
-            auto& world = worldService->world();
-            if (args.value("clear", false))
-            {
-                Selection::clear(SelectionCategory::Entity);
-                return ok({{"selected", false}});
-            }
-            const auto entity = entityArg(world, args, "entity");
-            if (entity == entt::null)
-                return error("entity was not found");
-            const auto* id = world.registry().try_get<vultra::IDComponent>(entity);
-            if (!id)
-                return error("entity has no IDComponent");
-            ctx.state.selectedSourceAsset.clear();
-            Selection::select(SelectionCategory::Entity, id->uuid);
-            return ok({{"entity", static_cast<uint32_t>(entity)}, {"uuid", id->uuid.toString()}, {"selected", true}});
-        }
-
-        if (name == "scene.move_entity")
-        {
-            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
-            if (!worldService)
-                return error("world service is unavailable");
-            auto& world = worldService->world();
-            auto& reg   = world.registry();
-            const auto entity = entityArg(world, args, "entity");
-            if (entity == entt::null)
-                return error("entity was not found");
-            if (auto* status = reg.try_get<vultra::EntityStatusComponent>(entity); status && status->locked)
-                return error("entity is locked");
-
-            const auto mode = lowerString(args.value("mode", std::string {"parent"}));
-            if (mode == "root")
-            {
-                world.removeParent(entity);
-                ctx.state.statusMessage = "Moved entity to scene root.";
-            }
-            else if (mode == "parent")
-            {
-                const auto parent = entityArg(world, args, "parent");
-                if (!args.contains("parent"))
-                    return error("scene.move_entity mode=parent requires parent");
-                if (parent == entt::null)
-                    return error("parent entity was not found");
-                if (parent == entity || isDescendantOf(world, parent, entity))
-                    return error("cannot parent an entity under itself or its descendant");
-                world.setParent(entity, parent);
-                ctx.state.statusMessage = "Reparented entity.";
-            }
-            else if (mode == "before" || mode == "after")
-            {
-                const auto sibling = entityArg(world, args, "sibling");
-                if (sibling == entt::null)
-                    return error("sibling entity was not found");
-                const auto targetParent = world.parent(sibling);
-                if (targetParent == entity || (targetParent != entt::null && isDescendantOf(world, targetParent, entity)))
-                    return error("cannot move an entity relative to its descendant");
-                if (mode == "before")
-                {
-                    world.insertBefore(entity, sibling);
-                    ctx.state.statusMessage = "Moved entity above sibling.";
-                }
-                else
-                {
-                    world.insertAfter(entity, sibling);
-                    ctx.state.statusMessage = "Moved entity below sibling.";
-                }
-            }
-            else
-            {
-                return error("unknown move mode: " + mode);
-            }
-
-            ctx.state.sceneDirty = true;
-            m_History.setNextLabel(ctx.state.statusMessage);
-            ++ctx.state.sceneContentGeneration;
-            m_History.observeScene(ctx);
-            return ok({{"entity", static_cast<uint32_t>(entity)}, {"statusMessage", ctx.state.statusMessage}});
-        }
-
-        if (name == "scene.instantiate_asset")
-        {
-            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
-            if (!worldService)
-                return error("world service is unavailable");
-            auto& world = worldService->world();
-
-            std::string      message;
-            vultra::CoreUUID assetUuid {};
-            if (!resolveAssetRef(ctx, args, assetUuid, message))
-                return error(message);
-
-            AssetInstantiationOptions options {};
-            options.parent = entityArg(world, args, "parent");
-            if (args.contains("parent") && options.parent == entt::null)
-                return error("parent entity was not found");
-            options.beforeSibling = entityArg(world, args, "beforeSibling");
-            if (args.contains("beforeSibling") && options.beforeSibling == entt::null)
-                return error("beforeSibling entity was not found");
-            options.afterSibling = entityArg(world, args, "afterSibling");
-            if (args.contains("afterSibling") && options.afterSibling == entt::null)
-                return error("afterSibling entity was not found");
-            options.keepPosition = args.value("keepPosition", true);
-            options.keepRotation = args.value("keepRotation", true);
-            options.keepScale    = args.value("keepScale", true);
-
-            nlohmann::json payload;
-            const auto entity = instantiateAssetInScene(ctx, world, assetUuid, options, &payload);
-            if (entity == entt::null)
-                return error(ctx.state.statusMessage.empty() ? "failed to instantiate asset" : ctx.state.statusMessage);
-
-            if (args.contains("name"))
-                world.registry().get_or_emplace<vultra::NameComponent>(entity).name = args.value("name", std::string {});
-            if (auto* transform = world.registry().try_get<vultra::TransformComponent>(entity))
-                applyTransformArgs(*transform, args);
-
-            ++ctx.state.sceneContentGeneration;
-            m_History.observeScene(ctx);
-            payload["statusMessage"] = ctx.state.statusMessage;
-            return ok(std::move(payload));
-        }
-
-        if (name == "scene.create_prefab")
-        {
-            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
-            if (!worldService)
-                return error("world service is unavailable");
-            auto&      world  = worldService->world();
-            const auto entity = entityArg(world, args, "entity");
-            if (entity == entt::null)
-                return error("entity was not found");
-            const auto pathStr = args.value("path", std::string {});
-            if (pathStr.empty())
-                return error("scene.create_prefab requires path");
-
-            auto res = createPrefabFromEntity(ctx, world, entity, std::filesystem::path(pathStr));
-            if (!res.success)
-                return error(res.message.empty() ? "failed to create prefab" : res.message);
-
-            ctx.state.sceneDirty    = true;
-            ctx.state.statusMessage = res.message;
-            m_History.setNextLabel(res.message);
-            ++ctx.state.sceneContentGeneration;
-            m_History.observeScene(ctx);
-
-            nlohmann::json payload {{"prefabUri", res.prefabUri}, {"statusMessage", res.message}};
-            if (auto* id = world.registry().try_get<vultra::IDComponent>(res.instanceRoot))
-                payload["uuid"] = id->uuid.toString();
-            return ok(std::move(payload));
-        }
-
-        if (name == "scene.unpack_prefab")
-        {
-            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
-            if (!worldService)
-                return error("world service is unavailable");
-            auto&      world  = worldService->world();
-            const auto entity = entityArg(world, args, "entity");
-            if (entity == entt::null)
-                return error("entity was not found");
-
-            std::string message;
-            if (!unpackPrefab(ctx, world, entity, message))
-                return error(message);
-
-            ctx.state.sceneDirty    = true;
-            ctx.state.statusMessage = message;
-            m_History.setNextLabel(message);
-            ++ctx.state.sceneContentGeneration;
-            m_History.observeScene(ctx);
-            return ok({{"statusMessage", message}});
-        }
-
-        if (name == "scene.revert_override" || name == "scene.apply_override")
-        {
-            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
-            if (!worldService)
-                return error("world service is unavailable");
-            auto* sceneService = ctx.services ? ctx.services->tryGet<vultra::ISceneService>() : nullptr;
-            if (!sceneService)
-                return error("scene service is unavailable");
-            auto&      world  = worldService->world();
-            const auto entity = entityArg(world, args, "entity");
-            if (entity == entt::null)
-                return error("entity was not found");
-            const auto component = args.value("component", std::string {});
-            const auto field     = args.value("field", std::string {});
-            if (component.empty() || field.empty())
-                return error("requires component and field");
-
-            const bool isRevert = (name == "scene.revert_override");
-            const bool applied  = isRevert ? sceneService->revertPrefabField(world, entity, component, field) :
-                                             sceneService->applyPrefabField(world, entity, component, field);
-            if (!applied)
-                return error("override operation failed");
-
-            if (!isRevert)
-            {
-                // Re-register the modified prefab file so its imported copy stays current.
-                std::string  prefabUri;
-                auto&        reg = world.registry();
-                entt::entity cur = entity;
-                while (cur != entt::null && reg.valid(cur))
-                {
-                    if (auto* pic = reg.try_get<vultra::PrefabInstanceComponent>(cur))
-                    {
-                        prefabUri = pic->prefabUri;
-                        break;
-                    }
-                    cur = world.parent(cur);
-                }
-                if (!prefabUri.empty())
-                    if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
-                        assetService->reimportAsset(prefabUri, false);
-            }
-
-            ctx.state.sceneDirty    = true;
-            ctx.state.statusMessage = isRevert ? "Reverted override." : "Applied override to prefab.";
-            m_History.setNextLabel(ctx.state.statusMessage);
-            ++ctx.state.sceneContentGeneration;
-            m_History.observeScene(ctx);
-            return ok({{"statusMessage", ctx.state.statusMessage}});
-        }
-
-        if (name == "editor.back_to_launcher")
-        {
-            saveCurrentSceneThumbnail(ctx);
-            ctx.state.currentProject.clear();
-            ctx.state.currentProjectName.clear();
-            ctx.state.selectedSourceAsset.clear();
-            ctx.state.codeEditorPath.clear();
-            ctx.state.pendingEditorCommands.clear();
-            ctx.state.currentAssetRoot          = "resources";
-            ctx.state.currentDefaultScene.clear();
-            ctx.state.currentEditingPrefab.clear();
-            ctx.state.currentBuildScenes.clear();
-            ctx.state.currentEditingRenderGraph = "res://render/default.vrg.json";
-            ctx.state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
-            ++ctx.state.projectGeneration;
-            ctx.state.editorPlaying           = false;
-            ctx.state.editorPaused            = false;
-            ctx.state.editorStepRequested     = false;
-            ctx.state.codeEditorOpenRequested = false;
-            ctx.state.runtimeFrameGraphViewerOpenRequested = false;
-            ctx.state.materialGraphOpenRequested = false;
-            ctx.state.editorShutdownRequested = true;
-            ctx.state.sceneDirty              = false;
-            ctx.state.mode                    = AppMode::Launcher;
-            ctx.state.statusMessage           = "Returned to Project Launcher.";
-            m_SyncedProject.clear();
-            m_SyncedProjectGeneration = std::numeric_limits<uint64_t>::max();
-            m_Loading                 = {};
-            m_PlayModeSnapshot.reset();
-            m_PlayModeSceneDirtySnapshot = false;
-            m_PlaybackWasPlaying         = false;
-            m_History.clear();
-            return ok({{"mode", "launcher"}, {"statusMessage", ctx.state.statusMessage}});
-        }
-
-        if (name == "runtime.playback")
-        {
-            const auto action = args.value("action", std::string {});
-            if (action == "play" || action == "resume")
-            {
-                ctx.state.editorPlaying = true;
-                ctx.state.editorPaused  = false;
-            }
-            else if (action == "pause")
-            {
-                ctx.state.editorPlaying = true;
-                ctx.state.editorPaused  = true;
-            }
-            else if (action == "stop")
-            {
-                ctx.state.editorPlaying       = false;
-                ctx.state.editorPaused        = false;
-                ctx.state.editorStepRequested = false;
-            }
-            else if (action == "step")
-            {
-                ctx.state.editorPlaying       = true;
-                ctx.state.editorPaused        = true;
-                ctx.state.editorStepRequested = true;
-            }
-            else
-            {
-                return error("unknown playback action: " + action);
-            }
-            return ok({{"action", action},
-                       {"playing", ctx.state.editorPlaying},
-                       {"paused", ctx.state.editorPaused},
-                       {"stepRequested", ctx.state.editorStepRequested}});
-        }
-
-        if (name == "editor.window")
-        {
-            auto* windowService = ctx.services ? ctx.services->tryGet<IWindowService>() : nullptr;
-            if (!windowService)
-                return error("window service is unavailable");
-            auto& window = windowService->window();
-            const auto action = lowerString(args.value("action", std::string {"status"}));
-
-            if (action == "status")
-                return ok({{"window", windowStateJson(window)}});
-            if (action == "focus")
-            {
-                const auto target = args.value("target", args.value("window", args.value("name", std::string {})));
-                if (target.empty())
-                    return error("editor.window focus requires target");
-                ctx.state.editorWindowFocusRequested = target;
-            }
-            else if (action == "fullscreen")
-            {
-                const bool enabled = args.value("enabled", args.value("fullscreen", true));
-                (void)window.setFullscreen(enabled);
-            }
-            else if (action == "resize")
-            {
-                const int width  = std::max(args.value("width", window.getExtent().x), 1);
-                const int height = std::max(args.value("height", window.getExtent().y), 1);
-                (void)window.setExtent(vultra::os::Window::Extent {width, height});
-            }
-            else if (action == "move")
-            {
-                (void)window.setPosition(vultra::os::Window::Position {args.value("x", window.getPosition().x),
-                                                                       args.value("y", window.getPosition().y)});
-            }
-            else if (action == "center")
-            {
-                (void)window.centerOnScreen();
-            }
-            else if (action == "maximize")
-            {
-                window.maximize();
-            }
-            else if (action == "minimize")
-            {
-                window.minimize();
-            }
-            else if (action == "restore")
-            {
-                if (window.isFullscreen())
-                    (void)window.setFullscreen(false);
-                window.restore();
-            }
-            else if (action == "decorated")
-            {
-                (void)window.setDecorated(args.value("enabled", args.value("decorated", true)));
-            }
-            else if (action == "resizable")
-            {
-                (void)window.setResizable(args.value("enabled", args.value("resizable", true)));
-            }
-            else if (action == "visible")
-            {
-                (void)window.setVisible(args.value("enabled", args.value("visible", true)));
-            }
-            else if (action == "close")
-            {
-                window.close();
-            }
-            else
-            {
-                return error("unknown editor.window action: " + action);
-            }
-            return ok({{"action", action}, {"window", windowStateJson(window)}});
-        }
-
-        if (name == "editor.undo")
-        {
-            m_History.undo(ctx);
-            return ok();
-        }
-        if (name == "editor.redo")
-        {
-            m_History.redo(ctx);
-            return ok();
-        }
-        if (name == "editor.history")
-        {
-            nlohmann::json entries = nlohmann::json::array();
-            const auto& historyEntries = m_History.entries();
-            for (std::size_t i = 0; i < historyEntries.size(); ++i)
-            {
-                entries.push_back({{"index", i},
-                                   {"label", historyEntries[i].label},
-                                   {"dirty", historyEntries[i].dirty},
-                                   {"current", i == m_History.currentIndex()}});
-            }
-            return ok({{"currentIndex", m_History.currentIndex()},
-                       {"canUndo", m_History.canUndo()},
-                       {"canRedo", m_History.canRedo()},
-                       {"entries", std::move(entries)}});
-        }
-        if (name == "editor.build_and_run")
-        {
-            startBuildAndRun(ctx);
-            return ok({{"statusMessage", ctx.state.statusMessage}});
-        }
-
-        return error("unknown editor command: " + std::string(name));
+        const auto it = kHandlers.find(name);
+        if (it == kHandlers.end())
+            return error("unknown editor command: " + std::string(name));
+        return (this->*(it->second))(ctx, name, args);
     }
 
 } // namespace vultra_app

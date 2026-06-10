@@ -5,31 +5,31 @@
 #include "editor_app/asset_thumbnail_service.hpp"
 #include "editor_app/editor_context.hpp"
 #include "editor_app/editor_history.hpp"
-#include "editor_app/selection.hpp"
 #include "editor_app/project_file_watcher.hpp"
 #include "editor_app/runtime_mcp_server.hpp"
+#include "editor_app/selection.hpp"
 #include "editor_app/ui/editor_window_manager.hpp"
 #include "launch_options.hpp"
 
 #include <nlohmann/json_fwd.hpp>
 
 #include <array>
+#include <vtask/scheduler.hpp>
+#include <vtask/task_set.hpp>
 #include <vultra/core/engine/engine.hpp>
 #include <vultra/function/scene/vscn_document.hpp>
 #include <vultra/function/services/scene_service.hpp>
-#include <vtask/scheduler.hpp>
-#include <vtask/task_set.hpp>
 
 #include <atomic>
-#include <future>
+#include <cstdint>
 #include <filesystem>
+#include <future>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <cstdint>
-#include <limits>
 
 namespace vultra_app
 {
@@ -41,7 +41,7 @@ namespace vultra_app
 
     struct BuildRunTaskProgress
     {
-        std::mutex mutex;
+        std::mutex  mutex;
         float       progress {0.0f};
         std::string message;
     };
@@ -55,11 +55,11 @@ namespace vultra_app
         static void configureProject(vultra::Engine& engine, const std::filesystem::path& projectPath);
         static void logStartup(const LaunchOptions& options);
 
-        void tick(EditorContext& ctx);
-        void draw(EditorContext& ctx);
-        void updateRuntimeMcp(EditorContext& ctx);
+        void           tick(EditorContext& ctx);
+        void           draw(EditorContext& ctx);
+        void           updateRuntimeMcp(EditorContext& ctx);
         nlohmann::json executeCommand(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
-        void shutdown(EditorContext& ctx);
+        void           shutdown(EditorContext& ctx);
 
     private:
         enum class LoadingPhase
@@ -77,7 +77,7 @@ namespace vultra_app
 
         struct ImportTaskProgress
         {
-            std::mutex mutex;
+            std::mutex  mutex;
             float       progress {0.0f};
             std::string message;
             std::string currentItem;
@@ -95,12 +95,12 @@ namespace vultra_app
 
         struct LoadingState
         {
-            LoadingPhase         phase {LoadingPhase::Idle};
-            std::filesystem::path projectRoot;
+            LoadingPhase            phase {LoadingPhase::Idle};
+            std::filesystem::path   projectRoot;
             vultra::SceneLoadHandle sceneLoad;
-            float                progress {0.0f};
-            std::string          message;
-            bool                 releasedEditorState {false};
+            float                   progress {0.0f};
+            std::string             message;
+            bool                    releasedEditorState {false};
         };
 
         void ensureInitialized();
@@ -110,10 +110,10 @@ namespace vultra_app
         void startBuildAndRun(EditorContext& ctx);
         void beginBuildAndRun(EditorContext& ctx, const std::filesystem::path& outputFolder, bool launchRuntime = true);
         void startProjectLoading(const std::filesystem::path& projectRoot);
-        void startAssetImportTask(const std::filesystem::path&              projectRoot,
-                                  const std::string&                       assetRoot,
-                                  std::vector<std::filesystem::path>       importPaths = {},
-                                  bool                                     forceReimport = false);
+        void startAssetImportTask(const std::filesystem::path&       projectRoot,
+                                  const std::string&                 assetRoot,
+                                  std::vector<std::filesystem::path> importPaths   = {},
+                                  bool                               forceReimport = false);
         void waitForAssetImportTask();
         void updateBackgroundAssetImport(EditorContext& ctx);
         void updateBackgroundThumbnails(EditorContext& ctx);
@@ -126,22 +126,58 @@ namespace vultra_app
         void drawBuildRunConfigurePopup(EditorContext& ctx);
         void drawBuildRunPopup();
         void processEditorCommands(EditorContext& ctx);
-        bool openSceneFromCommand(EditorContext& ctx, const std::string& sceneUri, bool isPrefab = false);
-        void drawOpenSceneConfirmPopup(EditorContext& ctx);
-        void drawProjectSettingsPopup(EditorContext& ctx);
-        void drawEditorSettingsPopup(EditorContext& ctx);
-        void drawBuildSettingsPopup(EditorContext& ctx);
-        void saveCurrentScene(EditorContext& ctx);
-        void saveCurrentSceneThumbnail(EditorContext& ctx);
-        void updateEditorGameClock(EditorContext& ctx);
-        void syncPlaybackState(EditorContext& ctx);
-        void capturePlayModeSnapshot(EditorContext& ctx);
-        void restorePlayModeSnapshot(EditorContext& ctx);
-        void releaseEditorStateForProjectLoad(EditorContext& ctx);
-        void beginDockSpace();
-        void endDockSpace();
-        void buildDefaultDockLayout();
-        void resetDefaultDockLayout();
+        // Editor command handlers (editor_commands.cpp), dispatched by name from
+        // executeCommand's handler table. Aliased commands (scene.add/update_component,
+        // scene.revert/apply_override) share a handler and branch on `name`.
+        nlohmann::json cmdEditorNewScene(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdEditorSaveScene(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdEditorOpenScene(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdEditorOpenPrefab(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdEditorOpenRenderGraph(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json
+        cmdEditorOpenMaterialGraph(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json
+        cmdEditorOpenAnimatorGraph(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdProjectCreateEmpty(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdSceneNew(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdSceneListEntityKinds(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json
+        cmdSceneListComponentKinds(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdSceneComponentMetadata(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdSceneAddEntity(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdSceneGetComponent(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdSceneRemoveEntity(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdSceneSetComponent(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdSceneRemoveComponent(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdSceneSelectEntity(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdSceneMoveEntity(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdSceneInstantiateAsset(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdSceneCreatePrefab(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdSceneUnpackPrefab(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdScenePrefabOverride(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdEditorBackToLauncher(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdRuntimePlayback(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdEditorWindow(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdEditorUndo(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdEditorRedo(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdEditorHistory(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        nlohmann::json cmdEditorBuildAndRun(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
+        bool           openSceneFromCommand(EditorContext& ctx, const std::string& sceneUri, bool isPrefab = false);
+        void           drawOpenSceneConfirmPopup(EditorContext& ctx);
+        void           drawProjectSettingsPopup(EditorContext& ctx);
+        void           drawEditorSettingsPopup(EditorContext& ctx);
+        void           drawBuildSettingsPopup(EditorContext& ctx);
+        void           saveCurrentScene(EditorContext& ctx);
+        void           saveCurrentSceneThumbnail(EditorContext& ctx);
+        void           updateEditorGameClock(EditorContext& ctx);
+        void           syncPlaybackState(EditorContext& ctx);
+        void           capturePlayModeSnapshot(EditorContext& ctx);
+        void           restorePlayModeSnapshot(EditorContext& ctx);
+        void           releaseEditorStateForProjectLoad(EditorContext& ctx);
+        void           beginDockSpace();
+        void           endDockSpace();
+        void           buildDefaultDockLayout();
+        void           resetDefaultDockLayout();
         // Bring the Inspector to front whenever the selection changes, so the user sees
         // the selected item's properties (AI Chat stays the default tab otherwise).
         void updateSelectionFocus(EditorContext& ctx);
@@ -151,84 +187,84 @@ namespace vultra_app
         // The document whose history is active (focused). Defaults to the scene history; a
         // focused graph editor claims it via EditorContext::claimedHistory. Committed at
         // the end of each frame and read at the start of the next.
-        IHistory*           m_ActiveHistory {&m_History};
-        ui::AssetThumbnailService m_ThumbnailService;
-        ProjectFileWatcher m_FileWatcher;
-        std::filesystem::path m_SyncedProject;
-        uint64_t             m_SyncedProjectGeneration {std::numeric_limits<uint64_t>::max()};
-        LoadingState        m_Loading;
-        std::unique_ptr<vtask::Scheduler>   m_ImportScheduler;
-        std::unique_ptr<vtask::TaskSet>     m_ImportTask;
-        ImportTaskResult                    m_ImportResult;
-        std::atomic_bool                    m_ImportTaskDone {false};
-        std::shared_ptr<ImportTaskProgress> m_ImportProgress;
-        bool                                m_BackgroundAssetImport {false};
-        std::vector<std::filesystem::path>  m_BackgroundAssetImportPaths;
-        std::mutex                          m_ImportedThumbnailMutex;
-        std::vector<std::filesystem::path>  m_PendingImportedThumbnailPaths;
-        bool                                m_ImportProgressPopupPendingOpen {false};
-        bool                                m_BackgroundRenderThumbnailActive {false};
-        std::optional<vultra::SceneDocument> m_BackgroundThumbnailWorldSnapshot;
-        std::future<BuildRunResult>         m_BuildRunFuture;
+        IHistory*                             m_ActiveHistory {&m_History};
+        ui::AssetThumbnailService             m_ThumbnailService;
+        ProjectFileWatcher                    m_FileWatcher;
+        std::filesystem::path                 m_SyncedProject;
+        uint64_t                              m_SyncedProjectGeneration {std::numeric_limits<uint64_t>::max()};
+        LoadingState                          m_Loading;
+        std::unique_ptr<vtask::Scheduler>     m_ImportScheduler;
+        std::unique_ptr<vtask::TaskSet>       m_ImportTask;
+        ImportTaskResult                      m_ImportResult;
+        std::atomic_bool                      m_ImportTaskDone {false};
+        std::shared_ptr<ImportTaskProgress>   m_ImportProgress;
+        bool                                  m_BackgroundAssetImport {false};
+        std::vector<std::filesystem::path>    m_BackgroundAssetImportPaths;
+        std::mutex                            m_ImportedThumbnailMutex;
+        std::vector<std::filesystem::path>    m_PendingImportedThumbnailPaths;
+        bool                                  m_ImportProgressPopupPendingOpen {false};
+        bool                                  m_BackgroundRenderThumbnailActive {false};
+        std::optional<vultra::SceneDocument>  m_BackgroundThumbnailWorldSnapshot;
+        std::future<BuildRunResult>           m_BuildRunFuture;
         std::shared_ptr<BuildRunTaskProgress> m_BuildRunProgress;
-        std::optional<BuildRunResult>       m_BuildRunCompleted;
-        ui::FileDialogField                 m_BuildRunOutputDialog {
+        std::optional<BuildRunResult>         m_BuildRunCompleted;
+        ui::FileDialogField                   m_BuildRunOutputDialog {
             "BuildRunOutputFolder",
             "Select Build Output Folder",
             ui::FileDialogMode::Directory,
         };
-        ui::FileDialogField                 m_BuildSettingsOutputDialog {
+        ui::FileDialogField m_BuildSettingsOutputDialog {
             "BuildSettingsOutputFolder",
             "Select Build Output Folder",
             ui::FileDialogMode::Directory,
         };
-        ui::FileDialogField                 m_ProjectAssetRootDialog {
+        ui::FileDialogField m_ProjectAssetRootDialog {
             "ProjectAssetRootFolder",
             "Select Asset Root",
             ui::FileDialogMode::Directory,
         };
-        ui::FileDialogField                 m_ExportTemplateDialog {
+        ui::FileDialogField m_ExportTemplateDialog {
             "ExportTemplateExecutable",
             "Select Export Template",
             ui::FileDialogMode::File,
         };
-        ui::FileDialogField                 m_ExternalEditorDialog {
+        ui::FileDialogField m_ExternalEditorDialog {
             "ExternalEditorExecutable",
             "Select External Editor",
             ui::FileDialogMode::File,
         };
-        std::array<char, 512>               m_BuildRunOutputFolder {};
-        std::array<char, 128>               m_ProjectNameBuffer {};
-        std::array<char, 256>               m_ProjectAssetRootBuffer {};
-        std::array<char, 256>               m_ProjectDefaultSceneBuffer {};
-        std::array<char, 256>               m_ProjectEditingRenderGraphBuffer {};
-        std::array<char, 512>               m_BuildOutputFolderBuffer {};
-        std::array<char, 128>               m_BuildProjectNameBuffer {};
-        std::array<char, 512>               m_ExportTemplateBuffer {};
-        std::array<char, 512>               m_BuildExtraArgsBuffer {};
-        std::array<char, 512>               m_ExternalEditorBuffer {};
-        std::array<char, 128>               m_AgentMcpServerNameBuffer {};
-        std::array<char, 128>               m_AgentMcpHostBuffer {};
-        std::array<char, 512>               m_AgentEndpointBuffer {};
-        std::array<char, 128>               m_AgentModelBuffer {};
-        std::array<char, 512>               m_AgentCliPathBuffer {};
-        RuntimeMcpServer                    m_RuntimeMcpServer;
+        std::array<char, 512>                m_BuildRunOutputFolder {};
+        std::array<char, 128>                m_ProjectNameBuffer {};
+        std::array<char, 256>                m_ProjectAssetRootBuffer {};
+        std::array<char, 256>                m_ProjectDefaultSceneBuffer {};
+        std::array<char, 256>                m_ProjectEditingRenderGraphBuffer {};
+        std::array<char, 512>                m_BuildOutputFolderBuffer {};
+        std::array<char, 128>                m_BuildProjectNameBuffer {};
+        std::array<char, 512>                m_ExportTemplateBuffer {};
+        std::array<char, 512>                m_BuildExtraArgsBuffer {};
+        std::array<char, 512>                m_ExternalEditorBuffer {};
+        std::array<char, 128>                m_AgentMcpServerNameBuffer {};
+        std::array<char, 128>                m_AgentMcpHostBuffer {};
+        std::array<char, 512>                m_AgentEndpointBuffer {};
+        std::array<char, 128>                m_AgentModelBuffer {};
+        std::array<char, 512>                m_AgentCliPathBuffer {};
+        RuntimeMcpServer                     m_RuntimeMcpServer;
         std::optional<vultra::SceneDocument> m_PlayModeSnapshot;
-        bool                m_PlayModeSceneDirtySnapshot {false};
-        bool                m_Initialized {false};
-        bool                m_DefaultLayoutBuilt {false};
-        vultra::CoreUUID      m_LastSelectionId;
-        SelectionCategory     m_LastSelectionCategory {SelectionCategory::None};
-        std::filesystem::path m_LastSelectedSourceAsset;
-        bool                m_BuildRunActive {false};
-        bool                m_BuildRunPopupPendingOpen {false};
-        bool                m_BuildRunConfigureOpen {false};
-        bool                m_ShowAboutPopup {false};
-        bool                m_OpenSceneConfirmPopup {false};
-        std::string         m_PendingOpenSceneUri;
-        bool                m_PendingOpenSceneIsPrefab {false};
-        bool                m_PlaybackWasPlaying {false};
-        bool                m_SplashWindowApplied {false};
-        bool                m_EditorWindowApplied {false};
+        bool                                 m_PlayModeSceneDirtySnapshot {false};
+        bool                                 m_Initialized {false};
+        bool                                 m_DefaultLayoutBuilt {false};
+        vultra::CoreUUID                     m_LastSelectionId;
+        SelectionCategory                    m_LastSelectionCategory {SelectionCategory::None};
+        std::filesystem::path                m_LastSelectedSourceAsset;
+        bool                                 m_BuildRunActive {false};
+        bool                                 m_BuildRunPopupPendingOpen {false};
+        bool                                 m_BuildRunConfigureOpen {false};
+        bool                                 m_ShowAboutPopup {false};
+        bool                                 m_OpenSceneConfirmPopup {false};
+        std::string                          m_PendingOpenSceneUri;
+        bool                                 m_PendingOpenSceneIsPrefab {false};
+        bool                                 m_PlaybackWasPlaying {false};
+        bool                                 m_SplashWindowApplied {false};
+        bool                                 m_EditorWindowApplied {false};
     };
 } // namespace vultra_app
