@@ -16,11 +16,16 @@
 namespace vultra
 {
     class IShaderService;
+    class BuiltinPassHost;
 
     void registerBuiltinRenderGraphPasses(vrendergraph::RenderGraphRegistry& registry);
 
     class DeclarativeRenderer final : public Renderer
     {
+        // Reads the live build context / services / per-frame tone-mapping flag on
+        // behalf of self-registering builtin passes (see builtin_pass_host.hpp).
+        friend class BuiltinPassHost;
+
     public:
         explicit DeclarativeRenderer(std::string pipelineUri, std::string rendererKey = {});
         ~DeclarativeRenderer() override;

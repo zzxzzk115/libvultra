@@ -10,6 +10,8 @@
 #include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/rendering/srp/builtin/builtin_pass_host.hpp"
+#include "vultra/function/rendering/srp/builtin/builtin_render_graph_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/features/builtin_screen_space_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/compatibility_basecolor_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/direct_gbuffer_feature.hpp"
@@ -777,192 +779,1500 @@ namespace vultra
 
     namespace
     {
-        // Single source of truth for the builtin render-graph pass catalog: every pass type's
-        // input/output slot names and parameter descriptors. Both the editor-facing registry
-        // (registerBuiltinRenderGraphPasses) and the runtime renderer's registry derive their
-        // port/param layout from here, so a slot only ever needs to be declared once.
+        // ===== Self-registering builtin render-graph passes =====
         //
-        // `pass` is any callable of the shape
-        //   (std::string type, std::vector<std::string> inputs, std::vector<std::string> outputs,
-        //    std::vector<vrendergraph::ParamDesc> params = {})
-        template<typename PassFn>
-        void declareBuiltinRenderGraphPasses(PassFn&& pass)
+        // Each adapter OWNS the rhi pass object(s) it drives, declares its own node
+        // port/param spec(s) in specs() (the single source of truth for slot names and
+        // parameters), and holds its per-frame build body in build(). A pass and its
+        // registration are no longer split across a far-apart catalog + setup lambda.
+        //
+        // makeBuiltinRenderGraphPasses() lists them once; the runtime registers real
+        // setups (IBuiltinRenderGraphPass::registerInto) and the editor node palette
+        // registers ports/params only (registerSpecsInto). They live in this TU (not a
+        // separate file) so build() bodies can reach this file's render helpers
+        // (findPrimaryDirectionalLight, importRenderGraphBackbuffer, ...). Owner state
+        // (live build context, services, the per-frame tone-mapping flag) is reached
+        // through BuiltinPassHost.
+
+        class CameraClearBuiltin final : public IBuiltinRenderGraphPass
         {
-        pass("CameraClear", {}, {"color"});
-        pass("CompatibilityBaseColor", {}, {"color"});
-        pass("DirectGBuffer", {"depth"}, {"color", "depth", "normal", "material", "emissive", "entityId"});
-        pass("DirectDepthPre", {}, {"depth"});
-        pass("DepthPre", {}, {"depth"});
-        pass("ShadowMap",
-             {},
-             {"shadowMap", "shadowData"},
-             {
-                 {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                 {.name = "resolution", .type = vrendergraph::ParamType::eInt, .defaultValue = 2048},
-                 {.name = "cascadeCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 4},
-                 {.name = "coverageRadius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 75.0f},
-                 {.name = "lightDistance", .type = vrendergraph::ParamType::eFloat, .defaultValue = 120.0f},
-                 {.name = "zRange", .type = vrendergraph::ParamType::eFloat, .defaultValue = 120.0f},
-                 {.name = "splitLambda", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.60f},
-                 {.name = "autoFitBounds", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                 {.name = "stableTexelSnapping", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                 {.name = "depthBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.0012f},
-                 {.name = "normalBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.015f},
-                 {.name = "pcssLightRadius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.5f},
-             });
-        pass("DeferredLighting",
-             {"color", "normal", "material", "emissive", "depth", "ao", "shadowMap", "shadowData"},
-             {"color"});
-        pass("HzbGenerate", {"depth"}, {"hzb"});
-        pass("Ssao",
-             {"depth", "normal"},
-             {"ao"},
-             {
-                 {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = false},
-                 {.name = "maxRadiusPixels", .type = vrendergraph::ParamType::eInt, .defaultValue = 16},
-                 {.name = "stepCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 2},
-                 {.name = "directionCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 4},
-             });
-        pass("Ssr",
-             {"color", "depth", "normal", "material"},
-             {"reflection"},
-             {
-                 {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = false},
-                 {.name = "maxSteps", .type = vrendergraph::ParamType::eInt, .defaultValue = 8},
-                 {.name = "binaryRefinement", .type = vrendergraph::ParamType::eInt, .defaultValue = 2},
-             });
-        pass("SsrComposite",
-             {"source", "reflection"},
-             {"color"},
-             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
-        pass("GaussianBlur",
-             {"source"},
-             {"color"},
-             {
-                 {.name = "scale", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f},
-                 // direction: 0 = both (horizontal then vertical), 1 = horizontal only, 2 = vertical only
-                 {.name = "direction", .type = vrendergraph::ParamType::eInt, .defaultValue = 0},
-             });
-        pass("Bloom",
-             {"source"},
-             {"color"},
-             {
-                 {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                 {.name = "threshold", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f},
-                 {.name = "knee", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.5f},
-                 {.name = "intensity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.6f},
-                 {.name = "scale", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f},
-                 {.name = "iterations", .type = vrendergraph::ParamType::eInt, .defaultValue = 1},
-             });
-        pass("ToneMapping",
-             {"source"},
-             {"color"},
-             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
-        pass("Fxaa",
-             {"source"},
-             {"color"},
-             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
-        pass("SelectionOutline",
-             {"source", "entityId", "depth"},
-             {"color"},
-             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
-        pass("DebugDraw",
-             {"source", "depth"},
-             {"color"},
-             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
-        pass("UiOverlay",
-             {"source"},
-             {"color"},
-             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
-        pass("GeometryWarp",
-             {"source", "depth"},
-             {"color"},
-             {
-                 {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                 {.name = "sourceView", .type = vrendergraph::ParamType::eString, .defaultValue = "left"},
-                 {.name = "targetView", .type = vrendergraph::ParamType::eString, .defaultValue = "right"},
-                 {.name        = "gridSize",
-                  .type        = vrendergraph::ParamType::eInt,
-                  .defaultValue = 1,
-                  .minValue    = 1,
-                  .maxValue    = 16},
-                 {.name        = "sideLenThreshold",
-                  .type        = vrendergraph::ParamType::eFloat,
-                  .defaultValue = 0.01f,
-                  .minValue    = 0.0f,
-                  .maxValue    = 0.5f},
-                 {.name = "useDepthAware", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-             });
-        pass("PullpushInpaint",
-             {"source"},
-             {"color"},
-             {
-                 {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                 {.name = "useDepthAware", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                 {.name        = "depthThreshold",
-                  .type        = vrendergraph::ParamType::eFloat,
-                  .defaultValue = 0.01f,
-                  .minValue    = 0.0f,
-                  .maxValue    = 0.1f},
-             });
-        pass("FinalComposition", {"source"}, {"target"});
-        pass("RayTracingPrimary", {}, {"color"});
-        pass("VisibilityBuffer", {}, {"visibility", "depth"});
-        pass("ThinGBuffer", {"visibility", "depth"}, {"color", "normal", "material", "emissive", "depth", "entityId"});
-        pass("CoarseInstanceCull", {}, {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"});
-        pass("MeshletCull",
-             {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"},
-             {"visibleMeshlet", "visibleMeshletCount"});
-        pass("BuildIndirect",
-             {"visibleMeshlet", "visibleMeshletCount"},
-             {"draw",
-              "instance",
-              "meshTable",
-              "transform",
-              "meshlets",
-              "visibleMeshlet",
-              "visibleMeshletCount",
-              "materialTable"});
-        pass("DrawsetBuild", {"draw", "meshlets"}, {"draw", "meshlets", "indirect", "drawSet"});
-        pass("MeshletHiZCull", {}, {"visibleMeshlet", "visibleMeshletCount"});
-        pass("GeneralGaussianSplatPreprocess",
-             {},
-             {"draw",
-              "packedSource",
-              "selectedSource",
-              "visibleSplat",
-              "sortKey",
-              "sortIndex",
-              "visibleCount",
-              "indirect",
-              "sortStorage",
-              "sh"});
-        pass("GeneralGaussianSplatRender", {}, {"color"});
-        pass("GeneralGaussianSplatComposite", {"source"}, {"color"});
-        pass("GeneralGaussianSplatFoveatedComposite", {"fovea", "mid", "outer", "base"}, {"color"});
-        pass("ParticleRender", {"source", "depth"}, {"color"});
-        }
+        public:
+            std::vector<BuiltinPassSpec> specs() const override { return {{"CameraClear", {}, {"color"}, {}}}; }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx || !ctx->view().target)
+                    return;
+
+                struct PassData
+                {
+                    FrameGraphResource color;
+                };
+
+                const auto desc = makeRenderViewTextureDesc(ctx->view(), ctx->view().target->getPixelFormat());
+                const auto data = ctx->fg.addCallbackPass<PassData>(
+                    "CameraClearPass",
+                    [desc](FrameGraph::Builder& builder, PassData& pd) {
+                        PASS_SETUP_ZONE;
+                        pd.color = builder.create<framegraph::FrameGraphTexture>("CameraClear", desc);
+                        pd.color = builder.write(pd.color,
+                                                 framegraph::Attachment {
+                                                     .index       = 0,
+                                                     .imageAspect = rhi::ImageAspect::eColor,
+                                                     .clearValue  = framegraph::ClearValue::eOpaqueBlack,
+                                                 });
+                    },
+                    [](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
+                        VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
+                        auto framebufferInfo = rc.framebufferInfo();
+                        if (!framebufferInfo || framebufferInfo->colorAttachments.empty())
+                            return;
+
+                        auto& attachment = framebufferInfo->colorAttachments[0];
+                        attachment.clearValue =
+                            rc.view().camera ? rc.view().camera->clearValue : rc.view().clearValue;
+                        attachment.loadOp = rhi::AttachmentLoadOp::eClear;
+                        rc.cb.beginRendering(*framebufferInfo).endRendering();
+                    });
+
+                ctx->data.set(kResKey_FinalCompositionSource, data.color);
+                passCtx.setOutput("color", data.color);
+            }
+        };
+
+        class CompatibilityBaseColorBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"CompatibilityBaseColor", {}, {"color"}, {}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                auto color = m_Pass.addPass(*ctx);
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    passCtx.setOutput("color", color);
+                }
+            }
+
+        private:
+            CompatibilityBaseColorPass m_Pass;
+        };
+
+        // One object backs three node types: the full gbuffer pass and the two
+        // depth-only prepass aliases (DirectDepthPre / DepthPre), which reuse it.
+        class DirectGBufferBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {
+                    {"DirectGBuffer", {"depth"}, {"color", "depth", "normal", "material", "emissive", "entityId"}, {}},
+                    {"DirectDepthPre", {}, {"depth"}, {}},
+                    {"DepthPre", {}, {"depth"}, {}},
+                };
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view                type,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+
+                if (type == "DirectGBuffer")
+                {
+                    auto color = m_Pass.addPass(*ctx, passCtx.getInput("depth"));
+                    if (color)
+                    {
+                        passCtx.setOutput("color", color);
+                        ctx->data.set(kResKey_FinalCompositionSource, color);
+                        if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                            ctx->data.set(kResKey_StereoColor, color);
+                    }
+                    if (auto res = ctx->data.tryGet(kResKey_DepthTexture))
+                    {
+                        passCtx.setOutput("depth", res);
+                        if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                            ctx->data.set(kResKey_StereoDepth, res);
+                    }
+                    if (auto res = ctx->data.tryGet(kResKey_GBufferNormal))
+                        passCtx.setOutput("normal", res);
+                    if (auto res = ctx->data.tryGet(kResKey_GBufferMaterial))
+                        passCtx.setOutput("material", res);
+                    if (auto res = ctx->data.tryGet(kResKey_GBufferEmissive))
+                        passCtx.setOutput("emissive", res);
+                    if (auto res = ctx->data.tryGet(kResKey_GBufferEntityId))
+                        passCtx.setOutput("entityId", res);
+                    else
+                        passCtx.setOutput("entityId", {});
+                    return;
+                }
+
+                // DirectDepthPre / DepthPre: depth-only prepass reusing the gbuffer pass.
+                m_Pass.addDepthPrePass(*ctx);
+                if (auto depth = ctx->data.tryGet(kResKey_DepthTexture))
+                {
+                    passCtx.setOutput("depth", depth);
+                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                        ctx->data.set(kResKey_StereoDepth, depth);
+                }
+            }
+
+        private:
+            DirectGBufferPass m_Pass;
+        };
+
+        class ShadowMapBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"ShadowMap",
+                         {},
+                         {"shadowMap", "shadowData"},
+                         {
+                             {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                             {.name = "resolution", .type = vrendergraph::ParamType::eInt, .defaultValue = 2048},
+                             {.name = "cascadeCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 4},
+                             {.name = "coverageRadius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 75.0f},
+                             {.name = "lightDistance", .type = vrendergraph::ParamType::eFloat, .defaultValue = 120.0f},
+                             {.name = "zRange", .type = vrendergraph::ParamType::eFloat, .defaultValue = 120.0f},
+                             {.name = "splitLambda", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.60f},
+                             {.name = "autoFitBounds", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                             {.name        = "stableTexelSnapping",
+                              .type        = vrendergraph::ParamType::eBoolean,
+                              .defaultValue = true},
+                             {.name = "depthBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.0012f},
+                             {.name = "normalBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.015f},
+                             {.name = "pcssLightRadius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.5f},
+                         }}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx           = host.currentBuildContext();
+                auto* renderService = host.renderService();
+                if (!ctx || !renderService)
+                    return;
+                auto settings    = renderService->builtinRenderSettings().shadow;
+                settings.enabled = params.get<bool>("enabled", settings.enabled);
+                settings.resolution =
+                    static_cast<uint32_t>(params.get<int>("resolution", static_cast<int>(settings.resolution)));
+                settings.cascadeCount =
+                    static_cast<uint32_t>(params.get<int>("cascadeCount", static_cast<int>(settings.cascadeCount)));
+                settings.coverageRadius = params.get<float>("coverageRadius", settings.coverageRadius);
+                settings.lightDistance  = params.get<float>("lightDistance", settings.lightDistance);
+                settings.zRange         = params.get<float>("zRange", settings.zRange);
+                settings.splitLambda    = params.get<float>("splitLambda", settings.splitLambda);
+                settings.autoFitBounds  = params.get<bool>("autoFitBounds", settings.autoFitBounds);
+                settings.stableTexelSnapping = params.get<bool>("stableTexelSnapping", settings.stableTexelSnapping);
+                settings.depthBias           = params.get<float>("depthBias", settings.depthBias);
+                settings.normalBias          = params.get<float>("normalBias", settings.normalBias);
+                settings.pcssLightRadius     = params.get<float>("pcssLightRadius", settings.pcssLightRadius);
+                const auto* shadowDirectionalLight = findPrimaryShadowDirectionalLight(ctx->view().renderWorld);
+                settings.enabled                   = settings.enabled && shadowDirectionalLight != nullptr;
+                if (shadowDirectionalLight)
+                {
+                    settings.lightDirection = shadowDirectionalLight->direction;
+                }
+                auto shadow = m_Pass.addPass(*ctx, settings);
+                if (shadow.shadowMap)
+                    passCtx.setOutput("shadowMap", shadow.shadowMap);
+                if (shadow.shadowData)
+                    passCtx.setOutput("shadowData", shadow.shadowData);
+            }
+
+        private:
+            ShadowMapPass m_Pass;
+        };
+
+        // One node, two collaborators: deferred lighting then (optionally) the skybox,
+        // which reads the lighting pass's environment cubemap.
+        class DeferredLightingBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"DeferredLighting",
+                         {"color", "normal", "material", "emissive", "depth", "ao", "shadowMap", "shadowData"},
+                         {"color"},
+                         {}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx           = host.currentBuildContext();
+                auto* renderService = host.renderService();
+                if (!ctx || !renderService)
+                    return;
+                const auto&   settings         = renderService->builtinRenderSettings();
+                auto          lightingSettings = settings.pbrLighting;
+                auto          shadowSettings   = settings.shadow;
+                const bool    suppressCameraSkybox =
+                    ctx->view().camera != nullptr && ctx->view().camera->suppressSkybox;
+                rhi::Texture* skyboxTexture =
+                    !suppressCameraSkybox && settings.pbrLighting.showSkybox ? settings.pbrLighting.environmentMap :
+                                                                               nullptr;
+                lightingSettings.ambientIntensity =
+                    params.get<float>("ambientIntensity", lightingSettings.ambientIntensity);
+                lightingSettings.shadowStrength =
+                    params.get<float>("shadowStrength", lightingSettings.shadowStrength);
+                lightingSettings.iblIntensity  = params.get<float>("iblIntensity", lightingSettings.iblIntensity);
+                lightingSettings.debugViewMode = static_cast<PbrLightingSettings::DebugViewMode>(std::clamp(
+                    params.get<int>("debugViewMode", static_cast<int>(lightingSettings.debugViewMode)), 0, 6));
+                shadowSettings.filterMode      = static_cast<ShadowRenderSettings::FilterMode>(std::clamp(
+                    params.get<int>("shadowFilterMode", static_cast<int>(shadowSettings.filterMode)), 0, 2));
+                shadowSettings.debugMode       = static_cast<ShadowRenderSettings::DebugMode>(std::clamp(
+                    params.get<int>("shadowDebugMode", static_cast<int>(shadowSettings.debugMode)), 0, 5));
+                if (params.get<bool>("debugCascades", false))
+                    shadowSettings.debugMode = ShadowRenderSettings::DebugMode::eCascade;
+                const auto* primaryDirectionalLight = findPrimaryDirectionalLight(ctx->view().renderWorld);
+                const auto* shadowDirectionalLight  = findPrimaryShadowDirectionalLight(ctx->view().renderWorld);
+                if (primaryDirectionalLight)
+                {
+                    lightingSettings.directionalLightDirection = primaryDirectionalLight->direction;
+                    lightingSettings.directionalLightColor     = primaryDirectionalLight->color;
+                    lightingSettings.directionalLightIntensity = primaryDirectionalLight->intensity;
+                }
+                else if (ctx->view().renderWorld && !ctx->view().renderWorld->lights.empty())
+                {
+                    lightingSettings.directionalLightIntensity = 0.0f;
+                }
+                shadowSettings.enabled = shadowSettings.enabled && shadowDirectionalLight != nullptr;
+                if (shadowDirectionalLight)
+                    shadowSettings.lightDirection = shadowDirectionalLight->direction;
+                const auto* renderEnvironment =
+                    ctx->view().renderWorld && ctx->view().renderWorld->environment.active ?
+                        &ctx->view().renderWorld->environment :
+                        nullptr;
+                if (renderEnvironment)
+                {
+                    lightingSettings.ambientColor     = renderEnvironment->ambientColor;
+                    lightingSettings.ambientIntensity = renderEnvironment->ambientIntensity;
+                    lightingSettings.enableIBL        = renderEnvironment->enableIBL;
+                    lightingSettings.iblColor         = renderEnvironment->iblColor;
+                    lightingSettings.iblIntensity     = renderEnvironment->iblIntensity;
+                    lightingSettings.environmentMap   = renderEnvironment->skybox;
+                    skyboxTexture                     = suppressCameraSkybox ? nullptr : renderEnvironment->skybox;
+                }
+                if (const auto* probe = selectReflectionProbe(ctx->view().renderWorld, ctx->view().camera))
+                {
+                    lightingSettings.enableIBL    = probe->enableIBL;
+                    lightingSettings.iblIntensity = probe->intensity;
+                    if (probe->enableIBL)
+                        lightingSettings.environmentMap = probe->environmentMap;
+                }
+                if (lightingSettings.debugViewMode != PbrLightingSettings::DebugViewMode::eLit ||
+                    shadowSettings.debugMode != ShadowRenderSettings::DebugMode::eOff)
+                    host.setApplyToneMappingThisFrame(false);
+                shadowSettings.pcssBlockerSamples =
+                    params.get<int>("pcssBlockerSamples", shadowSettings.pcssBlockerSamples);
+                shadowSettings.pcssFilterSamples = params.get<int>("pcfRadius", shadowSettings.pcssFilterSamples);
+                auto color                       = m_Lighting.addPass(*ctx,
+                                                            passCtx.getInput("color"),
+                                                            passCtx.getInput("normal"),
+                                                            passCtx.getInput("material"),
+                                                            passCtx.getInput("emissive"),
+                                                            passCtx.getInput("depth"),
+                                                            passCtx.getInput("ao"),
+                                                            passCtx.getInput("shadowMap"),
+                                                            passCtx.getInput("shadowData"),
+                                                            shadowSettings,
+                                                            lightingSettings,
+                                                            ctx->view().renderWorld);
+                if (color)
+                {
+                    const bool cameraWantsSkybox =
+                        !suppressCameraSkybox &&
+                        ((ctx->view().camera && ctx->view().camera->clearMode == 1u) ||
+                         settings.pbrLighting.showSkybox);
+                    if (cameraWantsSkybox && skyboxTexture && ctx->data.contains(kResKey_DepthTexture))
+                    {
+                        const auto env = framegraph::importTexture(ctx->fg, "Environment Map", skyboxTexture);
+                        color          = m_Skybox.addPass(*ctx,
+                                                 color,
+                                                 ctx->data.get(kResKey_DepthTexture),
+                                                 env,
+                                                 lightingSettings.environmentMap == skyboxTexture ?
+                                                              m_Lighting.environmentCubemap() :
+                                                              nullptr);
+                    }
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                        ctx->data.set(kResKey_StereoColor, color);
+                    passCtx.setOutput("color", color);
+                }
+            }
+
+        private:
+            DeferredLightingPass m_Lighting;
+            SkyboxPass           m_Skybox;
+        };
+
+        class SsrCompositeBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"SsrComposite",
+                         {"source", "reflection"},
+                         {"color"},
+                         {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                if (!params.get<bool>("enabled", true))
+                {
+                    passCtx.setOutput("color", passCtx.getInput("source"));
+                    return;
+                }
+                auto color = m_Pass.addPass(*ctx, passCtx.getInput("source"), passCtx.getInput("reflection"));
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                        ctx->data.set(kResKey_StereoColor, color);
+                    passCtx.setOutput("color", color);
+                }
+            }
+
+        private:
+            SsrCompositePass m_Pass;
+        };
+
+        class HzbGenerateBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override { return {{"HzbGenerate", {"depth"}, {"hzb"}, {}}}; }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                m_Pass.addPass(*ctx, passCtx.getInput("depth"));
+                if (auto hzb = ctx->data.tryGet(kResKey_HzbTexture))
+                    passCtx.setOutput("hzb", hzb);
+            }
+
+        private:
+            HzbGeneratePass m_Pass;
+        };
+
+        class SsaoBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"Ssao",
+                         {"depth", "normal"},
+                         {"ao"},
+                         {
+                             {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = false},
+                             {.name = "maxRadiusPixels", .type = vrendergraph::ParamType::eInt, .defaultValue = 16},
+                             {.name = "stepCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 2},
+                             {.name = "directionCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 4},
+                         }}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx           = host.currentBuildContext();
+                auto* renderService = host.renderService();
+                if (!ctx || !renderService)
+                    return;
+                auto settings            = renderService->builtinRenderSettings().ssao;
+                settings.enabled         = params.get<bool>("enabled", settings.enabled);
+                settings.radius          = params.get<float>("radius", settings.radius);
+                settings.bias            = params.get<float>("bias", settings.bias);
+                settings.intensity       = params.get<float>("intensity", settings.intensity);
+                settings.maxRadiusPixels = params.get<int>("maxRadiusPixels", settings.maxRadiusPixels);
+                settings.stepCount       = params.get<int>("stepCount", settings.stepCount);
+                settings.directionCount  = params.get<int>("directionCount", settings.directionCount);
+                if (!settings.enabled)
+                {
+                    passCtx.setOutput("ao", {});
+                    return;
+                }
+                auto ao = m_Pass.addPass(*ctx, passCtx.getInput("depth"), passCtx.getInput("normal"), settings);
+                if (ao)
+                {
+                    ctx->data.set(kResKey_SsaoTexture, ao);
+                    passCtx.setOutput("ao", ao);
+                }
+            }
+
+        private:
+            SsaoPass m_Pass;
+        };
+
+        class SsrBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"Ssr",
+                         {"color", "depth", "normal", "material"},
+                         {"reflection"},
+                         {
+                             {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = false},
+                             {.name = "maxSteps", .type = vrendergraph::ParamType::eInt, .defaultValue = 8},
+                             {.name = "binaryRefinement", .type = vrendergraph::ParamType::eInt, .defaultValue = 2},
+                         }}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx           = host.currentBuildContext();
+                auto* renderService = host.renderService();
+                if (!ctx || !renderService)
+                    return;
+                auto settings             = renderService->builtinRenderSettings().ssr;
+                settings.enabled          = params.get<bool>("enabled", settings.enabled);
+                settings.reflectionFactor = params.get<float>("reflectionFactor", settings.reflectionFactor);
+                settings.maxSteps         = params.get<int>("maxSteps", settings.maxSteps);
+                settings.binaryRefinement = params.get<int>("binaryRefinement", settings.binaryRefinement);
+                settings.stride           = params.get<float>("stride", settings.stride);
+                settings.thickness        = params.get<float>("thickness", settings.thickness);
+                if (!settings.enabled)
+                {
+                    passCtx.setOutput("reflection", {});
+                    return;
+                }
+                auto reflection = m_Pass.addPass(*ctx,
+                                                 passCtx.getInput("color"),
+                                                 passCtx.getInput("depth"),
+                                                 passCtx.getInput("normal"),
+                                                 passCtx.getInput("material"),
+                                                 settings);
+                if (reflection)
+                {
+                    ctx->data.set(kResKey_SsrTexture, reflection);
+                    passCtx.setOutput("reflection", reflection);
+                }
+            }
+
+        private:
+            SsrPass m_Pass;
+        };
+
+        class FxaaBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"Fxaa",
+                         {"source"},
+                         {"color"},
+                         {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                if (!params.get<bool>("enabled", true))
+                {
+                    passCtx.setOutput("color", passCtx.getInput("source"));
+                    return;
+                }
+                auto color = m_Pass.addPass(*ctx, passCtx.getInput("source"));
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    passCtx.setOutput("color", color);
+                }
+            }
+
+        private:
+            FxaaPass m_Pass;
+        };
+
+        class GaussianBlurBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"GaussianBlur",
+                         {"source"},
+                         {"color"},
+                         {
+                             {.name = "scale", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f},
+                             // direction: 0 = both (horizontal then vertical), 1 = horizontal only, 2 = vertical only
+                             {.name = "direction", .type = vrendergraph::ParamType::eInt, .defaultValue = 0},
+                         }}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                const auto         source    = passCtx.getInput("source");
+                const float        scale     = params.get<float>("scale", 1.0f);
+                const int          direction = params.get<int>("direction", 0);
+                FrameGraphResource color {};
+                if (direction == 1)
+                    color = m_Pass.addPass(*ctx, source, scale, true);
+                else if (direction == 2)
+                    color = m_Pass.addPass(*ctx, source, scale, false);
+                else
+                    color = m_Pass.addPass(*ctx, source, scale);
+                if (color)
+                    passCtx.setOutput("color", color);
+            }
+
+        private:
+            GaussianBlurPass m_Pass;
+        };
+
+        class BloomBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"Bloom",
+                         {"source"},
+                         {"color"},
+                         {
+                             {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                             {.name = "threshold", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f},
+                             {.name = "knee", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.5f},
+                             {.name = "intensity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.6f},
+                             {.name = "scale", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f},
+                             {.name = "iterations", .type = vrendergraph::ParamType::eInt, .defaultValue = 1},
+                         }}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                if (!params.get<bool>("enabled", true))
+                {
+                    passCtx.setOutput("color", passCtx.getInput("source"));
+                    return;
+                }
+                auto color = m_Pass.addPass(*ctx,
+                                            passCtx.getInput("source"),
+                                            params.get<float>("threshold", 1.0f),
+                                            params.get<float>("knee", 0.5f),
+                                            params.get<float>("intensity", 0.6f),
+                                            params.get<float>("scale", 1.0f),
+                                            params.get<int>("iterations", 1));
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                        ctx->data.set(kResKey_StereoColor, color);
+                    passCtx.setOutput("color", color);
+                }
+            }
+
+        private:
+            BloomPass m_Pass;
+        };
+
+        class ToneMappingBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"ToneMapping",
+                         {"source"},
+                         {"color"},
+                         {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                const bool enabled = params.get<bool>("enabled", true) && host.applyToneMappingThisFrame();
+                if (!enabled)
+                {
+                    passCtx.setOutput("color", passCtx.getInput("source"));
+                    return;
+                }
+                auto color = m_Pass.addPass(*ctx,
+                                            passCtx.getInput("source"),
+                                            params.get<float>("exposure", 1.0f),
+                                            params.get<int>("method", 0));
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    passCtx.setOutput("color", color);
+                }
+            }
+
+        private:
+            ToneMappingPass m_Pass;
+        };
+
+        class SelectionOutlineBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"SelectionOutline",
+                         {"source", "entityId", "depth"},
+                         {"color"},
+                         {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx           = host.currentBuildContext();
+                auto* renderService = host.renderService();
+                if (!ctx || !renderService)
+                    return;
+                auto settings        = renderService->builtinRenderSettings().selectionOutline;
+                settings.enabled     = params.get<bool>("enabled", settings.enabled);
+                settings.thickness   = params.get<float>("thickness", settings.thickness);
+                settings.fillOpacity = params.get<float>("fillOpacity", settings.fillOpacity);
+                settings.edgeOpacity = params.get<float>("edgeOpacity", settings.edgeOpacity);
+                const bool cameraAllowsOutline =
+                    ctx->view().camera != nullptr && ctx->view().camera->selectionOutlineEnabled;
+                if (!settings.enabled || settings.selectedEntityId == 0u || !cameraAllowsOutline ||
+                    ctx->rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+                {
+                    passCtx.setOutput("color", passCtx.getInput("source"));
+                    return;
+                }
+                auto color = m_Pass.addPass(*ctx,
+                                            passCtx.getInput("source"),
+                                            passCtx.getInput("entityId"),
+                                            passCtx.getInput("depth"),
+                                            settings);
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    passCtx.setOutput("color", color);
+                }
+            }
+
+        private:
+            SelectionOutlinePass m_Pass;
+        };
+
+        class DebugDrawBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"DebugDraw",
+                         {"source", "depth"},
+                         {"color"},
+                         {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto*       ctx                  = host.currentBuildContext();
+                auto*       renderService        = host.renderService();
+                const auto* camera               = ctx ? ctx->view().camera : nullptr;
+                const bool  cameraAllowsDebugDraw = camera != nullptr && camera->debugDrawEnabled;
+                if (!ctx || !renderService || !params.get<bool>("enabled", true) ||
+                    !renderService->builtinRenderSettings().debugDraw.enabled || !cameraAllowsDebugDraw)
+                {
+                    passCtx.setOutput("color", passCtx.getInput("source"));
+                    return;
+                }
+                // Match the scene geometry's clip space: GPUCameraBlock flips
+                // projection[1][1] for Vulkan (see upload_resources.cpp). The debug-draw
+                // VP must apply the same flip or wireframes drift in Y as the camera moves.
+                glm::mat4 debugProjection = camera->projection;
+                if (ctx->rd.getBackendApi() == rhi::RenderBackendApi::eVulkan)
+                    debugProjection[1][1] *= -1.0f;
+                auto color = m_Pass.addPass(*ctx,
+                                            passCtx.getInput("source"),
+                                            passCtx.getInput("depth"),
+                                            debugProjection * camera->view);
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    passCtx.setOutput("color", color);
+                }
+                else
+                {
+                    passCtx.setOutput("color", passCtx.getInput("source"));
+                }
+            }
+
+        private:
+            DebugDrawPass m_Pass;
+        };
+
+        class UiOverlayBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"UiOverlay",
+                         {"source"},
+                         {"color"},
+                         {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                if (!params.get<bool>("enabled", true))
+                {
+                    passCtx.setOutput("color", passCtx.getInput("source"));
+                    return;
+                }
+                // Pull scene depth from the frame data registry (published by the
+                // depth/gbuffer pass) so world-space UI is occluded by geometry;
+                // it is optional, so graphs without a depth pass just skip occlusion.
+                const auto depth = ctx->data.tryGet(kResKey_DepthTexture);
+                auto       color = m_Pass.addPass(*ctx, passCtx.getInput("source"), depth);
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    passCtx.setOutput("color", color);
+                }
+                else
+                {
+                    passCtx.setOutput("color", passCtx.getInput("source"));
+                }
+            }
+
+        private:
+            UiOverlayPass m_Pass;
+        };
+
+        class GeometryWarpBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"GeometryWarp",
+                         {"source", "depth"},
+                         {"color"},
+                         {
+                             {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                             {.name = "sourceView", .type = vrendergraph::ParamType::eString, .defaultValue = "left"},
+                             {.name = "targetView", .type = vrendergraph::ParamType::eString, .defaultValue = "right"},
+                             {.name        = "gridSize",
+                              .type        = vrendergraph::ParamType::eInt,
+                              .defaultValue = 1,
+                              .minValue    = 1,
+                              .maxValue    = 16},
+                             {.name        = "sideLenThreshold",
+                              .type        = vrendergraph::ParamType::eFloat,
+                              .defaultValue = 0.01f,
+                              .minValue    = 0.0f,
+                              .maxValue    = 0.5f},
+                             {.name = "useDepthAware", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                         }}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                if (!params.get<bool>("enabled", true))
+                {
+                    passCtx.setOutput("color", passCtx.getInput("source"));
+                    return;
+                }
+
+                ViewSynthesisSettings settings;
+                settings.enabled    = true;
+                settings.sourceView = params.get<std::string>("sourceView", settings.sourceView);
+                settings.targetView = params.get<std::string>("targetView", settings.targetView);
+                settings.gridSize   = static_cast<uint32_t>(std::max(params.get<int>("gridSize", 1), 1));
+                settings.sideLenThreshold =
+                    std::max(params.get<float>("sideLenThreshold", settings.sideLenThreshold), 0.0f);
+                settings.useDepthAware = params.get<bool>("useDepthAware", settings.useDepthAware);
+                auto color =
+                    m_Pass.addPass(*ctx, passCtx.getInput("source"), passCtx.getInput("depth"), settings);
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                        ctx->data.set(kResKey_StereoColor, color);
+                    passCtx.setOutput("color", color);
+                }
+            }
+
+        private:
+            GeometryWarpPass m_Pass;
+        };
+
+        class PullpushInpaintBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"PullpushInpaint",
+                         {"source"},
+                         {"color"},
+                         {
+                             {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                             {.name = "useDepthAware", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                             {.name        = "depthThreshold",
+                              .type        = vrendergraph::ParamType::eFloat,
+                              .defaultValue = 0.01f,
+                              .minValue    = 0.0f,
+                              .maxValue    = 0.1f},
+                         }}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                if (!params.get<bool>("enabled", true))
+                {
+                    passCtx.setOutput("color", passCtx.getInput("source"));
+                    return;
+                }
+
+                ViewSynthesisSettings settings;
+                settings.useDepthAware = params.get<bool>("useDepthAware", settings.useDepthAware);
+                settings.depthThreshold =
+                    std::max(params.get<float>("depthThreshold", settings.depthThreshold), 0.0f);
+                auto color = m_Pass.addPass(*ctx, passCtx.getInput("source"), settings);
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                        ctx->data.set(kResKey_StereoColor, color);
+                    passCtx.setOutput("color", color);
+                }
+            }
+
+        private:
+            PullPushInpaintPass m_Pass;
+        };
+
+        class FinalCompositionBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"FinalComposition", {"source"}, {"target"}, {}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx || !ctx->view().target)
+                    return;
+                auto source = passCtx.getInput("source");
+                if (!source)
+                {
+                    warnMissingPassInputOnce("FinalComposition", "source");
+                    return;
+                }
+                const auto* outputRef      = passCtx.getOutputRef("target");
+                const auto  outputName     = outputRef && isBackbufferResource(outputRef->resource) ?
+                                                 outputRef->resource :
+                                                 "target";
+                const auto  outputSelector = outputRef ? outputRef->selector : nlohmann::json::object();
+                auto        backbuffer     = importRenderGraphBackbuffer(
+                    ctx->fg, ctx->view(), outputName, outputSelector, "VRenderGraphBackbuffer");
+                if (!backbuffer)
+                {
+                    // No render target for this output (e.g. the right/synth eye when
+                    // the XR session closed and the view fell back to mono). Skip the
+                    // actual composite, but still satisfy the graph's output contract
+                    // (vrendergraph requires every declared output slot to be produced)
+                    // with a pass-through. This output is terminal, so it is unused.
+                    passCtx.setOutput("target", source);
+                    return;
+                }
+                ctx->data.set(kResKey_FinalCompositionSource, source);
+                auto target = m_Pass.compose(*ctx, backbuffer);
+                if (target)
+                    passCtx.setOutput("target", target);
+            }
+
+        private:
+            FinalCompositionPass m_Pass;
+        };
+
+        class RayTracingPrimaryBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override { return {{"RayTracingPrimary", {}, {"color"}, {}}}; }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                auto color = m_Pass.addPass(*ctx);
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    passCtx.setOutput("color", color);
+                }
+            }
+
+        private:
+            RayTracingPrimaryPass m_Pass;
+        };
+
+        class VisibilityBufferBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"VisibilityBuffer", {}, {"visibility", "depth"}, {}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                auto visibility = m_Pass.addPass(*ctx);
+                if (visibility)
+                    passCtx.setOutput("visibility", visibility);
+                if (auto depth = ctx->data.tryGet(kResKey_DepthTexture))
+                    passCtx.setOutput("depth", depth);
+            }
+
+        private:
+            VisibilityBufferPass m_Pass;
+        };
+
+        class ThinGBufferBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"ThinGBuffer",
+                         {"visibility", "depth"},
+                         {"color", "normal", "material", "emissive", "depth", "entityId"},
+                         {}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                auto color = m_Pass.addPass(*ctx, passCtx.getInput("visibility"));
+                if (color)
+                    passCtx.setOutput("color", color);
+                if (auto res = ctx->data.tryGet(kResKey_GBufferNormal))
+                    passCtx.setOutput("normal", res);
+                if (auto res = ctx->data.tryGet(kResKey_GBufferMaterial))
+                    passCtx.setOutput("material", res);
+                if (auto res = ctx->data.tryGet(kResKey_GBufferEmissive))
+                    passCtx.setOutput("emissive", res);
+                passCtx.setOutput("depth", passCtx.getInput("depth"));
+                if (auto res = ctx->data.tryGet(kResKey_GBufferEntityId))
+                    passCtx.setOutput("entityId", res);
+                else
+                    passCtx.setOutput("entityId", {});
+            }
+
+        private:
+            ThinGBufferPass m_Pass;
+        };
+
+        class CoarseInstanceCullBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"CoarseInstanceCull",
+                         {},
+                         {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"},
+                         {}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                m_Pass.addPass(*ctx);
+                if (auto res = ctx->data.tryGet(kResKey_VisibleInstanceBuffer))
+                    passCtx.setOutput("visibleInstance", res);
+                if (auto res = ctx->data.tryGet(kResKey_VisibleInstanceCountBuffer))
+                    passCtx.setOutput("visibleInstanceCount", res);
+                if (auto res = ctx->data.tryGet(kResKey_MeshletCullDispatchArgsBuffer))
+                    passCtx.setOutput("meshletCullDispatchArgs", res);
+            }
+
+        private:
+            CoarseInstanceCullPass m_Pass;
+        };
+
+        class MeshletCullBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"MeshletCull",
+                         {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"},
+                         {"visibleMeshlet", "visibleMeshletCount"},
+                         {}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                m_Pass.addPass(*ctx);
+                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletBuffer))
+                    passCtx.setOutput("visibleMeshlet", res);
+                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletCountBuffer))
+                    passCtx.setOutput("visibleMeshletCount", res);
+            }
+
+        private:
+            MeshletCullPass m_Pass;
+        };
+
+        class BuildIndirectBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"BuildIndirect",
+                         {"visibleMeshlet", "visibleMeshletCount"},
+                         {"draw",
+                          "instance",
+                          "meshTable",
+                          "transform",
+                          "meshlets",
+                          "visibleMeshlet",
+                          "visibleMeshletCount",
+                          "materialTable"},
+                         {}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                m_Pass.addPass(*ctx);
+                if (auto res = ctx->data.tryGet(kResKey_DrawBuffer))
+                    passCtx.setOutput("draw", res);
+                if (auto res = ctx->data.tryGet(kResKey_InstanceBuffer))
+                    passCtx.setOutput("instance", res);
+                if (auto res = ctx->data.tryGet(kResKey_MeshTableBuffer))
+                    passCtx.setOutput("meshTable", res);
+                if (auto res = ctx->data.tryGet(kResKey_TransformBuffer))
+                    passCtx.setOutput("transform", res);
+                if (auto res = ctx->data.tryGet(kResKey_MeshletsBuffer))
+                    passCtx.setOutput("meshlets", res);
+                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletBuffer))
+                    passCtx.setOutput("visibleMeshlet", res);
+                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletCountBuffer))
+                    passCtx.setOutput("visibleMeshletCount", res);
+                if (auto res = ctx->data.tryGet(kResKey_MaterialTableBuffer))
+                    passCtx.setOutput("materialTable", res);
+            }
+
+        private:
+            BuildIndirectPass m_Pass;
+        };
+
+        class DrawsetBuildBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"DrawsetBuild", {"draw", "meshlets"}, {"draw", "meshlets", "indirect", "drawSet"}, {}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                m_Pass.addPass(*ctx);
+                if (auto res = ctx->data.tryGet(kResKey_DrawBuffer))
+                    passCtx.setOutput("draw", res);
+                if (auto res = ctx->data.tryGet(kResKey_MeshletsBuffer))
+                    passCtx.setOutput("meshlets", res);
+                if (auto res = ctx->data.tryGet(kResKey_IndirectBuffer))
+                    passCtx.setOutput("indirect", res);
+                if (auto res = ctx->data.tryGet(kResKey_DrawSetBuffer))
+                    passCtx.setOutput("drawSet", res);
+            }
+
+        private:
+            DrawsetBuildPass m_Pass;
+        };
+
+        class MeshletHiZCullBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"MeshletHiZCull", {}, {"visibleMeshlet", "visibleMeshletCount"}, {}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                m_Pass.addPass(*ctx);
+                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletBuffer))
+                    passCtx.setOutput("visibleMeshlet", res);
+                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletCountBuffer))
+                    passCtx.setOutput("visibleMeshletCount", res);
+            }
+
+        private:
+            MeshletHiZCullPass m_Pass;
+        };
+
+        // One object backs the standalone Preprocess/Render nodes and the fused
+        // Composite node (preprocess + render in one) used by the simple path.
+        class GaussianSplatBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {
+                    {"GeneralGaussianSplatPreprocess",
+                     {},
+                     {"draw",
+                      "packedSource",
+                      "selectedSource",
+                      "visibleSplat",
+                      "sortKey",
+                      "sortIndex",
+                      "visibleCount",
+                      "indirect",
+                      "sortStorage",
+                      "sh"},
+                     {}},
+                    {"GeneralGaussianSplatRender", {}, {"color"}, {}},
+                    {"GeneralGaussianSplatComposite", {"source"}, {"color"}, {}},
+                };
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view                type,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+
+                if (type == "GeneralGaussianSplatPreprocess")
+                {
+                    m_Preprocess.addPass(*ctx);
+                    if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatDrawBuffer))
+                        passCtx.setOutput("draw", res);
+                    if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatPackedSourceBuffer))
+                        passCtx.setOutput("packedSource", res);
+                    if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatSelectedSourceBuffer))
+                        passCtx.setOutput("selectedSource", res);
+                    if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatVisibleSplatBuffer))
+                        passCtx.setOutput("visibleSplat", res);
+                    if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatSortKeyBuffer))
+                        passCtx.setOutput("sortKey", res);
+                    if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatSortIndexBuffer))
+                        passCtx.setOutput("sortIndex", res);
+                    if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatVisibleCountBuffer))
+                        passCtx.setOutput("visibleCount", res);
+                    if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatIndirectBuffer))
+                        passCtx.setOutput("indirect", res);
+                    if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatSortStorageBuffer))
+                        passCtx.setOutput("sortStorage", res);
+                    if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatShBuffer))
+                        passCtx.setOutput("sh", res);
+                    return;
+                }
+
+                if (type == "GeneralGaussianSplatRender")
+                {
+                    auto color = m_Render.addPass(*ctx);
+                    if (color)
+                    {
+                        ctx->data.set(kResKey_FinalCompositionSource, color);
+                        passCtx.setOutput("color", color);
+                    }
+                    return;
+                }
+
+                // GeneralGaussianSplatComposite: preprocess + render fused.
+                const auto source       = passCtx.getInput("source");
+                auto*      gpuSceneView = ctx->view().gpuSceneView;
+                if (!gpuSceneView || !gpuSceneView->hasGeneralGaussianSplats())
+                {
+                    passCtx.setOutput("color", source);
+                    return;
+                }
+
+                ctx->data.set(kResKey_FinalCompositionSource, source);
+                m_Preprocess.addPass(*ctx);
+                auto color = m_Render.addPass(*ctx);
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    passCtx.setOutput("color", color);
+                }
+                else
+                {
+                    passCtx.setOutput("color", source);
+                }
+            }
+
+        private:
+            GeneralGaussianSplatPreprocessPass m_Preprocess;
+            GeneralGaussianSplatRenderPass     m_Render;
+        };
+
+        class GaussianSplatFoveatedCompositeBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"GeneralGaussianSplatFoveatedComposite",
+                         {"fovea", "mid", "outer", "base"},
+                         {"color"},
+                         {}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                auto color = m_Pass.compose(*ctx,
+                                            passCtx.getInput("fovea"),
+                                            passCtx.getInput("mid"),
+                                            passCtx.getInput("outer"),
+                                            passCtx.getInput("base"));
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    passCtx.setOutput("color", color);
+                }
+            }
+
+        private:
+            GeneralGaussianSplatFoveatedCompositePass m_Pass;
+        };
+
+        // One node, two collaborators: simulate (compute) then render (billboards).
+        class ParticleBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"ParticleRender", {"source", "depth"}, {"color"}, {}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+
+                const auto source = passCtx.getInput("source");
+                const auto depth  = passCtx.getInput("depth");
+
+                auto* gpuSceneView = ctx->view().gpuSceneView;
+                if (!gpuSceneView || gpuSceneView->particleEmitters.empty())
+                {
+                    passCtx.setOutput("color", source);
+                    return;
+                }
+
+                // Simulate (compute) then draw (billboards). The simulate pass returns
+                // the per-emitter pool handles so the render pass reads them with a
+                // correct compute-write -> vertex-read barrier.
+                auto particleBuffers = m_Simulate.addPass(*ctx);
+                auto color           = m_Render.addPass(*ctx, source, depth, particleBuffers);
+                if (color)
+                {
+                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                    passCtx.setOutput("color", color);
+                }
+                else
+                {
+                    passCtx.setOutput("color", source);
+                }
+            }
+
+        private:
+            ParticleSimulatePass m_Simulate;
+            ParticleRenderPass   m_Render;
+        };
     } // namespace
+
+    std::vector<std::unique_ptr<IBuiltinRenderGraphPass>> makeBuiltinRenderGraphPasses()
+    {
+        std::vector<std::unique_ptr<IBuiltinRenderGraphPass>> passes;
+        passes.reserve(30);
+        passes.push_back(std::make_unique<CameraClearBuiltin>());
+        passes.push_back(std::make_unique<CompatibilityBaseColorBuiltin>());
+        passes.push_back(std::make_unique<DirectGBufferBuiltin>());
+        passes.push_back(std::make_unique<ShadowMapBuiltin>());
+        passes.push_back(std::make_unique<DeferredLightingBuiltin>());
+        passes.push_back(std::make_unique<HzbGenerateBuiltin>());
+        passes.push_back(std::make_unique<SsaoBuiltin>());
+        passes.push_back(std::make_unique<SsrBuiltin>());
+        passes.push_back(std::make_unique<SsrCompositeBuiltin>());
+        passes.push_back(std::make_unique<GaussianBlurBuiltin>());
+        passes.push_back(std::make_unique<BloomBuiltin>());
+        passes.push_back(std::make_unique<ToneMappingBuiltin>());
+        passes.push_back(std::make_unique<FxaaBuiltin>());
+        passes.push_back(std::make_unique<SelectionOutlineBuiltin>());
+        passes.push_back(std::make_unique<DebugDrawBuiltin>());
+        passes.push_back(std::make_unique<UiOverlayBuiltin>());
+        passes.push_back(std::make_unique<GeometryWarpBuiltin>());
+        passes.push_back(std::make_unique<PullpushInpaintBuiltin>());
+        passes.push_back(std::make_unique<FinalCompositionBuiltin>());
+        passes.push_back(std::make_unique<RayTracingPrimaryBuiltin>());
+        passes.push_back(std::make_unique<VisibilityBufferBuiltin>());
+        passes.push_back(std::make_unique<ThinGBufferBuiltin>());
+        passes.push_back(std::make_unique<CoarseInstanceCullBuiltin>());
+        passes.push_back(std::make_unique<MeshletCullBuiltin>());
+        passes.push_back(std::make_unique<BuildIndirectBuiltin>());
+        passes.push_back(std::make_unique<DrawsetBuildBuiltin>());
+        passes.push_back(std::make_unique<MeshletHiZCullBuiltin>());
+        passes.push_back(std::make_unique<GaussianSplatBuiltin>());
+        passes.push_back(std::make_unique<GaussianSplatFoveatedCompositeBuiltin>());
+        passes.push_back(std::make_unique<ParticleBuiltin>());
+        return passes;
+    }
 
     void registerBuiltinRenderGraphPasses(vrendergraph::RenderGraphRegistry& registry)
     {
-        const auto noop =
-            [](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext&) {};
-        declareBuiltinRenderGraphPasses([&](std::string                          type,
-                                            std::vector<std::string>             inputs,
-                                            std::vector<std::string>             outputs,
-                                            std::vector<vrendergraph::ParamDesc> params = {}) {
-            if (registry.contains(type))
-                return;
-            registry.registerPass(vrendergraph::PassDefinition {
-                .type    = std::move(type),
-                .setup   = noop,
-                .inputs  = std::move(inputs),
-                .outputs = std::move(outputs),
-                .params  = std::move(params),
-            });
-        });
+        // Editor node palette: ports/params only (no-op setups).
+        for (auto& pass : makeBuiltinRenderGraphPasses())
+            pass->registerSpecsInto(registry);
     }
+
+    // BuiltinPassHost: live, friend-access bridge from a builtin pass's build() body to
+    // the owning renderer's per-frame state (see builtin_pass_host.hpp).
+    FrameGraphBuildContext* BuiltinPassHost::currentBuildContext() const { return m_Owner.m_CurrentBuildContext; }
+
+    vbase::ServiceRegistry* BuiltinPassHost::services() const { return m_Owner.getServices(); }
+
+    IRenderService* BuiltinPassHost::renderService() const
+    {
+        auto* svc = m_Owner.getServices();
+        return svc ? svc->tryGet<IRenderService>() : nullptr;
+    }
+
+    bool BuiltinPassHost::applyToneMappingThisFrame() const { return m_Owner.m_CurrentFrameApplyToneMapping; }
+
+    void BuiltinPassHost::setApplyToneMappingThisFrame(bool value) { m_Owner.m_CurrentFrameApplyToneMapping = value; }
 
     class DeclarativeRenderer::FullscreenPassRuntime
     {
@@ -2033,7 +3343,7 @@ namespace vultra
     {
     public:
         RenderGraphRuntime(DeclarativeRenderer& owner, std::string uri, vrendergraph::RenderGraphDesc desc) :
-            m_Owner(owner), m_Uri(std::move(uri)), m_Desc(std::move(desc))
+            m_Owner(owner), m_Uri(std::move(uri)), m_Desc(std::move(desc)), m_Host(owner)
         {
             m_PrefersExplicitPerEye = graphPrefersExplicitPerEye(m_Desc);
             registerPasses();
@@ -2416,987 +3726,12 @@ namespace vultra
                 });
             }
 
-            // Port/param layout comes from the single-source declareBuiltinRenderGraphPasses()
-            // catalog; here we only attach the runtime setup callback by pass type.
-            std::unordered_map<std::string, vrendergraph::PassDefinition> builtinSpecs;
-            declareBuiltinRenderGraphPasses([&builtinSpecs](std::string                          type,
-                                                            std::vector<std::string>             inputs,
-                                                            std::vector<std::string>             outputs,
-                                                            std::vector<vrendergraph::ParamDesc> params = {}) {
-                vrendergraph::PassDefinition def {};
-                def.type    = type;
-                def.inputs  = std::move(inputs);
-                def.outputs = std::move(outputs);
-                def.params  = std::move(params);
-                builtinSpecs.emplace(std::move(type), std::move(def));
-            });
-
-            const auto registerBuiltin = [this, &builtinSpecs](std::string               type,
-                                                               vrendergraph::PassSetupFn setup) {
-                // A scripted/custom pass of the same name registered earlier wins.
-                if (m_Registry.contains(type))
-                    return;
-                const auto it = builtinSpecs.find(type);
-                if (it == builtinSpecs.end())
-                {
-                    VULTRA_CORE_ERROR("[DeclarativeRenderer] No port spec for builtin pass '{}' "
-                                      "(declare it in declareBuiltinRenderGraphPasses)",
-                                      type);
-                    return;
-                }
-                auto def  = it->second;
-                def.setup = std::move(setup);
-                m_Registry.registerPass(std::move(def));
-            };
-
-            registerBuiltin("CameraClear",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx || !ctx->view().target)
-                                    return;
-
-                                struct PassData
-                                {
-                                    FrameGraphResource color;
-                                };
-
-                                const auto desc =
-                                    makeRenderViewTextureDesc(ctx->view(), ctx->view().target->getPixelFormat());
-                                const auto data = ctx->fg.addCallbackPass<PassData>(
-                                    "CameraClearPass",
-                                    [desc](FrameGraph::Builder& builder, PassData& pd) {
-                                        PASS_SETUP_ZONE;
-                                        pd.color = builder.create<framegraph::FrameGraphTexture>("CameraClear", desc);
-                                        pd.color = builder.write(pd.color,
-                                                                 framegraph::Attachment {
-                                                                     .index       = 0,
-                                                                     .imageAspect = rhi::ImageAspect::eColor,
-                                                                     .clearValue  = framegraph::ClearValue::eOpaqueBlack,
-                                                                 });
-                                    },
-                                    [](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
-                                        VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
-                                        auto framebufferInfo = rc.framebufferInfo();
-                                        if (!framebufferInfo || framebufferInfo->colorAttachments.empty())
-                                            return;
-
-                                        auto& attachment = framebufferInfo->colorAttachments[0];
-                                        attachment.clearValue =
-                                            rc.view().camera ? rc.view().camera->clearValue : rc.view().clearValue;
-                                        attachment.loadOp = rhi::AttachmentLoadOp::eClear;
-                                        rc.cb.beginRendering(*framebufferInfo).endRendering();
-                                    });
-
-                                ctx->data.set(kResKey_FinalCompositionSource, data.color);
-                                passCtx.setOutput("color", data.color);
-                            });
-
-            registerBuiltin("CompatibilityBaseColor",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                auto color = m_CompatibilityBaseColorPass.addPass(*ctx);
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                            });
-
-            registerBuiltin("DirectGBuffer",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                auto color = m_DirectGBufferPass.addPass(*ctx, passCtx.getInput("depth"));
-                                if (color)
-                                {
-                                    passCtx.setOutput("color", color);
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
-                                        ctx->data.set(kResKey_StereoColor, color);
-                                }
-                                if (auto res = ctx->data.tryGet(kResKey_DepthTexture))
-                                {
-                                    passCtx.setOutput("depth", res);
-                                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
-                                        ctx->data.set(kResKey_StereoDepth, res);
-                                }
-                                if (auto res = ctx->data.tryGet(kResKey_GBufferNormal))
-                                    passCtx.setOutput("normal", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GBufferMaterial))
-                                    passCtx.setOutput("material", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GBufferEmissive))
-                                    passCtx.setOutput("emissive", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GBufferEntityId))
-                                    passCtx.setOutput("entityId", res);
-                                else
-                                    passCtx.setOutput("entityId", {});
-                            });
-
-            const auto registerDirectDepthPre = [this, &registerBuiltin](std::string_view type) {
-                registerBuiltin(std::string(type),
-                            [this](FrameGraph&,
-                                       FrameGraphBlackboard&,
-                                       const vrendergraph::ParamBlock&,
-                                       vrendergraph::PassBuildContext& passCtx) {
-                                    auto* ctx = m_Owner.m_CurrentBuildContext;
-                                    if (!ctx)
-                                        return;
-                                    m_DirectGBufferPass.addDepthPrePass(*ctx);
-                                    if (auto depth = ctx->data.tryGet(kResKey_DepthTexture))
-                                    {
-                                        passCtx.setOutput("depth", depth);
-                                        if (ctx->view().stereoMode != StereoRenderMode::eMono)
-                                            ctx->data.set(kResKey_StereoDepth, depth);
-                                    }
-                                });
-            };
-            registerDirectDepthPre("DirectDepthPre");
-            registerDirectDepthPre("DepthPre");
-
-            registerBuiltin("ShadowMap",
-                            [this](FrameGraph&,
-                       FrameGraphBlackboard&,
-                       const vrendergraph::ParamBlock& params,
-                       vrendergraph::PassBuildContext& passCtx) {
-                    auto* ctx = m_Owner.m_CurrentBuildContext;
-                    auto* renderService =
-                        m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
-                    if (!ctx || !renderService)
-                        return;
-                    auto settings    = renderService->builtinRenderSettings().shadow;
-                    settings.enabled = params.get<bool>("enabled", settings.enabled);
-                    settings.resolution =
-                        static_cast<uint32_t>(params.get<int>("resolution", static_cast<int>(settings.resolution)));
-                    settings.cascadeCount =
-                        static_cast<uint32_t>(params.get<int>("cascadeCount", static_cast<int>(settings.cascadeCount)));
-                    settings.coverageRadius = params.get<float>("coverageRadius", settings.coverageRadius);
-                    settings.lightDistance  = params.get<float>("lightDistance", settings.lightDistance);
-                    settings.zRange         = params.get<float>("zRange", settings.zRange);
-                    settings.splitLambda    = params.get<float>("splitLambda", settings.splitLambda);
-                    settings.autoFitBounds  = params.get<bool>("autoFitBounds", settings.autoFitBounds);
-                    settings.stableTexelSnapping =
-                        params.get<bool>("stableTexelSnapping", settings.stableTexelSnapping);
-                    settings.depthBias                 = params.get<float>("depthBias", settings.depthBias);
-                    settings.normalBias                = params.get<float>("normalBias", settings.normalBias);
-                    settings.pcssLightRadius           = params.get<float>("pcssLightRadius", settings.pcssLightRadius);
-                    const auto* shadowDirectionalLight = findPrimaryShadowDirectionalLight(ctx->view().renderWorld);
-                    settings.enabled                   = settings.enabled && shadowDirectionalLight != nullptr;
-                    if (shadowDirectionalLight)
-                    {
-                        settings.lightDirection = shadowDirectionalLight->direction;
-                    }
-                    auto shadow = m_ShadowMapPass.addPass(*ctx, settings);
-                    if (shadow.shadowMap)
-                        passCtx.setOutput("shadowMap", shadow.shadowMap);
-                    if (shadow.shadowData)
-                        passCtx.setOutput("shadowData", shadow.shadowData);
-                });
-
-            registerBuiltin("DeferredLighting",
-                            [this](FrameGraph&,
-                       FrameGraphBlackboard&,
-                       const vrendergraph::ParamBlock& params,
-                       vrendergraph::PassBuildContext& passCtx) {
-                    auto* ctx = m_Owner.m_CurrentBuildContext;
-                    auto* renderService =
-                        m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
-                    if (!ctx || !renderService)
-                        return;
-                    const auto&   settings         = renderService->builtinRenderSettings();
-                    auto          lightingSettings = settings.pbrLighting;
-                    auto          shadowSettings   = settings.shadow;
-                    const bool suppressCameraSkybox =
-                        ctx->view().camera != nullptr && ctx->view().camera->suppressSkybox;
-                    rhi::Texture* skyboxTexture =
-                        !suppressCameraSkybox && settings.pbrLighting.showSkybox ? settings.pbrLighting.environmentMap :
-                                                                                    nullptr;
-                    lightingSettings.ambientIntensity =
-                        params.get<float>("ambientIntensity", lightingSettings.ambientIntensity);
-                    lightingSettings.shadowStrength =
-                        params.get<float>("shadowStrength", lightingSettings.shadowStrength);
-                    lightingSettings.iblIntensity  = params.get<float>("iblIntensity", lightingSettings.iblIntensity);
-                    lightingSettings.debugViewMode = static_cast<PbrLightingSettings::DebugViewMode>(std::clamp(
-                        params.get<int>("debugViewMode", static_cast<int>(lightingSettings.debugViewMode)), 0, 6));
-                    shadowSettings.filterMode      = static_cast<ShadowRenderSettings::FilterMode>(std::clamp(
-                        params.get<int>("shadowFilterMode", static_cast<int>(shadowSettings.filterMode)), 0, 2));
-                    shadowSettings.debugMode       = static_cast<ShadowRenderSettings::DebugMode>(std::clamp(
-                        params.get<int>("shadowDebugMode", static_cast<int>(shadowSettings.debugMode)), 0, 5));
-                    if (params.get<bool>("debugCascades", false))
-                        shadowSettings.debugMode = ShadowRenderSettings::DebugMode::eCascade;
-                    const auto* primaryDirectionalLight = findPrimaryDirectionalLight(ctx->view().renderWorld);
-                    const auto* shadowDirectionalLight  = findPrimaryShadowDirectionalLight(ctx->view().renderWorld);
-                    if (primaryDirectionalLight)
-                    {
-                        lightingSettings.directionalLightDirection = primaryDirectionalLight->direction;
-                        lightingSettings.directionalLightColor     = primaryDirectionalLight->color;
-                        lightingSettings.directionalLightIntensity = primaryDirectionalLight->intensity;
-                    }
-                    else if (ctx->view().renderWorld && !ctx->view().renderWorld->lights.empty())
-                    {
-                        lightingSettings.directionalLightIntensity = 0.0f;
-                    }
-                    shadowSettings.enabled = shadowSettings.enabled && shadowDirectionalLight != nullptr;
-                    if (shadowDirectionalLight)
-                        shadowSettings.lightDirection = shadowDirectionalLight->direction;
-                    const auto* renderEnvironment =
-                        ctx->view().renderWorld && ctx->view().renderWorld->environment.active ?
-                            &ctx->view().renderWorld->environment :
-                            nullptr;
-                    if (renderEnvironment)
-                    {
-                        lightingSettings.ambientColor     = renderEnvironment->ambientColor;
-                        lightingSettings.ambientIntensity = renderEnvironment->ambientIntensity;
-                        lightingSettings.enableIBL        = renderEnvironment->enableIBL;
-                        lightingSettings.iblColor         = renderEnvironment->iblColor;
-                        lightingSettings.iblIntensity     = renderEnvironment->iblIntensity;
-                        lightingSettings.environmentMap   = renderEnvironment->skybox;
-                        skyboxTexture                     = suppressCameraSkybox ? nullptr : renderEnvironment->skybox;
-                    }
-                    if (const auto* probe = selectReflectionProbe(ctx->view().renderWorld, ctx->view().camera))
-                    {
-                        lightingSettings.enableIBL    = probe->enableIBL;
-                        lightingSettings.iblIntensity = probe->intensity;
-                        if (probe->enableIBL)
-                            lightingSettings.environmentMap = probe->environmentMap;
-                    }
-                    if (lightingSettings.debugViewMode != PbrLightingSettings::DebugViewMode::eLit ||
-                        shadowSettings.debugMode != ShadowRenderSettings::DebugMode::eOff)
-                        m_Owner.m_CurrentFrameApplyToneMapping = false;
-                    shadowSettings.pcssBlockerSamples =
-                        params.get<int>("pcssBlockerSamples", shadowSettings.pcssBlockerSamples);
-                    shadowSettings.pcssFilterSamples = params.get<int>("pcfRadius", shadowSettings.pcssFilterSamples);
-                    auto color                       = m_DeferredLightingPass.addPass(*ctx,
-                                                                passCtx.getInput("color"),
-                                                                passCtx.getInput("normal"),
-                                                                passCtx.getInput("material"),
-                                                                passCtx.getInput("emissive"),
-                                                                passCtx.getInput("depth"),
-                                                                passCtx.getInput("ao"),
-                                                                passCtx.getInput("shadowMap"),
-                                                                passCtx.getInput("shadowData"),
-                                                                shadowSettings,
-                                                                lightingSettings,
-                                                                ctx->view().renderWorld);
-                    if (color)
-                    {
-                        const bool cameraWantsSkybox =
-                            !suppressCameraSkybox &&
-                            ((ctx->view().camera && ctx->view().camera->clearMode == 1u) ||
-                             settings.pbrLighting.showSkybox);
-                        if (cameraWantsSkybox && skyboxTexture && ctx->data.contains(kResKey_DepthTexture))
-                        {
-                            const auto env = framegraph::importTexture(ctx->fg, "Environment Map", skyboxTexture);
-                            color          = m_SkyboxPass.addPass(*ctx,
-                                                         color,
-                                                         ctx->data.get(kResKey_DepthTexture),
-                                                         env,
-                                                         lightingSettings.environmentMap == skyboxTexture ?
-                                                                      m_DeferredLightingPass.environmentCubemap() :
-                                                                      nullptr);
-                        }
-                        ctx->data.set(kResKey_FinalCompositionSource, color);
-                        if (ctx->view().stereoMode != StereoRenderMode::eMono)
-                            ctx->data.set(kResKey_StereoColor, color);
-                        passCtx.setOutput("color", color);
-                    }
-                });
-
-            registerBuiltin("SsrComposite",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock& params,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                if (!params.get<bool>("enabled", true))
-                                {
-                                    passCtx.setOutput("color", passCtx.getInput("source"));
-                                    return;
-                                }
-                                auto color = m_SsrCompositePass.addPass(
-                                    *ctx, passCtx.getInput("source"), passCtx.getInput("reflection"));
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
-                                        ctx->data.set(kResKey_StereoColor, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                            });
-
-            registerBuiltin("HzbGenerate",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                m_HzbGeneratePass.addPass(*ctx, passCtx.getInput("depth"));
-                                if (auto hzb = ctx->data.tryGet(kResKey_HzbTexture))
-                                    passCtx.setOutput("hzb", hzb);
-                            });
-
-            registerBuiltin("Ssao",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock& params,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                auto* renderService =
-                                    m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
-                                if (!ctx || !renderService)
-                                    return;
-                                auto settings            = renderService->builtinRenderSettings().ssao;
-                                settings.enabled         = params.get<bool>("enabled", settings.enabled);
-                                settings.radius          = params.get<float>("radius", settings.radius);
-                                settings.bias            = params.get<float>("bias", settings.bias);
-                                settings.intensity       = params.get<float>("intensity", settings.intensity);
-                                settings.maxRadiusPixels = params.get<int>("maxRadiusPixels", settings.maxRadiusPixels);
-                                settings.stepCount       = params.get<int>("stepCount", settings.stepCount);
-                                settings.directionCount  = params.get<int>("directionCount", settings.directionCount);
-                                if (!settings.enabled)
-                                {
-                                    passCtx.setOutput("ao", {});
-                                    return;
-                                }
-                                auto ao                  = m_SsaoPass.addPass(
-                                    *ctx, passCtx.getInput("depth"), passCtx.getInput("normal"), settings);
-                                if (ao)
-                                {
-                                    ctx->data.set(kResKey_SsaoTexture, ao);
-                                    passCtx.setOutput("ao", ao);
-                                }
-                            });
-
-            registerBuiltin("Ssr",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock& params,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                auto* renderService =
-                                    m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
-                                if (!ctx || !renderService)
-                                    return;
-                                auto settings    = renderService->builtinRenderSettings().ssr;
-                                settings.enabled = params.get<bool>("enabled", settings.enabled);
-                                settings.reflectionFactor =
-                                    params.get<float>("reflectionFactor", settings.reflectionFactor);
-                                settings.maxSteps = params.get<int>("maxSteps", settings.maxSteps);
-                                settings.binaryRefinement =
-                                    params.get<int>("binaryRefinement", settings.binaryRefinement);
-                                settings.stride    = params.get<float>("stride", settings.stride);
-                                settings.thickness = params.get<float>("thickness", settings.thickness);
-                                if (!settings.enabled)
-                                {
-                                    passCtx.setOutput("reflection", {});
-                                    return;
-                                }
-                                auto reflection    = m_SsrPass.addPass(*ctx,
-                                                                    passCtx.getInput("color"),
-                                                                    passCtx.getInput("depth"),
-                                                                    passCtx.getInput("normal"),
-                                                                    passCtx.getInput("material"),
-                                                                    settings);
-                                if (reflection)
-                                {
-                                    ctx->data.set(kResKey_SsrTexture, reflection);
-                                    passCtx.setOutput("reflection", reflection);
-                                }
-                            });
-
-            registerBuiltin("Fxaa",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock& params,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                if (!params.get<bool>("enabled", true))
-                                {
-                                    passCtx.setOutput("color", passCtx.getInput("source"));
-                                    return;
-                                }
-                                auto color = m_FxaaPass.addPass(*ctx, passCtx.getInput("source"));
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                            });
-
-            registerBuiltin("GaussianBlur",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock& params,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                const auto  source    = passCtx.getInput("source");
-                                const float scale     = params.get<float>("scale", 1.0f);
-                                const int   direction = params.get<int>("direction", 0);
-                                FrameGraphResource color {};
-                                if (direction == 1)
-                                    color = m_GaussianBlurPass.addPass(*ctx, source, scale, true);
-                                else if (direction == 2)
-                                    color = m_GaussianBlurPass.addPass(*ctx, source, scale, false);
-                                else
-                                    color = m_GaussianBlurPass.addPass(*ctx, source, scale);
-                                if (color)
-                                    passCtx.setOutput("color", color);
-                            });
-
-            registerBuiltin("Bloom",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock& params,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                if (!params.get<bool>("enabled", true))
-                                {
-                                    passCtx.setOutput("color", passCtx.getInput("source"));
-                                    return;
-                                }
-                                auto color = m_BloomPass.addPass(*ctx,
-                                                                 passCtx.getInput("source"),
-                                                                 params.get<float>("threshold", 1.0f),
-                                                                 params.get<float>("knee", 0.5f),
-                                                                 params.get<float>("intensity", 0.6f),
-                                                                 params.get<float>("scale", 1.0f),
-                                                                 params.get<int>("iterations", 1));
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
-                                        ctx->data.set(kResKey_StereoColor, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                            });
-
-            registerBuiltin("ToneMapping",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock& params,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                const bool enabled =
-                                    params.get<bool>("enabled", true) && m_Owner.m_CurrentFrameApplyToneMapping;
-                                if (!enabled)
-                                {
-                                    passCtx.setOutput("color", passCtx.getInput("source"));
-                                    return;
-                                }
-                                auto color = m_ToneMappingPass.addPass(*ctx,
-                                                                       passCtx.getInput("source"),
-                                                                       params.get<float>("exposure", 1.0f),
-                                                                       params.get<int>("method", 0));
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                            });
-
-            registerBuiltin("SelectionOutline",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock& params,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                auto* renderService =
-                                    m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
-                                if (!ctx || !renderService)
-                                    return;
-                                auto settings        = renderService->builtinRenderSettings().selectionOutline;
-                                settings.enabled     = params.get<bool>("enabled", settings.enabled);
-                                settings.thickness   = params.get<float>("thickness", settings.thickness);
-                                settings.fillOpacity = params.get<float>("fillOpacity", settings.fillOpacity);
-                                settings.edgeOpacity = params.get<float>("edgeOpacity", settings.edgeOpacity);
-                                const bool cameraAllowsOutline =
-                                    ctx->view().camera != nullptr && ctx->view().camera->selectionOutlineEnabled;
-                                if (!settings.enabled || settings.selectedEntityId == 0u || !cameraAllowsOutline ||
-                                    ctx->rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
-                                {
-                                    passCtx.setOutput("color", passCtx.getInput("source"));
-                                    return;
-                                }
-                                auto color = m_SelectionOutlinePass.addPass(*ctx,
-                                                                            passCtx.getInput("source"),
-                                                                            passCtx.getInput("entityId"),
-                                                                            passCtx.getInput("depth"),
-                                                                            settings);
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                            });
-
-            registerBuiltin("DebugDraw",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock& params,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                auto* renderService =
-                                    m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
-                                const auto* camera = ctx ? ctx->view().camera : nullptr;
-                                const bool  cameraAllowsDebugDraw = camera != nullptr && camera->debugDrawEnabled;
-                                if (!ctx || !renderService || !params.get<bool>("enabled", true) ||
-                                    !renderService->builtinRenderSettings().debugDraw.enabled || !cameraAllowsDebugDraw)
-                                {
-                                    passCtx.setOutput("color", passCtx.getInput("source"));
-                                    return;
-                                }
-                                // Match the scene geometry's clip space: GPUCameraBlock flips
-                                // projection[1][1] for Vulkan (see upload_resources.cpp). The debug-draw
-                                // VP must apply the same flip or wireframes drift in Y as the camera moves.
-                                glm::mat4 debugProjection = camera->projection;
-                                if (ctx->rd.getBackendApi() == rhi::RenderBackendApi::eVulkan)
-                                    debugProjection[1][1] *= -1.0f;
-                                auto color = m_DebugDrawPass.addPass(*ctx,
-                                                                     passCtx.getInput("source"),
-                                                                     passCtx.getInput("depth"),
-                                                                     debugProjection * camera->view);
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                                else
-                                {
-                                    passCtx.setOutput("color", passCtx.getInput("source"));
-                                }
-                            });
-
-            registerBuiltin("UiOverlay",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock& params,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                if (!params.get<bool>("enabled", true))
-                                {
-                                    passCtx.setOutput("color", passCtx.getInput("source"));
-                                    return;
-                                }
-                                // Pull scene depth from the frame data registry (published by the
-                                // depth/gbuffer pass) so world-space UI is occluded by geometry;
-                                // it is optional, so graphs without a depth pass just skip occlusion.
-                                const auto depth = ctx->data.tryGet(kResKey_DepthTexture);
-                                auto color = m_UiOverlayPass.addPass(*ctx, passCtx.getInput("source"), depth);
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                                else
-                                {
-                                    passCtx.setOutput("color", passCtx.getInput("source"));
-                                }
-                            });
-
-            registerBuiltin("GeometryWarp",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock& params,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                if (!params.get<bool>("enabled", true))
-                                {
-                                    passCtx.setOutput("color", passCtx.getInput("source"));
-                                    return;
-                                }
-
-                                ViewSynthesisSettings settings;
-                                settings.enabled    = true;
-                                settings.sourceView = params.get<std::string>("sourceView", settings.sourceView);
-                                settings.targetView = params.get<std::string>("targetView", settings.targetView);
-                                settings.gridSize = static_cast<uint32_t>(std::max(params.get<int>("gridSize", 1), 1));
-                                settings.sideLenThreshold =
-                                    std::max(params.get<float>("sideLenThreshold", settings.sideLenThreshold), 0.0f);
-                                settings.useDepthAware = params.get<bool>("useDepthAware", settings.useDepthAware);
-                                auto color = m_GeometryWarpPass.addPass(
-                                    *ctx, passCtx.getInput("source"), passCtx.getInput("depth"), settings);
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
-                                        ctx->data.set(kResKey_StereoColor, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                            });
-
-            registerBuiltin("PullpushInpaint",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock& params,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                if (!params.get<bool>("enabled", true))
-                                {
-                                    passCtx.setOutput("color", passCtx.getInput("source"));
-                                    return;
-                                }
-
-                                ViewSynthesisSettings settings;
-                                settings.useDepthAware = params.get<bool>("useDepthAware", settings.useDepthAware);
-                                settings.depthThreshold =
-                                    std::max(params.get<float>("depthThreshold", settings.depthThreshold), 0.0f);
-                                auto color =
-                                    m_PullPushInpaintPass.addPass(*ctx, passCtx.getInput("source"), settings);
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
-                                        ctx->data.set(kResKey_StereoColor, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                            });
-
-            registerBuiltin("FinalComposition",
-                            [this](FrameGraph& fg,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx || !ctx->view().target)
-                                    return;
-                                auto source = passCtx.getInput("source");
-                                if (!source)
-                                {
-                                    warnMissingPassInputOnce("FinalComposition", "source");
-                                    return;
-                                }
-                                const auto* outputRef      = passCtx.getOutputRef("target");
-                                const auto  outputName     = outputRef && isBackbufferResource(outputRef->resource) ?
-                                                                 outputRef->resource :
-                                                                 "target";
-                                const auto  outputSelector = outputRef ? outputRef->selector : nlohmann::json::object();
-                                auto backbuffer = importRenderGraphBackbuffer(
-                                    fg, ctx->view(), outputName, outputSelector, "VRenderGraphBackbuffer");
-                                if (!backbuffer)
-                                {
-                                    // No render target for this output (e.g. the right/synth eye when
-                                    // the XR session closed and the view fell back to mono). Skip the
-                                    // actual composite, but still satisfy the graph's output contract
-                                    // (vrendergraph requires every declared output slot to be produced)
-                                    // with a pass-through. This output is terminal, so it is unused.
-                                    passCtx.setOutput("target", source);
-                                    return;
-                                }
-                                ctx->data.set(kResKey_FinalCompositionSource, source);
-                                auto target = m_FinalCompositionPass.compose(*ctx, backbuffer);
-                                if (target)
-                                    passCtx.setOutput("target", target);
-                            });
-
-            registerBuiltin("RayTracingPrimary",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                auto color = m_RayTracingPrimaryPass.addPass(*ctx);
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                            });
-
-            registerBuiltin("VisibilityBuffer",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                auto visibility = m_VisibilityBufferPass.addPass(*ctx);
-                                if (visibility)
-                                    passCtx.setOutput("visibility", visibility);
-                                if (auto depth = ctx->data.tryGet(kResKey_DepthTexture))
-                                    passCtx.setOutput("depth", depth);
-                            });
-
-            registerBuiltin("ThinGBuffer",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                auto color = m_ThinGBufferPass.addPass(*ctx, passCtx.getInput("visibility"));
-                                if (color)
-                                    passCtx.setOutput("color", color);
-                                if (auto res = ctx->data.tryGet(kResKey_GBufferNormal))
-                                    passCtx.setOutput("normal", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GBufferMaterial))
-                                    passCtx.setOutput("material", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GBufferEmissive))
-                                    passCtx.setOutput("emissive", res);
-                                passCtx.setOutput("depth", passCtx.getInput("depth"));
-                                if (auto res = ctx->data.tryGet(kResKey_GBufferEntityId))
-                                    passCtx.setOutput("entityId", res);
-                                else
-                                    passCtx.setOutput("entityId", {});
-                            });
-
-            registerBuiltin("CoarseInstanceCull",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                m_CoarseInstanceCullPass.addPass(*ctx);
-                                if (auto res = ctx->data.tryGet(kResKey_VisibleInstanceBuffer))
-                                    passCtx.setOutput("visibleInstance", res);
-                                if (auto res = ctx->data.tryGet(kResKey_VisibleInstanceCountBuffer))
-                                    passCtx.setOutput("visibleInstanceCount", res);
-                                if (auto res = ctx->data.tryGet(kResKey_MeshletCullDispatchArgsBuffer))
-                                    passCtx.setOutput("meshletCullDispatchArgs", res);
-                            });
-
-            registerBuiltin("MeshletCull",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                m_MeshletCullPass.addPass(*ctx);
-                                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletBuffer))
-                                    passCtx.setOutput("visibleMeshlet", res);
-                                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletCountBuffer))
-                                    passCtx.setOutput("visibleMeshletCount", res);
-                            });
-
-            registerBuiltin("BuildIndirect",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                m_BuildIndirectPass.addPass(*ctx);
-                                if (auto res = ctx->data.tryGet(kResKey_DrawBuffer))
-                                    passCtx.setOutput("draw", res);
-                                if (auto res = ctx->data.tryGet(kResKey_InstanceBuffer))
-                                    passCtx.setOutput("instance", res);
-                                if (auto res = ctx->data.tryGet(kResKey_MeshTableBuffer))
-                                    passCtx.setOutput("meshTable", res);
-                                if (auto res = ctx->data.tryGet(kResKey_TransformBuffer))
-                                    passCtx.setOutput("transform", res);
-                                if (auto res = ctx->data.tryGet(kResKey_MeshletsBuffer))
-                                    passCtx.setOutput("meshlets", res);
-                                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletBuffer))
-                                    passCtx.setOutput("visibleMeshlet", res);
-                                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletCountBuffer))
-                                    passCtx.setOutput("visibleMeshletCount", res);
-                                if (auto res = ctx->data.tryGet(kResKey_MaterialTableBuffer))
-                                    passCtx.setOutput("materialTable", res);
-                            });
-
-            registerBuiltin("DrawsetBuild",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                m_DrawsetBuildPass.addPass(*ctx);
-                                if (auto res = ctx->data.tryGet(kResKey_DrawBuffer))
-                                    passCtx.setOutput("draw", res);
-                                if (auto res = ctx->data.tryGet(kResKey_MeshletsBuffer))
-                                    passCtx.setOutput("meshlets", res);
-                                if (auto res = ctx->data.tryGet(kResKey_IndirectBuffer))
-                                    passCtx.setOutput("indirect", res);
-                                if (auto res = ctx->data.tryGet(kResKey_DrawSetBuffer))
-                                    passCtx.setOutput("drawSet", res);
-                            });
-
-            registerBuiltin("MeshletHiZCull",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                m_MeshletHiZCullPass.addPass(*ctx);
-                                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletBuffer))
-                                    passCtx.setOutput("visibleMeshlet", res);
-                                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletCountBuffer))
-                                    passCtx.setOutput("visibleMeshletCount", res);
-                            });
-
-            registerBuiltin("GeneralGaussianSplatPreprocess",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                m_GaussianPreprocessPass.addPass(*ctx);
-                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatDrawBuffer))
-                                    passCtx.setOutput("draw", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatPackedSourceBuffer))
-                                    passCtx.setOutput("packedSource", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatSelectedSourceBuffer))
-                                    passCtx.setOutput("selectedSource", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatVisibleSplatBuffer))
-                                    passCtx.setOutput("visibleSplat", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatSortKeyBuffer))
-                                    passCtx.setOutput("sortKey", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatSortIndexBuffer))
-                                    passCtx.setOutput("sortIndex", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatVisibleCountBuffer))
-                                    passCtx.setOutput("visibleCount", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatIndirectBuffer))
-                                    passCtx.setOutput("indirect", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatSortStorageBuffer))
-                                    passCtx.setOutput("sortStorage", res);
-                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatShBuffer))
-                                    passCtx.setOutput("sh", res);
-                            });
-
-            registerBuiltin("GeneralGaussianSplatRender",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                auto color = m_GaussianRenderPass.addPass(*ctx);
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                            });
-
-            registerBuiltin("GeneralGaussianSplatComposite",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-
-                                const auto source       = passCtx.getInput("source");
-                                auto*      gpuSceneView = ctx->view().gpuSceneView;
-                                if (!gpuSceneView || !gpuSceneView->hasGeneralGaussianSplats())
-                                {
-                                    passCtx.setOutput("color", source);
-                                    return;
-                                }
-
-                                ctx->data.set(kResKey_FinalCompositionSource, source);
-                                m_GaussianPreprocessPass.addPass(*ctx);
-                                auto color = m_GaussianRenderPass.addPass(*ctx);
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                                else
-                                {
-                                    passCtx.setOutput("color", source);
-                                }
-                            });
-
-            registerBuiltin("GeneralGaussianSplatFoveatedComposite",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-                                auto color = m_GaussianFoveatedCompositePass.compose(*ctx,
-                                                                                     passCtx.getInput("fovea"),
-                                                                                     passCtx.getInput("mid"),
-                                                                                     passCtx.getInput("outer"),
-                                                                                     passCtx.getInput("base"));
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                            });
-
-            registerBuiltin("ParticleRender",
-                            [this](FrameGraph&,
-                                   FrameGraphBlackboard&,
-                                   const vrendergraph::ParamBlock&,
-                                   vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
-
-                                const auto source = passCtx.getInput("source");
-                                const auto depth  = passCtx.getInput("depth");
-
-                                auto* gpuSceneView = ctx->view().gpuSceneView;
-                                if (!gpuSceneView || gpuSceneView->particleEmitters.empty())
-                                {
-                                    passCtx.setOutput("color", source);
-                                    return;
-                                }
-
-                                // Simulate (compute) then draw (billboards). The simulate pass returns
-                                // the per-emitter pool handles so the render pass reads them with a
-                                // correct compute-write -> vertex-read barrier.
-                                auto particleBuffers = m_ParticleSimulatePass.addPass(*ctx);
-                                auto color = m_ParticleRenderPass.addPass(*ctx, source, depth, particleBuffers);
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                                else
-                                {
-                                    passCtx.setOutput("color", source);
-                                }
-                            });
+            // Builtin passes: each adapter owns its rhi pass object(s), declares its
+            // own ports/params (specs()) and contains its build body. Registered after
+            // the scripted-pass loop so a scripted/custom pass of the same type wins.
+            m_BuiltinPasses = makeBuiltinRenderGraphPasses();
+            for (auto& pass : m_BuiltinPasses)
+                pass->registerInto(m_Registry, m_Host);
         }
 
         void registerResources()
@@ -3442,39 +3777,11 @@ namespace vultra
         std::unordered_set<std::string>                                         m_UnsupportedRayTracingPasses;
         std::string                                                             m_LastValidationError;
         bool                                                                    m_PrefersExplicitPerEye {false};
-        CompatibilityBaseColorPass                                              m_CompatibilityBaseColorPass;
-        DirectGBufferPass                                                       m_DirectGBufferPass;
-        DepthPrePass                                                            m_DepthPrePass;
-        ShadowMapPass                                                           m_ShadowMapPass;
-        DeferredLightingPass                                                    m_DeferredLightingPass;
-        SkyboxPass                                                              m_SkyboxPass;
-        HzbGeneratePass                                                         m_HzbGeneratePass;
-        SsaoPass                                                                m_SsaoPass;
-        SsrPass                                                                 m_SsrPass;
-        SsrCompositePass                                                        m_SsrCompositePass;
-        GaussianBlurPass                                                        m_GaussianBlurPass;
-        BloomPass                                                               m_BloomPass;
-        FxaaPass                                                                m_FxaaPass;
-        ToneMappingPass                                                         m_ToneMappingPass;
-        SelectionOutlinePass                                                    m_SelectionOutlinePass;
-        DebugDrawPass                                                           m_DebugDrawPass;
-        UiOverlayPass                                                           m_UiOverlayPass;
-        FinalCompositionPass                                                    m_FinalCompositionPass;
-        RayTracingPrimaryPass                                                   m_RayTracingPrimaryPass;
-        VisibilityBufferPass                                                    m_VisibilityBufferPass;
-        ThinGBufferPass                                                         m_ThinGBufferPass;
-        CoarseInstanceCullPass                                                  m_CoarseInstanceCullPass;
-        MeshletCullPass                                                         m_MeshletCullPass;
-        BuildIndirectPass                                                       m_BuildIndirectPass;
-        DrawsetBuildPass                                                        m_DrawsetBuildPass;
-        MeshletHiZCullPass                                                      m_MeshletHiZCullPass;
-        GeneralGaussianSplatPreprocessPass                                      m_GaussianPreprocessPass;
-        GeneralGaussianSplatRenderPass                                          m_GaussianRenderPass;
-        GeneralGaussianSplatFoveatedCompositePass                               m_GaussianFoveatedCompositePass;
-        ParticleSimulatePass                                                    m_ParticleSimulatePass;
-        ParticleRenderPass                                                      m_ParticleRenderPass;
-        GeometryWarpPass                                                        m_GeometryWarpPass;
-        PullPushInpaintPass                                                     m_PullPushInpaintPass;
+
+        // Self-registering builtin passes. Each owns the rhi pass object(s) it drives;
+        // m_Host bridges their build() bodies to this renderer's live per-frame state.
+        BuiltinPassHost                                                  m_Host;
+        std::vector<std::unique_ptr<IBuiltinRenderGraphPass>>            m_BuiltinPasses;
     };
 
     struct DeclarativeRenderer::RuntimeFeature
