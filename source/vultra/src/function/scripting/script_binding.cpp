@@ -2,6 +2,7 @@
 
 #include "vultra/function/scripting/bindings/script_animation_binding.hpp"
 #include "vultra/function/scripting/bindings/script_asset_binding.hpp"
+#include "vultra/function/scripting/bindings/script_audio_binding.hpp"
 #include "vultra/function/scripting/bindings/script_entity_binding.hpp"
 #include "vultra/function/scripting/bindings/script_input_binding.hpp"
 #include "vultra/function/scripting/bindings/script_math_binding.hpp"
@@ -24,6 +25,7 @@ namespace vultra
         registerScriptWorldBindings(lua, ctx);
         registerScriptPhysicsBindings(lua, ctx);
         registerScriptAnimationBindings(lua, ctx);
+        registerScriptAudioBindings(lua, ctx);
         registerScriptInputBindings(lua, ctx);
         registerScriptTimingBindings(lua, ctx);
         registerScriptAssetBindings(lua, ctx);

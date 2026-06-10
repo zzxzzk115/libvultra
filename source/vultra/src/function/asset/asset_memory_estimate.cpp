@@ -89,4 +89,10 @@ namespace vultra
         return sizeof(animation) + vectorBytes(animation.ozzData) + stringBytes(animation.name) +
                stringBytes(animation.sourceFileName);
     }
+
+    uint64_t estimateVAudioBytes(const vasset::VAudio& audio)
+    {
+        return sizeof(audio) + vectorBytes(audio.audioData) + stringBytes(audio.name) +
+               stringBytes(audio.sourceFileName);
+    }
 } // namespace vultra

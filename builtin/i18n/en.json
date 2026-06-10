@@ -1,6 +1,6 @@
 {
 "inspector": {
-  "field": { "active": "Active", "allowSleeping": "Allow Sleeping", "ambientColor": "Ambient Color", "ambientIntensity": "Ambient Intensity", "anchorMax": "Anchor Max", "anchorMin": "Anchor Min", "anchoredPositionPx": "Anchored Position (px)", "angularDamping": "Angular Damping", "angularVelocity": "Angular Velocity", "animation": "Animation", "blendDistance": "Blend Distance", "borderRadiusPx": "Border Radius (px)", "boxSize": "Box Size", "builtinGeometry": "Builtin Geometry", "castsShadow": "Casts Shadow", "cellSizePx": "Cell Size (px)", "checkColor": "Check Color", "checked": "Checked", "clearColor": "Clear Color", "clearMode": "Clear Mode", "color": "Color", "colorValue": "Color Value", "cullingMask": "Culling Mask", "emissionRate": "Emission Rate", "enableIBL": "Enable IBL", "enabled": "Enabled", "endColor": "End Color", "endSize": "End Size", "environmentMap": "Environment Map", "fallbackMono": "Fallback Mono", "fillColor": "Fill Color", "fitMode": "Fit Mode", "floatValue": "Float Value", "fontSizePx": "Font Size (px)", "fovYDegrees": "FOV Y Degrees", "friction": "Friction", "gaussianSplat": "Gaussian Splat", "gpu": "GPU", "graph": "Graph", "gravity": "Gravity", "gravityFactor": "Gravity Factor", "grounded": "Grounded", "halfHeight": "Half Height", "halfHeightOfCylinder": "Half Height Of Cylinder", "handleColor": "Handle Color", "height": "Height", "horizontalAlign": "Horizontal Align", "hoveredColor": "Hovered Color", "iblColor": "IBL Color", "iblIntensity": "IBL Intensity", "innerConeDegrees": "Inner Cone Degrees", "inputMove": "Input Move", "intensity": "Intensity", "interactable": "Interactable", "isSensor": "Is Sensor", "jumpRequested": "Jump Requested", "jumpSpeed": "Jump Speed", "kind": "Kind", "lifetime": "Lifetime", "lifetimeVariance": "Lifetime Variance", "linearDamping": "Linear Damping", "linearVelocity": "Linear Velocity", "locked": "Locked", "loop": "Loop", "marginPx": "Margin (px)", "mask": "Mask", "mass": "Mass", "material": "Material", "materialGraph": "Material Graph", "materialOverrides": "Material Overrides", "maxAngularVelocity": "Max Angular Velocity", "maxLinearVelocity": "Max Linear Velocity", "maxParticles": "Max Particles", "maxSlopeAngleDegrees": "Max Slope Angle Degrees", "maxValue": "Max Value", "mesh": "Mesh", "minValue": "Min Value", "mode": "Mode", "motionQuality": "Motion Quality", "motionType": "Motion Type", "name": "Name", "normalColor": "Normal Color", "objectLayer": "Object Layer", "offColor": "Off Color", "onColor": "On Color", "orthographicHeight": "Orthographic Height", "outerConeDegrees": "Outer Cone Degrees", "overrideMass": "Override Mass", "paddingPx": "Padding (px)", "parallaxCorrection": "Parallax Correction", "pivot": "Pivot", "pixelsPerUnit": "Pixels Per Unit", "playOnStart": "Play On Start", "playing": "Playing", "position": "Position", "pressedColor": "Pressed Color", "primary": "Primary", "priority": "Priority", "projection": "Projection", "properties": "Properties", "radius": "Radius", "range": "Range", "referenceResolutionPx": "Reference Resolution (px)", "renderMode": "Render Mode", "rendererKey": "Renderer Key", "restitution": "Restitution", "rotation": "Rotation", "rotationDegrees": "Rotation Degrees", "scale": "Scale", "scaleMode": "Scale Mode", "scriptUri": "Script URI", "selectable": "Selectable", "shape": "Shape", "sizeDeltaPx": "Size Delta (px)", "skeleton": "Skeleton", "skybox": "Skybox", "slot": "Slot", "sortOrder": "Sort Order", "spacingPx": "Spacing (px)", "spawnRadius": "Spawn Radius", "speed": "Speed", "startColor": "Start Color", "startSize": "Start Size", "startVelocity": "Start Velocity", "stepHeight": "Step Height", "stereoGraphMode": "Stereo Graph Mode", "targetGraphic": "Target Graphic", "text": "Text", "texture": "Texture", "textureUri": "Texture URI", "time": "Time", "tint": "Tint", "trackColor": "Track Color", "trackingOrigin": "Tracking Origin", "twoSided": "Two Sided", "type": "Type", "uuid": "UUID", "value": "Value", "velocity": "Velocity", "velocityVariance": "Velocity Variance", "verticalAlign": "Vertical Align", "visible": "Visible", "width": "Width", "worldSpace": "World Space", "zFar": "Z Far", "zNear": "Z Near" },
+  "field": { "active": "Active", "allowSleeping": "Allow Sleeping", "ambientColor": "Ambient Color", "ambientIntensity": "Ambient Intensity", "anchorMax": "Anchor Max", "anchorMin": "Anchor Min", "anchoredPositionPx": "Anchored Position (px)", "angularDamping": "Angular Damping", "angularVelocity": "Angular Velocity", "animation": "Animation", "blendDistance": "Blend Distance", "borderRadiusPx": "Border Radius (px)", "boxSize": "Box Size", "builtinGeometry": "Builtin Geometry", "castsShadow": "Casts Shadow", "cellSizePx": "Cell Size (px)", "checkColor": "Check Color", "checked": "Checked", "clearColor": "Clear Color", "clearMode": "Clear Mode", "clip": "Clip", "color": "Color", "colorValue": "Color Value", "cullingMask": "Culling Mask", "emissionRate": "Emission Rate", "enableIBL": "Enable IBL", "enabled": "Enabled", "endColor": "End Color", "endSize": "End Size", "environmentMap": "Environment Map", "fallbackMono": "Fallback Mono", "fillColor": "Fill Color", "fitMode": "Fit Mode", "floatValue": "Float Value", "fontSizePx": "Font Size (px)", "fovYDegrees": "FOV Y Degrees", "friction": "Friction", "gaussianSplat": "Gaussian Splat", "gpu": "GPU", "graph": "Graph", "gravity": "Gravity", "gravityFactor": "Gravity Factor", "grounded": "Grounded", "halfHeight": "Half Height", "halfHeightOfCylinder": "Half Height Of Cylinder", "handleColor": "Handle Color", "height": "Height", "horizontalAlign": "Horizontal Align", "hoveredColor": "Hovered Color", "iblColor": "IBL Color", "iblIntensity": "IBL Intensity", "innerConeDegrees": "Inner Cone Degrees", "inputMove": "Input Move", "intensity": "Intensity", "interactable": "Interactable", "isSensor": "Is Sensor", "jumpRequested": "Jump Requested", "jumpSpeed": "Jump Speed", "kind": "Kind", "lifetime": "Lifetime", "lifetimeVariance": "Lifetime Variance", "linearDamping": "Linear Damping", "linearVelocity": "Linear Velocity", "locked": "Locked", "loop": "Loop", "marginPx": "Margin (px)", "mask": "Mask", "mass": "Mass", "material": "Material", "materialGraph": "Material Graph", "materialOverrides": "Material Overrides", "maxAngularVelocity": "Max Angular Velocity", "maxDistance": "Max Distance", "maxLinearVelocity": "Max Linear Velocity", "maxParticles": "Max Particles", "maxSlopeAngleDegrees": "Max Slope Angle Degrees", "maxValue": "Max Value", "mesh": "Mesh", "minDistance": "Min Distance", "minValue": "Min Value", "mode": "Mode", "motionQuality": "Motion Quality", "motionType": "Motion Type", "name": "Name", "normalColor": "Normal Color", "objectLayer": "Object Layer", "offColor": "Off Color", "onColor": "On Color", "orthographicHeight": "Orthographic Height", "outerConeDegrees": "Outer Cone Degrees", "overrideMass": "Override Mass", "paddingPx": "Padding (px)", "parallaxCorrection": "Parallax Correction", "pitch": "Pitch", "pivot": "Pivot", "pixelsPerUnit": "Pixels Per Unit", "playOnStart": "Play On Start", "playing": "Playing", "position": "Position", "pressedColor": "Pressed Color", "primary": "Primary", "priority": "Priority", "projection": "Projection", "properties": "Properties", "radius": "Radius", "range": "Range", "referenceResolutionPx": "Reference Resolution (px)", "renderMode": "Render Mode", "rendererKey": "Renderer Key", "restitution": "Restitution", "rolloff": "Rolloff", "rotation": "Rotation", "rotationDegrees": "Rotation Degrees", "scale": "Scale", "scaleMode": "Scale Mode", "scriptUri": "Script URI", "selectable": "Selectable", "shape": "Shape", "sizeDeltaPx": "Size Delta (px)", "skeleton": "Skeleton", "skybox": "Skybox", "slot": "Slot", "sortOrder": "Sort Order", "spacingPx": "Spacing (px)", "spatial": "Spatial (3D)", "spawnRadius": "Spawn Radius", "speed": "Speed", "startColor": "Start Color", "startSize": "Start Size", "startVelocity": "Start Velocity", "stepHeight": "Step Height", "stereoGraphMode": "Stereo Graph Mode", "targetGraphic": "Target Graphic", "text": "Text", "texture": "Texture", "textureUri": "Texture URI", "time": "Time", "tint": "Tint", "trackColor": "Track Color", "trackingOrigin": "Tracking Origin", "twoSided": "Two Sided", "type": "Type", "uuid": "UUID", "value": "Value", "velocity": "Velocity", "velocityVariance": "Velocity Variance", "verticalAlign": "Vertical Align", "visible": "Visible", "volume": "Volume", "width": "Width", "worldSpace": "World Space", "zFar": "Z Far", "zNear": "Z Near" },
   "preview": "Preview",
   "unsaved": "Unsaved",
   "reload": "Reload",
@@ -52,7 +52,9 @@
     "capsuleShape": "Capsule Shape",
     "script": "Script",
     "prefab": "Prefab",
-    "material": "Material"
+    "material": "Material",
+    "audioSource": "Audio Source",
+    "audioListener": "Audio Listener"
   },
   "category": {
     "core": "Core",
@@ -62,7 +64,8 @@
     "lighting": "Lighting",
     "physics": "Physics",
     "camera": "Camera",
-    "scripting": "Scripting"
+    "scripting": "Scripting",
+    "audio": "Audio"
   },
   "project": {
     "title": "Project",
@@ -170,6 +173,7 @@
     "animation": "Animation",
     "gaussianSplat": "Gaussian Splat",
     "texture": "Texture",
+    "audio": "Audio",
     "asset": "Asset"
   },
   "assetField": {
@@ -378,6 +382,23 @@
     "revert": "Revert",
     "saveFailed": "Mesh import settings save failed.",
     "applied": "Applied mesh import settings and queued reimport: {}"
+  },
+  "audioImport": {
+    "title": "Audio Import",
+    "subtype": "Subtype (source format)",
+    "storage": "Storage",
+    "storagePcm16": "PCM 16-bit",
+    "storagePcmF32": "PCM 32-bit float",
+    "storagePassthrough": "Passthrough (keep encoded)",
+    "targetSampleRate": "Target Sample Rate (0 = keep)",
+    "forceMono": "Force Mono",
+    "normalize": "Normalize",
+    "bitrateKbps": "Bitrate (kbps)",
+    "quality": "Quality",
+    "encoderNote": "Bitrate/quality require a future lossy encoder; stored but inactive.",
+    "revert": "Revert",
+    "saveFailed": "Audio import settings save failed.",
+    "applied": "Applied audio import settings and queued reimport: {}"
   },
   "modelPreview": {
     "servicesUnavailable": "Preview services are unavailable.",

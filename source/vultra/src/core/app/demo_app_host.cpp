@@ -10,6 +10,7 @@
 #include "vultra/core/timing/timing_system.hpp"
 #include "vultra/function/asset/asset_system.hpp"
 #include "vultra/function/animation/animation_system.hpp"
+#include "vultra/function/audio/audio_system.hpp"
 #include "vultra/function/camera/camera_system.hpp"
 #include "vultra/function/debugging/frame_debugger_system.hpp"
 #include "vultra/function/imgui/imgui_system.hpp"
@@ -477,6 +478,8 @@ namespace vultra
             engine.emplaceSubsystem<GpuResourceSystem>();
             engine.emplaceSubsystem<AssetSystem>();
             engine.emplaceSubsystem<SceneSystem>();
+            // Before ScriptSystem: it captures IAudioService into the Lua ScriptContext in onInit.
+            engine.emplaceSubsystem<AudioSystem>();
             engine.emplaceSubsystem<ScriptSystem>();
             engine.emplaceSubsystem<AnimationSystem>();
             // After ScriptSystem so plugins can use the shared Lua state and the asset/scene services.

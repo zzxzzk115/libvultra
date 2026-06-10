@@ -21,6 +21,7 @@
       "checked": "체크됨",
       "clearColor": "클리어 색상",
       "clearMode": "클리어 모드",
+      "clip": "클립",
       "color": "색상",
       "colorValue": "색상 값",
       "cullingMask": "컬링 마스크",
@@ -72,11 +73,13 @@
       "materialGraph": "머티리얼 그래프",
       "materialOverrides": "머티리얼 오버라이드",
       "maxAngularVelocity": "최대 각속도",
+      "maxDistance": "최대 거리",
       "maxLinearVelocity": "최대 선형 속도",
       "maxParticles": "최대 파티클 수",
       "maxSlopeAngleDegrees": "최대 경사 각도",
       "maxValue": "최대값",
       "mesh": "메시",
+      "minDistance": "최소 거리",
       "minValue": "최소값",
       "mode": "모드",
       "motionQuality": "모션 품질",
@@ -91,6 +94,7 @@
       "overrideMass": "질량 오버라이드",
       "paddingPx": "패딩 (px)",
       "parallaxCorrection": "시차 보정",
+      "pitch": "피치",
       "pivot": "피벗",
       "pixelsPerUnit": "단위당 픽셀",
       "playOnStart": "시작 시 재생",
@@ -107,6 +111,7 @@
       "renderMode": "렌더 모드",
       "rendererKey": "렌더러 키",
       "restitution": "반발 계수",
+      "rolloff": "롤오프",
       "rotation": "회전",
       "rotationDegrees": "회전 각도 (도)",
       "scale": "스케일",
@@ -120,6 +125,7 @@
       "slot": "슬롯",
       "sortOrder": "정렬 순서",
       "spacingPx": "간격 (px)",
+      "spatial": "공간화 (3D)",
       "spawnRadius": "스폰 반지름",
       "speed": "속도",
       "startColor": "시작 색상",
@@ -143,6 +149,7 @@
       "velocityVariance": "속도 분산",
       "verticalAlign": "세로 정렬",
       "visible": "표시",
+      "volume": "볼륨",
       "width": "너비",
       "worldSpace": "월드 공간",
       "zFar": "Z 원거리",
@@ -199,7 +206,9 @@
       "capsuleShape": "캡슐 셰이프",
       "script": "스크립트",
       "prefab": "프리팹",
-      "material": "머티리얼"
+      "material": "머티리얼",
+      "audioSource": "오디오 소스",
+      "audioListener": "오디오 리스너"
     },
     "category": {
       "core": "코어",
@@ -209,7 +218,8 @@
       "lighting": "라이팅",
       "physics": "물리",
       "camera": "카메라",
-      "scripting": "스크립팅"
+      "scripting": "스크립팅",
+      "audio": "오디오"
     },
     "project": {
       "title": "프로젝트",
@@ -322,6 +332,7 @@
       "animation": "애니메이션",
       "gaussianSplat": "가우시안 스플랫",
       "texture": "텍스처",
+      "audio": "오디오",
       "asset": "에셋"
     },
     "assetField": {
@@ -530,6 +541,23 @@
       "revert": "되돌리기",
       "saveFailed": "메시 가져오기 설정 저장에 실패했습니다.",
       "applied": "메시 가져오기 설정을 적용하고 다시 가져오기를 대기열에 추가했습니다: {}"
+    },
+    "audioImport": {
+      "title": "오디오 임포트",
+      "subtype": "서브타입(소스 형식)",
+      "storage": "저장 방식",
+      "storagePcm16": "PCM 16비트",
+      "storagePcmF32": "PCM 32비트 부동소수점",
+      "storagePassthrough": "패스스루(인코딩 유지)",
+      "targetSampleRate": "대상 샘플 레이트(0 = 유지)",
+      "forceMono": "모노 강제",
+      "normalize": "정규화",
+      "bitrateKbps": "비트레이트 (kbps)",
+      "quality": "품질",
+      "encoderNote": "비트레이트/품질은 향후 손실 인코더가 필요합니다. 저장되지만 현재는 비활성입니다.",
+      "revert": "되돌리기",
+      "saveFailed": "오디오 임포트 설정 저장에 실패했습니다.",
+      "applied": "오디오 임포트 설정을 적용하고 재임포트를 대기열에 추가했습니다: {}"
     },
     "modelPreview": {
       "servicesUnavailable": "미리보기 서비스를 사용할 수 없습니다.",

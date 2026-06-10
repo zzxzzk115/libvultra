@@ -8,6 +8,7 @@
 #include "vultra/function/scripting/script_types.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/animation_service.hpp"
+#include "vultra/function/services/audio_service.hpp"
 #include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/services/frame_debugger_service.hpp"
 #include "vultra/function/services/physics_service.hpp"
@@ -48,6 +49,7 @@ namespace vultra
         m_ScriptContext.frameDebuggerService = ctx().services.tryGet<IFrameDebuggerService>();
         m_ScriptContext.physicsService       = ctx().services.tryGet<IPhysicsService>();
         m_ScriptContext.animationService     = ctx().services.tryGet<IAnimationService>();
+        m_ScriptContext.audioService         = ctx().services.tryGet<IAudioService>();
         m_ScriptContext.uiService            = ctx().services.tryGet<IUiService>();
 
         VULTRA_CORE_TRACE("[ScriptSystem] Registering script bindings...");

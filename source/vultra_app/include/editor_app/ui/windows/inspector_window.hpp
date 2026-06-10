@@ -14,6 +14,7 @@
 #include <vultra/function/world/world.hpp>
 
 #include <vasset/vasset_registry.hpp>
+#include <vasset/audio_import_params.hpp>
 #include <vasset/texture_import_params.hpp>
 
 #include <array>
@@ -57,6 +58,7 @@ namespace vultra_app
         void drawSourceTextureImportInspector(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceTexturePreview(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceMeshImportInspector(EditorContext& ctx, const std::filesystem::path& path);
+        void drawSourceAudioImportInspector(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceModelPreview(EditorContext& ctx, const std::filesystem::path& path);
         void drawMeshAssetPreview(EditorContext& ctx,
                                   const vultra::CoreUUID& uuid,
@@ -102,6 +104,17 @@ namespace vultra_app
         };
 
         MeshImportEditState m_MeshImportEdit;
+
+        struct AudioImportEditState
+        {
+            std::filesystem::path                        path;
+            std::unordered_map<std::string, std::string> originalParams;
+            vasset::AudioImportParams                    saved;
+            vasset::AudioImportParams                    edit;
+            bool                                         valid {false};
+        };
+
+        AudioImportEditState m_AudioImportEdit;
 
         using RenderTargetSlot = ui::RenderTargetSlot;
 

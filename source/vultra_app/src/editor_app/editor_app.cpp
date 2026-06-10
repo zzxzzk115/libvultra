@@ -33,6 +33,7 @@
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/services/animation_service.hpp>
 #include <vultra/function/services/asset_service.hpp>
+#include <vultra/function/services/audio_service.hpp>
 #include <vultra/function/services/job_service.hpp>
 #include <vultra/function/services/physics_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
@@ -677,6 +678,7 @@ namespace vultra_app
         auto* scriptService  = ctx.services->tryGet<vultra::IScriptService>();
         auto* physicsService = ctx.services->tryGet<vultra::IPhysicsService>();
         auto* animationService = ctx.services->tryGet<vultra::IAnimationService>();
+        auto* audioService     = ctx.services->tryGet<vultra::IAudioService>();
         const bool stepRequested = ctx.state.editorStepRequested;
 
         if (ctx.state.editorPlaying && !m_PlaybackWasPlaying)
@@ -694,6 +696,8 @@ namespace vultra_app
                 scriptService->setPlaybackState(false, false);
             if (physicsService)
                 physicsService->setPlaybackState(false, false);
+            if (audioService)
+                audioService->setPlaybackState(false, false);
             restorePlayModeSnapshot(ctx);
         }
 
@@ -719,6 +723,10 @@ namespace vultra_app
                 scriptService->requestSingleStep();
             }
         }
+
+        if (audioService)
+            audioService->setPlaybackState(ctx.state.editorPlaying, ctx.state.editorPaused);
+
         if (stepRequested)
             ctx.state.editorStepRequested = false;
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vasset/vanimation.hpp>     // vasset::VSkeleton, vasset::VAnimation
+#include <vasset/vaudio.hpp>         // vasset::VAudio
 #include <vasset/vgaussiansplat.hpp> // vasset::VGaussianSplat
 #include <vasset/vmesh.hpp>          // vasset::VMesh
 #include <vasset/vtexture.hpp>       // vasset::VTexture
@@ -17,4 +18,5 @@ namespace vultra
     [[nodiscard]] uint64_t estimateVGaussianSplatBytes(const vasset::VGaussianSplat& splat);
     [[nodiscard]] uint64_t estimateVSkeletonBytes(const vasset::VSkeleton& skeleton);
     [[nodiscard]] uint64_t estimateVAnimationBytes(const vasset::VAnimation& animation);
+    [[nodiscard]] uint64_t estimateVAudioBytes(const vasset::VAudio& audio);
 } // namespace vultra

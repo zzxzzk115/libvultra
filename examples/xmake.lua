@@ -42,6 +42,7 @@ if is_plat("wasm") then
     includes("demo_app")
     includes("imgui")
     includes("gaussian_splatting")
+    includes("audio")
 else
     includes("window")
     includes("rhi/triangle")
@@ -59,6 +60,7 @@ else
     -- includes("debug_draw")
     includes("gaussian_splatting")
     includes("demo_app")
+    includes("audio")
     includes("plugins/native_math")
     if is_plat("android") then
         includes("android_app")

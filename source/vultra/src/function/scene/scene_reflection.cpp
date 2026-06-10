@@ -2,6 +2,8 @@
 
 #include "vultra/core/base/uuid.hpp"
 #include "vultra/function/world/components/animator_component.hpp"
+#include "vultra/function/world/components/audio_listener_component.hpp"
+#include "vultra/function/world/components/audio_source_component.hpp"
 #include "vultra/function/world/components/box_shape_component.hpp"
 #include "vultra/function/world/components/camera_component.hpp"
 #include "vultra/function/world/components/capsule_shape_component.hpp"
@@ -143,6 +145,23 @@ namespace vultra
             .data<&AnimatorComponent::speed>("speed"_hs)
             .data<&AnimatorComponent::time>("time"_hs)
             .data<&AnimatorComponent::graph>("graph"_hs);
+
+        entt::meta_factory<AudioSourceComponent>()
+            .type("AudioSourceComponent"_hs)
+            .data<&AudioSourceComponent::clip>("clip"_hs)
+            .data<&AudioSourceComponent::volume>("volume"_hs)
+            .data<&AudioSourceComponent::pitch>("pitch"_hs)
+            .data<&AudioSourceComponent::loop>("loop"_hs)
+            .data<&AudioSourceComponent::playOnStart>("playOnStart"_hs)
+            .data<&AudioSourceComponent::playing>("playing"_hs)
+            .data<&AudioSourceComponent::spatial>("spatial"_hs)
+            .data<&AudioSourceComponent::minDistance>("minDistance"_hs)
+            .data<&AudioSourceComponent::maxDistance>("maxDistance"_hs)
+            .data<&AudioSourceComponent::rolloff>("rolloff"_hs);
+
+        entt::meta_factory<AudioListenerComponent>()
+            .type("AudioListenerComponent"_hs)
+            .data<&AudioListenerComponent::primary>("primary"_hs);
 
         entt::meta_factory<GaussianSplatComponent>()
             .type("GaussianSplatComponent"_hs)

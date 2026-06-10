@@ -21,6 +21,7 @@
       "checked": "チェック済み",
       "clearColor": "クリアカラー",
       "clearMode": "クリアモード",
+      "clip": "クリップ",
       "color": "色",
       "colorValue": "色の値",
       "cullingMask": "カリングマスク",
@@ -72,11 +73,13 @@
       "materialGraph": "マテリアルグラフ",
       "materialOverrides": "マテリアルオーバーライド",
       "maxAngularVelocity": "最大角速度",
+      "maxDistance": "最大距離",
       "maxLinearVelocity": "最大直線速度",
       "maxParticles": "最大パーティクル数",
       "maxSlopeAngleDegrees": "最大傾斜角度",
       "maxValue": "最大値",
       "mesh": "メッシュ",
+      "minDistance": "最小距離",
       "minValue": "最小値",
       "mode": "モード",
       "motionQuality": "モーション品質",
@@ -91,6 +94,7 @@
       "overrideMass": "質量を上書き",
       "paddingPx": "パディング (px)",
       "parallaxCorrection": "視差補正",
+      "pitch": "ピッチ",
       "pivot": "ピボット",
       "pixelsPerUnit": "ユニットあたりのピクセル",
       "playOnStart": "開始時に再生",
@@ -107,6 +111,7 @@
       "renderMode": "レンダーモード",
       "rendererKey": "レンダラーキー",
       "restitution": "反発係数",
+      "rolloff": "ロールオフ",
       "rotation": "回転",
       "rotationDegrees": "回転角度 (度)",
       "scale": "スケール",
@@ -120,6 +125,7 @@
       "slot": "スロット",
       "sortOrder": "ソート順",
       "spacingPx": "間隔 (px)",
+      "spatial": "空間化 (3D)",
       "spawnRadius": "スポーン半径",
       "speed": "速度",
       "startColor": "開始色",
@@ -143,6 +149,7 @@
       "velocityVariance": "速度のばらつき",
       "verticalAlign": "垂直方向の整列",
       "visible": "表示",
+      "volume": "音量",
       "width": "幅",
       "worldSpace": "ワールド空間",
       "zFar": "Z 遠",
@@ -199,7 +206,9 @@
       "capsuleShape": "カプセルシェイプ",
       "script": "スクリプト",
       "prefab": "プレハブ",
-      "material": "マテリアル"
+      "material": "マテリアル",
+      "audioSource": "オーディオソース",
+      "audioListener": "オーディオリスナー"
     },
     "category": {
       "core": "コア",
@@ -209,7 +218,8 @@
       "lighting": "ライティング",
       "physics": "物理",
       "camera": "カメラ",
-      "scripting": "スクリプティング"
+      "scripting": "スクリプティング",
+      "audio": "オーディオ"
     },
     "project": {
       "title": "プロジェクト",
@@ -322,6 +332,7 @@
       "animation": "アニメーション",
       "gaussianSplat": "ガウシアンスプラット",
       "texture": "テクスチャ",
+      "audio": "オーディオ",
       "asset": "アセット"
     },
     "assetField": {
@@ -530,6 +541,23 @@
       "revert": "元に戻す",
       "saveFailed": "メッシュインポート設定の保存に失敗しました。",
       "applied": "メッシュインポート設定を適用し、再インポートをキューに追加しました: {}"
+    },
+    "audioImport": {
+      "title": "オーディオインポート",
+      "subtype": "サブタイプ（ソース形式）",
+      "storage": "ストレージ",
+      "storagePcm16": "PCM 16ビット",
+      "storagePcmF32": "PCM 32ビット浮動小数点",
+      "storagePassthrough": "パススルー（エンコード保持）",
+      "targetSampleRate": "ターゲットサンプルレート（0 = 維持）",
+      "forceMono": "モノラル化",
+      "normalize": "ノーマライズ",
+      "bitrateKbps": "ビットレート (kbps)",
+      "quality": "品質",
+      "encoderNote": "ビットレート/品質は将来のロッシーエンコーダーが必要です。保存されますが現在は無効です。",
+      "revert": "元に戻す",
+      "saveFailed": "オーディオインポート設定の保存に失敗しました。",
+      "applied": "オーディオインポート設定を適用し、再インポートをキューに追加しました：{}"
     },
     "modelPreview": {
       "servicesUnavailable": "プレビューサービスを利用できません。",

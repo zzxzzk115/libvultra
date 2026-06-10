@@ -26,6 +26,8 @@
 #include <vultra/function/services/shader_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/animator_component.hpp>
+#include <vultra/function/world/components/audio_listener_component.hpp>
+#include <vultra/function/world/components/audio_source_component.hpp>
 #include <vultra/function/world/components/box_shape_component.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/components/capsule_shape_component.hpp>
@@ -123,6 +125,11 @@ namespace vultra_app
         bool isModelSourceAsset(const std::filesystem::path& path)
         {
             return sourceAssetHasExtension(path, {".gltf", ".glb", ".obj", ".fbx", ".dae"});
+        }
+
+        bool isAudioSourceAsset(const std::filesystem::path& path)
+        {
+            return sourceAssetHasExtension(path, {".wav", ".mp3", ".flac", ".ogg"});
         }
 
         std::string sourcePrefixBeforeSubAsset(const std::string& sourcePath)
@@ -880,6 +887,10 @@ namespace vultra_app
                 return vultra::tr("inspector.component.capsuleShape");
             if (std::strcmp(metaName, "ScriptComponent") == 0)
                 return vultra::tr("inspector.component.script");
+            if (std::strcmp(metaName, "AudioSourceComponent") == 0)
+                return vultra::tr("inspector.component.audioSource");
+            if (std::strcmp(metaName, "AudioListenerComponent") == 0)
+                return vultra::tr("inspector.component.audioListener");
             return metaName;
         }
 
@@ -2085,6 +2096,26 @@ namespace vultra_app
             if (is("endColor"))
                 return "endColor";
 
+            // AudioSourceComponent (playing/loop/playOnStart shared above) / AudioListenerComponent
+            if (is("clip"))
+                return "clip";
+            if (is("volume"))
+                return "volume";
+            if (is("pitch"))
+                return "pitch";
+            if (is("loop"))
+                return "loop";
+            if (is("playOnStart"))
+                return "playOnStart";
+            if (is("spatial"))
+                return "spatial";
+            if (is("minDistance"))
+                return "minDistance";
+            if (is("maxDistance"))
+                return "maxDistance";
+            if (is("rolloff"))
+                return "rolloff";
+
             return nullptr;
         }
 
@@ -2104,6 +2135,8 @@ namespace vultra_app
                 return vasset::VAssetType::eTexture;
             if (std::strcmp(fieldName, "texture") == 0)
                 return vasset::VAssetType::eTexture;
+            if (std::strcmp(fieldName, "clip") == 0)
+                return vasset::VAssetType::eAudio;
             return vasset::VAssetType::eUnknown;
         }
 
@@ -2120,6 +2153,8 @@ namespace vultra_app
                 return vultra::tr("inspector.assetType.gaussianSplat");
             if (type == vasset::VAssetType::eTexture)
                 return vultra::tr("inspector.assetType.texture");
+            if (type == vasset::VAssetType::eAudio)
+                return vultra::tr("inspector.assetType.audio");
             return vultra::tr("inspector.assetType.asset");
         }
 
@@ -4481,6 +4516,8 @@ namespace vultra_app
                 addComponentDescriptor<vultra::CameraComponent>("Camera", "Camera", "Camera"),
                 addComponentDescriptor<vultra::XRViewComponent>("XRView", "XR View", "Camera"),
                 addComponentDescriptor<vultra::ScriptComponent>("Script", "Script", "Scripting"),
+                addComponentDescriptor<vultra::AudioSourceComponent>("AudioSource", "Audio Source", "Audio"),
+                addComponentDescriptor<vultra::AudioListenerComponent>("AudioListener", "Audio Listener", "Audio"),
             };
             return descriptors;
         }
@@ -4514,6 +4551,8 @@ namespace vultra_app
                 "Camera",
                 "XRView",
                 "Script",
+                "AudioSource",
+                "AudioListener",
                 "Prefab",
             };
             return order;
@@ -4574,6 +4613,10 @@ namespace vultra_app
                 return reg.all_of<vultra::XRViewComponent>(entity);
             if (key == "Script")
                 return reg.all_of<vultra::ScriptComponent>(entity);
+            if (key == "AudioSource")
+                return reg.all_of<vultra::AudioSourceComponent>(entity);
+            if (key == "AudioListener")
+                return reg.all_of<vultra::AudioListenerComponent>(entity);
             if (key == "Prefab")
                 return reg.all_of<vultra::PrefabInstanceComponent>(entity);
             return false;
@@ -4650,6 +4693,10 @@ namespace vultra_app
                 return "inspector.component.xrView";
             if (key == "Script")
                 return "inspector.component.script";
+            if (key == "AudioSource")
+                return "inspector.component.audioSource";
+            if (key == "AudioListener")
+                return "inspector.component.audioListener";
             if (key == "Prefab")
                 return "inspector.component.prefab";
             return nullptr;
@@ -4682,6 +4729,8 @@ namespace vultra_app
                 return vultra::trId("inspector.category.camera", "Camera");
             if (std::strcmp(category, "Scripting") == 0)
                 return vultra::trId("inspector.category.scripting", "Scripting");
+            if (std::strcmp(category, "Audio") == 0)
+                return vultra::trId("inspector.category.audio", "Audio");
             return category;
         }
 
@@ -4743,6 +4792,10 @@ namespace vultra_app
                 reg.remove<vultra::XRViewComponent>(entity);
             else if (key == "Script")
                 reg.remove<vultra::ScriptComponent>(entity);
+            else if (key == "AudioSource")
+                reg.remove<vultra::AudioSourceComponent>(entity);
+            else if (key == "AudioListener")
+                reg.remove<vultra::AudioListenerComponent>(entity);
         }
 
         std::string componentRemovalBlockReason(entt::registry& reg, entt::entity entity, const std::string& key)
@@ -5398,6 +5451,26 @@ namespace vultra_app
                             ctx.history->setNextLabel("Edit Script");
                     }
             }
+            else if (key == "AudioSource")
+            {
+                if (auto* audioSource = reg.try_get<vultra::AudioSourceComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *audioSource))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Audio Source");
+                    }
+            }
+            else if (key == "AudioListener")
+            {
+                if (auto* audioListener = reg.try_get<vultra::AudioListenerComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *audioListener))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Audio Listener");
+                    }
+            }
             else if (key == "Prefab")
             {
                 if (auto* prefab = reg.try_get<vultra::PrefabInstanceComponent>(e))
@@ -5435,6 +5508,7 @@ namespace vultra_app
                 "Physics",
                 "Camera",
                 "Scripting",
+                "Audio",
             };
             for (const char* category : categories)
             {
@@ -5708,6 +5782,11 @@ namespace vultra_app
             drawSourceMeshImportInspector(ctx, path);
             ImGui::Spacing();
             drawSourceModelPreview(ctx, path);
+        }
+        else if (!isDir && isAudioSourceAsset(path))
+        {
+            ImGui::Spacing();
+            drawSourceAudioImportInspector(ctx, path);
         }
         else if (sourceAssetHasExtension(path, {".vscn"}))
         {
@@ -6633,6 +6712,143 @@ namespace vultra_app
                 m_MeshImportEdit.originalParams = loaded.value().params;
             m_MeshImportEdit.saved = vasset::resolveMeshImportParams(m_MeshImportEdit.originalParams);
             m_MeshImportEdit.edit  = m_MeshImportEdit.saved;
+        }
+        ImGui::EndDisabled();
+        if (dirty)
+        {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", vultra::tr("inspector.unsaved"));
+        }
+    }
+
+    void InspectorWindow::drawSourceAudioImportInspector(EditorContext& ctx, const std::filesystem::path& path)
+    {
+        const auto normalizedPath = path.lexically_normal();
+        const auto sourceExt      = normalizedPath.extension().generic_string();
+        if (m_AudioImportEdit.path != normalizedPath || !m_AudioImportEdit.valid)
+        {
+            m_AudioImportEdit      = {};
+            m_AudioImportEdit.path = normalizedPath;
+            auto sidecar           = textureImportSidecarPath(normalizedPath); // generic: <source>.vimport
+            if (auto loaded = vasset::loadVImport(sidecar.generic_string()))
+                m_AudioImportEdit.originalParams = loaded.value().params;
+            m_AudioImportEdit.saved = vasset::resolveAudioImportParams(m_AudioImportEdit.originalParams, sourceExt);
+            m_AudioImportEdit.edit  = m_AudioImportEdit.saved;
+            m_AudioImportEdit.valid = true;
+        }
+
+        ui::sectionTitle(ICON_MDI_VOLUME_HIGH, vultra::tr("inspector.audioImport.title"));
+
+        auto& edit = m_AudioImportEdit.edit;
+
+        // Subtype is keyed by the source format and therefore fixed per file.
+        ui::beginPropertyRow(vultra::tr("inspector.audioImport.subtype"));
+        ImGui::TextUnformatted(edit.subtype.c_str());
+        ui::endPropertyRow();
+
+        const bool  isOgg = sourceExt == ".ogg";
+        const char* storageLabels[] = {
+            vultra::tr("inspector.audioImport.storagePcm16"),
+            vultra::tr("inspector.audioImport.storagePcmF32"),
+            vultra::tr("inspector.audioImport.storagePassthrough"),
+        };
+        int storageIndex = vasset::isPassthrough(edit.options.storage) ? 2 :
+                           edit.options.storage == vasset::VAudioStorage::ePCMF32 ? 1 : 0;
+        ui::beginPropertyRow(vultra::tr("inspector.audioImport.storage"));
+        if (ImGui::BeginCombo("##Storage", storageLabels[storageIndex]))
+        {
+            // Ogg cannot passthrough: the runtime has no vorbis decoder.
+            const int storageCount = isOgg ? 2 : 3;
+            for (int i = 0; i < storageCount; ++i)
+            {
+                const bool selected = storageIndex == i;
+                if (ImGui::Selectable(storageLabels[i], selected))
+                {
+                    edit.options.storage = i == 0 ? vasset::VAudioStorage::ePCM16 :
+                                           i == 1 ? vasset::VAudioStorage::ePCMF32 :
+                                                    vasset::VAudioStorage::ePassthroughWav;
+                }
+                if (selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        ui::endPropertyRow();
+
+        const bool pcmStorage = !vasset::isPassthrough(edit.options.storage);
+        ImGui::BeginDisabled(!pcmStorage);
+        int sampleRate = static_cast<int>(edit.options.targetSampleRate);
+        ui::beginPropertyRow(vultra::tr("inspector.audioImport.targetSampleRate"));
+        if (ImGui::InputInt("##TargetSampleRate", &sampleRate))
+            edit.options.targetSampleRate = static_cast<uint32_t>(std::max(sampleRate, 0));
+        ui::endPropertyRow();
+
+        ui::beginPropertyRow(vultra::tr("inspector.audioImport.forceMono"));
+        ImGui::Checkbox("##ForceMono", &edit.options.forceMono);
+        ui::endPropertyRow();
+
+        ui::beginPropertyRow(vultra::tr("inspector.audioImport.normalize"));
+        ImGui::Checkbox("##Normalize", &edit.options.normalize);
+        ui::endPropertyRow();
+        ImGui::EndDisabled();
+
+        // Reserved for a future lossy encoder (Vorbis/Opus); persisted but inactive in v1.
+        ImGui::BeginDisabled(true);
+        int bitrate = static_cast<int>(edit.options.bitrateKbps);
+        ui::beginPropertyRow(vultra::tr("inspector.audioImport.bitrateKbps"));
+        ImGui::InputInt("##BitrateKbps", &bitrate);
+        ui::endPropertyRow();
+        int quality = static_cast<int>(edit.options.quality);
+        ui::beginPropertyRow(vultra::tr("inspector.audioImport.quality"));
+        ImGui::InputInt("##Quality", &quality);
+        ui::endPropertyRow();
+        ImGui::EndDisabled();
+        ImGui::TextDisabled("%s", vultra::tr("inspector.audioImport.encoderNote"));
+
+        const auto& s     = m_AudioImportEdit.saved;
+        const bool  dirty = vasset::audioStorageToParam(s.options.storage) !=
+                               vasset::audioStorageToParam(edit.options.storage) ||
+                           s.options.targetSampleRate != edit.options.targetSampleRate ||
+                           s.options.forceMono != edit.options.forceMono ||
+                           s.options.normalize != edit.options.normalize;
+
+        ImGui::BeginDisabled(!dirty);
+        if (ImGui::Button((std::string {ICON_MDI_CHECK " "} + vultra::tr("common.apply")).c_str()))
+        {
+            auto            sidecar = textureImportSidecarPath(normalizedPath);
+            vasset::VImport vimport {};
+            if (auto loaded = vasset::loadVImport(sidecar.generic_string()))
+                vimport = std::move(loaded.value()); // preserve importer/source/output/uid from the cook
+            vimport.params =
+                vasset::normalizedAudioImportParams(m_AudioImportEdit.originalParams, edit.subtype, edit.options);
+
+            if (auto saved = vasset::saveVImport(vimport, sidecar.generic_string()); !saved)
+            {
+                ctx.state.statusMessage = vultra::tr("inspector.audioImport.saveFailed");
+            }
+            else
+            {
+                m_AudioImportEdit.originalParams = vimport.params;
+                m_AudioImportEdit.saved =
+                    vasset::resolveAudioImportParams(m_AudioImportEdit.originalParams, sourceExt);
+                m_AudioImportEdit.edit = m_AudioImportEdit.saved;
+                queueTextureImport(ctx, normalizedPath, true); // generic reimport queue
+                ctx.state.statusMessage =
+                    vultra::trf("inspector.audioImport.applied", normalizedPath.filename().generic_string());
+            }
+        }
+        ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!dirty);
+        if (ImGui::Button((std::string {ICON_MDI_RESTORE " "} + vultra::tr("inspector.audioImport.revert")).c_str()))
+        {
+            auto sidecar = textureImportSidecarPath(normalizedPath);
+            m_AudioImportEdit.originalParams.clear();
+            if (auto loaded = vasset::loadVImport(sidecar.generic_string()))
+                m_AudioImportEdit.originalParams = loaded.value().params;
+            m_AudioImportEdit.saved = vasset::resolveAudioImportParams(m_AudioImportEdit.originalParams, sourceExt);
+            m_AudioImportEdit.edit  = m_AudioImportEdit.saved;
         }
         ImGui::EndDisabled();
         if (dirty)

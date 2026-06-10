@@ -17,6 +17,7 @@ namespace vultra
     class IFrameDebuggerService;
     class IPhysicsService;
     class IAnimationService;
+    class IAudioService;
     class IUiService;
 
     struct ScriptContext
@@ -33,6 +34,7 @@ namespace vultra
         IFrameDebuggerService* frameDebuggerService {nullptr};
         IPhysicsService* physicsService {nullptr};
         IAnimationService* animationService {nullptr};
+        IAudioService* audioService {nullptr};
         IUiService* uiService {nullptr};
 
         World* world() const;

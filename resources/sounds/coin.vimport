@@ -1,0 +1,13 @@
+[vimport]
+version=1
+importer="audio"
+uid="8683819eef43477e1b70649b61483a43"
+
+[source]
+file="sounds/coin.wav"
+
+[output]
+file="imported/audio/coin"
+
+[params]
+audio.subtype=wav

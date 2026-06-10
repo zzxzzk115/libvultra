@@ -1,6 +1,6 @@
 {
 "inspector": {
-  "field": { "active": "激活", "allowSleeping": "允许休眠", "ambientColor": "环境光颜色", "ambientIntensity": "环境光强度", "anchorMax": "锚点最大值", "anchorMin": "锚点最小值", "anchoredPositionPx": "锚定位置（像素）", "angularDamping": "角阻尼", "angularVelocity": "角速度", "animation": "动画", "blendDistance": "混合距离", "borderRadiusPx": "边框圆角（像素）", "boxSize": "盒子尺寸", "builtinGeometry": "内置几何体", "castsShadow": "投射阴影", "cellSizePx": "单元格尺寸（像素）", "checkColor": "勾选颜色", "checked": "已勾选", "clearColor": "清除颜色", "clearMode": "清除模式", "color": "颜色", "colorValue": "颜色值", "cullingMask": "剔除掩码", "emissionRate": "发射速率", "enableIBL": "启用 IBL", "enabled": "启用", "endColor": "结束颜色", "endSize": "结束尺寸", "environmentMap": "环境贴图", "fallbackMono": "后备单色字体", "fillColor": "填充颜色", "fitMode": "适配模式", "floatValue": "浮点值", "fontSizePx": "字体大小（像素）", "fovYDegrees": "垂直视野角度", "friction": "摩擦力", "gaussianSplat": "高斯溅射", "gpu": "GPU", "graph": "图表", "gravity": "重力", "gravityFactor": "重力系数", "grounded": "接地", "halfHeight": "半高", "halfHeightOfCylinder": "圆柱半高", "handleColor": "手柄颜色", "height": "高度", "horizontalAlign": "水平对齐", "hoveredColor": "悬停颜色", "iblColor": "IBL 颜色", "iblIntensity": "IBL 强度", "innerConeDegrees": "内锥角度", "inputMove": "输入移动", "intensity": "强度", "interactable": "可交互", "isSensor": "是传感器", "jumpRequested": "请求跳跃", "jumpSpeed": "跳跃速度", "kind": "类别", "lifetime": "生命周期", "lifetimeVariance": "生命周期变化", "linearDamping": "线性阻尼", "linearVelocity": "线速度", "locked": "锁定", "loop": "循环", "marginPx": "外边距（像素）", "mask": "掩码", "mass": "质量", "material": "材质", "materialGraph": "材质图表", "materialOverrides": "材质覆盖", "maxAngularVelocity": "最大角速度", "maxLinearVelocity": "最大线速度", "maxParticles": "最大粒子数", "maxSlopeAngleDegrees": "最大坡度角度", "maxValue": "最大值", "mesh": "网格", "minValue": "最小值", "mode": "模式", "motionQuality": "运动质量", "motionType": "运动类型", "name": "名称", "normalColor": "正常颜色", "objectLayer": "对象层", "offColor": "关闭颜色", "onColor": "开启颜色", "orthographicHeight": "正交高度", "outerConeDegrees": "外锥角度", "overrideMass": "覆盖质量", "paddingPx": "内边距（像素）", "parallaxCorrection": "视差校正", "pivot": "枢轴", "pixelsPerUnit": "每单位像素数", "playOnStart": "启动时播放", "playing": "播放中", "position": "位置", "pressedColor": "按下颜色", "primary": "主要", "priority": "优先级", "projection": "投影", "properties": "属性", "radius": "半径", "range": "范围", "referenceResolutionPx": "参考分辨率（像素）", "renderMode": "渲染模式", "rendererKey": "渲染器键", "restitution": "弹性", "rotation": "旋转", "rotationDegrees": "旋转角度", "scale": "缩放", "scaleMode": "缩放模式", "scriptUri": "脚本 URI", "selectable": "可选择", "shape": "形状", "sizeDeltaPx": "尺寸增量（像素）", "skeleton": "骨骼", "skybox": "天空盒", "slot": "插槽", "sortOrder": "排序顺序", "spacingPx": "间距（像素）", "spawnRadius": "生成半径", "speed": "速度", "startColor": "起始颜色", "startSize": "起始尺寸", "startVelocity": "起始速度", "stepHeight": "台阶高度", "stereoGraphMode": "立体图表模式", "targetGraphic": "目标图形", "text": "文本", "texture": "贴图", "textureUri": "贴图 URI", "time": "时间", "tint": "色调", "trackColor": "轨道颜色", "trackingOrigin": "跟踪原点", "twoSided": "双面", "type": "类型", "uuid": "UUID", "value": "值", "velocity": "速度", "velocityVariance": "速度变化", "verticalAlign": "垂直对齐", "visible": "可见", "width": "宽度", "worldSpace": "世界空间", "zFar": "远裁剪面", "zNear": "近裁剪面" },
+  "field": { "active": "激活", "allowSleeping": "允许休眠", "ambientColor": "环境光颜色", "ambientIntensity": "环境光强度", "anchorMax": "锚点最大值", "anchorMin": "锚点最小值", "anchoredPositionPx": "锚定位置（像素）", "angularDamping": "角阻尼", "angularVelocity": "角速度", "animation": "动画", "blendDistance": "混合距离", "borderRadiusPx": "边框圆角（像素）", "boxSize": "盒子尺寸", "builtinGeometry": "内置几何体", "castsShadow": "投射阴影", "cellSizePx": "单元格尺寸（像素）", "checkColor": "勾选颜色", "checked": "已勾选", "clearColor": "清除颜色", "clearMode": "清除模式", "clip": "片段", "color": "颜色", "colorValue": "颜色值", "cullingMask": "剔除掩码", "emissionRate": "发射速率", "enableIBL": "启用 IBL", "enabled": "启用", "endColor": "结束颜色", "endSize": "结束尺寸", "environmentMap": "环境贴图", "fallbackMono": "后备单色字体", "fillColor": "填充颜色", "fitMode": "适配模式", "floatValue": "浮点值", "fontSizePx": "字体大小（像素）", "fovYDegrees": "垂直视野角度", "friction": "摩擦力", "gaussianSplat": "高斯溅射", "gpu": "GPU", "graph": "图表", "gravity": "重力", "gravityFactor": "重力系数", "grounded": "接地", "halfHeight": "半高", "halfHeightOfCylinder": "圆柱半高", "handleColor": "手柄颜色", "height": "高度", "horizontalAlign": "水平对齐", "hoveredColor": "悬停颜色", "iblColor": "IBL 颜色", "iblIntensity": "IBL 强度", "innerConeDegrees": "内锥角度", "inputMove": "输入移动", "intensity": "强度", "interactable": "可交互", "isSensor": "是传感器", "jumpRequested": "请求跳跃", "jumpSpeed": "跳跃速度", "kind": "类别", "lifetime": "生命周期", "lifetimeVariance": "生命周期变化", "linearDamping": "线性阻尼", "linearVelocity": "线速度", "locked": "锁定", "loop": "循环", "marginPx": "外边距（像素）", "mask": "掩码", "mass": "质量", "material": "材质", "materialGraph": "材质图表", "materialOverrides": "材质覆盖", "maxAngularVelocity": "最大角速度", "maxDistance": "最大距离", "maxLinearVelocity": "最大线速度", "maxParticles": "最大粒子数", "maxSlopeAngleDegrees": "最大坡度角度", "maxValue": "最大值", "mesh": "网格", "minDistance": "最小距离", "minValue": "最小值", "mode": "模式", "motionQuality": "运动质量", "motionType": "运动类型", "name": "名称", "normalColor": "正常颜色", "objectLayer": "对象层", "offColor": "关闭颜色", "onColor": "开启颜色", "orthographicHeight": "正交高度", "outerConeDegrees": "外锥角度", "overrideMass": "覆盖质量", "paddingPx": "内边距（像素）", "parallaxCorrection": "视差校正", "pitch": "音调", "pivot": "枢轴", "pixelsPerUnit": "每单位像素数", "playOnStart": "启动时播放", "playing": "播放中", "position": "位置", "pressedColor": "按下颜色", "primary": "主要", "priority": "优先级", "projection": "投影", "properties": "属性", "radius": "半径", "range": "范围", "referenceResolutionPx": "参考分辨率（像素）", "renderMode": "渲染模式", "rendererKey": "渲染器键", "restitution": "弹性", "rolloff": "衰减系数", "rotation": "旋转", "rotationDegrees": "旋转角度", "scale": "缩放", "scaleMode": "缩放模式", "scriptUri": "脚本 URI", "selectable": "可选择", "shape": "形状", "sizeDeltaPx": "尺寸增量（像素）", "skeleton": "骨骼", "skybox": "天空盒", "slot": "插槽", "sortOrder": "排序顺序", "spacingPx": "间距（像素）", "spatial": "空间化 (3D)", "spawnRadius": "生成半径", "speed": "速度", "startColor": "起始颜色", "startSize": "起始尺寸", "startVelocity": "起始速度", "stepHeight": "台阶高度", "stereoGraphMode": "立体图表模式", "targetGraphic": "目标图形", "text": "文本", "texture": "贴图", "textureUri": "贴图 URI", "time": "时间", "tint": "色调", "trackColor": "轨道颜色", "trackingOrigin": "跟踪原点", "twoSided": "双面", "type": "类型", "uuid": "UUID", "value": "值", "velocity": "速度", "velocityVariance": "速度变化", "verticalAlign": "垂直对齐", "visible": "可见", "volume": "音量", "width": "宽度", "worldSpace": "世界空间", "zFar": "远裁剪面", "zNear": "近裁剪面" },
   "preview": "预览",
   "unsaved": "未保存",
   "reload": "重新加载",
@@ -52,7 +52,9 @@
     "capsuleShape": "胶囊形状",
     "script": "脚本",
     "prefab": "预制体",
-    "material": "材质"
+    "material": "材质",
+    "audioSource": "音频源",
+    "audioListener": "音频监听器"
   },
   "category": {
     "core": "核心",
@@ -62,7 +64,8 @@
     "lighting": "光照",
     "physics": "物理",
     "camera": "相机",
-    "scripting": "脚本"
+    "scripting": "脚本",
+    "audio": "音频"
   },
   "project": {
     "title": "项目",
@@ -170,6 +173,7 @@
     "animation": "动画",
     "gaussianSplat": "高斯溅射",
     "texture": "纹理",
+    "audio": "音频",
     "asset": "资产"
   },
   "assetField": {
@@ -378,6 +382,23 @@
     "revert": "还原",
     "saveFailed": "网格导入设置保存失败。",
     "applied": "已应用网格导入设置并排队重新导入：{}"
+  },
+  "audioImport": {
+    "title": "音频导入",
+    "subtype": "子类型（源格式）",
+    "storage": "存储方式",
+    "storagePcm16": "PCM 16 位",
+    "storagePcmF32": "PCM 32 位浮点",
+    "storagePassthrough": "直通（保留压缩编码）",
+    "targetSampleRate": "目标采样率（0 = 保持）",
+    "forceMono": "强制单声道",
+    "normalize": "归一化",
+    "bitrateKbps": "比特率 (kbps)",
+    "quality": "质量",
+    "encoderNote": "比特率/质量需要未来的有损编码器；当前仅保存不生效。",
+    "revert": "还原",
+    "saveFailed": "音频导入设置保存失败。",
+    "applied": "已应用音频导入设置并加入重导入队列：{}"
   },
   "modelPreview": {
     "servicesUnavailable": "预览服务不可用。",

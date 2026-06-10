@@ -21,6 +21,7 @@
 #include <vultra/core/timing/timing_system.hpp>
 #include <vultra/function/asset/asset_system.hpp>
 #include <vultra/function/animation/animation_system.hpp>
+#include <vultra/function/audio/audio_system.hpp>
 #include <vultra/function/jobs/job_system.hpp>
 #include <vultra/function/material_graph/material_graph_compiler.hpp>
 #include <vultra/function/physics/physics_system.hpp>
@@ -403,6 +404,8 @@ namespace
             engine.emplaceSubsystem<vultra::PhysicsSystem>();
             engine.emplaceSubsystem<vultra::AssetSystem>();
             engine.emplaceSubsystem<vultra::SceneSystem>();
+            // Before ScriptSystem: it captures IAudioService into the Lua ScriptContext in onInit.
+            engine.emplaceSubsystem<vultra::AudioSystem>();
             engine.emplaceSubsystem<vultra::ScriptSystem>();
             engine.emplaceSubsystem<vultra::AnimationSystem>();
         }

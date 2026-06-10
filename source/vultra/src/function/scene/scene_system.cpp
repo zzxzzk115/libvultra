@@ -10,6 +10,8 @@
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/render_service.hpp"
 #include "vultra/function/services/world_service.hpp"
+#include "vultra/function/world/components/audio_listener_component.hpp"
+#include "vultra/function/world/components/audio_source_component.hpp"
 #include "vultra/function/world/components/box_shape_component.hpp"
 #include "vultra/function/world/components/camera_component.hpp"
 #include "vultra/function/world/components/capsule_shape_component.hpp"
@@ -683,6 +685,18 @@ namespace vultra
         m_ComponentRegistry.registerComponent<AnimatorComponent>(
             "AnimatorComponent",
             {"mode", "skeleton", "animation", "playOnStart", "playing", "loop", "speed", "time", "graph"});
+        m_ComponentRegistry.registerComponent<AudioSourceComponent>("AudioSourceComponent",
+                                                                    {"clip",
+                                                                     "volume",
+                                                                     "pitch",
+                                                                     "loop",
+                                                                     "playOnStart",
+                                                                     "playing",
+                                                                     "spatial",
+                                                                     "minDistance",
+                                                                     "maxDistance",
+                                                                     "rolloff"});
+        m_ComponentRegistry.registerComponent<AudioListenerComponent>("AudioListenerComponent", {"primary"});
         m_ComponentRegistry.registerComponent<GaussianSplatComponent>("GaussianSplatComponent", {"gaussianSplat"});
         m_ComponentRegistry.registerComponent<CameraComponent>("CameraComponent",
                                                                {"primary",

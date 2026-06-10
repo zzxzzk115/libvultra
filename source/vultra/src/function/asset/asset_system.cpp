@@ -372,6 +372,7 @@ namespace vultra
         m_GaussianSplatCache.clear();
         m_SkeletonCache.clear();
         m_AnimationCache.clear();
+        m_AudioCache.clear();
         m_TexUUIDToBindlessIndex.clear();
         m_PendingMaterialRefreshes.clear();
         m_CpuLoadScheduler.reset();
@@ -432,6 +433,16 @@ namespace vultra
         };
 
         m_AnimationCache.forEachRecord(addAnimation);
+
+        auto addAudio = [&stats](const auto& record) {
+            if (record.cpu)
+            {
+                stats.cpuCacheBytes += sizeof(record);
+                stats.cpuCacheBytes += estimateVAudioBytes(*record.cpu);
+            }
+        };
+
+        m_AudioCache.forEachRecord(addAudio);
 
         return stats;
     }
@@ -778,6 +789,7 @@ namespace vultra
         const uint64_t idleFrames = std::max<uint64_t>(1, m_Desc.zeroRefCpuAssetIdleFrames);
         releaseZeroRefCpuAssetCache(m_SkeletonCache, frameIndex, idleFrames);
         releaseZeroRefCpuAssetCache(m_AnimationCache, frameIndex, idleFrames);
+        releaseZeroRefCpuAssetCache(m_AudioCache, frameIndex, idleFrames);
     }
 
     void AssetSystem::enqueueUploadOnce(UploadCmd::Kind kind, const CoreUUID& uuid, std::atomic_bool& queuedFlag)
@@ -2080,6 +2092,58 @@ namespace vultra
         return AssetHandle<vasset::VAnimation, resource::CpuAsset>(rec);
     }
 
+    AssetHandle<vasset::VAudio, resource::CpuAsset> AssetSystem::loadAudioSync(const CoreUUID& uuid)
+    {
+        auto* rec = m_AudioCache.findOrCreate(uuid);
+        if (!rec)
+            return {};
+        markAssetUsed(*rec, m_LastUpdateFrame);
+
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eReady)
+            return AssetHandle<vasset::VAudio, resource::CpuAsset>(rec);
+
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eUnloaded)
+        {
+            rec->state.store(AssetState::eLoadingCPU, std::memory_order_release);
+
+            std::string uri;
+            if (!resolveUUIDToUri(uuid, uri))
+            {
+                VULTRA_CLIENT_ERROR("loadAudioSync: cannot resolve uuid {}", uuid.toString());
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VAudio, resource::CpuAsset>(rec);
+            }
+
+            auto br = m_VFS.readAll(uri);
+            if (!br)
+            {
+                VULTRA_CLIENT_ERROR("loadAudioSync: failed to read {}", uri);
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VAudio, resource::CpuAsset>(rec);
+            }
+
+            auto cpu = std::make_unique<vasset::VAudio>();
+            auto r   = vasset::loadAudioFromMemory(br.value(), *cpu);
+            if (!r)
+            {
+                VULTRA_CLIENT_ERROR("loadAudioSync: vasset::loadAudioFromMemory failed: {}", uri);
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VAudio, resource::CpuAsset>(rec);
+            }
+
+            rec->cpu = std::move(cpu);
+            rec->gpuIndex.store(0u, std::memory_order_release);
+            rec->state.store(AssetState::eReady, std::memory_order_release);
+        }
+
+        return AssetHandle<vasset::VAudio, resource::CpuAsset>(rec);
+    }
+
+    AssetHandle<vasset::VAudio, resource::CpuAsset> AssetSystem::loadAudioAsync(const CoreUUID& uuid)
+    {
+        return loadAudioSync(uuid);
+    }
+
     template<typename TCpu, typename TGpu, uint32_t ShardCount, typename ReadFn, typename ParseFn>
     AssetHandle<TCpu, TGpu> AssetSystem::loadGpuAssetSync(const CoreUUID&                     uuid,
                                                           AssetCache<TCpu, TGpu, ShardCount>& cache,
@@ -2219,6 +2283,22 @@ namespace vultra
         if (!resolveUriToUUID(uri, uuid))
             return {};
         return loadAnimationAsync(uuid);
+    }
+
+    AssetHandle<vasset::VAudio, resource::CpuAsset> AssetSystem::loadAudioSync(std::string_view uri)
+    {
+        CoreUUID uuid {};
+        if (!resolveUriToUUID(uri, uuid))
+            return {};
+        return loadAudioSync(uuid);
+    }
+
+    AssetHandle<vasset::VAudio, resource::CpuAsset> AssetSystem::loadAudioAsync(std::string_view uri)
+    {
+        CoreUUID uuid {};
+        if (!resolveUriToUUID(uri, uuid))
+            return {};
+        return loadAudioAsync(uuid);
     }
 
     AssetHandle<vasset::VMesh, resource::GpuMesh> AssetSystem::loadMeshSync(const CoreUUID& uuid)
