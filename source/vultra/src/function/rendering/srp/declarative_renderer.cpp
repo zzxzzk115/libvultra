@@ -46,8 +46,10 @@
 #include "vultra/function/rendering/srp/builtin/passes/thin_gbuffer_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/tone_mapping_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/ui_overlay_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/geometry_warp_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/pullpush_inpaint_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/visibility_buffer_pass.hpp"
-#include "vultra/function/rendering/srp/builtin/passes/xr_view_synthesis_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/render_graph_resource_names.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
 #include "vultra/function/services/asset_service.hpp"
@@ -384,11 +386,9 @@ namespace vultra
         [[nodiscard]] RenderGraphBackbufferView backbufferViewFromResource(std::string_view name)
         {
             const auto normalized = normalizeId(std::string(name));
-            if (normalized == "left_backbuffer" || normalized == "backbuffer_left" || normalized == "left_target" ||
-                normalized == "target_left")
+            if (normalized == render_graph_names::kLeftBackbuffer)
                 return RenderGraphBackbufferView::eLeft;
-            if (normalized == "right_backbuffer" || normalized == "backbuffer_right" || normalized == "right_target" ||
-                normalized == "target_right")
+            if (normalized == render_graph_names::kRightBackbuffer)
                 return RenderGraphBackbufferView::eRight;
             return RenderGraphBackbufferView::eCurrent;
         }
@@ -396,14 +396,14 @@ namespace vultra
         [[nodiscard]] RenderGraphBackbufferView backbufferViewFromSelector(const nlohmann::json&           selector,
                                                                            const RenderGraphBackbufferView fallback)
         {
-            const auto view = selectorString(selector, "view");
+            const auto view = selectorString(selector, render_graph_names::kSelectorViewKey.data());
             if (!view)
                 return fallback;
 
             const auto normalized = normalizeId(*view);
-            if (normalized == "left" || normalized == "eye0" || normalized == "eye_0")
+            if (normalized == render_graph_names::kViewLeft)
                 return RenderGraphBackbufferView::eLeft;
-            if (normalized == "right" || normalized == "eye1" || normalized == "eye_1")
+            if (normalized == render_graph_names::kViewRight)
                 return RenderGraphBackbufferView::eRight;
             return fallback;
         }
@@ -426,10 +426,34 @@ namespace vultra
         [[nodiscard]] bool isBackbufferResource(std::string_view name)
         {
             const auto normalized = normalizeId(std::string(name));
-            return normalized == "backbuffer" || normalized == "target" || normalized == "left_backbuffer" ||
-                   normalized == "backbuffer_left" || normalized == "left_target" || normalized == "target_left" ||
-                   normalized == "right_backbuffer" || normalized == "backbuffer_right" ||
-                   normalized == "right_target" || normalized == "target_right";
+            return normalized == render_graph_names::kBackbuffer || normalized == render_graph_names::kTarget ||
+                   backbufferViewFromResource(name) != RenderGraphBackbufferView::eCurrent;
+        }
+
+        // A graph is "explicit-per-eye" when it names the two XR eyes itself rather than
+        // relying on single-graph multiview: it declares a left/right role resource, or any
+        // pass references a left/right eye target (by resource name or `view` selector). Such
+        // a graph is rendered ONCE (mono source) and routes each eye via its own
+        // FinalComposition target; render_system must NOT force multiview for it.
+        [[nodiscard]] bool refIsExplicitEye(const vrendergraph::ResourceRef& ref)
+        {
+            return backbufferViewFromResource(ref.resource) != RenderGraphBackbufferView::eCurrent ||
+                   backbufferViewFromSelector(ref.selector, RenderGraphBackbufferView::eCurrent) !=
+                       RenderGraphBackbufferView::eCurrent;
+        }
+
+        [[nodiscard]] bool graphPrefersExplicitPerEye(const vrendergraph::RenderGraphDesc& desc)
+        {
+            for (const auto& pass : desc.passes)
+            {
+                for (const auto& [_, ref] : pass.inputs)
+                    if (refIsExplicitEye(ref))
+                        return true;
+                for (const auto& [_, ref] : pass.outputs)
+                    if (refIsExplicitEye(ref))
+                        return true;
+            }
+            return false;
         }
 
         void warnMissingBackbufferOnce(std::string_view resourceName, const RenderGraphBackbufferView view)
@@ -489,15 +513,27 @@ namespace vultra
             if (requestedView == RenderGraphBackbufferView::eLeft || requestedView == RenderGraphBackbufferView::eRight)
             {
                 const auto eyeIndex = requestedView == RenderGraphBackbufferView::eLeft ? 0u : 1u;
-                target              = view.xrEyeTargets[eyeIndex];
-                viewMask            = 0u;
+                if (view.xrEyeTargets[eyeIndex])
+                {
+                    target   = view.xrEyeTargets[eyeIndex];
+                    viewMask = 0u;
+                }
+                else
+                {
+                    // No XR eye target available (e.g. the XR session closed and this view fell
+                    // back to mono). Degrade gracefully instead of failing the pass with an invalid
+                    // resource (which crashes the FrameGraph): map the LEFT/source eye to the current
+                    // view target so the graph still composes to the screen, and skip the RIGHT/synth
+                    // eye (returning {}) so we don't import the same backbuffer texture twice.
+                    warnMissingBackbufferOnce(resourceName, requestedView);
+                    if (requestedView == RenderGraphBackbufferView::eRight)
+                        return {};
+                    // eLeft: fall through with target/viewMask at their view.target defaults.
+                }
             }
 
             if (!target)
-            {
-                warnMissingBackbufferOnce(resourceName, requestedView);
                 return {};
-            }
 
             std::string name {importName};
             if (requestedView == RenderGraphBackbufferView::eLeft)
@@ -838,7 +874,7 @@ namespace vultra
              {"source"},
              {"color"},
              {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
-        pass("XrGeometryWarp",
+        pass("GeometryWarp",
              {"source", "depth"},
              {"color"},
              {
@@ -857,7 +893,7 @@ namespace vultra
                   .maxValue    = 0.5f},
                  {.name = "useDepthAware", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
              });
-        pass("XrPullPushInpaint",
+        pass("PullpushInpaint",
              {"source"},
              {"color"},
              {
@@ -1999,15 +2035,21 @@ namespace vultra
         RenderGraphRuntime(DeclarativeRenderer& owner, std::string uri, vrendergraph::RenderGraphDesc desc) :
             m_Owner(owner), m_Uri(std::move(uri)), m_Desc(std::move(desc))
         {
+            m_PrefersExplicitPerEye = graphPrefersExplicitPerEye(m_Desc);
             registerPasses();
             registerResources();
         }
 
         [[nodiscard]] std::string_view uri() const { return m_Uri; }
 
+        // True when this graph names the two XR eyes itself (see graphPrefersExplicitPerEye);
+        // render_system reads this to skip forcing single-graph multiview.
+        [[nodiscard]] bool prefersExplicitPerEye() const { return m_PrefersExplicitPerEye; }
+
         void updateDesc(vrendergraph::RenderGraphDesc desc)
         {
-            m_Desc = std::move(desc);
+            m_Desc                  = std::move(desc);
+            m_PrefersExplicitPerEye = graphPrefersExplicitPerEye(m_Desc);
             m_LastValidationError.clear();
         }
 
@@ -2976,7 +3018,7 @@ namespace vultra
                                 }
                             });
 
-            registerBuiltin("XrGeometryWarp",
+            registerBuiltin("GeometryWarp",
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock& params,
@@ -2990,7 +3032,7 @@ namespace vultra
                                     return;
                                 }
 
-                                XrViewSynthesisSettings settings;
+                                ViewSynthesisSettings settings;
                                 settings.enabled    = true;
                                 settings.sourceView = params.get<std::string>("sourceView", settings.sourceView);
                                 settings.targetView = params.get<std::string>("targetView", settings.targetView);
@@ -2998,7 +3040,7 @@ namespace vultra
                                 settings.sideLenThreshold =
                                     std::max(params.get<float>("sideLenThreshold", settings.sideLenThreshold), 0.0f);
                                 settings.useDepthAware = params.get<bool>("useDepthAware", settings.useDepthAware);
-                                auto color = m_XrGeometryWarpPass.addPass(
+                                auto color = m_GeometryWarpPass.addPass(
                                     *ctx, passCtx.getInput("source"), passCtx.getInput("depth"), settings);
                                 if (color)
                                 {
@@ -3009,7 +3051,7 @@ namespace vultra
                                 }
                             });
 
-            registerBuiltin("XrPullPushInpaint",
+            registerBuiltin("PullpushInpaint",
                             [this](FrameGraph&,
                                    FrameGraphBlackboard&,
                                    const vrendergraph::ParamBlock& params,
@@ -3023,12 +3065,12 @@ namespace vultra
                                     return;
                                 }
 
-                                XrViewSynthesisSettings settings;
+                                ViewSynthesisSettings settings;
                                 settings.useDepthAware = params.get<bool>("useDepthAware", settings.useDepthAware);
                                 settings.depthThreshold =
                                     std::max(params.get<float>("depthThreshold", settings.depthThreshold), 0.0f);
                                 auto color =
-                                    m_XrPullPushInpaintPass.addPass(*ctx, passCtx.getInput("source"), settings);
+                                    m_PullPushInpaintPass.addPass(*ctx, passCtx.getInput("source"), settings);
                                 if (color)
                                 {
                                     ctx->data.set(kResKey_FinalCompositionSource, color);
@@ -3057,11 +3099,20 @@ namespace vultra
                                                                  outputRef->resource :
                                                                  "target";
                                 const auto  outputSelector = outputRef ? outputRef->selector : nlohmann::json::object();
+                                auto backbuffer = importRenderGraphBackbuffer(
+                                    fg, ctx->view(), outputName, outputSelector, "VRenderGraphBackbuffer");
+                                if (!backbuffer)
+                                {
+                                    // No render target for this output (e.g. the right/synth eye when
+                                    // the XR session closed and the view fell back to mono). Skip the
+                                    // actual composite, but still satisfy the graph's output contract
+                                    // (vrendergraph requires every declared output slot to be produced)
+                                    // with a pass-through. This output is terminal, so it is unused.
+                                    passCtx.setOutput("target", source);
+                                    return;
+                                }
                                 ctx->data.set(kResKey_FinalCompositionSource, source);
-                                auto target = m_FinalCompositionPass.compose(
-                                    *ctx,
-                                    importRenderGraphBackbuffer(
-                                        fg, ctx->view(), outputName, outputSelector, "VRenderGraphBackbuffer"));
+                                auto target = m_FinalCompositionPass.compose(*ctx, backbuffer);
                                 if (target)
                                     passCtx.setOutput("target", target);
                             });
@@ -3390,6 +3441,7 @@ namespace vultra
         std::unordered_map<std::string, std::unique_ptr<ScriptedPassPipelines>> m_ScriptedPassPipelines;
         std::unordered_set<std::string>                                         m_UnsupportedRayTracingPasses;
         std::string                                                             m_LastValidationError;
+        bool                                                                    m_PrefersExplicitPerEye {false};
         CompatibilityBaseColorPass                                              m_CompatibilityBaseColorPass;
         DirectGBufferPass                                                       m_DirectGBufferPass;
         DepthPrePass                                                            m_DepthPrePass;
@@ -3421,8 +3473,8 @@ namespace vultra
         GeneralGaussianSplatFoveatedCompositePass                               m_GaussianFoveatedCompositePass;
         ParticleSimulatePass                                                    m_ParticleSimulatePass;
         ParticleRenderPass                                                      m_ParticleRenderPass;
-        XrGeometryWarpPass                                                      m_XrGeometryWarpPass;
-        XrPullPushInpaintPass                                                   m_XrPullPushInpaintPass;
+        GeometryWarpPass                                                        m_GeometryWarpPass;
+        PullPushInpaintPass                                                     m_PullPushInpaintPass;
     };
 
     struct DeclarativeRenderer::RuntimeFeature
@@ -3551,6 +3603,16 @@ namespace vultra
         m_CurrentFrameApplyToneMapping = true;
         for (auto& feature : m_RuntimeFeatures)
             feature->addPasses(ctx);
+    }
+
+    bool DeclarativeRenderer::prefersExplicitPerEyeStereo() const
+    {
+        for (const auto& feature : m_RuntimeFeatures)
+        {
+            if (feature && feature->renderGraph && feature->renderGraph->prefersExplicitPerEye())
+                return true;
+        }
+        return false;
     }
 
     bool DeclarativeRenderer::updateRenderGraph(std::string_view uri)

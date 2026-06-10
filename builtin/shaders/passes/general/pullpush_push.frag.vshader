@@ -1,5 +1,5 @@
 [vshader]
-id       = "builtin/general/xr_view_synthesis_push.frag"
+id       = "builtin/general/pullpush_push.frag"
 language = glsl
 version = 460
 

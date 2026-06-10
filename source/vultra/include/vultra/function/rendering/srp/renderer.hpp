@@ -32,6 +32,12 @@ namespace vultra
         [[nodiscard]] virtual bool usesFrameGraph() const { return true; }
         [[nodiscard]] virtual bool requiresRayTracingScene() const { return false; }
 
+        // True when the renderer's active graph names the two XR eyes itself (explicit
+        // per-eye render targets) instead of relying on single-graph multiview. When true,
+        // render_system renders the graph ONCE (mono source) and lets the graph route each
+        // eye, rather than forcing a 2-layer multiview view. Default false (single/multiview).
+        [[nodiscard]] virtual bool prefersExplicitPerEyeStereo() const { return false; }
+
         virtual void onImGui() {}
 
         virtual void onResize(uint32_t width, uint32_t height) {}

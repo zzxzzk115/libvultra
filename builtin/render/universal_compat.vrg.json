@@ -29,6 +29,9 @@
       }
     }
   },
+  "resources": [
+    { "name": "backbuffer" }
+  ],
   "passes": [
     {
       "enabled": true,
@@ -59,6 +62,9 @@
       "id": "FinalComposition",
       "inputs": {
         "source": "UiOverlay.color"
+      },
+      "outputs": {
+        "target": "backbuffer"
       },
       "type": "FinalComposition"
     }

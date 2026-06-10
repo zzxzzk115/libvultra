@@ -40,6 +40,7 @@ namespace vultra
 
         void init() override;
         void             buildFrameGraph(FrameGraphBuildContext& ctx) override;
+        [[nodiscard]] bool prefersExplicitPerEyeStereo() const override;
         bool             updateRenderGraph(std::string_view uri);
         void             invalidateShaderPipelines();
 

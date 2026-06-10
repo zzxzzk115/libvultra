@@ -1,5 +1,5 @@
 [vshader]
-id       = "builtin/general/xr_view_synthesis_geometry_warp.vert"
+id       = "builtin/general/geometry_warp.vert"
 language = glsl
 version = 460
 
@@ -56,7 +56,10 @@ uint currentLayer()
 #if USE_MULTIVIEW && !PLATFORM_WEBGPU
     return uint(gl_ViewIndex);
 #else
-    return 0u;
+    // Single-target (mono / explicit-per-eye) render: there is no gl_ViewIndex, so select
+    // the target eye's view-projection explicitly from the requested targetView. This lets
+    // one mono pass synthesize the right eye (targetViewProj[1]) from a left-eye source.
+    return (u_PC.targetView == XR_VIEW_RIGHT) ? 1u : 0u;
 #endif
 }
 

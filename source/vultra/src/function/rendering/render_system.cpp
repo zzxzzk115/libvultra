@@ -4892,14 +4892,28 @@ namespace vultra
             FrameGraphBlackboard   bb {};
             FrameGraphDataRegistry dataRegistry {};
 
+            // Resolved early (it is const/side-effect-free) so the stereo decision below can
+            // consult the renderer's graph: a graph that names the two eyes itself
+            // (explicit-per-eye) is rendered ONCE here instead of via 2-layer multiview.
+            const auto renderer = resolveRenderer(cam);
+
             const bool canUseXrMultiview = supportsMultiview && cam.isXRView && cam.isXRPrimaryView &&
                                            cam.viewCount == 2u && !xrEyeViews.empty() && xrEyeViews[0].stereoTarget;
             const bool canUseLocalStereoTarget = supportsMultiview && cam.isXRView && cam.isXRPrimaryView &&
                                                  cam.viewCount == 2u && cam.target && cam.target->getNumLayers() >= 2u;
-            auto*      stereoTarget =
-                canUseXrMultiview ? xrEyeViews[0].stereoTarget : (canUseLocalStereoTarget ? cam.target : nullptr);
+            // The graph drives each eye target itself; render the scene once (mono source) and
+            // let the graph's per-eye composition write xrEyeTargets[0/1] (which are layer
+            // views into the submitted array swapchain).
+            const bool wantsExplicitPerEye = canUseXrMultiview && renderer && renderer->prefersExplicitPerEyeStereo();
+            auto*      stereoTarget        = (canUseXrMultiview && !wantsExplicitPerEye) ?
+                                                 xrEyeViews[0].stereoTarget :
+                                                 (canUseLocalStereoTarget && !wantsExplicitPerEye ? cam.target : nullptr);
 
-            rhi::Texture* target = stereoTarget ? stereoTarget : (cam.target ? cam.target : &defaultTarget);
+            rhi::Texture* target =
+                stereoTarget ? stereoTarget :
+                (wantsExplicitPerEye && !xrEyeViews.empty() && xrEyeViews[0].target ?
+                     xrEyeViews[0].target :
+                     (cam.target ? cam.target : &defaultTarget));
             if (!target)
                 continue;
 
@@ -4927,13 +4941,15 @@ namespace vultra
                 .target               = target,
                 .extent               = renderArea.extent,
                 .clearValue           = viewCamera.clearValue,
-                .stereoMode           = stereoTarget ?
-                                            StereoRenderMode::eSingleGraphStereo :
-                                            (cam.isXRView ? StereoRenderMode::ePerEyeFallback : StereoRenderMode::eMono),
+                .stereoMode           = stereoTarget ? StereoRenderMode::eSingleGraphStereo :
+                                            (wantsExplicitPerEye ?
+                                                 StereoRenderMode::eMono :
+                                                 (cam.isXRView ? StereoRenderMode::ePerEyeFallback :
+                                                                 StereoRenderMode::eMono)),
                 .enableMultiview      = stereoTarget != nullptr,
                 .multiviewMask        = stereoTarget ? 0x3u : 0u,
                 .multiviewCameras     = {&viewCamera, nullptr},
-                .multiviewCameraCount = stereoTarget ? 2u : 0u,
+                .multiviewCameraCount = (stereoTarget || wantsExplicitPerEye) ? 2u : 0u,
                 .xrStereoTarget       = canUseXrMultiview ? xrEyeViews[0].stereoTarget : nullptr,
                 .xrEyeTargets         = {xrEyeViews.size() > 0u ? xrEyeViews[0].target : nullptr,
                                          xrEyeViews.size() > 1u ? xrEyeViews[1].target : nullptr},
@@ -4949,7 +4965,7 @@ namespace vultra
                 if (secondEyeIt != cameraOrder.end())
                     view.multiviewCameras[1] = &cams[*secondEyeIt];
             }
-            if (stereoTarget && !view.multiviewCameras[1])
+            if ((stereoTarget || wantsExplicitPerEye) && !view.multiviewCameras[1])
                 view.multiviewCameras[1] = &viewCamera;
 
             rhi::FramebufferInfo fbInfo {
@@ -4973,7 +4989,6 @@ namespace vultra
                     cb, *target, renderArea, viewCamera.clearValue, stereoTarget != nullptr, stereoTarget ? 0x3u : 0u);
             }
 
-            auto renderer = resolveRenderer(cam);
             if (!renderer)
             {
                 if (static_cast<bool>(target->getUsageFlags() & rhi::ImageUsage::eSampled))

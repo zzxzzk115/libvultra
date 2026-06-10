@@ -2,7 +2,7 @@
   "meta": {
     "editor": {
       "design": {
-        "notes": "Renders the scene in stereo, synthesizes the target eye from the source eye via XrGeometryWarp, repairs disocclusion holes with XrPullPushInpaint, and composes to the current stereo target. Swap XrGeometryWarp/XrPullPushInpaint for a custom Lua backend (see resources/render/passes/xr_custom_warp.lua) to plug in your own synthesis.",
+        "notes": "Explicit per-eye stereo view synthesis (LeftToRight, non-enlarged). The scene is rendered ONCE (the left eye is the source); the left eye is composed straight to its backbuffer, and the right eye is synthesized from the left via GeometryWarp -> PullpushInpaint and composed to the right backbuffer. Because the graph names both eyes (left_backbuffer/right_backbuffer), render_system renders it once instead of forcing 2-layer multiview. Swap GeometryWarp/PullpushInpaint for a custom Lua backend (see resources/render/passes/xr_custom_warp.lua) to plug in your own synthesis. Enlarged-source (IncreaseFov/ReduceFov) lands with the XrSynthesisPlan camera math.",
         "status": "active"
       },
       "nodes": {
@@ -14,8 +14,8 @@
         },
         "DirectDepthPre": {
           "pos": [
-            -647.4006958007813,
-            11.575368881225586
+            -647.0,
+            11.0
           ]
         },
         "DirectGBuffer": {
@@ -24,10 +24,28 @@
             89.0
           ]
         },
-        "FinalComposition": {
+        "FinalCompositionLeft": {
           "pos": [
-            1660.0,
-            80.0
+            1868.0,
+            330.0
+          ]
+        },
+        "FinalCompositionRight": {
+          "pos": [
+            1868.0,
+            678.0
+          ]
+        },
+        "GeometryWarp": {
+          "pos": [
+            1006.0,
+            632.0
+          ]
+        },
+        "PullpushInpaint": {
+          "pos": [
+            1423.0,
+            664.0
           ]
         },
         "ShadowMap": {
@@ -42,16 +60,16 @@
             -115.0
           ]
         },
-        "XrGeometryWarp": {
+        "resource:left_backbuffer": {
           "pos": [
-            980.0,
-            80.0
+            0.0,
+            0.0
           ]
         },
-        "XrPullPushInpaint": {
+        "resource:right_backbuffer": {
           "pos": [
-            1330.0,
-            78.0
+            0.0,
+            0.0
           ]
         }
       }
@@ -135,7 +153,18 @@
     },
     {
       "enabled": true,
-      "id": "XrGeometryWarp",
+      "id": "FinalCompositionLeft",
+      "inputs": {
+        "source": "DeferredLighting.color"
+      },
+      "outputs": {
+        "target": "left_backbuffer"
+      },
+      "type": "FinalComposition"
+    },
+    {
+      "enabled": true,
+      "id": "GeometryWarp",
       "inputs": {
         "depth": "DirectGBuffer.depth",
         "source": "DeferredLighting.color"
@@ -148,29 +177,42 @@
         "targetView": "right",
         "useDepthAware": true
       },
-      "type": "XrGeometryWarp"
+      "type": "GeometryWarp"
     },
     {
       "enabled": true,
-      "id": "XrPullPushInpaint",
+      "id": "PullpushInpaint",
       "inputs": {
-        "source": "XrGeometryWarp.color"
+        "source": "GeometryWarp.color"
       },
       "params": {
         "depthThreshold": 0.004999999888241291,
         "enabled": true,
         "useDepthAware": true
       },
-      "type": "XrPullPushInpaint"
+      "type": "PullpushInpaint"
     },
     {
       "enabled": true,
-      "id": "FinalComposition",
+      "id": "FinalCompositionRight",
       "inputs": {
-        "source": "XrPullPushInpaint.color"
+        "source": "PullpushInpaint.color"
+      },
+      "outputs": {
+        "target": "right_backbuffer"
       },
       "type": "FinalComposition"
     }
   ],
+  "resources": {
+    "left_backbuffer": {
+      "imported": true,
+      "name": "left_backbuffer"
+    },
+    "right_backbuffer": {
+      "imported": true,
+      "name": "right_backbuffer"
+    }
+  },
   "version": 3
 }
