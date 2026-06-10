@@ -4,15 +4,15 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/structs/render_mesh.hpp"
 #include "vultra/core/rhi/structs/vertex_attributes.hpp"
+#include "vultra/function/asset/asset_memory_estimate.hpp"
 #include "vultra/function/asset/builtin_assets.hpp"
 #include "vultra/function/asset/builtin_assets_io.hpp"
-#include "vultra/function/asset/asset_memory_estimate.hpp"
 #include "vultra/function/asset/builtin_resource_ids.hpp"
 #include "vultra/function/asset/mesh_vertex_packing.hpp"
 #include "vultra/function/material/material_asset.hpp"
 #include "vultra/function/material/material_params.hpp"
-#include "vultra/function/resource/vtexture_loader.hpp"
 #include "vultra/function/rendering/srp/builtin/builtin_rendergraph_registry.hpp"
+#include "vultra/function/resource/vtexture_loader.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 
 #ifdef VULTRA_HAS_VASSET_IMPORT
@@ -21,8 +21,8 @@
 #include <vasset/editor_filesystem.hpp>
 #include <vasset/vasset_importers.hpp>
 #endif
-#include <vasset/vgaussiansplat.hpp>
 #include <vasset/vanimation.hpp>
+#include <vasset/vgaussiansplat.hpp>
 #include <vasset/vmaterial.hpp>
 
 #include <vfilesystem/backends/physical_filesystem.hpp>
@@ -54,7 +54,6 @@
 #endif
 #include <Windows.h>
 #endif
-
 
 namespace vultra
 {
@@ -93,7 +92,6 @@ namespace vultra
             });
         }
 
-
         // Fixed builtin/imported PBR parameter block lives in
         // vultra/function/material/material_params.hpp. Shader-backed materials use
         // vshadersystem reflection offsets when their assets are resolved.
@@ -126,15 +124,9 @@ namespace vultra
                    (std::to_string(slot) + "_" + materialKey + ".vmat.json");
         }
 
-        nlohmann::json jsonVec4(const glm::vec4& v)
-        {
-            return nlohmann::json::array({v.x, v.y, v.z, v.w});
-        }
+        nlohmann::json jsonVec4(const glm::vec4& v) { return nlohmann::json::array({v.x, v.y, v.z, v.w}); }
 
-        nlohmann::json jsonVec3(const glm::vec3& v)
-        {
-            return nlohmann::json::array({v.x, v.y, v.z});
-        }
+        nlohmann::json jsonVec3(const glm::vec3& v) { return nlohmann::json::array({v.x, v.y, v.z}); }
 
         std::optional<glm::vec4> jsonVec4Value(const nlohmann::json& value)
         {
@@ -208,21 +200,22 @@ namespace vultra
 
 #ifdef VULTRA_HAS_VASSET_IMPORT
         vasset::VAssetImporter::ImportOptions
-        makeAssetImportOptions(const bool importShaderLibraries = true,
-                               std::vector<AssetDiagnostic>* diagnostics = nullptr)
+        makeAssetImportOptions(const bool                    importShaderLibraries = true,
+                               std::vector<AssetDiagnostic>* diagnostics           = nullptr)
         {
             vasset::VAssetImporter::ImportOptions options;
             options.importShaderLibraries = importShaderLibraries;
             if (diagnostics)
             {
-                options.diagnostics = [diagnostics](const vasset::VAssetImporter::ImportOptions::Diagnostic& diagnostic) {
-                    diagnostics->push_back(AssetDiagnostic {
-                        .path    = diagnostic.path,
-                        .line    = diagnostic.line,
-                        .column  = diagnostic.column,
-                        .message = diagnostic.message,
-                    });
-                };
+                options.diagnostics =
+                    [diagnostics](const vasset::VAssetImporter::ImportOptions::Diagnostic& diagnostic) {
+                        diagnostics->push_back(AssetDiagnostic {
+                            .path    = diagnostic.path,
+                            .line    = diagnostic.line,
+                            .column  = diagnostic.column,
+                            .message = diagnostic.message,
+                        });
+                    };
             }
             // Builtin GLSL includes are provided to the importer as a single VFS
             // mount (see runShaderCompiler). Each include is exposed once by its
@@ -259,7 +252,7 @@ namespace vultra
 
         enum class PbrMrTextureMode : uint32_t
         {
-            eGltfMetallicRoughness = 0,
+            eGltfMetallicRoughness      = 0,
             eOcclusionRoughnessMetallic = 1,
         };
 
@@ -692,7 +685,7 @@ namespace vultra
         std::vector<UploadCmd> cmds;
         {
             std::scoped_lock lock(m_UploadQueueMutex);
-            const auto count = std::min(kMaxUploadCommandsPerFrame, m_UploadQueue.size());
+            const auto       count = std::min(kMaxUploadCommandsPerFrame, m_UploadQueue.size());
             cmds.insert(cmds.end(), m_UploadQueue.begin(), m_UploadQueue.begin() + static_cast<std::ptrdiff_t>(count));
             m_UploadQueue.erase(m_UploadQueue.begin(), m_UploadQueue.begin() + static_cast<std::ptrdiff_t>(count));
         }
@@ -906,7 +899,7 @@ namespace vultra
     }
 
     void AssetSystem::startTextureCpuLoadAsync(AssetRecord<vasset::VTexture, resource::GpuTexture>& rec,
-                                               const CoreUUID& uuid)
+                                               const CoreUUID&                                      uuid)
     {
         startAssetCpuLoadAsync(
             rec,
@@ -915,16 +908,17 @@ namespace vultra
             "loadTextureAsync",
             [this](std::string_view uri) { return readAssetBytes(uri); },
             [](std::string_view uri, std::vector<std::byte>& bytes) -> std::unique_ptr<vasset::VTexture> {
-                auto cpu = isBuiltinTextureUri(uri) ? makeTextureFromBytes(uri, bytes) :
-                                                      std::make_unique<vasset::VTexture>();
+                auto cpu =
+                    isBuiltinTextureUri(uri) ? makeTextureFromBytes(uri, bytes) : std::make_unique<vasset::VTexture>();
                 if (!cpu || (!isBuiltinTextureUri(uri) && !vasset::loadTextureFromMemory(bytes, *cpu)))
                     return nullptr;
                 return cpu;
             });
     }
 
-    void AssetSystem::startGaussianSplatCpuLoadAsync(
-        AssetRecord<vasset::VGaussianSplat, resource::GpuGaussianSplat>& rec, const CoreUUID& uuid)
+    void
+    AssetSystem::startGaussianSplatCpuLoadAsync(AssetRecord<vasset::VGaussianSplat, resource::GpuGaussianSplat>& rec,
+                                                const CoreUUID&                                                  uuid)
     {
         startAssetCpuLoadAsync(
             rec,
@@ -961,10 +955,10 @@ namespace vultra
         const bool cookedOnly = entry.type == vasset::VAssetType::eMesh || entry.type == vasset::VAssetType::eTexture ||
                                 entry.type == vasset::VAssetType::eSkeleton ||
                                 entry.type == vasset::VAssetType::eAnimation;
-        const std::string& path       = cookedOnly && !entry.importedPath.empty() ? entry.importedPath :
-                                        !entry.sourcePath.empty()                 ? entry.sourcePath :
-                                                                                    entry.importedPath;
-        outUri                        = m_Desc.scheme + "://" + path;
+        const std::string& path = cookedOnly && !entry.importedPath.empty() ? entry.importedPath :
+                                  !entry.sourcePath.empty()                 ? entry.sourcePath :
+                                                                              entry.importedPath;
+        outUri                  = m_Desc.scheme + "://" + path;
         return true;
     }
 
@@ -987,7 +981,7 @@ namespace vultra
             // pack (logical path = uri without the "builtin://" scheme), then to the legacy
             // embedded resource (editor .rc / linker symbols) for backward compatibility.
             const auto builtinFallback = [&]() -> vbase::Result<std::vector<std::byte>, std::string> {
-                std::string_view logical = uri;
+                std::string_view           logical = uri;
                 constexpr std::string_view kScheme = "builtin://";
                 if (logical.starts_with(kScheme))
                     logical.remove_prefix(kScheme.size());
@@ -997,12 +991,12 @@ namespace vultra
                 return readResourceBuiltinTextureBytes(uri);
             };
 
-            const auto path = builtinTexturePathForUri(uri);
+            const auto    path = builtinTexturePathForUri(uri);
             std::ifstream file(path, std::ios::binary | std::ios::ate);
             if (!file)
                 return builtinFallback();
 
-            const auto          size = static_cast<std::streamsize>(file.tellg());
+            const auto             size = static_cast<std::streamsize>(file.tellg());
             std::vector<std::byte> bytes(static_cast<size_t>(std::max<std::streamsize>(size, 0)));
             file.seekg(0);
             if (!bytes.empty() && !file.read(reinterpret_cast<char*>(bytes.data()), size))
@@ -1111,13 +1105,15 @@ namespace vultra
 
     namespace
     {
-        // GPU material-param packers shared by createAndAppendGpuMaterial (alloc-new) and
-        // refreshGpuMaterialParams (upload-in-place), which previously held byte-identical copies of these
-        // switches. `resolveTex` maps a texture UUID to its bindless index (resolveBindlessTextureIndexAsync
-        // at both call sites). createAndAppendGpuMaterialFromAsset is intentionally NOT routed through these:
-        // it omits the emissive black->white fixup and layers JSON overrides on top.
+        // GPU material-param packers shared by createAndAppendGpuMaterial (alloc-new),
+        // refreshGpuMaterialParams (upload-in-place), and createAndAppendGpuMaterialFromAsset
+        // (fallback seed, with the emissive fixup disabled, before layering JSON overrides).
+        // `resolveTex` maps a texture UUID to its bindless index (resolveBindlessTextureIndexAsync
+        // at all call sites).
         template<typename ResolveTex>
-        MaterialParamsPBRMR packMaterialParamsPBRMR(const vasset::VMaterial& m, ResolveTex&& resolveTex)
+        MaterialParamsPBRMR packMaterialParamsPBRMR(const vasset::VMaterial& m,
+                                                    ResolveTex&&             resolveTex,
+                                                    const bool               emissiveBlackToWhiteFixup = true)
         {
             MaterialParamsPBRMR p;
             p.baseColor       = m.core.pbrMR.baseColor;
@@ -1135,8 +1131,9 @@ namespace vultra
             {
                 glm::vec3 emissiveColor = glm::vec3(m.core.pbrMR.emissiveColorIntensity);
                 // Texture present but factor came through black (assimp glTF quirk): emissive
-                // = factor * texture would be zero, so default the factor to white.
-                if (p.emissiveTex != 0u && emissiveColor == glm::vec3(0.0f))
+                // = factor * texture would be zero, so default the factor to white. Material
+                // assets opt out (their factor is authored, not imported).
+                if (emissiveBlackToWhiteFixup && p.emissiveTex != 0u && emissiveColor == glm::vec3(0.0f))
                     emissiveColor = glm::vec3(1.0f);
                 p.emissiveFactor = glm::vec4(emissiveColor * m.core.pbrMR.emissiveColorIntensity.a, 1.0f);
             }
@@ -1199,9 +1196,9 @@ namespace vultra
             if (pool.materialParams.gpu)
             {
                 m_RenderDevice->uploadS(*pool.materialParams.gpu,
-                                         0,
-                                         static_cast<uint64_t>(pool.materialParams.cpu.size()),
-                                         pool.materialParams.cpu.data());
+                                        0,
+                                        static_cast<uint64_t>(pool.materialParams.cpu.size()),
+                                        pool.materialParams.cpu.data());
             }
         };
 
@@ -1333,13 +1330,14 @@ namespace vultra
         gm.tableIndex       = static_cast<uint32_t>(pool.materials.size());
         pool.materials.push_back(gm);
         if (!materialTextureDependenciesReady(m))
-            m_PendingMaterialRefreshes.push_back(PendingMaterialRefresh {.materialIndex = gm.tableIndex, .material = m});
+            m_PendingMaterialRefreshes.push_back(
+                PendingMaterialRefresh {.materialIndex = gm.tableIndex, .material = m});
         pool.materialTableDirty = true;
         m_GpuResourceService->markContentDirty();
         return gm.tableIndex;
     }
 
-    uint32_t AssetSystem::createAndAppendGpuMaterialFromAsset(const std::string_view uri,
+    uint32_t AssetSystem::createAndAppendGpuMaterialFromAsset(const std::string_view   uri,
                                                               const vasset::VMaterial& fallback)
     {
         using resource::GpuMaterial;
@@ -1372,24 +1370,12 @@ namespace vultra
         MaterialParamsPBRMR p;
         if (fallback.model == vasset::VMaterialModel::ePBRMetallicRoughness)
         {
-            p.baseColor       = fallback.core.pbrMR.baseColor;
-            p.metallicFactor  = fallback.core.pbrMR.metallicFactor;
-            p.roughnessFactor = fallback.core.pbrMR.roughnessFactor;
-            p.alphaCutoff     = fallback.core.pbrMR.alphaCutoff;
-            p.alphaMode       = static_cast<uint32_t>(fallback.core.pbrMR.alphaMode);
-            p.baseColorTex    = resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.baseColorTexture.uuid));
-            p.normalTex       = resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.normalTexture.uuid));
-            p.mrTex           = resolveBindlessTextureIndexAsync(pbrMrCombinedTextureUuid(fallback.core.pbrMR));
-            p.metallicTex     = resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.metallicTexture.uuid));
-            p.roughnessTex    = resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.roughnessTexture.uuid));
-            p.occlusionTex =
-                resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.ambientOcclusionTexture.uuid));
-            p.emissiveTex   = resolveBindlessTextureIndexAsync(CoreUUID(fallback.core.pbrMR.emissiveTexture.uuid));
-            p.emissiveFactor = glm::vec4(glm::vec3(fallback.core.pbrMR.emissiveColorIntensity) *
-                                             fallback.core.pbrMR.emissiveColorIntensity.a,
-                                         1.0f);
-            p.doubleSided   = fallback.core.pbrMR.doubleSided ? 1u : 0u;
-            p.mrTextureMode = static_cast<uint32_t>(pbrMrTextureMode(fallback.core.pbrMR));
+            // Seed from the fallback with the emissive black->white import fixup disabled
+            // (a material asset's factor is authored); JSON overrides layer on top below.
+            p = packMaterialParamsPBRMR(
+                fallback,
+                [this](const CoreUUID& uuid) { return resolveBindlessTextureIndexAsync(uuid); },
+                /*emissiveBlackToWhiteFixup=*/false);
         }
 
         auto textureIndexForUri = [&](const nlohmann::json& properties, const char* key) {
@@ -1404,8 +1390,8 @@ namespace vultra
             return resolveBindlessTextureIndexAsync(uuid);
         };
 
-        const auto* properties = doc.contains("properties") && doc["properties"].is_object() ? &doc["properties"] :
-                                                                                                  nullptr;
+        const auto* properties =
+            doc.contains("properties") && doc["properties"].is_object() ? &doc["properties"] : nullptr;
         if (properties)
         {
             if (properties->contains("baseColor"))
@@ -1454,15 +1440,14 @@ namespace vultra
                 p.emissiveFactor = glm::vec4(emissiveColor * emissiveStrength, 1.0f);
             }
 
-            p.baseColorTex = textureIndexForUri(*properties, "baseColorTexture");
-            p.normalTex    = textureIndexForUri(*properties, "normalTexture");
-            p.mrTex        = textureIndexForUri(*properties, "metallicRoughnessTexture");
-            p.metallicTex  = textureIndexForUri(*properties, "metallicTexture");
-            p.roughnessTex = textureIndexForUri(*properties, "roughnessTexture");
-            p.occlusionTex = textureIndexForUri(*properties, "ambientOcclusionTexture");
-            p.emissiveTex  = textureIndexForUri(*properties, "emissiveTexture");
-            p.mrTextureMode =
-                p.mrTex != 0u ? static_cast<uint32_t>(PbrMrTextureMode::eGltfMetallicRoughness) : 0u;
+            p.baseColorTex  = textureIndexForUri(*properties, "baseColorTexture");
+            p.normalTex     = textureIndexForUri(*properties, "normalTexture");
+            p.mrTex         = textureIndexForUri(*properties, "metallicRoughnessTexture");
+            p.metallicTex   = textureIndexForUri(*properties, "metallicTexture");
+            p.roughnessTex  = textureIndexForUri(*properties, "roughnessTexture");
+            p.occlusionTex  = textureIndexForUri(*properties, "ambientOcclusionTexture");
+            p.emissiveTex   = textureIndexForUri(*properties, "emissiveTexture");
+            p.mrTextureMode = p.mrTex != 0u ? static_cast<uint32_t>(PbrMrTextureMode::eGltfMetallicRoughness) : 0u;
         }
 
         auto& pool = m_GpuResourceService->pool();
@@ -1537,8 +1522,7 @@ namespace vultra
                     break;
             }
 
-            const auto name = material.name.empty() ? std::string("Material ") + std::to_string(slot) :
-                                                      material.name;
+            const auto name = material.name.empty() ? std::string("Material ") + std::to_string(slot) : material.name;
             return nlohmann::json {
                 {"type", "Material"},
                 {"version", 1},
@@ -1548,7 +1532,7 @@ namespace vultra
             };
         };
 
-        const auto source = std::string(sourceRelativePath);
+        const auto source           = std::string(sourceRelativePath);
         const auto sourceMeshPrefix = source + "#mesh/";
         for (const auto& [uuidText, entry] : m_Registry.getRegistry())
         {
@@ -1559,7 +1543,7 @@ namespace vultra
                 continue;
 
             vasset::VMesh mesh;
-            const auto meshPath = (std::filesystem::path(m_Desc.assetRoot) / entry.importedPath).lexically_normal();
+            const auto    meshPath = (std::filesystem::path(m_Desc.assetRoot) / entry.importedPath).lexically_normal();
             if (!vasset::loadMesh(meshPath.generic_string(), mesh))
             {
                 VULTRA_CORE_WARN("[AssetSystem] Failed to read imported mesh while emitting material assets: {}",
@@ -1698,8 +1682,8 @@ namespace vultra
                 .materialIndex = materialOffset,
             });
         }
-        pool.meshes[meshIndex].hasSkin = cpuMesh.hasSkin;
-        pool.meshes[meshIndex].skeleton = CoreUUID(cpuMesh.skeleton);
+        pool.meshes[meshIndex].hasSkin          = cpuMesh.hasSkin;
+        pool.meshes[meshIndex].skeleton         = CoreUUID(cpuMesh.skeleton);
         pool.meshes[meshIndex].inverseBindPoses = cpuMesh.inverseBindPoses;
 
         const bool rayTracingEnabled =
@@ -1960,22 +1944,24 @@ namespace vultra
     {
         if (!m_Desc.asyncLoading)
             return loadTextureSync(uuid);
-        return loadGpuAssetAsync(
-            uuid, m_TextureCache, UploadCmd::Kind::eTexture,
-            [this](AssetRecord<vasset::VTexture, resource::GpuTexture>& rec, const CoreUUID& u) {
-                startTextureCpuLoadAsync(rec, u);
-            });
+        return loadGpuAssetAsync(uuid,
+                                 m_TextureCache,
+                                 UploadCmd::Kind::eTexture,
+                                 [this](AssetRecord<vasset::VTexture, resource::GpuTexture>& rec, const CoreUUID& u) {
+                                     startTextureCpuLoadAsync(rec, u);
+                                 });
     }
 
     AssetHandle<vasset::VMesh, resource::GpuMesh> AssetSystem::loadMeshAsync(const CoreUUID& uuid)
     {
         if (!m_Desc.asyncLoading)
             return loadMeshSync(uuid);
-        return loadGpuAssetAsync(
-            uuid, m_MeshCache, UploadCmd::Kind::eMesh,
-            [this](AssetRecord<vasset::VMesh, resource::GpuMesh>& rec, const CoreUUID& u) {
-                startMeshCpuLoadAsync(rec, u);
-            });
+        return loadGpuAssetAsync(uuid,
+                                 m_MeshCache,
+                                 UploadCmd::Kind::eMesh,
+                                 [this](AssetRecord<vasset::VMesh, resource::GpuMesh>& rec, const CoreUUID& u) {
+                                     startMeshCpuLoadAsync(rec, u);
+                                 });
     }
 
     AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
@@ -1983,11 +1969,11 @@ namespace vultra
     {
         if (!m_Desc.asyncLoading)
             return loadGaussianSplatSync(uuid);
-        return loadGpuAssetAsync(
-            uuid, m_GaussianSplatCache, UploadCmd::Kind::eGaussianSplat,
-            [this](AssetRecord<vasset::VGaussianSplat, resource::GpuGaussianSplat>& rec, const CoreUUID& u) {
-                startGaussianSplatCpuLoadAsync(rec, u);
-            });
+        return loadGpuAssetAsync(uuid,
+                                 m_GaussianSplatCache,
+                                 UploadCmd::Kind::eGaussianSplat,
+                                 [this](AssetRecord<vasset::VGaussianSplat, resource::GpuGaussianSplat>& rec,
+                                        const CoreUUID& u) { startGaussianSplatCpuLoadAsync(rec, u); });
     }
 
     AssetHandle<vasset::VSkeleton, resource::CpuAsset> AssetSystem::loadSkeletonAsync(const CoreUUID& uuid)
@@ -2173,11 +2159,14 @@ namespace vultra
     AssetHandle<vasset::VTexture, resource::GpuTexture> AssetSystem::loadTextureSync(const CoreUUID& uuid)
     {
         return loadGpuAssetSync(
-            uuid, m_TextureCache, UploadCmd::Kind::eTexture, "loadTextureSync",
+            uuid,
+            m_TextureCache,
+            UploadCmd::Kind::eTexture,
+            "loadTextureSync",
             [this](std::string_view u) { return readAssetBytes(u); },
             [](std::string_view u, std::vector<std::byte>& bytes) -> std::unique_ptr<vasset::VTexture> {
-                auto cpu = isBuiltinTextureUri(u) ? makeTextureFromBytes(u, bytes) :
-                                                    std::make_unique<vasset::VTexture>();
+                auto cpu =
+                    isBuiltinTextureUri(u) ? makeTextureFromBytes(u, bytes) : std::make_unique<vasset::VTexture>();
                 if (!cpu || (!isBuiltinTextureUri(u) && !vasset::loadTextureFromMemory(bytes, *cpu)))
                     return nullptr;
                 return cpu;
@@ -2235,12 +2224,14 @@ namespace vultra
     AssetHandle<vasset::VMesh, resource::GpuMesh> AssetSystem::loadMeshSync(const CoreUUID& uuid)
     {
         return loadGpuAssetSync(
-            uuid, m_MeshCache, UploadCmd::Kind::eMesh, "loadMeshSync",
+            uuid,
+            m_MeshCache,
+            UploadCmd::Kind::eMesh,
+            "loadMeshSync",
             [this](std::string_view u) -> vbase::Result<std::vector<std::byte>, std::string> {
                 auto br = m_VFS.readAll(u);
                 if (!br)
-                    return vbase::Result<std::vector<std::byte>, std::string>::err("failed to read " +
-                                                                                   std::string(u));
+                    return vbase::Result<std::vector<std::byte>, std::string>::err("failed to read " + std::string(u));
                 return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(br.value()));
             },
             [](std::string_view, std::vector<std::byte>& bytes) -> std::unique_ptr<vasset::VMesh> {
@@ -2271,12 +2262,14 @@ namespace vultra
     AssetSystem::loadGaussianSplatSync(const CoreUUID& uuid)
     {
         return loadGpuAssetSync(
-            uuid, m_GaussianSplatCache, UploadCmd::Kind::eGaussianSplat, "loadGaussianSplatSync",
+            uuid,
+            m_GaussianSplatCache,
+            UploadCmd::Kind::eGaussianSplat,
+            "loadGaussianSplatSync",
             [this](std::string_view u) -> vbase::Result<std::vector<std::byte>, std::string> {
                 auto br = m_VFS.readAll(u);
                 if (!br)
-                    return vbase::Result<std::vector<std::byte>, std::string>::err("failed to read " +
-                                                                                   std::string(u));
+                    return vbase::Result<std::vector<std::byte>, std::string>::err("failed to read " + std::string(u));
                 return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(br.value()));
             },
             [](std::string_view, std::vector<std::byte>& bytes) -> std::unique_ptr<vasset::VGaussianSplat> {
@@ -2334,7 +2327,7 @@ namespace vultra
         }
 
         std::error_code ec;
-        const auto sourceRelativePath = std::filesystem::relative(physicalPath, m_Desc.assetRoot, ec);
+        const auto      sourceRelativePath = std::filesystem::relative(physicalPath, m_Desc.assetRoot, ec);
         if (!ec && !sourceRelativePath.empty())
         {
             const auto relativeText = sourceRelativePath.generic_string();
@@ -2379,7 +2372,8 @@ namespace vultra
         m_Registry = std::move(registry);
         m_Resolver.loadFromAssetRegistry(m_Registry);
         m_Resolver.setScheme(m_Desc.scheme);
-        VULTRA_CORE_INFO("[AssetSystem] Reloaded asset registry. Registry entries: {}", m_Registry.getRegistry().size());
+        VULTRA_CORE_INFO("[AssetSystem] Reloaded asset registry. Registry entries: {}",
+                         m_Registry.getRegistry().size());
         return true;
     }
 
