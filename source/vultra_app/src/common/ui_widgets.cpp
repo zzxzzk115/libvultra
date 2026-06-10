@@ -55,6 +55,8 @@ namespace vultra_app::ui
             return ICON_MDI_IMAGE;
         if (hasExtension(path, {".vscn"}))
             return ICON_MDI_FILE_TREE;
+        if (hasExtension(path, {".vprefab"}))
+            return ICON_MDI_CUBE;
         const auto name = lowerFileName(path);
         if (hasSuffix(name, ".vrg.json"))
             return ICON_MDI_GRAPH;

@@ -44,6 +44,7 @@ namespace vultra_app
 
     private:
         void drawEntityInspector(EditorContext& ctx);
+        void drawPrefabSection(EditorContext& ctx, vultra::World& world, entt::entity entity);
         void drawAddComponentButton(EditorContext& ctx, vultra::World& world, entt::entity entity);
         void drawAssetInspector(EditorContext& ctx);
         void drawSourceAssetInspector(EditorContext& ctx);

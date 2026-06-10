@@ -1,13 +1,16 @@
 #include "editor_app/editor_app.hpp"
 
+#include "editor_app/prefab_ops.hpp"
 #include "editor_app/scene_asset_instantiation.hpp"
 #include "editor_app/selection.hpp"
 #include "project_templates.hpp"
 #include "vproject.hpp"
 
 #include <vultra/function/services/asset_service.hpp>
+#include <vultra/function/services/scene_service.hpp>
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/services/world_service.hpp>
+#include <vultra/function/world/components/prefab_instance_component.hpp>
 #include <vultra/function/world/components/box_shape_component.hpp>
 #include <vultra/function/world/components/animator_component.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
@@ -2642,6 +2645,108 @@ namespace vultra_app
             m_History.observeScene(ctx);
             payload["statusMessage"] = ctx.state.statusMessage;
             return ok(std::move(payload));
+        }
+
+        if (name == "scene.create_prefab")
+        {
+            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+            if (!worldService)
+                return error("world service is unavailable");
+            auto&      world  = worldService->world();
+            const auto entity = entityArg(world, args, "entity");
+            if (entity == entt::null)
+                return error("entity was not found");
+            const auto pathStr = args.value("path", std::string {});
+            if (pathStr.empty())
+                return error("scene.create_prefab requires path");
+
+            auto res = createPrefabFromEntity(ctx, world, entity, std::filesystem::path(pathStr));
+            if (!res.success)
+                return error(res.message.empty() ? "failed to create prefab" : res.message);
+
+            ctx.state.sceneDirty    = true;
+            ctx.state.statusMessage = res.message;
+            m_History.setNextLabel(res.message);
+            ++ctx.state.sceneContentGeneration;
+            m_History.observeScene(ctx);
+
+            nlohmann::json payload {{"prefabUri", res.prefabUri}, {"statusMessage", res.message}};
+            if (auto* id = world.registry().try_get<vultra::IDComponent>(res.instanceRoot))
+                payload["uuid"] = id->uuid.toString();
+            return ok(std::move(payload));
+        }
+
+        if (name == "scene.unpack_prefab")
+        {
+            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+            if (!worldService)
+                return error("world service is unavailable");
+            auto&      world  = worldService->world();
+            const auto entity = entityArg(world, args, "entity");
+            if (entity == entt::null)
+                return error("entity was not found");
+
+            std::string message;
+            if (!unpackPrefab(ctx, world, entity, message))
+                return error(message);
+
+            ctx.state.sceneDirty    = true;
+            ctx.state.statusMessage = message;
+            m_History.setNextLabel(message);
+            ++ctx.state.sceneContentGeneration;
+            m_History.observeScene(ctx);
+            return ok({{"statusMessage", message}});
+        }
+
+        if (name == "scene.revert_override" || name == "scene.apply_override")
+        {
+            auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+            if (!worldService)
+                return error("world service is unavailable");
+            auto* sceneService = ctx.services ? ctx.services->tryGet<vultra::ISceneService>() : nullptr;
+            if (!sceneService)
+                return error("scene service is unavailable");
+            auto&      world  = worldService->world();
+            const auto entity = entityArg(world, args, "entity");
+            if (entity == entt::null)
+                return error("entity was not found");
+            const auto component = args.value("component", std::string {});
+            const auto field     = args.value("field", std::string {});
+            if (component.empty() || field.empty())
+                return error("requires component and field");
+
+            const bool isRevert = (name == "scene.revert_override");
+            const bool applied  = isRevert ? sceneService->revertPrefabField(world, entity, component, field) :
+                                             sceneService->applyPrefabField(world, entity, component, field);
+            if (!applied)
+                return error("override operation failed");
+
+            if (!isRevert)
+            {
+                // Re-register the modified prefab file so its imported copy stays current.
+                std::string  prefabUri;
+                auto&        reg = world.registry();
+                entt::entity cur = entity;
+                while (cur != entt::null && reg.valid(cur))
+                {
+                    if (auto* pic = reg.try_get<vultra::PrefabInstanceComponent>(cur))
+                    {
+                        prefabUri = pic->prefabUri;
+                        break;
+                    }
+                    cur = world.parent(cur);
+                }
+                if (!prefabUri.empty())
+                    if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
+                        assetService->reimportAsset(prefabUri, false);
+            }
+
+            ctx.state.sceneDirty    = true;
+            ctx.state.statusMessage = isRevert ? "Reverted override." : "Applied override to prefab.";
+            m_History.setNextLabel(ctx.state.statusMessage);
+            ++ctx.state.sceneContentGeneration;
+            m_History.observeScene(ctx);
+            return ok({{"statusMessage", ctx.state.statusMessage}});
         }
 
         if (name == "editor.back_to_launcher")

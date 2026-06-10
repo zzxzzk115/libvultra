@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/core/base/uuid.hpp"
 #include "vultra/core/engine/engine_subsystem.hpp"
 #include "vultra/function/scene/scene_component_registry.hpp"
 #include "vultra/function/services/scene_service.hpp"
@@ -10,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace vultra
 {
@@ -46,10 +48,15 @@ namespace vultra
 
         entt::entity
              instantiateScene(World& world, std::string_view uri, entt::entity parent, bool clearWorld) override;
+        entt::entity instantiatePrefab(World& world, std::string_view prefabUri, entt::entity parent) override;
         bool saveWorldAsSceneSync(std::string_view uri, World& world, entt::entity root) override;
         SceneDocument captureWorldAsScene(World& world, entt::entity root) override;
         entt::entity
         instantiateSceneDocument(World& world, const SceneDocument& doc, entt::entity parent, bool clearWorld) override;
+
+        std::unordered_set<std::string> prefabOverriddenFields(World& world, entt::entity e) override;
+        bool revertPrefabField(World& world, entt::entity e, std::string_view component, std::string_view field) override;
+        bool applyPrefabField(World& world, entt::entity e, std::string_view component, std::string_view field) override;
 
     private:
         SceneComponentRegistry m_ComponentRegistry;
@@ -102,7 +109,38 @@ namespace vultra
                  bool allowPrefab,
                  const std::unordered_map<std::string, std::string>& assets);
 
+        // Prefab support.
+        // Instantiates the prefab's own subtree, assigning each descendant a deterministic
+        // per-instance UUID derived from (instanceRoot, prefab-internal node id). The prefab
+        // root entity itself is assigned `instanceRoot` (the scene's instance node uuid).
+        InstantiateNodeResult
+        instantiatePrefabContentR(World&                                              world,
+                                  const SceneNode&                                    prefabNode,
+                                  entt::entity                                        parent,
+                                  const std::filesystem::path&                        baseDir,
+                                  const std::unordered_map<std::string, std::string>& assets,
+                                  const CoreUUID&                                     instanceRoot,
+                                  bool                                                isRoot);
+
+        // Applies a scene instance node's child entry as either an override on an existing
+        // prefab descendant (matched by uuid in `index`) or a newly-added child subtree.
+        void applyInstanceOverridesR(World&                                              world,
+                                     const SceneNode&                                    childNode,
+                                     entt::entity                                        parentEntity,
+                                     const std::unordered_map<CoreUUID, entt::entity>&   index,
+                                     const std::filesystem::path&                        baseDir,
+                                     const std::unordered_map<std::string, std::string>& assets);
+
         // World -> Scene
         BuildNodeResult buildNodeFromWorldR(World& world, entt::entity e);
+
+        // World -> Scene for a prefab instance: emits only fields that differ from the prefab
+        // source and only user-added (non-prefab) children, plus override nodes for changed
+        // prefab descendants.
+        BuildNodeResult buildInstanceNodeFromWorldR(World&                                                world,
+                                                    entt::entity                                          e,
+                                                    const SceneNode*                                      prefabNode,
+                                                    const std::unordered_map<CoreUUID, const SceneNode*>& srcIndex,
+                                                    bool                                                  isRoot);
     };
 } // namespace vultra

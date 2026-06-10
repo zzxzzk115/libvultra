@@ -1,8 +1,14 @@
+// Required before any header pulls in imgui.h, so imgui_internal.h's math operators are available.
+#ifndef IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS
+#endif
+
 #include "editor_app/ui/windows/content_browser_window.hpp"
 
 #include "common/ui_widgets.hpp"
 #include "editor_app/asset_thumbnail_service.hpp"
 #include "editor_app/content_asset_registry.hpp"
+#include "editor_app/editor_app.hpp"
 #include "editor_app/editor_commands.hpp"
 #include "editor_app/scene_thumbnail.hpp"
 #include "editor_app/selection.hpp"
@@ -14,8 +20,15 @@
 #include <vultra/core/i18n/i18n.hpp>
 #include <vultra/function/imgui/imgui_dpi.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
+#include <nlohmann/json.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_service.hpp>
+#include <vultra/function/services/world_service.hpp>
+#include <vultra/function/world/components/name_component.hpp>
+#include <vultra/function/world/world.hpp>
+
+#include <entt/entity/entity.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -1039,6 +1052,54 @@ namespace vultra_app
         }
     }
 
+    void ContentBrowserWindow::acceptEntityDropAsPrefab(EditorContext& ctx,
+                                                        const ImVec2&  rectMin,
+                                                        const ImVec2&  rectMax)
+    {
+        if (!ctx.editor || m_CurrentDir.empty())
+            return;
+
+        const ImRect dropRect(rectMin, rectMax);
+        if (!ImGui::BeginDragDropTargetCustom(dropRect, ImGui::GetID("ContentBrowserPrefabDrop")))
+            return;
+
+        if (const ImGuiPayload* payload =
+                ImGui::AcceptDragDropPayload("VULTRA_ENTITY", ImGuiDragDropFlags_AcceptNoDrawDefaultRect))
+        {
+            if (payload->IsDelivery() && payload->DataSize == sizeof(entt::entity))
+            {
+                entt::entity dropped {};
+                std::memcpy(&dropped, payload->Data, sizeof(entt::entity));
+
+                auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+                if (worldService)
+                {
+                    auto& world = worldService->world();
+                    auto& reg   = world.registry();
+                    if (reg.valid(dropped))
+                    {
+                        std::string baseName = "Prefab";
+                        if (auto* n = reg.try_get<vultra::NameComponent>(dropped); n && !n->name.empty())
+                            baseName = n->name;
+
+                        // Pick a non-colliding file name in the current directory.
+                        std::filesystem::path target = m_CurrentDir / (baseName + ".vprefab");
+                        for (int i = 1; std::filesystem::exists(target); ++i)
+                            target = m_CurrentDir / (baseName + "_" + std::to_string(i) + ".vprefab");
+
+                        (void)ctx.editor->executeCommand(
+                            ctx,
+                            "scene.create_prefab",
+                            {{"entity", static_cast<uint32_t>(dropped)}, {"path", target.generic_string()}});
+                        ++ctx.state.assetFileGeneration;
+                        invalidateEntryCache();
+                    }
+                }
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
+
     void ContentBrowserWindow::drawContentPanel(EditorContext& ctx)
     {
         if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) &&
@@ -1143,6 +1204,7 @@ namespace vultra_app
                 }
 
                 ImGui::EndTable();
+                acceptEntityDropAsPrefab(ctx, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
             }
             return;
         }
@@ -1165,6 +1227,8 @@ namespace vultra_app
             }
         }
         ImGui::Columns(1);
+
+        acceptEntityDropAsPrefab(ctx, gridMin, gridMax);
 
         if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
         {

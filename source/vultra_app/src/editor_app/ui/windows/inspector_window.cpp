@@ -2,6 +2,7 @@
 
 #include "common/file_dialog.hpp"
 #include "common/ui_widgets.hpp"
+#include "editor_app/editor_app.hpp"
 #include "editor_app/editor_history.hpp"
 #include "editor_app/selection.hpp"
 #include "editor_app/ui/settings_widgets.hpp"
@@ -4901,6 +4902,79 @@ namespace vultra_app
         ImGui::End();
     }
 
+    void InspectorWindow::drawPrefabSection(EditorContext& ctx, vultra::World& world, entt::entity entity)
+    {
+        auto& reg = world.registry();
+
+        // Walk ancestors to find the prefab instance root (if any).
+        entt::entity rootEnt = entt::null;
+        std::string  prefabUri;
+        for (entt::entity cur = entity; cur != entt::null && reg.valid(cur); cur = world.parent(cur))
+        {
+            if (auto* pic = reg.try_get<vultra::PrefabInstanceComponent>(cur))
+            {
+                rootEnt   = cur;
+                prefabUri = pic->prefabUri;
+                break;
+            }
+        }
+        if (rootEnt == entt::null)
+            return;
+
+        const ImVec4 prefabBlue {0.40f, 0.62f, 1.00f, 1.0f};
+        ImGui::PushStyleColor(ImGuiCol_Text, prefabBlue);
+        ImGui::TextUnformatted(ICON_MDI_CUBE "  Prefab Instance");
+        ImGui::PopStyleColor();
+        if (!prefabUri.empty())
+            ImGui::TextDisabled("%s", prefabUri.c_str());
+
+        if (entity == rootEnt && ImGui::SmallButton(ICON_MDI_CUBE_OFF_OUTLINE "  Unpack"))
+            (void)ctx.editor->executeCommand(
+                ctx, "scene.unpack_prefab", {{"entity", static_cast<uint32_t>(entity)}});
+
+        std::unordered_set<std::string> overrides;
+        if (auto* sceneService = ctx.services->tryGet<vultra::ISceneService>())
+            overrides = sceneService->prefabOverriddenFields(world, entity);
+
+        if (!overrides.empty() &&
+            ImGui::CollapsingHeader("Prefab Overrides", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            std::vector<std::string> keys(overrides.begin(), overrides.end());
+            std::sort(keys.begin(), keys.end());
+            for (const auto& key : keys)
+            {
+                const auto slash = key.find('/');
+                if (slash == std::string::npos)
+                    continue;
+                const std::string component = key.substr(0, slash);
+                const std::string field     = key.substr(slash + 1);
+
+                ImGui::PushID(key.c_str());
+                ImGui::TextColored(prefabBlue, "%s", key.c_str());
+                ImGui::SameLine();
+                if (ImGui::SmallButton(ICON_MDI_UNDO))
+                    (void)ctx.editor->executeCommand(ctx,
+                                                     "scene.revert_override",
+                                                     {{"entity", static_cast<uint32_t>(entity)},
+                                                      {"component", component},
+                                                      {"field", field}});
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Revert to prefab value");
+                ImGui::SameLine();
+                if (ImGui::SmallButton(ICON_MDI_CHECK))
+                    (void)ctx.editor->executeCommand(ctx,
+                                                     "scene.apply_override",
+                                                     {{"entity", static_cast<uint32_t>(entity)},
+                                                      {"component", component},
+                                                      {"field", field}});
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Apply to prefab");
+                ImGui::PopID();
+            }
+        }
+        ImGui::Separator();
+    }
+
     void InspectorWindow::drawEntityInspector(EditorContext& ctx)
     {
         if (!ctx.services)
@@ -4946,6 +5020,8 @@ namespace vultra_app
             if (ctx.history)
                 ctx.history->setNextLabel("Rename Entity");
         }
+
+        drawPrefabSection(ctx, world, e);
 
         auto& status = reg.get_or_emplace<vultra::EntityStatusComponent>(e);
         if (ImGui::CollapsingHeader(vultra::tr("inspector.component.status"), ImGuiTreeNodeFlags_DefaultOpen))

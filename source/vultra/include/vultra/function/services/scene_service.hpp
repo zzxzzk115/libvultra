@@ -11,6 +11,7 @@
 #include <memory>
 #include <string_view>
 #include <string>
+#include <unordered_set>
 
 namespace vultra
 {
@@ -74,6 +75,11 @@ namespace vultra
             return instantiateScene(world, uri, entt::null, false);
         }
 
+        // Instantiate a prefab (.vprefab) as a prefab instance. Unlike instantiateScene, the
+        // returned root entity is tagged with PrefabInstanceComponent and its descendants get
+        // deterministic per-instance uuids, so overrides can be tracked and saved as a diff.
+        virtual entt::entity instantiatePrefab(World& world, std::string_view prefabUri, entt::entity parent) = 0;
+
         // Save world (or a subtree) as a .vscn.
         virtual bool saveWorldAsSceneSync(std::string_view uri, World& world, entt::entity root) = 0;
 
@@ -85,5 +91,21 @@ namespace vultra
         virtual SceneDocument captureWorldAsScene(World& world, entt::entity root) = 0;
         virtual entt::entity
         instantiateSceneDocument(World& world, const SceneDocument& doc, entt::entity parent, bool clearWorld) = 0;
+
+        // --- Prefab override tooling (editor) ---
+
+        // For an entity that belongs to a prefab instance, returns the set of "Component/field"
+        // keys whose live value differs from the prefab source (i.e. the active overrides).
+        // Empty if the entity is not prefab content or the prefab source is unavailable.
+        virtual std::unordered_set<std::string> prefabOverriddenFields(World& world, entt::entity e) = 0;
+
+        // Resets a single overridden field on a prefab-instance entity back to its prefab value.
+        virtual bool
+        revertPrefabField(World& world, entt::entity e, std::string_view component, std::string_view field) = 0;
+
+        // Writes a single field's live value into the prefab source file (.vprefab) so it becomes
+        // the new inherited value. Returns false if the entity/field has no prefab correspondence.
+        virtual bool
+        applyPrefabField(World& world, entt::entity e, std::string_view component, std::string_view field) = 0;
     };
 } // namespace vultra

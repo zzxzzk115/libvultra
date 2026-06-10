@@ -22,6 +22,7 @@
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
+#include <vultra/function/world/components/prefab_instance_component.hpp>
 #include <vultra/function/world/components/reflection_probe_component.hpp>
 #include <vultra/function/world/components/rigid_body_component.hpp>
 #include <vultra/function/world/components/sphere_shape_component.hpp>
@@ -30,6 +31,7 @@
 #include <vultra/function/world/components/xr_view_component.hpp>
 #include <vultra/function/world/world.hpp>
 
+#include <ImGuiFileDialog/ImGuiFileDialog.h>
 #include <imgui.h>
 #include <nlohmann/json.hpp>
 
@@ -569,8 +571,42 @@ namespace vultra_app
         }
 
         drawPendingAssetInstantiationPopup(ctx, world);
+        drawCreatePrefabDialog(ctx, world);
 
         ImGui::End();
+    }
+
+    void SceneHierarchyWindow::drawCreatePrefabDialog(EditorContext& ctx, vultra::World& world)
+    {
+        if (m_OpenCreatePrefabDialog)
+        {
+            m_OpenCreatePrefabDialog = false;
+            const auto root = (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
+            IGFD::FileDialogConfig config;
+            config.path     = root.generic_string();
+            config.fileName = m_CreatePrefabDefaultName;
+            config.flags    = ImGuiFileDialogFlags_Modal | ImGuiFileDialogFlags_ConfirmOverwrite;
+            ImGuiFileDialog::Instance()->OpenDialog("HierarchyCreatePrefab", "Create Prefab", ".vprefab", config);
+        }
+
+        if (ImGuiFileDialog::Instance()->Display("HierarchyCreatePrefab",
+                                                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings,
+                                                 ImVec2(640.0f, 420.0f)))
+        {
+            if (ImGuiFileDialog::Instance()->IsOk())
+            {
+                const std::string sel = ImGuiFileDialog::Instance()->GetFilePathName(IGFD_ResultMode_KeepInputFile);
+                if (!sel.empty() && world.registry().valid(m_CreatePrefabEntity))
+                {
+                    (void)executeSceneHierarchyCommand(
+                        ctx,
+                        "scene.create_prefab",
+                        {{"entity", static_cast<uint32_t>(m_CreatePrefabEntity)}, {"path", sel}});
+                }
+            }
+            m_CreatePrefabEntity = entt::null;
+            ImGuiFileDialog::Instance()->Close();
+        }
     }
 
     bool SceneHierarchyWindow::entityMatchesFilter(vultra::World& world, entt::entity entity, const char* filter) const
@@ -599,11 +635,16 @@ namespace vultra_app
     void SceneHierarchyWindow::drawEntityNode(EditorContext& ctx,
                                               vultra::World& world,
                                               entt::entity   entity,
-                                              const char*    filter)
+                                              const char*    filter,
+                                              bool           inPrefab)
     {
         auto& reg = world.registry();
         if (!reg.valid(entity))
             return;
+
+        // Prefab content (instance root + all descendants) is tinted blue, Unity-style.
+        const bool isPrefabRoot  = reg.all_of<vultra::PrefabInstanceComponent>(entity);
+        const bool prefabContent = inPrefab || isPrefabRoot;
 
         auto* id = reg.try_get<vultra::IDComponent>(entity);
         if (!id)
@@ -625,7 +666,11 @@ namespace vultra_app
         ImGui::PushID(static_cast<int>(entt::to_integral(entity)));
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
-        const bool   opened  = ImGui::TreeNodeEx("##entity", flags, "%s", label.c_str());
+        if (prefabContent)
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.40f, 0.62f, 1.00f, 1.0f));
+        const bool opened = ImGui::TreeNodeEx("##entity", flags, "%s", label.c_str());
+        if (prefabContent)
+            ImGui::PopStyleColor();
         const ImVec2 itemMin = ImGui::GetItemRectMin();
         const ImVec2 itemMax = ImGui::GetItemRectMax();
         if (ImGui::IsItemClicked() && status.selectable)
@@ -731,6 +776,19 @@ namespace vultra_app
                 drawCreateEntityMenu(ctx, world, entity);
                 ImGui::EndMenu();
             }
+            ImGui::Separator();
+            if (ImGui::MenuItem(ICON_MDI_CUBE_OUTLINE "  Create Prefab..."))
+            {
+                m_CreatePrefabEntity      = entity;
+                m_CreatePrefabDefaultName = name + ".vprefab";
+                m_OpenCreatePrefabDialog  = true;
+            }
+            if (isPrefabRoot && ImGui::MenuItem(ICON_MDI_CUBE_OFF_OUTLINE "  Unpack Prefab"))
+            {
+                (void)executeSceneHierarchyCommand(
+                    ctx, "scene.unpack_prefab", {{"entity", static_cast<uint32_t>(entity)}});
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem(vultra::tr("common.delete")))
             {
                 (void)executeSceneHierarchyCommand(
@@ -792,7 +850,7 @@ namespace vultra_app
             for (auto child = world.firstChild(entity); child != entt::null; child = world.nextSibling(child))
             {
                 if (entityMatchesFilter(world, child, filter))
-                    drawEntityNode(ctx, world, child, filter);
+                    drawEntityNode(ctx, world, child, filter, prefabContent);
             }
             ImGui::TreePop();
         }

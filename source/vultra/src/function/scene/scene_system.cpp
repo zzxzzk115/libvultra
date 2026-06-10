@@ -1,5 +1,6 @@
 #include "vultra/function/scene/scene_system.hpp"
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/base/uuid.hpp"
 #include "vultra/core/engine/engine_context.hpp"
 #include "vultra/core/os/file_system.hpp"
 #include "vultra/function/scene/scene_reflection.hpp"
@@ -1024,6 +1025,143 @@ namespace vultra
         transform.dirty    = true;
     }
 
+    // Collects every entity in the subtree rooted at `root` into a uuid -> entity index.
+    static void buildEntityUuidIndex(World&                                      world,
+                                     entt::entity                                root,
+                                     std::unordered_map<CoreUUID, entt::entity>& out)
+    {
+        entt::registry& reg = world.registry();
+        if (reg.all_of<IDComponent>(root))
+        {
+            const auto& uuid = reg.get<IDComponent>(root).uuid;
+            if (uuid.valid())
+                out[uuid] = root;
+        }
+        for (entt::entity c = world.firstChild(root); c != entt::null; c = world.nextSibling(c))
+            buildEntityUuidIndex(world, c, out);
+    }
+
+    // Resolves the per-instance UUID of a prefab descendant. The prefab root maps to the
+    // instance node's own uuid; every descendant maps to a deterministic name-based uuid so
+    // multiple instances of the same prefab never collide and identities are stable on reload.
+    static CoreUUID prefabDescendantUuid(const CoreUUID& instanceRoot, const CoreUUID& prefabNodeId)
+    {
+        return CoreUUIDHelper::getFromName(instanceRoot.toString() + "/" + prefabNodeId.toString());
+    }
+
+    // Builds an index from per-instance descendant uuid -> prefab source node, mirroring the
+    // scheme used by instantiatePrefabContentR so save/inspector can diff against the source.
+    static void collectPrefabSourceByUuid(const CoreUUID&                                instanceRoot,
+                                          const SceneNode&                               prefabNode,
+                                          std::unordered_map<CoreUUID, const SceneNode*>& out,
+                                          bool                                           isRoot = true)
+    {
+        const CoreUUID key = isRoot ? instanceRoot : prefabDescendantUuid(instanceRoot, prefabNode.id);
+        out[key]           = &prefabNode;
+        for (const auto& ch : prefabNode.children)
+            collectPrefabSourceByUuid(instanceRoot, *ch, out, false);
+    }
+
+    // Mutable variant: used when editing the prefab file (apply-to-prefab).
+    static void collectPrefabSourceByUuidMutable(const CoreUUID&                          instanceRoot,
+                                                 SceneNode&                               prefabNode,
+                                                 std::unordered_map<CoreUUID, SceneNode*>& out,
+                                                 bool                                     isRoot = true)
+    {
+        const CoreUUID key = isRoot ? instanceRoot : prefabDescendantUuid(instanceRoot, prefabNode.id);
+        out[key]           = &prefabNode;
+        for (auto& ch : prefabNode.children)
+            collectPrefabSourceByUuidMutable(instanceRoot, *ch, out, false);
+    }
+
+    // Walks ancestors of `e` to find the nearest entity tagged as a prefab instance root.
+    static entt::entity findPrefabInstanceRoot(World& world, entt::entity e)
+    {
+        entt::registry& reg = world.registry();
+        entt::entity    cur = e;
+        while (cur != entt::null && reg.valid(cur))
+        {
+            if (reg.all_of<PrefabInstanceComponent>(cur))
+                return cur;
+            cur = world.parent(cur);
+        }
+        return entt::null;
+    }
+
+    SceneSystem::InstantiateNodeResult
+    SceneSystem::instantiatePrefabContentR(World&                                              world,
+                                           const SceneNode&                                    prefabNode,
+                                           entt::entity                                        parent,
+                                           const std::filesystem::path&                        baseDir,
+                                           const std::unordered_map<std::string, std::string>& assets,
+                                           const CoreUUID&                                     instanceRoot,
+                                           bool                                                isRoot)
+    {
+        entt::registry& reg = world.registry();
+
+        // A prefab that itself nests another prefab instance falls back to the generic path
+        // (nested-prefab descendant remapping is out of scope for this iteration).
+        if (!prefabNode.prefabUri.empty())
+            return instantiateNodeR(world, prefabNode, parent, baseDir, true, assets);
+
+        entt::entity e = world.createEntity();
+        world.setParent(e, parent);
+        static_cast<void>(reg.get_or_emplace<TransformComponent>(e));
+
+        const CoreUUID uuid = isRoot ? instanceRoot : prefabDescendantUuid(instanceRoot, prefabNode.id);
+        reg.get<IDComponent>(e).uuid = uuid;
+
+        applyProperties(reg, e, prefabNode, assets);
+        applyMeshDefaultTransformIfNeeded(reg, e, prefabNode);
+
+        if (!prefabNode.name.empty())
+        {
+            if (!reg.all_of<NameComponent>(e))
+                reg.emplace<NameComponent>(e, NameComponent {prefabNode.name});
+            else if (reg.get<NameComponent>(e).name.empty())
+                reg.get<NameComponent>(e).name = prefabNode.name;
+        }
+
+        for (const auto& ch : prefabNode.children)
+        {
+            auto childResult =
+                instantiatePrefabContentR(world, *ch, e, baseDir, assets, instanceRoot, false);
+            if (!childResult)
+                return InstantiateNodeResult::err(std::move(childResult).error());
+        }
+
+        return InstantiateNodeResult::ok(e);
+    }
+
+    void SceneSystem::applyInstanceOverridesR(World&                                              world,
+                                              const SceneNode&                                    childNode,
+                                              entt::entity                                        parentEntity,
+                                              const std::unordered_map<CoreUUID, entt::entity>&   index,
+                                              const std::filesystem::path&                        baseDir,
+                                              const std::unordered_map<std::string, std::string>& assets)
+    {
+        entt::registry& reg = world.registry();
+
+        auto it = childNode.id.valid() ? index.find(childNode.id) : index.end();
+        if (it != index.end())
+        {
+            // Override on an existing prefab descendant.
+            const entt::entity e = it->second;
+            applyProperties(reg, e, childNode, assets);
+            applyMeshDefaultTransformIfNeeded(reg, e, childNode);
+            for (const auto& gc : childNode.children)
+                applyInstanceOverridesR(world, *gc, e, index, baseDir, assets);
+        }
+        else
+        {
+            // User-added child subtree (not part of the prefab) -> full instantiation.
+            auto r = instantiateNodeR(world, childNode, parentEntity, baseDir, true, assets);
+            if (!r)
+                VULTRA_CORE_WARN("[SceneSystem] Failed to instantiate added prefab child: {}",
+                                 std::move(r).error());
+        }
+    }
+
     SceneSystem::InstantiateNodeResult
     SceneSystem::instantiateNodeR(World&                                              world,
                                   const SceneNode&                                    node,
@@ -1037,37 +1175,45 @@ namespace vultra
         // Prefab: instantiate referenced scene and apply overrides.
         if (!node.prefabUri.empty())
         {
-            std::filesystem::path prefabPath = node.prefabUri;
-            if (node.prefabUri.find("://") == std::string::npos && prefabPath.is_relative() && !baseDir.empty())
-                prefabPath = baseDir / prefabPath;
+            if (!node.id.valid())
+                return InstantiateNodeResult::err("Scene instantiate: prefab node is missing uuid");
+            const CoreUUID rootUuid = node.id;
 
-            auto         prefabDoc = loadSceneSync(prefabPath.string());
-            entt::entity rootEnt   = entt::null;
-            if (prefabDoc && prefabDoc->root)
+            // Resolve the prefab uri (res:// stays verbatim; relative paths join the scene dir).
+            std::string prefabUriForLoad;
+            if (node.prefabUri.find("://") != std::string::npos)
             {
-                auto instantiatedRoot = instantiateNodeR(world,
-                                                         *prefabDoc->root,
-                                                         parent,
-                                                         prefabPath.parent_path(),
-                                                         !prefabDoc->isManifest,
-                                                         prefabDoc->assets);
+                prefabUriForLoad = node.prefabUri;
+            }
+            else
+            {
+                std::filesystem::path prefabPath = node.prefabUri;
+                if (prefabPath.is_relative() && !baseDir.empty())
+                    prefabPath = baseDir / prefabPath;
+                prefabUriForLoad = prefabPath.generic_string();
+            }
+
+            auto         prefabDoc = loadSceneSync(prefabUriForLoad);
+            entt::entity rootEnt   = entt::null;
+            if (prefabDoc && prefabDoc->root && !prefabDoc->syntheticRoot)
+            {
+                auto instantiatedRoot = instantiatePrefabContentR(
+                    world, *prefabDoc->root, parent, uri_base_dir(prefabUriForLoad), prefabDoc->assets, rootUuid, true);
                 if (!instantiatedRoot)
                     return InstantiateNodeResult::err(std::move(instantiatedRoot).error());
                 rootEnt = std::move(instantiatedRoot).value();
             }
             else
+            {
+                // Missing/invalid prefab: keep a placeholder root so overrides/children still load.
+                VULTRA_CORE_WARN("[SceneSystem] Prefab source unavailable, instantiating placeholder: {}",
+                                 node.prefabUri);
                 rootEnt = world.createEntity();
+                world.setParent(rootEnt, parent);
+                reg.get<IDComponent>(rootEnt).uuid = rootUuid;
+            }
 
-            world.setParent(rootEnt, parent);
             static_cast<void>(reg.get_or_emplace<TransformComponent>(rootEnt));
-
-            // Override prefab root's IDComponent from this node's header uuid.
-            if (!node.id.valid())
-                return InstantiateNodeResult::err("Scene instantiate: prefab node is missing uuid");
-            if (!reg.all_of<IDComponent>(rootEnt))
-                reg.emplace<IDComponent>(rootEnt, IDComponent {node.id});
-            else
-                reg.get<IDComponent>(rootEnt).uuid = node.id;
 
             // Mark prefab instance on root.
             if (!reg.all_of<PrefabInstanceComponent>(rootEnt))
@@ -1075,17 +1221,15 @@ namespace vultra
             else
                 reg.get<PrefabInstanceComponent>(rootEnt).prefabUri = node.prefabUri;
 
-            // Apply overrides on the root entity.
+            // Apply root overrides on top of the prefab's base values.
             applyProperties(reg, rootEnt, node, assets);
             applyMeshDefaultTransformIfNeeded(reg, rootEnt, node);
 
-            // Instantiate extra children under prefab root.
+            // Index the instantiated subtree, then apply per-descendant overrides / added children.
+            std::unordered_map<CoreUUID, entt::entity> index;
+            buildEntityUuidIndex(world, rootEnt, index);
             for (const auto& ch : node.children)
-            {
-                auto childResult = instantiateNodeR(world, *ch, rootEnt, baseDir, allowPrefab, assets);
-                if (!childResult)
-                    return InstantiateNodeResult::err(std::move(childResult).error());
-            }
+                applyInstanceOverridesR(world, *ch, rootEnt, index, baseDir, assets);
 
             return InstantiateNodeResult::ok(rootEnt);
         }
@@ -1125,6 +1269,25 @@ namespace vultra
         }
 
         return InstantiateNodeResult::ok(e);
+    }
+
+    entt::entity SceneSystem::instantiatePrefab(World& world, std::string_view prefabUri, entt::entity parent)
+    {
+        // Wrap the prefab in a synthetic instance node: a fresh root uuid + the prefab reference.
+        // instantiateNodeR then expands the prefab content with deterministic descendant uuids and
+        // tags the root with PrefabInstanceComponent.
+        SceneNode node;
+        node.id        = CoreUUIDHelper::createStandardUUID();
+        node.prefabUri = std::string(prefabUri);
+
+        auto r = instantiateNodeR(world, node, parent, {}, true, {});
+        if (!r)
+        {
+            VULTRA_CORE_ERROR(
+                "[SceneSystem] Failed to instantiate prefab '{}': {}", prefabUri, std::move(r).error());
+            return entt::null;
+        }
+        return std::move(r).value();
     }
 
     entt::entity SceneSystem::instantiateScene(World& world, std::string_view uri, entt::entity parent, bool clearWorld)
@@ -1219,6 +1382,24 @@ namespace vultra
         if (!reg.valid(e))
             return BuildNodeResult::err("Scene save: invalid entity");
 
+        // Prefab instance: serialize only the diff against the prefab source.
+        if (reg.all_of<PrefabInstanceComponent>(e))
+        {
+            const auto& pic = reg.get<PrefabInstanceComponent>(e);
+            if (!pic.prefabUri.empty() && reg.all_of<IDComponent>(e) && reg.get<IDComponent>(e).uuid.valid())
+            {
+                if (auto prefabDoc = loadSceneSync(pic.prefabUri);
+                    prefabDoc && prefabDoc->root && !prefabDoc->syntheticRoot)
+                {
+                    std::unordered_map<CoreUUID, const SceneNode*> srcIndex;
+                    collectPrefabSourceByUuid(reg.get<IDComponent>(e).uuid, *prefabDoc->root, srcIndex);
+                    return buildInstanceNodeFromWorldR(world, e, prefabDoc->root.get(), srcIndex, true);
+                }
+                VULTRA_CORE_WARN("[SceneSystem] Prefab source unavailable for diff, saving full instance: {}",
+                                 pic.prefabUri);
+            }
+        }
+
         auto node = std::make_unique<SceneNode>();
 
         // The node header attribute `uuid` is the serialized IDComponent.
@@ -1274,6 +1455,99 @@ namespace vultra
             if (!childResult)
                 return BuildNodeResult::err(std::move(childResult).error());
             node->children.push_back(std::move(childResult).value());
+        }
+
+        return BuildNodeResult::ok(std::move(node));
+    }
+
+    SceneSystem::BuildNodeResult
+    SceneSystem::buildInstanceNodeFromWorldR(World&                                                world,
+                                             entt::entity                                          e,
+                                             const SceneNode*                                      prefabNode,
+                                             const std::unordered_map<CoreUUID, const SceneNode*>& srcIndex,
+                                             bool                                                  isRoot)
+    {
+        entt::registry& reg = world.registry();
+        if (!reg.valid(e))
+            return BuildNodeResult::err("Scene save: invalid entity");
+
+        auto node = std::make_unique<SceneNode>();
+        if (!(reg.all_of<IDComponent>(e) && reg.get<IDComponent>(e).uuid.valid()))
+            return BuildNodeResult::err("Scene save: entity missing IDComponent.uuid");
+        node->id = reg.get<IDComponent>(e).uuid;
+
+        if (reg.all_of<NameComponent>(e))
+            node->name = reg.get<NameComponent>(e).name;
+
+        // Only the instance root carries the prefab= reference.
+        if (isRoot && reg.all_of<PrefabInstanceComponent>(e))
+            node->prefabUri = reg.get<PrefabInstanceComponent>(e).prefabUri;
+
+        // Build a lookup of the prefab source's property values for this node.
+        std::unordered_map<std::string, std::string> srcProps;
+        if (prefabNode)
+            for (const auto& p : prefabNode->properties)
+                srcProps[p.component + "/" + p.field] = p.value;
+
+        // Emit only fields whose live value differs from the prefab source (or are new).
+        for (const auto& entry : m_ComponentRegistry.entries())
+        {
+            if (entry.name == "IDComponent")
+                continue;
+            if (!entry.has(reg, e))
+                continue;
+
+            void* ptr = entry.getPtr(reg, e);
+            if (!ptr || !entry.meta)
+                continue;
+
+            entt::meta_any instance = entry.meta.from_void(ptr);
+            for (const auto& fieldName : entry.fields)
+            {
+                auto data = entry.meta.data(entt::hashed_string {fieldName.c_str()});
+                if (!data)
+                    continue;
+
+                entt::meta_any    value = data.get(instance);
+                const std::string text  = any_to_text(value);
+                const std::string key   = entry.name + "/" + fieldName;
+
+                auto sit = srcProps.find(key);
+                if (sit != srcProps.end() && sit->second == text)
+                    continue; // unchanged inherited value
+
+                SceneProperty prop;
+                prop.component = entry.name;
+                prop.field     = fieldName;
+                prop.value     = text;
+                node->properties.push_back(std::move(prop));
+            }
+        }
+
+        // Children: prefab-origin children become override nodes (kept only if they carry a
+        // diff); user-added children are serialized in full.
+        for (entt::entity c = world.firstChild(e); c != entt::null; c = world.nextSibling(c))
+        {
+            if (!reg.all_of<IDComponent>(c))
+                continue;
+            const CoreUUID cuuid = reg.get<IDComponent>(c).uuid;
+
+            if (auto pit = srcIndex.find(cuuid); pit != srcIndex.end())
+            {
+                auto childResult = buildInstanceNodeFromWorldR(world, c, pit->second, srcIndex, false);
+                if (!childResult)
+                    return BuildNodeResult::err(std::move(childResult).error());
+                auto childNode = std::move(childResult).value();
+                if (!childNode->properties.empty() || !childNode->children.empty())
+                    node->children.push_back(std::move(childNode));
+            }
+            else
+            {
+                auto childResult = buildNodeFromWorldR(world, c);
+                if (!childResult)
+                    return BuildNodeResult::err(std::move(childResult).error());
+                node->children.push_back(std::move(childResult).value());
+            }
         }
 
         return BuildNodeResult::ok(std::move(node));
@@ -1351,5 +1625,186 @@ namespace vultra
         }
         doc.root = std::move(rootNodeResult).value();
         return doc;
+    }
+
+    std::unordered_set<std::string> SceneSystem::prefabOverriddenFields(World& world, entt::entity e)
+    {
+        std::unordered_set<std::string> out;
+        entt::registry&                 reg = world.registry();
+        if (!reg.valid(e) || !reg.all_of<IDComponent>(e))
+            return out;
+
+        const entt::entity rootEnt = findPrefabInstanceRoot(world, e);
+        if (rootEnt == entt::null || !reg.all_of<IDComponent>(rootEnt))
+            return out;
+
+        const auto& pic = reg.get<PrefabInstanceComponent>(rootEnt);
+        if (pic.prefabUri.empty())
+            return out;
+
+        auto prefabDoc = loadSceneSync(pic.prefabUri);
+        if (!prefabDoc || !prefabDoc->root || prefabDoc->syntheticRoot)
+            return out;
+
+        std::unordered_map<CoreUUID, const SceneNode*> srcIndex;
+        collectPrefabSourceByUuid(reg.get<IDComponent>(rootEnt).uuid, *prefabDoc->root, srcIndex);
+
+        auto sit = srcIndex.find(reg.get<IDComponent>(e).uuid);
+        if (sit == srcIndex.end() || !sit->second)
+            return out; // user-added entity: not an override of a prefab descendant
+
+        std::unordered_map<std::string, std::string> srcProps;
+        for (const auto& p : sit->second->properties)
+            srcProps[p.component + "/" + p.field] = p.value;
+
+        for (const auto& entry : m_ComponentRegistry.entries())
+        {
+            if (entry.name == "IDComponent")
+                continue;
+            if (!entry.has(reg, e))
+                continue;
+            void* ptr = entry.getPtr(reg, e);
+            if (!ptr || !entry.meta)
+                continue;
+
+            entt::meta_any instance = entry.meta.from_void(ptr);
+            for (const auto& fieldName : entry.fields)
+            {
+                auto data = entry.meta.data(entt::hashed_string {fieldName.c_str()});
+                if (!data)
+                    continue;
+                const std::string text = any_to_text(data.get(instance));
+                const std::string key  = entry.name + "/" + fieldName;
+                auto              it   = srcProps.find(key);
+                if (it == srcProps.end() || it->second != text)
+                    out.insert(key);
+            }
+        }
+        return out;
+    }
+
+    bool SceneSystem::revertPrefabField(World& world, entt::entity e, std::string_view component, std::string_view field)
+    {
+        entt::registry& reg = world.registry();
+        if (!reg.valid(e) || !reg.all_of<IDComponent>(e))
+            return false;
+
+        const entt::entity rootEnt = findPrefabInstanceRoot(world, e);
+        if (rootEnt == entt::null || !reg.all_of<IDComponent>(rootEnt))
+            return false;
+
+        const auto& pic = reg.get<PrefabInstanceComponent>(rootEnt);
+        if (pic.prefabUri.empty())
+            return false;
+
+        auto prefabDoc = loadSceneSync(pic.prefabUri);
+        if (!prefabDoc || !prefabDoc->root || prefabDoc->syntheticRoot)
+            return false;
+
+        std::unordered_map<CoreUUID, const SceneNode*> srcIndex;
+        collectPrefabSourceByUuid(reg.get<IDComponent>(rootEnt).uuid, *prefabDoc->root, srcIndex);
+        auto sit = srcIndex.find(reg.get<IDComponent>(e).uuid);
+        if (sit == srcIndex.end() || !sit->second)
+            return false;
+
+        std::string value;
+        bool        found = false;
+        for (const auto& p : sit->second->properties)
+        {
+            if (p.component == component && p.field == field)
+            {
+                value = p.value;
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            return false; // prefab does not define this field; cannot revert
+
+        const auto* entry = m_ComponentRegistry.find(component);
+        if (!entry || !entry->meta)
+            return false;
+        void* ptr = entry->emplaceDefault(reg, e);
+        if (!ptr)
+            return false;
+        entt::meta_any instance = entry->meta.from_void(ptr);
+        auto           data     = entry->meta.data(entt::hashed_string {std::string(field).c_str()});
+        if (!data)
+            return false;
+
+        entt::meta_any parsed = parseValueToAny(data.type(), value, prefabDoc->assets);
+        if (data.type() == entt::resolve<CoreUUID>() && parsed.type() != entt::resolve<CoreUUID>())
+            return false;
+        if (!data.set(instance, parsed))
+            return false;
+
+        if (component == "TransformComponent")
+            if (auto* t = reg.try_get<TransformComponent>(e))
+                t->dirty = true;
+        return true;
+    }
+
+    bool SceneSystem::applyPrefabField(World& world, entt::entity e, std::string_view component, std::string_view field)
+    {
+        entt::registry& reg = world.registry();
+        if (!reg.valid(e) || !reg.all_of<IDComponent>(e) || !m_AssetService)
+            return false;
+
+        const entt::entity rootEnt = findPrefabInstanceRoot(world, e);
+        if (rootEnt == entt::null || !reg.all_of<IDComponent>(rootEnt))
+            return false;
+
+        const auto& pic = reg.get<PrefabInstanceComponent>(rootEnt);
+        if (pic.prefabUri.empty())
+            return false;
+
+        // Live value text.
+        const auto* entry = m_ComponentRegistry.find(component);
+        if (!entry || !entry->meta || !entry->has(reg, e))
+            return false;
+        void* ptr = entry->getPtr(reg, e);
+        if (!ptr)
+            return false;
+        entt::meta_any instance = entry->meta.from_void(ptr);
+        auto           data     = entry->meta.data(entt::hashed_string {std::string(field).c_str()});
+        if (!data)
+            return false;
+        const std::string text = any_to_text(data.get(instance));
+
+        // Parse a mutable copy of the prefab file, set the property on the corresponding node.
+        auto textRes = m_AssetService->loadTextAssetSync(pic.prefabUri);
+        if (!textRes)
+            return false;
+        SceneDocument mdoc = VscnReader::readFromText(textRes.value(), uri_base_dir(pic.prefabUri));
+        if (!mdoc.root || mdoc.syntheticRoot)
+            return false;
+
+        std::unordered_map<CoreUUID, SceneNode*> mindex;
+        collectPrefabSourceByUuidMutable(reg.get<IDComponent>(rootEnt).uuid, *mdoc.root, mindex);
+        auto mit = mindex.find(reg.get<IDComponent>(e).uuid);
+        if (mit == mindex.end() || !mit->second)
+            return false;
+
+        SceneNode* tnode = mit->second;
+        bool       set   = false;
+        for (auto& p : tnode->properties)
+        {
+            if (p.component == component && p.field == field)
+            {
+                p.value = text;
+                set     = true;
+                break;
+            }
+        }
+        if (!set)
+        {
+            SceneProperty np;
+            np.component = std::string(component);
+            np.field     = std::string(field);
+            np.value     = text;
+            tnode->properties.push_back(std::move(np));
+        }
+
+        return saveSceneSync(pic.prefabUri, mdoc);
     }
 } // namespace vultra

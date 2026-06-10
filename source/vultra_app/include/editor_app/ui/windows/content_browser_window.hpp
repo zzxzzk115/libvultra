@@ -38,6 +38,9 @@ namespace vultra_app
         void syncAssetRoot(EditorContext& ctx);
         void drawDirectoryTree(const std::filesystem::path& path);
         void drawContentPanel(EditorContext& ctx);
+        // Accepts a scene entity dragged from the hierarchy and creates a .vprefab in the current
+        // directory (Unity-style drag-to-content-browser).
+        void acceptEntityDropAsPrefab(EditorContext& ctx, const ImVec2& rectMin, const ImVec2& rectMax);
         void drawListItem(EditorContext& ctx, const std::filesystem::path& path);
         void drawGridItem(EditorContext& ctx, const std::filesystem::path& path, float iconSize);
         void drawListSubAsset(EditorContext&                ctx,

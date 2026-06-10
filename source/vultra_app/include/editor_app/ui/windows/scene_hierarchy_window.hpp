@@ -36,7 +36,12 @@ namespace vultra_app
             bool             openPopup {false};
         };
 
-        void drawEntityNode(EditorContext& ctx, vultra::World& world, entt::entity entity, const char* filter);
+        void drawEntityNode(EditorContext& ctx,
+                            vultra::World& world,
+                            entt::entity   entity,
+                            const char*    filter,
+                            bool           inPrefab = false);
+        void drawCreatePrefabDialog(EditorContext& ctx, vultra::World& world);
         bool entityMatchesFilter(vultra::World& world, entt::entity entity, const char* filter) const;
         bool acceptAssetDrop(EditorContext& ctx,
                              vultra::World& world,
@@ -50,5 +55,10 @@ namespace vultra_app
         std::array<char, 128> m_RenameBuffer {};
         std::array<char, 128> m_SearchBuffer {};
         PendingAssetInstantiation m_PendingAssetInstantiation {};
+
+        // Pending "Create Prefab..." save dialog state.
+        entt::entity m_CreatePrefabEntity {entt::null};
+        std::string  m_CreatePrefabDefaultName;
+        bool         m_OpenCreatePrefabDialog {false};
     };
 } // namespace vultra_app

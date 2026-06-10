@@ -106,7 +106,8 @@ namespace vultra_app
         }
 
         entt::entity entity = entt::null;
-        if (entry.type == vasset::VAssetType::eScene || entry.type == vasset::VAssetType::eSceneManifest)
+        if (entry.type == vasset::VAssetType::eScene || entry.type == vasset::VAssetType::eSceneManifest ||
+            entry.type == vasset::VAssetType::ePrefab)
         {
             auto* sceneService = ctx.services->tryGet<vultra::ISceneService>();
             if (!sceneService)
@@ -119,9 +120,18 @@ namespace vultra_app
                 return entt::null;
             }
 
-            entity = sceneService->instantiateScene(world, uri, options.parent, false);
-            if (entity != entt::null)
-                ctx.state.statusMessage = "Instantiated prefab: " + assetNameFromEntry(entry);
+            if (entry.type == vasset::VAssetType::ePrefab)
+            {
+                entity = sceneService->instantiatePrefab(world, uri, options.parent);
+                if (entity != entt::null)
+                    ctx.state.statusMessage = "Instantiated prefab: " + assetNameFromEntry(entry);
+            }
+            else
+            {
+                entity = sceneService->instantiateScene(world, uri, options.parent, false);
+                if (entity != entt::null)
+                    ctx.state.statusMessage = "Instantiated scene: " + assetNameFromEntry(entry);
+            }
         }
         else if (entry.type == vasset::VAssetType::eMesh || entry.type == vasset::VAssetType::eGaussianSplat)
         {
