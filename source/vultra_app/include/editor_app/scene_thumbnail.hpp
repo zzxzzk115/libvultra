@@ -32,4 +32,14 @@ namespace vultra_app
         return ctx.state.currentProject / ".vultra" / "thumbs" /
                (sceneThumbnailHash(std::string("scene:") + std::string(sceneUri)) + ".scene.png");
     }
+
+    // Deterministic (uri-only) path for a prefab thumbnail, so the content browser can locate it
+    // without going through the thumbnail service. Mirrors sceneThumbnailPath.
+    inline std::filesystem::path prefabThumbnailPath(const EditorContext& ctx, std::string_view prefabUri)
+    {
+        if (ctx.state.currentProject.empty() || prefabUri.empty())
+            return {};
+        return ctx.state.currentProject / ".vultra" / "thumbs" /
+               (sceneThumbnailHash(std::string("prefab:") + std::string(prefabUri)) + ".prefab.png");
+    }
 } // namespace vultra_app

@@ -139,6 +139,15 @@ namespace vultra_app::ui
             return ext == ".vscn";
         }
 
+        bool isPrefabSourcePath(const std::filesystem::path& path)
+        {
+            auto ext = path.extension().generic_string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            return ext == ".vprefab";
+        }
+
         bool isMaterialGraphSourcePath(const std::filesystem::path& path)
         {
             auto name = path.filename().generic_string();
@@ -402,7 +411,60 @@ namespace vultra_app::ui
             transform.dirty    = true;
         }
 
-        vultra::RenderCamera makePreviewCamera(const Bounds& bounds, vultra::rhi::Texture* target)
+        // World-space rotation of an entity with scale stripped (so non-uniform scale doesn't skew it).
+        glm::quat contentWorldRotation(const vultra::World& world, const entt::entity entity)
+        {
+            const glm::mat4 m  = worldMatrix(world, entity);
+            glm::vec3       c0 = glm::vec3(m[0]);
+            glm::vec3       c1 = glm::vec3(m[1]);
+            glm::vec3       c2 = glm::vec3(m[2]);
+            const float     l0 = glm::length(c0);
+            const float     l1 = glm::length(c1);
+            const float     l2 = glm::length(c2);
+            if (l0 < 1e-6f || l1 < 1e-6f || l2 < 1e-6f)
+                return glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+            return glm::normalize(glm::quat_cast(glm::mat3 {c0 / l0, c1 / l1, c2 / l2}));
+        }
+
+        // Yaw (rotation about world up) of the single content entity, if the preview holds exactly one
+        // mesh/splat. Used to orbit the preview camera into the content's own facing so a prefab whose
+        // mesh node carries a baked rotation frames the same way its source model does. Returns identity
+        // for empty/multi-object previews (no canonical facing), leaving those framings unchanged.
+        glm::quat dominantContentYaw(vultra::World& world)
+        {
+            auto&        reg   = world.registry();
+            entt::entity only  = entt::null;
+            int          count = 0;
+
+            auto meshView = reg.view<vultra::TransformComponent, vultra::MeshComponent>();
+            for (auto e : meshView)
+            {
+                if (!meshView.get<vultra::MeshComponent>(e).mesh.valid())
+                    continue; // skip builtin-geometry previews (e.g. the material sphere)
+                only = e;
+                if (++count > 1)
+                    return glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+            }
+            auto splatView = reg.view<vultra::TransformComponent, vultra::GaussianSplatComponent>();
+            for (auto e : splatView)
+            {
+                if (!splatView.get<vultra::GaussianSplatComponent>(e).gaussianSplat.valid())
+                    continue;
+                only = e;
+                if (++count > 1)
+                    return glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+            }
+            if (count != 1 || only == entt::null)
+                return glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+
+            const glm::vec3 forward = contentWorldRotation(world, only) * glm::vec3 {0.0f, 0.0f, 1.0f};
+            const float     yaw     = std::atan2(forward.x, forward.z);
+            return glm::angleAxis(yaw, glm::vec3 {0.0f, 1.0f, 0.0f});
+        }
+
+        vultra::RenderCamera makePreviewCamera(const Bounds&         bounds,
+                                               vultra::rhi::Texture* target,
+                                               const glm::quat&      orientation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f})
         {
             const glm::vec3 center       = bounds.valid ? (bounds.min + bounds.max) * 0.5f : glm::vec3 {0.0f};
             const glm::vec3 size         = bounds.valid ? (bounds.max - bounds.min) : glm::vec3 {1.0f};
@@ -412,7 +474,9 @@ namespace vultra_app::ui
             float       distance = (maxDimension * 0.65f) / std::tan(fovY * 0.5f);
             distance             = std::max(distance, maxDimension * 1.6f);
 
-            glm::vec3   offset = glm::normalize(glm::vec3 {0.5f, 0.32f, 0.62f}) * distance;
+            // Orbit the standard front-right-above direction into the content's facing so baked rotation
+            // (e.g. a prefab mesh node's FBX transform) doesn't show the object from the side.
+            glm::vec3   offset = orientation * glm::normalize(glm::vec3 {0.5f, 0.32f, 0.62f}) * distance;
             const float radius = std::max(0.5f, maxDimension * 0.5f);
 
             vultra::RenderCamera camera {};
@@ -516,13 +580,15 @@ namespace vultra_app::ui
 
         uint64_t assetWaitFramesFor(const AssetThumbnailRequest& request)
         {
-            return request.kind == AssetThumbnailKind::Scene ? 600u : kRenderThumbnailAssetWaitFrames;
+            return (request.kind == AssetThumbnailKind::Scene || request.kind == AssetThumbnailKind::Prefab) ?
+                       600u :
+                       kRenderThumbnailAssetWaitFrames;
         }
 
         bool shouldMakeThumbnailTransparent(const AssetThumbnailKind kind)
         {
             return kind == AssetThumbnailKind::ModelRoot || kind == AssetThumbnailKind::Mesh ||
-                   kind == AssetThumbnailKind::MaterialGraph;
+                   kind == AssetThumbnailKind::MaterialGraph || kind == AssetThumbnailKind::Prefab;
         }
 
         bool sourceIsNewerThanOutput(const std::filesystem::path& source, const std::filesystem::path& output)
@@ -566,6 +632,7 @@ namespace vultra_app::ui
         m_MeshRequestCache.clear();
         m_TextureRequestCache.clear();
         m_SceneRequestCache.clear();
+        m_PrefabRequestCache.clear();
         m_MaterialGraphRequestCache.clear();
         m_QueuedRequests.clear();
         if (m_ActiveRenderJob)
@@ -606,6 +673,7 @@ namespace vultra_app::ui
         m_MeshRequestCache.clear();
         m_TextureRequestCache.clear();
         m_SceneRequestCache.clear();
+        m_PrefabRequestCache.clear();
         m_MaterialGraphRequestCache.clear();
         m_QueuedRequests.clear();
         m_ActiveRenderJob.reset();
@@ -775,6 +843,48 @@ namespace vultra_app::ui
             queueMissing(request);
         }
         m_SceneRequestCache[cacheKey] = request;
+        return request;
+    }
+
+    AssetThumbnailRequest AssetThumbnailService::requestPrefab(EditorContext&               ctx,
+                                                               const std::filesystem::path& sourcePath,
+                                                               const bool                   force)
+    {
+        syncProject(ctx);
+
+        const std::string cacheKey = sourcePath.lexically_normal().generic_string();
+        if (!force)
+        {
+            if (auto cachedIt = m_PrefabRequestCache.find(cacheKey); cachedIt != m_PrefabRequestCache.end())
+            {
+                auto request = cachedIt->second;
+                if (auto statusIt = m_StatusCache.find(request.key); statusIt != m_StatusCache.end())
+                    request.status = statusIt->second;
+                return request;
+            }
+        }
+
+        AssetThumbnailRequest request;
+        request.kind        = AssetThumbnailKind::Prefab;
+        request.sourcePath  = sourcePath.lexically_normal();
+        request.sourceUri   = sourceUriFor(ctx, request.sourcePath);
+        request.key         = "prefab:" + request.sourceUri;
+        request.outputPath  = prefabThumbnailPath(ctx, request.sourceUri);
+        request.forceRender = force;
+        request.status      = statusFor(request.outputPath);
+        if (force)
+            request.status = AssetThumbnailStatus::Missing;
+        else if (request.status == AssetThumbnailStatus::Ready &&
+                 sourceIsNewerThanOutput(request.sourcePath, request.outputPath))
+        {
+            request.status = AssetThumbnailStatus::Missing;
+        }
+        if (request.status == AssetThumbnailStatus::Missing)
+        {
+            m_StatusCache.erase(request.key);
+            queueMissing(request);
+        }
+        m_PrefabRequestCache[cacheKey] = request;
         return request;
     }
 
@@ -1036,6 +1146,8 @@ namespace vultra_app::ui
                 continue;
             if (isSceneSourcePath(path))
                 requestScene(ctx, path);
+            else if (isPrefabSourcePath(path))
+                requestPrefab(ctx, path);
             else if (isMaterialGraphSourcePath(path))
                 requestMaterialGraph(ctx, path);
         }
@@ -1063,6 +1175,10 @@ namespace vultra_app::ui
             else if (isSceneSourcePath(sourcePath))
             {
                 requestScene(ctx, sourcePath, true);
+            }
+            else if (isPrefabSourcePath(sourcePath))
+            {
+                requestPrefab(ctx, sourcePath, true);
             }
             else if (isMaterialGraphSourcePath(sourcePath))
             {
@@ -1244,11 +1360,12 @@ namespace vultra_app::ui
         if (cameraService)
         {
             cameraService->removeManualCamerasByName("Thumbnail Camera");
-            auto camera = makePreviewCamera(bounds, &job.target);
+            const glm::quat contentYaw = dominantContentYaw(world);
+            auto camera = makePreviewCamera(bounds, &job.target, contentYaw);
             if (job.request.kind == AssetThumbnailKind::Scene)
             {
                 camera = sceneCamera != entt::null ? makeSceneThumbnailCamera(world, sceneCamera, &job.target) :
-                                                     makePreviewCamera(bounds, &job.target);
+                                                     makePreviewCamera(bounds, &job.target, contentYaw);
             }
             camera.worldOverride = &world;
             const glm::vec3 center         = bounds.valid ? (bounds.min + bounds.max) * 0.5f : glm::vec3 {0.0f};
@@ -1304,6 +1421,25 @@ namespace vultra_app::ui
 
             const bool emptySyntheticScene = doc->syntheticRoot && doc->root->children.empty();
             if (!emptySyntheticScene &&
+                sceneService->instantiateSceneDocument(world, *doc, entt::null, false) == entt::null)
+            {
+                world.clear();
+                return false;
+            }
+        }
+        else if (request.kind == AssetThumbnailKind::Prefab)
+        {
+            if (request.sourceUri.empty())
+            {
+                world.clear();
+                return false;
+            }
+
+            // A prefab is a single-root scene document with no lighting of its own; light it like a
+            // model preview and let the auto-framed preview camera focus on the root subtree.
+            addPreviewLighting(world);
+            auto doc = sceneService->loadSceneSync(request.sourceUri);
+            if (!doc || !doc->root ||
                 sceneService->instantiateSceneDocument(world, *doc, entt::null, false) == entt::null)
             {
                 world.clear();
@@ -1398,11 +1534,12 @@ namespace vultra_app::ui
         m_ActiveRenderJob  = std::move(job);
         auto& jobWorld     = *m_ActiveRenderJob->world;
 
-        auto camera = makePreviewCamera(bounds, &m_ActiveRenderJob->target);
+        const glm::quat contentYaw = dominantContentYaw(jobWorld);
+        auto camera = makePreviewCamera(bounds, &m_ActiveRenderJob->target, contentYaw);
         if (request.kind == AssetThumbnailKind::Scene)
         {
             camera = sceneCamera != entt::null ? makeSceneThumbnailCamera(jobWorld, sceneCamera, &m_ActiveRenderJob->target) :
-                                                 makePreviewCamera(bounds, &m_ActiveRenderJob->target);
+                                                 makePreviewCamera(bounds, &m_ActiveRenderJob->target, contentYaw);
         }
         camera.worldOverride = &jobWorld;
         const glm::vec3 center         = bounds.valid ? (bounds.min + bounds.max) * 0.5f : glm::vec3 {0.0f};

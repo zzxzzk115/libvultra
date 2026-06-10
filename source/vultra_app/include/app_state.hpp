@@ -49,6 +49,7 @@ namespace vultra_app
         enum class EditorCommandType
         {
             OpenScene,
+            OpenPrefab,
             OpenRenderGraph,
             OpenMaterialGraph,
         };
@@ -116,6 +117,10 @@ namespace vultra_app
         std::string           currentProjectName;
         std::string           currentAssetRoot {"resources"};
         std::string           currentDefaultScene;
+        // Non-empty when the active scene-hierarchy document is a prefab (.vprefab) opened for
+        // editing. Mirrors currentDefaultScene (same uri) so the existing scene/world plumbing keeps
+        // working; only the save target semantics and labelling differ.
+        std::string           currentEditingPrefab;
         std::vector<VBuildScene> currentBuildScenes;
         std::string           currentEditingRenderGraph {"res://render/default.vrg.json"};
         std::string           currentEditingMaterialGraph {"res://materials/default.vmatgraph.json"};

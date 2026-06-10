@@ -1090,7 +1090,8 @@
   },
   "history": {
     "sceneOpened": "Scene Opened",
-    "sceneLoaded": "Scene Loaded"
+    "sceneLoaded": "Scene Loaded",
+    "prefabOpened": "Prefab Opened"
   },
   "status": {
     "openScene": {
@@ -1107,6 +1108,14 @@
       "sceneWorldUnavailable": "Scene save failed: scene/world service unavailable.",
       "saved": "Saved scene: {}",
       "failed": "Scene save failed: {}"
+    },
+    "openPrefab": {
+      "opened": "Opened prefab: {}"
+    },
+    "savePrefab": {
+      "saved": "Saved prefab: {}",
+      "failed": "Prefab save failed: {}",
+      "multiRoot": "Prefab save failed: a prefab must have exactly one root entity ({})."
     },
     "playMode": {
       "snapshotFailed": "Play mode snapshot failed: scene has no serializable root.",
@@ -1572,7 +1581,8 @@
       "animator": "Opening animator graph: {}",
       "code": "Opened in Code Editor: {}",
       "sceneOutside": "Open scene failed: scene is outside the asset root.",
-      "scene": "Opening scene: {}"
+      "scene": "Opening scene: {}",
+      "prefab": "Opening prefab: {}"
     },
     "renameAsset": { "title": "Rename Asset" },
     "createFolderDialog": { "title": "Create Folder" },

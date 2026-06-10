@@ -2111,6 +2111,7 @@ namespace vultra_app
             auto& world = worldService->world();
             world.clear();
             Selection::clear(SelectionCategory::Entity);
+            ctx.state.currentEditingPrefab.clear();
             ctx.state.sceneDirty    = true;
             ctx.state.statusMessage = "Created an empty scene workspace.";
             m_History.reset(ctx, "New Empty Scene");
@@ -2137,13 +2138,33 @@ namespace vultra_app
             const bool requireConfirmation = args.value("requireConfirmation", true);
             if (requireConfirmation && ctx.state.sceneDirty)
             {
-                m_PendingOpenSceneUri   = uri;
-                m_OpenSceneConfirmPopup = true;
-                ctx.state.statusMessage = "Open scene pending confirmation: " + uri;
+                m_PendingOpenSceneUri      = uri;
+                m_PendingOpenSceneIsPrefab = false;
+                m_OpenSceneConfirmPopup    = true;
+                ctx.state.statusMessage    = "Open scene pending confirmation: " + uri;
                 return ok({{"pendingConfirmation", true}, {"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
             }
             if (!openSceneFromCommand(ctx, uri))
                 return error(ctx.state.statusMessage.empty() ? "open scene failed" : ctx.state.statusMessage);
+            return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
+        }
+
+        if (name == "editor.open_prefab")
+        {
+            const auto uri = args.value("uri", std::string {});
+            if (uri.empty())
+                return error("editor.open_prefab requires uri");
+            const bool requireConfirmation = args.value("requireConfirmation", true);
+            if (requireConfirmation && ctx.state.sceneDirty)
+            {
+                m_PendingOpenSceneUri      = uri;
+                m_PendingOpenSceneIsPrefab = true;
+                m_OpenSceneConfirmPopup    = true;
+                ctx.state.statusMessage    = "Open prefab pending confirmation: " + uri;
+                return ok({{"pendingConfirmation", true}, {"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
+            }
+            if (!openSceneFromCommand(ctx, uri, true))
+                return error(ctx.state.statusMessage.empty() ? "open prefab failed" : ctx.state.statusMessage);
             return ok({{"uri", uri}, {"statusMessage", ctx.state.statusMessage}});
         }
 
@@ -2241,6 +2262,7 @@ namespace vultra_app
             ctx.state.currentProjectName          = project.name;
             ctx.state.currentAssetRoot            = project.assetRoot;
             ctx.state.currentDefaultScene         = project.defaultScene;
+            ctx.state.currentEditingPrefab.clear();
             ctx.state.currentBuildScenes          = project.buildScenes;
             ctx.state.currentEditingRenderGraph   = project.editingRenderGraph;
             ctx.state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
@@ -2288,8 +2310,9 @@ namespace vultra_app
                 Selection::clear(SelectionCategory::Entity);
                 m_History.reset(ctx, "New Empty Scene");
             }
-            ctx.state.currentDefaultScene = uri;
-            ctx.state.sceneDirty          = true;
+            ctx.state.currentDefaultScene  = uri;
+            ctx.state.currentEditingPrefab.clear();
+            ctx.state.sceneDirty           = true;
             ++ctx.state.sceneContentGeneration;
             return ok({{"uri", uri}, {"entities", std::move(entities)}});
         }
@@ -2759,6 +2782,7 @@ namespace vultra_app
             ctx.state.pendingEditorCommands.clear();
             ctx.state.currentAssetRoot          = "resources";
             ctx.state.currentDefaultScene.clear();
+            ctx.state.currentEditingPrefab.clear();
             ctx.state.currentBuildScenes.clear();
             ctx.state.currentEditingRenderGraph = "res://render/default.vrg.json";
             ctx.state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";

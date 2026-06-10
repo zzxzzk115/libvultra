@@ -126,7 +126,7 @@ namespace vultra_app
         void drawBuildRunConfigurePopup(EditorContext& ctx);
         void drawBuildRunPopup();
         void processEditorCommands(EditorContext& ctx);
-        bool openSceneFromCommand(EditorContext& ctx, const std::string& sceneUri);
+        bool openSceneFromCommand(EditorContext& ctx, const std::string& sceneUri, bool isPrefab = false);
         void drawOpenSceneConfirmPopup(EditorContext& ctx);
         void drawProjectSettingsPopup(EditorContext& ctx);
         void drawEditorSettingsPopup(EditorContext& ctx);
@@ -226,6 +226,7 @@ namespace vultra_app
         bool                m_ShowAboutPopup {false};
         bool                m_OpenSceneConfirmPopup {false};
         std::string         m_PendingOpenSceneUri;
+        bool                m_PendingOpenSceneIsPrefab {false};
         bool                m_PlaybackWasPlaying {false};
         bool                m_SplashWindowApplied {false};
         bool                m_EditorWindowApplied {false};

@@ -23,6 +23,11 @@ namespace vultra_app
         queueEditorCommand(state, AppState::EditorCommandType::OpenScene, std::move(uri));
     }
 
+    inline void queueOpenPrefab(AppState& state, std::string uri)
+    {
+        queueEditorCommand(state, AppState::EditorCommandType::OpenPrefab, std::move(uri));
+    }
+
     inline void queueOpenRenderGraph(AppState& state, std::string uri)
     {
         queueEditorCommand(state, AppState::EditorCommandType::OpenRenderGraph, std::move(uri));

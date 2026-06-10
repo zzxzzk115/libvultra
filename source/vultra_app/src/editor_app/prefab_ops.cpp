@@ -1,5 +1,6 @@
 #include "editor_app/prefab_ops.hpp"
 
+#include "editor_app/asset_thumbnail_service.hpp"
 #include "editor_app/selection.hpp"
 
 #include <vultra/function/scene/vscn_document.hpp>
@@ -93,6 +94,11 @@ namespace vultra_app
 
         // Register the new asset so res:// resolves for instancing and future loads.
         assetService->reimportAsset(resUri, false);
+
+        // Queue a thumbnail rendered with an auto-framed camera focused on the prefab root, so the
+        // content browser shows a preview instead of a generic icon. Rendered in the background.
+        if (ctx.thumbnails)
+            ctx.thumbnails->requestPrefab(ctx, target, true);
 
         // Replace the source subtree with an instance of the prefab.
         world.destroyRecursive(root);

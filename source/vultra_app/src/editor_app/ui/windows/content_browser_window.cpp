@@ -130,6 +130,11 @@ namespace vultra_app
             return lowerString(path.extension().generic_string()) == ".vscn";
         }
 
+        bool isPrefabSourceAsset(const std::filesystem::path& path)
+        {
+            return lowerString(path.extension().generic_string()) == ".vprefab";
+        }
+
         bool isMaterialGraphSourceAsset(const std::filesystem::path& path)
         {
             const auto name = lowerString(path.filename().generic_string());
@@ -180,6 +185,14 @@ namespace vultra_app
             if (uri.empty())
                 return {};
             return sceneThumbnailPath(ctx, uri);
+        }
+
+        std::filesystem::path prefabThumbnailPathForAsset(const EditorContext& ctx, const std::filesystem::path& path)
+        {
+            const auto uri = pathToResUri(ctx, path);
+            if (uri.empty())
+                return {};
+            return prefabThumbnailPath(ctx, uri);
         }
 
         std::vector<std::filesystem::directory_entry> sortedEntries(const std::filesystem::path& path)
@@ -1409,6 +1422,21 @@ namespace vultra_app
                     --m_RemainingThumbnailLoads;
             }
         }
+        else if (isPrefabSourceAsset(path))
+        {
+            const auto thumbnail = ctx.thumbnails ? ctx.thumbnails->requestPrefab(ctx, path) : ui::AssetThumbnailRequest {};
+            const auto thumbnailPath = thumbnail.outputPath.empty() ? prefabThumbnailPathForAsset(ctx, path) :
+                                                                      thumbnail.outputPath;
+            std::error_code ec;
+            if (!thumbnailPath.empty() && std::filesystem::exists(thumbnailPath, ec) && !ec)
+            {
+                const bool cached    = m_PreviewCache.hasCachedImageFilePreview(ctx, thumbnailPath);
+                const bool allowLoad = cached || m_RemainingThumbnailLoads > 0;
+                previewId            = m_PreviewCache.getImageFilePreview(ctx, thumbnailPath, allowLoad);
+                if (!cached && allowLoad)
+                    --m_RemainingThumbnailLoads;
+            }
+        }
         if (previewId)
         {
             ImGui::Image(previewId, ImVec2(iconSize, iconSize));
@@ -1796,6 +1824,18 @@ namespace vultra_app
 
             queueOpenScene(ctx.state, uri);
             ctx.state.statusMessage = vultra::trf("contentBrowser.open.scene", uri);
+        }
+        else if (isPrefabSourceAsset(path))
+        {
+            const auto uri = pathToResUri(ctx, path);
+            if (uri.empty())
+            {
+                ctx.state.statusMessage = vultra::tr("contentBrowser.open.sceneOutside");
+                return;
+            }
+
+            queueOpenPrefab(ctx.state, uri);
+            ctx.state.statusMessage = vultra::trf("contentBrowser.open.prefab", uri);
         }
     }
 

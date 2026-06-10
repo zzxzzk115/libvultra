@@ -1090,7 +1090,8 @@
   },
   "history": {
     "sceneOpened": "场景已打开",
-    "sceneLoaded": "场景已加载"
+    "sceneLoaded": "场景已加载",
+    "prefabOpened": "预制体已打开"
   },
   "status": {
     "openScene": {
@@ -1107,6 +1108,14 @@
       "sceneWorldUnavailable": "场景保存失败：场景/世界服务不可用。",
       "saved": "已保存场景：{}",
       "failed": "场景保存失败：{}"
+    },
+    "openPrefab": {
+      "opened": "已打开预制体：{}"
+    },
+    "savePrefab": {
+      "saved": "已保存预制体：{}",
+      "failed": "预制体保存失败：{}",
+      "multiRoot": "预制体保存失败：预制体必须只有一个根实体（{}）。"
     },
     "playMode": {
       "snapshotFailed": "播放模式快照失败：场景没有可序列化的根节点。",
@@ -1572,7 +1581,8 @@
       "animator": "正在打开动画图：{}",
       "code": "已在代码编辑器中打开：{}",
       "sceneOutside": "打开场景失败：场景在资源根目录之外。",
-      "scene": "正在打开场景：{}"
+      "scene": "正在打开场景：{}",
+      "prefab": "正在打开预制体：{}"
     },
     "renameAsset": { "title": "重命名资源" },
     "createFolderDialog": { "title": "新建文件夹" },

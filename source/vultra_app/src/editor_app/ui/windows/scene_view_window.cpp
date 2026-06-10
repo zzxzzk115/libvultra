@@ -310,6 +310,11 @@ namespace vultra_app
 
         EditorCameraSceneSettings editorCameraSceneSettings(EditorContext& ctx)
         {
+            // When editing a prefab there is no scene camera; paint the viewport with Unity's default
+            // camera blue (49, 77, 121) so prefab-edit mode reads as a distinct context.
+            if (!ctx.state.currentEditingPrefab.empty())
+                return {.clearMode = 0u, .clearValue = glm::vec4 {0.192f, 0.302f, 0.475f, 1.0f}};
+
             auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
             if (!worldService)
                 return {};

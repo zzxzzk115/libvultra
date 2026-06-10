@@ -176,6 +176,17 @@ namespace vultra_app
             return "res://" + relText;
         }
 
+        std::filesystem::path resUriToAssetPath(const EditorContext& ctx, std::string_view uri)
+        {
+            constexpr std::string_view scheme = "res://";
+            if (!uri.starts_with(scheme))
+                return {};
+            const auto rel = uri.substr(scheme.size());
+            if (rel.empty())
+                return {};
+            return (assetRootPath(ctx) / std::filesystem::path(rel)).lexically_normal();
+        }
+
         std::vector<std::filesystem::path> shaderLibraryManifests(const EditorContext& ctx)
         {
             std::vector<std::filesystem::path> manifests;
@@ -752,6 +763,9 @@ namespace vultra_app
                 case AppState::EditorCommandType::OpenScene:
                     (void)executeCommand(ctx, "editor.open_scene", {{"uri", command.payload}});
                     break;
+                case AppState::EditorCommandType::OpenPrefab:
+                    (void)executeCommand(ctx, "editor.open_prefab", {{"uri", command.payload}});
+                    break;
                 case AppState::EditorCommandType::OpenMaterialGraph:
                     (void)executeCommand(ctx, "editor.open_material_graph", {{"uri", command.payload}});
                     break;
@@ -762,7 +776,7 @@ namespace vultra_app
         }
     }
 
-    bool EditorApp::openSceneFromCommand(EditorContext& ctx, const std::string& sceneUri)
+    bool EditorApp::openSceneFromCommand(EditorContext& ctx, const std::string& sceneUri, const bool isPrefab)
     {
         if (!ctx.services)
         {
@@ -809,10 +823,15 @@ namespace vultra_app
         Selection::clear();
         ctx.state.selectedSourceAsset.clear();
         ctx.state.currentDefaultScene = sceneUri;
-        ctx.state.sceneDirty          = false;
-        ctx.state.statusMessage       = vultra::trf("editorApp.status.openScene.opened", sceneUri);
+        // A prefab is edited through the same scene/world plumbing; the marker only changes the save
+        // target semantics and labelling. Opening a plain scene clears it.
+        ctx.state.currentEditingPrefab = isPrefab ? sceneUri : std::string {};
+        ctx.state.sceneDirty           = false;
+        ctx.state.statusMessage        = isPrefab ?
+                                             vultra::trf("editorApp.status.openPrefab.opened", sceneUri) :
+                                             vultra::trf("editorApp.status.openScene.opened", sceneUri);
         requestSceneViewAlignToPrimaryCamera(ctx, world);
-        m_History.reset(ctx, "editorApp.history.sceneOpened");
+        m_History.reset(ctx, isPrefab ? "editorApp.history.prefabOpened" : "editorApp.history.sceneOpened");
         return true;
     }
 
@@ -833,8 +852,9 @@ namespace vultra_app
             ImGui::TextWrapped("%s", m_PendingOpenSceneUri.c_str());
             if (ImGui::Button(vultra::tr("common.open"), ImVec2(vultra::ui::dp(90.0f), 0.0f)))
             {
-                (void)openSceneFromCommand(ctx, m_PendingOpenSceneUri);
+                (void)openSceneFromCommand(ctx, m_PendingOpenSceneUri, m_PendingOpenSceneIsPrefab);
                 m_PendingOpenSceneUri.clear();
+                m_PendingOpenSceneIsPrefab = false;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
@@ -842,6 +862,7 @@ namespace vultra_app
             {
                 ctx.state.statusMessage = vultra::tr("editorApp.status.openScene.cancelled");
                 m_PendingOpenSceneUri.clear();
+                m_PendingOpenSceneIsPrefab = false;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -920,15 +941,54 @@ namespace vultra_app
             return;
         }
 
+        const bool isPrefab = !ctx.state.currentEditingPrefab.empty();
+        if (isPrefab)
+        {
+            // A prefab must serialize with a single root: a multi-root world would save as a
+            // synthetic-root document, which cannot be re-instantiated as a prefab instance.
+            auto&  world     = worldService->world();
+            size_t rootCount = 0;
+            for (entt::entity e = world.firstChild(entt::null); e != entt::null; e = world.nextSibling(e))
+                ++rootCount;
+            if (rootCount != 1)
+            {
+                ctx.state.statusMessage =
+                    vultra::trf("editorApp.status.savePrefab.multiRoot", ctx.state.currentEditingPrefab);
+                return;
+            }
+        }
+
         if (sceneService->saveWorldAsSceneSync(ctx.state.currentDefaultScene, worldService->world(), entt::null))
         {
-            ctx.state.sceneDirty    = false;
-            ctx.state.statusMessage = vultra::trf("editorApp.status.saveScene.saved", ctx.state.currentDefaultScene);
+            ctx.state.sceneDirty = false;
+            if (isPrefab)
+            {
+                // Refresh the asset registry/cache so live prefab instances and future loads pick up
+                // the edited source.
+                if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
+                    assetService->reimportAsset(ctx.state.currentEditingPrefab, false);
+                // Re-render the prefab thumbnail (focused on the root) from the freshly saved file.
+                if (ctx.thumbnails)
+                {
+                    const auto prefabPath = resUriToAssetPath(ctx, ctx.state.currentEditingPrefab);
+                    if (!prefabPath.empty())
+                        ctx.thumbnails->requestPrefab(ctx, prefabPath, true);
+                }
+                ctx.state.statusMessage =
+                    vultra::trf("editorApp.status.savePrefab.saved", ctx.state.currentEditingPrefab);
+            }
+            else
+            {
+                ctx.state.statusMessage =
+                    vultra::trf("editorApp.status.saveScene.saved", ctx.state.currentDefaultScene);
+            }
             m_History.markCurrentClean(ctx);
         }
         else
         {
-            ctx.state.statusMessage = vultra::trf("editorApp.status.saveScene.failed", ctx.state.currentDefaultScene);
+            ctx.state.statusMessage =
+                isPrefab ? vultra::trf("editorApp.status.savePrefab.failed", ctx.state.currentEditingPrefab) :
+                           vultra::trf("editorApp.status.saveScene.failed", ctx.state.currentDefaultScene);
         }
     }
 

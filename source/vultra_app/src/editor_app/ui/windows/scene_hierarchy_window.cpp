@@ -440,9 +440,11 @@ namespace vultra_app
         ImGui::Begin(title().c_str(), &m_Open, windowFlags);
         // Editing the scene hierarchy makes the scene the active undo/redo document.
         claimActiveDocument(ctx, ctx.sceneHistory, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
-        ImGui::TextColored(ImVec4(0.72f, 0.80f, 0.92f, 1.0f), "%s", ICON_MDI_FILE_TREE);
+        const bool editingPrefab = !ctx.state.currentEditingPrefab.empty();
+        ImGui::TextColored(ImVec4(0.72f, 0.80f, 0.92f, 1.0f), "%s", editingPrefab ? ICON_MDI_CUBE : ICON_MDI_FILE_TREE);
         ImGui::SameLine();
-        ImGui::TextUnformatted(ctx.state.currentDefaultScene.c_str());
+        ImGui::TextUnformatted(editingPrefab ? ctx.state.currentEditingPrefab.c_str() :
+                                               ctx.state.currentDefaultScene.c_str());
         const float createButtonWidth = ImGui::GetFrameHeight();
         ImGui::SameLine(std::max(ImGui::GetCursorPosX() + ImGui::GetStyle().ItemSpacing.x,
                                  ImGui::GetWindowContentRegionMax().x - createButtonWidth));

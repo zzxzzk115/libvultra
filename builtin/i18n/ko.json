@@ -1263,7 +1263,8 @@
     },
     "history": {
       "sceneOpened": "씬 열림",
-      "sceneLoaded": "씬 로드됨"
+      "sceneLoaded": "씬 로드됨",
+      "prefabOpened": "프리팹 열림"
     },
     "status": {
       "openScene": {
@@ -1280,6 +1281,14 @@
         "sceneWorldUnavailable": "씬 저장 실패: scene/world 서비스를 사용할 수 없습니다.",
         "saved": "씬 저장됨: {}",
         "failed": "씬 저장 실패: {}"
+      },
+      "openPrefab": {
+        "opened": "프리팹을 열었습니다: {}"
+      },
+      "savePrefab": {
+        "saved": "프리팹 저장됨: {}",
+        "failed": "프리팹 저장 실패: {}",
+        "multiRoot": "프리팹 저장 실패: 프리팹에는 루트 엔티티가 정확히 하나만 있어야 합니다 ({})."
       },
       "playMode": {
         "snapshotFailed": "재생 모드 스냅샷 실패: 씬에 직렬화 가능한 루트가 없습니다.",
@@ -1758,7 +1767,8 @@
       "animator": "애니메이터 그래프 여는 중: {}",
       "code": "코드 에디터에서 열었습니다: {}",
       "sceneOutside": "씬 열기 실패: 씬이 에셋 루트 밖에 있습니다.",
-      "scene": "씬 여는 중: {}"
+      "scene": "씬 여는 중: {}",
+      "prefab": "프리팹 여는 중: {}"
     },
     "renameAsset": {
       "title": "에셋 이름 변경"
