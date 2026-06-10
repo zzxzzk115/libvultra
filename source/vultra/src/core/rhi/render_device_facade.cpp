@@ -708,291 +708,189 @@ namespace vultra
             return m_Backend->getFormatFeatureFlagsOptimal(pixelFormat);
         }
 
+        namespace
+        {
+            // Where the Vulkan allocation should live; mapped onto vma::MemoryUsage inside
+            // the VULTRA_ENABLE_VULKAN block so the signature stays valid without Vulkan.
+            enum class VkMemoryDomain
+            {
+                ePreferDevice,
+                ePreferHost,
+                eCpuToGpu,
+            };
+
+            // The per-backend construction body every create*Buffer repeated verbatim.
+            // WebGPU and Vulkan take separate usage masks on purpose (the Vulkan side adds
+            // eTransferSrc on readback/storage paths the WebGPU backend handles differently);
+            // `augmentVkUsage` opts into the device-address / raytracing usage extension.
+            template<typename BackendPtr>
+            [[nodiscard]] Buffer makeBackendBuffer(const BackendPtr&     backendPtr,
+                                                   const uint64_t        size,
+                                                   const BufferUsage     webgpuUsage,
+                                                   BufferUsage           vkUsage,
+                                                   const bool            augmentVkUsage,
+                                                   const AllocationHints vkAllocationHint,
+                                                   const VkMemoryDomain  vkMemoryDomain)
+            {
+                if (backendPtr->getBackendApi() == RenderBackendApi::eWebGPU)
+                {
+                    auto& backend = const_cast<WebGPURenderDevice&>(webgpuBackend(backendPtr));
+                    return makeWebGPUBuffer(backend, size, webgpuUsage);
+                }
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+                (void)vkUsage;
+                (void)augmentVkUsage;
+                (void)vkAllocationHint;
+                (void)vkMemoryDomain;
+                return {};
+#else
+                assert(vkBackend(backendPtr).m_MemoryAllocator);
+                if (augmentVkUsage)
+                {
+                    if (HasFlagValues(vkBackend(backendPtr).m_FeatureReport.flags,
+                                      RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+                    {
+                        vkUsage |= BufferUsage::eShaderDeviceAddress;
+                    }
+                    if (isRaytracingOrRayQueryEnabled(vkBackend(backendPtr).m_FeatureFlag))
+                    {
+                        vkUsage |= BufferUsage::eAccelerationBuildInput;
+                    }
+                }
+                const auto memoryUsage =
+                    vkMemoryDomain == VkMemoryDomain::ePreferDevice ? vma::MemoryUsage::eAutoPreferDevice :
+                    vkMemoryDomain == VkMemoryDomain::ePreferHost   ? vma::MemoryUsage::eAutoPreferHost :
+                                                                      vma::MemoryUsage::eCpuToGpu;
+                return makeVulkanBuffer(vkBackend(backendPtr).m_MemoryAllocator,
+                                        backendPtr.get(),
+                                        size,
+                                        vkUsage,
+                                        makeAllocationFlags(vkAllocationHint),
+                                        memoryUsage);
+#endif
+            }
+        } // namespace
+
         Buffer RenderDevice::createStagingBuffer(const uint64_t size, const void* data) const
         {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend       = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                auto  stagingBuffer = makeWebGPUBuffer(backend, size, BufferUsage::eTransferSrc);
-
-                if (data != nullptr && size > 0)
-                {
-                    auto* mappedPtr = static_cast<std::byte*>(stagingBuffer.map());
-                    std::memcpy(mappedPtr, data, static_cast<size_t>(size));
-                    stagingBuffer.unmap();
-                }
-                return stagingBuffer;
-            }
-#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
-            return {};
-#else
-            assert(vkBackend(m_Backend).m_MemoryAllocator);
-            Buffer stagingBuffer = makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
-                                                    m_Backend.get(),
-                                                    size,
-                                                    BufferUsage::eTransferSrc,
-                                                    makeAllocationFlags(AllocationHints::eSequentialWrite),
-                                                    vma::MemoryUsage::eAutoPreferHost);
-            if (data != nullptr && size > 0)
+            Buffer stagingBuffer = makeBackendBuffer(m_Backend,
+                                                     size,
+                                                     BufferUsage::eTransferSrc,
+                                                     BufferUsage::eTransferSrc,
+                                                     false,
+                                                     AllocationHints::eSequentialWrite,
+                                                     VkMemoryDomain::ePreferHost);
+            if (stagingBuffer && data != nullptr && size > 0)
             {
                 auto* mappedPtr = stagingBuffer.map();
                 std::memcpy(mappedPtr, data, static_cast<size_t>(size));
                 stagingBuffer.unmap();
             }
             return stagingBuffer;
-#endif
         }
 
         Buffer RenderDevice::createReadbackBuffer(const uint64_t size) const
         {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                return makeWebGPUBuffer(backend, size, BufferUsage::eTransferDst);
-            }
-#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
-            return {};
-#else
-            assert(vkBackend(m_Backend).m_MemoryAllocator);
-            return makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
-                                    m_Backend.get(),
-                                    size,
-                                    BufferUsage::eTransferSrc | BufferUsage::eTransferDst,
-                                    makeAllocationFlags(AllocationHints::eSequentialWrite),
-                                    vma::MemoryUsage::eAutoPreferHost);
-#endif
+            return makeBackendBuffer(m_Backend,
+                                     size,
+                                     BufferUsage::eTransferDst,
+                                     BufferUsage::eTransferSrc | BufferUsage::eTransferDst,
+                                     false,
+                                     AllocationHints::eSequentialWrite,
+                                     VkMemoryDomain::ePreferHost);
         }
 
         VertexBuffer RenderDevice::createVertexBuffer(const Buffer::Stride  stride,
                                                       const uint64_t        vertexCount,
                                                       const AllocationHints allocationHint) const
         {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                return VertexBuffer {makeWebGPUBuffer(backend,
-                                                      stride * vertexCount,
-                                                      BufferUsage::eVertexBuffer | BufferUsage::eTransferDst),
-                                     stride};
-            }
-#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
-            return {};
-#else
-            assert(vkBackend(m_Backend).m_MemoryAllocator);
-            BufferUsage usage = BufferUsage::eVertexBuffer | BufferUsage::eTransferDst;
-            if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
-                              RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
-            {
-                usage |= BufferUsage::eShaderDeviceAddress;
-            }
-            if (isRaytracingOrRayQueryEnabled(vkBackend(m_Backend).m_FeatureFlag))
-            {
-                usage |= BufferUsage::eAccelerationBuildInput;
-            }
+            const auto kUsage = BufferUsage::eVertexBuffer | BufferUsage::eTransferDst;
             return VertexBuffer {
-                makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
-                                 m_Backend.get(),
-                                 stride * vertexCount,
-                                 usage,
-                                 makeAllocationFlags(allocationHint),
-                                 vma::MemoryUsage::eAutoPreferDevice),
+                makeBackendBuffer(m_Backend,
+                                  stride * vertexCount,
+                                  kUsage,
+                                  kUsage,
+                                  true,
+                                  allocationHint,
+                                  VkMemoryDomain::ePreferDevice),
                 stride,
             };
-#endif
         }
 
         IndexBuffer RenderDevice::createIndexBuffer(const IndexType       indexType,
                                                     const uint64_t        indexCount,
                                                     const AllocationHints allocationHint) const
         {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto&      backend     = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                const auto indexStride = indexType == IndexType::eUInt16 ? 2u : 4u;
-                return IndexBuffer {makeWebGPUBuffer(backend,
-                                                     indexStride * indexCount,
-                                                     BufferUsage::eIndexBuffer | BufferUsage::eTransferDst),
-                                    indexType};
-            }
-#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
-            return {};
-#else
-            assert(vkBackend(m_Backend).m_MemoryAllocator);
-            BufferUsage usage = BufferUsage::eIndexBuffer | BufferUsage::eTransferDst;
-            if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
-                              RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
-            {
-                usage |= BufferUsage::eShaderDeviceAddress;
-            }
-            if (isRaytracingOrRayQueryEnabled(vkBackend(m_Backend).m_FeatureFlag))
-            {
-                usage |= BufferUsage::eAccelerationBuildInput;
-            }
-            const auto indexStride = indexType == IndexType::eUInt16 ? 2 : 4;
+            const auto indexStride = indexType == IndexType::eUInt16 ? 2u : 4u;
+            const auto kUsage      = BufferUsage::eIndexBuffer | BufferUsage::eTransferDst;
             return IndexBuffer {
-                makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
-                                 m_Backend.get(),
-                                 indexStride * indexCount,
-                                 usage,
-                                 makeAllocationFlags(allocationHint),
-                                 vma::MemoryUsage::eAutoPreferDevice),
+                makeBackendBuffer(m_Backend,
+                                  indexStride * indexCount,
+                                  kUsage,
+                                  kUsage,
+                                  true,
+                                  allocationHint,
+                                  VkMemoryDomain::ePreferDevice),
                 indexType,
             };
-#endif
         }
 
         UniformBuffer RenderDevice::createUniformBuffer(const uint64_t size, const AllocationHints allocationHint) const
         {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                return UniformBuffer {
-                    Buffer {makeWebGPUBuffer(backend, size, BufferUsage::eUniformBuffer | BufferUsage::eTransferDst)}};
-            }
-#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
-            return {};
-#else
-            assert(vkBackend(m_Backend).m_MemoryAllocator);
-            return UniformBuffer {Buffer {
-                makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
-                                 m_Backend.get(),
-                                 size,
-                                 BufferUsage::eUniformBuffer | BufferUsage::eTransferDst,
-                                 makeAllocationFlags(allocationHint),
-                                 vma::MemoryUsage::eAutoPreferDevice),
-            }};
-#endif
+            const auto kUsage = BufferUsage::eUniformBuffer | BufferUsage::eTransferDst;
+            return UniformBuffer {Buffer {makeBackendBuffer(
+                m_Backend, size, kUsage, kUsage, false, allocationHint, VkMemoryDomain::ePreferDevice)}};
         }
 
         StorageBuffer RenderDevice::createStorageBuffer(const uint64_t size, const AllocationHints allocationHint) const
         {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                return StorageBuffer {
-                    Buffer {makeWebGPUBuffer(backend, size, BufferUsage::eStorageBuffer | BufferUsage::eTransferDst)}};
-            }
-#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
-            return {};
-#else
-            assert(vkBackend(m_Backend).m_MemoryAllocator);
-            BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferSrc | BufferUsage::eTransferDst;
-            if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
-                              RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
-            {
-                usage |= BufferUsage::eShaderDeviceAddress;
-            }
-            if (isRaytracingOrRayQueryEnabled(vkBackend(m_Backend).m_FeatureFlag))
-            {
-                usage |= BufferUsage::eAccelerationBuildInput;
-            }
             return StorageBuffer {Buffer {
-                makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
-                                 m_Backend.get(),
-                                 size,
-                                 usage,
-                                 makeAllocationFlags(allocationHint),
-                                 vma::MemoryUsage::eAutoPreferDevice),
-            }};
-#endif
+                makeBackendBuffer(m_Backend,
+                                  size,
+                                  BufferUsage::eStorageBuffer | BufferUsage::eTransferDst,
+                                  BufferUsage::eStorageBuffer | BufferUsage::eTransferSrc | BufferUsage::eTransferDst,
+                                  true,
+                                  allocationHint,
+                                  VkMemoryDomain::ePreferDevice)}};
         }
 
         StorageBuffer RenderDevice::createStorageBufferWithUsage(const uint64_t        size,
                                                                  const BufferUsage     extraUsage,
                                                                  const AllocationHints allocationHint) const
         {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                return StorageBuffer {Buffer {makeWebGPUBuffer(
-                    backend, size, BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | extraUsage)}};
-            }
-#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
-            return {};
-#else
-            assert(vkBackend(m_Backend).m_MemoryAllocator);
-            BufferUsage usage =
-                BufferUsage::eStorageBuffer | BufferUsage::eTransferSrc | BufferUsage::eTransferDst | extraUsage;
-            if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
-                              RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
-            {
-                usage |= BufferUsage::eShaderDeviceAddress;
-            }
-            if (isRaytracingOrRayQueryEnabled(vkBackend(m_Backend).m_FeatureFlag))
-            {
-                usage |= BufferUsage::eAccelerationBuildInput;
-            }
-            return StorageBuffer {Buffer {
-                makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
-                                 m_Backend.get(),
-                                 size,
-                                 usage,
-                                 makeAllocationFlags(allocationHint),
-                                 vma::MemoryUsage::eAutoPreferDevice),
-            }};
-#endif
+            return StorageBuffer {Buffer {makeBackendBuffer(
+                m_Backend,
+                size,
+                BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | extraUsage,
+                BufferUsage::eStorageBuffer | BufferUsage::eTransferSrc | BufferUsage::eTransferDst | extraUsage,
+                true,
+                allocationHint,
+                VkMemoryDomain::ePreferDevice)}};
         }
 
         DrawIndirectBuffer RenderDevice::createDrawIndirectBufferByCount(const uint32_t         commandCount,
                                                                          const DrawIndirectType type,
                                                                          const AllocationHints  allocationHint) const
         {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto&                 backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                constexpr std::size_t kDrawIndirectCommandSize        = sizeof(uint32_t) * 4;
-                constexpr std::size_t kDrawIndexedIndirectCommandSize = sizeof(uint32_t) * 5;
-                const auto            stride =
-                    type == DrawIndirectType::eIndexed ? kDrawIndexedIndirectCommandSize : kDrawIndirectCommandSize;
-                return DrawIndirectBuffer {makeWebGPUBuffer(backend,
-                                                            commandCount * stride,
-                                                            BufferUsage::eIndirectBuffer | BufferUsage::eStorageBuffer |
-                                                                BufferUsage::eTransferDst),
-                                           type};
-            }
-#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
-            return {};
-#else
-            assert(vkBackend(m_Backend).m_MemoryAllocator);
-            const auto stride = type == DrawIndirectType::eIndexed ? sizeof(vk::DrawIndexedIndirectCommand) :
-                                                                     sizeof(vk::DrawIndirectCommand);
-            return DrawIndirectBuffer {
-                makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
-                                 m_Backend.get(),
-                                 commandCount * stride,
-                                 BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | BufferUsage::eIndirectBuffer,
-                                 makeAllocationFlags(allocationHint),
-                                 vma::MemoryUsage::eCpuToGpu),
-                type};
+            constexpr std::size_t kDrawIndirectCommandSize        = sizeof(uint32_t) * 4;
+            constexpr std::size_t kDrawIndexedIndirectCommandSize = sizeof(uint32_t) * 5;
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
+            static_assert(sizeof(vk::DrawIndirectCommand) == kDrawIndirectCommandSize &&
+                          sizeof(vk::DrawIndexedIndirectCommand) == kDrawIndexedIndirectCommandSize);
 #endif
+            const auto stride =
+                type == DrawIndirectType::eIndexed ? kDrawIndexedIndirectCommandSize : kDrawIndirectCommandSize;
+            return createDrawIndirectBufferBySize(commandCount * stride, type, allocationHint);
         }
 
         DrawIndirectBuffer RenderDevice::createDrawIndirectBufferBySize(const uint64_t         size,
                                                                         const DrawIndirectType type,
                                                                         const AllocationHints  allocationHint) const
         {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                return DrawIndirectBuffer {makeWebGPUBuffer(backend,
-                                                            size,
-                                                            BufferUsage::eIndirectBuffer | BufferUsage::eStorageBuffer |
-                                                                BufferUsage::eTransferDst),
-                                           type};
-            }
-#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
-            return {};
-#else
-            assert(vkBackend(m_Backend).m_MemoryAllocator);
+            const auto kUsage = BufferUsage::eIndirectBuffer | BufferUsage::eStorageBuffer | BufferUsage::eTransferDst;
             return DrawIndirectBuffer {
-                makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
-                                 m_Backend.get(),
-                                 size,
-                                 BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | BufferUsage::eIndirectBuffer,
-                                 makeAllocationFlags(allocationHint),
-                                 vma::MemoryUsage::eCpuToGpu),
+                makeBackendBuffer(m_Backend, size, kUsage, kUsage, false, allocationHint, VkMemoryDomain::eCpuToGpu),
                 type};
-#endif
         }
 
         Texture RenderDevice::createTexture2D(const Extent2D    extent,
@@ -1860,11 +1758,11 @@ namespace vultra
         {
             uint32_t whitePixel = 0xFFFFFFFF;
             auto     texture    = Texture::Builder {}
-                               .setExtent({1, 1})
-                               .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
-                               .setUsageFlags(ImageUsage::eSampled | ImageUsage::eTransferDst)
-                               .setupOptimalSampler(true)
-                               .build(*this);
+                                      .setExtent({1, 1})
+                                      .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
+                                      .setUsageFlags(ImageUsage::eSampled | ImageUsage::eTransferDst)
+                                      .setupOptimalSampler(true)
+                                      .build(*this);
 
             auto stagingBuffer = createStagingBuffer(sizeof(whitePixel));
             rhi::upload(*this, stagingBuffer, {}, texture, false);
