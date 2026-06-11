@@ -1,5 +1,7 @@
 #include "editor_app/plugin_repository.hpp"
 
+#include <vultra/core/base/common_context.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -11,6 +13,7 @@
 #include <sstream>
 #include <system_error>
 #include <unordered_map>
+#include <unordered_set>
 
 #if defined(_WIN32)
 #    include <windows.h>
@@ -407,6 +410,106 @@ namespace vultra_app::plugins
             return name + suffix.str();
         }
 
+        std::string sanitizeNameSegment(std::string_view text)
+        {
+            std::string out;
+            for (const char ch : text)
+            {
+                if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '_' || ch == '.')
+                    out.push_back(ch);
+            }
+            return out;
+        }
+
+        // Human-readable cache name for a repository-ish URL: "<owner>-<repo>".
+        //   https://github.com/zzxzzk115/vultra-plugin-streamline.git -> zzxzzk115-vultra-plugin-streamline
+        //   https://raw.githubusercontent.com/zzxzzk115/vultra-plugins/main/plugins.json -> zzxzzk115-vultra-plugins
+        // Falls back to a hashed safe name when the URL has no owner/repo shape.
+        std::string readableRepoName(std::string_view url)
+        {
+            std::string_view rest = url;
+            if (const auto pos = rest.find("://"); pos != std::string_view::npos)
+                rest = rest.substr(pos + 3);
+
+            std::vector<std::string_view> segments;
+            std::size_t                   start = 0;
+            while (start <= rest.size())
+            {
+                const auto end     = rest.find_first_of("/?#", start);
+                const auto segment = rest.substr(start, end == std::string_view::npos ? std::string_view::npos
+                                                                                      : end - start);
+                if (!segment.empty())
+                    segments.push_back(segment);
+                if (end == std::string_view::npos || rest[end] != '/')
+                    break;
+                start = end + 1;
+            }
+
+            // segments[0] is the host; owner/repo follow.
+            if (segments.size() >= 3)
+            {
+                std::string repo {segments[2]};
+                if (repo.ends_with(".git"))
+                    repo.resize(repo.size() - 4);
+                const auto owner = sanitizeNameSegment(segments[1]);
+                const auto name  = sanitizeNameSegment(repo);
+                if (!owner.empty() && !name.empty())
+                    return owner + "-" + name;
+            }
+            return safeCacheName(url);
+        }
+
+        // Copy a plugin payload, excluding version-control internals (.git).
+        bool copyPluginPayload(const fs::path& source, const fs::path& destination, std::string& error)
+        {
+            std::error_code ec;
+            fs::remove_all(destination, ec);
+            if (ec)
+            {
+                error = "failed to replace existing plugin folder: " + ec.message();
+                return false;
+            }
+            fs::create_directories(destination, ec);
+            if (ec)
+            {
+                error = "failed to create plugin folder: " + ec.message();
+                return false;
+            }
+
+            for (const auto& entry : fs::directory_iterator(source, ec))
+            {
+                if (ec)
+                    break;
+                if (entry.path().filename() == ".git")
+                    continue;
+                fs::copy(entry.path(),
+                         destination / entry.path().filename(),
+                         fs::copy_options::recursive | fs::copy_options::overwrite_existing,
+                         ec);
+                if (ec)
+                {
+                    error = "failed to copy plugin files: " + ec.message();
+                    return false;
+                }
+            }
+            if (ec)
+            {
+                error = "failed to enumerate plugin files: " + ec.message();
+                return false;
+            }
+            return true;
+        }
+
+        fs::path gitCacheRoot(const fs::path& projectRoot) { return managedRoot(projectRoot) / ".cache"; }
+
+        fs::path absoluteLockDir(const fs::path& projectRoot, const std::string& directory)
+        {
+            fs::path path {directory};
+            if (!path.is_absolute())
+                path = projectRoot / path;
+            return path.lexically_normal();
+        }
+
         std::optional<fs::path> findPluginRoot(const fs::path& root)
         {
             std::error_code ec;
@@ -483,8 +586,28 @@ namespace vultra_app::plugins
             return json;
         }
 
+        nlohmann::json lockEntryFor(const fs::path&               projectRoot,
+                                    const vultra::PluginManifest& manifest,
+                                    nlohmann::json                base)
+        {
+            std::error_code ec;
+            base["id"]           = manifest.id;
+            base["name"]         = manifest.name;
+            base["version"]      = manifest.version;
+            base["directory"]    = fs::relative(manifest.directory, projectRoot, ec).generic_string();
+            base["manifestHash"] = textFileHash(manifest.manifestPath);
+            base["fileCount"]    = directoryFileCount(manifest.directory);
+            base["byteSize"]     = directoryByteSize(manifest.directory);
+            if (!base.contains("source"))
+                base["source"] = nlohmann::json {{"type", "unknown"}};
+            return base;
+        }
+
+        // Rebuild vultra.plugins.lock: a fresh import is authoritative for its id; managed (git)
+        // entries are kept (refreshed from disk when their version directory exists -- a missing
+        // one stays restorable from its source); local entries are rescanned from the install dir.
         void saveLock(const fs::path&                              projectRoot,
-                      const std::vector<fs::path>&                 pluginDirs,
+                      const fs::path&                              localPluginsDir,
                       const std::optional<vultra::PluginManifest>& importedManifest,
                       const nlohmann::json&                        importedSource,
                       const std::vector<std::string>&              excludedIds = {})
@@ -493,50 +616,54 @@ namespace vultra_app::plugins
             fs::create_directories(projectRoot, ec);
             const auto lockPath = projectRoot / kLockFileName;
 
-            std::unordered_map<std::string, nlohmann::json> previous;
+            const auto excluded = [&](const std::string& id) {
+                return std::find(excludedIds.begin(), excludedIds.end(), id) != excludedIds.end();
+            };
+
+            nlohmann::json                  pluginsJson = nlohmann::json::array();
+            std::unordered_set<std::string> written;
+
+            if (importedManifest.has_value() && !excluded(importedManifest->id))
+            {
+                nlohmann::json entry = nlohmann::json::object();
+                entry["source"]      = importedSource;
+                pluginsJson.push_back(lockEntryFor(projectRoot, *importedManifest, std::move(entry)));
+                written.insert(importedManifest->id);
+            }
+
             const auto oldLock = loadLock(lockPath);
             for (const auto& item : oldLock.value("plugins", nlohmann::json::array()))
             {
                 const auto id = item.value("id", std::string {});
-                if (!id.empty())
-                    previous[id] = item;
-            }
-
-            std::vector<std::string> managedIds;
-            managedIds.reserve(previous.size() + (importedManifest.has_value() ? 1 : 0));
-            for (const auto& [id, entry] : previous)
-            {
-                if (std::find(excludedIds.begin(), excludedIds.end(), id) == excludedIds.end())
-                    managedIds.push_back(id);
-            }
-            if (importedManifest.has_value() &&
-                std::find(excludedIds.begin(), excludedIds.end(), importedManifest->id) == excludedIds.end() &&
-                std::find(managedIds.begin(), managedIds.end(), importedManifest->id) == managedIds.end())
-            {
-                managedIds.push_back(importedManifest->id);
-            }
-
-            nlohmann::json pluginsJson = nlohmann::json::array();
-            for (const auto& manifest : discoverProjectPlugins(pluginDirs, managedIds))
-            {
-                if (std::find(excludedIds.begin(), excludedIds.end(), manifest.id) != excludedIds.end())
+                if (id.empty() || excluded(id) || written.contains(id))
                     continue;
-                nlohmann::json entry =
-                    previous.contains(manifest.id) ? previous[manifest.id] : nlohmann::json::object();
-                entry["id"]           = manifest.id;
-                entry["name"]         = manifest.name;
-                entry["version"]      = manifest.version;
-                entry["directory"]    = fs::relative(manifest.directory, projectRoot, ec).generic_string();
-                entry["manifestHash"] = textFileHash(manifest.manifestPath);
-                entry["fileCount"]    = directoryFileCount(manifest.directory);
-                entry["byteSize"]     = directoryByteSize(manifest.directory);
+                const auto source = item.value("source", nlohmann::json::object());
+                if (source.value("type", std::string {}) != "git")
+                    continue; // local entries are rescanned below
 
-                if (importedManifest.has_value() && importedManifest->id == manifest.id)
-                    entry["source"] = importedSource;
-                else if (!entry.contains("source"))
-                    entry["source"] = nlohmann::json {{"type", "unknown"}};
+                const auto dir = absoluteLockDir(projectRoot, item.value("directory", std::string {}));
+                if (auto manifest = vultra::loadPluginManifest(dir / vultra::kPluginManifestFile); manifest.has_value())
+                    pluginsJson.push_back(lockEntryFor(projectRoot, *manifest, item));
+                else
+                    pluginsJson.push_back(item); // restorable from source; keep as recorded
+                written.insert(id);
+            }
 
-                pluginsJson.push_back(std::move(entry));
+            for (const auto& manifest : discoverProjectPlugins({localPluginsDir}))
+            {
+                if (excluded(manifest.id) || written.contains(manifest.id))
+                    continue;
+                nlohmann::json base = nlohmann::json::object();
+                for (const auto& item : oldLock.value("plugins", nlohmann::json::array()))
+                {
+                    if (item.value("id", std::string {}) == manifest.id)
+                    {
+                        base = item;
+                        break;
+                    }
+                }
+                pluginsJson.push_back(lockEntryFor(projectRoot, manifest, std::move(base)));
+                written.insert(manifest.id);
             }
 
             const nlohmann::json lock = {{"schemaVersion", 1}, {"plugins", std::move(pluginsJson)}};
@@ -605,7 +732,7 @@ namespace vultra_app::plugins
                 return result;
             }
 
-            saveLock(projectRoot, {pluginsDir, managedGitDir(projectRoot)}, installedManifest, sourceInfo);
+            saveLock(projectRoot, pluginsDir, installedManifest, sourceInfo);
             result.ok          = true;
             result.installedId = installedManifest->id;
             result.status = "Installed plugin '" + installedManifest->name + "' (" + installedManifest->id + ").";
@@ -718,43 +845,38 @@ namespace vultra_app::plugins
         return (projectRoot / assetRoot / "plugins").lexically_normal();
     }
 
-    std::filesystem::path managedGitDir(const std::filesystem::path& projectRoot)
+    std::filesystem::path managedRoot(const std::filesystem::path& projectRoot)
     {
-        return (projectRoot / ".vultra" / "plugins" / "git").lexically_normal();
+        return (projectRoot / ".vultra" / "plugins").lexically_normal();
     }
 
     std::vector<std::filesystem::path> discoveryDirs(const std::filesystem::path& projectRoot,
                                                      const std::string&           assetRoot)
     {
-        return {
-            localInstallDir(projectRoot, assetRoot),
-            managedGitDir(projectRoot),
-        };
+        std::vector<std::filesystem::path> dirs {localInstallDir(projectRoot, assetRoot)};
+        const auto                         lock = loadLock(projectRoot / kLockFileName);
+        for (const auto& item : lock.value("plugins", nlohmann::json::array()))
+        {
+            const auto directory = item.value("directory", std::string {});
+            if (directory.empty())
+                continue;
+            auto path = absoluteLockDir(projectRoot, directory);
+            if (std::find(dirs.begin(), dirs.end(), path) == dirs.end())
+                dirs.push_back(std::move(path));
+        }
+        return dirs;
     }
 
-    std::vector<vultra::PluginManifest> discoverProjectPlugins(const std::vector<std::filesystem::path>& dirs,
-                                                               const std::vector<std::string>& lockedManagedIds,
-                                                               const bool                      includeAllManaged)
+    std::vector<vultra::PluginManifest> discoverProjectPlugins(const std::vector<std::filesystem::path>& dirs)
     {
-        std::vector<vultra::PluginManifest>          result;
-        std::unordered_map<std::string, std::size_t> seen;
+        std::vector<vultra::PluginManifest> result;
+        std::unordered_set<std::string>     seen;
         for (const auto& dir : dirs)
         {
-            const bool isManagedDir = dir.filename() == "git" && dir.parent_path().filename() == "plugins";
             for (auto manifest : vultra::discoverPlugins(dir))
             {
-                if (manifest.id.empty())
+                if (manifest.id.empty() || !seen.insert(manifest.id).second)
                     continue;
-                if (isManagedDir && !includeAllManaged &&
-                    std::find(lockedManagedIds.begin(), lockedManagedIds.end(), manifest.id) ==
-                        lockedManagedIds.end())
-                    continue;
-                if (seen.contains(manifest.id))
-                {
-                    result[seen[manifest.id]] = std::move(manifest);
-                    continue;
-                }
-                seen[manifest.id] = result.size();
                 result.push_back(std::move(manifest));
             }
         }
@@ -797,7 +919,48 @@ namespace vultra_app::plugins
                      const std::string&              assetRoot,
                      const std::vector<std::string>& excludedIds)
     {
-        saveLock(projectRoot, discoveryDirs(projectRoot, assetRoot), std::nullopt, nlohmann::json {}, excludedIds);
+        saveLock(projectRoot, localInstallDir(projectRoot, assetRoot), std::nullopt, nlohmann::json {}, excludedIds);
+    }
+
+    void restoreLockedPlugins(const std::filesystem::path& projectRoot)
+    {
+        namespace fs = std::filesystem;
+        const auto lock = loadLock(projectRoot / kLockFileName);
+        for (const auto& item : lock.value("plugins", nlohmann::json::array()))
+        {
+            const auto source = item.value("source", nlohmann::json::object());
+            if (source.value("type", std::string {}) != "git")
+                continue;
+            const auto url       = source.value("url", std::string {});
+            const auto directory = item.value("directory", std::string {});
+            if (url.empty() || directory.empty())
+                continue;
+
+            const auto      versionDir = absoluteLockDir(projectRoot, directory);
+            std::error_code ec;
+            if (fs::exists(versionDir / vultra::kPluginManifestFile, ec))
+                continue;
+
+            const auto  ref      = source.value("ref", std::string {});
+            const auto  cacheDir = (gitCacheRoot(projectRoot) / readableRepoName(url)).lexically_normal();
+            std::string cacheWarning;
+            std::string status;
+            if (!syncGitCache(cacheDir, url, ref, cacheWarning, status))
+            {
+                VULTRA_CLIENT_WARN("[PluginRepository] Cannot restore locked plugin '{}': {}",
+                                   item.value("id", std::string {"?"}),
+                                   status);
+                continue;
+            }
+            const auto root = findPluginRoot(cacheDir);
+            if (!root.has_value())
+                continue;
+            std::string copyError;
+            if (!copyPluginPayload(*root, versionDir, copyError))
+                VULTRA_CLIENT_WARN("[PluginRepository] Cannot restore locked plugin '{}': {}",
+                                   item.value("id", std::string {"?"}),
+                                   copyError);
+        }
     }
 
     bool projectNeedsRelaunchForPlugins(const std::filesystem::path&    projectRoot,
@@ -806,8 +969,7 @@ namespace vultra_app::plugins
     {
         if (enabledPlugins.empty())
             return false;
-        const auto manifests =
-            discoverProjectPlugins(discoveryDirs(projectRoot, assetRoot), lockedPluginIds(projectRoot));
+        const auto manifests = discoverProjectPlugins(discoveryDirs(projectRoot, assetRoot));
         for (const auto& manifest : manifests)
         {
             if (manifest.needsRestartToApply() && manifest.supportsCurrentPlatform() &&
@@ -835,8 +997,8 @@ namespace vultra_app::plugins
         std::string     offlineNote;
         if (isHttpUrl(location))
         {
-            catalogPath = (projectRoot / ".vultra" / "plugins" / "catalogs" / (safeCacheName(location) + ".json"))
-                              .lexically_normal();
+            catalogPath =
+                (managedRoot(projectRoot) / "catalogs" / (readableRepoName(location) + ".json")).lexically_normal();
             // CDN hosts (raw.githubusercontent.com caches ~5 minutes) key their cache on the full
             // URL, so a throwaway query parameter makes a refresh actually fetch fresh content.
             std::string downloadUrl = location;
@@ -943,7 +1105,7 @@ namespace vultra_app::plugins
             return result;
         }
 
-        const auto      cacheDir = (managedGitDir(projectRoot) / safeCacheName(url)).lexically_normal();
+        const auto      cacheDir = (gitCacheRoot(projectRoot) / readableRepoName(url)).lexically_normal();
         std::error_code ec;
         fs::create_directories(cacheDir.parent_path(), ec);
         if (ec)
@@ -974,6 +1136,25 @@ namespace vultra_app::plugins
             return result;
         }
 
+        // Materialize the payload as an immutable version directory (xmake-repo style):
+        // <managed-root>/<id>/<version>. Rollback re-points the lock at a sibling version.
+        const auto version =
+            !manifest->version.empty() ? manifest->version : (ref.empty() ? std::string {"dev"} : ref);
+        const auto  versionDir = (managedRoot(projectRoot) / manifest->id / version).lexically_normal();
+        std::string copyError;
+        if (!copyPluginPayload(*root, versionDir, copyError))
+        {
+            result.status = "Git import failed: " + copyError;
+            return result;
+        }
+
+        auto installedManifest = vultra::loadPluginManifest(versionDir / vultra::kPluginManifestFile, &manifestError);
+        if (!installedManifest.has_value())
+        {
+            result.status = manifestError.empty() ? "installed plugin manifest could not be read" : manifestError;
+            return result;
+        }
+
         nlohmann::json source {
             {"type", "git"},
             {"url", url},
@@ -982,11 +1163,11 @@ namespace vultra_app::plugins
         if (!ref.empty())
             source["ref"] = ref;
 
-        saveLock(projectRoot, {pluginsDir, managedGitDir(projectRoot)}, manifest, source);
+        saveLock(projectRoot, pluginsDir, installedManifest, source);
         result.ok          = true;
-        result.installedId = manifest->id;
-        result.status      = "Installed managed plugin '" + manifest->name + "' (" + manifest->id + ", v" +
-                        (manifest->version.empty() ? "?" : manifest->version) + ")." + cacheWarning;
+        result.installedId = installedManifest->id;
+        result.status      = "Installed managed plugin '" + installedManifest->name + "' (" + installedManifest->id +
+                        ", v" + version + ")." + cacheWarning;
         return result;
     }
 
@@ -1069,17 +1250,18 @@ namespace vultra_app::plugins
             return false;
         }
 
-        const auto localDir     = localInstallDir(projectRoot, assetRoot).lexically_normal();
-        const auto managedDir   = managedGitDir(projectRoot).lexically_normal();
-        const auto pluginDir    = manifest.directory.lexically_normal();
-        const auto localRel     = fs::relative(pluginDir, localDir, ec);
-        const auto localRelText = localRel.generic_string();
-        const bool inLocal = !ec && !localRelText.empty() && localRelText != ".." && !localRelText.starts_with("../");
-        ec.clear();
-        const auto managedRel     = fs::relative(pluginDir, managedDir, ec);
-        const auto managedRelText = managedRel.generic_string();
-        const bool inManaged =
-            !ec && !managedRelText.empty() && managedRelText != ".." && !managedRelText.starts_with("../");
+        const auto isUnder = [&ec](const fs::path& path, const fs::path& base) {
+            ec.clear();
+            const auto rel  = fs::relative(path, base, ec);
+            const auto text = rel.generic_string();
+            return !ec && !text.empty() && text != ".." && !text.starts_with("../");
+        };
+
+        const auto localDir   = localInstallDir(projectRoot, assetRoot).lexically_normal();
+        const auto managedDir = managedRoot(projectRoot).lexically_normal();
+        const auto pluginDir  = manifest.directory.lexically_normal();
+        const bool inLocal    = isUnder(pluginDir, localDir);
+        const bool inManaged  = !inLocal && isUnder(pluginDir, managedDir);
         if (!inLocal && !inManaged)
         {
             status = "Refusing to remove a plugin outside the project plugin roots.";
@@ -1098,12 +1280,23 @@ namespace vultra_app::plugins
         }
         else
         {
-            status = "Removed managed plugin '" + manifest.name + "' (" + manifest.id + ") from project lock.";
+            // Managed layout is <managed-root>/<id>/<version>; drop every materialized version of
+            // the plugin. Legacy single-folder entries (and anything else) only drop the version
+            // folder itself. The git cache under .cache/ always stays.
+            auto removeDir = pluginDir;
+            if (pluginDir.parent_path().filename().generic_string() == manifest.id &&
+                pluginDir.parent_path().parent_path() == managedDir)
+                removeDir = pluginDir.parent_path();
+            fs::remove_all(removeDir, ec);
+            if (ec)
+            {
+                status = "Failed to remove plugin: " + ec.message();
+                return false;
+            }
+            status = "Removed managed plugin '" + manifest.name + "' (" + manifest.id + ").";
         }
 
-        refreshLock(projectRoot,
-                    assetRoot,
-                    inManaged ? std::vector<std::string> {manifest.id} : std::vector<std::string> {});
+        refreshLock(projectRoot, assetRoot, {manifest.id});
         return true;
     }
 } // namespace vultra_app::plugins

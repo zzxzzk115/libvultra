@@ -649,6 +649,7 @@
     },
     "addMenu": {
       "projectPass": "プロジェクトパス",
+      "pluginPass": "プラグインパス",
       "builtinPass": "組み込みパス"
     },
     "menu": {
@@ -1133,6 +1134,10 @@
       "restartFailed": "自動再起動に失敗しました。エディターを手動で再起動してください。",
       "disabledRestartStatus": "プラグイン「{}」({}) を無効にしました。再起動後に反映されます。",
       "removeNeedsRestartNote": "このプラグインは読み込まれており、再起動でのみアンロードできます。無効にしてエディターを再起動してから削除してください。",
+      "configDirty": "変更されています。適用で保存し、プラグインの読み込み時に反映されます。",
+      "applyConfig": "適用",
+      "revertConfig": "元に戻す",
+      "configApplied": "「{}」({}) の設定を適用しました。",
       "installed": "インストール済み",
       "remove": "削除",
       "removeDialogTitle": "プラグインを削除",

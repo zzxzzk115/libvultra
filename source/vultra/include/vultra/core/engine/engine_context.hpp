@@ -119,10 +119,14 @@ namespace vultra
                 // Directory scanned at startup for `<name>/vultra.plugin.vmanifest` manifests.
                 // Empty disables discovery. Used in disk mode (editor / loose project).
                 std::string directory {};
-                // Additional loose plugin directories scanned together with `directory`. Project
-                // editor installs network-managed plugins under `.vultra/plugins`, while local
-                // imports live under the asset root's `plugins` folder.
+                // Additional loose plugin directories scanned together with `directory`. Each entry
+                // may be a container of plugin folders or a plugin root itself (the editor passes
+                // the locked managed version directories, `.vultra/plugins/<id>/<version>`).
                 std::vector<std::string> directories {};
+                // Root of the managed plugin store (`<project>/.vultra/plugins`). When set, the
+                // asset system mounts it read-through as the `plugins://` VFS scheme, so managed
+                // plugin content resolves as plugins://<id>/<version>/<relative-path>.
+                std::string managedRoot {};
                 // Ids of plugins to load. Plugins are OFF by default; only ids listed here (and
                 // supporting the current platform) are loaded. Sourced from the project settings.
                 std::vector<std::string> enabled {};

@@ -628,6 +628,13 @@ namespace vultra
             m_VFS.mount(createRef<vfilesystem::PhysicalFileSystem>(vfilesystem::Path {m_Desc.assetRoot}),
                         m_Desc.scheme);
 #endif
+
+            // Managed plugin store: plugins://<id>/<version>/<path> maps straight onto
+            // <project>/.vultra/plugins/<id>/<version>/<path>, so plugin content (render pass
+            // scripts, shader artifacts, data) resolves through the VFS even though managed
+            // plugins live outside the asset root.
+            if (const auto& managedRoot = ctx().config.plugin.managedRoot; !managedRoot.empty())
+                m_VFS.mount(createRef<vfilesystem::PhysicalFileSystem>(vfilesystem::Path {managedRoot}), "plugins");
         }
 
         m_Resolver.setScheme(m_Desc.scheme);

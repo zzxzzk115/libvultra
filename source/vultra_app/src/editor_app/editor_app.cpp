@@ -1,6 +1,7 @@
 #include "editor_app/editor_app.hpp"
 
 #include "common/system_memory.hpp"
+#include "editor_app/plugin_repository.hpp"
 #include "editor_app/project_asset_utils.hpp"
 #include "editor_app/selection.hpp"
 #include "editor_app/ui/editor_top_bar.hpp"
@@ -102,222 +103,6 @@ namespace
 } // namespace
 #endif
 
-namespace
-{
-    std::vector<std::filesystem::path> splitPathList(const std::string& value)
-    {
-        std::vector<std::filesystem::path> result;
-#if defined(_WIN32)
-        constexpr char separator = ';';
-#else
-        constexpr char separator = ':';
-#endif
-        std::size_t start = 0;
-        while (start <= value.size())
-        {
-            const auto end = value.find(separator, start);
-            const auto item = value.substr(start, end == std::string::npos ? std::string::npos : end - start);
-            if (!item.empty())
-                result.emplace_back(item);
-            if (end == std::string::npos)
-                break;
-            start = end + 1;
-        }
-        return result;
-    }
-
-    std::optional<std::filesystem::path> resolveGitExecutable()
-    {
-        namespace fs = std::filesystem;
-        std::error_code ec;
-#if defined(_WIN32)
-        constexpr const char* exe = "git.exe";
-#else
-        constexpr const char* exe = "git";
-#endif
-        if (const char* pathEnv = std::getenv("PATH"); pathEnv != nullptr)
-        {
-            for (const auto& dir : splitPathList(pathEnv))
-            {
-                const auto candidate = dir / exe;
-                if (fs::exists(candidate, ec) && fs::is_regular_file(candidate, ec))
-                    return candidate;
-            }
-        }
-#if defined(_WIN32)
-        std::vector<fs::path> candidates {
-            fs::path {"C:/Program Files/Git/cmd/git.exe"},
-            fs::path {"C:/Program Files/Git/bin/git.exe"},
-            fs::path {"C:/Program Files (x86)/Git/cmd/git.exe"},
-            fs::path {"C:/Program Files (x86)/Git/bin/git.exe"},
-        };
-        // Git for Windows also installs per-user without touching PATH.
-        if (const char* localAppData = std::getenv("LOCALAPPDATA"); localAppData != nullptr)
-        {
-            candidates.emplace_back(fs::path {localAppData} / "Programs/Git/cmd/git.exe");
-            candidates.emplace_back(fs::path {localAppData} / "Programs/Git/bin/git.exe");
-        }
-        for (const auto& candidate : candidates)
-        {
-            if (fs::exists(candidate, ec) && fs::is_regular_file(candidate, ec))
-                return candidate;
-        }
-#endif
-        return std::nullopt;
-    }
-
-#if defined(_WIN32)
-    std::wstring widenUtf8(std::string_view text)
-    {
-        if (text.empty())
-            return {};
-        const int size = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
-        if (size <= 0)
-            return {};
-        std::wstring result(static_cast<std::size_t>(size), L'\0');
-        MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), size);
-        return result;
-    }
-
-    std::wstring quoteArg(const std::wstring& arg)
-    {
-        if (arg.find_first_of(L" \t\"") == std::wstring::npos)
-            return arg;
-        std::wstring out = L"\"";
-        for (wchar_t ch : arg)
-        {
-            if (ch == L'"')
-                out += L"\\\"";
-            else
-                out += ch;
-        }
-        out += L"\"";
-        return out;
-    }
-
-    bool runGitProcess(const std::filesystem::path& git, const std::vector<std::string>& args)
-    {
-        std::wstring command = quoteArg(git.wstring());
-        for (const auto& arg : args)
-            command += L" " + quoteArg(widenUtf8(arg));
-        STARTUPINFOW startup {};
-        PROCESS_INFORMATION process {};
-        startup.cb = sizeof(startup);
-        std::vector<wchar_t> mutableCommand(command.begin(), command.end());
-        mutableCommand.push_back(L'\0');
-        if (!CreateProcessW(git.wstring().c_str(),
-                            mutableCommand.data(),
-                            nullptr,
-                            nullptr,
-                            FALSE,
-                            CREATE_NO_WINDOW,
-                            nullptr,
-                            nullptr,
-                            &startup,
-                            &process))
-            return false;
-        WaitForSingleObject(process.hProcess, INFINITE);
-        DWORD exitCode = 1;
-        GetExitCodeProcess(process.hProcess, &exitCode);
-        CloseHandle(process.hThread);
-        CloseHandle(process.hProcess);
-        return exitCode == 0;
-    }
-#else
-    bool runGitProcess(const std::filesystem::path& git, const std::vector<std::string>& args)
-    {
-        std::ostringstream cmd;
-        cmd << '"' << git.generic_string() << '"';
-        for (const auto& arg : args)
-            cmd << " \"" << arg << '"';
-        return std::system(cmd.str().c_str()) == 0;
-    }
-#endif
-
-    void restoreLockedGitPlugins(const std::filesystem::path& projectDir)
-    {
-        namespace fs = std::filesystem;
-        const auto lockPath = projectDir / "vultra.plugins.lock";
-        std::ifstream file(lockPath);
-        if (!file)
-            return;
-        auto lock = nlohmann::json::parse(file, nullptr, false);
-        if (lock.is_discarded() || !lock.is_object() || !lock.value("plugins", nlohmann::json::array()).is_array())
-            return;
-        const auto git = resolveGitExecutable();
-        if (!git.has_value())
-        {
-            VULTRA_CLIENT_WARN("[PluginManager] Cannot restore git plugins from lock: git executable not found.");
-            return;
-        }
-
-        std::error_code ec;
-        for (const auto& plugin : lock.value("plugins", nlohmann::json::array()))
-        {
-            const auto source = plugin.value("source", nlohmann::json::object());
-            if (source.value("type", std::string {}) != "git")
-                continue;
-            const auto url = source.value("url", std::string {});
-            const auto cache = source.value("cache", std::string {});
-            if (url.empty() || cache.empty())
-                continue;
-
-            fs::path cacheDir {cache};
-            if (!cacheDir.is_absolute())
-                cacheDir = (projectDir / cacheDir).lexically_normal();
-            if (fs::exists(cacheDir / ".git", ec))
-                continue;
-
-            fs::create_directories(cacheDir.parent_path(), ec);
-            if (ec)
-                continue;
-            VULTRA_CLIENT_INFO("[PluginManager] Restoring locked plugin '{}' from {}", plugin.value("id", "?"), url);
-            const auto               ref = source.value("ref", std::string {});
-            std::vector<std::string> args {"clone", "--depth", "1"};
-            if (!ref.empty())
-            {
-                args.emplace_back("--branch");
-                args.push_back(ref);
-            }
-            args.push_back(url);
-            args.push_back(cacheDir.generic_string());
-            if (!runGitProcess(*git, args))
-                VULTRA_CLIENT_WARN("[PluginManager] Failed to restore locked plugin '{}'", plugin.value("id", "?"));
-        }
-    }
-
-    std::vector<std::string> lockedPluginIds(const std::filesystem::path& projectDir)
-    {
-        std::vector<std::string> ids;
-        std::ifstream file(projectDir / "vultra.plugins.lock");
-        if (!file)
-            return ids;
-        auto lock = nlohmann::json::parse(file, nullptr, false);
-        if (lock.is_discarded() || !lock.is_object())
-            return ids;
-        for (const auto& plugin : lock.value("plugins", nlohmann::json::array()))
-        {
-            const auto id = plugin.value("id", std::string {});
-            if (!id.empty())
-                ids.push_back(id);
-        }
-        return ids;
-    }
-
-    std::vector<std::string> filterEnabledPluginsByLock(const std::vector<std::string>& enabled,
-                                                        const std::vector<std::string>& lockedIds)
-    {
-        if (lockedIds.empty())
-            return enabled;
-        std::vector<std::string> filtered;
-        for (const auto& id : enabled)
-        {
-            if (std::find(lockedIds.begin(), lockedIds.end(), id) != lockedIds.end())
-                filtered.push_back(id);
-        }
-        return filtered;
-    }
-} // namespace
 
 #if defined(__APPLE__)
 #include <limits.h>
@@ -678,7 +463,7 @@ namespace vultra_app
             std::string envError;
             if (!loadProjectEnvFile(project->projectDir, &envError) && !envError.empty())
                 VULTRA_CLIENT_WARN("[VultraEditor] {}", envError);
-            restoreLockedGitPlugins(project->projectDir);
+            plugins::restoreLockedPlugins(project->projectDir);
 
             engine.ctx().config.asset.loadFromVPK = false;
             engine.ctx().config.asset.assetRoot =
@@ -686,13 +471,18 @@ namespace vultra_app
             engine.ctx().config.asset.enableImportScan = false;
             engine.ctx().config.render.renderPipelineAsset = project->editingRenderGraph;
             engine.ctx().config.render.renderPipelineRendererKey.clear();
-            // Local imports live in <asset-root>/plugins; network/catalog-managed plugins live in
-            // .vultra/plugins/git. Only the project's enabled ids are loaded.
-            engine.ctx().config.plugin.directory =
-                (project->projectDir / project->assetRoot / "plugins").lexically_normal().generic_string();
-            engine.ctx().config.plugin.directories = {
-                (project->projectDir / ".vultra" / "plugins" / "git").lexically_normal().generic_string(),
-            };
+            // Local imports live in <asset-root>/plugins; managed plugins live in the
+            // .vultra/plugins store as <id>/<version> directories recorded in the lock. Only the
+            // project's enabled ids are loaded. managedRoot also backs the plugins:// VFS scheme.
+            const auto localPluginsDir = plugins::localInstallDir(project->projectDir, project->assetRoot);
+            engine.ctx().config.plugin.directory   = localPluginsDir.generic_string();
+            engine.ctx().config.plugin.managedRoot = plugins::managedRoot(project->projectDir).generic_string();
+            engine.ctx().config.plugin.directories.clear();
+            for (const auto& dir : plugins::discoveryDirs(project->projectDir, project->assetRoot))
+            {
+                if (dir != localPluginsDir)
+                    engine.ctx().config.plugin.directories.push_back(dir.generic_string());
+            }
             engine.ctx().config.plugin.enabled = project->enabledPlugins;
             engine.ctx().config.plugin.configValues = project->pluginConfigValues;
             return;

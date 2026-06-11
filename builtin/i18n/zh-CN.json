@@ -490,6 +490,7 @@
   },
   "addMenu": {
     "projectPass": "项目通道",
+    "pluginPass": "插件通道",
     "builtinPass": "内置通道"
   },
   "menu": {
@@ -953,6 +954,10 @@
     "restartFailed": "无法自动重启，请手动重启编辑器。",
     "disabledRestartStatus": "已禁用插件“{}”（{}），重启后生效。",
     "removeNeedsRestartNote": "该插件已加载，只能通过重启卸载。请先禁用并重启编辑器，再进行移除。",
+    "configDirty": "已修改。点击应用保存，插件加载时生效。",
+    "applyConfig": "应用",
+    "revertConfig": "还原",
+    "configApplied": "已应用“{}”（{}）的设置。",
     "installed": "已安装",
     "remove": "移除",
     "removeDialogTitle": "移除插件",

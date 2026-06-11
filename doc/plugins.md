@@ -68,10 +68,14 @@ the normal phase. Use this for render backend bridges such as a DLSS/Streamline 
 Vulkan hook ownership before instance/device/swapchain creation.
 
 `config` is optional self-description for editor/project settings. Each item has a `key`, display
-`label`, `type` (`string`, `path`, `bool`, `int`, `float`), optional `default`, optional `description`,
-optional `env`/`envVar`, and `required`. Project Settings -> Plugins draws these fields and can save
-values into the `.vproject`; before loading a plugin, the engine writes any `env`-backed value into
-the current process environment.
+`label`, `type` (`string`, `path`, `bool`, `int`, `float`, `enum`), optional `default`, optional
+`description`, optional `env`/`envVar`, and `required`. An `enum` parameter also declares
+`"options": ["a", "b", ...]` and is drawn as a dropdown; the stored/exported value is the option
+string. Project Settings -> Plugins draws these fields; edits stay pending until applied per
+plugin (Apply persists into the `.vproject`/`.env` and Revert restores the last applied state).
+Parameters are read when the plugin loads, so applying a restart-level plugin's config offers an
+editor restart. Before loading a plugin, the engine writes any `env`-backed value into the current
+process environment.
 
 Machine-local or secret values should live in a `.env` file next to the project `.vproject` instead
 of the `.vproject`. The app loads that file before plugin discovery; `.env` is gitignored.
@@ -115,11 +119,36 @@ release tag into the managed cache. Installed plugins show an "update available"
 catalog carries a newer version. The editor can also import a plugin manually from a Git URL, a
 custom catalog JSON URL/path, a local `.zip`, or a local folder.
 
-Git and catalog imports keep clone/catalog caches under `.vultra/plugins/` and load the plugin from
-that managed cache. Zip and folder imports install into `<asset-root>/plugins/`. The project writes
-`vultra.plugins.lock` next to the `.vproject` with installed plugin versions, source metadata
-(including the pinned git ref), manifest fingerprints, and file counts; missing managed caches are
-restored from the lock at project load, at the locked ref.
+Managed (git/catalog) plugins live in an xmake-repo style store next to the project:
+
+```
+.vultra/plugins/
+  .cache/<owner>-<repo>/        git clone cache, one per repository url
+  catalogs/<owner>-<repo>.json  downloaded catalog cache
+  <plugin-id>/<version>/        immutable, materialized plugin payload (no .git)
+```
+
+Each install checks the locked tag out in the cache and copies the payload into
+`<plugin-id>/<version>/`; `vultra.plugins.lock` (next to the `.vproject`) records which version
+directory is active per plugin, plus source metadata, manifest fingerprints, and file counts.
+Rollback re-points the lock at an already-materialized sibling version. Missing version
+directories are re-materialized from the lock at project load, at the locked ref. Zip and folder
+imports install into `<asset-root>/plugins/` and are project content.
+
+The managed store is mounted as the `plugins://` VFS scheme:
+`plugins://<plugin-id>/<version>/<path>` maps onto `.vultra/plugins/<plugin-id>/<version>/<path>`,
+so plugin files load through the normal asset service.
+
+Installed plugins contribute render content automatically (even while disabled, so render graphs
+keep authoring and loading; whether the plugin's native/Lua side runs is governed by enabling):
+
+- **Scripted render passes** are discovered from `<plugin-root>/render/passes/*.lua`. The
+  project's own passes win on type collisions.
+- **Shader libraries**: precompiled `.vshlib` artifacts under `<plugin-root>/shaders/` register
+  automatically as library `<plugin-id>` (the first one) and `<plugin-id>/<stem>`, so a plugin
+  pass can use `shader = { library = "<plugin-id>", ... }`. Plugins ship compiled shader
+  artifacts the same way they ship prebuilt native libraries; shader sources inside plugin
+  folders are not compiled by the project importer.
 
 `<asset-root>/plugins` is project content once it exists. Native runtime files such as `.dll`, `.so`,
 `.dylib`, `.lib`, and `.pdb` are intentionally allowed there so a project or plugin repository can

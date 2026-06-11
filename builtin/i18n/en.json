@@ -490,6 +490,7 @@
   },
   "addMenu": {
     "projectPass": "Project Pass",
+    "pluginPass": "Plugin Pass",
     "builtinPass": "Builtin Pass"
   },
   "menu": {
@@ -953,6 +954,10 @@
     "restartFailed": "Could not restart automatically; please restart the editor manually.",
     "disabledRestartStatus": "Disabled plugin '{}' ({}). Takes effect after a restart.",
     "removeNeedsRestartNote": "This plugin is loaded and can only be unloaded by a restart. Disable it, restart the editor, then remove it.",
+    "configDirty": "Modified. Apply to save; takes effect when the plugin loads.",
+    "applyConfig": "Apply",
+    "revertConfig": "Revert",
+    "configApplied": "Applied settings for '{}' ({}).",
     "installed": "Installed",
     "remove": "Remove",
     "removeDialogTitle": "Remove Plugin",

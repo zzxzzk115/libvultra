@@ -27,6 +27,7 @@ namespace vultra
         void onShutdown() override;
 
         std::vector<PluginManifest> discover(const std::filesystem::path& dir) const override;
+        std::vector<PluginContentRoot> contentRoots() override;
         bool                        loadPlugin(const PluginManifest& manifest) override;
         bool                        unloadPlugin(const std::string& id) override;
         std::vector<std::string>    loadedPlugins() const override;

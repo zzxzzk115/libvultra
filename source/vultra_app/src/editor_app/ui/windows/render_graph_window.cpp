@@ -1,6 +1,7 @@
 #include "editor_app/ui/windows/render_graph_window.hpp"
 
 #include "common/ui_widgets.hpp"
+#include "editor_app/plugin_repository.hpp"
 #include "editor_app/project_asset_utils.hpp"
 #include "editor_app/ui/graph_history.hpp"
 #include "editor_app/ui/graph_layout.hpp"
@@ -1511,6 +1512,35 @@ namespace vultra_app
             return files;
         }
 
+        // Render pass scripts shipped by installed plugins (`<plugin-root>/render/passes/*.lua`),
+        // managed or local. These are authoring-visible regardless of the enabled state, matching
+        // the runtime's content-root scan.
+        std::vector<std::filesystem::path> collectPluginRenderPassFiles(const EditorContext& ctx)
+        {
+            std::vector<std::filesystem::path> files;
+            if (ctx.state.currentProject.empty() || ctx.state.currentAssetRoot.empty())
+                return files;
+
+            for (const auto& manifest : plugins::discoverProjectPlugins(
+                     plugins::discoveryDirs(ctx.state.currentProject, ctx.state.currentAssetRoot)))
+            {
+                const auto      passesDir = manifest.directory / "render" / "passes";
+                std::error_code ec;
+                if (!std::filesystem::is_directory(passesDir, ec))
+                    continue;
+                for (const auto& entry : std::filesystem::recursive_directory_iterator(passesDir, ec))
+                {
+                    if (ec)
+                        break;
+                    if (entry.is_regular_file(ec) && entry.path().extension() == ".lua")
+                        files.push_back(entry.path().lexically_normal());
+                }
+            }
+            std::sort(files.begin(), files.end());
+            files.erase(std::unique(files.begin(), files.end()), files.end());
+            return files;
+        }
+
         std::optional<EditorProjectGraphPassDesc> loadRenderGraphPassLuaDesc(const std::filesystem::path& path)
         {
             std::ifstream file(path);
@@ -1583,6 +1613,22 @@ namespace vultra_app
             return types;
         }
 
+        std::vector<std::string> listEditorPluginRenderGraphPassTypes(const EditorContext& ctx)
+        {
+            std::vector<std::string> types;
+            for (const auto& path : collectPluginRenderPassFiles(ctx))
+            {
+                const auto pass = loadRenderGraphPassLuaDesc(path);
+                if (!pass)
+                    continue;
+                types.push_back(pass->type);
+            }
+
+            std::sort(types.begin(), types.end());
+            types.erase(std::unique(types.begin(), types.end()), types.end());
+            return types;
+        }
+
         void registerEditorProjectRenderGraphPasses(const EditorContext&               ctx,
                                                     vrendergraph::RenderGraphRegistry& registry)
         {
@@ -1591,27 +1637,31 @@ namespace vultra_app
                                            FrameGraphBlackboard&,
                                            const vrendergraph::ParamBlock&,
                                            vrendergraph::PassBuildContext&) {};
-            for (const auto& path : collectProjectLuaSourceFiles(ctx))
-            {
-                const auto pass = loadRenderGraphPassLuaDesc(path);
-                if (!pass)
-                    continue;
+            const auto registerFromFiles = [&](const std::vector<std::filesystem::path>& files) {
+                for (const auto& path : files)
+                {
+                    const auto pass = loadRenderGraphPassLuaDesc(path);
+                    if (!pass)
+                        continue;
 
-                std::string type = pass->type;
-                if (type.empty() || registry.contains(type))
-                    continue;
+                    std::string type = pass->type;
+                    if (type.empty() || registry.contains(type))
+                        continue;
 
-                registry.registerPass(vrendergraph::PassDefinition {
-                    .type    = type,
-                    .setup   = noop,
-                    .inputs  = pass->inputs,
-                    .outputs = pass->outputs,
-                    .params =
-                        {
-                            {.name = "name", .type = vrendergraph::ParamType::eString, .defaultValue = type},
-                        },
-                });
-            }
+                    registry.registerPass(vrendergraph::PassDefinition {
+                        .type    = type,
+                        .setup   = noop,
+                        .inputs  = pass->inputs,
+                        .outputs = pass->outputs,
+                        .params =
+                            {
+                                {.name = "name", .type = vrendergraph::ParamType::eString, .defaultValue = type},
+                            },
+                    });
+                }
+            };
+            registerFromFiles(collectProjectLuaSourceFiles(ctx));
+            registerFromFiles(collectPluginRenderPassFiles(ctx));
         }
 
         std::optional<EditorShaderRef> builtinPassShaderRef(std::string_view type)
@@ -5364,17 +5414,22 @@ namespace vultra_app
         std::erase_if(projectTypes, [&](const std::string& type) { return !state.registry.contains(type); });
         const std::unordered_set<std::string> projectTypeSet(projectTypes.begin(), projectTypes.end());
 
-        if (state.editingFeatureInternals && !projectTypes.empty() &&
-            ImGui::BeginMenu(vultra::trId("renderGraph.addMenu.projectPass", "Project Pass")))
-        {
-            // Author-defined hierarchy: a pass .lua may set menuPath = "Group/Sub/Name"
-            // to nest it in submenus split on '/'. Falls back to the pass type.
+        auto pluginTypes = listEditorPluginRenderGraphPassTypes(ctx);
+        std::erase_if(pluginTypes, [&](const std::string& type) {
+            return !state.registry.contains(type) || projectTypeSet.contains(type);
+        });
+        const std::unordered_set<std::string> pluginTypeSet(pluginTypes.begin(), pluginTypes.end());
+
+        // Author-defined hierarchy: a pass .lua may set menuPath = "Group/Sub/Name"
+        // to nest it in submenus split on '/'. Falls back to the pass type.
+        const auto drawPassFileMenu = [&](const std::vector<std::filesystem::path>&    files,
+                                          const std::unordered_set<std::string>&       typeSet) {
             std::vector<std::string>                     menuItems;
             std::unordered_map<std::string, std::string> menuPathToType;
-            for (const auto& path : collectProjectLuaSourceFiles(ctx))
+            for (const auto& path : files)
             {
                 const auto desc = loadRenderGraphPassLuaDesc(path);
-                if (!desc || !projectTypeSet.contains(desc->type))
+                if (!desc || !typeSet.contains(desc->type))
                     continue;
                 std::string menuPath     = desc->menuPath.empty() ? desc->type : desc->menuPath;
                 menuPathToType[menuPath] = desc->type;
@@ -5389,6 +5444,19 @@ namespace vultra_app
                 if (const auto it = menuPathToType.find(selectedMenuPath); it != menuPathToType.end())
                     createPass(it->second);
             }
+        };
+
+        if (state.editingFeatureInternals && !projectTypes.empty() &&
+            ImGui::BeginMenu(vultra::trId("renderGraph.addMenu.projectPass", "Project Pass")))
+        {
+            drawPassFileMenu(collectProjectLuaSourceFiles(ctx), projectTypeSet);
+            ImGui::EndMenu();
+        }
+
+        if (state.editingFeatureInternals && !pluginTypes.empty() &&
+            ImGui::BeginMenu(vultra::trId("renderGraph.addMenu.pluginPass", "Plugin Pass")))
+        {
+            drawPassFileMenu(collectPluginRenderPassFiles(ctx), pluginTypeSet);
             ImGui::EndMenu();
         }
 
@@ -5399,7 +5467,7 @@ namespace vultra_app
             std::sort(types.begin(), types.end());
             for (const auto& type : types)
             {
-                if (projectTypeSet.contains(type) || type == "DepthPre")
+                if (projectTypeSet.contains(type) || pluginTypeSet.contains(type) || type == "DepthPre")
                     continue;
                 addPassItem(type);
             }

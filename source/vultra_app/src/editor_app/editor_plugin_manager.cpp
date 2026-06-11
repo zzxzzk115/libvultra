@@ -57,9 +57,7 @@ namespace vultra_app
         // in the managed cache, or the scan could read a manifest mid-checkout.
         if (m_InstalledDirty && !m_Importing && !m_ProjectRoot.empty())
         {
-            const auto lockedIds = plugins::lockedPluginIds(m_ProjectRoot);
-            m_Installed =
-                plugins::discoverProjectPlugins(plugins::discoveryDirs(m_ProjectRoot, m_AssetRoot), lockedIds);
+            m_Installed = plugins::discoverProjectPlugins(plugins::discoveryDirs(m_ProjectRoot, m_AssetRoot));
             m_InstalledDirty = false;
         }
     }

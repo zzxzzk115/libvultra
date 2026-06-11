@@ -929,11 +929,15 @@ This directory is an index, not the runtime asset root.
                 engine.ctx().config.asset.assetRoot =
                     (project->projectDir / project->assetRoot).lexically_normal().generic_string();
                 engine.ctx().config.render.renderPipelineAsset = project->editingRenderGraph;
-                engine.ctx().config.plugin.directory =
-                    (project->projectDir / project->assetRoot / "plugins").lexically_normal().generic_string();
-                engine.ctx().config.plugin.directories = {
-                    (project->projectDir / ".vultra" / "plugins" / "git").lexically_normal().generic_string(),
-                };
+                const auto localPluginsDir = plugins::localInstallDir(project->projectDir, project->assetRoot);
+                engine.ctx().config.plugin.directory   = localPluginsDir.generic_string();
+                engine.ctx().config.plugin.managedRoot = plugins::managedRoot(project->projectDir).generic_string();
+                engine.ctx().config.plugin.directories.clear();
+                for (const auto& dir : plugins::discoveryDirs(project->projectDir, project->assetRoot))
+                {
+                    if (dir != localPluginsDir)
+                        engine.ctx().config.plugin.directories.push_back(dir.generic_string());
+                }
                 engine.ctx().config.plugin.enabled = project->enabledPlugins;
                 engine.ctx().config.plugin.configValues = project->pluginConfigValues;
             }

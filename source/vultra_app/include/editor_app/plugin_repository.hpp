@@ -11,6 +11,17 @@
 // Project plugin repository management: discovery, the vultra.plugins.lock file, catalog
 // fetching/parsing (schema v1 and v2), and install/update/rollback of plugins from git, zip,
 // or folder sources. No UI here; the Project Settings window drives these and renders results.
+//
+// Managed plugin store layout (xmake-repo style, mounted as the plugins:// VFS scheme):
+//
+//   .vultra/plugins/
+//     .cache/<owner>-<repo>/        git clone cache, one per repository url
+//     catalogs/<owner>-<repo>.json  downloaded catalog cache
+//     <plugin-id>/<version>/        immutable, materialized plugin payload (no .git)
+//
+// `vultra.plugins.lock` records which version directory is active per plugin; rollback just
+// re-points the lock at an already-materialized version. Local (zip/folder) imports install
+// into `<asset-root>/plugins/<folder>` and are project content.
 namespace vultra_app::plugins
 {
     // --- Locations ------------------------------------------------------------------------------
@@ -19,18 +30,20 @@ namespace vultra_app::plugins
 
     [[nodiscard]] std::filesystem::path localInstallDir(const std::filesystem::path& projectRoot,
                                                         const std::string&           assetRoot);
-    [[nodiscard]] std::filesystem::path managedGitDir(const std::filesystem::path& projectRoot);
-    [[nodiscard]] std::vector<std::filesystem::path> discoveryDirs(const std::filesystem::path& projectRoot,
-                                                                   const std::string&           assetRoot);
+    // Root of the managed plugin store: `<project>/.vultra/plugins`.
+    [[nodiscard]] std::filesystem::path managedRoot(const std::filesystem::path& projectRoot);
 
     // --- Discovery / lock -----------------------------------------------------------------------
 
-    // Discover manifests across dirs. Managed-cache checkouts (under .vultra/plugins/git) are only
-    // reported when their id is in lockedManagedIds, unless includeAllManaged is set.
+    // Directories the project's plugins live in: the local install dir plus every locked managed
+    // version directory (each of those is itself a plugin root).
+    [[nodiscard]] std::vector<std::filesystem::path> discoveryDirs(const std::filesystem::path& projectRoot,
+                                                                   const std::string&           assetRoot);
+
+    // Discover manifests across dirs (each entry may be a container of plugin folders or a plugin
+    // root itself). Duplicate ids keep the first hit, so list preferred dirs first.
     [[nodiscard]] std::vector<vultra::PluginManifest>
-    discoverProjectPlugins(const std::vector<std::filesystem::path>& dirs,
-                           const std::vector<std::string>&           lockedManagedIds = {},
-                           bool                                      includeAllManaged = false);
+    discoverProjectPlugins(const std::vector<std::filesystem::path>& dirs);
 
     [[nodiscard]] std::vector<std::string> lockedPluginIds(const std::filesystem::path& projectRoot);
 
@@ -48,13 +61,9 @@ namespace vultra_app::plugins
                      const std::string&              assetRoot,
                      const std::vector<std::string>& excludedIds = {});
 
-    // True when any of the project's enabled plugins must be loaded before the render device
-    // exists (needsRestartToApply, e.g. a pre-render-device Vulkan bridge). Opening such a project
-    // requires a fresh process (--editor --project ...); an in-process launcher transition or a
-    // mid-session enable is too late.
-    [[nodiscard]] bool projectNeedsRelaunchForPlugins(const std::filesystem::path&    projectRoot,
-                                                      const std::string&              assetRoot,
-                                                      const std::vector<std::string>& enabledPlugins);
+    // Re-materialize any locked managed plugin whose version directory is missing (fresh checkout
+    // of the locked ref into the git cache, then a payload copy). Called at project load.
+    void restoreLockedPlugins(const std::filesystem::path& projectRoot);
 
     // --- Catalog --------------------------------------------------------------------------------
 
@@ -79,7 +88,7 @@ namespace vultra_app::plugins
 
     // Fetch and parse a catalog from an http(s) URL or a local path. Accepts schema v1 (single
     // version/source per plugin) and v2 (versions[] per plugin). Remote downloads are cached
-    // under <project>/.vultra/plugins/catalogs; on download failure a previously cached copy is
+    // under the managed store's catalogs/ folder; on download failure a previously cached copy is
     // used so the catalog still renders offline.
     bool fetchCatalog(const std::filesystem::path& projectRoot,
                       const std::string&           location,
@@ -98,9 +107,9 @@ namespace vultra_app::plugins
         std::string installedId;
     };
 
-    // Clone (or update a cached checkout of) a git repository into the managed cache and register
-    // the contained plugin in the lock. A non-empty ref (tag) selects that exact release, which is
-    // how catalog installs, updates, and rollbacks all work; an empty ref tracks the default branch.
+    // Sync the repository's git cache to `ref` (a release tag; empty tracks the default branch)
+    // and materialize the payload into `<managed-root>/<id>/<version>/`. Catalog installs,
+    // updates, and rollbacks all run through this.
     [[nodiscard]] ImportResult importFromGit(const std::filesystem::path& projectRoot,
                                              const std::filesystem::path& pluginsDir,
                                              const std::string&           url,
@@ -115,9 +124,17 @@ namespace vultra_app::plugins
                                                 const std::filesystem::path& sourceFolder);
 
     // Remove an installed plugin: local installs are deleted from <asset-root>/plugins; managed
-    // git installs are dropped from the lock (the cache stays reusable).
+    // installs drop their `<managed-root>/<id>/` versions and the lock entry (the git cache stays).
     bool removeInstall(const std::filesystem::path&  projectRoot,
                        const std::string&            assetRoot,
                        const vultra::PluginManifest& manifest,
                        std::string&                  status);
+
+    // True when any of the project's enabled plugins must be loaded before the render device
+    // exists (needsRestartToApply, e.g. a pre-render-device Vulkan bridge). Opening such a project
+    // requires a fresh process (--editor --project ...); an in-process launcher transition or a
+    // mid-session enable is too late.
+    [[nodiscard]] bool projectNeedsRelaunchForPlugins(const std::filesystem::path&    projectRoot,
+                                                      const std::string&              assetRoot,
+                                                      const std::vector<std::string>& enabledPlugins);
 } // namespace vultra_app::plugins

@@ -9,6 +9,7 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/function/rendering/srp/builtin/render_graph_backbuffer.hpp"
 #include "vultra/function/services/asset_service.hpp"
+#include "vultra/function/services/plugin_service.hpp"
 #include "vultra/function/services/render_service.hpp"
 #include "vultra/function/services/shader_service.hpp"
 
@@ -409,6 +410,60 @@ namespace vultra
             }
         }
 
+        // Active plugins ship render passes too (`<plugin>/render/passes/*.lua`). Managed plugins
+        // live outside the asset root (.vultra/plugins/<id>/<version>), so scan their content
+        // roots explicitly; project passes were parsed first, so a project pass of the same type
+        // still wins at registration.
+        if (auto* pluginService = services->tryGet<IPluginService>())
+        {
+            for (const auto& contentRoot : pluginService->contentRoots())
+            {
+                const auto      passesDir = contentRoot.directory / "render" / "passes";
+                std::error_code ec;
+                if (!std::filesystem::is_directory(passesDir, ec))
+                    continue;
+
+                std::vector<std::filesystem::path> files;
+                for (auto it = std::filesystem::recursive_directory_iterator(
+                         passesDir, std::filesystem::directory_options::skip_permission_denied, ec);
+                     it != std::filesystem::recursive_directory_iterator {};
+                     it.increment(ec))
+                {
+                    if (ec)
+                    {
+                        ec.clear();
+                        continue;
+                    }
+                    if (it->is_regular_file(ec) && it->path().extension() == ".lua")
+                        files.push_back(it->path().lexically_normal());
+                    ec.clear();
+                }
+                std::sort(files.begin(), files.end());
+
+                std::size_t parsed = 0;
+                for (const auto& file : files)
+                {
+                    std::ifstream stream(file);
+                    if (!stream.is_open())
+                        continue;
+                    std::stringstream buffer;
+                    buffer << stream.rdbuf();
+
+                    std::error_code relEc;
+                    const auto      rel = std::filesystem::relative(file, passesDir, relEc);
+                    const auto      uri = contentRoot.uri + "/render/passes/" +
+                                     (relEc || rel.empty() ? file.filename().generic_string() : rel.generic_string());
+                    parsePassText(uri, buffer.str(), uri);
+                    ++parsed;
+                }
+                if (parsed > 0)
+                    VULTRA_CORE_INFO("[DeclarativeRenderer] Plugin '{}': scanned {} render pass script(s) ({}).",
+                                     contentRoot.id,
+                                     parsed,
+                                     contentRoot.uri);
+            }
+        }
+
         std::vector<std::string> registryPassUris;
         for (const auto& [_, entry] : assetService->registry().getRegistry())
         {
@@ -447,6 +502,58 @@ namespace vultra
         auto* shaderService = services ? services->tryGet<IShaderService>() : nullptr;
         if (!shaderService)
             return false;
+
+        // Plugin-shipped shader libraries: precompiled `.vshlib` artifacts under
+        // `<plugin>/shaders/` register automatically -- as `<plugin-id>` (the first one, so a
+        // single-library plugin is addressable by its id) and as `<plugin-id>/<stem>`. Plugins
+        // ship compiled artifacts like they ship prebuilt native libraries; shader *sources*
+        // are not compiled from plugin folders. Graph-declared names take precedence.
+        if (auto* pluginService = services->tryGet<IPluginService>())
+        {
+            for (const auto& contentRoot : pluginService->contentRoots())
+            {
+                const auto      shadersDir = contentRoot.directory / "shaders";
+                std::error_code ec;
+                if (!std::filesystem::is_directory(shadersDir, ec))
+                    continue;
+
+                std::vector<std::filesystem::path> artifacts;
+                for (auto it = std::filesystem::recursive_directory_iterator(
+                         shadersDir, std::filesystem::directory_options::skip_permission_denied, ec);
+                     it != std::filesystem::recursive_directory_iterator {};
+                     it.increment(ec))
+                {
+                    if (ec)
+                    {
+                        ec.clear();
+                        continue;
+                    }
+                    if (it->is_regular_file(ec) && it->path().extension() == ".vshlib")
+                        artifacts.push_back(it->path().lexically_normal());
+                    ec.clear();
+                }
+                std::sort(artifacts.begin(), artifacts.end());
+
+                for (std::size_t i = 0; i < artifacts.size(); ++i)
+                {
+                    std::error_code relEc;
+                    const auto      rel = std::filesystem::relative(artifacts[i], shadersDir, relEc);
+                    const auto      uri = contentRoot.uri + "/shaders/" +
+                                     (relEc || rel.empty() ? artifacts[i].filename().generic_string() :
+                                                             rel.generic_string());
+                    if (i == 0)
+                        m_Asset.shaderLibraries.try_emplace(contentRoot.id, uri);
+                    m_Asset.shaderLibraries.try_emplace(
+                        contentRoot.id + "/" + artifacts[i].stem().generic_string(), uri);
+                }
+                if (!artifacts.empty())
+                    VULTRA_CORE_INFO("[DeclarativeRenderer] Plugin '{}': registered {} shader librar{} ({}).",
+                                     contentRoot.id,
+                                     artifacts.size(),
+                                     artifacts.size() == 1 ? "y" : "ies",
+                                     contentRoot.uri);
+            }
+        }
 
         for (const auto& [name, uri] : m_Asset.shaderLibraries)
         {

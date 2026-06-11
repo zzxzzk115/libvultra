@@ -17,6 +17,16 @@ namespace vultra
     // Plugins are OFF by default: the engine only loads the ones whose id is in the enabled set
     // (config.plugin.enabled, sourced from the project's settings). Discovery lists everything in a
     // directory so a UI can present and toggle them.
+    // Where an active plugin's content lives, for content pipelines (render pass scan, shader
+    // lookup, tooling): the physical directory plus the VFS uri it is reachable under
+    // (`plugins://<id>/<version>` for managed plugins, `res://plugins/<folder>` for local installs).
+    struct PluginContentRoot
+    {
+        std::string           id;
+        std::filesystem::path directory;
+        std::string           uri;
+    };
+
     class IPluginService
     {
     public:
@@ -25,6 +35,11 @@ namespace vultra
 
         // Discover all plugins under a directory (each `<sub>/vultra.plugin.vmanifest`). No loading.
         virtual std::vector<PluginManifest> discover(const std::filesystem::path& dir) const = 0;
+
+        // Content roots of every installed plugin (content stays visible while a plugin is
+        // disabled so render graphs keep authoring/loading; loading governs what actually runs).
+        // Empty in packaged (VPK) mode, where plugin content is already part of res://.
+        virtual std::vector<PluginContentRoot> contentRoots() = 0;
 
         // Load a single (already discovered) plugin: native library first, then the Lua entry.
         virtual bool loadPlugin(const PluginManifest& manifest) = 0;

@@ -26,18 +26,20 @@ namespace vultra
         eBool,
         eInt,
         eFloat,
+        eEnum, // one of `options`; drawn as a dropdown, stored/exported as the option string
     };
 
     struct PluginConfigParam
     {
-        std::string           key;
-        std::string           label;
-        std::string           description;
-        PluginConfigParamType type {PluginConfigParamType::eString};
-        std::string           defaultValue;
-        std::string           envVar;
-        bool                  required {false};
-        bool                  secret {false};
+        std::string              key;
+        std::string              label;
+        std::string              description;
+        PluginConfigParamType    type {PluginConfigParamType::eString};
+        std::string              defaultValue;
+        std::string              envVar;
+        std::vector<std::string> options; // eEnum: the allowed values
+        bool                     required {false};
+        bool                     secret {false};
     };
 
     // Describes a plugin discovered from a vultra.plugin.vmanifest (a JSON document). Example:

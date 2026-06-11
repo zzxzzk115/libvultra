@@ -106,6 +106,51 @@ Date: 2026-06-11
 - `xmake build -y vultra-app` passed after the rework. libvultra changes are uncommitted pending
   user verification.
 
+## Update 2026-06-11 (managed store layout + plugins:// VFS)
+
+- Problem: render passes / shaders shipped inside managed plugins were invisible -- the scripted
+  pass scan, the asset importer, and VPK packing all only look at the asset root, and managed
+  plugins lived outside it (`.vultra/plugins/git/<url-hash>`).
+- Managed store is now xmake-repo style: `.vultra/plugins/.cache/<owner>-<repo>` (git clone
+  cache, readable names), `catalogs/<owner>-<repo>.json`, and immutable materialized
+  `<plugin-id>/<version>/` payload dirs (no .git). The lock's `directory` points at the active
+  version dir; rollback re-points to a sibling; `plugins::restoreLockedPlugins` re-materializes
+  missing dirs at project load (replaces editor_app's old restoreLockedGitPlugins + git helpers).
+- `config.plugin.managedRoot` (= `<project>/.vultra/plugins`) is mounted by AssetSystem as the
+  `plugins://` VFS scheme via a PhysicalFileSystem: plugins://<id>/<version>/<path> -> disk.
+- `vultra::discoverPlugins(dir)` also accepts a dir that IS a plugin root (the lock version dirs
+  are passed as `config.plugin.directories` by configureProject / launcher configureAssets).
+- `IPluginService::contentRoots()` (PluginSystem impl) lists enabled/loaded plugins' content roots
+  with their VFS uri; `DeclarativeRenderer::loadScriptedPasses` scans each root's `render/passes`
+  for RenderGraphPass scripts (project passes still win on type collisions).
+- plugin_repository: discoveryDirs is lock-driven; saveLock semantics = fresh import authoritative,
+  git entries kept/refreshed, local dir rescanned; removeInstall drops `<id>/` (all versions) for
+  managed installs. Legacy lock entries pointing at the old git-layout dir keep working via the
+  dir-is-root discovery; reinstall/update migrates them to the new layout.
+- contentRoots() lists EVERY installed plugin (not just enabled ones): imported plugins default to
+  disabled, and gating content on enabled made their pass definitions invisible while authoring.
+  Render content visibility = installed; runtime behavior = loaded/enabled.
+- Plugin shader libraries auto-register in DeclarativeRenderer::loadShaderLibraries: precompiled
+  `.vshlib` files under `<plugin>/shaders/` become libraries `<plugin-id>` (first, sorted) and
+  `<plugin-id>/<stem>`, loaded via their plugins:// uri (ShaderLibraryRuntime reads the compiled
+  VSHLIB container; sources are NOT compiled from plugin folders).
+- Render graph editor: the add-pass context menu has a "Plugin Pass" submenu
+  (renderGraph.addMenu.pluginPass) between Project Pass and Builtin Pass, built from
+  `collectPluginRenderPassFiles` (each installed plugin's `render/passes/*.lua`, via
+  plugins::discoveryDirs) with the same menuPath hierarchy; the editor-side authoring registry
+  (registerEditorProjectRenderGraphPasses) registers plugin passes too, and plugin types are
+  excluded from the Builtin submenu.
+- Plugin config params support `"type": "enum"` + `"options": [...]` (dropdown in the editor;
+  value stays the option string). The DLSS plugin's startup-enable toggle was removed (enabling
+  the plugin IS the switch; mode "off" keeps the provider registered but inactive) and its mode is
+  an enum now; v0.1.0 tag re-cut with the rebuilt DLL.
+- Plugin config edits are pending-until-Apply per plugin (dirty tracked against
+  s_PluginConfigBaseline; Revert restores). Apply persists surgically via persistPluginConfig
+  (.vproject + .env merge + live process env) and offers a restart for restart-level plugins.
+  The global Save still saves everything and re-syncs the baseline.
+- Known follow-ups: VPK export still packs plugins from res://plugins only (managed plugin
+  payloads need packing support).
+
 ## Notes
 
 - `vultra-plugin-streamline` currently includes native DLL payloads. GitHub accepted the push, but

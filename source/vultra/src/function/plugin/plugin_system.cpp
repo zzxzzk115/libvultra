@@ -74,6 +74,8 @@ namespace vultra
                 return PluginConfigParamType::eInt;
             if (value == "float" || value == "number")
                 return PluginConfigParamType::eFloat;
+            if (value == "enum" || value == "option")
+                return PluginConfigParamType::eEnum;
             return PluginConfigParamType::eString;
         };
 
@@ -112,6 +114,14 @@ namespace vultra
                 param.envVar       = item.value("env", item.value("envVar", std::string {}));
                 param.required     = item.value("required", false);
                 param.secret       = item.value("secret", false);
+                if (const auto optionsIt = item.find("options"); optionsIt != item.end() && optionsIt->is_array())
+                {
+                    for (const auto& option : *optionsIt)
+                        if (option.is_string())
+                            param.options.push_back(option.get<std::string>());
+                }
+                if (param.type == PluginConfigParamType::eEnum && param.options.empty())
+                    param.type = PluginConfigParamType::eString; // enum without options degrades gracefully
                 if (!param.key.empty())
                     manifest.configParams.push_back(std::move(param));
             }
@@ -156,6 +166,18 @@ namespace vultra
         std::error_code             ec;
         if (!fs::exists(dir, ec) || !fs::is_directory(dir, ec))
             return result;
+
+        // The directory may itself be a plugin root (the editor passes managed version
+        // directories, `.vultra/plugins/<id>/<version>`) rather than a container of plugins.
+        if (const auto rootManifest = dir / kPluginManifestFile; fs::exists(rootManifest, ec))
+        {
+            std::string parseError;
+            if (auto manifest = loadPluginManifest(rootManifest, &parseError); manifest.has_value())
+                result.push_back(std::move(*manifest));
+            else
+                VULTRA_CORE_WARN("[PluginSystem] Skipping plugin: {}", parseError);
+            return result;
+        }
 
         for (const auto& entry : fs::directory_iterator(dir, ec))
         {
@@ -412,6 +434,55 @@ namespace vultra
     std::vector<PluginManifest> PluginSystem::discover(const std::filesystem::path& dir) const
     {
         return discoverPlugins(dir);
+    }
+
+    std::vector<PluginContentRoot> PluginSystem::contentRoots()
+    {
+        namespace fs = std::filesystem;
+        std::vector<PluginContentRoot> roots;
+        const auto&                    config = ctx().config.plugin;
+        if (config.loadFromVPK)
+            return roots; // packaged plugin content is already part of res://
+
+        const auto managedRoot =
+            config.managedRoot.empty() ? fs::path {} : fs::path {config.managedRoot}.lexically_normal();
+
+        // Every installed plugin contributes content (pass definitions, shader libraries): a
+        // project's render graph must keep authoring/loading even while the plugin is disabled.
+        // Whether the plugin's native/Lua side actually runs is governed by loading, not by this.
+        for (const auto& dir : configuredPluginDirectories(config))
+        {
+            for (const auto& manifest : discoverPlugins(dir))
+            {
+                if (manifest.id.empty() || manifest.directory.empty())
+                    continue;
+                if (std::any_of(roots.begin(), roots.end(), [&](const PluginContentRoot& root) {
+                        return root.id == manifest.id;
+                    }))
+                    continue;
+
+                // Managed plugins are reachable as plugins://<id>/<version>; local installs live
+                // under the asset root as res://plugins/<folder>.
+                const auto  directory = manifest.directory.lexically_normal();
+                std::string uri;
+                if (!managedRoot.empty())
+                {
+                    std::error_code ec;
+                    const auto      rel = fs::relative(directory, managedRoot, ec);
+                    if (!ec && !rel.empty() && !rel.generic_string().starts_with(".."))
+                        uri = "plugins://" + rel.generic_string();
+                }
+                if (uri.empty())
+                    uri = "res://plugins/" + directory.filename().generic_string();
+
+                roots.push_back(PluginContentRoot {
+                    .id        = manifest.id,
+                    .directory = directory,
+                    .uri       = std::move(uri),
+                });
+            }
+        }
+        return roots;
     }
 
     std::vector<std::string> PluginSystem::loadedPlugins() const { return m_LoadedIds; }

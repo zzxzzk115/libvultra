@@ -181,6 +181,8 @@ namespace vultra_app
                     return "int";
                 case vultra::PluginConfigParamType::eFloat:
                     return "float";
+                case vultra::PluginConfigParamType::eEnum:
+                    return "enum";
                 case vultra::PluginConfigParamType::eString:
                 default:
                     return "string";
@@ -195,12 +197,64 @@ namespace vultra_app
             return value == nullptr ? std::string {} : std::string {value};
         }
 
+        void setProcessEnvString(const std::string& name, const std::string& value)
+        {
+            if (name.empty())
+                return;
+#if defined(_WIN32)
+            _putenv_s(name.c_str(), value.c_str());
+#else
+            setenv(name.c_str(), value.c_str(), 1);
+#endif
+        }
+
         std::string trText(const char* key, const char* fallback)
         {
             std::string text = vultra::trId(key, fallback);
             if (const auto pos = text.find("###"); pos != std::string::npos)
                 text.resize(pos);
             return text;
+        }
+
+        // Persist one plugin's config parameters: env-backed values merge into the project's .env
+        // (and the live process environment, so a plugin reload this session picks them up);
+        // everything else goes into the .vproject. Plugin config is applied at plugin load, so a
+        // loaded plugin only sees applied values on its next load (restart-level plugins: restart).
+        bool persistPluginConfig(const std::filesystem::path&                        projectPath,
+                                 const vultra::PluginManifest&                       manifest,
+                                 const std::unordered_map<std::string, std::string>& values,
+                                 std::string&                                        error)
+        {
+            auto project = loadVProject(projectPath);
+            if (!project.has_value())
+            {
+                error = "project file could not be loaded";
+                return false;
+            }
+
+            auto                                          projectValues = values;
+            std::unordered_map<std::string, std::string>  envValues;
+            for (const auto& param : manifest.configParams)
+            {
+                if (param.envVar.empty())
+                    continue;
+                if (const auto it = projectValues.find(param.key); it != projectValues.end())
+                {
+                    envValues[param.envVar] = it->second;
+                    projectValues.erase(it);
+                }
+            }
+
+            if (projectValues.empty())
+                project->pluginConfigValues.erase(manifest.id);
+            else
+                project->pluginConfigValues[manifest.id] = std::move(projectValues);
+
+            if (!saveProjectEnvValues(project->projectDir, envValues, &error))
+                return false;
+            for (const auto& [name, value] : envValues)
+                setProcessEnvString(name, value);
+            return saveVProject(*project, &error);
         }
 
         // Persist the enabled-plugin set into the .vproject right away, touching nothing else.
@@ -238,6 +292,7 @@ namespace vultra_app
 
         bool drawPluginConfigParam(
             std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& values,
+            std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& baseline,
             const vultra::PluginManifest& manifest,
             const vultra::PluginConfigParam& param)
         {
@@ -250,6 +305,9 @@ namespace vultra_app
                 if (value.empty() && !param.defaultValue.empty())
                     value = param.defaultValue;
             }
+            // The lazily resolved value is the de-facto saved state; mirror it into the baseline so
+            // dirty tracking compares edits against what the plugin actually loads with.
+            baseline[manifest.id].try_emplace(param.key, value);
 
             const std::string label = param.label.empty() ? param.key : param.label;
             ImGui::PushID(param.key.c_str());
@@ -272,6 +330,25 @@ namespace vultra_app
                 {
                     value   = boolValue ? "true" : "false";
                     changed = true;
+                }
+            }
+            else if (param.type == vultra::PluginConfigParamType::eEnum)
+            {
+                // Stored/exported as the option string; the dropdown only constrains the input.
+                if (ImGui::BeginCombo("##value", value.c_str()))
+                {
+                    for (const auto& option : param.options)
+                    {
+                        const bool selected = option == value;
+                        if (ImGui::Selectable(option.c_str(), selected) && !selected)
+                        {
+                            value   = option;
+                            changed = true;
+                        }
+                        if (selected)
+                            ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
                 }
             }
             else
@@ -424,6 +501,8 @@ namespace vultra_app
         static int                      selectedPage = 0;
         static std::vector<std::string> s_EnabledPlugins;
         static std::unordered_map<std::string, std::unordered_map<std::string, std::string>> s_PluginConfigValues;
+        // Last applied/persisted parameter values, for dirty tracking (Apply/Revert per plugin).
+        static std::unordered_map<std::string, std::unordered_map<std::string, std::string>> s_PluginConfigBaseline;
         static std::array<char, 512>    s_PluginGitUrl {};
         static std::array<char, 512>    s_PluginCatalog {};
         static std::array<char, 512>    s_PluginZipPath {};
@@ -449,11 +528,13 @@ namespace vultra_app
             setBuffer(m_ProjectEditingRenderGraphBuffer, ctx.state.currentEditingRenderGraph);
             s_EnabledPlugins.clear();
             s_PluginConfigValues.clear();
+            s_PluginConfigBaseline.clear();
             s_PluginImportStatus.clear();
             if (auto project = loadVProject(ctx.state.currentProject); project.has_value())
             {
                 s_EnabledPlugins = project->enabledPlugins;
                 s_PluginConfigValues = project->pluginConfigValues;
+                s_PluginConfigBaseline = s_PluginConfigValues;
             }
             ImGui::OpenPopup(vultra::trId("projectSettings.title", "Project Settings"));
             ctx.state.projectSettingsOpen = false;
@@ -1318,9 +1399,45 @@ namespace vultra_app
                     if (!wasEnabled)
                         ImGui::BeginDisabled();
                     for (const auto& param : manifest.configParams)
+                        drawPluginConfigParam(s_PluginConfigValues, s_PluginConfigBaseline, manifest, param);
+
+                    // Parameters are read when the plugin loads, so edits stay pending until
+                    // explicitly applied (with a revert back to the last applied state). Applying a
+                    // restart-level plugin's config offers the restart right away.
+                    if (s_PluginConfigValues[manifest.id] != s_PluginConfigBaseline[manifest.id])
                     {
-                        if (drawPluginConfigParam(s_PluginConfigValues, manifest, param))
-                            projectSettingsChanged = true;
+                        ImGui::Spacing();
+                        ImGui::TextColored(
+                            ImVec4 {1.0f, 0.8f, 0.3f, 1.0f},
+                            "%s",
+                            trText("projectSettings.plugins.configDirty",
+                                   "Modified. Apply to save; takes effect when the plugin loads.")
+                                .c_str());
+                        if (ImGui::SmallButton(trText("projectSettings.plugins.applyConfig", "Apply").c_str()))
+                        {
+                            std::string error;
+                            const auto  displayName = manifest.name.empty() ? manifest.id : manifest.name;
+                            if (persistPluginConfig(
+                                    ctx.state.currentProject, manifest, s_PluginConfigValues[manifest.id], error))
+                            {
+                                s_PluginConfigBaseline[manifest.id] = s_PluginConfigValues[manifest.id];
+                                if (manifest.needsRestartToApply())
+                                {
+                                    s_RestartPromptPlugin = displayName;
+                                    s_OpenRestartPrompt   = true;
+                                }
+                                ctx.state.statusMessage = vultra::trf(
+                                    "projectSettings.plugins.configApplied", displayName, manifest.id);
+                            }
+                            else
+                            {
+                                ctx.state.statusMessage =
+                                    vultra::trf("projectSettings.status.saveFailed", error);
+                            }
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton(trText("projectSettings.plugins.revertConfig", "Revert").c_str()))
+                            s_PluginConfigValues[manifest.id] = s_PluginConfigBaseline[manifest.id];
                     }
                     if (!wasEnabled)
                         ImGui::EndDisabled();
@@ -1500,7 +1617,10 @@ namespace vultra_app
             if (!saveProjectEnvValues(project.projectDir, envPluginConfigValues, &error))
                 ctx.state.statusMessage = vultra::trf("projectSettings.status.saveFailed", error);
             else if (saveVProject(project, &error))
+            {
+                s_PluginConfigBaseline  = s_PluginConfigValues;
                 ctx.state.statusMessage = vultra::tr("projectSettings.status.saved");
+            }
             else
                 ctx.state.statusMessage = vultra::trf("projectSettings.status.saveFailed", error);
         }
