@@ -165,6 +165,16 @@ namespace vultra
             return false;
         }
 
+        // Optional export: hand the plugin its own root directory so bundled payloads (runtime
+        // DLLs, data files) resolve without global state. Old plugins simply lack the symbol.
+        if (auto setRoot = reinterpret_cast<SetPluginRootFn>(getSym(h, "vultraSetPluginRoot")))
+        {
+            std::error_code ec;
+            auto root = std::filesystem::absolute(std::filesystem::path {path}.parent_path(), ec);
+            if (!ec)
+                setRoot(root.generic_string().c_str());
+        }
+
         if (!p->install(ctx))
         {
             VULTRA_CORE_ERROR("[PluginManager] '{}' install() returned false.", path);

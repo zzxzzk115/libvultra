@@ -5,6 +5,7 @@
 #include "editor_app/asset_thumbnail_service.hpp"
 #include "editor_app/editor_context.hpp"
 #include "editor_app/editor_history.hpp"
+#include "editor_app/editor_plugin_manager.hpp"
 #include "editor_app/project_file_watcher.hpp"
 #include "editor_app/runtime_mcp_server.hpp"
 #include "editor_app/selection.hpp"
@@ -249,6 +250,7 @@ namespace vultra_app
         std::array<char, 128>                m_AgentModelBuffer {};
         std::array<char, 512>                m_AgentCliPathBuffer {};
         RuntimeMcpServer                     m_RuntimeMcpServer;
+        EditorPluginManager                  m_PluginManager;
         std::optional<vultra::SceneDocument> m_PlayModeSnapshot;
         bool                                 m_PlayModeSceneDirtySnapshot {false};
         bool                                 m_Initialized {false};

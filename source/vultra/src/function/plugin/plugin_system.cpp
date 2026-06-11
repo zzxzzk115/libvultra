@@ -90,6 +90,7 @@ namespace vultra
         const auto loadPhase  = json.value("loadPhase", std::string {});
         if (loadPhase == "pre_render_device")
             manifest.loadPhase = PluginLoadPhase::ePreRenderDevice;
+        manifest.restartRequired = json.value("restartRequired", false);
         if (const auto it = json.find("platforms"); it != json.end() && it->is_array())
         {
             for (const auto& p : *it)

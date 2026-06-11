@@ -67,6 +67,7 @@ namespace vultra
         std::string              repository; // URL (optional)
         std::vector<std::string> platforms;  // empty = all platforms
         PluginLoadPhase          loadPhase {PluginLoadPhase::eNormal};
+        bool                     restartRequired {false}; // manifest "restartRequired": true
         std::string              native;     // relative native library name (optional)
         std::string              entry;      // relative Lua entry script (optional)
         std::vector<PluginConfigParam> configParams;
@@ -76,6 +77,14 @@ namespace vultra
 
         [[nodiscard]] bool supportsPlatform(std::string_view platform) const;
         [[nodiscard]] bool supportsCurrentPlatform() const;
+
+        // Whether enabling/disabling this plugin only takes effect on the next launch. True when
+        // the manifest says so explicitly, and implicitly for pre-render-device plugins (their
+        // native library must install hooks before the render device exists).
+        [[nodiscard]] bool needsRestartToApply() const
+        {
+            return restartRequired || loadPhase == PluginLoadPhase::ePreRenderDevice;
+        }
     };
 
     // The platform token for the running build: "windows" | "linux" | "macos" | "wasm" | "android".

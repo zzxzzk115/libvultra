@@ -40,7 +40,7 @@ namespace vultra_app
         bool createProject(AppState& state);
         void addExistingProject(AppState& state);
         void removeSelectedProject(AppState& state);
-        void openSelectedProject(AppState& state);
+        void openSelectedProject(AppState& state, IWindowService* windowService);
 
         bool                               m_HasScannedProjects {false};
         int                                m_SelectedProject {-1};

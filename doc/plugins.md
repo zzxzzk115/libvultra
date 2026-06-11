@@ -89,18 +89,37 @@ imports create `resources/plugins`. Enable plugins per
 project:
 
 - **Editor:** *Project Settings → Plugins* lists every discovered plugin with its metadata and an
-  enable toggle. Enabling loads it immediately and records the id in the `.vproject`
-  (`enabled_plugins = "id1,id2"`); the engine loads the enabled set on the next launch.
+  enable toggle. Toggling persists into the `.vproject` immediately (no Save needed); enabling a
+  normal plugin also loads it right away, and the engine loads the enabled set on the next launch.
+
+  A manifest can declare `"restartRequired": true` when enable/disable only takes effect on the
+  next launch; `"loadPhase": "pre_render_device"` implies it (those hooks must install before the
+  render device exists, so a mid-session load would be too late). Enabling such a plugin records
+  it, skips the immediate load, and offers to restart the editor. Disabling one is just as
+  restart-level: a live unload would tear down render hooks under the device, so the editor only
+  records the disable and offers the restart; updating or removing it while loaded is blocked
+  until that disable + restart happened. The restart relaunches the
+  process with `--editor --project <dir>` (other command-line options carried over), and the
+  project launcher uses the same hand-off when opening a project whose enabled plugins need the
+  early load -- an in-process launcher transition happens after the render device already exists.
 - **Runtime player / CLI:** `--plugins-dir <dir>` discovers and enables every plugin in that
   directory (an explicit opt-in).
 - **Programmatic:** `EngineContext::Config::plugin.directory` + `plugin.enabled` (list of ids), or
   `IPluginService::discover()` / `loadPlugin()`.
 
-The editor can import a plugin from a Git URL, catalog JSON URL/path, local `.zip`, or local folder.
-Git and catalog imports keep clone/catalog caches under `.vultra/plugins/` and install the plugin
-into `<asset-root>/plugins/`. Zip and folder imports also install into `<asset-root>/plugins/`. The
-project writes `vultra.plugins.lock` next to the `.vproject` with installed plugin versions, source
-metadata, manifest fingerprints, and file counts.
+The Plugins page fetches the official plugin catalog
+(`https://raw.githubusercontent.com/zzxzzk115/vultra-plugins/main/plugins.json`) automatically in
+the background and renders it as a searchable list with per-plugin version selection. Installing,
+updating, and rolling back all work the same way: pick a version, and the editor checks out that
+release tag into the managed cache. Installed plugins show an "update available" notice when the
+catalog carries a newer version. The editor can also import a plugin manually from a Git URL, a
+custom catalog JSON URL/path, a local `.zip`, or a local folder.
+
+Git and catalog imports keep clone/catalog caches under `.vultra/plugins/` and load the plugin from
+that managed cache. Zip and folder imports install into `<asset-root>/plugins/`. The project writes
+`vultra.plugins.lock` next to the `.vproject` with installed plugin versions, source metadata
+(including the pinned git ref), manifest fingerprints, and file counts; missing managed caches are
+restored from the lock at project load, at the locked ref.
 
 `<asset-root>/plugins` is project content once it exists. Native runtime files such as `.dll`, `.so`,
 `.dylib`, `.lib`, and `.pdb` are intentionally allowed there so a project or plugin repository can
@@ -133,6 +152,11 @@ A native library exports a factory returning an [`EnginePlugin`](../source/vultr
 
 PLUGIN_EXPORT vultra::EnginePlugin* vultraCreatePlugin();
 PLUGIN_EXPORT void                  vultraDestroyPlugin(vultra::EnginePlugin*);
+
+// Optional: receives the absolute path of the plugin's own root directory (UTF-8), once per
+// load, after vultraCreatePlugin() and before install(). Use it to locate bundled payloads
+// (runtime DLLs, data files) that ship next to the manifest.
+PLUGIN_EXPORT void                  vultraSetPluginRoot(const char* absolutePath);
 ```
 
 `install(EngineContext&)` is the glue point. The service registry is keyed by service *name*, so

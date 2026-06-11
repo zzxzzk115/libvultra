@@ -145,12 +145,18 @@ namespace
             }
         }
 #if defined(_WIN32)
-        const std::array<fs::path, 4> candidates {
+        std::vector<fs::path> candidates {
             fs::path {"C:/Program Files/Git/cmd/git.exe"},
             fs::path {"C:/Program Files/Git/bin/git.exe"},
             fs::path {"C:/Program Files (x86)/Git/cmd/git.exe"},
             fs::path {"C:/Program Files (x86)/Git/bin/git.exe"},
         };
+        // Git for Windows also installs per-user without touching PATH.
+        if (const char* localAppData = std::getenv("LOCALAPPDATA"); localAppData != nullptr)
+        {
+            candidates.emplace_back(fs::path {localAppData} / "Programs/Git/cmd/git.exe");
+            candidates.emplace_back(fs::path {localAppData} / "Programs/Git/bin/git.exe");
+        }
         for (const auto& candidate : candidates)
         {
             if (fs::exists(candidate, ec) && fs::is_regular_file(candidate, ec))
@@ -266,7 +272,16 @@ namespace
             if (ec)
                 continue;
             VULTRA_CLIENT_INFO("[PluginManager] Restoring locked plugin '{}' from {}", plugin.value("id", "?"), url);
-            if (!runGitProcess(*git, {"clone", "--depth", "1", url, cacheDir.generic_string()}))
+            const auto               ref = source.value("ref", std::string {});
+            std::vector<std::string> args {"clone", "--depth", "1"};
+            if (!ref.empty())
+            {
+                args.emplace_back("--branch");
+                args.push_back(ref);
+            }
+            args.push_back(url);
+            args.push_back(cacheDir.generic_string());
+            if (!runGitProcess(*git, args))
                 VULTRA_CLIENT_WARN("[PluginManager] Failed to restore locked plugin '{}'", plugin.value("id", "?"));
         }
     }

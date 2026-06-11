@@ -1,12 +1,15 @@
 #include "editor_app/editor_app.hpp"
 
+#include "common/process_relaunch.hpp"
 #include "editor_app/editor_settings_persistence.hpp"
+#include "editor_app/plugin_repository.hpp"
 #include "editor_app/project_asset_utils.hpp"
 #include "editor_app/ui/settings_widgets.hpp"
 #include "vproject.hpp"
 
 #include <vultra/core/i18n/i18n.hpp>
 #include <vultra/core/services/i18n_service.hpp>
+#include <vultra/core/services/window_service.hpp>
 #include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/plugin/plugin_manifest.hpp>
@@ -20,26 +23,16 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cctype>
 #include <cstdlib>
 #include <cstdio>
-#include <fstream>
 #include <filesystem>
-#include <future>
-#include <nlohmann/json.hpp>
+#include <initializer_list>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <unordered_map>
 #include <vector>
-
-#if defined(_WIN32)
-#    include <windows.h>
-#    include <winhttp.h>
-#endif
 
 namespace vultra_app
 {
@@ -210,651 +203,21 @@ namespace vultra_app
             return text;
         }
 
-        std::string quoteCommandArg(const std::string& text)
+        // Persist the enabled-plugin set into the .vproject right away, touching nothing else.
+        // Toggling a plugin must survive a restart even if the user never presses Save -- most
+        // visibly for restart-required plugins, whose enable only takes effect on the next launch.
+        bool persistEnabledPlugins(const std::filesystem::path&    projectPath,
+                                   const std::vector<std::string>& enabledPlugins,
+                                   std::string&                    error)
         {
-            std::string out = "\"";
-            for (const char ch : text)
+            auto project = loadVProject(projectPath);
+            if (!project.has_value())
             {
-                if (ch == '"')
-                    out += "\\\"";
-                else
-                    out += ch;
-            }
-            out += "\"";
-            return out;
-        }
-
-        std::string quoteCommandArg(const std::filesystem::path& path)
-        {
-            return quoteCommandArg(path.generic_string());
-        }
-
-        int runPluginManagerCommand(const std::string& command) { return std::system(command.c_str()); }
-
-        bool isHttpUrl(std::string_view value)
-        {
-            return value.starts_with("https://") || value.starts_with("http://");
-        }
-
-        std::vector<std::filesystem::path> splitPathList(const std::string& value)
-        {
-            std::vector<std::filesystem::path> result;
-#if defined(_WIN32)
-            constexpr char separator = ';';
-#else
-            constexpr char separator = ':';
-#endif
-            std::size_t start = 0;
-            while (start <= value.size())
-            {
-                const auto end = value.find(separator, start);
-                const auto item = value.substr(start, end == std::string::npos ? std::string::npos : end - start);
-                if (!item.empty())
-                    result.emplace_back(item);
-                if (end == std::string::npos)
-                    break;
-                start = end + 1;
-            }
-            return result;
-        }
-
-        std::optional<std::filesystem::path> resolveExecutablePath(const std::string& executableName)
-        {
-            namespace fs = std::filesystem;
-            std::error_code ec;
-            fs::path direct {executableName};
-            if (direct.is_absolute() && fs::exists(direct, ec))
-                return direct;
-
-            if (const char* pathEnv = std::getenv("PATH"); pathEnv != nullptr)
-            {
-                for (const auto& dir : splitPathList(pathEnv))
-                {
-                    const auto candidate = dir / executableName;
-                    if (fs::exists(candidate, ec) && fs::is_regular_file(candidate, ec))
-                        return candidate;
-                }
-            }
-
-#if defined(_WIN32)
-            if (executableName == "git.exe" || executableName == "git")
-            {
-                const std::array<fs::path, 4> candidates {
-                    fs::path {"C:/Program Files/Git/cmd/git.exe"},
-                    fs::path {"C:/Program Files/Git/bin/git.exe"},
-                    fs::path {"C:/Program Files (x86)/Git/cmd/git.exe"},
-                    fs::path {"C:/Program Files (x86)/Git/bin/git.exe"},
-                };
-                for (const auto& candidate : candidates)
-                {
-                    if (fs::exists(candidate, ec) && fs::is_regular_file(candidate, ec))
-                        return candidate;
-                }
-            }
-#endif
-
-            return std::nullopt;
-        }
-
-        std::optional<std::filesystem::path> gitCommandPath()
-        {
-#if defined(_WIN32)
-            return resolveExecutablePath("git.exe");
-#else
-            return resolveExecutablePath("git");
-#endif
-        }
-
-        std::string defaultPluginCatalogUrl()
-        {
-            return "https://raw.githubusercontent.com/zzxzzk115/vultra-plugins/main/plugins.json";
-        }
-
-        std::filesystem::path localPluginInstallDir(const std::filesystem::path& projectRoot,
-                                                    const std::string&           assetRoot)
-        {
-            return (projectRoot / assetRoot / "plugins").lexically_normal();
-        }
-
-        std::filesystem::path managedGitPluginDir(const std::filesystem::path& projectRoot)
-        {
-            return (projectRoot / ".vultra" / "plugins" / "git").lexically_normal();
-        }
-
-        std::vector<std::filesystem::path> pluginDiscoveryDirs(const std::filesystem::path& projectRoot,
-                                                               const std::string&           assetRoot)
-        {
-            return {
-                localPluginInstallDir(projectRoot, assetRoot),
-                managedGitPluginDir(projectRoot),
-            };
-        }
-
-        std::vector<vultra::PluginManifest> discoverProjectPlugins(const std::vector<std::filesystem::path>& dirs,
-                                                                   const std::vector<std::string>& lockedManagedIds = {},
-                                                                   const bool includeAllManaged = false)
-        {
-            std::vector<vultra::PluginManifest> result;
-            std::unordered_map<std::string, std::size_t> seen;
-            for (const auto& dir : dirs)
-            {
-                const bool isManagedDir = dir.filename() == "git" && dir.parent_path().filename() == "plugins";
-                for (auto manifest : vultra::discoverPlugins(dir))
-                {
-                    if (manifest.id.empty())
-                        continue;
-                    if (isManagedDir && !includeAllManaged &&
-                        std::find(lockedManagedIds.begin(), lockedManagedIds.end(), manifest.id) == lockedManagedIds.end())
-                        continue;
-                    if (seen.contains(manifest.id))
-                    {
-                        result[seen[manifest.id]] = std::move(manifest);
-                        continue;
-                    }
-                    seen[manifest.id] = result.size();
-                    result.push_back(std::move(manifest));
-                }
-            }
-            std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
-                return a.name < b.name;
-            });
-            return result;
-        }
-
-#if defined(_WIN32)
-        std::wstring widenUtf8(std::string_view text);
-
-        std::wstring windowsCommandLineArg(const std::wstring& arg)
-        {
-            if (arg.empty())
-                return L"\"\"";
-
-            bool needsQuotes = false;
-            for (const wchar_t ch : arg)
-            {
-                if (ch == L' ' || ch == L'\t' || ch == L'"')
-                {
-                    needsQuotes = true;
-                    break;
-                }
-            }
-            if (!needsQuotes)
-                return arg;
-
-            std::wstring out = L"\"";
-            std::size_t  backslashes = 0;
-            for (const wchar_t ch : arg)
-            {
-                if (ch == L'\\')
-                {
-                    ++backslashes;
-                    continue;
-                }
-                if (ch == L'"')
-                {
-                    out.append(backslashes * 2 + 1, L'\\');
-                    out.push_back(ch);
-                    backslashes = 0;
-                    continue;
-                }
-                out.append(backslashes, L'\\');
-                backslashes = 0;
-                out.push_back(ch);
-            }
-            out.append(backslashes * 2, L'\\');
-            out.push_back(L'"');
-            return out;
-        }
-
-        bool runProcess(const std::filesystem::path& executable,
-                        const std::vector<std::string>& args,
-                        std::string& status)
-        {
-            std::wstring commandLine = windowsCommandLineArg(executable.wstring());
-            for (const auto& arg : args)
-            {
-                commandLine.push_back(L' ');
-                commandLine += windowsCommandLineArg(widenUtf8(arg));
-            }
-
-            STARTUPINFOW        startup {};
-            PROCESS_INFORMATION process {};
-            startup.cb = sizeof(startup);
-            std::vector<wchar_t> mutableCommand(commandLine.begin(), commandLine.end());
-            mutableCommand.push_back(L'\0');
-
-            if (!CreateProcessW(executable.wstring().c_str(),
-                                mutableCommand.data(),
-                                nullptr,
-                                nullptr,
-                                FALSE,
-                                CREATE_NO_WINDOW,
-                                nullptr,
-                                nullptr,
-                                &startup,
-                                &process))
-            {
-                status = "Failed to start process.";
+                error = "project file could not be loaded";
                 return false;
             }
-
-            WaitForSingleObject(process.hProcess, INFINITE);
-            DWORD exitCode = 1;
-            GetExitCodeProcess(process.hProcess, &exitCode);
-            CloseHandle(process.hThread);
-            CloseHandle(process.hProcess);
-            if (exitCode != 0)
-            {
-                status = "Process failed with exit code " + std::to_string(exitCode) + ".";
-                return false;
-            }
-            return true;
-        }
-#else
-        bool runProcess(const std::filesystem::path& executable,
-                        const std::vector<std::string>& args,
-                        std::string& status)
-        {
-            std::ostringstream cmd;
-            cmd << quoteCommandArg(executable);
-            for (const auto& arg : args)
-                cmd << " " << quoteCommandArg(arg);
-            if (runPluginManagerCommand(cmd.str()) != 0)
-            {
-                status = "Process failed.";
-                return false;
-            }
-            return true;
-        }
-#endif
-
-#if defined(_WIN32)
-        std::wstring widenUtf8(std::string_view text)
-        {
-            if (text.empty())
-                return {};
-            const int size = MultiByteToWideChar(
-                CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
-            if (size <= 0)
-                return {};
-            std::wstring result(static_cast<std::size_t>(size), L'\0');
-            MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), size);
-            return result;
-        }
-
-        struct WinHttpHandle
-        {
-            HINTERNET handle {nullptr};
-            ~WinHttpHandle()
-            {
-                if (handle != nullptr)
-                    WinHttpCloseHandle(handle);
-            }
-            WinHttpHandle() = default;
-            explicit WinHttpHandle(HINTERNET value) : handle(value) {}
-            WinHttpHandle(const WinHttpHandle&)            = delete;
-            WinHttpHandle& operator=(const WinHttpHandle&) = delete;
-            WinHttpHandle(WinHttpHandle&& other) noexcept : handle(other.handle) { other.handle = nullptr; }
-            WinHttpHandle& operator=(WinHttpHandle&& other) noexcept
-            {
-                if (this != &other)
-                {
-                    if (handle != nullptr)
-                        WinHttpCloseHandle(handle);
-                    handle       = other.handle;
-                    other.handle = nullptr;
-                }
-                return *this;
-            }
-            explicit operator bool() const { return handle != nullptr; }
-        };
-
-        bool downloadTextToFile(const std::string& url, const std::filesystem::path& destination, std::string& status)
-        {
-            namespace fs = std::filesystem;
-            std::error_code ec;
-            fs::create_directories(destination.parent_path(), ec);
-            if (ec)
-            {
-                status = "Failed to create download cache: " + ec.message();
-                return false;
-            }
-
-            std::wstring wideUrl = widenUtf8(url);
-            URL_COMPONENTS parts {};
-            parts.dwStructSize      = sizeof(parts);
-            parts.dwSchemeLength    = static_cast<DWORD>(-1);
-            parts.dwHostNameLength  = static_cast<DWORD>(-1);
-            parts.dwUrlPathLength   = static_cast<DWORD>(-1);
-            parts.dwExtraInfoLength = static_cast<DWORD>(-1);
-            if (!WinHttpCrackUrl(wideUrl.c_str(), static_cast<DWORD>(wideUrl.size()), 0, &parts))
-            {
-                status = "Invalid catalog URL.";
-                return false;
-            }
-
-            const std::wstring host(parts.lpszHostName, parts.dwHostNameLength);
-            std::wstring       path(parts.lpszUrlPath, parts.dwUrlPathLength);
-            if (parts.dwExtraInfoLength > 0)
-                path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
-            if (path.empty())
-                path = L"/";
-
-            WinHttpHandle session {WinHttpOpen(L"VultraEditor/0.1",
-                                               WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                                               WINHTTP_NO_PROXY_NAME,
-                                               WINHTTP_NO_PROXY_BYPASS,
-                                               0)};
-            if (!session)
-            {
-                status = "WinHTTP session creation failed.";
-                return false;
-            }
-
-            WinHttpHandle connect {WinHttpConnect(session.handle, host.c_str(), parts.nPort, 0)};
-            if (!connect)
-            {
-                status = "WinHTTP connection failed.";
-                return false;
-            }
-
-            const DWORD flags = parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
-            WinHttpHandle request {WinHttpOpenRequest(connect.handle,
-                                                      L"GET",
-                                                      path.c_str(),
-                                                      nullptr,
-                                                      WINHTTP_NO_REFERER,
-                                                      WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                                      flags)};
-            if (!request)
-            {
-                status = "WinHTTP request creation failed.";
-                return false;
-            }
-
-            if (!WinHttpSendRequest(request.handle,
-                                    WINHTTP_NO_ADDITIONAL_HEADERS,
-                                    0,
-                                    WINHTTP_NO_REQUEST_DATA,
-                                    0,
-                                    0,
-                                    0) ||
-                !WinHttpReceiveResponse(request.handle, nullptr))
-            {
-                status = "Catalog download failed.";
-                return false;
-            }
-
-            DWORD statusCode     = 0;
-            DWORD statusCodeSize = sizeof(statusCode);
-            if (WinHttpQueryHeaders(request.handle,
-                                    WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                                    WINHTTP_HEADER_NAME_BY_INDEX,
-                                    &statusCode,
-                                    &statusCodeSize,
-                                    WINHTTP_NO_HEADER_INDEX) &&
-                (statusCode < 200 || statusCode >= 300))
-            {
-                status = "Catalog download returned HTTP " + std::to_string(statusCode) + ".";
-                return false;
-            }
-
-            std::ofstream out(destination, std::ios::binary);
-            if (!out)
-            {
-                status = "Failed to open catalog cache for writing.";
-                return false;
-            }
-
-            for (;;)
-            {
-                DWORD available = 0;
-                if (!WinHttpQueryDataAvailable(request.handle, &available))
-                {
-                    status = "Catalog download failed while reading.";
-                    return false;
-                }
-                if (available == 0)
-                    break;
-
-                std::vector<char> buffer(available);
-                DWORD             read = 0;
-                if (!WinHttpReadData(request.handle, buffer.data(), available, &read))
-                {
-                    status = "Catalog download failed while receiving data.";
-                    return false;
-                }
-                out.write(buffer.data(), static_cast<std::streamsize>(read));
-            }
-
-            return true;
-        }
-#else
-        bool downloadTextToFile(const std::string&, const std::filesystem::path&, std::string& status)
-        {
-            status = "Remote plugin catalogs are not implemented on this platform yet.";
-            return false;
-        }
-#endif
-
-        std::string safePluginCacheName(std::string_view text)
-        {
-            std::string name;
-            for (const char ch : text)
-            {
-                if (std::isalnum(static_cast<unsigned char>(ch)))
-                    name.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
-                else if (ch == '-' || ch == '_' || ch == '.')
-                    name.push_back(ch);
-                else if (!name.empty() && name.back() != '-')
-                    name.push_back('-');
-            }
-            if (name.size() > 48)
-                name.resize(48);
-            while (!name.empty() && name.back() == '-')
-                name.pop_back();
-            if (name.empty())
-                name = "plugin";
-            std::ostringstream suffix;
-            suffix << "-" << std::hex << std::hash<std::string_view> {}(text);
-            return name + suffix.str();
-        }
-
-        std::optional<std::filesystem::path> findPluginRoot(const std::filesystem::path& root)
-        {
-            namespace fs = std::filesystem;
-            std::error_code ec;
-            if (root.empty() || !fs::exists(root, ec))
-                return std::nullopt;
-
-            const auto direct = root / vultra::kPluginManifestFile;
-            if (fs::exists(direct, ec))
-                return root;
-
-            for (const auto& entry : fs::recursive_directory_iterator(root, ec))
-            {
-                if (ec)
-                    break;
-                if (!entry.is_regular_file(ec))
-                    continue;
-                if (entry.path().filename() == vultra::kPluginManifestFile)
-                    return entry.path().parent_path();
-            }
-            return std::nullopt;
-        }
-
-        std::uintmax_t directoryFileCount(const std::filesystem::path& dir)
-        {
-            namespace fs = std::filesystem;
-            std::error_code ec;
-            std::uintmax_t  count = 0;
-            for (const auto& entry : fs::recursive_directory_iterator(dir, ec))
-            {
-                if (ec)
-                    break;
-                if (entry.is_regular_file(ec))
-                    ++count;
-            }
-            return count;
-        }
-
-        std::uintmax_t directoryByteSize(const std::filesystem::path& dir)
-        {
-            namespace fs = std::filesystem;
-            std::error_code ec;
-            std::uintmax_t  bytes = 0;
-            for (const auto& entry : fs::recursive_directory_iterator(dir, ec))
-            {
-                if (ec)
-                    break;
-                if (entry.is_regular_file(ec))
-                    bytes += entry.file_size(ec);
-            }
-            return bytes;
-        }
-
-        std::string textFileHash(const std::filesystem::path& path)
-        {
-            std::ifstream file(path, std::ios::binary);
-            if (!file)
-                return {};
-            std::ostringstream buffer;
-            buffer << file.rdbuf();
-            std::ostringstream out;
-            out << std::hex << std::hash<std::string> {}(buffer.str());
-            return out.str();
-        }
-
-        nlohmann::json loadPluginLock(const std::filesystem::path& lockPath)
-        {
-            std::ifstream file(lockPath);
-            if (!file)
-                return nlohmann::json {{"schemaVersion", 1}, {"plugins", nlohmann::json::array()}};
-            auto json = nlohmann::json::parse(file, nullptr, false);
-            if (json.is_discarded() || !json.is_object())
-                return nlohmann::json {{"schemaVersion", 1}, {"plugins", nlohmann::json::array()}};
-            if (!json.contains("plugins") || !json["plugins"].is_array())
-                json["plugins"] = nlohmann::json::array();
-            json["schemaVersion"] = json.value("schemaVersion", 1);
-            return json;
-        }
-
-        std::vector<std::string> lockedPluginIds(const std::filesystem::path& projectRoot)
-        {
-            std::vector<std::string> ids;
-            const auto lock = loadPluginLock(projectRoot / "vultra.plugins.lock");
-            for (const auto& item : lock.value("plugins", nlohmann::json::array()))
-            {
-                const auto id = item.value("id", std::string {});
-                if (!id.empty())
-                    ids.push_back(id);
-            }
-            return ids;
-        }
-
-        void savePluginLock(const std::filesystem::path& projectRoot,
-                            const std::vector<std::filesystem::path>& pluginDirs,
-                            const std::optional<vultra::PluginManifest>& importedManifest,
-                            const nlohmann::json&                       importedSource,
-                            const std::vector<std::string>&             excludedIds = {})
-        {
-            namespace fs = std::filesystem;
-            std::error_code ec;
-            fs::create_directories(projectRoot, ec);
-            const auto lockPath = projectRoot / "vultra.plugins.lock";
-
-            std::unordered_map<std::string, nlohmann::json> previous;
-            const auto oldLock = loadPluginLock(lockPath);
-            for (const auto& item : oldLock.value("plugins", nlohmann::json::array()))
-            {
-                const auto id = item.value("id", std::string {});
-                if (!id.empty())
-                    previous[id] = item;
-            }
-
-            std::vector<std::string> managedIds;
-            managedIds.reserve(previous.size() + (importedManifest.has_value() ? 1 : 0));
-            for (const auto& [id, entry] : previous)
-            {
-                if (std::find(excludedIds.begin(), excludedIds.end(), id) == excludedIds.end())
-                    managedIds.push_back(id);
-            }
-            if (importedManifest.has_value() &&
-                std::find(excludedIds.begin(), excludedIds.end(), importedManifest->id) == excludedIds.end() &&
-                std::find(managedIds.begin(), managedIds.end(), importedManifest->id) == managedIds.end())
-            {
-                managedIds.push_back(importedManifest->id);
-            }
-
-            nlohmann::json plugins = nlohmann::json::array();
-            for (const auto& manifest : discoverProjectPlugins(pluginDirs, managedIds))
-            {
-                if (std::find(excludedIds.begin(), excludedIds.end(), manifest.id) != excludedIds.end())
-                    continue;
-                nlohmann::json entry = previous.contains(manifest.id) ? previous[manifest.id] : nlohmann::json::object();
-                entry["id"]          = manifest.id;
-                entry["name"]        = manifest.name;
-                entry["version"]     = manifest.version;
-                entry["directory"]   = fs::relative(manifest.directory, projectRoot, ec).generic_string();
-                entry["manifestHash"] = textFileHash(manifest.manifestPath);
-                entry["fileCount"]    = directoryFileCount(manifest.directory);
-                entry["byteSize"]     = directoryByteSize(manifest.directory);
-
-                if (importedManifest.has_value() && importedManifest->id == manifest.id)
-                    entry["source"] = importedSource;
-                else if (!entry.contains("source"))
-                    entry["source"] = nlohmann::json {{"type", "unknown"}};
-
-                plugins.push_back(std::move(entry));
-            }
-
-            const nlohmann::json lock = {{"schemaVersion", 1}, {"plugins", std::move(plugins)}};
-            std::ofstream       out(lockPath);
-            if (out)
-                out << lock.dump(2) << "\n";
-        }
-
-        bool copyPluginDirectory(const std::filesystem::path& source,
-                                 const std::filesystem::path& destination,
-                                 std::string&                 error)
-        {
-            namespace fs = std::filesystem;
-            std::error_code ec;
-            if (fs::equivalent(source, destination, ec))
-                return true;
-
-            fs::remove_all(destination, ec);
-            if (ec)
-            {
-                error = "failed to replace existing plugin folder: " + ec.message();
-                return false;
-            }
-
-            fs::create_directories(destination.parent_path(), ec);
-            if (ec)
-            {
-                error = "failed to create plugin folder: " + ec.message();
-                return false;
-            }
-
-            fs::copy(source,
-                     destination,
-                     fs::copy_options::recursive | fs::copy_options::overwrite_existing,
-                     ec);
-            if (ec)
-            {
-                error = "failed to copy plugin files: " + ec.message();
-                return false;
-            }
-            return true;
-        }
-
-        void refreshPluginLock(const std::filesystem::path& projectRoot,
-                               const std::string&           assetRoot,
-                               const std::vector<std::string>& excludedIds = {})
-        {
-            savePluginLock(
-                projectRoot, pluginDiscoveryDirs(projectRoot, assetRoot), std::nullopt, nlohmann::json {}, excludedIds);
+            project->enabledPlugins = enabledPlugins;
+            return saveVProject(*project, &error);
         }
 
         bool unloadPluginIfLoaded(vultra::IPluginService* plugins, const vultra::PluginManifest& manifest, std::string& status)
@@ -870,339 +233,6 @@ namespace vultra_app
             }
 
             status = vultra::trf("projectSettings.plugins.unloaded", displayName, manifest.id);
-            return true;
-        }
-
-        bool removePluginInstall(const std::filesystem::path& projectRoot,
-                                 const std::string&           assetRoot,
-                                 const vultra::PluginManifest& manifest,
-                                 std::string&                 status)
-        {
-            namespace fs = std::filesystem;
-            std::error_code ec;
-            if (manifest.directory.empty() || !fs::exists(manifest.directory, ec))
-            {
-                status = "Plugin directory does not exist.";
-                return false;
-            }
-
-            const auto localDir   = localPluginInstallDir(projectRoot, assetRoot).lexically_normal();
-            const auto managedDir = managedGitPluginDir(projectRoot).lexically_normal();
-            const auto pluginDir  = manifest.directory.lexically_normal();
-            const auto localRel   = fs::relative(pluginDir, localDir, ec);
-            const auto localRelText = localRel.generic_string();
-            const bool inLocal =
-                !ec && !localRelText.empty() && localRelText != ".." && !localRelText.starts_with("../");
-            ec.clear();
-            const auto managedRel = fs::relative(pluginDir, managedDir, ec);
-            const auto managedRelText = managedRel.generic_string();
-            const bool inManaged =
-                !ec && !managedRelText.empty() && managedRelText != ".." && !managedRelText.starts_with("../");
-            if (!inLocal && !inManaged)
-            {
-                status = "Refusing to remove a plugin outside the project plugin roots.";
-                return false;
-            }
-
-            if (inLocal)
-            {
-                fs::remove_all(pluginDir, ec);
-                if (ec)
-                {
-                    status = "Failed to remove plugin: " + ec.message();
-                    return false;
-                }
-                status = "Removed local plugin '" + manifest.name + "' (" + manifest.id + ").";
-            }
-            else
-            {
-                status = "Removed managed plugin '" + manifest.name + "' (" + manifest.id + ") from project lock.";
-            }
-
-            refreshPluginLock(projectRoot, assetRoot, inManaged ? std::vector<std::string> {manifest.id} :
-                                                                  std::vector<std::string> {});
-            return true;
-        }
-
-        bool installLocalPluginFromRoot(const std::filesystem::path& projectRoot,
-                                        const std::filesystem::path& pluginsDir,
-                                        const std::filesystem::path& sourceRoot,
-                                        const nlohmann::json&        sourceInfo,
-                                        std::string&                 status,
-                                        std::string*                 installedId = nullptr)
-        {
-            std::string manifestError;
-            auto        manifest = vultra::loadPluginManifest(sourceRoot / vultra::kPluginManifestFile, &manifestError);
-            if (!manifest.has_value())
-            {
-                status = manifestError.empty() ? "not a Vultra plugin folder" : manifestError;
-                return false;
-            }
-
-            const auto destination = (pluginsDir / sourceRoot.filename()).lexically_normal();
-            std::string copyError;
-            if (!copyPluginDirectory(sourceRoot, destination, copyError))
-            {
-                status = copyError;
-                return false;
-            }
-
-            auto installedManifest =
-                vultra::loadPluginManifest(destination / vultra::kPluginManifestFile, &manifestError);
-            if (!installedManifest.has_value())
-            {
-                status = manifestError.empty() ? "plugin was copied but its manifest could not be read" : manifestError;
-                return false;
-            }
-
-            savePluginLock(projectRoot, {pluginsDir, managedGitPluginDir(projectRoot)}, installedManifest, sourceInfo);
-            if (installedId != nullptr)
-                *installedId = installedManifest->id;
-            status = "Installed plugin '" + installedManifest->name + "' (" + installedManifest->id + ").";
-            return true;
-        }
-
-        bool importPluginFromFolder(const std::filesystem::path& projectRoot,
-                                    const std::filesystem::path& pluginsDir,
-                                    const std::filesystem::path& sourceFolder,
-                                    std::string&                 status,
-                                    std::string*                 installedId = nullptr)
-        {
-            const auto root = findPluginRoot(sourceFolder);
-            if (!root.has_value())
-            {
-                status = "No " + std::string(vultra::kPluginManifestFile) + " found in folder.";
-                return false;
-            }
-
-            return installLocalPluginFromRoot(
-                projectRoot,
-                pluginsDir,
-                *root,
-                nlohmann::json {{"type", "folder"}, {"path", sourceFolder.generic_string()}},
-                status,
-                installedId);
-        }
-
-        bool importPluginFromZip(const std::filesystem::path& projectRoot,
-                                 const std::filesystem::path& pluginsDir,
-                                 const std::filesystem::path& zipPath,
-                                 std::string&                 status,
-                                 std::string*                 installedId = nullptr)
-        {
-            namespace fs = std::filesystem;
-            std::error_code ec;
-            if (!fs::exists(zipPath, ec) || !fs::is_regular_file(zipPath, ec))
-            {
-                status = "Zip file does not exist.";
-                return false;
-            }
-
-            const auto extractDir =
-                (projectRoot / ".vultra" / "plugins" / "zip-imports" / safePluginCacheName(zipPath.stem().generic_string()))
-                    .lexically_normal();
-            fs::remove_all(extractDir, ec);
-            fs::create_directories(extractDir, ec);
-            if (ec)
-            {
-                status = "Failed to create zip import cache: " + ec.message();
-                return false;
-            }
-
-            std::ostringstream cmd;
-#if defined(_WIN32)
-            cmd << "tar -xf " << quoteCommandArg(zipPath) << " -C " << quoteCommandArg(extractDir);
-#else
-            cmd << "unzip -o " << quoteCommandArg(zipPath) << " -d " << quoteCommandArg(extractDir);
-#endif
-            if (runPluginManagerCommand(cmd.str()) != 0)
-            {
-                status = "Failed to extract plugin zip.";
-                return false;
-            }
-
-            const auto root = findPluginRoot(extractDir);
-            if (!root.has_value())
-            {
-                status = "Zip did not contain " + std::string(vultra::kPluginManifestFile) + ".";
-                return false;
-            }
-
-            return installLocalPluginFromRoot(
-                projectRoot,
-                pluginsDir,
-                *root,
-                nlohmann::json {{"type", "zip"}, {"path", zipPath.generic_string()}},
-                status,
-                installedId);
-        }
-
-        bool importPluginFromGit(const std::filesystem::path& projectRoot,
-                                 const std::filesystem::path& pluginsDir,
-                                 const std::string&           url,
-                                 std::string&                 status,
-                                 std::string*                 installedId = nullptr)
-        {
-            namespace fs = std::filesystem;
-            if (url.empty())
-            {
-                status = "Git URL is empty.";
-                return false;
-            }
-            const auto git = gitCommandPath();
-            if (!git.has_value())
-            {
-                status =
-                    "Git executable was not found by the editor process. Add Git for Windows to PATH or install it in "
-                    "C:/Program Files/Git.";
-                return false;
-            }
-
-            const auto cacheDir = (managedGitPluginDir(projectRoot) / safePluginCacheName(url)).lexically_normal();
-            std::error_code ec;
-            fs::create_directories(cacheDir.parent_path(), ec);
-            if (ec)
-            {
-                status = "Failed to create git plugin cache: " + ec.message();
-                return false;
-            }
-
-            bool        ok = false;
-            std::string cacheWarning;
-            if (fs::exists(cacheDir / ".git", ec))
-            {
-                std::string pullStatus;
-                ok = runProcess(*git, {"-C", cacheDir.generic_string(), "pull", "--ff-only"}, pullStatus);
-                if (!ok && fs::exists(cacheDir, ec))
-                {
-                    ok = true;
-                    cacheWarning = " Using cached checkout because update failed: " + pullStatus;
-                }
-            }
-            else if (fs::exists(cacheDir, ec) && findPluginRoot(cacheDir).has_value())
-            {
-                ok = true;
-                cacheWarning = " Using cached plugin files.";
-            }
-            else
-            {
-                ok = runProcess(*git,
-                                {"clone", "--depth", "1", url, cacheDir.generic_string()},
-                                status);
-            }
-
-            if (!ok)
-            {
-                status = "Git import failed: " + status;
-                return false;
-            }
-
-            const auto root = findPluginRoot(cacheDir);
-            if (!root.has_value())
-            {
-                status = "Git repository did not contain " + std::string(vultra::kPluginManifestFile) + ".";
-                return false;
-            }
-
-            std::string manifestError;
-            auto        manifest = vultra::loadPluginManifest(*root / vultra::kPluginManifestFile, &manifestError);
-            if (!manifest.has_value())
-            {
-                status = manifestError.empty() ? "git plugin manifest could not be read" : manifestError;
-                return false;
-            }
-
-            savePluginLock(projectRoot,
-                           {pluginsDir, managedGitPluginDir(projectRoot)},
-                           manifest,
-                           nlohmann::json {
-                               {"type", "git"},
-                               {"url", url},
-                               {"cache", fs::relative(cacheDir, projectRoot, ec).generic_string()},
-                           });
-            if (installedId != nullptr)
-                *installedId = manifest->id;
-            status = "Installed managed plugin '" + manifest->name + "' (" + manifest->id + ")." + cacheWarning;
-            return true;
-        }
-
-        struct CatalogPluginEntry
-        {
-            std::string id;
-            std::string name;
-            std::string version;
-            std::string author;
-            std::string description;
-            std::string repository;
-            std::string gitUrl;
-        };
-
-        bool fetchPluginCatalog(const std::filesystem::path& projectRoot,
-                                const std::string&           catalogLocation,
-                                std::vector<CatalogPluginEntry>& entries,
-                                std::string&                 status)
-        {
-            namespace fs = std::filesystem;
-            entries.clear();
-            if (catalogLocation.empty())
-            {
-                status = "Catalog location is empty.";
-                return false;
-            }
-
-            std::error_code ec;
-            fs::path catalogPath {catalogLocation};
-            if (isHttpUrl(catalogLocation))
-            {
-                catalogPath =
-                    (projectRoot / ".vultra" / "plugins" / "catalogs" / (safePluginCacheName(catalogLocation) + ".json"))
-                        .lexically_normal();
-                if (!downloadTextToFile(catalogLocation, catalogPath, status))
-                    return false;
-            }
-
-            std::ifstream file(catalogPath);
-            if (!file)
-            {
-                status = "Plugin catalog could not be opened.";
-                return false;
-            }
-
-            auto json = nlohmann::json::parse(file, nullptr, false);
-            if (json.is_discarded() || !json.is_object() || !json.value("plugins", nlohmann::json::array()).is_array())
-            {
-                status = "Plugin catalog is not valid JSON.";
-                return false;
-            }
-
-            for (const auto& plugin : json.value("plugins", nlohmann::json::array()))
-            {
-                const auto source = plugin.value("source", nlohmann::json::object());
-                if (source.value("type", std::string {}) != "git")
-                    continue;
-
-                const auto url = source.value("url", std::string {});
-                if (url.empty())
-                    continue;
-
-                entries.push_back(CatalogPluginEntry {
-                    .id          = plugin.value("id", std::string {}),
-                    .name        = plugin.value("name", std::string {}),
-                    .version     = plugin.value("version", std::string {}),
-                    .author      = plugin.value("author", std::string {}),
-                    .description = plugin.value("description", std::string {}),
-                    .repository  = plugin.value("repository", std::string {}),
-                    .gitUrl      = url,
-                });
-            }
-
-            if (entries.empty())
-            {
-                status = "Catalog did not contain any git-backed plugins.";
-                return false;
-            }
-
-            status = "Loaded " + std::to_string(entries.size()) + " catalog plugin(s).";
             return true;
         }
 
@@ -1275,7 +305,7 @@ namespace vultra_app
             projectValues = uiValues;
             envValues.clear();
 
-            for (const auto& manifest : discoverProjectPlugins(pluginDirs))
+            for (const auto& manifest : plugins::discoverProjectPlugins(pluginDirs))
             {
                 auto pluginIt = projectValues.find(manifest.id);
                 if (pluginIt == projectValues.end())
@@ -1367,57 +397,24 @@ namespace vultra_app
             }
         }
 
-        struct PluginImportTaskResult
+        bool matchesPluginSearch(const std::string& filter, std::initializer_list<const std::string*> fields)
         {
-            bool        imported {false};
-            bool        catalogFetched {false};
-            std::string importedId;
-            std::string status;
-            std::vector<CatalogPluginEntry> catalogEntries;
-        };
-
-        PluginImportTaskResult runPluginImportTask(PluginImportMode mode,
-                                                   std::filesystem::path projectRoot,
-                                                   std::filesystem::path pluginsDir,
-                                                   std::string           value)
-        {
-            PluginImportTaskResult result {};
-            const auto beforeIds = lockedPluginIds(projectRoot);
-            switch (mode)
+            if (filter.empty())
+                return true;
+            const auto contains = [&](const std::string& text) {
+                const auto it = std::search(text.begin(), text.end(), filter.begin(), filter.end(),
+                                            [](const char a, const char b) {
+                                                return std::tolower(static_cast<unsigned char>(a)) ==
+                                                       std::tolower(static_cast<unsigned char>(b));
+                                            });
+                return it != text.end();
+            };
+            for (const auto* field : fields)
             {
-                case PluginImportMode::eGit:
-                    result.imported = importPluginFromGit(projectRoot, pluginsDir, value, result.status, &result.importedId);
-                    break;
-                case PluginImportMode::eCatalog:
-                    result.catalogFetched =
-                        fetchPluginCatalog(projectRoot, value, result.catalogEntries, result.status);
-                    break;
-                case PluginImportMode::eZip:
-                    result.imported =
-                        importPluginFromZip(projectRoot, pluginsDir, std::filesystem::path {value}, result.status, &result.importedId);
-                    break;
-                case PluginImportMode::eFolder:
-                    result.imported =
-                        importPluginFromFolder(projectRoot, pluginsDir, std::filesystem::path {value}, result.status, &result.importedId);
-                    break;
-                case PluginImportMode::eNone:
-                default:
-                    result.status = "No plugin import mode selected.";
-                    break;
+                if (field != nullptr && contains(*field))
+                    return true;
             }
-            if (result.imported && result.importedId.empty())
-            {
-                const auto afterIds = lockedPluginIds(projectRoot);
-                for (const auto& id : afterIds)
-                {
-                    if (std::find(beforeIds.begin(), beforeIds.end(), id) == beforeIds.end())
-                    {
-                        result.importedId = id;
-                        break;
-                    }
-                }
-            }
-            return result;
+            return false;
         }
 
     } // namespace
@@ -1434,16 +431,18 @@ namespace vultra_app
         static std::string              s_PluginImportStatus;
         static PluginImportMode         s_PluginImportMode {PluginImportMode::eNone};
         static bool                     s_OpenPluginImportDialog {false};
-        static std::future<PluginImportTaskResult> s_PluginImportFuture;
-        static bool                              s_PluginImportInFlight {false};
-        static bool                              s_OpenPluginImportLoading {false};
-        static bool                              s_ClosePluginImportLoading {false};
-        static std::vector<CatalogPluginEntry>   s_PluginCatalogEntries;
-        static std::string                       s_PluginCatalogStatus;
+        static bool                     s_OpenPluginImportLoading {false};
+        static std::array<char, 128>             s_PluginSearch {};
+        static std::unordered_map<std::string, int> s_CatalogVersionChoice;
         static std::optional<vultra::PluginManifest> s_PendingRemovePlugin;
         static bool                              s_OpenRemovePluginDialog {false};
+        static bool                              s_OpenRestartPrompt {false};
+        static std::string                       s_RestartPromptPlugin;
         if (ctx.state.projectSettingsOpen)
         {
+            m_PluginManager.openProject(ctx.state.currentProject, ctx.state.currentAssetRoot);
+            s_CatalogVersionChoice.clear();
+            setBuffer(s_PluginSearch, {});
             setBuffer(m_ProjectNameBuffer, ctx.state.currentProjectName);
             setBuffer(m_ProjectAssetRootBuffer, ctx.state.currentAssetRoot);
             setBuffer(m_ProjectDefaultSceneBuffer, ctx.state.currentDefaultScene);
@@ -1459,6 +458,10 @@ namespace vultra_app
             ImGui::OpenPopup(vultra::trId("projectSettings.title", "Project Settings"));
             ctx.state.projectSettingsOpen = false;
         }
+
+        // Poll plugin catalog fetches and imports even while the dialog is hidden, so background
+        // work started from the Plugins page keeps making progress.
+        m_PluginManager.update();
 
         ui::centerNextModalInCurrentWindow();
         ImGui::SetNextWindowSize(ImVec2 {vultra::ui::dp(760.0f), vultra::ui::dp(520.0f)}, ImGuiCond_Appearing);
@@ -1783,8 +786,7 @@ namespace vultra_app
         else if (selectedPage == 4)
         {
             ui::drawSettingsSectionHeader(vultra::tr("projectSettings.plugins.header"));
-            const auto pluginsDir = localPluginInstallDir(ctx.state.currentProject, ctx.state.currentAssetRoot);
-            const auto pluginDirs = pluginDiscoveryDirs(ctx.state.currentProject, ctx.state.currentAssetRoot);
+            const auto pluginsDir = plugins::localInstallDir(ctx.state.currentProject, ctx.state.currentAssetRoot);
             ui::drawInfoRegion(vultra::tr("projectSettings.plugins.info"));
 
             ImGui::PushID("PluginImport");
@@ -1794,9 +796,22 @@ namespace vultra_app
                 ImGui::SetTooltip(
                     "%s", trText("projectSettings.plugins.importHeader", "Import plugin").c_str());
             ImGui::SameLine();
-            ImGui::TextDisabled("%s",
-                                trText("projectSettings.plugins.importHint",
-                                       "Import from Git, catalog, ZIP, or folder.").c_str());
+            if (ImGui::Button(ICON_MDI_REFRESH, ImVec2 {vultra::ui::dp(32.0f), 0.0f}))
+            {
+                m_PluginManager.refreshCatalog();
+                m_PluginManager.invalidateInstalled();
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(
+                    "%s", trText("projectSettings.plugins.refreshCatalog", "Refresh catalog").c_str());
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputTextWithHint("##PluginSearch",
+                                     (std::string {ICON_MDI_MAGNIFY " "} +
+                                      trText("projectSettings.plugins.searchHint", "Search plugins..."))
+                                         .c_str(),
+                                     s_PluginSearch.data(),
+                                     s_PluginSearch.size());
 
             if (ImGui::BeginPopup("PluginImportMenu"))
             {
@@ -1816,7 +831,10 @@ namespace vultra_app
                                         .c_str()))
                 {
                     if (bufferString(s_PluginCatalog).empty())
-                        setBuffer(s_PluginCatalog, defaultPluginCatalogUrl());
+                        setBuffer(s_PluginCatalog,
+                                  m_PluginManager.catalogLocation().empty() ?
+                                      plugins::defaultCatalogUrl() :
+                                      m_PluginManager.catalogLocation());
                     s_PluginImportMode       = PluginImportMode::eCatalog;
                     s_OpenPluginImportDialog = true;
                     s_PluginImportStatus.clear();
@@ -1877,23 +895,35 @@ namespace vultra_app
                                                     std::string {vultra::tr("common.import")};
                 if (ImGui::Button(actionLabel.c_str(), ImVec2 {vultra::ui::dp(96.0f), 0.0f}))
                 {
-                    if (!s_PluginImportInFlight)
+                    const auto value = bufferString(importBuffer);
+                    if (s_PluginImportMode == PluginImportMode::eCatalog)
                     {
-                        const auto value = bufferString(importBuffer);
-                        s_PluginImportStatus = s_PluginImportMode == PluginImportMode::eCatalog ?
-                                                   trText("projectSettings.plugins.catalogLoading",
-                                                          "Loading plugin catalog...") :
-                                                   trText("projectSettings.plugins.importLoading",
-                                                          "Importing plugin...");
-                        s_PluginImportFuture = std::async(std::launch::async,
-                                                          runPluginImportTask,
-                                                          s_PluginImportMode,
-                                                          ctx.state.currentProject,
-                                                          pluginsDir,
-                                                          value);
-                        s_PluginImportInFlight     = true;
-                        s_OpenPluginImportLoading  = true;
-                        ctx.state.statusMessage    = s_PluginImportStatus;
+                        // Custom catalog location: remember it and re-fetch; the catalog section
+                        // below shows the loading state inline.
+                        m_PluginManager.setCatalogLocation(value == plugins::defaultCatalogUrl() ? std::string {} :
+                                                                                                   value);
+                        m_PluginManager.refreshCatalog();
+                        ImGui::CloseCurrentPopup();
+                    }
+                    else if (!m_PluginManager.importing())
+                    {
+                        switch (s_PluginImportMode)
+                        {
+                            case PluginImportMode::eGit:
+                                m_PluginManager.importFromGit(value);
+                                break;
+                            case PluginImportMode::eZip:
+                                m_PluginManager.importFromZip(std::filesystem::path {value});
+                                break;
+                            case PluginImportMode::eFolder:
+                            default:
+                                m_PluginManager.importFromFolder(std::filesystem::path {value});
+                                break;
+                        }
+                        s_PluginImportStatus =
+                            trText("projectSettings.plugins.importLoading", "Importing plugin...");
+                        s_OpenPluginImportLoading = true;
+                        ctx.state.statusMessage   = s_PluginImportStatus;
                         ImGui::CloseCurrentPopup();
                     }
                 }
@@ -1913,117 +943,210 @@ namespace vultra_app
                 s_OpenPluginImportLoading = false;
             }
 
-            if (s_PluginImportInFlight && s_PluginImportFuture.valid() &&
-                s_PluginImportFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+            // An import (install/update/rollback) finished since the last frame: imported plugins
+            // always start disabled until the user explicitly enables them.
+            if (auto finished = m_PluginManager.takeFinishedImport(); finished.has_value())
             {
-                auto result = s_PluginImportFuture.get();
-                s_PluginImportInFlight = false;
-                s_PluginImportStatus   = std::move(result.status);
-                ctx.state.statusMessage = s_PluginImportStatus;
-                if (result.catalogFetched)
+                s_PluginImportStatus    = finished->status;
+                ctx.state.statusMessage = finished->status;
+                if (finished->ok)
                 {
-                    s_PluginCatalogEntries = std::move(result.catalogEntries);
-                    s_PluginCatalogStatus  = s_PluginImportStatus;
-                }
-                if (result.imported)
-                {
-                    if (!result.importedId.empty())
+                    if (!finished->installedId.empty())
                     {
                         s_EnabledPlugins.erase(
-                            std::remove(s_EnabledPlugins.begin(), s_EnabledPlugins.end(), result.importedId),
+                            std::remove(s_EnabledPlugins.begin(), s_EnabledPlugins.end(), finished->installedId),
                             s_EnabledPlugins.end());
                     }
                     projectSettingsChanged = true;
                 }
-                s_ClosePluginImportLoading = true;
             }
 
-            ImGui::SetNextWindowSize(ImVec2 {vultra::ui::dp(360.0f), 0.0f}, ImGuiCond_Appearing);
             if (ImGui::BeginPopupModal(loadingTitle.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
             {
-                if (s_ClosePluginImportLoading)
-                {
-                    s_ClosePluginImportLoading = false;
-                    ImGui::CloseCurrentPopup();
-                }
+                // Fixed wrap width: auto-resize would otherwise stretch the modal to fit long
+                // single-line status messages (e.g. git errors).
+                ImGui::PushTextWrapPos(vultra::ui::dp(400.0f));
                 ImGui::TextUnformatted(s_PluginImportStatus.empty() ?
                                            trText("projectSettings.plugins.importLoading", "Importing plugin...").c_str() :
                                            s_PluginImportStatus.c_str());
+                ImGui::PopTextWrapPos();
                 ImGui::Spacing();
-                ImGui::ProgressBar(-1.0f, ImVec2 {vultra::ui::dp(320.0f), 0.0f});
-                if (!s_PluginImportInFlight)
+                if (m_PluginManager.importing())
                 {
-                    ImGui::Spacing();
-                    if (ImGui::Button(vultra::tr("common.close"), ImVec2 {vultra::ui::dp(96.0f), 0.0f}))
-                        ImGui::CloseCurrentPopup();
+                    ImGui::ProgressBar(-1.0f, ImVec2 {vultra::ui::dp(400.0f), 0.0f});
+                }
+                else if (ImGui::Button(vultra::tr("common.close"), ImVec2 {vultra::ui::dp(96.0f), 0.0f}))
+                {
+                    ImGui::CloseCurrentPopup();
                 }
                 ImGui::EndPopup();
             }
             ImGui::PopID();
             ImGui::Separator();
 
-            const auto lockedIds = lockedPluginIds(ctx.state.currentProject);
-            const auto manifests = discoverProjectPlugins(pluginDirs, lockedIds);
-            if (!s_PluginCatalogEntries.empty())
-            {
-                ImGui::TextDisabled("%s", trText("projectSettings.plugins.catalogResults", "Catalog").c_str());
-                if (!s_PluginCatalogStatus.empty())
-                    ImGui::TextWrapped("%s", s_PluginCatalogStatus.c_str());
-                ImGui::BeginChild("PluginCatalogResults",
-                                  ImVec2 {0.0f, vultra::ui::dp(180.0f)},
-                                  true,
-                                  ImGuiWindowFlags_AlwaysVerticalScrollbar);
-                for (const auto& entry : s_PluginCatalogEntries)
-                {
-                    ImGui::PushID(entry.gitUrl.c_str());
-                    const bool installed = !entry.id.empty() &&
-                        std::find(lockedIds.begin(), lockedIds.end(), entry.id) != lockedIds.end();
-                    ImGui::TextUnformatted(entry.name.empty() ? entry.id.c_str() : entry.name.c_str());
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("v%s%s%s",
-                                        entry.version.empty() ? "?" : entry.version.c_str(),
-                                        entry.author.empty() ? "" : "  \xc2\xb7  ",
-                                        entry.author.c_str());
-                    if (!entry.description.empty())
-                        ImGui::TextWrapped("%s", entry.description.c_str());
-                    if (!entry.repository.empty())
-                        ImGui::TextDisabled("%s", entry.repository.c_str());
+            const auto& manifests    = m_PluginManager.installedManifests();
+            const auto  searchFilter = bufferString(s_PluginSearch);
 
-                    const bool disableImport = installed || s_PluginImportInFlight;
-                    if (disableImport)
-                        ImGui::BeginDisabled();
-                    if (ImGui::Button(installed ?
-                                          trText("projectSettings.plugins.installed", "Installed").c_str() :
-                                          vultra::tr("common.import"),
-                                      ImVec2 {vultra::ui::dp(96.0f), 0.0f}))
+            const auto startCatalogInstall = [&](const plugins::CatalogVersion& version) {
+                m_PluginManager.installFromCatalog(version);
+                s_PluginImportStatus = trText("projectSettings.plugins.importLoading", "Importing plugin...");
+                s_OpenPluginImportLoading = true;
+                ctx.state.statusMessage   = s_PluginImportStatus;
+            };
+
+            // ---- Catalog (auto-fetched list view) ----------------------------------------------
+            ImGui::TextDisabled("%s", trText("projectSettings.plugins.catalogResults", "Catalog").c_str());
+            if (m_PluginManager.catalogFetching())
+                ImGui::TextDisabled(
+                    "%s", trText("projectSettings.plugins.catalogLoading", "Loading plugin catalog...").c_str());
+            else if (!m_PluginManager.catalogStatus().empty())
+                ImGui::TextWrapped("%s", m_PluginManager.catalogStatus().c_str());
+
+            if (!m_PluginManager.catalogEntries().empty() &&
+                ImGui::BeginTable("PluginCatalogTable",
+                                  4,
+                                  ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
+                                      ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Resizable))
+            {
+                ImGui::TableSetupColumn(vultra::tr("common.name"), ImGuiTableColumnFlags_WidthStretch, 0.28f);
+                ImGui::TableSetupColumn(trText("projectSettings.plugins.descriptionColumn", "Description").c_str(),
+                                        ImGuiTableColumnFlags_WidthStretch,
+                                        0.52f);
+                ImGui::TableSetupColumn(trText("projectSettings.plugins.versionColumn", "Version").c_str(),
+                                        ImGuiTableColumnFlags_WidthFixed,
+                                        vultra::ui::dp(108.0f));
+                ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, vultra::ui::dp(108.0f));
+                ImGui::TableHeadersRow();
+
+                for (const auto& entry : m_PluginManager.catalogEntries())
+                {
+                    if (entry.versions.empty() ||
+                        !matchesPluginSearch(searchFilter,
+                                             {&entry.name, &entry.id, &entry.description, &entry.author}))
+                        continue;
+
+                    ImGui::PushID(entry.id.empty() ? entry.versions.front().gitUrl.c_str() : entry.id.c_str());
+                    ImGui::TableNextRow();
+
+                    const auto* installedManifest = m_PluginManager.findInstalled(entry.id);
+                    const bool  platformOk =
+                        entry.platforms.empty() ||
+                        std::find(entry.platforms.begin(),
+                                  entry.platforms.end(),
+                                  std::string(vultra::currentPluginPlatform())) != entry.platforms.end();
+
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextUnformatted(entry.name.empty() ? entry.id.c_str() : entry.name.c_str());
+                    if (ImGui::IsItemHovered() && !entry.repository.empty())
+                        ImGui::SetTooltip("%s", entry.repository.c_str());
+                    if (!entry.author.empty())
+                        ImGui::TextDisabled("%s", entry.author.c_str());
+                    if (installedManifest != nullptr)
+                        ImGui::TextDisabled("%s  v%s",
+                                            trText("projectSettings.plugins.installed", "Installed").c_str(),
+                                            installedManifest->version.empty() ? "?" :
+                                                                                 installedManifest->version.c_str());
+
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TextWrapped("%s", entry.description.c_str());
+                    if (!platformOk)
+                        ImGui::TextColored(
+                            ImVec4 {1.0f, 0.7f, 0.2f, 1.0f},
+                            "%s",
+                            vultra::trf("projectSettings.plugins.notSupported",
+                                        std::string(vultra::currentPluginPlatform()))
+                                .c_str());
+
+                    // Version selection: defaults to the installed version (when listed) or latest.
+                    int& choice = s_CatalogVersionChoice[entry.id.empty() ? entry.versions.front().gitUrl :
+                                                                            entry.id];
+                    if (choice < 0 || choice >= static_cast<int>(entry.versions.size()))
+                        choice = 0;
+                    ImGui::TableSetColumnIndex(2);
+                    ImGui::SetNextItemWidth(-1.0f);
+                    if (ImGui::BeginCombo("##Version",
+                                          ("v" + entry.versions[static_cast<std::size_t>(choice)].version).c_str()))
                     {
-                        s_PluginImportStatus =
-                            trText("projectSettings.plugins.importLoading", "Importing plugin...");
-                        s_PluginImportFuture = std::async(std::launch::async,
-                                                          runPluginImportTask,
-                                                          PluginImportMode::eGit,
-                                                          ctx.state.currentProject,
-                                                          pluginsDir,
-                                                          entry.gitUrl);
-                        s_PluginImportInFlight    = true;
-                        s_OpenPluginImportLoading = true;
-                        ctx.state.statusMessage   = s_PluginImportStatus;
+                        for (int i = 0; i < static_cast<int>(entry.versions.size()); ++i)
+                        {
+                            const auto& version  = entry.versions[static_cast<std::size_t>(i)];
+                            const bool  selected = i == choice;
+                            std::string label    = "v" + version.version;
+                            if (i == 0)
+                                label += "  (" + trText("projectSettings.plugins.latest", "latest") + ")";
+                            if (ImGui::Selectable(label.c_str(), selected))
+                                choice = i;
+                            if (ImGui::IsItemHovered() && !version.notes.empty())
+                                ImGui::SetTooltip("%s", version.notes.c_str());
+                            if (selected)
+                                ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
                     }
-                    if (disableImport)
+                    const auto& selectedVersion = entry.versions[static_cast<std::size_t>(choice)];
+                    if (ImGui::IsItemHovered() && !selectedVersion.notes.empty())
+                        ImGui::SetTooltip("%s", selectedVersion.notes.c_str());
+
+                    // Action: install when absent, switch when a different version is selected.
+                    // A loaded restart-level plugin keeps its DLL locked, so switching versions
+                    // first needs a disable + restart.
+                    bool runtimeLocked = false;
+                    if (installedManifest != nullptr && installedManifest->needsRestartToApply())
+                    {
+                        if (auto* pluginService =
+                                ctx.services ? ctx.services->tryGet<vultra::IPluginService>() : nullptr)
+                            runtimeLocked = pluginService->isLoaded(installedManifest->id);
+                    }
+                    ImGui::TableSetColumnIndex(3);
+                    std::string actionLabel;
+                    bool        actionEnabled = platformOk && !m_PluginManager.importing() && !runtimeLocked;
+                    if (installedManifest == nullptr)
+                        actionLabel = trText("projectSettings.plugins.install", "Install");
+                    else
+                    {
+                        const int cmp =
+                            plugins::compareVersions(selectedVersion.version, installedManifest->version);
+                        if (cmp == 0)
+                        {
+                            actionLabel   = trText("projectSettings.plugins.installed", "Installed");
+                            actionEnabled = false;
+                        }
+                        else if (cmp > 0)
+                            actionLabel = trText("projectSettings.plugins.update", "Update");
+                        else
+                            actionLabel = trText("projectSettings.plugins.rollback", "Rollback");
+                    }
+                    if (!actionEnabled)
+                        ImGui::BeginDisabled();
+                    if (ImGui::Button(actionLabel.c_str(), ImVec2 {-1.0f, 0.0f}))
+                        startCatalogInstall(selectedVersion);
+                    if (!actionEnabled)
                         ImGui::EndDisabled();
-                    ImGui::Separator();
+                    if (runtimeLocked && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                        ImGui::SetTooltip("%s",
+                                          trText("projectSettings.plugins.removeNeedsRestartNote",
+                                                 "This plugin is loaded and can only be unloaded by a restart. "
+                                                 "Disable it, restart the editor, then remove it.")
+                                              .c_str());
+
                     ImGui::PopID();
                 }
-                ImGui::EndChild();
-                ImGui::Separator();
+                ImGui::EndTable();
             }
+            ImGui::Spacing();
+            ImGui::Separator();
 
+            // ---- Installed plugins ---------------------------------------------------------------
+            ImGui::TextDisabled("%s", trText("projectSettings.plugins.installedHeader", "Installed").c_str());
             if (manifests.empty())
                 ImGui::TextDisabled(
                     "%s", vultra::trf("projectSettings.plugins.noneFound", pluginsDir.generic_string()).c_str());
 
             for (const auto& manifest : manifests)
             {
+                if (!matchesPluginSearch(searchFilter,
+                                         {&manifest.name, &manifest.id, &manifest.description, &manifest.author}))
+                    continue;
                 ImGui::PushID(manifest.id.c_str());
                 const bool wasEnabled =
                     std::find(s_EnabledPlugins.begin(), s_EnabledPlugins.end(), manifest.id) != s_EnabledPlugins.end();
@@ -2034,42 +1157,95 @@ namespace vultra_app
                     ImGui::BeginDisabled();
                 if (ImGui::Checkbox(manifest.name.empty() ? manifest.id.c_str() : manifest.name.c_str(), &enabled))
                 {
+                    // The toggle persists into the .vproject immediately: a restart-required plugin
+                    // only takes effect on the next launch, so its enable must survive without Save.
+                    const auto persistToggle = [&] {
+                        std::string error;
+                        if (!persistEnabledPlugins(ctx.state.currentProject, s_EnabledPlugins, error))
+                            ctx.state.statusMessage =
+                                vultra::trf("projectSettings.status.saveFailed", error);
+                    };
+
                     if (enabled && !wasEnabled)
                     {
                         const auto displayName = manifest.name.empty() ? manifest.id : manifest.name;
-                        bool loadedNow = true;
-                        if (auto* plugins = ctx.services ? ctx.services->tryGet<vultra::IPluginService>() : nullptr)
-                            loadedNow = plugins->loadPlugin(manifest);
-                        if (loadedNow)
+                        if (manifest.needsRestartToApply())
                         {
+                            // Loading now would be too late (e.g. pre-render-device Vulkan hooks);
+                            // record the enable and offer a restart instead.
                             s_EnabledPlugins.push_back(manifest.id);
-                            ctx.state.statusMessage =
-                                vultra::trf("projectSettings.plugins.enabledStatus", displayName, manifest.id);
+                            persistToggle();
+                            s_RestartPromptPlugin = displayName;
+                            s_OpenRestartPrompt   = true;
+                            ctx.state.statusMessage = vultra::trf(
+                                "projectSettings.plugins.enabledRestartStatus", displayName, manifest.id);
                         }
                         else
                         {
-                            ctx.state.statusMessage =
-                                vultra::trf("projectSettings.plugins.enableFailed", displayName, manifest.id);
+                            bool loadedNow = true;
+                            if (auto* plugins =
+                                    ctx.services ? ctx.services->tryGet<vultra::IPluginService>() : nullptr)
+                                loadedNow = plugins->loadPlugin(manifest);
+                            if (loadedNow)
+                            {
+                                s_EnabledPlugins.push_back(manifest.id);
+                                persistToggle();
+                                ctx.state.statusMessage =
+                                    vultra::trf("projectSettings.plugins.enabledStatus", displayName, manifest.id);
+                            }
+                            else
+                            {
+                                ctx.state.statusMessage =
+                                    vultra::trf("projectSettings.plugins.enableFailed", displayName, manifest.id);
+                            }
                         }
                     }
                     else if (!enabled && wasEnabled)
                     {
-                        std::string status;
                         auto* plugins = ctx.services ? ctx.services->tryGet<vultra::IPluginService>() : nullptr;
                         const auto displayName = manifest.name.empty() ? manifest.id : manifest.name;
-                        if (unloadPluginIfLoaded(plugins, manifest, status))
+                        if (manifest.needsRestartToApply())
                         {
+                            // Never unload a restart-level plugin mid-session: its native side owns
+                            // render-backend hooks, so tearing it down under a live device crashes.
+                            // Record the disable; it applies on the next launch.
                             s_EnabledPlugins.erase(
                                 std::remove(s_EnabledPlugins.begin(), s_EnabledPlugins.end(), manifest.id),
                                 s_EnabledPlugins.end());
-                            ctx.state.statusMessage =
-                                status.empty() ?
-                                    vultra::trf("projectSettings.plugins.disabledStatus", displayName, manifest.id) :
-                                    status;
+                            persistToggle();
+                            if (plugins != nullptr && plugins->isLoaded(manifest.id))
+                            {
+                                s_RestartPromptPlugin = displayName;
+                                s_OpenRestartPrompt   = true;
+                                ctx.state.statusMessage = vultra::trf(
+                                    "projectSettings.plugins.disabledRestartStatus", displayName, manifest.id);
+                            }
+                            else
+                            {
+                                // Was enabled-pending-restart and never loaded; nothing to apply.
+                                ctx.state.statusMessage = vultra::trf(
+                                    "projectSettings.plugins.disabledStatus", displayName, manifest.id);
+                            }
                         }
                         else
                         {
-                            ctx.state.statusMessage = status;
+                            std::string status;
+                            if (unloadPluginIfLoaded(plugins, manifest, status))
+                            {
+                                s_EnabledPlugins.erase(
+                                    std::remove(s_EnabledPlugins.begin(), s_EnabledPlugins.end(), manifest.id),
+                                    s_EnabledPlugins.end());
+                                persistToggle();
+                                ctx.state.statusMessage =
+                                    status.empty() ?
+                                        vultra::trf(
+                                            "projectSettings.plugins.disabledStatus", displayName, manifest.id) :
+                                        status;
+                            }
+                            else
+                            {
+                                ctx.state.statusMessage = status;
+                            }
                         }
                     }
                 }
@@ -2092,10 +1268,40 @@ namespace vultra_app
 
                 ImGui::Indent();
                 ImGui::TextDisabled("%s", manifest.id.c_str());
+                if (manifest.needsRestartToApply())
+                    ImGui::TextDisabled(ICON_MDI_RESTART "  %s",
+                                        trText("projectSettings.plugins.requiresRestart",
+                                               "Enable/disable takes effect after a restart.")
+                                            .c_str());
                 if (!manifest.description.empty())
                     ImGui::TextWrapped("%s", manifest.description.c_str());
                 if (!manifest.repository.empty())
                     ImGui::TextDisabled("%s", manifest.repository.c_str());
+                if (const auto* catalogEntry = m_PluginManager.findCatalogEntry(manifest.id);
+                    catalogEntry != nullptr && !catalogEntry->versions.empty() &&
+                    plugins::compareVersions(catalogEntry->versions.front().version, manifest.version) > 0)
+                {
+                    ImGui::TextColored(
+                        ImVec4 {0.4f, 0.8f, 1.0f, 1.0f},
+                        ICON_MDI_ARROW_UP_BOLD_CIRCLE_OUTLINE "  %s",
+                        vultra::trf("projectSettings.plugins.updateAvailable",
+                                    catalogEntry->versions.front().version)
+                            .c_str());
+                    bool updateLocked = m_PluginManager.importing();
+                    if (!updateLocked && manifest.needsRestartToApply())
+                    {
+                        if (auto* pluginService =
+                                ctx.services ? ctx.services->tryGet<vultra::IPluginService>() : nullptr)
+                            updateLocked = pluginService->isLoaded(manifest.id);
+                    }
+                    ImGui::SameLine();
+                    if (updateLocked)
+                        ImGui::BeginDisabled();
+                    if (ImGui::SmallButton(trText("projectSettings.plugins.update", "Update").c_str()))
+                        startCatalogInstall(catalogEntry->versions.front());
+                    if (updateLocked)
+                        ImGui::EndDisabled();
+                }
                 std::string capabilities;
                 if (!manifest.native.empty())
                     capabilities += "native ";
@@ -2150,14 +1356,30 @@ namespace vultra_app
                     bool loaded = false;
                     if (auto* plugins = ctx.services ? ctx.services->tryGet<vultra::IPluginService>() : nullptr)
                         loaded = plugins->isLoaded(pending.id);
-                    if (loaded)
+                    // A loaded restart-level plugin cannot be unloaded mid-session (live render
+                    // hooks); removal requires disabling it and restarting first.
+                    const bool blockedByRestart = loaded && pending.needsRestartToApply();
+                    if (blockedByRestart)
+                        ImGui::TextColored(ImVec4 {1.0f, 0.7f, 0.2f, 1.0f},
+                                           "%s",
+                                           trText("projectSettings.plugins.removeNeedsRestartNote",
+                                                  "This plugin is loaded and can only be unloaded by a restart. "
+                                                  "Disable it, restart the editor, then remove it.")
+                                               .c_str());
+                    else if (loaded)
                         ImGui::TextWrapped("%s",
                                            trText("projectSettings.plugins.removeLoadedNote",
                                                   "This plugin is loaded and will be unloaded before removal.")
                                                .c_str());
 
-                    if (ImGui::Button(trText("projectSettings.plugins.remove", "Remove").c_str(),
-                                      ImVec2 {vultra::ui::dp(96.0f), 0.0f}))
+                    if (blockedByRestart)
+                        ImGui::BeginDisabled();
+                    const bool removeClicked =
+                        ImGui::Button(trText("projectSettings.plugins.remove", "Remove").c_str(),
+                                      ImVec2 {vultra::ui::dp(96.0f), 0.0f});
+                    if (blockedByRestart)
+                        ImGui::EndDisabled();
+                    if (removeClicked)
                     {
                         std::string status;
                         auto* plugins = ctx.services ? ctx.services->tryGet<vultra::IPluginService>() : nullptr;
@@ -2166,10 +1388,7 @@ namespace vultra_app
                             s_PluginImportStatus = status;
                             ctx.state.statusMessage = status;
                         }
-                        else if (removePluginInstall(ctx.state.currentProject,
-                                                     ctx.state.currentAssetRoot,
-                                                     pending,
-                                                     status))
+                        else if (m_PluginManager.removePlugin(pending, status))
                         {
                             s_EnabledPlugins.erase(
                                 std::remove(s_EnabledPlugins.begin(), s_EnabledPlugins.end(), pending.id),
@@ -2194,6 +1413,41 @@ namespace vultra_app
                     s_PendingRemovePlugin.reset();
                     ImGui::CloseCurrentPopup();
                 }
+                ImGui::EndPopup();
+            }
+
+            const auto restartDialogTitle = trText("projectSettings.plugins.restartDialogTitle", "Restart Required");
+            if (s_OpenRestartPrompt)
+            {
+                ImGui::OpenPopup(restartDialogTitle.c_str());
+                s_OpenRestartPrompt = false;
+            }
+            ImGui::SetNextWindowSize(ImVec2 {vultra::ui::dp(420.0f), 0.0f}, ImGuiCond_Appearing);
+            if (ImGui::BeginPopupModal(restartDialogTitle.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            {
+                ImGui::TextWrapped(
+                    "%s", vultra::trf("projectSettings.plugins.restartPrompt", s_RestartPromptPlugin).c_str());
+                ImGui::Spacing();
+                if (ImGui::Button(trText("projectSettings.plugins.restartNow", "Restart Now").c_str(),
+                                  ImVec2 {vultra::ui::dp(116.0f), 0.0f}))
+                {
+                    if (relaunchIntoProject(ctx.state.currentProject))
+                    {
+                        if (auto* windowService = ctx.services ? ctx.services->tryGet<IWindowService>() : nullptr)
+                            windowService->window().close();
+                    }
+                    else
+                    {
+                        ctx.state.statusMessage =
+                            trText("projectSettings.plugins.restartFailed",
+                                   "Could not restart automatically; please restart the editor manually.");
+                    }
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button(trText("projectSettings.plugins.restartLater", "Later").c_str(),
+                                  ImVec2 {vultra::ui::dp(96.0f), 0.0f}))
+                    ImGui::CloseCurrentPopup();
                 ImGui::EndPopup();
             }
         }
@@ -2227,7 +1481,7 @@ namespace vultra_app
         {
             std::unordered_map<std::string, std::unordered_map<std::string, std::string>> projectPluginConfigValues;
             std::unordered_map<std::string, std::string>                                 envPluginConfigValues;
-            splitPluginConfigValuesForSave(pluginDiscoveryDirs(ctx.state.currentProject, ctx.state.currentAssetRoot),
+            splitPluginConfigValuesForSave(plugins::discoveryDirs(ctx.state.currentProject, ctx.state.currentAssetRoot),
                                            s_PluginConfigValues,
                                            projectPluginConfigValues,
                                            envPluginConfigValues);

@@ -1,5 +1,8 @@
 #include "project_launcher/project_launcher.hpp"
 
+#include "common/process_relaunch.hpp"
+#include "editor_app/plugin_repository.hpp"
+
 #include "common/ui_widgets.hpp"
 #include "project_templates.hpp"
 #include "vproject.hpp"
@@ -1112,7 +1115,7 @@ This directory is an index, not the runtime asset root.
             if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
             {
                 m_SelectedProject = i;
-                openSelectedProject(state);
+                openSelectedProject(state, windowService);
             }
 
             const ImU32 rowFill   = selected ? theme::u32(theme::withAlpha(theme::frameActive(), 245.0f / 255.0f)) :
@@ -1187,7 +1190,7 @@ This directory is an index, not the runtime asset root.
             ImGui::BeginDisabled();
         if (ImGui::Button((std::string {ICON_MDI_FOLDER_OPEN "  "} + vultra::tr("common.open")).c_str(),
                           ImVec2(vultra::ui::dp(110.0f), vultra::ui::dp(38.0f))))
-            openSelectedProject(state);
+            openSelectedProject(state, windowService);
         ImGui::SetCursorScreenPos(ImVec2(origin.x + size.x - vultra::ui::dp(256.0f), origin.y + size.y - vultra::ui::dp(52.0f)));
         if (ImGui::Button((std::string {ICON_MDI_CLOSE "  "} + vultra::tr("common.remove")).c_str(),
                           ImVec2(vultra::ui::dp(122.0f), vultra::ui::dp(38.0f))))
@@ -1486,7 +1489,7 @@ This directory is an index, not the runtime asset root.
         state.statusMessage = vultra::trf("launcher.status.removedProject", projectDir.path.generic_string());
     }
 
-    void ProjectLauncher::openSelectedProject(AppState& state)
+    void ProjectLauncher::openSelectedProject(AppState& state, IWindowService* windowService)
     {
         if (m_SelectedProject < 0 || m_SelectedProject >= static_cast<int>(m_Projects.size()))
             return;
@@ -1496,6 +1499,24 @@ This directory is an index, not the runtime asset root.
         {
             state.statusMessage = vultra::tr("launcher.status.openFailed");
             return;
+        }
+
+        // Plugins that must load before the render device exists (e.g. a Vulkan-hooking DLSS
+        // bridge) cannot be applied by this in-process transition -- the device was already
+        // created for the launcher. Hand the project off to a fresh editor process instead.
+        if (plugins::projectNeedsRelaunchForPlugins(
+                project->projectDir, project->assetRoot, project->enabledPlugins))
+        {
+            if (relaunchIntoProject(project->projectDir))
+            {
+                state.statusMessage = vultra::tr("launcher.status.relaunchingForPlugins");
+                if (windowService != nullptr)
+                    windowService->window().close();
+                return;
+            }
+            // No relaunch available on this platform: open in-process; early-load plugins stay
+            // inactive for this session.
+            state.statusMessage = vultra::tr("launcher.status.relaunchForPluginsFailed");
         }
 
         state.currentProject = project->projectDir;
