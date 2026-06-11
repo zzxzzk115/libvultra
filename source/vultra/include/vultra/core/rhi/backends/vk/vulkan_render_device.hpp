@@ -5,6 +5,7 @@
 #include "vultra/core/rhi/shader_compiler.hpp"
 #include "vultra/core/rhi/structs/handles.hpp"
 #include "vultra/core/rhi/structs/render_device_structs.hpp"
+#include "vultra/core/rhi/structs/vulkan_hook_table.hpp"
 
 #include <vulkan/vulkan.hpp>
 #include <vk_mem_alloc.hpp>
@@ -108,6 +109,8 @@ namespace vultra
             RenderDeviceFeatureFlagBits m_FeatureFlag {RenderDeviceFeatureFlagBits::eNormal};
             std::string                 m_AppName;
             std::vector<const char*>    m_RequiredInstanceExtensions;
+            std::vector<std::string>    m_RequiredDeviceExtensions;
+            VulkanHookTable             m_VulkanHooks;
             bool                        m_UseKhrDynamicRendering {false};
             bool                        m_UseKhrSynchronization2 {false};
             bool                        m_EnableValidation {defaultRenderDiagnosticsEnabled()};

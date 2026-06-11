@@ -10,7 +10,7 @@ namespace vultra
     std::vector<std::unique_ptr<IBuiltinRenderGraphPass>> makeBuiltinRenderGraphPasses()
     {
         std::vector<std::unique_ptr<IBuiltinRenderGraphPass>> passes;
-        passes.reserve(30);
+        passes.reserve(31);
         appendSceneBuiltinRenderGraphPasses(passes);
         appendPostProcessBuiltinRenderGraphPasses(passes);
         appendGpuSceneBuiltinRenderGraphPasses(passes);

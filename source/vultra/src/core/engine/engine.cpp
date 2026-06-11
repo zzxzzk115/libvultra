@@ -24,14 +24,16 @@ namespace vultra
         if (m_Features)
             m_Features->disableAll();
 
-        // 2) Unload plugins (they may have registered features)
+        // 2) Shutdown subsystems in reverse init order. PluginSystem owns the normal native-plugin
+        // unload point so render/backend integrations can shut down after RenderSystem but before
+        // RenderBackendSystem.
+        m_Ctx.modules.shutdownAll();
+
+        // 3) Fallback: if no PluginSystem was registered, still release any native plugins.
         if (m_Plugins)
             m_Plugins->unloadAll(m_Ctx);
 
-        // 3) Shutdown subsystems in reverse init order
-        m_Ctx.modules.shutdownAll();
-
-        // 4) Finally destroy owned objects
+        // 4) Finally destroy owned objects.
         m_Subsystems.clear();
     }
 

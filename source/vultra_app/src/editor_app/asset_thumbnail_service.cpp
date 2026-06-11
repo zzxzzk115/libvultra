@@ -492,6 +492,7 @@ namespace vultra_app::ui
             camera.clearMode      = 0u;
             camera.suppressSkybox = true;
             camera.renderImGui    = false;
+            camera.allowUpscaler   = false;
             camera.rendererKey = "universal";
             camera.overrideFrameTime = true;
             camera.frameTimeSeconds  = 0.0f;
@@ -570,6 +571,7 @@ namespace vultra_app::ui
             out.suppressSkybox          = false;
             out.renderImGui             = false;
             out.debugEntityIdOutput     = false;
+            out.allowUpscaler           = false;
             out.selectionOutlineEnabled = false;
             out.rendererKey             = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
             out.overrideFrameTime       = true;

@@ -4,4 +4,5 @@ name = "example"
 asset_root = "resources"
 default_scene = "res://scenes/sponza.vscn"
 editing_rendergraph = "res://render/default.vrg.json"
-enabled_plugins = "com.vultra.examples.hello"
+build_scene.0 = "res://scenes/sponza.vscn"
+build_scene_enabled.0 = true

@@ -26,6 +26,7 @@
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/render_service.hpp"
+#include "vultra/function/services/render_upscaler_service.hpp"
 #include "vultra/function/services/shader_service.hpp"
 
 #include <fg/FrameGraph.hpp>
@@ -1025,11 +1026,25 @@ namespace vultra
         };
 
         // Per-frame state carried from a scripted pass's setup to its execute.
+        struct ScriptedPassUpscalerData
+        {
+            bool enabled {false};
+            FrameGraphResource color;
+            FrameGraphResource output;
+            FrameGraphResource depth;
+            FrameGraphResource motion;
+            FrameGraphResource exposure;
+            bool hasDepth {false};
+            bool hasMotion {false};
+            bool hasExposure {false};
+        };
+
         struct ScriptedPassFrameData
         {
             ScriptedShaderSelection shader;
             // Extent of the last created output texture, used by dispatchByOutputSize().
             rhi::Extent2D outputExtent {0, 0};
+            ScriptedPassUpscalerData upscaler;
         };
 
         struct ScriptedPassEnv
@@ -1177,6 +1192,86 @@ namespace vultra
                 }
                 m_Frame->outputExtent = desc.extent;
                 return make(m_Builder->create<framegraph::FrameGraphTexture>(name, desc));
+            }
+
+            LuaResHandle createUpscalerOutput(sol::table opts)
+            {
+                sol::object colorObj = opts["color"];
+                if (!colorObj.is<LuaResHandle>())
+                    return {};
+
+                const auto color = colorObj.as<LuaResHandle>();
+                check(color);
+
+                ScriptedPassUpscalerData upscaler {};
+                upscaler.enabled = true;
+                upscaler.color   = m_Builder->read(
+                    color.resource,
+                    framegraph::TextureRead {
+                        .binding =
+                            {
+                                .location      = {.set = 0, .binding = 0},
+                                .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                            },
+                        .type        = framegraph::TextureRead::Type::eSampledImage,
+                        .imageAspect = rhi::ImageAspect::eColor,
+                    });
+
+                const auto readOptional = [&](const char* key,
+                                              const uint32_t binding,
+                                              const rhi::ImageAspect aspect,
+                                              FrameGraphResource& out,
+                                              bool& has) {
+                    sol::object obj = opts[key];
+                    if (!obj.is<LuaResHandle>())
+                        return;
+                    const auto handle = obj.as<LuaResHandle>();
+                    check(handle);
+                    out = m_Builder->read(
+                        handle.resource,
+                        framegraph::TextureRead {
+                            .binding =
+                                {
+                                    .location      = {.set = 0, .binding = binding},
+                                    .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                },
+                            .type        = framegraph::TextureRead::Type::eSampledImage,
+                            .imageAspect = aspect,
+                        });
+                    has = true;
+                };
+                readOptional("depth", 1, rhi::ImageAspect::eDepth, upscaler.depth, upscaler.hasDepth);
+                readOptional("motion", 2, rhi::ImageAspect::eColor, upscaler.motion, upscaler.hasMotion);
+                readOptional("exposure", 3, rhi::ImageAspect::eColor, upscaler.exposure, upscaler.hasExposure);
+
+                const auto sourceDesc = m_Ctx->fg.getDescriptor<framegraph::FrameGraphTexture>(color.resource);
+                auto       outputDesc = makeInheritedTextureDesc(
+                    sourceDesc,
+                    sourceDesc.format,
+                    rhi::ImageUsage::eStorage | rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferSrc |
+                        rhi::ImageUsage::eTransferDst);
+                const uint32_t outputWidth  = static_cast<uint32_t>(std::max(getInt(opts, "outputWidth", 0), 0));
+                const uint32_t outputHeight = static_cast<uint32_t>(std::max(getInt(opts, "outputHeight", 0), 0));
+                if (outputWidth > 0u && outputHeight > 0u)
+                    outputDesc.extent = {outputWidth, outputHeight};
+                else if (auto* target = m_Ctx->view().target; target != nullptr)
+                    outputDesc.extent = target->getExtent();
+
+                const std::string name = getString(opts, "name", "Upscaler Output");
+                auto output = m_Builder->create<framegraph::FrameGraphTexture>(name, outputDesc);
+                upscaler.output = m_Builder->write(
+                    output,
+                    framegraph::ImageWrite {
+                        .binding =
+                            {
+                                .location      = {.set = 0, .binding = 4},
+                                .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                            },
+                        .imageAspect = rhi::ImageAspect::eColor,
+                    });
+                m_Frame->outputExtent = outputDesc.extent;
+                m_Frame->upscaler     = upscaler;
+                return make(upscaler.output);
             }
 
             void read(const LuaResHandle& h, sol::table binding)
@@ -1358,8 +1453,11 @@ namespace vultra
         {
         public:
             LuaPassExecContext(FrameGraphExecContext&       rc,
+                               FrameGraphPassResources&     resources,
+                               vbase::ServiceRegistry*      services,
                                const ScriptedPassFrameData& frame,
-                               ScriptedPassPipelines& pipelines) : m_Rc(&rc), m_Frame(&frame), m_Pipelines(&pipelines)
+                               ScriptedPassPipelines&       pipelines) :
+                m_Rc(&rc), m_Resources(&resources), m_Services(services), m_Frame(&frame), m_Pipelines(&pipelines)
             {}
 
             bool bindPipeline()
@@ -1438,7 +1536,143 @@ namespace vultra
                 m_Rc->cb.dispatch(glm::uvec3 {gx, gy, 1u});
             }
 
+            bool evaluateUpscaler()
+            {
+                if (!m_Frame->upscaler.enabled || m_Resources == nullptr)
+                    return false;
+
+                auto* upscaler = m_Services ? m_Services->tryGet<IRenderUpscalerService>() : nullptr;
+                if (upscaler == nullptr)
+                    return blitUpscalerFallback();
+
+                const auto settings = upscaler->settings();
+                if (!settings.enabled || settings.mode == UpscalerMode::eOff || upscaler->activeProvider() == nullptr)
+                    return blitUpscalerFallback();
+
+                auto* inputTexture = m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.color).texture;
+                auto* outputTexture =
+                    m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.output).texture;
+                if (inputTexture == nullptr || outputTexture == nullptr)
+                    return false;
+                if (m_Rc->view().camera != nullptr && !m_Rc->view().camera->allowUpscaler)
+                    return blitUpscalerFallback();
+
+                std::vector<UpscalerResourceTag> tags;
+                tags.push_back({
+                    .role     = UpscalerResourceRole::eScalingInputColor,
+                    .resource = makeNativeTextureResource(*inputTexture, m_Rc->rd.getBackendApi()),
+                });
+                tags.push_back({
+                    .role     = UpscalerResourceRole::eScalingOutputColor,
+                    .resource = makeNativeTextureResource(*outputTexture, m_Rc->rd.getBackendApi()),
+                });
+                if (m_Frame->upscaler.hasDepth)
+                {
+                    if (auto* texture =
+                            m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.depth).texture)
+                    {
+                        tags.push_back({
+                            .role     = UpscalerResourceRole::eDepth,
+                            .resource = makeNativeTextureResource(*texture, m_Rc->rd.getBackendApi()),
+                        });
+                    }
+                }
+                if (m_Frame->upscaler.hasMotion)
+                {
+                    if (auto* texture =
+                            m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.motion).texture)
+                    {
+                        tags.push_back({
+                            .role     = UpscalerResourceRole::eMotionVectors,
+                            .resource = makeNativeTextureResource(*texture, m_Rc->rd.getBackendApi()),
+                        });
+                    }
+                }
+                if (m_Frame->upscaler.hasExposure)
+                {
+                    if (auto* texture =
+                            m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.exposure).texture)
+                    {
+                        tags.push_back({
+                            .role     = UpscalerResourceRole::eExposure,
+                            .resource = makeNativeTextureResource(*texture, m_Rc->rd.getBackendApi()),
+                        });
+                    }
+                }
+
+                const auto* camera = m_Rc->view().camera;
+                UpscalerConstants constants {};
+                if (camera != nullptr)
+                {
+                    constants.view                   = camera->view;
+                    constants.projection             = camera->projection;
+                    constants.viewProjection         = camera->viewProjection;
+                    constants.previousView           = camera->previousView;
+                    constants.previousProjection     = camera->previousProjection;
+                    constants.previousViewProjection = camera->previousViewProjection;
+                    constants.clipToPreviousClip     = camera->previousViewProjection * camera->inverseViewProjection;
+                    constants.previousClipToClip     = camera->viewProjection * glm::inverse(camera->previousViewProjection);
+                    constants.jitterOffsetPx         = camera->jitterOffsetPx;
+                    constants.cameraPosition         = glm::vec3(camera->inverseView[3]);
+                    constants.cameraUp               = glm::normalize(glm::vec3(camera->inverseView[1]));
+                    constants.cameraRight            = glm::normalize(glm::vec3(camera->inverseView[0]));
+                    constants.cameraForward          = glm::normalize(-glm::vec3(camera->inverseView[2]));
+                    constants.nearPlane              = camera->zNear;
+                    constants.farPlane               = camera->zFar;
+                    constants.fovYRadians            = camera->fovY;
+                    constants.aspectRatio =
+                        static_cast<float>(std::max(m_Rc->view().extent.width, 1u)) /
+                        static_cast<float>(std::max(m_Rc->view().extent.height, 1u));
+                    constants.reset                = !camera->hasPreviousViewProjection;
+                    constants.cameraMotionIncluded = m_Frame->upscaler.hasMotion;
+                }
+
+                const auto viewportId = camera != nullptr ?
+                                            static_cast<UpscalerViewportId>(std::hash<CoreUUID> {}(camera->uuid)) :
+                                            UpscalerViewportId {0};
+                const NativeCommandContext command {
+                    .commandBufferHandle = m_Rc->cb.getHandle(),
+                    .frameIndex          = m_Rc->frame.frameIndex,
+                    .viewportId          = viewportId,
+                    .frameToken =
+                        {
+                            .frameIndex = m_Rc->frame.frameIndex,
+                            .viewSlot   = viewportId,
+                        },
+                };
+                upscaler->beginFrame(command);
+
+                const UpscalerEvaluateContext eval {
+                    .command      = command,
+                    .settings     = settings,
+                    .constants    = constants,
+                    .renderExtent = inputTexture->getExtent(),
+                    .outputExtent = outputTexture->getExtent(),
+                    .resources    = tags,
+                };
+
+                if (!upscaler->evaluate(eval))
+                    return blitUpscalerFallback();
+
+                m_Rc->clear();
+                return true;
+            }
+
         private:
+            bool blitUpscalerFallback()
+            {
+                if (m_Resources == nullptr || !m_Frame->upscaler.enabled)
+                    return false;
+                auto* inputTexture = m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.color).texture;
+                auto* outputTexture =
+                    m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.output).texture;
+                if (inputTexture == nullptr || outputTexture == nullptr)
+                    return false;
+                m_Rc->cb.blit(*inputTexture, *outputTexture, rhi::TexelFilter::eLinear);
+                m_Rc->clear();
+                return true;
+            }
+
             std::optional<vshadersystem::MaterialDescription> materialDescFor(const ScriptedShaderSelection& sel) const
             {
                 if (sel.compute)
@@ -1457,6 +1691,8 @@ namespace vultra
             }
 
             FrameGraphExecContext*                            m_Rc;
+            FrameGraphPassResources*                          m_Resources;
+            vbase::ServiceRegistry*                           m_Services;
             const ScriptedPassFrameData*                      m_Frame;
             ScriptedPassPipelines*                            m_Pipelines;
             rhi::BasePipeline*                                m_CurrentPipeline {nullptr};
@@ -1480,6 +1716,8 @@ namespace vultra
                                                   &LuaPassBuildContext::setResource,
                                                   "createColorTexture",
                                                   &LuaPassBuildContext::createColorTexture,
+                                                  "createUpscalerOutput",
+                                                  &LuaPassBuildContext::createUpscalerOutput,
                                                   "read",
                                                   &LuaPassBuildContext::read,
                                                   "writeColor",
@@ -1521,6 +1759,8 @@ namespace vultra
                                                  &LuaPassExecContext::endRendering,
                                                  "dispatch",
                                                  &LuaPassExecContext::dispatch,
+                                                 "evaluateUpscaler",
+                                                 &LuaPassExecContext::evaluateUpscaler,
                                                  "dispatchByOutputSize",
                                                  &LuaPassExecContext::dispatchByOutputSize);
         }
@@ -1867,11 +2107,11 @@ namespace vultra
                         logScriptedPassError(passType, "setup", err.what());
                     }
                 },
-                [execFn, passType, pipelinesPtr = pipelines.get()](
-                    const ScriptedPassFrameData& frame, FrameGraphPassResources&, void* ctxPtr) {
+                [execFn, passType, pipelinesPtr = pipelines.get(), services = m_Owner.getServices()](
+                    const ScriptedPassFrameData& frame, FrameGraphPassResources& resources, void* ctxPtr) {
                     VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                     assertRenderScriptThread();
-                    LuaPassExecContext execCtx(rc, frame, *pipelinesPtr);
+                    LuaPassExecContext execCtx(rc, resources, services, frame, *pipelinesPtr);
                     const auto         r = execFn(execCtx);
                     if (!r.valid())
                     {

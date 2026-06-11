@@ -28,6 +28,7 @@ namespace vultra
 
         std::vector<PluginManifest> discover(const std::filesystem::path& dir) const override;
         bool                        loadPlugin(const PluginManifest& manifest) override;
+        bool                        unloadPlugin(const std::string& id) override;
         std::vector<std::string>    loadedPlugins() const override;
         bool                        isLoaded(const std::string& id) const override;
 

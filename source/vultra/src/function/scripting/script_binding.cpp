@@ -13,6 +13,7 @@
 #include "vultra/function/scripting/bindings/script_timing_binding.hpp"
 #include "vultra/function/scripting/bindings/script_transform_binding.hpp"
 #include "vultra/function/scripting/bindings/script_ui_binding.hpp"
+#include "vultra/function/scripting/bindings/script_upscaler_binding.hpp"
 #include "vultra/function/scripting/bindings/script_world_binding.hpp"
 
 namespace vultra
@@ -32,6 +33,7 @@ namespace vultra
         registerScriptSceneBindings(lua, ctx);
         registerScriptScriptBindings(lua, ctx);
         registerScriptRenderBindings(lua, ctx);
+        registerScriptUpscalerBindings(lua, ctx);
         registerScriptUiBindings(lua, ctx);
     }
 } // namespace vultra

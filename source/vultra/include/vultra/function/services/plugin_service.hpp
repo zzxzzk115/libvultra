@@ -29,6 +29,9 @@ namespace vultra
         // Load a single (already discovered) plugin: native library first, then the Lua entry.
         virtual bool loadPlugin(const PluginManifest& manifest) = 0;
 
+        // Unload a currently loaded plugin: Lua on_uninstall first, then native uninstall and DLL unload.
+        virtual bool unloadPlugin(const std::string& id) = 0;
+
         // Ids of plugins currently loaded, in load order.
         virtual std::vector<std::string> loadedPlugins() const = 0;
 

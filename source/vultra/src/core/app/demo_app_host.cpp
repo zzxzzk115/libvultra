@@ -21,7 +21,9 @@
 #include "vultra/function/particle/particle_system.hpp"
 #include "vultra/function/physics/physics_system.hpp"
 #include "vultra/function/plugin/plugin_system.hpp"
+#include "vultra/function/rendering/backend/render_backend_extension_system.hpp"
 #include "vultra/function/rendering/backend/render_backend_system.hpp"
+#include "vultra/function/rendering/render_upscaler_system.hpp"
 #include "vultra/function/rendering/render_system.hpp"
 #include "vultra/function/rendering/shader_system.hpp"
 #include "vultra/function/rendering/srp/builtin/universal_renderer.hpp"
@@ -31,6 +33,7 @@
 #include "vultra/function/scripting/script_system.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/render_service.hpp"
+#include "vultra/function/services/render_upscaler_service.hpp"
 #include "vultra/function/ui/ui_system.hpp"
 #include "vultra/function/world/world_system.hpp"
 
@@ -460,6 +463,8 @@ namespace vultra
         engine.emplaceSubsystem<FrameDebuggerSystem>();
 #endif
         engine.emplaceSubsystem<ShaderSystem>();
+        engine.emplaceSubsystem<RenderBackendExtensionSystem>();
+        engine.emplaceSubsystem<RenderUpscalerSystem>();
         engine.emplaceSubsystem<RenderBackendSystem>();
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
         engine.emplaceSubsystem<XRRuntimeSystem>();
@@ -571,6 +576,9 @@ namespace vultra
         const uint32_t framebufferWidth  = m_PendingResizeWidth;
         const uint32_t framebufferHeight = m_PendingResizeHeight;
         m_PendingResize                  = false;
+
+        if (auto* upscalerService = engineCtx().services.tryGet<IRenderUpscalerService>())
+            upscalerService->onResize(rhi::Extent2D {framebufferWidth, framebufferHeight});
 
         backendService->renderDevice().waitIdle();
         backendService->frameController().recreate();

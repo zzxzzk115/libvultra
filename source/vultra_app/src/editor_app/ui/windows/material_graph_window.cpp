@@ -1802,6 +1802,7 @@ namespace vultra_app
                                                           &*m_PreviewTarget.texture,
                                                           m_PreviewSkybox.valid());
                 cam.worldOverride     = &m_PreviewWorld;
+                cam.allowUpscaler     = false;
                 cam.overrideFrameTime = true;
                 cam.frameTimeSeconds  = m_PreviewTimeSeconds;
                 cam.frameDeltaSeconds = previewDeltaTime;

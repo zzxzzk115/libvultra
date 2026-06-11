@@ -919,9 +919,20 @@ This directory is an index, not the runtime asset root.
         {
             if (auto project = loadVProject(options.projectPath); project.has_value())
             {
+                std::string envError;
+                if (!loadProjectEnvFile(project->projectDir, &envError) && !envError.empty())
+                    VULTRA_CLIENT_WARN("[Vultra] {}", envError);
+
                 engine.ctx().config.asset.assetRoot =
                     (project->projectDir / project->assetRoot).lexically_normal().generic_string();
                 engine.ctx().config.render.renderPipelineAsset = project->editingRenderGraph;
+                engine.ctx().config.plugin.directory =
+                    (project->projectDir / project->assetRoot / "plugins").lexically_normal().generic_string();
+                engine.ctx().config.plugin.directories = {
+                    (project->projectDir / ".vultra" / "plugins" / "git").lexically_normal().generic_string(),
+                };
+                engine.ctx().config.plugin.enabled = project->enabledPlugins;
+                engine.ctx().config.plugin.configValues = project->pluginConfigValues;
             }
             else
                 engine.ctx().config.asset.assetRoot =

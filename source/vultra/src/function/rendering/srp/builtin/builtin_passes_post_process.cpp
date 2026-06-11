@@ -16,6 +16,7 @@
 #include "vultra/function/rendering/srp/builtin/passes/gaussian_blur_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/geometry_warp_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/hzb_generate_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/motion_vector_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/pullpush_inpaint_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/selection_outline_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/ssao_pass.hpp"
@@ -28,6 +29,7 @@
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
 #include "vultra/function/services/render_service.hpp"
+#include "vultra/function/services/render_upscaler_service.hpp"
 #include <fg/FrameGraph.hpp>
 #include <nlohmann/json.hpp>
 #include <vrendergraph/vrendergraph.hpp>
@@ -115,6 +117,50 @@ namespace vultra
 
         private:
             HzbGeneratePass m_Pass;
+        };
+
+        class MotionVectorBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"MotionVectors",
+                         {"depth"},
+                         {"motion"},
+                         {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+                if (!params.get<bool>("enabled", true))
+                {
+                    passCtx.setOutput("motion", {});
+                    return;
+                }
+
+                const auto depth = passCtx.getInput("depth");
+                if (!depth)
+                {
+                    warnMissingPassInputOnce("MotionVectors", "depth");
+                    return;
+                }
+
+                auto motion = m_Pass.addPass(*ctx, depth);
+                if (motion)
+                {
+                    ctx->data.set(kResKey_MotionVectors, motion);
+                    passCtx.setOutput("motion", motion);
+                }
+            }
+
+        private:
+            MotionVectorPass m_Pass;
         };
 
         class SsaoBuiltin final : public IBuiltinRenderGraphPass
@@ -386,6 +432,257 @@ namespace vultra
 
         private:
             ToneMappingPass m_Pass;
+        };
+
+        class ExternalUpscalerBuiltin final : public IBuiltinRenderGraphPass
+        {
+        public:
+            std::vector<BuiltinPassSpec> specs() const override
+            {
+                return {{"ExternalUpscaler",
+                         {"color", "depth", "motion"},
+                         {"color"},
+                         {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}}}};
+            }
+
+            void build(BuiltinPassHost&                host,
+                       std::string_view,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) override
+            {
+                auto* ctx = host.currentBuildContext();
+                if (!ctx)
+                    return;
+
+                const auto source = passCtx.getInput("color");
+                if (!source)
+                {
+                    warnMissingPassInputOnce("ExternalUpscaler", "color");
+                    return;
+                }
+
+                auto* services = host.services();
+                auto* upscaler = services ? services->tryGet<IRenderUpscalerService>() : nullptr;
+                if (upscaler == nullptr || !params.get<bool>("enabled", true))
+                {
+                    passCtx.setOutput("color", source);
+                    return;
+                }
+
+                const auto settings = upscaler->settings();
+                if (!settings.enabled || settings.mode == UpscalerMode::eOff || upscaler->activeProvider() == nullptr)
+                {
+                    passCtx.setOutput("color", source);
+                    return;
+                }
+
+                const auto sourceDesc = ctx->fg.getDescriptor<framegraph::FrameGraphTexture>(source);
+                auto       outputDesc = makeInheritedTextureDesc(sourceDesc, sourceDesc.format);
+                outputDesc.usageFlags = outputDesc.usageFlags | rhi::ImageUsage::eStorage |
+                                        rhi::ImageUsage::eTransferSrc | rhi::ImageUsage::eTransferDst;
+                if (settings.outputExtent.width > 0u && settings.outputExtent.height > 0u)
+                    outputDesc.extent = settings.outputExtent;
+
+                struct PassData
+                {
+                    FrameGraphResource color;
+                    FrameGraphResource depth;
+                    FrameGraphResource motion;
+                    FrameGraphResource exposure;
+                    FrameGraphResource output;
+                    bool hasMotion {false};
+                };
+
+                const auto depth    = passCtx.getInput("depth");
+                const auto motion   = passCtx.getInput("motion");
+                const auto exposure = passCtx.getInput("exposure");
+                const auto data     = ctx->fg.addCallbackPass<PassData>(
+                    "ExternalUpscaler",
+                    [source, depth, motion, exposure, outputDesc](FrameGraph::Builder& builder, PassData& pd) {
+                        PASS_SETUP_ZONE;
+
+                        pd.color = builder.read(source,
+                                                framegraph::TextureRead {
+                                                    .binding =
+                                                        {
+                                                            .location      = {.set = 0, .binding = 0},
+                                                            .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                        },
+                                                    .type        = framegraph::TextureRead::Type::eSampledImage,
+                                                    .imageAspect = rhi::ImageAspect::eColor,
+                                                });
+                        if (depth)
+                        {
+                            pd.depth = builder.read(depth,
+                                                    framegraph::TextureRead {
+                                                        .binding =
+                                                            {
+                                                                .location = {.set = 0, .binding = 1},
+                                                                .pipelineStage =
+                                                                    framegraph::PipelineStage::eComputeShader,
+                                                            },
+                                                        .type        = framegraph::TextureRead::Type::eSampledImage,
+                                                        .imageAspect = rhi::ImageAspect::eDepth,
+                                                    });
+                        }
+                        if (motion)
+                        {
+                            pd.motion = builder.read(motion,
+                                                     framegraph::TextureRead {
+                                                         .binding =
+                                                             {
+                                                                 .location = {.set = 0, .binding = 2},
+                                                                 .pipelineStage =
+                                                                     framegraph::PipelineStage::eComputeShader,
+                                                             },
+                                                         .type        = framegraph::TextureRead::Type::eSampledImage,
+                                                         .imageAspect = rhi::ImageAspect::eColor,
+                                                     });
+                            pd.hasMotion = true;
+                        }
+                        if (exposure)
+                        {
+                            pd.exposure = builder.read(exposure,
+                                                       framegraph::TextureRead {
+                                                           .binding =
+                                                               {
+                                                                   .location = {.set = 0, .binding = 3},
+                                                                   .pipelineStage =
+                                                                       framegraph::PipelineStage::eComputeShader,
+                                                               },
+                                                           .type        = framegraph::TextureRead::Type::eSampledImage,
+                                                           .imageAspect = rhi::ImageAspect::eColor,
+                                                       });
+                        }
+
+                        pd.output = builder.create<framegraph::FrameGraphTexture>("ExternalUpscalerOutput", outputDesc);
+                        pd.output = builder.write(pd.output,
+                                                  framegraph::ImageWrite {
+                                                      .binding =
+                                                          {
+                                                              .location      = {.set = 0, .binding = 4},
+                                                              .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                          },
+                                                      .imageAspect = rhi::ImageAspect::eColor,
+                                                  });
+                    },
+                    [upscaler, settings](const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
+                        VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
+                        RHI_GPU_ZONE(rc.cb, "ExternalUpscaler");
+
+                        auto* inputTexture  = resources.get<framegraph::FrameGraphTexture>(data.color).texture;
+                        auto* outputTexture = resources.get<framegraph::FrameGraphTexture>(data.output).texture;
+                        if (inputTexture == nullptr || outputTexture == nullptr)
+                            return;
+                        if (rc.view().camera != nullptr && !rc.view().camera->allowUpscaler)
+                        {
+                            rc.cb.blit(*inputTexture, *outputTexture, rhi::TexelFilter::eLinear);
+                            return;
+                        }
+
+                        std::vector<UpscalerResourceTag> tags;
+                        tags.push_back({
+                            .role     = UpscalerResourceRole::eScalingInputColor,
+                            .resource = makeNativeTextureResource(*inputTexture, rc.rd.getBackendApi()),
+                        });
+                        tags.push_back({
+                            .role     = UpscalerResourceRole::eScalingOutputColor,
+                            .resource = makeNativeTextureResource(*outputTexture, rc.rd.getBackendApi()),
+                        });
+                        if (data.depth)
+                        {
+                            if (auto* texture = resources.get<framegraph::FrameGraphTexture>(data.depth).texture)
+                            {
+                                tags.push_back({
+                                    .role     = UpscalerResourceRole::eDepth,
+                                    .resource = makeNativeTextureResource(*texture, rc.rd.getBackendApi()),
+                                });
+                            }
+                        }
+                        if (data.motion)
+                        {
+                            if (auto* texture = resources.get<framegraph::FrameGraphTexture>(data.motion).texture)
+                            {
+                                tags.push_back({
+                                    .role     = UpscalerResourceRole::eMotionVectors,
+                                    .resource = makeNativeTextureResource(*texture, rc.rd.getBackendApi()),
+                                });
+                            }
+                        }
+                        if (data.exposure)
+                        {
+                            if (auto* texture = resources.get<framegraph::FrameGraphTexture>(data.exposure).texture)
+                            {
+                                tags.push_back({
+                                    .role     = UpscalerResourceRole::eExposure,
+                                    .resource = makeNativeTextureResource(*texture, rc.rd.getBackendApi()),
+                                });
+                            }
+                        }
+
+                        const auto* camera = rc.view().camera;
+                        UpscalerConstants constants {};
+                        if (camera != nullptr)
+                        {
+                            constants.view                   = camera->view;
+                            constants.projection             = camera->projection;
+                            constants.viewProjection         = camera->viewProjection;
+                            constants.previousView           = camera->previousView;
+                            constants.previousProjection     = camera->previousProjection;
+                            constants.previousViewProjection = camera->previousViewProjection;
+                            constants.clipToPreviousClip =
+                                camera->previousViewProjection * camera->inverseViewProjection;
+                            constants.previousClipToClip =
+                                camera->viewProjection * glm::inverse(camera->previousViewProjection);
+                            constants.jitterOffsetPx = camera->jitterOffsetPx;
+                            constants.cameraPosition = glm::vec3(camera->inverseView[3]);
+                            constants.cameraUp       = glm::normalize(glm::vec3(camera->inverseView[1]));
+                            constants.cameraRight    = glm::normalize(glm::vec3(camera->inverseView[0]));
+                            constants.cameraForward  = glm::normalize(-glm::vec3(camera->inverseView[2]));
+                            constants.nearPlane      = camera->zNear;
+                            constants.farPlane       = camera->zFar;
+                            constants.fovYRadians    = camera->fovY;
+                            constants.aspectRatio =
+                                static_cast<float>(std::max(rc.view().extent.width, 1u)) /
+                                static_cast<float>(std::max(rc.view().extent.height, 1u));
+                            constants.reset                = !camera->hasPreviousViewProjection;
+                            constants.cameraMotionIncluded = data.hasMotion;
+                        }
+
+                        const auto viewportId = camera != nullptr ?
+                                                    static_cast<UpscalerViewportId>(
+                                                        std::hash<CoreUUID> {}(camera->uuid)) :
+                                                    UpscalerViewportId {0};
+                        const NativeCommandContext command {
+                            .commandBufferHandle = rc.cb.getHandle(),
+                            .frameIndex          = rc.frame.frameIndex,
+                            .viewportId          = viewportId,
+                            .frameToken =
+                                {
+                                    .frameIndex = rc.frame.frameIndex,
+                                    .viewSlot   = viewportId,
+                                },
+                        };
+                        upscaler->beginFrame(command);
+
+                        const UpscalerEvaluateContext eval {
+                            .command      = command,
+                            .settings     = settings,
+                            .constants    = constants,
+                            .renderExtent = inputTexture->getExtent(),
+                            .outputExtent = outputTexture->getExtent(),
+                            .resources    = tags,
+                        };
+
+                        if (!upscaler->evaluate(eval))
+                            rc.cb.blit(*inputTexture, *outputTexture, rhi::TexelFilter::eLinear);
+
+                        rc.clear();
+                    });
+
+                ctx->data.set(kResKey_FinalCompositionSource, data.output);
+                passCtx.setOutput("color", data.output);
+            }
         };
 
         class SelectionOutlineBuiltin final : public IBuiltinRenderGraphPass
@@ -694,12 +991,14 @@ namespace vultra
     void appendPostProcessBuiltinRenderGraphPasses(std::vector<std::unique_ptr<IBuiltinRenderGraphPass>>& passes)
     {
         passes.push_back(std::make_unique<HzbGenerateBuiltin>());
+        passes.push_back(std::make_unique<MotionVectorBuiltin>());
         passes.push_back(std::make_unique<SsaoBuiltin>());
         passes.push_back(std::make_unique<SsrBuiltin>());
         passes.push_back(std::make_unique<SsrCompositeBuiltin>());
         passes.push_back(std::make_unique<GaussianBlurBuiltin>());
         passes.push_back(std::make_unique<BloomBuiltin>());
         passes.push_back(std::make_unique<ToneMappingBuiltin>());
+        passes.push_back(std::make_unique<ExternalUpscalerBuiltin>());
         passes.push_back(std::make_unique<FxaaBuiltin>());
         passes.push_back(std::make_unique<SelectionOutlineBuiltin>());
         passes.push_back(std::make_unique<DebugDrawBuiltin>());

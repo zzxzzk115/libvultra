@@ -14,6 +14,7 @@ namespace vultra
     class ICameraService;
     class IRenderService;
     class IRenderBackendService;
+    class IRenderUpscalerService;
     class IFrameDebuggerService;
     class IPhysicsService;
     class IAnimationService;
@@ -31,6 +32,7 @@ namespace vultra
         ICameraService* cameraService {nullptr};
         IRenderService* renderService {nullptr};
         IRenderBackendService* renderBackendService {nullptr};
+        IRenderUpscalerService* renderUpscalerService {nullptr};
         IFrameDebuggerService* frameDebuggerService {nullptr};
         IPhysicsService* physicsService {nullptr};
         IAnimationService* animationService {nullptr};

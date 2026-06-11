@@ -62,6 +62,7 @@ else
     includes("demo_app")
     includes("audio")
     includes("plugins/native_math")
+    includes("plugins/noop_upscaler")
     if is_plat("android") then
         includes("android_app")
     end

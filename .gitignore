@@ -88,3 +88,13 @@ examples/plugins/**/*.dylib
 examples/plugins/**/*.pdb
 examples/plugins/**/*.exp
 examples/plugins/**/*.lib
+# resources/plugins is project content. If a plugin is installed there, its native
+# runtime files are intended to be versioned with the project.
+
+# Project-local environment/config secrets.
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example

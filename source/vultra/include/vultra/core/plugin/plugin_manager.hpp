@@ -20,7 +20,10 @@ namespace vultra
         PluginManager& operator=(PluginManager&&)      = delete;
         ~PluginManager()                               = default;
 
-        bool load(const std::string& path, EngineContext& ctx);
+        bool load(const std::string& id, const std::string& path, EngineContext& ctx);
+        bool unload(const std::string& id, EngineContext& ctx);
+        bool isLoaded(const std::string& id) const;
+        void uninstallAll(EngineContext& ctx);
         void unloadAll(EngineContext& ctx);
 
     private:
@@ -29,7 +32,9 @@ namespace vultra
             void*           handle  = nullptr;
             EnginePlugin*   plugin  = nullptr;
             DestroyPluginFn destroy = nullptr;
+            std::string     id;
             std::string     path;
+            bool            uninstalled = false;
         };
 
         std::vector<Loaded> m_Loaded;

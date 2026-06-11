@@ -8,8 +8,37 @@
 
 namespace vultra
 {
+    struct EngineContext;
+
     // File name of a plugin's manifest, placed in the plugin's own directory.
     inline constexpr const char* kPluginManifestFile = "vultra.plugin.vmanifest";
+
+    enum class PluginLoadPhase
+    {
+        eNormal,
+        ePreRenderDevice,
+    };
+
+    enum class PluginConfigParamType
+    {
+        eString,
+        ePath,
+        eBool,
+        eInt,
+        eFloat,
+    };
+
+    struct PluginConfigParam
+    {
+        std::string           key;
+        std::string           label;
+        std::string           description;
+        PluginConfigParamType type {PluginConfigParamType::eString};
+        std::string           defaultValue;
+        std::string           envVar;
+        bool                  required {false};
+        bool                  secret {false};
+    };
 
     // Describes a plugin discovered from a vultra.plugin.vmanifest (a JSON document). Example:
     //
@@ -23,6 +52,7 @@ namespace vultra
     //     "readme": "README.md",          // optional, relative to the plugin dir
     //     "repository": "https://github.com/example/hello",
     //     "platforms": ["windows", "linux", "macos"],   // empty/absent = all platforms
+    //     "loadPhase": "pre_render_device", // optional; native-only early phase
     //     "native": "hello",              // optional native library (extension appended)
     //     "entry": "init.lua"             // optional Lua entry script
     //   }
@@ -36,8 +66,10 @@ namespace vultra
         std::string              readme;     // relative path to a README file (optional)
         std::string              repository; // URL (optional)
         std::vector<std::string> platforms;  // empty = all platforms
+        PluginLoadPhase          loadPhase {PluginLoadPhase::eNormal};
         std::string              native;     // relative native library name (optional)
         std::string              entry;      // relative Lua entry script (optional)
+        std::vector<PluginConfigParam> configParams;
 
         std::filesystem::path directory;    // the plugin's folder
         std::filesystem::path manifestPath; // full path to vultra.plugin.vmanifest
@@ -56,4 +88,8 @@ namespace vultra
     // Scan a directory for `<sub>/vultra.plugin.vmanifest` and parse each one (errors are skipped).
     // A missing directory yields an empty list.
     [[nodiscard]] std::vector<PluginManifest> discoverPlugins(const std::filesystem::path& dir);
+
+    // Load only native libraries for plugins with loadPhase == "pre_render_device".
+    // Intended to run before RenderBackendSystem creates the Vulkan instance/device.
+    bool loadPreRenderDeviceNativePlugins(EngineContext& ctx);
 } // namespace vultra

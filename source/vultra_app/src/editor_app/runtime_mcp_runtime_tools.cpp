@@ -291,6 +291,7 @@ namespace vultra_app
             out.renderImGui             = false;
             out.debugEntityIdOutput     = false;
             out.selectionOutlineEnabled = false;
+            out.allowUpscaler           = false;
             out.overrideFrameTime       = true;
             out.frameTimeSeconds        = 0.0f;
             out.frameDeltaSeconds       = 0.0f;

@@ -2,11 +2,14 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
 #include "vultra/core/rhi/structs/render_backend_api.hpp"
+#include "vultra/function/plugin/plugin_system.hpp"
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
+#include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_imgui.hpp"
 #endif
 #include "vultra/core/rhi/backends/webgpu/webgpu_imgui.hpp"
 #include "vultra/core/services/window_service.hpp"
+#include "vultra/function/services/render_backend_extension_service.hpp"
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
 #include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/function/openxr/xr_helper.hpp"
@@ -24,18 +27,22 @@ namespace vultra
         createRenderDevice(rhi::RenderDeviceFeatureFlagBits featureFlags,
                            std::string_view                 title,
                            std::span<const char* const>     vulkanInstanceExtensions,
+                           std::span<const char* const>     vulkanDeviceExtensions,
                            rhi::RenderBackendApi            backendApi,
                            bool                             enableValidation,
                            bool                             enableDebugMarkers,
-                           bool                             enableRenderDoc)
+                           bool                             enableRenderDoc,
+                           rhi::VulkanHookTable             vulkanHooks)
         {
             return std::make_unique<rhi::RenderDevice>(featureFlags,
                                                        title,
                                                        vulkanInstanceExtensions,
+                                                       vulkanDeviceExtensions,
                                                        backendApi,
                                                        enableValidation,
                                                        enableDebugMarkers,
-                                                       enableRenderDoc);
+                                                       enableRenderDoc,
+                                                       vulkanHooks);
         }
 
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
@@ -104,6 +111,34 @@ namespace vultra
         }
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating render device");
+        if (!loadPreRenderDeviceNativePlugins(ctx()))
+            VULTRA_CORE_ERROR("[RenderBackendSystem] One or more pre-render-device native plugins failed to load.");
+
+        auto* backendExtensionService = ctx().services.tryGet<IRenderBackendExtensionService>();
+        rhi::VulkanHookTable vulkanHooks {};
+        VulkanDeviceRequirements vulkanDeviceRequirements {};
+        if (auto* extension = backendExtensionService != nullptr ? backendExtensionService->extension() : nullptr)
+        {
+            vulkanHooks = backendExtensionService->vulkanHooks();
+            if (!vulkanHooks.empty())
+            {
+                VULTRA_CORE_INFO("[RenderBackendSystem] Backend extension '{}' provided Vulkan hook table.",
+                                 extension->name());
+            }
+            extension->beforeVulkanInstanceCreate();
+            extension->collectVulkanDeviceRequirements(vulkanDeviceRequirements);
+            if (!vulkanDeviceRequirements.deviceExtensions.empty())
+            {
+                VULTRA_CORE_INFO("[RenderBackendSystem] Backend extension '{}' requested {} Vulkan device extension(s).",
+                                 extension->name(),
+                                 vulkanDeviceRequirements.deviceExtensions.size());
+            }
+            extension->beforeVulkanDeviceCreate();
+        }
+        std::vector<const char*> vulkanDeviceExtensionNames;
+        vulkanDeviceExtensionNames.reserve(vulkanDeviceRequirements.deviceExtensions.size());
+        for (const auto& extension : vulkanDeviceRequirements.deviceExtensions)
+            vulkanDeviceExtensionNames.push_back(extension.c_str());
         auto requestedBackendApi = ctx().config.render.backendApi;
 #if defined(__ANDROID__)
         if (requestedBackendApi == rhi::RenderBackendApi::eWebGPU)
@@ -124,10 +159,12 @@ namespace vultra
                     m_RenderDevice = createRenderDevice(featureFlags,
                                                         ctx().config.window.title,
                                                         window.getRequiredVulkanInstanceExtensions(),
+                                                        vulkanDeviceExtensionNames,
                                                         rhi::RenderBackendApi::eVulkan,
                                                         ctx().config.render.enableValidation,
                                                         ctx().config.render.enableDebugMarkers,
-                                                        ctx().config.render.enableRenderDoc);
+                                                        ctx().config.render.enableRenderDoc,
+                                                        vulkanHooks);
                 }
                 catch (const std::runtime_error& e)
                 {
@@ -142,10 +179,12 @@ namespace vultra
                     m_RenderDevice                              = createRenderDevice(featureFlags,
                                                         ctx().config.window.title,
                                                         window.getRequiredVulkanInstanceExtensions(),
+                                                        vulkanDeviceExtensionNames,
                                                         rhi::RenderBackendApi::eVulkan,
                                                         ctx().config.render.enableValidation,
                                                         ctx().config.render.enableDebugMarkers,
-                                                        ctx().config.render.enableRenderDoc);
+                                                        ctx().config.render.enableRenderDoc,
+                                                        vulkanHooks);
                 }
                 m_ImGuiBackend = std::make_unique<rhi::VulkanImGui>(*m_RenderDevice);
                 break;
@@ -161,10 +200,12 @@ namespace vultra
                 m_RenderDevice = createRenderDevice(ctx().config.render.renderDeviceFeatureFlag,
                                                     ctx().config.window.title,
                                                     std::span<const char* const> {},
+                                                    std::span<const char* const> {},
                                                     rhi::RenderBackendApi::eWebGPU,
                                                     ctx().config.render.enableValidation,
                                                     ctx().config.render.enableDebugMarkers,
-                                                    ctx().config.render.enableRenderDoc);
+                                                    ctx().config.render.enableRenderDoc,
+                                                    vulkanHooks);
                 m_ImGuiBackend = std::make_unique<rhi::WebGPUImGui>(*m_RenderDevice);
                 break;
         }
@@ -174,10 +215,30 @@ namespace vultra
             throw std::runtime_error(
                 std::format("Backend '{}' does not support swapchain yet", m_RenderDevice->getName()));
         }
+        if (auto* extension = backendExtensionService != nullptr ? backendExtensionService->extension() : nullptr)
+        {
+            extension->afterVulkanDeviceCreate(*m_RenderDevice);
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
+            const auto queueFamily = rhi::VulkanRenderDeviceAccess::getQueueFamilyIndex(*m_RenderDevice);
+            extension->afterVulkanNativeDeviceCreate(VulkanNativeDevice {
+                .instance            = rhi::VulkanRenderDeviceAccess::getInstanceHandle(*m_RenderDevice),
+                .physicalDevice      = rhi::VulkanRenderDeviceAccess::getPhysicalDeviceHandle(*m_RenderDevice),
+                .device              = rhi::VulkanRenderDeviceAccess::getDeviceHandle(*m_RenderDevice),
+                .graphicsQueue       = rhi::VulkanRenderDeviceAccess::getQueueHandle(*m_RenderDevice),
+                .graphicsQueueFamily = queueFamily >= 0 ? static_cast<uint32_t>(queueFamily) : 0u,
+                .graphicsQueueIndex  = 0u,
+            });
+#else
+            extension->afterVulkanNativeDeviceCreate(VulkanNativeDevice {});
+#endif
+            extension->beforeSwapchainCreate();
+        }
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating swapchain");
         m_Swapchain = m_RenderDevice->createSwapchain(
             window, ctx().config.render.swapchainFormat, ctx().config.render.vSyncConfig);
+        if (auto* extension = backendExtensionService != nullptr ? backendExtensionService->extension() : nullptr)
+            extension->afterSwapchainCreate(m_Swapchain);
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating frame controller");
         m_FrameController =
@@ -214,7 +275,19 @@ namespace vultra
 
         if (m_RenderDevice)
         {
+            if (auto* extensionService = ctx().services.tryGet<IRenderBackendExtensionService>();
+                extensionService != nullptr)
+            {
+                if (auto* extension = extensionService->extension())
+                    extension->beforeDeviceWaitIdle();
+            }
             m_RenderDevice->waitIdle();
+            if (auto* extensionService = ctx().services.tryGet<IRenderBackendExtensionService>();
+                extensionService != nullptr)
+            {
+                if (auto* extension = extensionService->extension())
+                    extension->afterDeviceWaitIdle();
+            }
         }
 
         m_ActiveCommandBuffer = nullptr;
@@ -233,7 +306,19 @@ namespace vultra
 #endif
         m_ImGuiBackend.reset();
         m_FrameController.reset();
+        if (auto* extensionService = ctx().services.tryGet<IRenderBackendExtensionService>();
+            extensionService != nullptr)
+        {
+            if (auto* extension = extensionService->extension())
+                extension->beforeSwapchainDestroy();
+        }
         m_Swapchain = {};
+        if (auto* extensionService = ctx().services.tryGet<IRenderBackendExtensionService>();
+            extensionService != nullptr)
+        {
+            if (auto* extension = extensionService->extension())
+                extension->afterSwapchainDestroy();
+        }
         m_RenderDevice.reset();
     }
 
@@ -400,7 +485,20 @@ namespace vultra
         }
 #endif
 
-        if (!m_FrameController->acquireNextFrame())
+        if (auto* extensionService = ctx().services.tryGet<IRenderBackendExtensionService>();
+            extensionService != nullptr)
+        {
+            if (auto* extension = extensionService->extension())
+                extension->beforeAcquireNextImage();
+        }
+        const bool acquired = m_FrameController->acquireNextFrame();
+        if (auto* extensionService = ctx().services.tryGet<IRenderBackendExtensionService>();
+            extensionService != nullptr)
+        {
+            if (auto* extension = extensionService->extension())
+                extension->afterAcquireNextImage(acquired);
+        }
+        if (!acquired)
         {
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
             if (m_XRBackend && m_XRFrameActive)
@@ -495,5 +593,20 @@ namespace vultra
         m_XREyeViews.clear();
     }
 
-    void RenderBackendSystem::present() { m_FrameController->present(); }
+    void RenderBackendSystem::present()
+    {
+        if (auto* extensionService = ctx().services.tryGet<IRenderBackendExtensionService>();
+            extensionService != nullptr)
+        {
+            if (auto* extension = extensionService->extension())
+                extension->beforePresent();
+        }
+        m_FrameController->present();
+        if (auto* extensionService = ctx().services.tryGet<IRenderBackendExtensionService>();
+            extensionService != nullptr)
+        {
+            if (auto* extension = extensionService->extension())
+                extension->afterPresent();
+        }
+    }
 } // namespace vultra

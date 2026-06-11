@@ -1949,6 +1949,7 @@ namespace vultra_app
                                                                  editorSettings.rendererKey,
                                                                  editorSettings.clearMode,
                                                                  editorSettings.clearValue);
+        editorCamera.allowUpscaler = false;
         const auto applyEditorPlaybackTime = [&ctx](vultra::RenderCamera& camera) {
             camera.overrideFrameTime = true;
             // In edit mode (not playing) drive shader/material time with the editor's
@@ -2151,14 +2152,15 @@ namespace vultra_app
             }
 
             editorCamera                      = makeEditorCamera(m_CameraPosition,
-                                            m_CameraYaw,
-                                            m_CameraPitch,
-                                            m_CameraFovY,
-                                            aspect,
-                                            renderTarget,
-                                            editorSettings.rendererKey,
-                                            editorSettings.clearMode,
-                                            editorSettings.clearValue);
+                                                                 m_CameraYaw,
+                                                                 m_CameraPitch,
+                                                                 m_CameraFovY,
+                                                                 aspect,
+                                                                 renderTarget,
+                                                                 editorSettings.rendererKey,
+                                                                 editorSettings.clearMode,
+                                                                 editorSettings.clearValue);
+            editorCamera.allowUpscaler        = false;
             editorCamera.selectionOutlineEnabled = Selection::lastId().valid();
             const auto updatedEditorCameraWorld = glm::inverse(editorCamera.view);
             ctx.state.sceneCamera.position    = glm::vec3(updatedEditorCameraWorld[3]);
@@ -2169,14 +2171,15 @@ namespace vultra_app
             {
                 applyViewMatrixToCamera(editorCamera.view, m_CameraPosition, m_CameraYaw, m_CameraPitch);
                 editorCamera                      = makeEditorCamera(m_CameraPosition,
-                                                m_CameraYaw,
-                                                m_CameraPitch,
-                                                m_CameraFovY,
-                                                aspect,
-                                                renderTarget,
-                                                editorSettings.rendererKey,
-                                                editorSettings.clearMode,
-                                                editorSettings.clearValue);
+                                                                     m_CameraYaw,
+                                                                     m_CameraPitch,
+                                                                     m_CameraFovY,
+                                                                     aspect,
+                                                                     renderTarget,
+                                                                     editorSettings.rendererKey,
+                                                                     editorSettings.clearMode,
+                                                                     editorSettings.clearValue);
+                editorCamera.allowUpscaler        = false;
                 editorCamera.selectionOutlineEnabled = Selection::lastId().valid();
                 const auto manipulatedEditorCameraWorld = glm::inverse(editorCamera.view);
                 ctx.state.sceneCamera.position    = glm::vec3(manipulatedEditorCameraWorld[3]);
@@ -2680,6 +2683,7 @@ namespace vultra_app
                             previewCamera.frameDeltaSeconds =
                                 ctx.state.editorPlaying ? ctx.state.editorGameDeltaSeconds : 0.0f;
                             previewCamera.worldOverride = &world;
+                            previewCamera.allowUpscaler = false;
                             cameraService->addManualCamera(previewCamera);
                         }
                     }

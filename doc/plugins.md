@@ -39,6 +39,16 @@ The manifest is a JSON document:
   "readme": "README.md",
   "repository": "https://github.com/example/my_plugin",
   "platforms": ["windows", "linux", "macos"],
+  "loadPhase": "pre_render_device",
+  "config": [
+    {
+      "key": "sdkRoot",
+      "label": "SDK Root",
+      "type": "path",
+      "env": "MY_PLUGIN_SDK_ROOT",
+      "required": true
+    }
+  ],
   "native": "my_plugin",
   "entry": "init.lua"
 }
@@ -51,9 +61,31 @@ and `entry` are both optional.
 Load order per plugin: **native first** (so its `install()` can register Lua glue), then the Lua
 `entry` runs and its `on_install()` is called.
 
+`loadPhase` is optional. The default is the normal plugin phase after `ScriptSystem`. A native plugin
+can set `"loadPhase": "pre_render_device"` when it must install engine bridge hooks before the render
+device is created. That early phase loads only the native library; the Lua `entry` still runs later in
+the normal phase. Use this for render backend bridges such as a DLSS/Streamline plugin that needs
+Vulkan hook ownership before instance/device/swapchain creation.
+
+`config` is optional self-description for editor/project settings. Each item has a `key`, display
+`label`, `type` (`string`, `path`, `bool`, `int`, `float`), optional `default`, optional `description`,
+optional `env`/`envVar`, and `required`. Project Settings -> Plugins draws these fields and can save
+values into the `.vproject`; before loading a plugin, the engine writes any `env`-backed value into
+the current process environment.
+
+Machine-local or secret values should live in a `.env` file next to the project `.vproject` instead
+of the `.vproject`. The app loads that file before plugin discovery; `.env` is gitignored.
+
+```ini
+MY_PLUGIN_SDK_ROOT=C:\SDKs\my-plugin-sdk
+MY_PLUGIN_TOKEN="local-only-token"
+```
+
 ## Enabling plugins
 
-Plugins are discovered from `<project>/plugins/` and are **off by default**. Enable them per
+Plugins are discovered from `<project>/<asset-root>/plugins/` and are **off by default**. The folder
+does not need to exist until a project installs local plugins; with the default asset root, local
+imports create `resources/plugins`. Enable plugins per
 project:
 
 - **Editor:** *Project Settings → Plugins* lists every discovered plugin with its metadata and an
@@ -63,6 +95,16 @@ project:
   directory (an explicit opt-in).
 - **Programmatic:** `EngineContext::Config::plugin.directory` + `plugin.enabled` (list of ids), or
   `IPluginService::discover()` / `loadPlugin()`.
+
+The editor can import a plugin from a Git URL, catalog JSON URL/path, local `.zip`, or local folder.
+Git and catalog imports keep clone/catalog caches under `.vultra/plugins/` and install the plugin
+into `<asset-root>/plugins/`. Zip and folder imports also install into `<asset-root>/plugins/`. The
+project writes `vultra.plugins.lock` next to the `.vproject` with installed plugin versions, source
+metadata, manifest fingerprints, and file counts.
+
+`<asset-root>/plugins` is project content once it exists. Native runtime files such as `.dll`, `.so`,
+`.dylib`, `.lib`, and `.pdb` are intentionally allowed there so a project or plugin repository can
+version its installable payload. `.vultra/plugins` remains local cache and is ignored.
 
 ## Lua plugin contract
 

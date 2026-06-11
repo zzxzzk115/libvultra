@@ -17,6 +17,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
+#include <algorithm>
 #include <exception>
 #include <limits>
 #include <set>
@@ -650,6 +651,11 @@ namespace vultra
 #endif
             auto vkGetInstanceProcAddr =
                 GlobalDynamicLoader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+            if (backendOf(m_Backend).m_VulkanHooks.vkGetInstanceProcAddr != 0)
+            {
+                vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(
+                    backendOf(m_Backend).m_VulkanHooks.vkGetInstanceProcAddr);
+            }
             VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
             vk::ApplicationInfo appInfo {};
@@ -842,7 +848,11 @@ namespace vultra
                          "Failed to create Vulkan instance");
             }
 
-            VULKAN_HPP_DEFAULT_DISPATCHER.init(backendOf(m_Backend).m_Instance);
+            VULKAN_HPP_DEFAULT_DISPATCHER.init(backendOf(m_Backend).m_Instance, vkGetInstanceProcAddr);
+            if (backendOf(m_Backend).m_VulkanHooks.vkGetInstanceProcAddr != 0)
+            {
+                VULTRA_CORE_INFO("[RenderDevice] Vulkan instance dispatch is using backend extension hooks.");
+            }
 
             if (validationRequested && enableDebugUtils)
             {
@@ -1235,6 +1245,10 @@ namespace vultra
             extensions.push_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
             if (backendOf(m_Backend).m_SupportedExtensions.count(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) > 0u)
                 extensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+            for (const auto& extension : backendOf(m_Backend).m_RequiredDeviceExtensions)
+            {
+                extensions.push_back(extension.c_str());
+            }
 
             // === Feature structs ===
             vk::PhysicalDeviceFeatures2        deviceFeatures2 {};
@@ -1412,12 +1426,34 @@ namespace vultra
 
             // === Filter extensions ===
             std::vector<const char*> filteredExtensions;
+            std::set<std::string_view> filteredExtensionSet;
             for (const auto* ext : extensions)
             {
                 if (backendOf(m_Backend).m_SupportedExtensions.count(ext))
-                    filteredExtensions.push_back(ext);
+                {
+                    if (filteredExtensionSet.insert(ext).second)
+                    {
+                        filteredExtensions.push_back(ext);
+                        if (std::find(backendOf(m_Backend).m_RequiredDeviceExtensions.begin(),
+                                      backendOf(m_Backend).m_RequiredDeviceExtensions.end(),
+                                      ext) != backendOf(m_Backend).m_RequiredDeviceExtensions.end())
+                        {
+                            VULTRA_CORE_INFO("[RenderDevice] Enabling backend-requested Vulkan device extension: {}",
+                                             ext);
+                        }
+                    }
+                }
+                else if (std::find(backendOf(m_Backend).m_RequiredDeviceExtensions.begin(),
+                                   backendOf(m_Backend).m_RequiredDeviceExtensions.end(),
+                                   ext) != backendOf(m_Backend).m_RequiredDeviceExtensions.end())
+                {
+                    VULTRA_CORE_WARN("[RenderDevice] Backend-requested Vulkan device extension is unsupported: {}",
+                                     ext);
+                }
                 else
+                {
                     VULTRA_CORE_WARN("[RenderDevice] Skipping unsupported extension: {}", ext);
+                }
             }
 
             // === Device Creation ===
@@ -1470,6 +1506,49 @@ namespace vultra
                              &createInfo, nullptr, &backendOf(m_Backend).m_Device),
                          LOGTAG,
                          "Failed to create logical device");
+            }
+
+            VULKAN_HPP_DEFAULT_DISPATCHER.init(backendOf(m_Backend).m_Device);
+            const auto& hooks = backendOf(m_Backend).m_VulkanHooks;
+            if (!hooks.empty())
+            {
+                if (hooks.vkGetDeviceProcAddr != 0)
+                    VULKAN_HPP_DEFAULT_DISPATCHER.vkGetDeviceProcAddr =
+                        reinterpret_cast<PFN_vkGetDeviceProcAddr>(hooks.vkGetDeviceProcAddr);
+                if (hooks.vkDeviceWaitIdle != 0)
+                    VULKAN_HPP_DEFAULT_DISPATCHER.vkDeviceWaitIdle =
+                        reinterpret_cast<PFN_vkDeviceWaitIdle>(hooks.vkDeviceWaitIdle);
+                if (hooks.vkCreateSwapchainKHR != 0)
+                    VULKAN_HPP_DEFAULT_DISPATCHER.vkCreateSwapchainKHR =
+                        reinterpret_cast<PFN_vkCreateSwapchainKHR>(hooks.vkCreateSwapchainKHR);
+                if (hooks.vkDestroySwapchainKHR != 0)
+                    VULKAN_HPP_DEFAULT_DISPATCHER.vkDestroySwapchainKHR =
+                        reinterpret_cast<PFN_vkDestroySwapchainKHR>(hooks.vkDestroySwapchainKHR);
+                if (hooks.vkGetSwapchainImagesKHR != 0)
+                    VULKAN_HPP_DEFAULT_DISPATCHER.vkGetSwapchainImagesKHR =
+                        reinterpret_cast<PFN_vkGetSwapchainImagesKHR>(hooks.vkGetSwapchainImagesKHR);
+                if (hooks.vkAcquireNextImageKHR != 0)
+                    VULKAN_HPP_DEFAULT_DISPATCHER.vkAcquireNextImageKHR =
+                        reinterpret_cast<PFN_vkAcquireNextImageKHR>(hooks.vkAcquireNextImageKHR);
+                if (hooks.vkQueuePresentKHR != 0)
+                    VULKAN_HPP_DEFAULT_DISPATCHER.vkQueuePresentKHR =
+                        reinterpret_cast<PFN_vkQueuePresentKHR>(hooks.vkQueuePresentKHR);
+                if (hooks.vkBeginCommandBuffer != 0)
+                    VULKAN_HPP_DEFAULT_DISPATCHER.vkBeginCommandBuffer =
+                        reinterpret_cast<PFN_vkBeginCommandBuffer>(hooks.vkBeginCommandBuffer);
+                if (hooks.vkCmdBindPipeline != 0)
+                    VULKAN_HPP_DEFAULT_DISPATCHER.vkCmdBindPipeline =
+                        reinterpret_cast<PFN_vkCmdBindPipeline>(hooks.vkCmdBindPipeline);
+                if (hooks.vkCmdBindDescriptorSets != 0)
+                    VULKAN_HPP_DEFAULT_DISPATCHER.vkCmdBindDescriptorSets =
+                        reinterpret_cast<PFN_vkCmdBindDescriptorSets>(hooks.vkCmdBindDescriptorSets);
+                if (hooks.vkCmdPipelineBarrier != 0)
+                    VULKAN_HPP_DEFAULT_DISPATCHER.vkCmdPipelineBarrier =
+                        reinterpret_cast<PFN_vkCmdPipelineBarrier>(hooks.vkCmdPipelineBarrier);
+                if (hooks.vkCreateImage != 0)
+                    VULKAN_HPP_DEFAULT_DISPATCHER.vkCreateImage =
+                        reinterpret_cast<PFN_vkCreateImage>(hooks.vkCreateImage);
+                VULTRA_CORE_INFO("[RenderDevice] Vulkan device dispatch is using backend extension hooks.");
             }
 
             // === Get Generic Queue (for both graphics & compute) ===

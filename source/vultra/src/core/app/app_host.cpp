@@ -79,8 +79,11 @@ namespace vultra
         }
         if (m_CoreInitialized)
         {
+            VULTRA_CORE_INFO("[AppHost] Before application shutdown");
             onBeforeShutdown(m_Engine);
+            VULTRA_CORE_INFO("[AppHost] Before engine shutdown");
             m_Engine.shutdownCore();
+            VULTRA_CORE_INFO("[AppHost] Engine shutdown complete");
         }
         m_Shutdown = true;
     }

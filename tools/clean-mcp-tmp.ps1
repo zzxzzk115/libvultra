@@ -43,6 +43,7 @@ $smokePrefixes = @(
     'material-mcp-step',
     'material-mcp-smoke-output',
     'material-shader-frame-textures',
+    'streamline-diagnostics-smoke',
     'mcp_projects'
 )
 

@@ -67,6 +67,11 @@ namespace vultra
         glm::mat4 inverseView {1.0f};
         glm::mat4 inverseProjection {1.0f};
         glm::mat4 inverseViewProjection {1.0f};
+        glm::mat4 previousView {1.0f};
+        glm::mat4 previousProjection {1.0f};
+        glm::mat4 previousViewProjection {1.0f};
+        bool      hasPreviousViewProjection {false};
+        glm::vec2 jitterOffsetPx {0.0f};
 
         float zNear {0.1f};
         float zFar {1000.0f};
@@ -89,6 +94,7 @@ namespace vultra
         bool          debugEntityIdOutput {false};
         bool          selectionOutlineEnabled {false};
         bool          debugDrawEnabled {false};
+        bool          allowUpscaler {true};
         uint32_t      cullingMask {kRenderLayerAllMask};
         bool          uiOverlayTransformOverride {false};
         glm::vec2     uiOverlayOffsetPx {0.0f};
@@ -119,6 +125,8 @@ namespace vultra
         uint32_t  meshIndex {0};
         uint32_t  materialIndex {0};
         glm::mat4 worldMatrix {1.0f};
+        glm::mat4 previousWorldMatrix {1.0f};
+        bool      hasPreviousWorldMatrix {false};
         glm::vec4 baseColorOverride {1.0f};
         bool      hasBaseColorOverride {false};
         bool      castsShadow {true};

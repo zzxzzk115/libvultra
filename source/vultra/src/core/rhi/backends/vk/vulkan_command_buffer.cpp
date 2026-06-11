@@ -68,6 +68,76 @@ namespace vultra
                     },
                     clearValue);
             }
+
+            using VkPostBeginCommandBufferHook =
+                void(VKAPI_PTR*)(VkCommandBuffer, const VkCommandBufferBeginInfo*);
+            using VkPostCmdBindPipelineHook =
+                void(VKAPI_PTR*)(VkCommandBuffer, VkPipelineBindPoint, VkPipeline);
+            using VkPostCmdBindDescriptorSetsHook = void(VKAPI_PTR*)(VkCommandBuffer,
+                                                                     VkPipelineBindPoint,
+                                                                     VkPipelineLayout,
+                                                                     uint32_t,
+                                                                     uint32_t,
+                                                                     const VkDescriptorSet*,
+                                                                     uint32_t,
+                                                                     const uint32_t*);
+
+            [[nodiscard]] VulkanHookTable vulkanHooks(const RenderDevice* renderDevice)
+            {
+                return renderDevice != nullptr ? VulkanRenderDeviceAccess::getVulkanHooks(*renderDevice) :
+                                                 VulkanHookTable {};
+            }
+
+            void notifyPostBeginCommandBuffer(const RenderDevice*                 renderDevice,
+                                              const vk::CommandBuffer             commandBuffer,
+                                              const vk::CommandBufferBeginInfo&   beginInfo)
+            {
+                const auto hooks = vulkanHooks(renderDevice);
+                if (hooks.vkPostBeginCommandBuffer == 0)
+                    return;
+                auto* hook = reinterpret_cast<VkPostBeginCommandBufferHook>(hooks.vkPostBeginCommandBuffer);
+                hook(static_cast<VkCommandBuffer>(commandBuffer),
+                     reinterpret_cast<const VkCommandBufferBeginInfo*>(&beginInfo));
+            }
+
+            void notifyPostCmdBindPipeline(const RenderDevice*     renderDevice,
+                                           const vk::CommandBuffer commandBuffer,
+                                           const vk::PipelineBindPoint bindPoint,
+                                           const vk::Pipeline      pipeline)
+            {
+                const auto hooks = vulkanHooks(renderDevice);
+                if (hooks.vkPostCmdBindPipeline == 0)
+                    return;
+                auto* hook = reinterpret_cast<VkPostCmdBindPipelineHook>(hooks.vkPostCmdBindPipeline);
+                hook(static_cast<VkCommandBuffer>(commandBuffer),
+                     static_cast<VkPipelineBindPoint>(bindPoint),
+                     static_cast<VkPipeline>(pipeline));
+            }
+
+            void notifyPostCmdBindDescriptorSets(const RenderDevice*       renderDevice,
+                                                 const vk::CommandBuffer   commandBuffer,
+                                                 const vk::PipelineBindPoint bindPoint,
+                                                 const vk::PipelineLayout  layout,
+                                                 const uint32_t            firstSet,
+                                                 const uint32_t            descriptorSetCount,
+                                                 const vk::DescriptorSet*  descriptorSets,
+                                                 const uint32_t            dynamicOffsetCount,
+                                                 const uint32_t*           dynamicOffsets)
+            {
+                const auto hooks = vulkanHooks(renderDevice);
+                if (hooks.vkPostCmdBindDescriptorSets == 0)
+                    return;
+                auto* hook = reinterpret_cast<VkPostCmdBindDescriptorSetsHook>(hooks.vkPostCmdBindDescriptorSets);
+                hook(static_cast<VkCommandBuffer>(commandBuffer),
+                     static_cast<VkPipelineBindPoint>(bindPoint),
+                     static_cast<VkPipelineLayout>(layout),
+                     firstSet,
+                     descriptorSetCount,
+                     reinterpret_cast<const VkDescriptorSet*>(descriptorSets),
+                     dynamicOffsetCount,
+                     dynamicOffsets);
+            }
+
             [[nodiscard]] vk::RenderingAttachmentInfo toVk(const AttachmentInfo& attachment, const bool readOnly)
             {
                 assert(!readOnly || !attachment.clearValue.has_value());
@@ -190,6 +260,7 @@ namespace vultra
             vk::CommandBufferBeginInfo beginInfo {};
             beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
             VK_CHECK(m_Handle.begin(&beginInfo), "VulkanCommandBuffer", "Failed to begin command buffer");
+            notifyPostBeginCommandBuffer(m_RenderDevice, m_Handle, beginInfo);
 
             m_State = State::eRecording;
             return *this;
@@ -313,8 +384,10 @@ namespace vultra
             if (m_Pipeline != &pipeline)
             {
                 TRACY_GPU_ZONE2_("BindPipeline");
-                m_Handle.bindPipeline(toVk(pipeline.getBindPoint()),
-                                      vk::Pipeline {asVkHandle<VkPipeline>(pipeline.getHandle())});
+                const auto bindPoint = toVk(pipeline.getBindPoint());
+                const vk::Pipeline vkPipeline {asVkHandle<VkPipeline>(pipeline.getHandle())};
+                m_Handle.bindPipeline(bindPoint, vkPipeline);
+                notifyPostCmdBindPipeline(m_RenderDevice, m_Handle, bindPoint, vkPipeline);
                 m_Pipeline = std::addressof(pipeline);
             }
 
@@ -419,14 +492,17 @@ namespace vultra
 
             TRACY_GPU_ZONE2_("BindDescriptorSet");
             const vk::DescriptorSet vkDescriptorSet {asVkHandle<VkDescriptorSet>(descriptorSet.value)};
+            const auto bindPoint = toVk(m_Pipeline->getBindPoint());
+            const vk::PipelineLayout layout {asVkHandle<VkPipelineLayout>(m_Pipeline->getLayout().getHandle())};
             m_Handle.bindDescriptorSets(
-                toVk(m_Pipeline->getBindPoint()),
-                vk::PipelineLayout {asVkHandle<VkPipelineLayout>(m_Pipeline->getLayout().getHandle())},
+                bindPoint,
+                layout,
                 index,
                 1,
                 &vkDescriptorSet,
                 0,
                 nullptr);
+            notifyPostCmdBindDescriptorSets(m_RenderDevice, m_Handle, bindPoint, layout, index, 1, &vkDescriptorSet, 0, nullptr);
 
             return *this;
         }

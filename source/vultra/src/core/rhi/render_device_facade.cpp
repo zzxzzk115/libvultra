@@ -526,10 +526,12 @@ namespace vultra
         RenderDevice::RenderDevice(const RenderDeviceFeatureFlagBits  featureFlag,
                                    const std::string_view             appName,
                                    const std::span<const char* const> requiredInstanceExtensions,
+                                   const std::span<const char* const> requiredDeviceExtensions,
                                    const RenderBackendApi             backendApi,
                                    const bool                         enableValidation,
                                    const bool                         enableDebugMarkers,
-                                   const bool                         enableRenderDoc)
+                                   const bool                         enableRenderDoc,
+                                   const VulkanHookTable              vulkanHooks)
         {
             switch (backendApi)
             {
@@ -577,8 +579,11 @@ namespace vultra
             vkBackend(m_Backend).m_EnableValidation   = enableValidation;
             vkBackend(m_Backend).m_EnableDebugMarkers = enableDebugMarkers;
             vkBackend(m_Backend).m_EnableRenderDoc    = enableRenderDoc;
+            vkBackend(m_Backend).m_VulkanHooks        = vulkanHooks;
             vkBackend(m_Backend).m_RequiredInstanceExtensions.assign(requiredInstanceExtensions.begin(),
                                                                      requiredInstanceExtensions.end());
+            vkBackend(m_Backend).m_RequiredDeviceExtensions.assign(requiredDeviceExtensions.begin(),
+                                                                   requiredDeviceExtensions.end());
 
             if (HasFlagValues(featureFlag, RenderDeviceFeatureFlagBits::eXR))
             {

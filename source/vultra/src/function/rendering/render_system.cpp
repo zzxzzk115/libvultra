@@ -32,6 +32,7 @@
 #include "vultra/function/services/gpu_resource_service.hpp"
 #include "vultra/function/services/imgui_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
+#include "vultra/function/services/render_upscaler_service.hpp"
 #include "vultra/function/services/shader_service.hpp"
 #include "vultra/function/services/world_service.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
@@ -2625,6 +2626,11 @@ namespace vultra
             return len2 > 1e-8f ? direction * glm::inversesqrt(len2) : fallback;
         }
 
+        [[nodiscard]] bool supportsUpscalerOutputExtent(const rhi::Extent2D extent)
+        {
+            return extent.width >= 320u && extent.height >= 180u;
+        }
+
         void finalizeRenderCamera(RenderCamera& cam)
         {
             cam.viewProjection        = cam.projection * cam.view;
@@ -4923,7 +4929,32 @@ namespace vultra
             const rhi::Rect2D  renderArea  = useWindowContentArea ?
                                                  window.getContentArea() :
                                                  rhi::Rect2D {.offset = {0, 0}, .extent = target->getExtent()};
-            const RenderCamera viewCamera  = cameraForRenderExtent(cam, renderArea.extent);
+            rhi::Extent2D sceneRenderExtent = renderArea.extent;
+            if (auto* upscaler = ctx().services.tryGet<IRenderUpscalerService>(); upscaler != nullptr)
+            {
+                auto settings = upscaler->settings();
+                auto* provider = upscaler->activeProvider();
+                const bool canUseUpscalerRenderExtent =
+                    provider != nullptr && settings.enabled && settings.mode != UpscalerMode::eOff &&
+                    settings.mode != UpscalerMode::eDLAA && !cam.isXRView && stereoTarget == nullptr &&
+                    !wantsExplicitPerEye && cam.allowUpscaler && supportsUpscalerOutputExtent(renderArea.extent);
+                if (canUseUpscalerRenderExtent)
+                {
+                    const auto providerStatus = provider->status();
+                    if (providerStatus.available)
+                    {
+                        const auto optimalExtent = provider->queryOptimalRenderExtent(renderArea.extent, settings.mode);
+                        if (optimalExtent.width > 0u && optimalExtent.height > 0u &&
+                            optimalExtent.width <= renderArea.extent.width &&
+                            optimalExtent.height <= renderArea.extent.height)
+                        {
+                            sceneRenderExtent = optimalExtent;
+                        }
+                    }
+                }
+            }
+
+            const RenderCamera viewCamera  = cameraForRenderExtent(cam, sceneRenderExtent);
             RenderWorld*       renderWorld = &m_RenderWorldFront;
             if (cam.worldOverride)
             {
@@ -4939,7 +4970,7 @@ namespace vultra
                 .renderWorld          = renderWorld,
                 .camera               = &viewCamera,
                 .target               = target,
-                .extent               = renderArea.extent,
+                .extent               = sceneRenderExtent,
                 .clearValue           = viewCamera.clearValue,
                 .stereoMode           = stereoTarget ? StereoRenderMode::eSingleGraphStereo :
                                             (wantsExplicitPerEye ?
@@ -5000,7 +5031,7 @@ namespace vultra
 
             {
                 ImmediateResourceUploader immediateUploader {m_FrameResources, rd};
-                prepareCameraData(immediateUploader, viewData, renderArea.extent, viewCamera, rd.getBackendApi());
+                prepareCameraData(immediateUploader, viewData, sceneRenderExtent, viewCamera, rd.getBackendApi());
             }
 
             FrameRenderData  overrideFrameData {};

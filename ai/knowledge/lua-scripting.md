@@ -89,6 +89,9 @@ Stable facts for agents:
   transitions (conditions + cross-fade duration), any-state transitions, and an entry
   state. The AnimationSystem evaluates transitions and cross-fades clips (ozz BlendingJob).
   Edit graphs in the Animator Graph window (imnodes) or author `.vanimgraph.json` directly.
+- Upscaler scripting is intentionally high level: `Upscaler.providers()`, `active()`, `setActive()`,
+  `setEnabled()`, `setMode()`, and `status()`. Do not expose native texture handles, command buffers,
+  Vulkan objects, or provider SDK objects to Lua.
 - Imported visual assets should usually be children of a gameplay parent entity
   that owns the rigid body, shape, and script.
 - Imported GLB embedded textures are not considered verified until rendered

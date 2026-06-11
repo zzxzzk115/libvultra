@@ -224,6 +224,7 @@ namespace
                     shellCamera.clearValue = {0.018f, 0.02f, 0.026f, 1.0f};
                     shellCamera.renderImGui = true;
                     shellCamera.rendererKey = "editor-shell";
+                    shellCamera.allowUpscaler = false;
                     shellCamera.overrideFrameTime = true;
                     shellCamera.frameTimeSeconds  = 0.0f;
                     shellCamera.frameDeltaSeconds = 0.0f;
@@ -286,6 +287,7 @@ namespace
         shellCamera.clearValue  = {0.018f, 0.02f, 0.026f, 1.0f};
         shellCamera.renderImGui = true;
         shellCamera.rendererKey = "editor-shell";
+        shellCamera.allowUpscaler = false;
         shellCamera.overrideFrameTime = true;
         shellCamera.frameTimeSeconds  = 0.0f;
         shellCamera.frameDeltaSeconds = 0.0f;

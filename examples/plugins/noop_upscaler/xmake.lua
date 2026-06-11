@@ -1,0 +1,8 @@
+target("plugin-noop-upscaler")
+    set_kind("shared")
+    set_basename("noop_upscaler")
+    set_prefixname("")
+    add_deps("vultra")
+    add_files("noop_upscaler.cpp")
+    set_targetdir(os.scriptdir())
+target_end()

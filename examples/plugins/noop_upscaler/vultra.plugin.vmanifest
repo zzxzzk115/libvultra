@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "com.vultra.noop_upscaler",
+  "name": "Noop Upscaler",
+  "version": "0.1.0",
+  "author": "Vultra",
+  "description": "Early native plugin that validates the render upscaler bridge without a vendor SDK.",
+  "platforms": ["windows", "linux", "macos"],
+  "loadPhase": "pre_render_device",
+  "native": "noop_upscaler",
+  "entry": "init.lua"
+}

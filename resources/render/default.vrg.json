@@ -32,6 +32,12 @@
             80.0
           ]
         },
+        "MotionVectors": {
+          "pos": [
+            538.0,
+            89.0
+          ]
+        },
         "FinalComposition": {
           "pos": [
             5321.0,
@@ -129,6 +135,17 @@
         "depth": "DirectDepthPre.depth"
       },
       "type": "DirectGBuffer"
+    },
+    {
+      "enabled": true,
+      "id": "MotionVectors",
+      "inputs": {
+        "depth": "DirectGBuffer.depth"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "MotionVectors"
     },
     {
       "enabled": true,

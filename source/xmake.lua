@@ -289,7 +289,7 @@ if not is_plat("android") and not is_plat("wasm") then
         add_rules("vultra.builtin_pack")
         add_packages("argparse")
         if is_plat("windows") then
-            add_syslinks("ws2_32")
+            add_syslinks("ws2_32", "winhttp")
         end
         if has_config("vultra_app_validation") then
             add_defines("VULTRA_APP_DEFAULT_VALIDATION=1")

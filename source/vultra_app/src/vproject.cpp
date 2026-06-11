@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -30,6 +31,15 @@ namespace vultra_app
             if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
                 return value.substr(1, value.size() - 2);
             return value;
+        }
+
+        bool setProcessEnv(const std::string& key, const std::string& value)
+        {
+#ifdef _WIN32
+            return _putenv_s(key.c_str(), value.c_str()) == 0;
+#else
+            return setenv(key.c_str(), value.c_str(), 1) == 0;
+#endif
         }
 
         bool parseBool(std::string value, const bool fallback = true)
@@ -99,6 +109,18 @@ namespace vultra_app
                         project.enabledPlugins.push_back(item);
                 }
             }
+            else if (key.starts_with("plugin_config."))
+            {
+                const std::string_view rest {key.data() + std::string_view {"plugin_config."}.size(),
+                                             key.size() - std::string_view {"plugin_config."}.size()};
+                const auto             dot = rest.find_last_of('.');
+                if (dot != std::string_view::npos && dot > 0 && dot + 1 < rest.size())
+                {
+                    const auto pluginId = std::string(rest.substr(0, dot));
+                    const auto paramKey = std::string(rest.substr(dot + 1));
+                    project.pluginConfigValues[pluginId][paramKey] = value;
+                }
+            }
             else if (auto index = parseIndexedKey(key, "build_scene."))
                 ensureBuildScene(project.buildScenes, *index).uri = value;
             else if (auto index = parseIndexedKey(key, "build_scene_alias."))
@@ -154,6 +176,30 @@ namespace vultra_app
             }
             out += "\"";
             return out;
+        }
+
+        std::string quoteEnvValue(std::string_view value)
+        {
+            const bool needsQuote = value.empty() || value.find_first_of(" \t#") != std::string_view::npos;
+            if (!needsQuote)
+                return std::string {value};
+            return quote(value);
+        }
+
+        std::optional<std::string> parseEnvLineKey(std::string line)
+        {
+            line = trim(std::move(line));
+            if (line.empty() || line.front() == '#')
+                return std::nullopt;
+            if (line.starts_with("export "))
+                line = trim(line.substr(7));
+            const auto equalsPos = line.find('=');
+            if (equalsPos == std::string::npos)
+                return std::nullopt;
+            auto key = trim(line.substr(0, equalsPos));
+            if (key.empty())
+                return std::nullopt;
+            return key;
         }
 
         std::filesystem::path resolveProjectAssetUri(const VProject& project, const std::string_view uri)
@@ -345,6 +391,115 @@ namespace vultra_app
         return project;
     }
 
+    bool loadProjectEnvFile(const std::filesystem::path& projectDir, std::string* errorMessage)
+    {
+        const auto envPath = (projectDir / ".env").lexically_normal();
+
+        std::error_code ec;
+        if (!std::filesystem::exists(envPath, ec))
+            return true;
+
+        std::ifstream file(envPath);
+        if (!file)
+        {
+            if (errorMessage != nullptr)
+                *errorMessage = "failed to open project .env: " + envPath.generic_string();
+            return false;
+        }
+
+        std::string line;
+        bool        ok = true;
+        while (std::getline(file, line))
+        {
+            line = trim(std::move(line));
+            if (line.empty() || line.front() == '#')
+                continue;
+            if (line.starts_with("export "))
+                line = trim(line.substr(7));
+
+            const auto equalsPos = line.find('=');
+            if (equalsPos == std::string::npos)
+                continue;
+
+            auto key   = trim(line.substr(0, equalsPos));
+            auto value = unquote(line.substr(equalsPos + 1));
+            if (!key.empty() && !setProcessEnv(key, value))
+            {
+                ok = false;
+                if (errorMessage != nullptr)
+                    *errorMessage = "failed to set environment variable from .env: " + key;
+            }
+        }
+
+        return ok;
+    }
+
+    bool saveProjectEnvValues(const std::filesystem::path&                         projectDir,
+                              const std::unordered_map<std::string, std::string>& values,
+                              std::string*                                        errorMessage)
+    {
+        const auto envPath = (projectDir / ".env").lexically_normal();
+
+        std::vector<std::string> lines;
+        {
+            std::ifstream input(envPath);
+            std::string   line;
+            while (std::getline(input, line))
+                lines.push_back(line);
+        }
+
+        auto pending = values;
+        std::vector<std::string> out;
+        out.reserve(lines.size() + pending.size());
+        for (const auto& line : lines)
+        {
+            auto key = parseEnvLineKey(line);
+            if (!key.has_value())
+            {
+                out.push_back(line);
+                continue;
+            }
+
+            auto it = pending.find(*key);
+            if (it == pending.end())
+            {
+                out.push_back(line);
+                continue;
+            }
+
+            if (!it->second.empty())
+                out.push_back(*key + "=" + quoteEnvValue(it->second));
+            pending.erase(it);
+        }
+
+        for (const auto& [key, value] : pending)
+        {
+            if (!key.empty() && !value.empty())
+                out.push_back(key + "=" + quoteEnvValue(value));
+        }
+
+        std::error_code ec;
+        std::filesystem::create_directories(projectDir, ec);
+        if (ec)
+        {
+            if (errorMessage != nullptr)
+                *errorMessage = ec.message();
+            return false;
+        }
+
+        std::ofstream output(envPath, std::ios::trunc);
+        if (!output)
+        {
+            if (errorMessage != nullptr)
+                *errorMessage = "failed to open project .env for writing: " + envPath.generic_string();
+            return false;
+        }
+
+        for (const auto& line : out)
+            output << line << "\n";
+        return true;
+    }
+
     bool saveVProject(const VProject& project, std::string* errorMessage)
     {
         namespace fs = std::filesystem;
@@ -378,6 +533,32 @@ namespace vultra_app
             for (std::size_t i = 0; i < project.enabledPlugins.size(); ++i)
                 joined += (i == 0 ? "" : ",") + project.enabledPlugins[i];
             file << "enabled_plugins = " << quote(joined) << "\n";
+        }
+        std::vector<std::string> pluginIds;
+        pluginIds.reserve(project.pluginConfigValues.size());
+        for (const auto& [pluginId, _] : project.pluginConfigValues)
+        {
+            static_cast<void>(_);
+            pluginIds.push_back(pluginId);
+        }
+        std::sort(pluginIds.begin(), pluginIds.end());
+        for (const auto& pluginId : pluginIds)
+        {
+            const auto& values = project.pluginConfigValues.at(pluginId);
+            std::vector<std::string> keys;
+            keys.reserve(values.size());
+            for (const auto& [key, _] : values)
+            {
+                static_cast<void>(_);
+                keys.push_back(key);
+            }
+            std::sort(keys.begin(), keys.end());
+            for (const auto& key : keys)
+            {
+                const auto& value = values.at(key);
+                if (!value.empty())
+                    file << "plugin_config." << pluginId << "." << key << " = " << quote(value) << "\n";
+            }
         }
         const auto buildScenes = normalizedBuildScenes(project.defaultScene, project.buildScenes);
         for (const auto& scene : buildScenes)

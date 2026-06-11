@@ -37,7 +37,7 @@ if [[ ! -d "$tmp_root" ]]; then
 fi
 
 # Known MCP smoke scratch prefixes. Extend here if new smoke flows add prefixes.
-prefixes=(material-mcp-smoke material-mcp-step material-mcp-smoke-output material-shader-frame-textures mcp_projects)
+prefixes=(material-mcp-smoke material-mcp-step material-mcp-smoke-output material-shader-frame-textures streamline-diagnostics-smoke mcp_projects)
 
 shopt -s nullglob
 targets=()

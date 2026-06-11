@@ -647,6 +647,18 @@ Render APIs:
 - `RenderBackend.isXRMirrorEnabled()`
 - `RenderBackend.isExitRequested()`
 
+Upscaler APIs:
+
+- `Upscaler.providers()`
+- `Upscaler.active()`
+- `Upscaler.setActive(name)`
+- `Upscaler.setEnabled(enabled)`
+- `Upscaler.setMode(mode)` where mode is `off`, `quality`, `balanced`, `performance`, `ultra_performance`, or `dlaa`
+- `Upscaler.status()`
+
+These are high-level controls only. Lua scripts cannot access native textures, command buffers, Vulkan
+handles, or provider-owned SDK objects.
+
 ## Animation
 
 Animator playback can be controlled either through `entity.animator` or the

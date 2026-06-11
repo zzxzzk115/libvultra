@@ -86,6 +86,7 @@ of the call; do not stash FrameGraph handles in globals (handles are generation
 | `ctx:setOutput(slot, handle)` | publish a graph output |
 | `ctx:getResource(name)` → handle\|nil | read a published engine resource by name (e.g. `"GBufferColor"`, `"DepthTexture"`) |
 | `ctx:setResource(name, handle)` | publish an engine resource by name |
+| `ctx:createUpscalerOutput { name=, color=, depth=, motion=, exposure=, outputWidth=, outputHeight= }` | declare a generic external-upscaler output. `color`, `depth`, and `motion` are the normal inputs; `exposure` is optional and should usually be omitted for provider auto exposure. If `outputWidth/outputHeight` are omitted, the output defaults to the current view target/backbuffer extent. Lua supplies graph handles only; the engine builds native resource tags and command context. |
 | `ctx:createColorTexture { name=, format=, inherit=, storage= }` → handle | allocate a transient target (`format`: `rgba16f`/`rgba8`/`rgba32f`; `inherit` copies a handle's descriptor; `storage=true` adds storage usage for compute writes) |
 | `ctx:read(handle, { set=, binding=, stage=, depth= })` | declare a sampled read (`stage`: `fragment`/`compute`) |
 | `ctx:writeColor(handle [, index [, clear]])` | declare a color attachment write |
@@ -106,6 +107,7 @@ of the call; do not stash FrameGraph handles in globals (handles are generation
 | `rc:pushConstants(stage, { name = value, ... })` | pack push constants by shader-reflected parameter name (`stage`: `fragment`/`compute`/`vertex`) |
 | `rc:beginRendering()` / `rc:drawFullscreen()` / `rc:endRendering()` | record a fullscreen-triangle draw |
 | `rc:dispatch(x, y, z)` | record a compute dispatch |
+| `rc:evaluateUpscaler()` | evaluate the active `IRenderUpscalerService` provider for the output declared by `ctx:createUpscalerOutput`; falls back to a linear blit when the provider is disabled or unavailable. |
 | `rc:dispatchByOutputSize()` | dispatch one workgroup per output texel block (uses the bound compute pipeline's local size and the last `createColorTexture` extent) |
 
 ## Notes & limitations (v1)
@@ -119,3 +121,6 @@ of the call; do not stash FrameGraph handles in globals (handles are generation
   configuration (no depth/blend/cull). Custom geometry draws (meshlet/GPU-scene
   indirect) and FrameGraph **buffer** I/O are planned follow-ups; compute passes
   already cover arbitrary buffer work via storage images and dispatch.
+- **Upscaler calls are bridge-safe:** scripted passes can request an upscaler
+  evaluation, but native texture tags and command-buffer handles are assembled
+  by the engine. Vendor-specific code remains in the active native provider.

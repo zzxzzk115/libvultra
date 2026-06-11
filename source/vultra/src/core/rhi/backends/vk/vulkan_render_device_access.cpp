@@ -81,5 +81,14 @@ namespace vultra
             }
             return RenderDeviceAccess::getDescriptorSetLayoutHandle(rd, layoutKey);
         }
+
+        VulkanHookTable VulkanRenderDeviceAccess::getVulkanHooks(const RenderDevice& rd)
+        {
+            if (const auto* backend = dynamic_cast<const VulkanRenderDevice*>(RenderDeviceAccess::get(rd)); backend)
+            {
+                return backend->m_VulkanHooks;
+            }
+            return {};
+        }
     } // namespace rhi
 } // namespace vultra

@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace vultra_app
@@ -41,6 +42,8 @@ namespace vultra_app
         // Ids of plugins enabled for this project (plugins are off by default). Plugins live under
         // <asset-root>/plugins; see the Plugins tab in Project Settings.
         std::vector<std::string> enabledPlugins;
+        // Per-plugin config values declared by plugin manifests. Indexed by plugin id, then config key.
+        std::unordered_map<std::string, std::unordered_map<std::string, std::string>> pluginConfigValues;
     };
 
     struct VPackageManifest
@@ -59,6 +62,11 @@ namespace vultra_app
     [[nodiscard]] std::filesystem::path vprojectFileFor(const std::filesystem::path& projectDir,
                                                         const std::string&           projectName);
     [[nodiscard]] std::optional<VProject> loadVProject(const std::filesystem::path& path);
+    [[nodiscard]] bool                    loadProjectEnvFile(const std::filesystem::path& projectDir,
+                                                             std::string* errorMessage = nullptr);
+    [[nodiscard]] bool saveProjectEnvValues(const std::filesystem::path& projectDir,
+                                            const std::unordered_map<std::string, std::string>& values,
+                                            std::string* errorMessage = nullptr);
     [[nodiscard]] bool                    saveVProject(const VProject& project, std::string* errorMessage = nullptr);
     [[nodiscard]] bool                    saveVPackageManifest(const std::filesystem::path& assetRoot,
                                                                const VPackageManifest&      manifest,

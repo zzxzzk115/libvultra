@@ -7048,6 +7048,7 @@ namespace vultra_app
         camera.rendererKey             = "universal";
         camera.selectionOutlineEnabled = false;
         camera.worldOverride           = &m_ModelPreviewWorld;
+        camera.allowUpscaler           = false;
         camera.overrideFrameTime       = true;
         camera.frameTimeSeconds        = 0.0f;
         camera.frameDeltaSeconds       = 0.0f;

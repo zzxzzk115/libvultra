@@ -33,6 +33,7 @@
 #include "vultra/core/rhi/structs/sampler_info.hpp"
 #include "vultra/core/rhi/swapchain.hpp"
 #include "vultra/core/rhi/uniform_buffer.hpp"
+#include "vultra/core/rhi/structs/vulkan_hook_table.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
 
 #include <vbase/core/scoped_enum_flags.hpp>
@@ -82,10 +83,12 @@ namespace vultra
             explicit RenderDevice(RenderDeviceFeatureFlagBits,
                                   std::string_view             appName                    = "Untitled Vultra App",
                                   std::span<const char* const> requiredInstanceExtensions = {},
+                                  std::span<const char* const> requiredDeviceExtensions   = {},
                                   RenderBackendApi             backendApi                 = RenderBackendApi::eAuto,
                                   bool enableValidation = defaultRenderDiagnosticsEnabled(),
                                   bool enableDebugMarkers = defaultRenderDiagnosticsEnabled(),
-                                  bool enableRenderDoc = defaultRenderDiagnosticsEnabled());
+                                  bool enableRenderDoc = defaultRenderDiagnosticsEnabled(),
+                                  VulkanHookTable vulkanHooks = {});
             RenderDevice(const RenderDevice&)     = delete;
             RenderDevice(RenderDevice&&) noexcept = delete;
             ~RenderDevice();

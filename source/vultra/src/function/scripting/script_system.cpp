@@ -5,6 +5,7 @@
 #include "vultra/core/services/timing_service.hpp"
 #include "vultra/function/scripting/bindings/script_ui_binding.hpp"
 #include "vultra/function/scripting/script_binding.hpp"
+#include "vultra/function/services/render_upscaler_service.hpp"
 #include "vultra/function/scripting/script_types.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/animation_service.hpp"
@@ -46,6 +47,7 @@ namespace vultra
         m_ScriptContext.cameraService        = ctx().services.tryGet<ICameraService>();
         m_ScriptContext.renderService        = ctx().services.tryGet<IRenderService>();
         m_ScriptContext.renderBackendService = ctx().services.tryGet<IRenderBackendService>();
+        m_ScriptContext.renderUpscalerService = ctx().services.tryGet<IRenderUpscalerService>();
         m_ScriptContext.frameDebuggerService = ctx().services.tryGet<IFrameDebuggerService>();
         m_ScriptContext.physicsService       = ctx().services.tryGet<IPhysicsService>();
         m_ScriptContext.animationService     = ctx().services.tryGet<IAnimationService>();

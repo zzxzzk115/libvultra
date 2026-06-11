@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #if defined(__ANDROID__)
@@ -118,6 +119,10 @@ namespace vultra
                 // Directory scanned at startup for `<name>/vultra.plugin.vmanifest` manifests.
                 // Empty disables discovery. Used in disk mode (editor / loose project).
                 std::string directory {};
+                // Additional loose plugin directories scanned together with `directory`. Project
+                // editor installs network-managed plugins under `.vultra/plugins`, while local
+                // imports live under the asset root's `plugins` folder.
+                std::vector<std::string> directories {};
                 // Ids of plugins to load. Plugins are OFF by default; only ids listed here (and
                 // supporting the current platform) are loaded. Sourced from the project settings.
                 std::vector<std::string> enabled {};
@@ -127,6 +132,11 @@ namespace vultra
                 // project's enabled set at export time). Native libs are extracted to writableRoot.
                 bool                     loadFromVPK {false};
                 std::vector<std::string> packaged {};
+                // Project/runtime values for manifest-declared plugin config parameters.
+                // Indexed by plugin id, then parameter key.
+                std::unordered_map<std::string, std::unordered_map<std::string, std::string>> configValues {};
+                // Runtime bookkeeping for native plugins loaded in the pre-render-device phase.
+                std::vector<std::string> earlyLoadedNative {};
             } plugin;
 
             // Writable app-private directory used for runtime debug outputs and persisted UI state.

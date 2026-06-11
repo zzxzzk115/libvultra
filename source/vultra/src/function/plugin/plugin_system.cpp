@@ -10,6 +10,7 @@
 #include <sol/sol.hpp>
 
 #include <algorithm>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <system_error>
@@ -64,6 +65,18 @@ namespace vultra
         if (!json.is_object())
             return setError("manifest must be a JSON object");
 
+        const auto parseParamType = [](const std::string& value) {
+            if (value == "path")
+                return PluginConfigParamType::ePath;
+            if (value == "bool" || value == "boolean")
+                return PluginConfigParamType::eBool;
+            if (value == "int" || value == "integer")
+                return PluginConfigParamType::eInt;
+            if (value == "float" || value == "number")
+                return PluginConfigParamType::eFloat;
+            return PluginConfigParamType::eString;
+        };
+
         PluginManifest manifest;
         manifest.id          = json.value("id", std::string {});
         manifest.name        = json.value("name", std::string {});
@@ -74,11 +87,33 @@ namespace vultra
         manifest.repository   = json.value("repository", std::string {});
         manifest.native       = json.value("native", std::string {});
         manifest.entry        = json.value("entry", std::string {});
+        const auto loadPhase  = json.value("loadPhase", std::string {});
+        if (loadPhase == "pre_render_device")
+            manifest.loadPhase = PluginLoadPhase::ePreRenderDevice;
         if (const auto it = json.find("platforms"); it != json.end() && it->is_array())
         {
             for (const auto& p : *it)
                 if (p.is_string())
                     manifest.platforms.push_back(p.get<std::string>());
+        }
+        if (const auto it = json.find("config"); it != json.end() && it->is_array())
+        {
+            for (const auto& item : *it)
+            {
+                if (!item.is_object())
+                    continue;
+                PluginConfigParam param;
+                param.key          = item.value("key", std::string {});
+                param.label        = item.value("label", param.key);
+                param.description  = item.value("description", std::string {});
+                param.type         = parseParamType(item.value("type", std::string {"string"}));
+                param.defaultValue = item.value("default", std::string {});
+                param.envVar       = item.value("env", item.value("envVar", std::string {}));
+                param.required     = item.value("required", false);
+                param.secret       = item.value("secret", false);
+                if (!param.key.empty())
+                    manifest.configParams.push_back(std::move(param));
+            }
         }
         return manifest;
     }
@@ -146,6 +181,21 @@ namespace vultra
 
     namespace
     {
+        std::vector<std::filesystem::path> configuredPluginDirectories(const EngineContext::Config::PluginConfig& config)
+        {
+            std::vector<std::filesystem::path> dirs;
+            if (!config.directory.empty())
+                dirs.emplace_back(config.directory);
+            for (const auto& dir : config.directories)
+            {
+                if (!dir.empty())
+                    dirs.emplace_back(dir);
+            }
+            std::sort(dirs.begin(), dirs.end());
+            dirs.erase(std::unique(dirs.begin(), dirs.end()), dirs.end());
+            return dirs;
+        }
+
         std::string nativeLibrarySuffix()
         {
 #if defined(_WIN32)
@@ -179,10 +229,66 @@ namespace vultra
                 !writableRoot.empty() ? std::filesystem::path {writableRoot} : std::filesystem::temp_directory_path(ec);
             return (base / "vultra_plugins").lexically_normal();
         }
+
+        void setProcessEnv(const std::string& name, const std::string& value)
+        {
+            if (name.empty())
+                return;
+#if defined(_WIN32)
+            _putenv_s(name.c_str(), value.c_str());
+#else
+            setenv(name.c_str(), value.c_str(), 1);
+#endif
+        }
+
+        std::string getProcessEnv(const std::string& name)
+        {
+            if (name.empty())
+                return {};
+            if (const char* value = std::getenv(name.c_str()); value != nullptr)
+                return value;
+            return {};
+        }
+
+        void applyPluginConfigEnvironment(const PluginManifest& manifest, EngineContext& ctx)
+        {
+            if (manifest.configParams.empty())
+                return;
+
+            const auto valuesIt = ctx.config.plugin.configValues.find(manifest.id);
+            const auto* values =
+                valuesIt != ctx.config.plugin.configValues.end() ? &valuesIt->second : nullptr;
+
+            for (const auto& param : manifest.configParams)
+            {
+                if (param.envVar.empty())
+                    continue;
+
+                std::string value;
+                if (values != nullptr)
+                {
+                    if (const auto valueIt = values->find(param.key); valueIt != values->end())
+                        value = valueIt->second;
+                }
+                if (value.empty())
+                    value = getProcessEnv(param.envVar);
+                if (value.empty())
+                    value = param.defaultValue;
+
+                if (!value.empty())
+                    setProcessEnv(param.envVar, value);
+                else if (param.required)
+                    VULTRA_CORE_WARN("[PluginSystem] '{}': required config '{}' has no value for env '{}'.",
+                                     manifest.id,
+                                     param.key,
+                                     param.envVar);
+            }
+        }
     } // namespace
 
     struct PluginSystem::LuaPlugin
     {
+        std::string id;
         std::string name;
         sol::table  module;
     };
@@ -246,31 +352,36 @@ namespace vultra
             return true;
         }
 
-        const std::filesystem::path dir = ctx().config.plugin.directory;
-        const auto&                 enabled = ctx().config.plugin.enabled;
-        if (dir.empty() || enabled.empty())
+        const auto& enabled = ctx().config.plugin.enabled;
+        const auto  dirs    = configuredPluginDirectories(ctx().config.plugin);
+        if (dirs.empty() || enabled.empty())
         {
             VULTRA_CORE_INFO("[PluginSystem] No plugins enabled.");
             return true;
         }
 
-        const auto  manifests = discover(dir);
-        std::size_t loaded     = 0;
-        for (const auto& manifest : manifests)
+        std::size_t loaded = 0;
+        for (const auto& dir : dirs)
         {
-            if (std::find(enabled.begin(), enabled.end(), manifest.id) == enabled.end())
-                continue;
-            if (!manifest.supportsCurrentPlatform())
+            const auto manifests = discover(dir);
+            for (const auto& manifest : manifests)
             {
-                VULTRA_CORE_WARN("[PluginSystem] Plugin '{}' does not support platform '{}'; skipping.",
-                                 manifest.id, currentPluginPlatform());
-                continue;
+                if (std::find(enabled.begin(), enabled.end(), manifest.id) == enabled.end())
+                    continue;
+                if (!manifest.supportsCurrentPlatform())
+                {
+                    VULTRA_CORE_WARN("[PluginSystem] Plugin '{}' does not support platform '{}'; skipping.",
+                                     manifest.id, currentPluginPlatform());
+                    continue;
+                }
+                if (loadPlugin(manifest))
+                    ++loaded;
             }
-            if (loadPlugin(manifest))
-                ++loaded;
         }
-        VULTRA_CORE_INFO(
-            "[PluginSystem] Loaded {} of {} enabled plugin(s) from '{}'", loaded, enabled.size(), dir.generic_string());
+        VULTRA_CORE_INFO("[PluginSystem] Loaded {} of {} enabled plugin(s) from {} directorie(s)",
+                         loaded,
+                         enabled.size(),
+                         dirs.size());
         return true;
     }
 
@@ -293,7 +404,8 @@ namespace vultra
             }
         }
         m_LuaPlugins.clear();
-        // Native plugins are released by the engine's PluginManager on engine shutdown.
+        if (ctx().pluginManager != nullptr)
+            ctx().pluginManager->uninstallAll(ctx());
     }
 
     std::vector<PluginManifest> PluginSystem::discover(const std::filesystem::path& dir) const
@@ -316,14 +428,28 @@ namespace vultra
         // --- Native library first, so its install() can register Lua glue ---------------------
         if (!manifest.native.empty())
         {
-            const auto nativePath = resolveNativeLibrary((manifest.directory / manifest.native).lexically_normal());
-            if (ctx().pluginManager == nullptr || !ctx().pluginManager->load(nativePath.generic_string(), ctx()))
+            applyPluginConfigEnvironment(manifest, ctx());
+            const auto& earlyLoaded = ctx().config.plugin.earlyLoadedNative;
+            const bool  alreadyLoadedEarly =
+                std::find(earlyLoaded.begin(), earlyLoaded.end(), manifest.id) != earlyLoaded.end();
+            if (alreadyLoadedEarly)
             {
-                VULTRA_CORE_ERROR(
-                    "[PluginSystem] '{}': failed to load native library '{}'", manifest.id, nativePath.generic_string());
-                return false;
+                VULTRA_CORE_INFO("[PluginSystem] '{}': native library already loaded in pre-render-device phase.",
+                                 manifest.id);
             }
-            VULTRA_CORE_INFO("[PluginSystem] '{}': native library loaded ({})", manifest.id, manifest.native);
+            else
+            {
+                const auto nativePath = resolveNativeLibrary((manifest.directory / manifest.native).lexically_normal());
+                if (ctx().pluginManager == nullptr ||
+                    !ctx().pluginManager->load(manifest.id, nativePath.generic_string(), ctx()))
+                {
+                    VULTRA_CORE_ERROR("[PluginSystem] '{}': failed to load native library '{}'",
+                                      manifest.id,
+                                      nativePath.generic_string());
+                    return false;
+                }
+                VULTRA_CORE_INFO("[PluginSystem] '{}': native library loaded ({})", manifest.id, manifest.native);
+            }
         }
 
         // --- Lua entry script -----------------------------------------------------------------
@@ -349,6 +475,50 @@ namespace vultra
         return true;
     }
 
+    bool PluginSystem::unloadPlugin(const std::string& id)
+    {
+        if (!isLoaded(id))
+            return true;
+
+        for (auto it = m_LuaPlugins.rbegin(); it != m_LuaPlugins.rend();)
+        {
+            if ((*it)->id != id)
+            {
+                ++it;
+                continue;
+            }
+
+            auto& plugin = **it;
+            if (plugin.module.valid())
+            {
+                sol::protected_function fn = plugin.module["on_uninstall"];
+                if (fn.valid())
+                {
+                    auto r = fn();
+                    if (!r.valid())
+                    {
+                        sol::error err = r;
+                        VULTRA_CORE_ERROR("[PluginSystem] '{}' on_uninstall error: {}", plugin.name, err.what());
+                    }
+                }
+            }
+            it = std::vector<std::unique_ptr<LuaPlugin>>::reverse_iterator(
+                m_LuaPlugins.erase(std::next(it).base()));
+        }
+
+        const bool nativeLoaded = ctx().pluginManager != nullptr && ctx().pluginManager->isLoaded(id);
+        const bool nativeOk     = !nativeLoaded || ctx().pluginManager->unload(id, ctx());
+        if (!nativeOk)
+            return false;
+
+        m_LoadedIds.erase(std::remove(m_LoadedIds.begin(), m_LoadedIds.end(), id), m_LoadedIds.end());
+        auto& earlyLoaded = ctx().config.plugin.earlyLoadedNative;
+        earlyLoaded.erase(std::remove(earlyLoaded.begin(), earlyLoaded.end(), id), earlyLoaded.end());
+
+        VULTRA_CORE_INFO("[PluginSystem] Plugin '{}' unloaded.", id);
+        return true;
+    }
+
     bool PluginSystem::installLuaEntry(const PluginManifest& manifest,
                                        const std::string_view source,
                                        const std::string_view debugName)
@@ -368,6 +538,7 @@ namespace vultra
         }
 
         auto        plugin = std::make_unique<LuaPlugin>();
+        plugin->id         = manifest.id;
         plugin->name       = manifest.name;
         sol::object obj    = result;
         if (obj.is<sol::table>())
@@ -403,6 +574,7 @@ namespace vultra
         // --- Native library first: extract to a writable dir, then load -------------------------
         if (!manifest.native.empty())
         {
+            applyPluginConfigEnvironment(manifest, ctx());
             std::string nativeFile = manifest.native;
             if (std::filesystem::path {nativeFile}.extension().empty())
                 nativeFile += nativeLibrarySuffix();
@@ -431,7 +603,8 @@ namespace vultra
                           static_cast<std::streamsize>(bytes.value().size()));
             }
 
-            if (ctx().pluginManager == nullptr || !ctx().pluginManager->load(outPath.generic_string(), ctx()))
+            if (ctx().pluginManager == nullptr ||
+                !ctx().pluginManager->load(manifest.id, outPath.generic_string(), ctx()))
             {
                 VULTRA_CORE_ERROR("[PluginSystem] '{}': failed to load extracted native library '{}'.",
                                   manifest.id, outPath.generic_string());
@@ -458,6 +631,69 @@ namespace vultra
 
         m_LoadedIds.push_back(manifest.id);
         VULTRA_CORE_INFO("[PluginSystem] Plugin '{}' ({}) installed.", manifest.name, manifest.id);
+        return true;
+    }
+
+    bool loadPreRenderDeviceNativePlugins(EngineContext& ctx)
+    {
+        const auto& enabled = ctx.config.plugin.enabled;
+        const auto  dirs    = configuredPluginDirectories(ctx.config.plugin);
+        if (ctx.config.plugin.loadFromVPK)
+        {
+            VULTRA_CORE_INFO("[PluginSystem] Pre-render-device plugin loading is skipped for VPK mode.");
+            return true;
+        }
+        if (dirs.empty() || enabled.empty())
+            return true;
+
+        std::size_t loaded = 0;
+        for (const auto& dir : dirs)
+        {
+            const auto manifests = discoverPlugins(dir);
+            for (const auto& manifest : manifests)
+            {
+                if (manifest.loadPhase != PluginLoadPhase::ePreRenderDevice)
+                    continue;
+                if (manifest.native.empty())
+                {
+                    VULTRA_CORE_WARN("[PluginSystem] '{}': pre-render-device plugin has no native library; skipping.",
+                                     manifest.id);
+                    continue;
+                }
+                if (std::find(enabled.begin(), enabled.end(), manifest.id) == enabled.end())
+                    continue;
+                if (!manifest.supportsCurrentPlatform())
+                {
+                    VULTRA_CORE_WARN(
+                        "[PluginSystem] Plugin '{}' does not support platform '{}'; skipping early native load.",
+                        manifest.id,
+                        currentPluginPlatform());
+                    continue;
+                }
+
+                const auto nativePath = resolveNativeLibrary((manifest.directory / manifest.native).lexically_normal());
+                applyPluginConfigEnvironment(manifest, ctx);
+                if (ctx.pluginManager == nullptr ||
+                    !ctx.pluginManager->load(manifest.id, nativePath.generic_string(), ctx))
+                {
+                    VULTRA_CORE_ERROR("[PluginSystem] '{}': failed early native load '{}'",
+                                      manifest.id,
+                                      nativePath.generic_string());
+                    return false;
+                }
+
+                auto& earlyLoaded = ctx.config.plugin.earlyLoadedNative;
+                if (std::find(earlyLoaded.begin(), earlyLoaded.end(), manifest.id) == earlyLoaded.end())
+                    earlyLoaded.push_back(manifest.id);
+                ++loaded;
+                VULTRA_CORE_INFO("[PluginSystem] '{}': pre-render-device native library loaded ({}).",
+                                 manifest.id,
+                                 manifest.native);
+            }
+        }
+
+        if (loaded > 0)
+            VULTRA_CORE_INFO("[PluginSystem] Loaded {} pre-render-device native plugin(s).", loaded);
         return true;
     }
 } // namespace vultra
