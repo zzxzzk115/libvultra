@@ -395,14 +395,18 @@ namespace vultra
                 return *this;
             }
 
+            // layerCount == 0 blits all layers shared by both textures.
             CommandBuffer& blit(Texture&          src,
                                 Texture&          dst,
                                 const TexelFilter filter,
-                                uint32_t          srcMipLevel = 0,
-                                uint32_t          dstMipLevel = 0)
+                                uint32_t          srcMipLevel  = 0,
+                                uint32_t          dstMipLevel  = 0,
+                                uint32_t          srcBaseLayer = 0,
+                                uint32_t          dstBaseLayer = 0,
+                                uint32_t          layerCount   = 0)
             {
                 assert(m_Impl);
-                m_Impl->blit(src, dst, filter, srcMipLevel, dstMipLevel);
+                m_Impl->blit(src, dst, filter, srcMipLevel, dstMipLevel, srcBaseLayer, dstBaseLayer, layerCount);
                 return *this;
             }
 

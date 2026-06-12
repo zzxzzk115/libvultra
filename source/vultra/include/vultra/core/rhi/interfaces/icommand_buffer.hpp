@@ -82,7 +82,15 @@ namespace vultra
 
             virtual ICommandBuffer& update(Buffer&, uint64_t offset, uint64_t size, const void* data) = 0;
 
-            virtual ICommandBuffer& blit(Texture&, Texture&, TexelFilter, uint32_t srcMipLevel, uint32_t dstMipLevel) = 0;
+            // layerCount == 0 blits all layers shared by both textures.
+            virtual ICommandBuffer& blit(Texture&,
+                                         Texture&,
+                                         TexelFilter,
+                                         uint32_t srcMipLevel,
+                                         uint32_t dstMipLevel,
+                                         uint32_t srcBaseLayer,
+                                         uint32_t dstBaseLayer,
+                                         uint32_t layerCount) = 0;
             virtual ICommandBuffer& generateMipmaps(Texture&, TexelFilter) = 0;
 
             virtual ICommandBuffer& flushBarriers() = 0;

@@ -85,7 +85,14 @@ namespace vultra
 
             VulkanCommandBuffer& update(Buffer&, uint64_t offset, uint64_t size, const void* data) override;
 
-            VulkanCommandBuffer& blit(Texture&, Texture&, TexelFilter, uint32_t srcMipLevel, uint32_t dstMipLevel) override;
+            VulkanCommandBuffer& blit(Texture&,
+                                      Texture&,
+                                      TexelFilter,
+                                      uint32_t srcMipLevel,
+                                      uint32_t dstMipLevel,
+                                      uint32_t srcBaseLayer,
+                                      uint32_t dstBaseLayer,
+                                      uint32_t layerCount) override;
             VulkanCommandBuffer& generateMipmaps(Texture&, TexelFilter) override;
 
             VulkanCommandBuffer& flushBarriers() override;

@@ -922,7 +922,10 @@ namespace vultra
                                                        Texture&          dst,
                                                        const TexelFilter filter,
                                                        uint32_t          srcMipLevel,
-                                                       uint32_t          dstMipLevel)
+                                                       uint32_t          dstMipLevel,
+                                                       uint32_t          srcBaseLayer,
+                                                       uint32_t          dstBaseLayer,
+                                                       uint32_t          layerCount)
         {
             assert(src && static_cast<bool>(src.getUsageFlags() & ImageUsage::eTransferSrc));
             const auto aspectMask = getAspectMask(dst);
@@ -932,7 +935,11 @@ namespace vultra
 
             TRACY_GPU_ZONE2_("Texture->Texture");
 
-            const uint32_t layerCount = std::min(std::max(src.getNumLayers(), 1u), std::max(dst.getNumLayers(), 1u));
+            const uint32_t srcLayers = std::max(src.getNumLayers(), 1u);
+            const uint32_t dstLayers = std::max(dst.getNumLayers(), 1u);
+            if (layerCount == 0u)
+                layerCount = std::min(srcLayers, dstLayers);
+            assert(srcBaseLayer + layerCount <= srcLayers && dstBaseLayer + layerCount <= dstLayers);
 
             getBarrierBuilder()
                 .imageBarrier(
@@ -944,7 +951,7 @@ namespace vultra
                                 .aspectMask     = aspectMask,
                                 .baseMipLevel   = srcMipLevel,
                                 .levelCount     = 1u,
-                                .baseArrayLayer = src.getBaseArrayLayer(),
+                                .baseArrayLayer = src.getBaseArrayLayer() + srcBaseLayer,
                                 .layerCount     = layerCount,
                             },
                     },
@@ -961,7 +968,7 @@ namespace vultra
                                 .aspectMask     = aspectMask,
                                 .baseMipLevel   = dstMipLevel,
                                 .levelCount     = 1u,
-                                .baseArrayLayer = dst.getBaseArrayLayer(),
+                                .baseArrayLayer = dst.getBaseArrayLayer() + dstBaseLayer,
                                 .layerCount     = layerCount,
                             },
                     },
@@ -986,12 +993,12 @@ namespace vultra
             vk::ImageBlit region {};
             region.srcSubresource.aspectMask     = toVk(aspectMask);
             region.srcSubresource.mipLevel       = srcMipLevel;
-            region.srcSubresource.baseArrayLayer = src.getBaseArrayLayer();
+            region.srcSubresource.baseArrayLayer = src.getBaseArrayLayer() + srcBaseLayer;
             region.srcSubresource.layerCount     = layerCount;
             region.srcOffsets                    = std::array<vk::Offset3D, 2> {vk::Offset3D {}, GetRegion(src, srcMipLevel)};
             region.dstSubresource.aspectMask     = toVk(aspectMask);
             region.dstSubresource.mipLevel       = dstMipLevel;
-            region.dstSubresource.baseArrayLayer = dst.getBaseArrayLayer();
+            region.dstSubresource.baseArrayLayer = dst.getBaseArrayLayer() + dstBaseLayer;
             region.dstSubresource.layerCount     = layerCount;
             region.dstOffsets                    = std::array<vk::Offset3D, 2> {vk::Offset3D {}, GetRegion(dst, dstMipLevel)};
 

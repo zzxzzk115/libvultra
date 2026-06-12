@@ -1237,7 +1237,8 @@ namespace vultra
             dst.unmap();
             return *this;
         }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::blit(Texture&, Texture&, TexelFilter, uint32_t, uint32_t)
+        WebGPUCommandBuffer&
+        WebGPUCommandBuffer::blit(Texture&, Texture&, TexelFilter, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)
         {
             unsupported("blit");
         }
