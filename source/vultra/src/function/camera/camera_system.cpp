@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 
 namespace vultra
 {
@@ -224,6 +225,32 @@ namespace vultra
     void CameraSystem::onPreRender()
     {
         // Camera cooking is deferred to cameras() so XR data can be consumed after beginFrame.
+        ++m_FrameStamp;
+        std::erase_if(m_History, [&](const auto& kv) { return kv.second.stamp + 2 < m_FrameStamp; });
+    }
+
+    void CameraSystem::applyTemporalHistory(RenderCamera& cam)
+    {
+        uint64_t key = cam.uuid.valid() ? std::hash<CoreUUID> {}(cam.uuid) : std::hash<std::string> {}(cam.name);
+        key          = key * 0x9E3779B97F4A7C15ull + cam.viewIndex + 1u;
+
+        auto& entry = m_History[key];
+        if (entry.stamp != m_FrameStamp)
+        {
+            // stamp 0 marks a fresh entry: it has recorded no frame yet, so there is no
+            // previous frame even though stamp + 1 == m_FrameStamp on the very first frame.
+            entry.hasPrev        = entry.stamp != 0u && entry.stamp + 1u == m_FrameStamp;
+            entry.prevView       = entry.currView;
+            entry.prevProjection = entry.currProjection;
+            entry.currView       = cam.view;
+            entry.currProjection = cam.projection;
+            entry.stamp          = m_FrameStamp;
+        }
+
+        cam.previousView              = entry.prevView;
+        cam.previousProjection        = entry.prevProjection;
+        cam.previousViewProjection    = entry.prevProjection * entry.prevView;
+        cam.hasPreviousViewProjection = entry.hasPrev;
     }
 
     std::span<const RenderCamera> CameraSystem::cameras()
@@ -345,6 +372,9 @@ namespace vultra
             finalizeCamera(cam);
             m_Cooked.push_back(std::move(cam));
         }
+
+        for (auto& cam : m_Cooked)
+            applyTemporalHistory(cam);
 
         return m_Cooked;
     }

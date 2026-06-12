@@ -2846,6 +2846,13 @@ namespace vultra
                                                  cam.zFar);
                 finalizeRenderCamera(cam);
             }
+            if (cam.hasPreviousViewProjection)
+            {
+                // The previous projection was cooked for the backbuffer aspect; rebuild it for the
+                // render extent so reprojection (motion vectors, upscalers) compares matching frusta.
+                cam.previousProjection     = cam.projection;
+                cam.previousViewProjection = cam.previousProjection * cam.previousView;
+            }
             return cam;
         }
 

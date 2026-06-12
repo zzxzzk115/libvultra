@@ -8,9 +8,11 @@
 #include <glm/vec3.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace vultra
@@ -78,8 +80,29 @@ namespace vultra
         void resetFPSCursorOverride();
         void applyFPSCursor(os::Window& window, os::Window::CursorType cursorType);
 
+        // Fills previousView/previousProjection/hasPreviousViewProjection from per-camera
+        // history kept across frames. Idempotent within a frame: cameras() is called by
+        // several systems per frame and re-cooks the list each time.
+        void applyTemporalHistory(RenderCamera& cam);
+
+        // Per-camera temporal history so consumers (motion vectors, upscalers) get real
+        // previous-frame matrices. Keyed by camera uuid (or name for nil-uuid manual
+        // cameras) combined with viewIndex so XR eyes don't share one entry.
+        struct CameraHistoryEntry
+        {
+            glm::mat4 prevView {1.0f};
+            glm::mat4 prevProjection {1.0f};
+            glm::mat4 currView {1.0f};
+            glm::mat4 currProjection {1.0f};
+            uint64_t  stamp {0};
+            bool      hasPrev {false};
+        };
+
         // Cooked list for current frame
         std::vector<RenderCamera> m_Cooked;
+
+        std::unordered_map<uint64_t, CameraHistoryEntry> m_History;
+        uint64_t                                         m_FrameStamp {0};
 
         // Temporary manual input list
         std::vector<RenderCamera> m_Manual;
