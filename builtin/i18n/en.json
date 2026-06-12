@@ -919,7 +919,7 @@
   },
   "plugins": {
     "header": "Plugins",
-    "info": "Plugins live in <asset-root>/plugins (e.g. resources/plugins) so they pack into the project VPK, and are off by default. Enable one to load it now and on the next launch. Native plugins are desktop-only.",
+    "info": "Catalog/Git plugins are installed into the managed project plugin store; ZIP and folder imports are copied into <asset-root>/plugins (e.g. resources/plugins) so they pack into the project VPK. Plugins are off by default. Enable one to load it now and on the next launch. Native plugins are desktop-only.",
     "importHeader": "Import plugin",
     "importHint": "Import from Git, catalog, ZIP, or folder.",
     "chooseImportSource": "Choose import source",

@@ -919,7 +919,7 @@
   },
   "plugins": {
     "header": "插件",
-    "info": "插件位于 <asset-root>/plugins（例如 resources/plugins），以便打包进项目 VPK，默认为关闭。启用某个插件可立即加载并在下次启动时加载。原生插件仅限桌面平台。",
+    "info": "插件中心/Git 插件会安装到项目托管插件库；ZIP 和文件夹导入会复制到 <asset-root>/plugins（例如 resources/plugins），以便打包进项目 VPK。插件默认为关闭。启用某个插件可立即加载并在下次启动时加载。原生插件仅限桌面平台。",
     "importHeader": "导入插件",
     "importHint": "从 Git、插件中心、ZIP 或文件夹导入。",
     "chooseImportSource": "选择导入来源",

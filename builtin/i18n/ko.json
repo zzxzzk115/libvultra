@@ -1099,7 +1099,7 @@
     },
     "plugins": {
       "header": "플러그인",
-      "info": "플러그인은 <asset-root>/plugins (예: resources/plugins)에 위치하여 프로젝트 VPK에 패킹되며, 기본적으로 비활성화되어 있습니다. 활성화하면 지금과 다음 실행 시 로드됩니다. 네이티브 플러그인은 데스크톱 전용입니다.",
+      "info": "카탈로그/Git 플러그인은 프로젝트의 관리형 플러그인 저장소에 설치됩니다. ZIP 및 폴더 가져오기는 <asset-root>/plugins (예: resources/plugins)에 복사되어 프로젝트 VPK에 패킹됩니다. 플러그인은 기본적으로 비활성화되어 있습니다. 활성화하면 지금과 다음 실행 시 로드됩니다. 네이티브 플러그인은 데스크톱 전용입니다.",
       "importHeader": "플러그인 가져오기",
       "importHint": "Git, 카탈로그, ZIP 또는 폴더에서 가져옵니다.",
       "chooseImportSource": "가져오기 소스 선택",
