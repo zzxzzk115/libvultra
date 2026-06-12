@@ -650,39 +650,63 @@ namespace vultra
             std::string nativeFile = manifest.native;
             if (std::filesystem::path {nativeFile}.extension().empty())
                 nativeFile += nativeLibrarySuffix();
-            const std::string nativeUri = dirUri + "/" + nativeFile;
 
-            auto bytes = assetService->loadBinaryAssetSync(nativeUri);
-            if (!bytes)
-            {
-                VULTRA_CORE_ERROR(
-                    "[PluginSystem] '{}': cannot read native library '{}' from package.", manifest.id, nativeUri);
-                return false;
-            }
+            // Extract the plugin's entire packaged subtree, not just the native library: the
+            // library may pull import-table / runtime dependencies (vendor SDK DLLs shipped in
+            // the plugin dir, e.g. Streamline) relative to its own module directory.
+            const auto        schemeEnd  = dirUri.find("://");
+            const std::string dirLogical = schemeEnd == std::string::npos ? dirUri : dirUri.substr(schemeEnd + 3);
+            const auto        outRoot    = pluginExtractionDir(ctx().config.writableRoot) / manifest.id;
 
-            const auto      outPath = pluginExtractionDir(ctx().config.writableRoot) / manifest.id / nativeFile;
-            std::error_code ec;
-            std::filesystem::create_directories(outPath.parent_path(), ec);
+            std::size_t extracted = 0;
+            for (const auto& [_, entry] : assetService->registry().getRegistry())
             {
+                static_cast<void>(_);
+                const auto& logical = entry.sourcePath;
+                if (logical.size() <= dirLogical.size() + 1 || !logical.starts_with(dirLogical) ||
+                    logical[dirLogical.size()] != '/')
+                    continue;
+                const std::string rel = logical.substr(dirLogical.size() + 1);
+
+                auto bytes = assetService->loadBinaryAssetSync(dirUri + "/" + rel);
+                if (!bytes)
+                {
+                    VULTRA_CORE_WARN("[PluginSystem] '{}': cannot read packaged file '{}'.", manifest.id, logical);
+                    continue;
+                }
+                const auto      outPath = (outRoot / rel).lexically_normal();
+                std::error_code ec;
+                std::filesystem::create_directories(outPath.parent_path(), ec);
                 std::ofstream out(outPath, std::ios::binary | std::ios::trunc);
                 if (!out)
                 {
-                    VULTRA_CORE_ERROR("[PluginSystem] '{}': cannot write extracted native library '{}'.",
+                    VULTRA_CORE_ERROR("[PluginSystem] '{}': cannot write extracted file '{}'.",
                                       manifest.id, outPath.generic_string());
                     return false;
                 }
                 out.write(reinterpret_cast<const char*>(bytes.value().data()),
                           static_cast<std::streamsize>(bytes.value().size()));
+                ++extracted;
+            }
+
+            const auto      nativePath = (outRoot / nativeFile).lexically_normal();
+            std::error_code nativeEc;
+            if (!std::filesystem::is_regular_file(nativePath, nativeEc))
+            {
+                VULTRA_CORE_ERROR("[PluginSystem] '{}': native library '{}' not found in package ('{}').",
+                                  manifest.id, nativeFile, dirUri);
+                return false;
             }
 
             if (ctx().pluginManager == nullptr ||
-                !ctx().pluginManager->load(manifest.id, outPath.generic_string(), ctx()))
+                !ctx().pluginManager->load(manifest.id, nativePath.generic_string(), ctx()))
             {
                 VULTRA_CORE_ERROR("[PluginSystem] '{}': failed to load extracted native library '{}'.",
-                                  manifest.id, outPath.generic_string());
+                                  manifest.id, nativePath.generic_string());
                 return false;
             }
-            VULTRA_CORE_INFO("[PluginSystem] '{}': native library loaded (extracted {}).", manifest.id, nativeFile);
+            VULTRA_CORE_INFO("[PluginSystem] '{}': native library loaded ({}, {} file(s) extracted).",
+                             manifest.id, nativeFile, extracted);
         }
 
         // --- Lua entry script, read from the asset VFS ------------------------------------------

@@ -1,5 +1,6 @@
 #include "editor_app/editor_app.hpp"
 
+#include "editor_app/plugin_repository.hpp"
 #include "editor_app/project_asset_utils.hpp"
 #include "editor_app/ui/settings_widgets.hpp"
 #include "launch_options.hpp"
@@ -356,30 +357,49 @@ namespace vultra_app
             }
 
             // Bundle the project's enabled plugins (pure-Lua and native + Lua helper) into the VPK so
-            // the exported runtime can load them: pack every file in each plugin's directory and
-            // record the plugin dirs in the package manifest. Native libs are extracted to a writable
-            // dir and loaded at runtime (a .dll cannot be loaded from inside the VPK in place).
+            // the exported runtime can load them, scanning the same dirs the editor does (local
+            // installs under <asset-root>/plugins plus lock-recorded managed dirs). Local installs
+            // pack in place; managed plugins live outside the asset root (plugins://<id>/<version>,
+            // i.e. .vultra/plugins) and are mirrored into the package as res://plugins/<id>/<version>
+            // via --extra-dir. Native libs are extracted to a writable dir and loaded at runtime (a
+            // .dll cannot be loaded from inside the VPK in place).
             std::vector<std::string> pluginDirUris;
             std::vector<std::string> pluginFileUris;
+            std::vector<std::string> pluginExtraDirArgs; // "<physical-dir>=<logical-prefix>"
             if (!enabledPluginIds.empty())
             {
-                for (const auto& manifest : vultra::discoverPlugins(assetRootPath / "plugins"))
+                for (const auto& manifest :
+                     plugins::discoverProjectPlugins(plugins::discoveryDirs(projectRoot, assetRoot)))
                 {
                     if (std::find(enabledPluginIds.begin(), enabledPluginIds.end(), manifest.id) ==
                         enabledPluginIds.end())
                         continue;
-                    pluginDirUris.push_back("res://plugins/" + manifest.directory.filename().generic_string());
-                    std::error_code fec;
-                    for (const auto& file : fs::recursive_directory_iterator(manifest.directory, fec))
+
+                    std::error_code dirEc;
+                    const auto      relDir = fs::relative(manifest.directory, assetRootPath, dirEc).generic_string();
+                    if (!dirEc && !relDir.empty() && relDir != "." && !relDir.starts_with(".."))
                     {
-                        if (fec)
-                            break;
-                        if (!file.is_regular_file())
-                            continue;
-                        const auto rel = fs::relative(file.path(), assetRootPath, fec).generic_string();
-                        if (fec || rel.empty() || rel.starts_with(".."))
-                            continue;
-                        pluginFileUris.push_back("res://" + rel);
+                        pluginDirUris.push_back("res://" + relDir);
+                        std::error_code fec;
+                        for (const auto& file : fs::recursive_directory_iterator(manifest.directory, fec))
+                        {
+                            if (fec)
+                                break;
+                            if (!file.is_regular_file())
+                                continue;
+                            const auto rel = fs::relative(file.path(), assetRootPath, fec).generic_string();
+                            if (fec || rel.empty() || rel.starts_with(".."))
+                                continue;
+                            pluginFileUris.push_back("res://" + rel);
+                        }
+                    }
+                    else
+                    {
+                        std::string logicalDir = "plugins/" + manifest.id;
+                        if (!manifest.version.empty())
+                            logicalDir += "/" + manifest.version;
+                        pluginDirUris.push_back("res://" + logicalDir);
+                        pluginExtraDirArgs.push_back(manifest.directory.generic_string() + "=" + logicalDir);
                     }
                 }
             }
@@ -445,6 +465,12 @@ namespace vultra_app
             // Bundled plugin files (manifest + Lua + native lib) collected above.
             for (const auto& pluginFile : pluginFileUris)
                 appendPackRoot(packArgs, packRoots, pluginFile);
+            // Managed plugin dirs live outside the asset root; pack them verbatim.
+            for (const auto& extraDir : pluginExtraDirArgs)
+            {
+                packArgs.push_back("--extra-dir");
+                packArgs.push_back(extraDir);
+            }
 
             const int packResult = runAssetTool(packArgs);
             if (packResult != 0)
