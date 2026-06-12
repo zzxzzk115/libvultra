@@ -784,6 +784,8 @@ namespace
             vultra_app::EditorContext mcpCtx {.state = m_State, .services = &engineCtx().services, .editor = &m_Editor};
             if (m_State.mode == vultra_app::AppMode::Runtime)
             {
+                if (auto* cameraService = engineCtx().services.tryGet<vultra::ICameraService>())
+                    cameraService->setWorldCamerasAllowUpscaler(true);
                 m_Editor.updateRuntimeMcp(mcpCtx);
                 updateRuntimeSceneLoad();
                 return;
@@ -795,6 +797,9 @@ namespace
             {
                 cameraService->setWorldCamerasEnabled(false);
                 cameraService->setWorldXRCamerasEnabled(true);
+                // Headset preview renders world XR cameras even outside play mode; the
+                // upscaler (e.g. DLSS) should only run while actually playing.
+                cameraService->setWorldCamerasAllowUpscaler(m_State.editorPlaying);
             }
 
             if (m_State.editorShutdownRequested && m_State.mode != vultra_app::AppMode::Editor)

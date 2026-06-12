@@ -36,6 +36,10 @@ namespace vultra
         virtual RenderCamera&                 addManualCamera(const RenderCamera& camera) = 0;
         virtual void                          setWorldCamerasEnabled(bool) {}
         virtual void                          setWorldXRCamerasEnabled(bool) {}
+        // Whether world (ECS) cameras may use the render upscaler. The editor disables this
+        // outside play mode so e.g. DLSS does not evaluate for headset preview. Manual
+        // cameras carry their own allowUpscaler flag and are unaffected.
+        virtual void                          setWorldCamerasAllowUpscaler(bool) {}
         virtual std::optional<CameraControlOverlayInfo> cameraControlOverlayInfo() const { return std::nullopt; }
         virtual void setCameraControlInputSuppressed(bool) {}
     };

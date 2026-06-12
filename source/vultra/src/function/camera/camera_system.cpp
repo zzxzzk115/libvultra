@@ -317,6 +317,8 @@ namespace vultra
                     cam.renderImGui = false;
                     cam.cullingMask = camera.cullingMask;
                     cam.rendererKey = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
+                    // The editor gates world cameras off the upscaler outside play mode.
+                    cam.allowUpscaler = m_WorldCamerasAllowUpscaler;
 
                     const auto* xrView      = reg.try_get<XRViewComponent>(e);
                     const bool  wantsXR     = xrView && xrView->enabled;

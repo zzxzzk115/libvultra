@@ -67,6 +67,7 @@ namespace vultra
         RenderCamera& addManualCamera(const RenderCamera& cam) override;
         void          setWorldCamerasEnabled(bool enabled) override;
         void          setWorldXRCamerasEnabled(bool enabled) override;
+        void          setWorldCamerasAllowUpscaler(bool allowed) override { m_WorldCamerasAllowUpscaler = allowed; }
 
         void setFPSCameraController(const FPSCameraController& controller, std::size_t manualCameraIndex = 0);
         void disableFPSCameraController();
@@ -108,6 +109,7 @@ namespace vultra
         std::vector<RenderCamera> m_Manual;
         bool                      m_WorldCamerasEnabled {true};
         bool                      m_WorldXRCamerasEnabled {true};
+        bool                      m_WorldCamerasAllowUpscaler {true};
 
         std::optional<FPSCameraController> m_FPSController;
         std::size_t                        m_FPSManualCameraIndex {0};
