@@ -35,7 +35,9 @@ function OnCreate(self)
     print("[binding_probe] camera.count=" .. tostring(Camera.count()) .. " overlay=" .. tostring(overlay.mode))
     print("[binding_probe] render.clodLevel=" .. tostring(gs.clodLevel))
     print("[binding_probe] xr.enabled=" .. bool_text(RenderBackend.isXREnabled()))
-    print("[binding_probe] scene.load.package=" .. bool_text(Scene.load("res://scenes/sponza.vscn")))
+    -- Avoid reloading the active scene during playback; this probe is only meant
+    -- to validate binding availability, not trigger a heavy scene load.
+    print("[binding_probe] scene.load.package=skipped")
 end
 
 function OnUpdate(self, dt)

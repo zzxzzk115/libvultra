@@ -101,7 +101,8 @@ namespace vultra_app
         vultra::RenderCamera makeGameCamera(vultra::World&        world,
                                             const entt::entity    entity,
                                             const float           aspect,
-                                            vultra::rhi::Texture* target)
+                                            vultra::rhi::Texture* target,
+                                            const bool            allowUpscaler)
         {
             auto& reg    = world.registry();
             auto& id     = reg.get<vultra::IDComponent>(entity);
@@ -121,6 +122,7 @@ namespace vultra_app
             out.clearValue              = camera.clearColor;
             out.clearMode               = camera.clearMode;
             out.renderImGui             = false;
+            out.allowUpscaler           = allowUpscaler;
             out.debugEntityIdOutput     = false;
             out.selectionOutlineEnabled = false;
             out.rendererKey             = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
@@ -322,6 +324,11 @@ namespace vultra_app
                 if (hasPrimaryCamera)
                 {
                     auto& reg = world.registry();
+                    if (m_LastEditorPlaying && !ctx.state.editorPlaying)
+                    {
+                        m_StaticFrameValid          = false;
+                        m_LastStaticRenderSignature = 0;
+                    }
                     if (const auto* xrView = reg.try_get<vultra::XRViewComponent>(primaryCamera);
                         xrView && xrView->enabled)
                     {
@@ -330,6 +337,7 @@ namespace vultra_app
                 }
             }
         }
+        m_LastEditorPlaying = ctx.state.editorPlaying;
         xrBackendEnabled                 = backendService && backendService->isXREnabled();
         const bool useXrMirrorPreview    = primaryCameraWantsXR && xrBackendEnabled;
         if (useXrMirrorPreview)
@@ -399,7 +407,8 @@ namespace vultra_app
                 if (shouldRenderGameView)
                 {
                     const float aspect       = outputSize.x / std::max(outputSize.y, 1.0f);
-                    auto        renderCamera = makeGameCamera(world, primaryCamera, aspect, renderTarget);
+                    auto        renderCamera =
+                        makeGameCamera(world, primaryCamera, aspect, renderTarget, ctx.state.editorPlaying);
                     renderCamera.overrideFrameTime = true;
                     renderCamera.frameTimeSeconds =
                         ctx.state.editorPlaying ? ctx.state.editorGameTimeSeconds : 0.0f;

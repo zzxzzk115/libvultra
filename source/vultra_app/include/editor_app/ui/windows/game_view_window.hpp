@@ -64,5 +64,6 @@ namespace vultra_app
         uint64_t                      m_LastStaticRenderSignature {0};
         bool                          m_StaticFrameValid {false};
         bool                          m_LastSceneDirty {false};
+        bool                          m_LastEditorPlaying {false};
     };
 } // namespace vultra_app

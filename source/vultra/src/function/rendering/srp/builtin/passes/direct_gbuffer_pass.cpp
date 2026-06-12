@@ -9,6 +9,7 @@
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/rendering/srp/builtin/upload_resources.hpp"
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
+#include "vultra/function/rendering/runtime_profiler.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/material/material_params.hpp"
 #include "vultra/function/resource/gpu_material.hpp"
@@ -452,19 +453,27 @@ namespace vultra
                     return;
                 }
 
-                auto prepared = prepareDirectDrawSet(*renderWorld, *gpuSceneDatabase->resources, rc.view().camera);
+                PreparedDirectDrawSet prepared;
+                {
+                    RuntimeProfiler::ExternalScope scope {"DirectDepthPrePass/prepareDrawSet"};
+                    prepared = prepareDirectDrawSet(*renderWorld, *gpuSceneDatabase->resources, rc.view().camera);
+                }
                 const uint64_t drawParamStride = kUniformOffsetAlignment;
                 const uint64_t drawParamBufferSize =
                     std::max<uint64_t>(1u, static_cast<uint64_t>(prepared.records.size())) * drawParamStride;
                 auto drawParamsBuffer =
                     rc.rd.createUniformBuffer(drawParamBufferSize, rhi::AllocationHints::eSequentialWrite);
-                if (!prepared.paramBytes.empty())
-                    rc.cb.update(drawParamsBuffer,
-                                 0,
-                                 static_cast<uint64_t>(prepared.paramBytes.size()),
-                                 prepared.paramBytes.data());
-                auto& retainedDrawParamsBuffer = retainDrawParamBuffer(rc.frame.frameIndex, std::move(drawParamsBuffer));
-                rhi::prepareForReading(rc.cb, retainedDrawParamsBuffer);
+                auto& retainedDrawParamsBuffer = [&]() -> rhi::Buffer& {
+                    RuntimeProfiler::ExternalScope scope {"DirectDepthPrePass/uploadDrawParams"};
+                    if (!prepared.paramBytes.empty())
+                        rc.cb.update(drawParamsBuffer,
+                                     0,
+                                     static_cast<uint64_t>(prepared.paramBytes.size()),
+                                     prepared.paramBytes.data());
+                    auto& retained = retainDrawParamBuffer(rc.frame.frameIndex, std::move(drawParamsBuffer));
+                    rhi::prepareForReading(rc.cb, retained);
+                    return retained;
+                }();
 
                 assert(rc.framebufferInfo().has_value());
                 const auto framebufferInfo = rc.framebufferInfo().value();
@@ -478,6 +487,7 @@ namespace vultra
                 };
                 rc.cb.beginRendering(framebufferInfo);
                 const rhi::GraphicsPipeline* boundPipeline = nullptr;
+                RuntimeProfiler::ExternalScope drawLoopScope {"DirectDepthPrePass/drawLoop"};
                 for (uint64_t drawParamIndex = 0u; drawParamIndex < prepared.records.size(); ++drawParamIndex)
                 {
                     const auto& record = prepared.records[drawParamIndex];
@@ -731,23 +741,35 @@ namespace vultra
                 };
 
                 const uint64_t drawParamStride = kUniformOffsetAlignment;
-                auto prepared = prepareDirectDrawSet(*renderWorld, *gpuSceneDatabase->resources, rc.view().camera);
+                PreparedDirectDrawSet prepared;
+                {
+                    RuntimeProfiler::ExternalScope scope {"DirectGBufferPass/prepareDrawSet"};
+                    prepared = prepareDirectDrawSet(*renderWorld, *gpuSceneDatabase->resources, rc.view().camera);
+                }
                 const uint64_t drawParamBufferSize =
                     std::max<uint64_t>(1u, static_cast<uint64_t>(prepared.records.size())) * drawParamStride;
                 auto drawParamsBuffer =
                     rc.rd.createUniformBuffer(drawParamBufferSize, rhi::AllocationHints::eSequentialWrite);
-                if (!prepared.paramBytes.empty())
-                    rc.cb.update(drawParamsBuffer,
-                                 0,
-                                 static_cast<uint64_t>(prepared.paramBytes.size()),
-                                 prepared.paramBytes.data());
-                auto& retainedDrawParamsBuffer = retainDrawParamBuffer(rc.frame.frameIndex, std::move(drawParamsBuffer));
-                rhi::prepareForReading(rc.cb, retainedDrawParamsBuffer);
+                auto& retainedDrawParamsBuffer = [&]() -> rhi::Buffer& {
+                    RuntimeProfiler::ExternalScope scope {"DirectGBufferPass/uploadDrawParams"};
+                    if (!prepared.paramBytes.empty())
+                        rc.cb.update(drawParamsBuffer,
+                                     0,
+                                     static_cast<uint64_t>(prepared.paramBytes.size()),
+                                     prepared.paramBytes.data());
+                    auto& retained = retainDrawParamBuffer(rc.frame.frameIndex, std::move(drawParamsBuffer));
+                    rhi::prepareForReading(rc.cb, retained);
+                    return retained;
+                }();
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
                 rc.cb.beginRendering(framebufferInfo);
 
                 const rhi::GraphicsPipeline* boundPipeline = nullptr;
+                const rhi::GraphicsPipeline* boundSet0Pipeline = nullptr;
+                bool                          boundSet0UsesShaderFrameBlock = false;
+                bool                          boundSet0HasSkinning = false;
+                RuntimeProfiler::ExternalScope drawLoopScope {"DirectGBufferPass/drawLoop"};
                 for (uint64_t drawParamIndex = 0u; drawParamIndex < prepared.records.size(); ++drawParamIndex)
                 {
                     const auto& record = prepared.records[drawParamIndex];
@@ -840,12 +862,17 @@ namespace vultra
                                 .range  = sizeof(GPUFrameBlock),
                             };
                         }
+                        else
+                        {
+                            rc.resourceSet[0].erase(1);
+                        }
                     }
                     else
                     {
                         rc.resourceSet[0].erase(1);
                     }
-                    if (layout.hasSkinning())
+                    const bool hasSkinning = layout.hasSkinning();
+                    if (hasSkinning)
                     {
                         if (auto* db = rc.view().gpuSceneDatabase)
                         {
@@ -861,10 +888,19 @@ namespace vultra
                     if (pipeline != boundPipeline)
                     {
                         rc.cb.bindPipeline(*pipeline);
+                        rc.bindDescriptorSet(*pipeline, 3);
                         boundPipeline = pipeline;
                     }
-                    rc.bindDescriptorSet(*pipeline, 0);
-                    rc.bindDescriptorSet(*pipeline, 3);
+                    const bool usesShaderFrameBlock = useShaderMaterial && rc.frame.frameData.frameBlock.buffer;
+                    if (pipeline != boundSet0Pipeline ||
+                        usesShaderFrameBlock != boundSet0UsesShaderFrameBlock ||
+                        hasSkinning != boundSet0HasSkinning)
+                    {
+                        rc.bindDescriptorSet(*pipeline, 0);
+                        boundSet0Pipeline = pipeline;
+                        boundSet0UsesShaderFrameBlock = usesShaderFrameBlock;
+                        boundSet0HasSkinning = hasSkinning;
+                    }
                     rc.bindDescriptorSet(*pipeline, 1);
                     rc.cb.draw(rhi::GeometryInfo {
                         .topology     = rhi::PrimitiveTopology::eTriangleList,

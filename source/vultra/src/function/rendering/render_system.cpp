@@ -61,6 +61,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cctype>
 #include <chrono>
@@ -95,6 +96,8 @@ namespace vultra
             std::vector<std::byte>     bytes;
             bool                       timeDependent {false};
         };
+
+        constexpr uint32_t kGraphConstantMaterialTag = 0xC0DEu;
 
         void importPreparedFrameGraphUniforms(FrameGraph& fg, FrameRenderData& frameData, ViewRenderData& viewData)
         {
@@ -189,6 +192,93 @@ namespace vultra
                     return true;
             }
             return false;
+        }
+
+        [[nodiscard]] bool constantNodeDependsOnTime(const material_graph::Graph& graph,
+                                                     const material_graph::Node&  node,
+                                                     std::string_view             outputPin,
+                                                     std::unordered_set<std::string>& visited)
+        {
+            if (!visited.insert(node.id).second)
+                return false;
+
+            if (node.typeId == "vultra.input.time" &&
+                (outputPin == "seconds" || outputPin == "value" || outputPin == "out"))
+                return true;
+            if (node.typeId == "vultra.param.float" || node.typeId == "vultra.param.vec2" ||
+                node.typeId == "vultra.param.vec3" || node.typeId == "vultra.param.vec4" ||
+                node.typeId == "vultra.param.color" || node.typeId == "vultra.param.bool" ||
+                node.typeId == "vultra.param.int" || node.typeId == "vultra.param.enum" ||
+                node.typeId == "vultra.input.view_index" || node.typeId == "vultra.input.eye_index" ||
+                node.typeId == "vultra.input.view_count" || node.typeId == "vultra.input.is_stereo_view")
+            {
+                return false;
+            }
+
+            auto linkedPinDepends = [&](std::string_view pin) {
+                const auto* link = linkedInput(graph, node, pin);
+                const auto* source = link ? material_graph::findNode(graph, link->from.nodeId) : nullptr;
+                return source ? constantNodeDependsOnTime(graph, *source, link->from.pin, visited) : false;
+            };
+
+            if ((node.typeId == "vultra.math.add" || node.typeId == "vultra.math.subtract" ||
+                 node.typeId == "vultra.math.multiply" || node.typeId == "vultra.math.divide" ||
+                 node.typeId == "vultra.math.min" || node.typeId == "vultra.math.max") &&
+                outputPin == "out")
+            {
+                return linkedPinDepends("a") || linkedPinDepends("b");
+            }
+            if ((node.typeId == "vultra.math.one_minus" || node.typeId == "vultra.math.saturate" ||
+                 node.typeId == "vultra.math.sine" || node.typeId == "vultra.math.fract") &&
+                outputPin == "out")
+            {
+                return linkedPinDepends("v");
+            }
+            if (node.typeId == "vultra.math.power" && outputPin == "out")
+                return linkedPinDepends("base") || linkedPinDepends("exponent");
+            if (node.typeId == "vultra.math.smoothstep" && outputPin == "out")
+                return linkedPinDepends("edge0") || linkedPinDepends("edge1") || linkedPinDepends("x");
+            if (node.typeId == "vultra.vector.split_vec2")
+                return (outputPin == "x" || outputPin == "y") && linkedPinDepends("v");
+            if (node.typeId == "vultra.math.mix" && outputPin == "out")
+                return linkedPinDepends("a") || linkedPinDepends("b") || linkedPinDepends("t");
+
+            return false;
+        }
+
+        [[nodiscard]] bool surfaceInputDependsOnTime(const material_graph::Graph& graph,
+                                                     const material_graph::Node&  output,
+                                                     std::string_view             pin)
+        {
+            const auto* link = linkedInput(graph, output, pin);
+            const auto* source = link ? material_graph::findNode(graph, link->from.nodeId) : nullptr;
+            if (!source)
+                return false;
+
+            std::unordered_set<std::string> visited;
+            return constantNodeDependsOnTime(graph, *source, link->from.pin, visited);
+        }
+
+        [[nodiscard]] bool graphConstantMaterialDependsOnTime(const material_graph::Graph& graph,
+                                                              const material_graph::Node&  output)
+        {
+            constexpr std::array<std::string_view, 11> kPackedSurfacePins {
+                "baseColor",
+                "emissive",
+                "alpha",
+                "alphaCutoff",
+                "ao",
+                "specular",
+                "glossiness",
+                "shininess",
+                "metallic",
+                "roughness",
+                "normal",
+            };
+
+            return std::any_of(kPackedSurfacePins.begin(), kPackedSurfacePins.end(), [&](std::string_view pin) {
+                return surfaceInputDependsOnTime(graph, output, pin);
+            });
         }
 
         [[nodiscard]] const nlohmann::json*
@@ -456,10 +546,7 @@ namespace vultra
                 return nullptr;
 
             entry.outputIndex = static_cast<std::size_t>(std::distance(graph->nodes.begin(), output));
-            {
-                std::unordered_set<std::string> visited;
-                entry.timeDependent = graphDependsOnTime(*graph, *output, visited);
-            }
+            entry.timeDependent = graphConstantMaterialDependsOnTime(*graph, *output);
             entry.graph = std::move(graph);
             return &entry;
         }
@@ -578,6 +665,56 @@ namespace vultra
             return out;
         }
 
+        void uploadMaterialParamBlock(resource::MaterialBuffer& materialParams,
+                                      rhi::RenderDevice&        rd,
+                                      const uint32_t            offsetBytes,
+                                      const uint32_t            sizeBytes)
+        {
+            if (!materialParams.gpu || sizeBytes == 0)
+                return;
+            if (static_cast<uint64_t>(offsetBytes) + sizeBytes > materialParams.cpu.size())
+                return;
+
+            rd.uploadS(*materialParams.gpu,
+                       offsetBytes,
+                       sizeBytes,
+                       materialParams.cpu.data() + offsetBytes);
+        }
+
+        [[nodiscard]] std::unordered_map<std::string, uint32_t>& graphConstantMaterialIndexCache()
+        {
+            static std::unordered_map<std::string, uint32_t> cache;
+            return cache;
+        }
+
+        [[nodiscard]] bool isGraphConstantMaterialIndex(const resource::GpuResourcePool& pool,
+                                                        const uint32_t                   materialIndex,
+                                                        const uint32_t                   materialInstanceId)
+        {
+            if (materialIndex >= pool.materials.size())
+                return false;
+            const auto& material = pool.materials[materialIndex];
+            return material.padding == kGraphConstantMaterialTag && material.tableIndex == materialInstanceId;
+        }
+
+        struct ShaderMaterialIndexCacheEntry
+        {
+            uint64_t contentRevision {0};
+            uint32_t materialIndex {std::numeric_limits<uint32_t>::max()};
+        };
+
+        [[nodiscard]] std::unordered_map<std::string, ShaderMaterialIndexCacheEntry>& graphShaderMaterialIndexCache()
+        {
+            static std::unordered_map<std::string, ShaderMaterialIndexCacheEntry> cache;
+            return cache;
+        }
+
+        [[nodiscard]] bool isShaderMaterialIndex(const resource::GpuResourcePool& pool, const uint32_t materialIndex)
+        {
+            return materialIndex < pool.materials.size() &&
+                   pool.materials[materialIndex].model == resource::GpuMaterialModel::eShaderMaterial;
+        }
+
         void uploadGraphConstantMaterial(resource::GpuResourcePool&    pool,
                                          rhi::RenderDevice&            rd,
                                          resource::GpuMaterial&        material,
@@ -587,13 +724,7 @@ namespace vultra
             if (material.blockOffsetBytes + size <= pool.materialParams.cpu.size())
             {
                 std::memcpy(pool.materialParams.cpu.data() + material.blockOffsetBytes, packed.bytes.data(), size);
-                if (pool.materialParams.gpu)
-                {
-                    rd.uploadS(*pool.materialParams.gpu,
-                               0,
-                               static_cast<uint64_t>(pool.materialParams.cpu.size()),
-                               pool.materialParams.cpu.data());
-                }
+                uploadMaterialParamBlock(pool.materialParams, rd, material.blockOffsetBytes, size);
             }
             else
             {
@@ -618,60 +749,73 @@ namespace vultra
             const auto      keyText = materialKey.empty() ? std::string(materialGraphUri) : std::string(materialKey);
             const uint32_t materialInstanceId = material_graph::stableGraphId(keyText);
             const uint64_t contentRevision = gpuResources.contentRevision();
+            auto&          indexCache = graphConstantMaterialIndexCache();
 
             // Graph-derived constant materials now carry a real per-model GpuMaterialModel
             // (identical to a hand-authored material). GpuMaterial.padding tags them so the
             // cache below can find them without colliding with hand-authored materials of
             // the same model. (padding is unused by the shaders.)
-            constexpr uint32_t kGraphConstantTag = 0xC0DEu;
+            auto updateExistingMaterial = [&](const uint32_t i) -> uint32_t {
+                auto& material = pool.materials[i];
+                struct MaterialGraphCacheEntry
+                {
+                    uint64_t                   contentRevision {0};
+                    bool                       timeDependent {false};
+                    float                      timeSeconds {std::numeric_limits<float>::quiet_NaN()};
+                    uint32_t                   materialIndex {std::numeric_limits<uint32_t>::max()};
+                    resource::GpuMaterialModel model {resource::GpuMaterialModel::eInvalid};
+                    std::vector<std::byte>     bytes;
+                };
+                static std::unordered_map<std::string, MaterialGraphCacheEntry> cache;
+                auto& cached = cache[keyText];
+                if (!properties && cached.contentRevision == contentRevision && !cached.timeDependent)
+                    return i;
+                if (!properties && cached.contentRevision == contentRevision && cached.timeDependent &&
+                    cached.materialIndex == i && cached.timeSeconds == timeSeconds)
+                    return i;
+
+                auto packed = packGraphConstantMaterial(assets, materialGraphUri, contentRevision, timeSeconds, properties);
+                const auto size = static_cast<uint32_t>(packed.bytes.size());
+                const bool blockUnchanged =
+                    material.model == packed.model &&
+                    material.blockOffsetBytes + size <= pool.materialParams.cpu.size() &&
+                    std::memcmp(pool.materialParams.cpu.data() + material.blockOffsetBytes, packed.bytes.data(), size) == 0;
+                if (!blockUnchanged)
+                {
+                    if (material.model != packed.model)
+                    {
+                        material.model          = packed.model;
+                        pool.materialTableDirty = true;
+                    }
+                    uploadGraphConstantMaterial(pool, rd, material, packed);
+                    if (pool.materialTableDirty)
+                        pool.uploadMaterialTable(rd);
+                }
+                cached = {
+                    .contentRevision = contentRevision,
+                    .timeDependent   = packed.timeDependent,
+                    .timeSeconds     = timeSeconds,
+                    .materialIndex   = i,
+                    .model           = packed.model,
+                    .bytes           = std::move(packed.bytes),
+                };
+                return i;
+            };
+
+            if (const auto cachedIndex = indexCache.find(keyText); cachedIndex != indexCache.end())
+            {
+                if (isGraphConstantMaterialIndex(pool, cachedIndex->second, materialInstanceId))
+                    return updateExistingMaterial(cachedIndex->second);
+                indexCache.erase(cachedIndex);
+            }
+
             for (uint32_t i = 0; i < static_cast<uint32_t>(pool.materials.size()); ++i)
             {
                 auto& material = pool.materials[i];
-                if (material.padding == kGraphConstantTag && material.tableIndex == materialInstanceId)
+                if (material.padding == kGraphConstantMaterialTag && material.tableIndex == materialInstanceId)
                 {
-                    struct MaterialGraphCacheEntry
-                    {
-                        uint64_t                   contentRevision {0};
-                        bool                       timeDependent {false};
-                        float                      timeSeconds {std::numeric_limits<float>::quiet_NaN()};
-                        uint32_t                   materialIndex {std::numeric_limits<uint32_t>::max()};
-                        resource::GpuMaterialModel model {resource::GpuMaterialModel::eInvalid};
-                        std::vector<std::byte>     bytes;
-                    };
-                    static std::unordered_map<std::string, MaterialGraphCacheEntry> cache;
-                    auto& cached = cache[keyText];
-                    if (!properties && cached.contentRevision == contentRevision && !cached.timeDependent)
-                        return i;
-                    if (!properties && cached.contentRevision == contentRevision && cached.timeDependent &&
-                        cached.materialIndex == i && cached.timeSeconds == timeSeconds)
-                        return i;
-
-                    auto packed = packGraphConstantMaterial(assets, materialGraphUri, contentRevision, timeSeconds, properties);
-                    const auto size = static_cast<uint32_t>(packed.bytes.size());
-                    const bool blockUnchanged =
-                        material.model == packed.model &&
-                        material.blockOffsetBytes + size <= pool.materialParams.cpu.size() &&
-                        std::memcmp(pool.materialParams.cpu.data() + material.blockOffsetBytes, packed.bytes.data(), size) == 0;
-                    if (!blockUnchanged)
-                    {
-                        if (material.model != packed.model)
-                        {
-                            material.model          = packed.model;
-                            pool.materialTableDirty = true;
-                        }
-                        uploadGraphConstantMaterial(pool, rd, material, packed);
-                        if (pool.materialTableDirty)
-                            pool.uploadMaterialTable(rd);
-                    }
-                    cached = {
-                        .contentRevision = contentRevision,
-                        .timeDependent   = packed.timeDependent,
-                        .timeSeconds     = timeSeconds,
-                        .materialIndex   = i,
-                        .model           = packed.model,
-                        .bytes           = std::move(packed.bytes),
-                    };
-                    return i;
+                    indexCache[keyText] = i;
+                    return updateExistingMaterial(i);
                 }
             }
 
@@ -681,14 +825,34 @@ namespace vultra
             material.blockOffsetBytes = pool.materialParams.allocAndUpload(
                 rd, packed.bytes.data(), static_cast<uint32_t>(packed.bytes.size()));
             material.tableIndex       = materialInstanceId;
-            material.padding          = kGraphConstantTag;
+            material.padding          = kGraphConstantMaterialTag;
 
             const uint32_t index = static_cast<uint32_t>(pool.materials.size());
             pool.materials.push_back(material);
+            indexCache[keyText] = index;
             pool.materialTableDirty = true;
             pool.uploadMaterialTable(rd);
             gpuResources.markContentDirty();
             return index;
+        }
+
+        [[nodiscard]] bool hasGraphConstantGpuMaterial(IGpuResourceService& gpuResources, std::string_view materialKey)
+        {
+            if (materialKey.empty())
+                return false;
+
+            const uint32_t materialInstanceId = material_graph::stableGraphId(std::string(materialKey));
+            const auto&    pool               = gpuResources.pool();
+            auto&          indexCache         = graphConstantMaterialIndexCache();
+            if (const auto cachedIndex = indexCache.find(std::string(materialKey)); cachedIndex != indexCache.end())
+            {
+                if (isGraphConstantMaterialIndex(pool, cachedIndex->second, materialInstanceId))
+                    return true;
+                indexCache.erase(cachedIndex);
+            }
+            return std::any_of(pool.materials.begin(), pool.materials.end(), [materialInstanceId](const auto& material) {
+                return material.padding == kGraphConstantMaterialTag && material.tableIndex == materialInstanceId;
+            });
         }
 
         [[nodiscard]] uint32_t stableMaterialAssetId(std::string_view uri)
@@ -838,13 +1002,10 @@ namespace vultra
                 if (material.blockOffsetBytes + sizeof(params) <= pool.materialParams.cpu.size())
                 {
                     std::memcpy(pool.materialParams.cpu.data() + material.blockOffsetBytes, &params, sizeof(params));
-                    if (pool.materialParams.gpu)
-                    {
-                        rd.uploadS(*pool.materialParams.gpu,
-                                   0,
-                                   static_cast<uint64_t>(pool.materialParams.cpu.size()),
-                                   pool.materialParams.cpu.data());
-                    }
+                    uploadMaterialParamBlock(pool.materialParams,
+                                             rd,
+                                             material.blockOffsetBytes,
+                                             static_cast<uint32_t>(sizeof(params)));
                 }
                 else
                 {
@@ -1390,13 +1551,10 @@ namespace vultra
                 if (material.blockOffsetBytes + bytes.size() <= pool.materialParams.cpu.size())
                 {
                     std::memcpy(pool.materialParams.cpu.data() + material.blockOffsetBytes, bytes.data(), bytes.size());
-                    if (pool.materialParams.gpu)
-                    {
-                        rd.uploadS(*pool.materialParams.gpu,
-                                   0,
-                                   static_cast<uint64_t>(pool.materialParams.cpu.size()),
-                                   pool.materialParams.cpu.data());
-                    }
+                    uploadMaterialParamBlock(pool.materialParams,
+                                             rd,
+                                             material.blockOffsetBytes,
+                                             static_cast<uint32_t>(bytes.size()));
                 }
                 else
                 {
@@ -1455,6 +1613,23 @@ namespace vultra
             if (!shaders || graphUri.empty())
                 return std::numeric_limits<uint32_t>::max();
 
+            auto&      pool            = gpuResources.pool();
+            const auto keyText         = materialKey.empty() ? std::string(graphUri) : std::string(materialKey);
+            const auto contentRevision = gpuResources.contentRevision();
+            auto&      indexCache      = graphShaderMaterialIndexCache();
+            if (!properties)
+            {
+                if (const auto cachedIndex = indexCache.find(keyText); cachedIndex != indexCache.end())
+                {
+                    if (cachedIndex->second.contentRevision == contentRevision &&
+                        isShaderMaterialIndex(pool, cachedIndex->second.materialIndex))
+                    {
+                        return cachedIndex->second.materialIndex;
+                    }
+                    indexCache.erase(cachedIndex);
+                }
+            }
+
             const auto sym =
                 material_graph::sanitizeShaderId(std::filesystem::path(std::string(graphUri)).stem().generic_string());
             // The mesh-material backend emits an explicit [vshader] id of
@@ -1477,8 +1652,6 @@ namespace vultra
             if (!resolved)
                 return std::numeric_limits<uint32_t>::max(); // not compiled -> parametric fallback
 
-            auto& pool = gpuResources.pool();
-            const auto keyText = materialKey.empty() ? std::string(graphUri) : std::string(materialKey);
             const uint32_t materialInstanceId =
                 material_graph::stableGraphId(keyText + "#graph-shader#" + std::to_string(resolved->variantHash));
 
@@ -1509,14 +1682,16 @@ namespace vultra
                     {
                         std::memcpy(
                             pool.materialParams.cpu.data() + material.blockOffsetBytes, bytes.data(), bytes.size());
-                        if (pool.materialParams.gpu)
-                            rd.uploadS(*pool.materialParams.gpu,
-                                       0,
-                                       static_cast<uint64_t>(pool.materialParams.cpu.size()),
-                                       pool.materialParams.cpu.data());
+                        uploadMaterialParamBlock(pool.materialParams,
+                                                 rd,
+                                                 material.blockOffsetBytes,
+                                                 static_cast<uint32_t>(bytes.size()));
                     }
                 }
                 pool.shaderMaterials[material.tableIndex] = makeRuntimeInfo();
+                if (!properties)
+                    indexCache[keyText] = ShaderMaterialIndexCacheEntry {.contentRevision = contentRevision,
+                                                                         .materialIndex   = i};
                 return i;
             }
 
@@ -1533,6 +1708,9 @@ namespace vultra
             pool.materialTableDirty = true;
             pool.uploadMaterialTable(rd);
             gpuResources.markContentDirty();
+            if (!properties)
+                indexCache[keyText] = ShaderMaterialIndexCacheEntry {.contentRevision = contentRevision,
+                                                                     .materialIndex   = index};
             return index;
         }
 
@@ -3006,12 +3184,23 @@ namespace vultra
                         uint32_t materialIndex = std::numeric_limits<uint32_t>::max();
                         if (!materialOverride.material.empty())
                         {
-                            const auto propertyBlock = materialPropertyBlockToJson(materialOverride.properties);
+                            nlohmann::json propertyBlock;
+                            std::string    propertyBlockText;
+                            const auto*    propertyBlockPtr = static_cast<const nlohmann::json*>(nullptr);
+                            if (!materialOverride.properties.empty())
+                            {
+                                propertyBlock = materialPropertyBlockToJson(materialOverride.properties);
+                                if (!propertyBlock.empty())
+                                {
+                                    propertyBlockText = propertyBlock.dump();
+                                    propertyBlockPtr  = &propertyBlock;
+                                }
+                            }
                             const auto materialKey =
-                                propertyBlock.empty() ?
+                                propertyBlockPtr == nullptr ?
                                     std::string(materialOverride.material) :
                                     std::string(materialOverride.material) + "#slot" +
-                                        std::to_string(materialOverride.slot) + "#" + propertyBlock.dump();
+                                        std::to_string(materialOverride.slot) + "#" + propertyBlockText;
                             materialIndex = ensureMaterialAssetGpuMaterial(
                                 assets,
                                 shaderService,
@@ -3019,36 +3208,55 @@ namespace vultra
                                 rd,
                                 materialOverride.material,
                                 timeSeconds,
-                                propertyBlock.empty() ? nullptr : &propertyBlock,
+                                propertyBlockPtr,
                                 materialKey);
                         }
                         if (materialIndex == std::numeric_limits<uint32_t>::max() &&
                             !materialOverride.materialGraph.empty())
                         {
-                            const auto propertyBlock = materialPropertyBlockToJson(materialOverride.properties);
+                            nlohmann::json propertyBlock;
+                            std::string    propertyBlockText;
+                            const auto*    propertyBlockPtr = static_cast<const nlohmann::json*>(nullptr);
+                            if (!materialOverride.properties.empty())
+                            {
+                                propertyBlock = materialPropertyBlockToJson(materialOverride.properties);
+                                if (!propertyBlock.empty())
+                                {
+                                    propertyBlockText = propertyBlock.dump();
+                                    propertyBlockPtr  = &propertyBlock;
+                                }
+                            }
                             const auto materialKey =
-                                propertyBlock.empty() ?
+                                propertyBlockPtr == nullptr ?
                                     std::string(materialOverride.materialGraph) :
                                     std::string(materialOverride.materialGraph) + "#slot" +
-                                        std::to_string(materialOverride.slot) + "#" + propertyBlock.dump();
-                            // Prefer the graph's compiled per-pixel GLSL when cooked; else parametric.
-                            materialIndex = ensureMaterialGraphShaderMaterial(
-                                assets,
-                                shaderService,
-                                gpuResources,
-                                rd,
-                                materialOverride.materialGraph,
-                                propertyBlock.empty() ? nullptr : &propertyBlock,
-                                materialKey);
+                                        std::to_string(materialOverride.slot) + "#" + propertyBlockText;
+                            const auto ensureGraphConstant = [&]() {
+                                return ensureMaterialGraphGpuMaterial(assets,
+                                                                      gpuResources,
+                                                                      rd,
+                                                                      materialOverride.materialGraph,
+                                                                      timeSeconds,
+                                                                      propertyBlockPtr,
+                                                                      materialKey);
+                            };
+
+                            // Prefer the graph's compiled per-pixel GLSL on first resolve. Once a graph has fallen
+                            // back to a constant material, go straight to that path so its own time/content cache can
+                            // handle updates without repeated shader variant probes.
+                            if (hasGraphConstantGpuMaterial(gpuResources, materialKey))
+                                materialIndex = ensureGraphConstant();
                             if (materialIndex == std::numeric_limits<uint32_t>::max())
-                                materialIndex = ensureMaterialGraphGpuMaterial(
+                                materialIndex = ensureMaterialGraphShaderMaterial(
                                     assets,
+                                    shaderService,
                                     gpuResources,
                                     rd,
                                     materialOverride.materialGraph,
-                                    timeSeconds,
-                                    propertyBlock.empty() ? nullptr : &propertyBlock,
+                                    propertyBlockPtr,
                                     materialKey);
+                            if (materialIndex == std::numeric_limits<uint32_t>::max())
+                                materialIndex = ensureGraphConstant();
                         }
                         if (materialIndex != std::numeric_limits<uint32_t>::max())
                         {
@@ -4813,11 +5021,14 @@ namespace vultra
                 [](const rhi::BuiltinProfilerGpuScopeContext& ctx) { g_CurrentBuiltinProfilerGpuScopeContext = ctx; },
                 [this](const rhi::BuiltinProfilerGpuScopeContext& ctx, const char* label) {
                     g_CurrentBuiltinProfilerGpuScopeContext = ctx;
-                    (void)m_RuntimeProfiler.beginGpuScope(label ? label : "GPU Scope");
+                    const char* scopeLabel = label ? label : "GPU Scope";
+                    (void)m_RuntimeProfiler.beginScope(scopeLabel);
+                    (void)m_RuntimeProfiler.beginGpuScope(scopeLabel);
                 },
                 [this](const rhi::BuiltinProfilerGpuScopeContext& ctx) {
                     g_CurrentBuiltinProfilerGpuScopeContext = ctx;
                     m_RuntimeProfiler.endGpuScope();
+                    m_RuntimeProfiler.endScope();
                 });
         }
         else
@@ -4872,11 +5083,14 @@ namespace vultra
                 [](const rhi::BuiltinProfilerGpuScopeContext& ctx) { g_CurrentBuiltinProfilerGpuScopeContext = ctx; },
                 [this](const rhi::BuiltinProfilerGpuScopeContext& ctx, const char* label) {
                     g_CurrentBuiltinProfilerGpuScopeContext = ctx;
-                    (void)m_RuntimeProfiler.beginGpuScope(label ? label : "GPU Scope");
+                    const char* scopeLabel = label ? label : "GPU Scope";
+                    (void)m_RuntimeProfiler.beginScope(scopeLabel);
+                    (void)m_RuntimeProfiler.beginGpuScope(scopeLabel);
                 },
                 [this](const rhi::BuiltinProfilerGpuScopeContext& ctx) {
                     g_CurrentBuiltinProfilerGpuScopeContext = ctx;
                     m_RuntimeProfiler.endGpuScope();
+                    m_RuntimeProfiler.endScope();
                 });
         }
 

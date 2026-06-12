@@ -25,6 +25,75 @@ namespace vultra
             }
             return out;
         }
+
+        [[nodiscard]] bool sameExtent(const rhi::Extent2D lhs, const rhi::Extent2D rhs)
+        {
+            return lhs.width == rhs.width && lhs.height == rhs.height;
+        }
+
+        [[nodiscard]] const char* resourceRoleName(const UpscalerResourceRole role)
+        {
+            switch (role)
+            {
+                case UpscalerResourceRole::eScalingInputColor:
+                    return "input_color";
+                case UpscalerResourceRole::eScalingOutputColor:
+                    return "output_color";
+                case UpscalerResourceRole::eDepth:
+                    return "depth";
+                case UpscalerResourceRole::eMotionVectors:
+                    return "motion_vectors";
+                case UpscalerResourceRole::eExposure:
+                    return "exposure";
+            }
+            return "unknown";
+        }
+
+        [[nodiscard]] bool validateUpscalerResources(const UpscalerEvaluateContext& context)
+        {
+            if (context.renderExtent.width == 0u || context.renderExtent.height == 0u ||
+                context.outputExtent.width == 0u || context.outputExtent.height == 0u)
+            {
+                return false;
+            }
+
+            for (const auto& tag : context.resources)
+            {
+                const auto extent = tag.resource.extent;
+                if (extent.width == 0u || extent.height == 0u)
+                    return false;
+
+                const bool valid = [&] {
+                    switch (tag.role)
+                    {
+                        case UpscalerResourceRole::eScalingInputColor:
+                        case UpscalerResourceRole::eDepth:
+                        case UpscalerResourceRole::eMotionVectors:
+                            return sameExtent(extent, context.renderExtent);
+                        case UpscalerResourceRole::eScalingOutputColor:
+                            return sameExtent(extent, context.outputExtent);
+                        case UpscalerResourceRole::eExposure:
+                            return true;
+                    }
+                    return false;
+                }();
+
+                if (!valid)
+                {
+                    VULTRA_CORE_WARN("[RenderUpscaler] Skipping provider evaluation: {} extent {}x{} does not match "
+                                     "render={}x{} output={}x{}.",
+                                     resourceRoleName(tag.role),
+                                     extent.width,
+                                     extent.height,
+                                     context.renderExtent.width,
+                                     context.renderExtent.height,
+                                     context.outputExtent.width,
+                                     context.outputExtent.height);
+                    return false;
+                }
+            }
+            return true;
+        }
     } // namespace
 
     NativeTextureResource makeNativeTextureResource(const rhi::Texture& texture, const rhi::RenderBackendApi backendApi)
@@ -227,6 +296,8 @@ namespace vultra
 
         const auto providerStatus = provider->status();
         if (!providerStatus.available)
+            return false;
+        if (!validateUpscalerResources(context))
             return false;
 
         return provider->evaluate(context);

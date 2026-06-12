@@ -2110,6 +2110,8 @@ namespace vultra
                 [execFn, passType, pipelinesPtr = pipelines.get(), services = m_Owner.getServices()](
                     const ScriptedPassFrameData& frame, FrameGraphPassResources& resources, void* ctxPtr) {
                     VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
+                    const std::string scopeName = "RenderGraphPass/" + passType;
+                    RHI_GPU_ZONE(rc.cb, scopeName.c_str());
                     assertRenderScriptThread();
                     LuaPassExecContext execCtx(rc, resources, services, frame, *pipelinesPtr);
                     const auto         r = execFn(execCtx);
