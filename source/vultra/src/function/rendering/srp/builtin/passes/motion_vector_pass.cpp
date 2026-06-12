@@ -5,13 +5,17 @@
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/rendering/framework/resource_uploader.hpp"
+#include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
+#include "vultra/function/rendering/srp/render_view.hpp"
 
 #include <fg/FrameGraph.hpp>
 
 #include <algorithm>
 #include <format>
 #include <glm/ext/vector_float2.hpp>
+#include <glm/ext/vector_float4.hpp>
 #include <glm/mat4x4.hpp>
 
 namespace vultra
@@ -22,12 +26,12 @@ namespace vultra
     {
         constexpr auto PASS_NAME = "MotionVectorPass";
 
-        struct MotionVectorPushConstants
+        // Matches MotionVectorBlock in motion_vector.frag (std140 UBO). One reprojection
+        // matrix per multiview eye; mono views only use slot 0.
+        struct MotionVectorBlock
         {
-            glm::mat4 clipToPreviousClip {1.0f};
-            glm::vec2 resolution {1.0f, 1.0f};
-            uint32_t  reset {1u};
-            uint32_t  padding0 {0u};
+            glm::mat4 clipToPreviousClip[2] {glm::mat4 {1.0f}, glm::mat4 {1.0f}};
+            glm::vec4 params {1.0f, 1.0f, 1.0f, 1.0f}; // xy = resolution, z/w = per-view reset
         };
 
         [[nodiscard]] glm::mat4 gpuProjection(glm::mat4 projection, const rhi::RenderBackendApi backendApi)
@@ -44,17 +48,53 @@ namespace vultra
         const auto outputDesc = makeInheritedTextureDesc(depthDesc, rhi::PixelFormat::eRG16F);
         const auto extent     = depthDesc.extent;
 
+        // One reprojection matrix per eye: multiview renders both layers in one draw, so
+        // the right eye cannot reuse the left eye's clip-to-previous-clip transform.
+        MotionVectorBlock block {};
+        block.params = glm::vec4(static_cast<float>(std::max(extent.width, 1u)),
+                                 static_cast<float>(std::max(extent.height, 1u)),
+                                 1.0f,
+                                 1.0f);
+        const auto& view = ctx.view();
+        for (uint32_t i = 0; i < 2u; ++i)
+        {
+            const RenderCamera* camera = (view.multiviewCameraCount > i && view.multiviewCameras[i] != nullptr) ?
+                                             view.multiviewCameras[i] :
+                                             view.camera;
+            if (camera == nullptr || !camera->hasPreviousViewProjection)
+                continue;
+            const glm::mat4 currentVp  = gpuProjection(camera->projection, ctx.rd.getBackendApi()) * camera->view;
+            const glm::mat4 previousVp =
+                gpuProjection(camera->previousProjection, ctx.rd.getBackendApi()) * camera->previousView;
+            block.clipToPreviousClip[i] = previousVp * glm::inverse(currentVp);
+            (i == 0u ? block.params.z : block.params.w) = 0.0f;
+        }
+
+        const auto blockResource = uploadFrameGraphStruct(ctx.fg,
+                                                          ctx.frameResources,
+                                                          ctx.rd,
+                                                          "UploadMotionVectorBlock",
+                                                          "MotionVectorBlock",
+                                                          framegraph::BufferType::eUniformBuffer,
+                                                          block);
+
         struct PassData
         {
+            FrameGraphResource block;
             FrameGraphResource depth;
             FrameGraphResource output;
         };
 
         const auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [depth, outputDesc](FrameGraph::Builder& builder, PassData& pd) {
+            [depth, outputDesc, blockResource](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
+                pd.block = builder.read(blockResource,
+                                        framegraph::BindingInfo {
+                                            .location      = {.set = 1, .binding = 0},
+                                            .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                        });
                 pd.depth = builder.read(depth,
                                         framegraph::TextureRead {
                                             .binding =
@@ -87,26 +127,9 @@ namespace vultra
                 if (!pipeline)
                     return;
 
-                MotionVectorPushConstants pc {
-                    .resolution =
-                        glm::vec2(static_cast<float>(std::max(extent.width, 1u)),
-                                  static_cast<float>(std::max(extent.height, 1u))),
-                    .reset = 1u,
-                };
-                if (const auto* camera = rc.view().camera; camera != nullptr && camera->hasPreviousViewProjection)
-                {
-                    const glm::mat4 currentVp =
-                        gpuProjection(camera->projection, rc.rd.getBackendApi()) * camera->view;
-                    const glm::mat4 previousVp =
-                        gpuProjection(camera->previousProjection, rc.rd.getBackendApi()) * camera->previousView;
-                    pc.clipToPreviousClip = previousVp * glm::inverse(currentVp);
-                    pc.reset              = 0u;
-                }
-
                 rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["nearest"]);
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
-                rc.cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pc);
                 rc.cb.beginRendering(framebufferInfo);
                 {
                     const auto scopeName = std::format("{} {}x{}", PASS_NAME, extent.width, extent.height);

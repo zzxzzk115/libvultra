@@ -24,6 +24,7 @@
 #include "vultra/function/rendering/srp/builtin/render_graph_resource_names.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
+#include "vultra/function/rendering/srp/upscaler_evaluate.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/render_service.hpp"
 #include "vultra/function/services/render_upscaler_service.hpp"
@@ -1034,9 +1035,13 @@ namespace vultra
             FrameGraphResource depth;
             FrameGraphResource motion;
             FrameGraphResource exposure;
+            // Stereo: dedicated single-layer per-eye outputs (providers cannot address array
+            // layers); the evaluate step blits them into the layered output.
+            FrameGraphResource eyeOutputs[2];
             bool hasDepth {false};
             bool hasMotion {false};
             bool hasExposure {false};
+            bool hasEyeOutputs {false};
         };
 
         struct ScriptedPassFrameData
@@ -1269,6 +1274,34 @@ namespace vultra
                             },
                         .imageAspect = rhi::ImageAspect::eColor,
                     });
+
+                // Stereo: providers cannot address array layers, so each eye evaluates into a
+                // dedicated single-layer staging that is blitted into the layered output.
+                if (m_Ctx->view().usesSingleGraphStereo() && sourceDesc.layers >= 2u)
+                {
+                    auto eyeDesc       = outputDesc;
+                    eyeDesc.layers     = 0u;
+                    eyeDesc.viewMask   = 0u;
+                    eyeDesc.usageFlags = rhi::ImageUsage::eStorage | rhi::ImageUsage::eSampled |
+                                         rhi::ImageUsage::eTransferSrc | rhi::ImageUsage::eTransferDst;
+                    for (uint32_t eye = 0; eye < 2u; ++eye)
+                    {
+                        auto eyeOutput = m_Builder->create<framegraph::FrameGraphTexture>(
+                            name + (eye == 0u ? " Eye0" : " Eye1"), eyeDesc);
+                        upscaler.eyeOutputs[eye] = m_Builder->write(
+                            eyeOutput,
+                            framegraph::ImageWrite {
+                                .binding =
+                                    {
+                                        .location      = {.set = 0, .binding = 5u + eye},
+                                        .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                    },
+                                .imageAspect = rhi::ImageAspect::eColor,
+                            });
+                    }
+                    upscaler.hasEyeOutputs = true;
+                }
+
                 m_Frame->outputExtent = outputDesc.extent;
                 m_Frame->upscaler     = upscaler;
                 return make(upscaler.output);
@@ -1557,101 +1590,33 @@ namespace vultra
                 if (m_Rc->view().camera != nullptr && !m_Rc->view().camera->allowUpscaler)
                     return blitUpscalerFallback();
 
-                std::vector<UpscalerResourceTag> tags;
-                tags.push_back({
-                    .role     = UpscalerResourceRole::eScalingInputColor,
-                    .resource = makeNativeTextureResource(*inputTexture, m_Rc->rd.getBackendApi()),
-                });
-                tags.push_back({
-                    .role     = UpscalerResourceRole::eScalingOutputColor,
-                    .resource = makeNativeTextureResource(*outputTexture, m_Rc->rd.getBackendApi()),
-                });
-                if (m_Frame->upscaler.hasDepth)
-                {
-                    if (auto* texture =
-                            m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.depth).texture)
-                    {
-                        tags.push_back({
-                            .role     = UpscalerResourceRole::eDepth,
-                            .resource = makeNativeTextureResource(*texture, m_Rc->rd.getBackendApi()),
-                        });
-                    }
-                }
-                if (m_Frame->upscaler.hasMotion)
-                {
-                    if (auto* texture =
-                            m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.motion).texture)
-                    {
-                        tags.push_back({
-                            .role     = UpscalerResourceRole::eMotionVectors,
-                            .resource = makeNativeTextureResource(*texture, m_Rc->rd.getBackendApi()),
-                        });
-                    }
-                }
-                if (m_Frame->upscaler.hasExposure)
-                {
-                    if (auto* texture =
-                            m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.exposure).texture)
-                    {
-                        tags.push_back({
-                            .role     = UpscalerResourceRole::eExposure,
-                            .resource = makeNativeTextureResource(*texture, m_Rc->rd.getBackendApi()),
-                        });
-                    }
-                }
-
-                const auto* camera = m_Rc->view().camera;
-                UpscalerConstants constants {};
-                if (camera != nullptr)
-                {
-                    constants.view                   = camera->view;
-                    constants.projection             = camera->projection;
-                    constants.viewProjection         = camera->viewProjection;
-                    constants.previousView           = camera->previousView;
-                    constants.previousProjection     = camera->previousProjection;
-                    constants.previousViewProjection = camera->previousViewProjection;
-                    constants.clipToPreviousClip     = camera->previousViewProjection * camera->inverseViewProjection;
-                    constants.previousClipToClip     = camera->viewProjection * glm::inverse(camera->previousViewProjection);
-                    constants.jitterOffsetPx         = camera->jitterOffsetPx;
-                    constants.cameraPosition         = glm::vec3(camera->inverseView[3]);
-                    constants.cameraUp               = glm::normalize(glm::vec3(camera->inverseView[1]));
-                    constants.cameraRight            = glm::normalize(glm::vec3(camera->inverseView[0]));
-                    constants.cameraForward          = glm::normalize(-glm::vec3(camera->inverseView[2]));
-                    constants.nearPlane              = camera->zNear;
-                    constants.farPlane               = camera->zFar;
-                    constants.fovYRadians            = camera->fovY;
-                    constants.aspectRatio =
-                        static_cast<float>(std::max(m_Rc->view().extent.width, 1u)) /
-                        static_cast<float>(std::max(m_Rc->view().extent.height, 1u));
-                    constants.reset                = !camera->hasPreviousViewProjection;
-                    constants.cameraMotionIncluded = m_Frame->upscaler.hasMotion;
-                }
-
-                const auto viewportId = camera != nullptr ?
-                                            static_cast<UpscalerViewportId>(std::hash<CoreUUID> {}(camera->uuid)) :
-                                            UpscalerViewportId {0};
-                const NativeCommandContext command {
-                    .commandBufferHandle = m_Rc->cb.getHandle(),
-                    .frameIndex          = m_Rc->frame.frameIndex,
-                    .viewportId          = viewportId,
-                    .frameToken =
+                const UpscalerEvaluateTextures textures {
+                    .color  = inputTexture,
+                    .output = outputTexture,
+                    .depth  = m_Frame->upscaler.hasDepth ?
+                                  m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.depth).texture :
+                                  nullptr,
+                    .motion = m_Frame->upscaler.hasMotion ?
+                                  m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.motion).texture :
+                                  nullptr,
+                    .exposure =
+                        m_Frame->upscaler.hasExposure ?
+                            m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.exposure).texture :
+                            nullptr,
+                    .eyeOutputs =
                         {
-                            .frameIndex = m_Rc->frame.frameIndex,
-                            .viewSlot   = viewportId,
+                            m_Frame->upscaler.hasEyeOutputs ?
+                                m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.eyeOutputs[0])
+                                    .texture :
+                                nullptr,
+                            m_Frame->upscaler.hasEyeOutputs ?
+                                m_Resources->get<framegraph::FrameGraphTexture>(m_Frame->upscaler.eyeOutputs[1])
+                                    .texture :
+                                nullptr,
                         },
                 };
-                upscaler->beginFrame(command);
 
-                const UpscalerEvaluateContext eval {
-                    .command      = command,
-                    .settings     = settings,
-                    .constants    = constants,
-                    .renderExtent = inputTexture->getExtent(),
-                    .outputExtent = outputTexture->getExtent(),
-                    .resources    = tags,
-                };
-
-                if (!upscaler->evaluate(eval))
+                if (!evaluateUpscalerForView(*m_Rc, *upscaler, settings, textures))
                     return blitUpscalerFallback();
 
                 m_Rc->clear();

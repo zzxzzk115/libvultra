@@ -24,6 +24,7 @@ namespace vultra
     {
         class Texture;
     }
+    struct CoreUUID;
 
     using UpscalerViewportId = uint32_t;
 
@@ -175,6 +176,16 @@ namespace vultra
 
     [[nodiscard]] NativeTextureResource
     makeNativeTextureResource(const rhi::Texture& texture, rhi::RenderBackendApi backendApi);
+
+    // Slices a single array layer of a layered texture (stereo single-graph rendering)
+    // so providers receive a per-eye 2D image view.
+    [[nodiscard]] NativeTextureResource
+    makeNativeTextureResource(const rhi::Texture& texture, rhi::RenderBackendApi backendApi, uint32_t layer);
+
+    // Derives a stable upscaler viewport id from a camera uuid and an eye/view index.
+    // XR eye cameras share the base camera's uuid, so the eye index must participate or
+    // both eyes would share one temporal history inside the provider.
+    [[nodiscard]] UpscalerViewportId makeUpscalerViewportId(const CoreUUID& cameraUuid, uint32_t eyeIndex);
 
     [[nodiscard]] std::string_view upscalerModeName(UpscalerMode mode);
     [[nodiscard]] UpscalerMode     upscalerModeFromName(std::string_view name);

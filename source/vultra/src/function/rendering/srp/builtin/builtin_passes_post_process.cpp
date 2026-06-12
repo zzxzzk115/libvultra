@@ -28,6 +28,7 @@
 #include "vultra/function/rendering/srp/builtin/render_graph_resource_names.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
+#include "vultra/function/rendering/srp/upscaler_evaluate.hpp"
 #include "vultra/function/services/render_service.hpp"
 #include "vultra/function/services/render_upscaler_service.hpp"
 #include <fg/FrameGraph.hpp>
@@ -480,7 +481,15 @@ namespace vultra
                 auto       outputDesc = makeInheritedTextureDesc(sourceDesc, sourceDesc.format);
                 outputDesc.usageFlags = outputDesc.usageFlags | rhi::ImageUsage::eStorage |
                                         rhi::ImageUsage::eTransferSrc | rhi::ImageUsage::eTransferDst;
-                if (settings.outputExtent.width > 0u && settings.outputExtent.height > 0u)
+                const auto& view = ctx->view();
+                if (view.usesSingleGraphStereo() || (view.camera != nullptr && view.camera->isXRView))
+                {
+                    // settings.outputExtent tracks the window backbuffer; XR upscales to the
+                    // per-eye target extent instead.
+                    if (view.target != nullptr)
+                        outputDesc.extent = view.target->getExtent();
+                }
+                else if (settings.outputExtent.width > 0u && settings.outputExtent.height > 0u)
                     outputDesc.extent = settings.outputExtent;
 
                 struct PassData
@@ -490,15 +499,21 @@ namespace vultra
                     FrameGraphResource motion;
                     FrameGraphResource exposure;
                     FrameGraphResource output;
-                    bool hasMotion {false};
+                    FrameGraphResource eyeOutputs[2];
+                    bool               hasEyeOutputs {false};
                 };
+
+                // Stereo: providers cannot address array layers, so each eye evaluates into a
+                // dedicated single-layer staging that is blitted into the layered output.
+                const bool wantsEyeOutputs = view.usesSingleGraphStereo() && sourceDesc.layers >= 2u;
 
                 const auto depth    = passCtx.getInput("depth");
                 const auto motion   = passCtx.getInput("motion");
                 const auto exposure = passCtx.getInput("exposure");
                 const auto data     = ctx->fg.addCallbackPass<PassData>(
                     "ExternalUpscaler",
-                    [source, depth, motion, exposure, outputDesc](FrameGraph::Builder& builder, PassData& pd) {
+                    [source, depth, motion, exposure, outputDesc, wantsEyeOutputs](FrameGraph::Builder& builder,
+                                                                                   PassData&            pd) {
                         PASS_SETUP_ZONE;
 
                         pd.color = builder.read(source,
@@ -538,7 +553,6 @@ namespace vultra
                                                          .type        = framegraph::TextureRead::Type::eSampledImage,
                                                          .imageAspect = rhi::ImageAspect::eColor,
                                                      });
-                            pd.hasMotion = true;
                         }
                         if (exposure)
                         {
@@ -565,6 +579,32 @@ namespace vultra
                                                           },
                                                       .imageAspect = rhi::ImageAspect::eColor,
                                                   });
+
+                        if (wantsEyeOutputs)
+                        {
+                            auto eyeDesc       = outputDesc;
+                            eyeDesc.layers     = 0u;
+                            eyeDesc.viewMask   = 0u;
+                            eyeDesc.usageFlags = rhi::ImageUsage::eStorage | rhi::ImageUsage::eSampled |
+                                                 rhi::ImageUsage::eTransferSrc | rhi::ImageUsage::eTransferDst;
+                            for (uint32_t eye = 0; eye < 2u; ++eye)
+                            {
+                                auto eyeOutput = builder.create<framegraph::FrameGraphTexture>(
+                                    eye == 0u ? "ExternalUpscalerOutput Eye0" : "ExternalUpscalerOutput Eye1",
+                                    eyeDesc);
+                                pd.eyeOutputs[eye] = builder.write(
+                                    eyeOutput,
+                                    framegraph::ImageWrite {
+                                        .binding =
+                                            {
+                                                .location      = {.set = 0, .binding = 5u + eye},
+                                                .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                            },
+                                        .imageAspect = rhi::ImageAspect::eColor,
+                                    });
+                            }
+                            pd.hasEyeOutputs = true;
+                        }
                     },
                     [upscaler, settings](const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
                         VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
@@ -580,101 +620,28 @@ namespace vultra
                             return;
                         }
 
-                        std::vector<UpscalerResourceTag> tags;
-                        tags.push_back({
-                            .role     = UpscalerResourceRole::eScalingInputColor,
-                            .resource = makeNativeTextureResource(*inputTexture, rc.rd.getBackendApi()),
-                        });
-                        tags.push_back({
-                            .role     = UpscalerResourceRole::eScalingOutputColor,
-                            .resource = makeNativeTextureResource(*outputTexture, rc.rd.getBackendApi()),
-                        });
-                        if (data.depth)
-                        {
-                            if (auto* texture = resources.get<framegraph::FrameGraphTexture>(data.depth).texture)
-                            {
-                                tags.push_back({
-                                    .role     = UpscalerResourceRole::eDepth,
-                                    .resource = makeNativeTextureResource(*texture, rc.rd.getBackendApi()),
-                                });
-                            }
-                        }
-                        if (data.motion)
-                        {
-                            if (auto* texture = resources.get<framegraph::FrameGraphTexture>(data.motion).texture)
-                            {
-                                tags.push_back({
-                                    .role     = UpscalerResourceRole::eMotionVectors,
-                                    .resource = makeNativeTextureResource(*texture, rc.rd.getBackendApi()),
-                                });
-                            }
-                        }
-                        if (data.exposure)
-                        {
-                            if (auto* texture = resources.get<framegraph::FrameGraphTexture>(data.exposure).texture)
-                            {
-                                tags.push_back({
-                                    .role     = UpscalerResourceRole::eExposure,
-                                    .resource = makeNativeTextureResource(*texture, rc.rd.getBackendApi()),
-                                });
-                            }
-                        }
-
-                        const auto* camera = rc.view().camera;
-                        UpscalerConstants constants {};
-                        if (camera != nullptr)
-                        {
-                            constants.view                   = camera->view;
-                            constants.projection             = camera->projection;
-                            constants.viewProjection         = camera->viewProjection;
-                            constants.previousView           = camera->previousView;
-                            constants.previousProjection     = camera->previousProjection;
-                            constants.previousViewProjection = camera->previousViewProjection;
-                            constants.clipToPreviousClip =
-                                camera->previousViewProjection * camera->inverseViewProjection;
-                            constants.previousClipToClip =
-                                camera->viewProjection * glm::inverse(camera->previousViewProjection);
-                            constants.jitterOffsetPx = camera->jitterOffsetPx;
-                            constants.cameraPosition = glm::vec3(camera->inverseView[3]);
-                            constants.cameraUp       = glm::normalize(glm::vec3(camera->inverseView[1]));
-                            constants.cameraRight    = glm::normalize(glm::vec3(camera->inverseView[0]));
-                            constants.cameraForward  = glm::normalize(-glm::vec3(camera->inverseView[2]));
-                            constants.nearPlane      = camera->zNear;
-                            constants.farPlane       = camera->zFar;
-                            constants.fovYRadians    = camera->fovY;
-                            constants.aspectRatio =
-                                static_cast<float>(std::max(rc.view().extent.width, 1u)) /
-                                static_cast<float>(std::max(rc.view().extent.height, 1u));
-                            constants.reset                = !camera->hasPreviousViewProjection;
-                            constants.cameraMotionIncluded = data.hasMotion;
-                        }
-
-                        const auto viewportId = camera != nullptr ?
-                                                    static_cast<UpscalerViewportId>(
-                                                        std::hash<CoreUUID> {}(camera->uuid)) :
-                                                    UpscalerViewportId {0};
-                        const NativeCommandContext command {
-                            .commandBufferHandle = rc.cb.getHandle(),
-                            .frameIndex          = rc.frame.frameIndex,
-                            .viewportId          = viewportId,
-                            .frameToken =
+                        const UpscalerEvaluateTextures textures {
+                            .color  = inputTexture,
+                            .output = outputTexture,
+                            .depth =
+                                data.depth ? resources.get<framegraph::FrameGraphTexture>(data.depth).texture : nullptr,
+                            .motion = data.motion ? resources.get<framegraph::FrameGraphTexture>(data.motion).texture :
+                                                    nullptr,
+                            .exposure = data.exposure ?
+                                            resources.get<framegraph::FrameGraphTexture>(data.exposure).texture :
+                                            nullptr,
+                            .eyeOutputs =
                                 {
-                                    .frameIndex = rc.frame.frameIndex,
-                                    .viewSlot   = viewportId,
+                                    data.hasEyeOutputs ?
+                                        resources.get<framegraph::FrameGraphTexture>(data.eyeOutputs[0]).texture :
+                                        nullptr,
+                                    data.hasEyeOutputs ?
+                                        resources.get<framegraph::FrameGraphTexture>(data.eyeOutputs[1]).texture :
+                                        nullptr,
                                 },
                         };
-                        upscaler->beginFrame(command);
 
-                        const UpscalerEvaluateContext eval {
-                            .command      = command,
-                            .settings     = settings,
-                            .constants    = constants,
-                            .renderExtent = inputTexture->getExtent(),
-                            .outputExtent = outputTexture->getExtent(),
-                            .resources    = tags,
-                        };
-
-                        if (!upscaler->evaluate(eval))
+                        if (!evaluateUpscalerForView(rc, *upscaler, settings, textures))
                             rc.cb.blit(*inputTexture, *outputTexture, rhi::TexelFilter::eLinear);
 
                         rc.clear();

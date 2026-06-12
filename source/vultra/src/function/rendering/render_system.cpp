@@ -5155,10 +5155,13 @@ namespace vultra
             {
                 auto settings = upscaler->settings();
                 auto* provider = upscaler->activeProvider();
+                // XR multiview (stereoTarget) and per-eye fallback views participate: the graph
+                // evaluates the upscaler once per eye with per-layer resource slices. Only
+                // explicit-per-eye graphs drive their own eye composition and stay excluded.
                 const bool canUseUpscalerRenderExtent =
                     provider != nullptr && settings.enabled && settings.mode != UpscalerMode::eOff &&
-                    settings.mode != UpscalerMode::eDLAA && !cam.isXRView && stereoTarget == nullptr &&
-                    !wantsExplicitPerEye && cam.allowUpscaler && supportsUpscalerOutputExtent(renderArea.extent);
+                    settings.mode != UpscalerMode::eDLAA && !wantsExplicitPerEye && cam.allowUpscaler &&
+                    supportsUpscalerOutputExtent(renderArea.extent);
                 if (canUseUpscalerRenderExtent)
                 {
                     const auto providerStatus = provider->status();

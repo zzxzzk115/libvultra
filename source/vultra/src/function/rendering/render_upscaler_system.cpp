@@ -1,12 +1,14 @@
 #include "vultra/function/rendering/render_upscaler_system.hpp"
 
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/base/uuid.hpp"
 #include "vultra/core/engine/engine_context.hpp"
 #include "vultra/core/rhi/interfaces/texture_access.hpp"
 #include "vultra/core/rhi/texture.hpp"
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 
 namespace vultra
 {
@@ -111,6 +113,22 @@ namespace vultra
             .baseMipLevel    = 0u,
             .baseArrayLayer  = texture.getBaseArrayLayer(),
         };
+    }
+
+    NativeTextureResource makeNativeTextureResource(const rhi::Texture&         texture,
+                                                    const rhi::RenderBackendApi backendApi,
+                                                    const uint32_t              layer)
+    {
+        auto resource            = makeNativeTextureResource(texture, backendApi);
+        resource.imageViewHandle = texture.getLayer(layer, std::nullopt).getHandle();
+        resource.arrayLayers     = 1u;
+        resource.baseArrayLayer  = texture.getBaseArrayLayer() + layer;
+        return resource;
+    }
+
+    UpscalerViewportId makeUpscalerViewportId(const CoreUUID& cameraUuid, const uint32_t eyeIndex)
+    {
+        return static_cast<UpscalerViewportId>(std::hash<CoreUUID> {}(cameraUuid)) * 33u + eyeIndex;
     }
 
     std::string_view upscalerModeName(const UpscalerMode mode)

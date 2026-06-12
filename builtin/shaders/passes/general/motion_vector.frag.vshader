@@ -11,22 +11,23 @@ USE_MULTIVIEW : bool permute
 #extension GL_EXT_multiview : require
 #define VULTRA_DEPTH_TEXTURE sampler2DArray
 #define VULTRA_FETCH(tex, pixel, lod) texelFetch(tex, ivec3((pixel), int(gl_ViewIndex)), lod)
+#define VULTRA_VIEW_INDEX int(gl_ViewIndex)
 #else
 #define VULTRA_DEPTH_TEXTURE sampler2D
 #define VULTRA_FETCH(tex, pixel, lod) texelFetch(tex, pixel, lod)
+#define VULTRA_VIEW_INDEX 0
 #endif
 
 layout(location = 0) out vec2 FragMotion;
 
 layout(set = 3, binding = 0) uniform VULTRA_DEPTH_TEXTURE u_Depth;
 
-layout(push_constant) uniform PushConstants
+// Matches MotionVectorBlock in motion_vector_pass.cpp (std140 UBO).
+layout(set = 1, binding = 0) uniform MotionVectorBlock
 {
-    mat4 clipToPreviousClip;
-    vec2 resolution;
-    uint reset;
-    uint padding0;
-} u_Push;
+    mat4 clipToPreviousClip[2];
+    vec4 params; // xy = resolution, z = view 0 reset, w = view 1 reset
+} u_MV;
 
 float safe_rcp_w(float w)
 {
@@ -36,7 +37,9 @@ float safe_rcp_w(float w)
 
 void main()
 {
-    if (u_Push.reset != 0u)
+    int   viewIndex = VULTRA_VIEW_INDEX;
+    float reset     = viewIndex == 0 ? u_MV.params.z : u_MV.params.w;
+    if (reset != 0.0)
     {
         FragMotion = vec2(0.0);
         return;
@@ -50,11 +53,12 @@ void main()
         return;
     }
 
-    vec2 currentUv = gl_FragCoord.xy / u_Push.resolution;
+    vec2 resolution = u_MV.params.xy;
+    vec2 currentUv = gl_FragCoord.xy / resolution;
     vec4 currentClip = vec4(currentUv * 2.0 - 1.0, depth, 1.0);
-    vec4 previousClip = u_Push.clipToPreviousClip * currentClip;
+    vec4 previousClip = u_MV.clipToPreviousClip[viewIndex] * currentClip;
     vec2 previousNdc = previousClip.xy * safe_rcp_w(previousClip.w);
     vec2 previousUv = previousNdc * 0.5 + 0.5;
 
-    FragMotion = (currentUv - previousUv) * u_Push.resolution;
+    FragMotion = (currentUv - previousUv) * resolution;
 }
