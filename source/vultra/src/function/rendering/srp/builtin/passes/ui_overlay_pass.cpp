@@ -222,17 +222,19 @@ namespace vultra
                                                         const uint32_t         viewMask,
                                                         const rhi::PixelFormat depthFormat) const
     {
-        auto vertexShader = loadGeneralShader("ui_overlay.vert", vshadersystem::ShaderStage::eVert);
+        // Merged single-file shader: both stages share the base id "ui_overlay". USE_MULTIVIEW is a
+        // file-level permute axis, so pass it at every stage load to select the variant explicitly.
+        const rhi::ShaderLibraryRuntime::KeywordValues keywords {
+            {"USE_MULTIVIEW", viewMask != 0u ? 1u : 0u},
+        };
+        auto vertexShader = loadGeneralShader("ui_overlay", vshadersystem::ShaderStage::eVert, keywords);
         if (!vertexShader)
         {
             VULTRA_CORE_ERROR("[UiOverlayPass] Failed to load vertex shader");
             return {};
         }
 
-        rhi::ShaderLibraryRuntime::KeywordValues fragmentKeywords {
-            {"USE_MULTIVIEW", viewMask != 0u ? 1u : 0u},
-        };
-        auto fragmentShader = loadGeneralShader("ui_overlay.frag", vshadersystem::ShaderStage::eFrag, fragmentKeywords);
+        auto fragmentShader = loadGeneralShader("ui_overlay", vshadersystem::ShaderStage::eFrag, keywords);
         if (!fragmentShader)
         {
             VULTRA_CORE_ERROR("[UiOverlayPass] Failed to load fragment shader");

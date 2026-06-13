@@ -470,10 +470,11 @@ namespace vultra
                                                         const uint32_t vertexStride) const
     {
         const bool hasSkin = jointIndicesOffset != 0xFFFFFFFFu && jointWeightsOffset != 0xFFFFFFFFu;
-        auto vertexShader = loadHighendShader("shadow_map.vert",
-                                              vshadersystem::ShaderStage::eVert,
-                                              {{"VTX_HAS_SKIN", hasSkin ? 1 : 0}});
-        auto fragmentShader = loadHighendShader("shadow_map.frag", vshadersystem::ShaderStage::eFrag);
+        // Merged single-file shader: both stages share the base id "shadow_map". VTX_HAS_SKIN is a
+        // file-level permute axis, so pass it at every stage load to select the variant explicitly.
+        const rhi::ShaderLibraryRuntime::KeywordValues keywords {{"VTX_HAS_SKIN", hasSkin ? 1 : 0}};
+        auto vertexShader   = loadHighendShader("shadow_map", vshadersystem::ShaderStage::eVert, keywords);
+        auto fragmentShader = loadHighendShader("shadow_map", vshadersystem::ShaderStage::eFrag, keywords);
         if (!vertexShader || !fragmentShader)
         {
             VULTRA_CORE_ERROR("[ShadowMapPass] Failed to load shaders");

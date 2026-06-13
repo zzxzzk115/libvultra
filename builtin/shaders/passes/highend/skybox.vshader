@@ -1,5 +1,5 @@
 [vshader]
-id       = "builtin/highend/skybox.vert"
+id       = "builtin/highend/skybox"
 language = glsl
 version = 460
 
@@ -37,4 +37,16 @@ void main()
     viewPos /= viewPos.w;
     v_EyeDirection = (u_CameraBlock.data.inverseView * vec4(viewPos.xyz, 0.0)).xyz;
     gl_Position = gl_Position.xyww;
+}
+
+[frag]
+layout(location = 0) in vec3 v_EyeDirection;
+layout(location = 0) out vec4 o_Color;
+
+layout(set = 3, binding = 0) uniform samplerCube u_SkyboxCubeMap;
+
+void main()
+{
+    vec3 dir = normalize(v_EyeDirection);
+    o_Color = vec4(texture(u_SkyboxCubeMap, dir).rgb, 1.0);
 }

@@ -107,8 +107,8 @@ namespace vultra
                                                      const rhi::PixelFormat colorFormat,
                                                      const uint32_t         viewMask) const
     {
-        auto vertexShader = loadHighendShader("skybox.vert", vshadersystem::ShaderStage::eVert);
-        auto fragmentShader = loadHighendShader("skybox.frag", vshadersystem::ShaderStage::eFrag);
+        auto vertexShader = loadHighendShader("skybox", vshadersystem::ShaderStage::eVert);
+        auto fragmentShader = loadHighendShader("skybox", vshadersystem::ShaderStage::eFrag);
         if (!vertexShader || !fragmentShader)
         {
             VULTRA_CORE_ERROR("[SkyboxPass] Failed to load shaders");

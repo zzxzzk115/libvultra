@@ -379,8 +379,8 @@ namespace vultra
                                                                      const uint32_t         vertexStride,
                                                                      const uint32_t         viewMask) const
     {
-        constexpr const char* kVertexShaderId   = "basecolor_cpu.vert";
-        constexpr const char* kFragmentShaderId = "basecolor_cpu.frag";
+        constexpr const char* kVertexShaderId   = "basecolor_cpu";
+        constexpr const char* kFragmentShaderId = "basecolor_cpu";
 
         const resource::GpuVertexLayout layout {
             .attributeMask = vertexAttributeMask,

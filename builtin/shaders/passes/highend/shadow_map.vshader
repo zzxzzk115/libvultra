@@ -1,5 +1,5 @@
 [vshader]
-id       = "builtin/highend/shadow_map.vert"
+id       = "builtin/highend/shadow_map"
 language = glsl
 version = 460
 
@@ -68,4 +68,10 @@ void main()
     }
 #endif
     gl_Position = u_Shadow.cascades[cascade].lightViewProjection * u_Draw.model * skin * vec4(a_Position, 1.0);
+}
+
+[frag]
+// VTX_HAS_SKIN is declared file-level (vertex stage uses it); the fragment stage ignores it.
+void main()
+{
 }

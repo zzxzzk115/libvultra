@@ -42,7 +42,7 @@ namespace vultra
             uint32_t  useDepthAware {1u};
         };
 
-        // Matches WarpBlock in geometry_warp.vert (std140 UBO).
+        // Matches WarpBlock in geometry_warp.vshader's [vert] stage (std140 UBO).
         struct WarpBlock
         {
             glm::mat4 sourceInvViewProj {1.0f};
@@ -228,14 +228,14 @@ namespace vultra
         rhi::ShaderLibraryRuntime::KeywordValues keywords {
             {"USE_MULTIVIEW", viewMask != 0u ? 1u : 0u},
         };
-        auto vertexShader = loadGeneralShader("geometry_warp.vert", vshadersystem::ShaderStage::eVert, keywords);
+        auto vertexShader = loadGeneralShader("geometry_warp", vshadersystem::ShaderStage::eVert, keywords);
         if (!vertexShader)
         {
             VULTRA_CORE_ERROR("[GeometryWarpPass] Failed to load vertex shader");
             return {};
         }
 
-        auto geometryShader = loadGeneralShader("geometry_warp.geom", vshadersystem::ShaderStage::eGeom, keywords);
+        auto geometryShader = loadGeneralShader("geometry_warp", vshadersystem::ShaderStage::eGeom, keywords);
         if (!geometryShader)
         {
             // Geometry shaders are unavailable on the WebGPU/compatibility profile
@@ -244,7 +244,7 @@ namespace vultra
             return {};
         }
 
-        auto fragmentShader = loadGeneralShader("geometry_warp.frag", vshadersystem::ShaderStage::eFrag, keywords);
+        auto fragmentShader = loadGeneralShader("geometry_warp", vshadersystem::ShaderStage::eFrag, keywords);
         if (!fragmentShader)
         {
             VULTRA_CORE_ERROR("[GeometryWarpPass] Failed to load fragment shader");

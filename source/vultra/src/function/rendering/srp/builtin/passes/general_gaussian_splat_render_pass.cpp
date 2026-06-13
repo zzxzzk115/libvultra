@@ -303,19 +303,20 @@ namespace vultra
                                                                          const bool             writeEntityId) const
     {
         const bool useMultiview = viewMask != 0u;
-        rhi::ShaderLibraryRuntime::KeywordValues vertexKeywords {
+        // Merged single-file shader: both stages share the base id "gaussian_splat_render". The file
+        // declares both permute axes (USE_MULTIVIEW drives the vertex stage, WRITE_ENTITY_ID the
+        // fragment stage); pass the full set at every load so each variant is selected explicitly.
+        const rhi::ShaderLibraryRuntime::KeywordValues keywords {
             {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
+            {"WRITE_ENTITY_ID", writeEntityId ? 1u : 0u},
         };
 
-        auto vertexShader = loadGeneralShader("gaussian_splat_render.vert", vshadersystem::ShaderStage::eVert, vertexKeywords);
+        auto vertexShader = loadGeneralShader("gaussian_splat_render", vshadersystem::ShaderStage::eVert, keywords);
         if (!vertexShader)
             return {};
 
-        rhi::ShaderLibraryRuntime::KeywordValues fragmentKeywords {
-            {"WRITE_ENTITY_ID", writeEntityId ? 1u : 0u},
-        };
         auto fragmentShader =
-            loadGeneralShader("gaussian_splat_render.frag", vshadersystem::ShaderStage::eFrag, fragmentKeywords);
+            loadGeneralShader("gaussian_splat_render", vshadersystem::ShaderStage::eFrag, keywords);
         if (!fragmentShader)
             return {};
 

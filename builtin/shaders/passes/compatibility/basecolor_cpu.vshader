@@ -1,5 +1,5 @@
 [vshader]
-id       = "builtin/compatibility/basecolor_cpu.vert"
+id       = "builtin/compatibility/basecolor_cpu"
 language = glsl
 version = 460
 
@@ -29,5 +29,24 @@ void main()
     v_TexCoord0 = a_TexCoord0;
 #else
     v_TexCoord0 = vec2(0.0);
+#endif
+}
+
+[frag]
+#include "include/common/cpu_scene.glsl"
+
+#ifndef VTX_HAS_UV0
+#define VTX_HAS_UV0 0
+#endif
+
+layout(location = 0) in vec2 v_TexCoord0;
+layout(location = 0) out vec4 FragColor;
+layout(set = 3, binding = 4) uniform sampler2D u_CompatBaseColorTexture;
+
+void main()
+{
+    FragColor = u_Draw.baseColorFactor;
+#if VTX_HAS_UV0
+    FragColor *= texture(u_CompatBaseColorTexture, v_TexCoord0);
 #endif
 }
