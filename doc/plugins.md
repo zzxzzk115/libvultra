@@ -40,6 +40,8 @@ The manifest is a JSON document:
   "repository": "https://github.com/example/my_plugin",
   "platforms": ["windows", "linux", "macos"],
   "loadPhase": "pre_render_device",
+  "editorOnly": false,
+  "editorOnlyFiles": ["editor/**", "panels/*.lua"],
   "config": [
     {
       "key": "sdkRoot",
@@ -57,6 +59,10 @@ The manifest is a JSON document:
 `id` is the unique handle used to enable the plugin. `platforms` (empty/absent = all) gates loading
 to `windows` / `linux` / `macos` / `wasm` / `android`. `native` (extension appended automatically)
 and `entry` are both optional.
+
+`editorOnly` and `editorOnlyFiles` keep editor-only code out of exported VPKs (see
+[Editor extension API](#editor-extension-api)). Both are optional and only affect packaging — the
+editor still discovers, enables, and loads such plugins/files normally.
 
 Load order per plugin: **native first** (so its `install()` can register Lua glue), then the Lua
 `entry` runs and its `on_install()` is called.
@@ -267,6 +273,26 @@ explicitly (also automatic on unload). `Editor.registerInspector` is reserved (r
 until implemented). See [resources/plugins/editor_panel/](../resources/plugins/editor_panel/) — the
 example project enables it, so launching the editor shows a "Lua Demo Panel" and a Tools menu item.
 The panel body is drawn with the `ImGui.*` Lua bindings (see [lua_scripting.md](lua_scripting.md)).
+
+### Keeping editor-only code out of exported packages
+
+Editor extension code never runs in a runtime build (the `Editor` global is `nil` there), so the
+VPK exporter can drop it instead of shipping dead bytes. Two optional manifest fields control this:
+
+- **`"editorOnly": true`** — the whole plugin is editor-only. The editor still loads it, but it is
+  excluded **entirely** from exported VPKs (no files, and no `plugin_dirs` entry in the package
+  manifest). Use this for pure editor extensions like
+  [resources/plugins/editor_panel/](../resources/plugins/editor_panel/).
+- **`"editorOnlyFiles": ["editor/**", "panels/*.lua"]`** — for **mixed** plugins (editor UI +
+  runtime logic). Each glob is matched against the plugin-relative path (forward slashes); matching
+  files are dropped from the VPK while the rest of the plugin ships. `*` matches a run of non-`/`
+  characters, `?` one such character, `**` any characters including `/`, and a bare directory name
+  matches everything beneath it. Exclusion works for both local (`<asset-root>/plugins`) and managed
+  (`.vultra/plugins`) installs.
+
+Because the runtime never sees excluded files, guard any code that loads them (e.g. a
+`require "editor.panels"`) behind `if Editor then ... end` so a runtime build never tries to load a
+file that was dropped from the package.
 
 ## Limitations / future work
 

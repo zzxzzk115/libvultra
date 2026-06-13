@@ -17,6 +17,7 @@
 
 #include <vasset/tool_cli.hpp>
 #include <vasset/vasset_importers.hpp>
+#include <vasset/vasset_pack.hpp>
 #endif
 
 #include <vultra/function/imgui/imgui_dpi.hpp>
@@ -365,7 +366,8 @@ namespace vultra_app
             // .dll cannot be loaded from inside the VPK in place).
             std::vector<std::string> pluginDirUris;
             std::vector<std::string> pluginFileUris;
-            std::vector<std::string> pluginExtraDirArgs; // "<physical-dir>=<logical-prefix>"
+            std::vector<std::string> pluginExtraDirArgs;     // "<physical-dir>=<logical-prefix>"
+            std::vector<std::string> pluginExtraExcludeArgs; // "<logical-prefix>=<glob>"
             if (!enabledPluginIds.empty())
             {
                 for (const auto& manifest :
@@ -373,6 +375,11 @@ namespace vultra_app
                 {
                     if (std::find(enabledPluginIds.begin(), enabledPluginIds.end(), manifest.id) ==
                         enabledPluginIds.end())
+                        continue;
+
+                    // A whole editor-only plugin (e.g. an ImGui panel extension) can never run in the
+                    // exported runtime, so drop it entirely - no files, no plugin_dirs entry.
+                    if (manifest.editorOnly)
                         continue;
 
                     std::error_code dirEc;
@@ -390,6 +397,20 @@ namespace vultra_app
                             const auto rel = fs::relative(file.path(), assetRootPath, fec).generic_string();
                             if (fec || rel.empty() || rel.starts_with(".."))
                                 continue;
+#ifdef VULTRA_HAS_VASSET_IMPORT
+                            // Drop editor-only files (matched against the plugin-relative path).
+                            if (!manifest.editorOnlyFiles.empty())
+                            {
+                                std::error_code rec;
+                                const auto pluginRel = fs::relative(file.path(), manifest.directory, rec).generic_string();
+                                if (!rec && std::any_of(manifest.editorOnlyFiles.begin(),
+                                                        manifest.editorOnlyFiles.end(),
+                                                        [&](const std::string& g) {
+                                                            return vasset::matchPathGlob(pluginRel, g);
+                                                        }))
+                                    continue;
+                            }
+#endif
                             pluginFileUris.push_back("res://" + rel);
                         }
                     }
@@ -400,6 +421,10 @@ namespace vultra_app
                             logicalDir += "/" + manifest.version;
                         pluginDirUris.push_back("res://" + logicalDir);
                         pluginExtraDirArgs.push_back(manifest.directory.generic_string() + "=" + logicalDir);
+                        // Managed plugins are packed verbatim by vasset's --extra-dir; pass each
+                        // editor-only glob through as an --extra-exclude keyed by the same logical prefix.
+                        for (const auto& glob : manifest.editorOnlyFiles)
+                            pluginExtraExcludeArgs.push_back(logicalDir + "=" + glob);
                     }
                 }
             }
@@ -470,6 +495,12 @@ namespace vultra_app
             {
                 packArgs.push_back("--extra-dir");
                 packArgs.push_back(extraDir);
+            }
+            // Editor-only files inside managed plugins are dropped via --extra-exclude.
+            for (const auto& exclude : pluginExtraExcludeArgs)
+            {
+                packArgs.push_back("--extra-exclude");
+                packArgs.push_back(exclude);
             }
 
             const int packResult = runAssetTool(packArgs);

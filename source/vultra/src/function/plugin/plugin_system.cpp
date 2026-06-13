@@ -96,6 +96,13 @@ namespace vultra
         if (loadPhase == "pre_render_device")
             manifest.loadPhase = PluginLoadPhase::ePreRenderDevice;
         manifest.restartRequired = json.value("restartRequired", false);
+        manifest.editorOnly      = json.value("editorOnly", false);
+        if (const auto it = json.find("editorOnlyFiles"); it != json.end() && it->is_array())
+        {
+            for (const auto& f : *it)
+                if (f.is_string())
+                    manifest.editorOnlyFiles.push_back(f.get<std::string>());
+        }
         if (const auto it = json.find("platforms"); it != json.end() && it->is_array())
         {
             for (const auto& p : *it)

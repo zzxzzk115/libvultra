@@ -56,7 +56,9 @@ namespace vultra
     //     "platforms": ["windows", "linux", "macos"],   // empty/absent = all platforms
     //     "loadPhase": "pre_render_device", // optional; native-only early phase
     //     "native": "hello",              // optional native library (extension appended)
-    //     "entry": "init.lua"             // optional Lua entry script
+    //     "entry": "init.lua",            // optional Lua entry script
+    //     "editorOnly": true,             // optional; whole plugin is editor-only, excluded from exported VPKs
+    //     "editorOnlyFiles": ["editor/**", "panels/*.lua"] // optional; per-file editor-only globs (mixed plugins)
     //   }
     struct PluginManifest
     {
@@ -79,6 +81,15 @@ namespace vultra
         // work; ids are matched exactly today.)
         std::vector<std::string>       dependencies;
         std::vector<PluginConfigParam> configParams;
+
+        // Editor-only content. `editorOnly` marks the whole plugin as editor-only: the editor still
+        // discovers, enables and loads it, but the VPK exporter skips it entirely (it can never run
+        // in a runtime build, where the `Editor` Lua global is nil). `editorOnlyFiles` lists
+        // plugin-relative globs (forward slashes) for mixed plugins: those files are dropped from
+        // the exported VPK while the rest of the plugin ships. Authors must guard editor-only code
+        // with `if Editor then ... end` so the runtime never requires an excluded file.
+        bool                     editorOnly {false};
+        std::vector<std::string> editorOnlyFiles;
 
         std::filesystem::path directory;    // the plugin's folder
         std::filesystem::path manifestPath; // full path to vultra.plugin.vmanifest

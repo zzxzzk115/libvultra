@@ -6,5 +6,6 @@
   "author": "Vultra",
   "description": "Pure-Lua example: registers a custom editor panel (drawn with the ImGui Lua bindings) and a Tools menu item via the Editor extension API.",
   "platforms": ["windows", "linux", "macos"],
+  "editorOnly": true,
   "entry": "init.lua"
 }
