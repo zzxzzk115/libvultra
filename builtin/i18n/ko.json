@@ -1098,6 +1098,7 @@
       "info": "런타임 패키지는 동일한 이름의 실행 파일과 VPK를 사용합니다."
     },
     "plugins": {
+      "needsEngine": "엔진 >= {} 필요 (현재 {})",
       "header": "플러그인",
       "info": "카탈로그/Git 플러그인은 프로젝트의 관리형 플러그인 저장소에 설치됩니다. ZIP 및 폴더 가져오기는 <asset-root>/plugins (예: resources/plugins)에 복사되어 프로젝트 VPK에 패킹됩니다. 플러그인은 기본적으로 비활성화되어 있습니다. 활성화하면 지금과 다음 실행 시 로드됩니다. 네이티브 플러그인은 데스크톱 전용입니다.",
       "importHeader": "플러그인 가져오기",
@@ -1481,7 +1482,8 @@
     "nav": {
       "projects": "프로젝트",
       "newProject": "새 프로젝트",
-      "openExisting": "기존 열기"
+      "openExisting": "기존 열기",
+      "samples": "샘플"
     },
     "empty": {
       "title": "프로젝트를 찾을 수 없습니다",
@@ -1493,13 +1495,26 @@
       "projectFolder": "프로젝트 폴더",
       "template": "템플릿",
       "templateEmpty": "비어 있음",
-      "templateMinimal": "최소"
+      "templateMinimal": "최소",
+      "chooseTemplate": "템플릿 선택",
+      "projectName": "프로젝트 이름",
+      "noTemplates": "사용 가능한 템플릿이 없습니다. 연결을 확인하고 새로고침하세요."
     },
     "existingDialog": {
       "title": "기존 Vultra 프로젝트 추가",
       "heading": "기존 프로젝트",
       "hint": ".vproject 파일이 있는 프로젝트 루트를 선택하세요.",
       "projectRoot": "프로젝트 루트"
+    },
+    "samples": {
+      "subtitle": "공식 샘플을 새 프로젝트로 포크합니다.",
+      "refresh": "새로고침",
+      "empty": "사용 가능한 샘플이 없습니다. 연결을 확인하고 새로고침하세요.",
+      "fork": "Fork",
+      "forkTitle": "샘플 포크",
+      "forkHint": "비어 있는 대상 폴더를 선택하세요. 샘플이 새 프로젝트로 복제됩니다.",
+      "destFolder": "대상 폴더",
+      "forkButton": "샘플 포크"
     },
     "status": {
       "addedProject": "프로젝트를 추가했습니다: {}",
@@ -1520,7 +1535,8 @@
       "openFailed": "project.vproject를 열지 못했습니다.",
       "openedProject": "프로젝트를 열었습니다: {}",
       "relaunchingForPlugins": "이 프로젝트는 렌더 디바이스 생성 전에 로드되는 플러그인을 사용합니다. 새 에디터 프로세스로 다시 여는 중...",
-      "relaunchForPluginsFailed": "조기 로드 플러그인을 위한 재시작에 실패했습니다. 이번 세션에서는 비활성 상태로 유지됩니다."
+      "relaunchForPluginsFailed": "조기 로드 플러그인을 위한 재시작에 실패했습니다. 이번 세션에서는 비활성 상태로 유지됩니다.",
+      "noTemplateSelected": "먼저 템플릿을 선택하세요."
     },
     "io": {
       "createDirFailed": "디렉터리 '{}' 만들기에 실패했습니다: {}",

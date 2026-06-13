@@ -246,7 +246,7 @@ namespace
                 else
                 {
                     vultra::RuntimeProfiler::ExternalScope scope {"EditorShell::launcherDraw"};
-                    m_Launcher.draw(m_State, windowService);
+                    m_Launcher.draw(m_State, windowService, services);
                 }
 
                 {
@@ -256,7 +256,7 @@ namespace
                 return;
             }
 
-            m_Launcher.draw(m_State, nullptr);
+            m_Launcher.draw(m_State, nullptr, nullptr);
         }
 
     private:

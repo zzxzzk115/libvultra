@@ -918,6 +918,7 @@
     "info": "Runtime packages use a same-name executable and VPK."
   },
   "plugins": {
+    "needsEngine": "Requires engine >= {} (current {})",
     "header": "Plugins",
     "info": "Catalog/Git plugins are installed into the managed project plugin store; ZIP and folder imports are copied into <asset-root>/plugins (e.g. resources/plugins) so they pack into the project VPK. Plugins are off by default. Enable one to load it now and on the next launch. Native plugins are desktop-only.",
     "importHeader": "Import plugin",
@@ -1301,7 +1302,8 @@
   "nav": {
     "projects": "Projects",
     "newProject": "New Project",
-    "openExisting": "Open Existing"
+    "openExisting": "Open Existing",
+    "samples": "Samples"
   },
   "empty": {
     "title": "No projects found",
@@ -1313,13 +1315,26 @@
     "projectFolder": "Project Folder",
     "template": "Template",
     "templateEmpty": "Empty",
-    "templateMinimal": "Minimal"
+    "templateMinimal": "Minimal",
+    "chooseTemplate": "Choose a Template",
+    "projectName": "Project Name",
+    "noTemplates": "No templates available. Check your connection and refresh."
   },
   "existingDialog": {
     "title": "Add Existing Vultra Project",
     "heading": "Existing Project",
     "hint": "Select a project root containing a .vproject file.",
     "projectRoot": "Project Root"
+  },
+  "samples": {
+    "subtitle": "Fork an official example into a new project.",
+    "refresh": "Refresh",
+    "empty": "No samples available. Check your connection and refresh.",
+    "fork": "Fork",
+    "forkTitle": "Fork Sample",
+    "forkHint": "Choose an empty destination folder. The sample is cloned there as a new project.",
+    "destFolder": "Destination Folder",
+    "forkButton": "Fork Sample"
   },
   "status": {
     "addedProject": "Added project: {}",
@@ -1340,7 +1355,8 @@
     "openFailed": "Failed to open project.vproject.",
     "openedProject": "Opened project: {}",
     "relaunchingForPlugins": "This project uses plugins that load before the render device; reopening in a new editor process...",
-    "relaunchForPluginsFailed": "Could not relaunch for early-load plugins; they will stay inactive this session."
+    "relaunchForPluginsFailed": "Could not relaunch for early-load plugins; they will stay inactive this session.",
+    "noTemplateSelected": "Select a template first."
   },
   "io": {
     "createDirFailed": "failed to create directory '{}': {}",

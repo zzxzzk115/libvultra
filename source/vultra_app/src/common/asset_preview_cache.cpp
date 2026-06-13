@@ -29,24 +29,14 @@ namespace vultra_app::ui
             return std::any_of(exts.begin(), exts.end(), [&](const char* candidate) { return ext == candidate; });
         }
 
-        std::string builtinIconKey(const BuiltinAssetIcon icon)
+        std::string_view builtinIconPath(const BuiltinAssetIcon icon)
         {
             switch (icon)
             {
                 case BuiltinAssetIcon::Folder:
-                    return "folder";
+                    return "textures/editor/folder_icon.png";
             }
-            return "unknown";
-        }
-
-        vasset::VTexture makeBuiltinFolderIconTexture()
-        {
-            vasset::VTexture texture {};
-            texture.fileFormat = vasset::VTextureFileFormat::ePNG;
-            texture.format     = vasset::VTextureFormat::eRGBA8;
-            const auto bytes   = vultra::builtin::cachedBytes("textures/editor/folder_icon.png");
-            texture.data.assign(bytes.begin(), bytes.end());
-            return texture;
+            return "textures/editor/folder_icon.png";
         }
 
         vasset::VTextureFileFormat textureFileFormatForPath(const std::filesystem::path& path)
@@ -326,8 +316,25 @@ namespace vultra_app::ui
     AssetPreviewCache::getBuiltinIcon(EditorContext& ctx, const BuiltinAssetIcon icon, const float requestedSize)
     {
         (void)requestedSize;
+        return getBuiltinImagePreview(ctx, builtinIconPath(icon));
+    }
+
+    ImTextureID
+    AssetPreviewCache::getBuiltinImagePreview(EditorContext& ctx, const std::string_view logicalPath, const bool allowLoad)
+    {
         m_LastError.clear();
         syncProject(ctx);
+
+        const std::string key(logicalPath);
+        auto&             cached = m_BuiltinIcons[key];
+        if (cached.textureId)
+            return cached.textureId;
+
+        if (!allowLoad)
+        {
+            m_LastError = "Builtin image preview deferred.";
+            return {};
+        }
 
         if (!ctx.services)
         {
@@ -339,21 +346,27 @@ namespace vultra_app::ui
         auto* imguiService         = ctx.services->tryGet<vultra::IImGuiService>();
         if (!renderBackendService || !imguiService)
         {
-            m_LastError = "Icon preview services are not available.";
+            m_LastError = "Builtin image preview services are not available.";
             return {};
         }
 
-        const auto key    = builtinIconKey(icon);
-        auto&      cached = m_BuiltinIcons[key];
-        if (cached.textureId)
-            return cached.textureId;
+        const auto bytes = vultra::builtin::cachedBytes(key);
+        if (bytes.empty())
+        {
+            m_LastError = "Builtin image '" + key + "' was not found.";
+            return {};
+        }
 
-        auto& rd      = renderBackendService->renderDevice();
-        auto  texture = makeBuiltinFolderIconTexture();
-        auto  result  = vultra::resource::loadTextureFromVTexture(texture, rd);
+        vasset::VTexture texture {};
+        texture.fileFormat = vasset::VTextureFileFormat::ePNG;
+        texture.format     = vasset::VTextureFormat::eRGBA8;
+        texture.data.assign(bytes.begin(), bytes.end());
+
+        auto& rd     = renderBackendService->renderDevice();
+        auto  result = vultra::resource::loadTextureFromVTexture(texture, rd);
         if (!result)
         {
-            m_LastError = "Failed to load builtin folder icon: " + result.error();
+            m_LastError = "Failed to load builtin image '" + key + "': " + result.error();
             return {};
         }
 

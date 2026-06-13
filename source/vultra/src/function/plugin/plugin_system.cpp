@@ -85,8 +85,9 @@ namespace vultra
         PluginManifest manifest;
         manifest.id          = json.value("id", std::string {});
         manifest.name        = json.value("name", std::string {});
-        manifest.version     = json.value("version", std::string {});
-        manifest.author      = json.value("author", std::string {});
+        manifest.version          = json.value("version", std::string {});
+        manifest.minEngineVersion = json.value("minEngineVersion", std::string {});
+        manifest.author           = json.value("author", std::string {});
         manifest.description = json.value("description", std::string {});
         manifest.readme      = json.value("readme", std::string {});
         manifest.repository   = json.value("repository", std::string {});

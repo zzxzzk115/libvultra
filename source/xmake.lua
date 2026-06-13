@@ -297,6 +297,12 @@ if not is_plat("android") and not is_plat("wasm") then
         add_packages("argparse")
         if is_plat("windows") then
             add_syslinks("ws2_32", "winhttp")
+            -- Merge a UTF-8 active-code-page manifest so std::filesystem / ImGuiFileDialog path
+            -- conversions (WideCharToMultiByte(CP_ACP)) never fail on non-ASCII names under a
+            -- non-UTF-8 system code page (e.g. GBK). See vultra_app/resources/vultra.manifest.
+            add_ldflags("/manifest:embed",
+                        "/manifestinput:" .. path.join(os.scriptdir(), "vultra_app/resources/vultra.manifest"),
+                        {force = true})
         end
         if has_config("vultra_app_validation") then
             add_defines("VULTRA_APP_DEFAULT_VALIDATION=1")
@@ -355,6 +361,10 @@ target("vultra-runtime")
     add_packages("argparse")
     if is_plat("windows") then
         add_syslinks("ws2_32")
+        -- UTF-8 active code page (see vultra-app above / vultra_app/resources/vultra.manifest).
+        add_ldflags("/manifest:embed",
+                    "/manifestinput:" .. path.join(os.scriptdir(), "vultra_app/resources/vultra.manifest"),
+                    {force = true})
     elseif is_plat("android") then
         add_syslinks("android", "log")
         on_load(function (target)

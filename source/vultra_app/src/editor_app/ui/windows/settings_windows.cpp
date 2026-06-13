@@ -1155,6 +1155,8 @@ namespace vultra_app
                             std::string label    = "v" + version.version;
                             if (i == 0)
                                 label += "  (" + trText("projectSettings.plugins.latest", "latest") + ")";
+                            if (!plugins::engineSupports(version.minEngineVersion))
+                                label += "  (>= " + version.minEngineVersion + ")";
                             if (ImGui::Selectable(label.c_str(), selected))
                                 choice = i;
                             if (ImGui::IsItemHovered() && !version.notes.empty())
@@ -1167,6 +1169,14 @@ namespace vultra_app
                     const auto& selectedVersion = entry.versions[static_cast<std::size_t>(choice)];
                     if (ImGui::IsItemHovered() && !selectedVersion.notes.empty())
                         ImGui::SetTooltip("%s", selectedVersion.notes.c_str());
+                    const bool engineOk = plugins::engineSupports(selectedVersion.minEngineVersion);
+                    if (!engineOk)
+                        ImGui::TextColored(ImVec4 {1.0f, 0.7f, 0.2f, 1.0f},
+                                           "%s",
+                                           vultra::trf("projectSettings.plugins.needsEngine",
+                                                       selectedVersion.minEngineVersion,
+                                                       plugins::engineVersion())
+                                               .c_str());
 
                     // Action: install when absent, switch when a different version is selected.
                     // A loaded restart-level plugin keeps its DLL locked, so switching versions
@@ -1180,7 +1190,7 @@ namespace vultra_app
                     }
                     ImGui::TableSetColumnIndex(3);
                     std::string actionLabel;
-                    bool        actionEnabled = platformOk && !m_PluginManager.importing() && !runtimeLocked;
+                    bool actionEnabled = platformOk && engineOk && !m_PluginManager.importing() && !runtimeLocked;
                     if (installedManifest == nullptr)
                         actionLabel = trText("projectSettings.plugins.install", "Install");
                     else
@@ -1208,6 +1218,12 @@ namespace vultra_app
                                           trText("projectSettings.plugins.removeNeedsRestartNote",
                                                  "This plugin is loaded and can only be unloaded by a restart. "
                                                  "Disable it, restart the editor, then remove it.")
+                                              .c_str());
+                    else if (!engineOk && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                        ImGui::SetTooltip("%s",
+                                          vultra::trf("projectSettings.plugins.needsEngine",
+                                                      selectedVersion.minEngineVersion,
+                                                      plugins::engineVersion())
                                               .c_str());
 
                     ImGui::PopID();

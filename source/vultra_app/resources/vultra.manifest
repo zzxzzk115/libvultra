@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Force the process active code page to UTF-8 (Windows 10 1903+). std::filesystem and
+  ImGuiFileDialog convert wide paths to narrow via WideCharToMultiByte(CP_ACP); on a non-UTF-8
+  system code page (e.g. GBK/cp936) any path char that is not representable throws
+  "No mapping for the Unicode character exists in the target multi-byte code page", which crashed
+  the file browser. With activeCodePage=UTF-8, GetACP()==65001 so those conversions never fail and
+  match the app's UTF-8 internals (ImGui text, i18n catalogs). DPI awareness is intentionally NOT
+  declared here so the runtime SetProcessDpiAwarenessContext call keeps working.
+-->
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>

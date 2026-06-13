@@ -73,7 +73,16 @@ namespace vultra_app::plugins
         std::string notes;
         std::string gitUrl;
         std::string gitRef;
+        // Lowest engine version this plugin version supports (catalog "minEngineVersion", per-version
+        // or inherited from the entry). Empty = no declared minimum. Drives the install gate.
+        std::string minEngineVersion;
     };
+
+    // The running engine version (VULTRA_ENGINE_VERSION), e.g. "0.1.0".
+    [[nodiscard]] std::string engineVersion();
+
+    // True when the running engine satisfies minEngineVersion (empty minimum = always true).
+    [[nodiscard]] bool engineSupports(const std::string& minEngineVersion);
 
     struct CatalogEntry
     {
@@ -129,12 +138,4 @@ namespace vultra_app::plugins
                        const std::string&            assetRoot,
                        const vultra::PluginManifest& manifest,
                        std::string&                  status);
-
-    // True when any of the project's enabled plugins must be loaded before the render device
-    // exists (needsRestartToApply, e.g. a pre-render-device Vulkan bridge). Opening such a project
-    // requires a fresh process (--editor --project ...); an in-process launcher transition or a
-    // mid-session enable is too late.
-    [[nodiscard]] bool projectNeedsRelaunchForPlugins(const std::filesystem::path&    projectRoot,
-                                                      const std::string&              assetRoot,
-                                                      const std::vector<std::string>& enabledPlugins);
 } // namespace vultra_app::plugins

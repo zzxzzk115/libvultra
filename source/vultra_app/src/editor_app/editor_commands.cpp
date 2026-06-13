@@ -2228,24 +2228,22 @@ namespace vultra_app
                 ch = '_';
         }
 
-        const auto templateKind =
-            projectTemplateKindFromString(args.value("template", args.value("templateKind", std::string {"empty"})));
-
+        // The engine ships no built-in templates; this command only bootstraps a bare empty project
+        // (an empty scene + the ai/ workspace). Richer starting points come from the remote template
+        // repository via the launcher's New Project page.
         VProject project {
             .projectDir         = projectDir,
             .name               = projectName,
             .assetRoot          = "resources",
             .defaultScene       = "res://scenes/main.vscn",
             .buildScenes        = {VBuildScene {.index = 0, .uri = "res://scenes/main.vscn", .enabled = true}},
-            .editingRenderGraph = templateKind == ProjectTemplateKind::Empty ?
-                                      std::string {} :
-                                      std::string {"res://render/default.vrg.json"},
+            .editingRenderGraph = std::string {},
         };
         std::string message;
         if (!saveVProject(project, &message))
             return error("failed to write .vproject: " + message);
-        if (!writeProjectTemplateAssets(projectDir, templateKind, message))
-            return error("failed to write project template assets: " + message);
+        if (!writeEmptyProjectScaffold(projectDir, message))
+            return error("failed to write project scaffold: " + message);
         if (!saveVPackageManifest(projectDir / project.assetRoot,
                                   VPackageManifest {
                                       .name        = project.name,
@@ -2277,7 +2275,7 @@ namespace vultra_app
         return ok({{"mode", "editor"},
                    {"project", projectDir.generic_string()},
                    {"projectName", project.name},
-                   {"template", projectTemplateKindName(templateKind)},
+                   {"template", "empty"},
                    {"vprojectFile", vprojectFileFor(project.projectDir, project.name).generic_string()},
                    {"defaultScene", project.defaultScene}});
     }

@@ -918,6 +918,7 @@
     "info": "运行时包使用同名可执行文件和 VPK。"
   },
   "plugins": {
+    "needsEngine": "需要引擎版本 >= {}（当前 {}）",
     "header": "插件",
     "info": "插件中心/Git 插件会安装到项目托管插件库；ZIP 和文件夹导入会复制到 <asset-root>/plugins（例如 resources/plugins），以便打包进项目 VPK。插件默认为关闭。启用某个插件可立即加载并在下次启动时加载。原生插件仅限桌面平台。",
     "importHeader": "导入插件",
@@ -1301,7 +1302,8 @@
   "nav": {
     "projects": "项目",
     "newProject": "新建项目",
-    "openExisting": "打开已有"
+    "openExisting": "打开已有",
+    "samples": "样例"
   },
   "empty": {
     "title": "未找到项目",
@@ -1313,13 +1315,26 @@
     "projectFolder": "项目文件夹",
     "template": "模板",
     "templateEmpty": "空白",
-    "templateMinimal": "最小"
+    "templateMinimal": "最小",
+    "chooseTemplate": "选择模板",
+    "projectName": "项目名称",
+    "noTemplates": "暂无可用模板。请检查网络后刷新。"
   },
   "existingDialog": {
     "title": "添加已有 Vultra 项目",
     "heading": "已有项目",
     "hint": "选择一个包含 .vproject 文件的项目根目录。",
     "projectRoot": "项目根目录"
+  },
+  "samples": {
+    "subtitle": "将官方样例 fork 为新项目。",
+    "refresh": "刷新",
+    "empty": "暂无样例。请检查网络后刷新。",
+    "fork": "Fork",
+    "forkTitle": "Fork 样例",
+    "forkHint": "选择一个空目标文件夹。样例将克隆到此处作为新项目。",
+    "destFolder": "目标文件夹",
+    "forkButton": "Fork 样例"
   },
   "status": {
     "addedProject": "已添加项目：{}",
@@ -1340,7 +1355,8 @@
     "openFailed": "打开 project.vproject 失败。",
     "openedProject": "已打开项目：{}",
     "relaunchingForPlugins": "该项目启用了需在渲染设备创建前加载的插件，正在以新的编辑器进程重新打开...",
-    "relaunchForPluginsFailed": "无法为提前加载插件重启进程，本次会话中这些插件将保持不可用。"
+    "relaunchForPluginsFailed": "无法为提前加载插件重启进程，本次会话中这些插件将保持不可用。",
+    "noTemplateSelected": "请先选择一个模板。"
   },
   "io": {
     "createDirFailed": "创建目录 '{}' 失败：{}",

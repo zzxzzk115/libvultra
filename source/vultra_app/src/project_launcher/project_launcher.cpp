@@ -3,8 +3,6 @@
 #include "common/process_relaunch.hpp"
 #include "editor_app/plugin_repository.hpp"
 
-#include "common/ui_widgets.hpp"
-#include "project_templates.hpp"
 #include "vproject.hpp"
 
 #include <vultra/core/base/common_context.hpp>
@@ -18,6 +16,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -44,6 +43,50 @@ namespace vultra_app
                 name.pop_back();
 
             return name;
+        }
+
+        // Cross-platform user Documents directory (falls back to the current working directory).
+        std::filesystem::path documentsDir()
+        {
+            namespace fs = std::filesystem;
+#if defined(_WIN32)
+            if (const char* userProfile = std::getenv("USERPROFILE"); userProfile != nullptr)
+                return (fs::path(userProfile) / "Documents").lexically_normal();
+#else
+            if (const char* home = std::getenv("HOME"); home != nullptr)
+                return (fs::path(home) / "Documents").lexically_normal();
+#endif
+            std::error_code ec;
+            return fs::current_path(ec);
+        }
+
+        // "My Game" -> "MyGame": drop whitespace so a display name works as a folder name.
+        std::string removeSpaces(std::string text)
+        {
+            text.erase(std::remove_if(text.begin(),
+                                      text.end(),
+                                      [](unsigned char ch) { return std::isspace(ch) != 0; }),
+                       text.end());
+            return text;
+        }
+
+        // Default project path: <Documents>/<sanitized name without spaces>.
+        std::filesystem::path defaultProjectPathFor(const std::string& projectName)
+        {
+            auto folder = removeSpaces(sanitizeProjectName(projectName));
+            if (folder.empty())
+                folder = "VultraProject";
+            return (documentsDir() / folder).lexically_normal();
+        }
+
+        // Copy a std::string into a fixed char buffer (NUL-terminated, truncating if needed).
+        void assignBuffer(char* buffer, std::size_t size, const std::string& value)
+        {
+            if (size == 0)
+                return;
+            const std::size_t count = std::min(value.size(), size - 1);
+            std::copy_n(value.begin(), count, buffer);
+            buffer[count] = '\0';
         }
 
         std::filesystem::path normalizeProjectPath(const std::filesystem::path& path)
@@ -958,7 +1001,153 @@ This directory is an index, not the runtime asset root.
         VULTRA_CLIENT_INFO("[Vultra] No default VPK found. Project Launcher mode is active.");
     }
 
-    void ProjectLauncher::draw(AppState& state, IWindowService* windowService)
+    namespace
+    {
+        struct ContentLayout
+        {
+            ImVec2 origin;
+            ImVec2 size;
+            float  x;
+            float  w;
+            float  right;
+        };
+
+        ContentLayout contentLayout()
+        {
+            ContentLayout l;
+            l.origin             = ImGui::GetWindowPos();
+            l.size               = ImGui::GetWindowSize();
+            const float sidebarW = vultra::ui::dp(276.0f);
+            l.x                  = l.origin.x + sidebarW + vultra::ui::dp(40.0f);
+            l.w                  = std::max(vultra::ui::dp(420.0f), l.size.x - sidebarW - vultra::ui::dp(80.0f));
+            l.right              = l.origin.x + l.size.x - vultra::ui::dp(40.0f);
+            return l;
+        }
+
+        struct CardClick
+        {
+            bool clicked {false};
+            bool doubleClicked {false};
+        };
+
+        // A thumbnail card drawn at the current ImGui cursor: image on top, title + subtitle below.
+        CardClick drawThumbnailCard(const char* id,
+                                    ImTextureID thumb,
+                                    const char* title,
+                                    const char* subtitle,
+                                    bool        selected,
+                                    ImVec2      cardSize,
+                                    const char* fallbackIcon)
+        {
+            namespace theme = vultra::imgui_theme;
+            CardClick result;
+            ImGui::InvisibleButton(id, cardSize);
+            result.clicked       = ImGui::IsItemClicked();
+            result.doubleClicked = ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+            const bool   hovered = ImGui::IsItemHovered();
+            ImDrawList*  dl      = ImGui::GetWindowDrawList();
+            const ImVec2 mn      = ImGui::GetItemRectMin();
+            const ImVec2 mx      = ImGui::GetItemRectMax();
+
+            const ImU32 fill = selected ? theme::u32(theme::withAlpha(theme::frameActive(), 245.0f / 255.0f)) :
+                               hovered  ? theme::u32(theme::withAlpha(theme::frameHovered(), 235.0f / 255.0f)) :
+                                          theme::u32(theme::withAlpha(theme::frame(), 220.0f / 255.0f));
+            const ImU32 border = selected ? theme::u32(theme::accentTransparent(210.0f / 255.0f)) :
+                                            theme::u32(theme::withAlpha(theme::border(), 170.0f / 255.0f));
+            dl->AddRectFilled(mn, mx, fill, vultra::ui::dp(8.0f));
+            dl->AddRect(mn, mx, border, vultra::ui::dp(8.0f));
+
+            const float  pad  = vultra::ui::dp(10.0f);
+            const float  imgH = cardSize.y - vultra::ui::dp(54.0f);
+            const ImVec2 imgMn(mn.x + pad, mn.y + pad);
+            const ImVec2 imgMx(mx.x - pad, mn.y + pad + imgH);
+            dl->AddRectFilled(imgMn, imgMx, theme::u32(theme::backgroundDeep()), vultra::ui::dp(6.0f));
+            if (thumb)
+                dl->AddImageRounded(
+                    thumb, imgMn, imgMx, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f), IM_COL32_WHITE, vultra::ui::dp(6.0f));
+            else
+                dl->AddText(ImVec2(imgMn.x + (imgMx.x - imgMn.x) * 0.5f - vultra::ui::dp(9.0f),
+                                   imgMn.y + (imgMx.y - imgMn.y) * 0.5f - vultra::ui::dp(10.0f)),
+                            theme::u32(theme::textMuted()),
+                            fallbackIcon);
+
+            dl->PushClipRect(ImVec2(mn.x + pad, imgMx.y), ImVec2(mx.x - pad, mx.y), true);
+            dl->AddText(ImVec2(mn.x + pad, imgMx.y + vultra::ui::dp(6.0f)), theme::u32(theme::text()), title);
+            if (subtitle != nullptr && subtitle[0] != '\0')
+                dl->AddText(
+                    ImVec2(mn.x + pad, imgMx.y + vultra::ui::dp(26.0f)), theme::u32(theme::textMuted()), subtitle);
+            dl->PopClipRect();
+            return result;
+        }
+    } // namespace
+
+    void ProjectLauncher::pushPage(LauncherPage page)
+    {
+        if (m_PageStack.empty() || m_PageStack.back() != page)
+            m_PageStack.push_back(page);
+    }
+
+    void ProjectLauncher::popTo(std::size_t index)
+    {
+        if (index + 1 < m_PageStack.size())
+            m_PageStack.resize(index + 1);
+    }
+
+    void ProjectLauncher::resetTo(LauncherPage root) { m_PageStack.assign(1, root); }
+
+    void ProjectLauncher::drawBreadcrumb(float x, float y)
+    {
+        namespace theme = vultra::imgui_theme;
+
+        const auto key = [](LauncherPage page) -> const char* {
+            switch (page)
+            {
+                case LauncherPage::Projects:
+                    return "launcher.nav.projects";
+                case LauncherPage::NewProject:
+                    return "launcher.nav.newProject";
+                case LauncherPage::OpenExisting:
+                    return "launcher.nav.openExisting";
+                case LauncherPage::Samples:
+                    return "launcher.nav.samples";
+                case LauncherPage::ForkExample:
+                    return "launcher.samples.forkTitle";
+            }
+            return "";
+        };
+
+        ImGui::SetCursorScreenPos(ImVec2(x, y));
+        int clicked = -1;
+        for (std::size_t i = 0; i < m_PageStack.size(); ++i)
+        {
+            const bool  last  = (i + 1 == m_PageStack.size());
+            const char* title = vultra::tr(key(m_PageStack[i]));
+            if (last)
+            {
+                ImGui::PushStyleColor(ImGuiCol_Text, theme::text());
+                ImGui::TextUnformatted(title);
+                ImGui::PopStyleColor();
+            }
+            else
+            {
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.0f, 0.0f, 0.0f, 0.0f});
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, theme::buttonHovered());
+                ImGui::PushStyleColor(ImGuiCol_Text, theme::textMuted());
+                if (ImGui::SmallButton(title))
+                    clicked = static_cast<int>(i);
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+                ImGui::SameLine(0.0f, vultra::ui::dp(4.0f));
+                ImGui::TextUnformatted("/");
+                ImGui::SameLine(0.0f, vultra::ui::dp(4.0f));
+            }
+        }
+        if (clicked >= 0)
+            popTo(static_cast<std::size_t>(clicked));
+    }
+
+    void ProjectLauncher::draw(AppState& state, IWindowService* windowService, vbase::ServiceRegistry* services)
     {
         namespace theme = vultra::imgui_theme;
 
@@ -1011,38 +1200,77 @@ This directory is an index, not the runtime asset root.
         drawLauncherLogo(drawList, ImVec2(origin.x + vultra::ui::dp(64.0f), origin.y + vultra::ui::dp(78.0f)));
         drawList->AddText(ImVec2(origin.x + vultra::ui::dp(104.0f), origin.y + vultra::ui::dp(58.0f)),
                           vultra::imgui_theme::u32(vultra::imgui_theme::text()),
-                          "Vultra");
+                          "VultraEngine");
         drawList->AddText(ImVec2(origin.x + vultra::ui::dp(104.0f), origin.y + vultra::ui::dp(82.0f)),
                           theme::u32(theme::textMuted()),
                           vultra::tr("launcher.projectLauncher"));
         drawWindowControls(windowService, origin, size);
 
+        const bool projectsActive = navRoot() == LauncherPage::Projects;
+        const bool samplesActive  = navRoot() == LauncherPage::Samples;
         ImGui::SetCursorScreenPos(ImVec2(origin.x + vultra::ui::dp(28.0f), origin.y + vultra::ui::dp(156.0f)));
-        drawSidebarButton("##launcher_nav_projects",
-                          ICON_MDI_FOLDER_OUTLINE,
-                          vultra::tr("launcher.nav.projects"),
-                          true,
-                          ImVec2(vultra::ui::dp(220.0f), vultra::ui::dp(48.0f)));
+        if (drawSidebarButton("##launcher_nav_projects",
+                              ICON_MDI_FOLDER_OUTLINE,
+                              vultra::tr("launcher.nav.projects"),
+                              projectsActive,
+                              ImVec2(vultra::ui::dp(220.0f), vultra::ui::dp(48.0f))))
+            resetTo(LauncherPage::Projects);
         ImGui::SetCursorScreenPos(ImVec2(origin.x + vultra::ui::dp(28.0f), origin.y + vultra::ui::dp(214.0f)));
-        if (drawSidebarButton("##launcher_nav_new",
-                              ICON_MDI_PLUS_CIRCLE_OUTLINE,
-                              vultra::tr("launcher.nav.newProject"),
-                              false,
+        if (drawSidebarButton("##launcher_nav_samples",
+                              ICON_MDI_VIEW_GRID_OUTLINE,
+                              vultra::tr("launcher.nav.samples"),
+                              samplesActive,
                               ImVec2(vultra::ui::dp(220.0f), vultra::ui::dp(48.0f))))
-            ImGui::OpenPopup(vultra::trId("launcher.createDialog.title", "Create Vultra Project"));
-        ImGui::SetCursorScreenPos(ImVec2(origin.x + vultra::ui::dp(28.0f), origin.y + vultra::ui::dp(272.0f)));
-        if (drawSidebarButton("##launcher_nav_open",
-                              ICON_MDI_FOLDER_OPEN_OUTLINE,
-                              vultra::tr("launcher.nav.openExisting"),
-                              false,
-                              ImVec2(vultra::ui::dp(220.0f), vultra::ui::dp(48.0f))))
-            ImGui::OpenPopup(vultra::trId("launcher.existingDialog.title", "Add Existing Vultra Project"));
-        const float contentX = origin.x + sidebarW + vultra::ui::dp(40.0f);
-        const float contentW = std::max(vultra::ui::dp(420.0f), size.x - sidebarW - vultra::ui::dp(80.0f));
+            resetTo(LauncherPage::Samples);
 
-        drawList->AddText(ImVec2(contentX, origin.y + vultra::ui::dp(52.0f)),
-                          theme::u32(theme::text()),
-                          vultra::tr("launcher.nav.projects"));
+        // Engine version + copyright, pinned to the bottom-left of the sidebar.
+        const std::string versionLabel = "VultraEngine v" + plugins::engineVersion();
+        drawList->AddText(ImVec2(origin.x + vultra::ui::dp(28.0f), origin.y + size.y - vultra::ui::dp(50.0f)),
+                          theme::u32(theme::textMuted()),
+                          versionLabel.c_str());
+        drawList->AddText(ImVec2(origin.x + vultra::ui::dp(28.0f), origin.y + size.y - vultra::ui::dp(30.0f)),
+                          theme::u32(theme::textMuted()),
+                          "Copyright @ Lazy_V 2025-2026");
+
+        const float contentX = origin.x + sidebarW + vultra::ui::dp(40.0f);
+        drawBreadcrumb(contentX, origin.y + vultra::ui::dp(50.0f));
+
+        EditorContext ctx {.state = state, .services = services};
+        switch (currentPage())
+        {
+            case LauncherPage::Projects:
+                drawProjectsPage(state, windowService);
+                break;
+            case LauncherPage::NewProject:
+                drawNewProjectPage(state, ctx);
+                break;
+            case LauncherPage::OpenExisting:
+                drawOpenExistingPage(state);
+                break;
+            case LauncherPage::Samples:
+                drawSamplesPage(state, ctx);
+                break;
+            case LauncherPage::ForkExample:
+                drawForkExamplePage(state, ctx);
+                break;
+        }
+
+        ImGui::End();
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar(2);
+    }
+
+    void ProjectLauncher::drawProjectsPage(AppState& state, IWindowService* windowService)
+    {
+        namespace theme = vultra::imgui_theme;
+
+        const auto   l        = contentLayout();
+        const ImVec2 origin   = l.origin;
+        const ImVec2 size     = l.size;
+        const float  contentX = l.x;
+        const float  contentW = l.w;
+        ImDrawList*  drawList  = ImGui::GetWindowDrawList();
+
         drawList->AddText(ImVec2(contentX, origin.y + vultra::ui::dp(80.0f)),
                           theme::u32(theme::textMuted()),
                           vultra::tr("launcher.subtitle"));
@@ -1069,16 +1297,17 @@ This directory is an index, not the runtime asset root.
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, vultra::imgui_theme::buttonHovered());
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, vultra::imgui_theme::accentButton());
         ImGui::SetCursorScreenPos(ImVec2(origin.x + size.x - vultra::ui::dp(338.0f), buttonY));
-        if (ImGui::Button((std::string {ICON_MDI_FOLDER_PLUS_OUTLINE "  "} + vultra::tr("launcher.addExisting")).c_str(),
-                          ImVec2(vultra::ui::dp(142.0f), vultra::ui::dp(42.0f))))
-            ImGui::OpenPopup(vultra::trId("launcher.existingDialog.title", "Add Existing Vultra Project"));
+        if (ImGui::Button(
+                (std::string {ICON_MDI_FOLDER_PLUS_OUTLINE "  "} + vultra::tr("launcher.addExisting")).c_str(),
+                ImVec2(vultra::ui::dp(142.0f), vultra::ui::dp(42.0f))))
+            pushPage(LauncherPage::OpenExisting);
         ImGui::SetCursorScreenPos(ImVec2(origin.x + size.x - vultra::ui::dp(184.0f), buttonY));
         ImGui::PushStyleColor(ImGuiCol_Button, vultra::imgui_theme::accentButton());
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, vultra::imgui_theme::accentButtonHovered());
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, vultra::imgui_theme::accentButtonActive());
         if (ImGui::Button((std::string {ICON_MDI_PLUS "  "} + vultra::tr("launcher.nav.newProject")).c_str(),
                           ImVec2(vultra::ui::dp(144.0f), vultra::ui::dp(42.0f))))
-            ImGui::OpenPopup(vultra::trId("launcher.createDialog.title", "Create Vultra Project"));
+            pushPage(LauncherPage::NewProject);
         ImGui::PopStyleColor(3);
         ImGui::PopStyleColor(3);
         ImGui::PopStyleVar(2);
@@ -1091,32 +1320,34 @@ This directory is an index, not the runtime asset root.
                           theme::u32(theme::text()),
                           vultra::tr("launcher.recentProjects"));
 
-        const std::string query        = toLower(m_SearchQuery.data());
-        float             rowY         = origin.y + vultra::ui::dp(244.0f);
-        int               visibleCount = 0;
-        const float       rowH         = vultra::ui::dp(82.0f);
-        const float       rowGap       = vultra::ui::dp(10.0f);
-        const float       listBottom   = origin.y + size.y - vultra::ui::dp(94.0f);
+        const std::string query      = toLower(m_SearchQuery.data());
+        const float       rowH        = vultra::ui::dp(82.0f);
+        const float       rowGap      = vultra::ui::dp(10.0f);
+        const float       listTop     = origin.y + vultra::ui::dp(230.0f);
+        const float       listBottom  = origin.y + size.y - vultra::ui::dp(84.0f);
+        const float       listW       = (origin.x + size.x - vultra::ui::dp(40.0f)) - contentX;
 
+        ImGui::SetCursorScreenPos(ImVec2(contentX, listTop));
+        ImGui::BeginChild(
+            "##project_list", ImVec2(listW, listBottom - listTop), false, ImGuiWindowFlags_NoBackground);
+        ImDrawList* listDraw     = ImGui::GetWindowDrawList();
+        int         visibleCount = 0;
         for (int i = 0; i < static_cast<int>(m_Projects.size()); ++i)
         {
             const auto& project = m_Projects[static_cast<size_t>(i)];
             if (!projectMatchesSearch(query, project.name, project.path))
                 continue;
-            if (rowY + rowH > listBottom)
-                break;
 
             ++visibleCount;
             const bool   selected = i == m_SelectedProject;
-            const ImVec2 rowMin(contentX, rowY);
-            const ImVec2 rowMax(origin.x + size.x - vultra::ui::dp(40.0f), rowY + rowH);
-
-            ImGui::SetCursorScreenPos(rowMin);
-            ImGui::InvisibleButton(("##project_row_" + std::to_string(i)).c_str(), ImVec2(rowMax.x - rowMin.x, rowH));
-            const bool hovered = ImGui::IsItemHovered();
+            const float  rowW     = ImGui::GetContentRegionAvail().x;
+            const ImVec2 rowMin   = ImGui::GetCursorScreenPos();
+            ImGui::InvisibleButton(("##project_row_" + std::to_string(i)).c_str(), ImVec2(rowW, rowH));
+            const ImVec2 rowMax(rowMin.x + rowW, rowMin.y + rowH);
+            const bool   hovered = ImGui::IsItemHovered();
             if (ImGui::IsItemClicked())
                 m_SelectedProject = i;
-            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+            if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
             {
                 m_SelectedProject = i;
                 openSelectedProject(state, windowService);
@@ -1127,187 +1358,531 @@ This directory is an index, not the runtime asset root.
                                                theme::u32(theme::withAlpha(theme::frame(), 220.0f / 255.0f));
             const ImU32 rowBorder = selected ? theme::u32(theme::accentTransparent(210.0f / 255.0f)) :
                                                theme::u32(theme::withAlpha(theme::border(), 170.0f / 255.0f));
-            drawList->AddRectFilled(rowMin, rowMax, rowFill, vultra::ui::dp(7.0f));
-            drawList->AddRect(rowMin, rowMax, rowBorder, vultra::ui::dp(7.0f));
+            listDraw->AddRectFilled(rowMin, rowMax, rowFill, vultra::ui::dp(7.0f));
+            listDraw->AddRect(rowMin, rowMax, rowBorder, vultra::ui::dp(7.0f));
 
             const ImVec2 tileMin(rowMin.x + vultra::ui::dp(14.0f), rowMin.y + vultra::ui::dp(12.0f));
             const ImVec2 tileMax(tileMin.x + vultra::ui::dp(58.0f), tileMin.y + vultra::ui::dp(58.0f));
-            drawList->AddRectFilled(tileMin, tileMax, theme::u32(theme::backgroundDeep()), vultra::ui::dp(6.0f));
-            drawList->AddRect(tileMin, tileMax, theme::u32(theme::accentTransparent(190.0f / 255.0f)), vultra::ui::dp(6.0f));
-            drawList->AddText(
-                ImVec2(tileMin.x + vultra::ui::dp(19.0f), tileMin.y + vultra::ui::dp(17.0f)), theme::u32(theme::accent()), "V");
+            listDraw->AddRectFilled(tileMin, tileMax, theme::u32(theme::backgroundDeep()), vultra::ui::dp(6.0f));
+            listDraw->AddRect(
+                tileMin, tileMax, theme::u32(theme::accentTransparent(190.0f / 255.0f)), vultra::ui::dp(6.0f));
+            listDraw->AddText(ImVec2(tileMin.x + vultra::ui::dp(19.0f), tileMin.y + vultra::ui::dp(17.0f)),
+                              theme::u32(theme::accent()),
+                              "V");
 
-            drawList->PushClipRect(ImVec2(rowMin.x + vultra::ui::dp(90.0f), rowMin.y),
+            listDraw->PushClipRect(ImVec2(rowMin.x + vultra::ui::dp(90.0f), rowMin.y),
                                    ImVec2(rowMax.x - vultra::ui::dp(190.0f), rowMax.y),
                                    true);
-            drawList->AddText(ImVec2(rowMin.x + vultra::ui::dp(92.0f), rowMin.y + vultra::ui::dp(20.0f)),
+            listDraw->AddText(ImVec2(rowMin.x + vultra::ui::dp(92.0f), rowMin.y + vultra::ui::dp(20.0f)),
                               theme::u32(theme::text()),
                               project.name.c_str());
-            drawList->AddText(ImVec2(rowMin.x + vultra::ui::dp(92.0f), rowMin.y + vultra::ui::dp(46.0f)),
+            listDraw->AddText(ImVec2(rowMin.x + vultra::ui::dp(92.0f), rowMin.y + vultra::ui::dp(46.0f)),
                               theme::u32(theme::textMuted()),
                               project.path.generic_string().c_str());
-            drawList->PopClipRect();
+            listDraw->PopClipRect();
 
-            drawList->AddText(ImVec2(rowMax.x - vultra::ui::dp(166.0f), rowMin.y + vultra::ui::dp(22.0f)),
+            listDraw->AddText(ImVec2(rowMax.x - vultra::ui::dp(166.0f), rowMin.y + vultra::ui::dp(22.0f)),
                               theme::u32(theme::textSoft()),
                               ".vproject");
-            drawList->AddText(ImVec2(rowMax.x - vultra::ui::dp(166.0f), rowMin.y + vultra::ui::dp(48.0f)),
+            listDraw->AddText(ImVec2(rowMax.x - vultra::ui::dp(166.0f), rowMin.y + vultra::ui::dp(48.0f)),
                               theme::u32(theme::textMuted()),
                               vultra::tr("launcher.workspace"));
 
-            rowY += rowH + rowGap;
+            ImGui::Dummy(ImVec2(0.0f, rowGap));
         }
+        ImGui::EndChild();
 
         if (visibleCount == 0)
         {
-            drawList->AddRectFilled(ImVec2(contentX, origin.y + vultra::ui::dp(244.0f)),
-                                    ImVec2(origin.x + size.x - vultra::ui::dp(40.0f), origin.y + vultra::ui::dp(338.0f)),
+            drawList->AddRectFilled(ImVec2(contentX, listTop),
+                                    ImVec2(origin.x + size.x - vultra::ui::dp(40.0f), listTop + vultra::ui::dp(94.0f)),
                                     theme::u32(theme::withAlpha(theme::frame(), 180.0f / 255.0f)),
                                     vultra::ui::dp(7.0f));
-            drawList->AddRect(ImVec2(contentX, origin.y + vultra::ui::dp(244.0f)),
-                              ImVec2(origin.x + size.x - vultra::ui::dp(40.0f), origin.y + vultra::ui::dp(338.0f)),
+            drawList->AddRect(ImVec2(contentX, listTop),
+                              ImVec2(origin.x + size.x - vultra::ui::dp(40.0f), listTop + vultra::ui::dp(94.0f)),
                               theme::u32(theme::withAlpha(theme::border(), 150.0f / 255.0f)),
                               vultra::ui::dp(7.0f));
-            drawList->AddText(ImVec2(contentX + vultra::ui::dp(24.0f), origin.y + vultra::ui::dp(274.0f)),
+            drawList->AddText(ImVec2(contentX + vultra::ui::dp(24.0f), listTop + vultra::ui::dp(30.0f)),
                               theme::u32(theme::text()),
                               vultra::tr("launcher.empty.title"));
-            drawList->AddText(ImVec2(contentX + vultra::ui::dp(24.0f), origin.y + vultra::ui::dp(300.0f)),
+            drawList->AddText(ImVec2(contentX + vultra::ui::dp(24.0f), listTop + vultra::ui::dp(56.0f)),
                               theme::u32(theme::textMuted()),
                               vultra::tr("launcher.empty.hint"));
         }
 
         const bool hasSelection = m_SelectedProject >= 0 && m_SelectedProject < static_cast<int>(m_Projects.size());
 
-        drawList->AddLine(ImVec2(contentX, origin.y + size.y - vultra::ui::dp(72.0f)),
-                          ImVec2(origin.x + size.x - vultra::ui::dp(40.0f), origin.y + size.y - vultra::ui::dp(72.0f)),
-                          theme::u32(theme::withAlpha(theme::border(), 190.0f / 255.0f)),
-                          vultra::ui::dp(1.0f));
+        drawList->AddLine(
+            ImVec2(contentX, origin.y + size.y - vultra::ui::dp(72.0f)),
+            ImVec2(origin.x + size.x - vultra::ui::dp(40.0f), origin.y + size.y - vultra::ui::dp(72.0f)),
+            theme::u32(theme::withAlpha(theme::border(), 190.0f / 255.0f)),
+            vultra::ui::dp(1.0f));
 
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, vultra::ui::dp(7.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(vultra::ui::dp(14.0f), vultra::ui::dp(9.0f)));
         ImGui::SetCursorScreenPos(ImVec2(contentX, origin.y + size.y - vultra::ui::dp(52.0f)));
         if (ImGui::Button((std::string {ICON_MDI_IMPORT "  "} + vultra::tr("launcher.importProject")).c_str(),
                           ImVec2(vultra::ui::dp(142.0f), vultra::ui::dp(38.0f))))
-            ImGui::OpenPopup(vultra::trId("launcher.existingDialog.title", "Add Existing Vultra Project"));
-        ImGui::SetCursorScreenPos(ImVec2(origin.x + size.x - vultra::ui::dp(378.0f), origin.y + size.y - vultra::ui::dp(52.0f)));
+            pushPage(LauncherPage::OpenExisting);
+        ImGui::SetCursorScreenPos(
+            ImVec2(origin.x + size.x - vultra::ui::dp(378.0f), origin.y + size.y - vultra::ui::dp(52.0f)));
         if (!hasSelection)
             ImGui::BeginDisabled();
         if (ImGui::Button((std::string {ICON_MDI_FOLDER_OPEN "  "} + vultra::tr("common.open")).c_str(),
                           ImVec2(vultra::ui::dp(110.0f), vultra::ui::dp(38.0f))))
             openSelectedProject(state, windowService);
-        ImGui::SetCursorScreenPos(ImVec2(origin.x + size.x - vultra::ui::dp(256.0f), origin.y + size.y - vultra::ui::dp(52.0f)));
+        ImGui::SetCursorScreenPos(
+            ImVec2(origin.x + size.x - vultra::ui::dp(256.0f), origin.y + size.y - vultra::ui::dp(52.0f)));
         if (ImGui::Button((std::string {ICON_MDI_CLOSE "  "} + vultra::tr("common.remove")).c_str(),
                           ImVec2(vultra::ui::dp(122.0f), vultra::ui::dp(38.0f))))
             removeSelectedProject(state);
         if (!hasSelection)
             ImGui::EndDisabled();
-        ImGui::SetCursorScreenPos(ImVec2(origin.x + size.x - vultra::ui::dp(122.0f), origin.y + size.y - vultra::ui::dp(52.0f)));
+        ImGui::SetCursorScreenPos(
+            ImVec2(origin.x + size.x - vultra::ui::dp(122.0f), origin.y + size.y - vultra::ui::dp(52.0f)));
         if (ImGui::Button(ICON_MDI_REFRESH, ImVec2(vultra::ui::dp(38.0f), vultra::ui::dp(38.0f))))
             loadKnownProjects(state);
         ImGui::SameLine();
         ImGui::Button(ICON_MDI_VIEW_LIST, ImVec2(vultra::ui::dp(38.0f), vultra::ui::dp(38.0f)));
         ImGui::PopStyleVar(2);
 
-        drawCreateProjectPopup(state);
-        drawAddExistingProjectPopup(state);
-
         if (!state.statusMessage.empty())
         {
-            drawList->PushClipRect(ImVec2(contentX + vultra::ui::dp(156.0f), origin.y + size.y - vultra::ui::dp(54.0f)),
-                                   ImVec2(origin.x + size.x - vultra::ui::dp(396.0f), origin.y + size.y - vultra::ui::dp(18.0f)),
-                                   true);
+            drawList->PushClipRect(
+                ImVec2(contentX + vultra::ui::dp(156.0f), origin.y + size.y - vultra::ui::dp(54.0f)),
+                ImVec2(origin.x + size.x - vultra::ui::dp(396.0f), origin.y + size.y - vultra::ui::dp(18.0f)),
+                true);
             drawList->AddText(ImVec2(contentX + vultra::ui::dp(160.0f), origin.y + size.y - vultra::ui::dp(40.0f)),
                               theme::u32(theme::textMuted()),
                               state.statusMessage.c_str());
             drawList->PopClipRect();
         }
-
-        ImGui::End();
-        ImGui::PopStyleColor();
-        ImGui::PopStyleVar(2);
     }
 
-    void ProjectLauncher::drawCreateProjectPopup(AppState& state)
+    void ProjectLauncher::drawNewProjectPage(AppState& state, EditorContext& ctx)
     {
-        bool                 open = true;
-        ui::ScopedPopupStyle popupStyle;
-        ImGui::SetNextWindowSizeConstraints(ImVec2 {vultra::ui::dp(420.0f), 0.0f},
-                                            ImVec2 {vultra::ui::dp(620.0f), vultra::ui::dp(520.0f)});
-        if (!ImGui::BeginPopupModal(vultra::trId("launcher.createDialog.title", "Create Vultra Project"),
-                                    &open,
-                                    ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
-            return;
+        namespace theme = vultra::imgui_theme;
 
-        ui::sectionTitle(ICON_MDI_FOLDER_PLUS_OUTLINE, vultra::tr("launcher.nav.newProject"));
-        ImGui::TextColored(ImVec4 {0.62f, 0.70f, 0.80f, 1.0f}, "%s", vultra::tr("launcher.createDialog.hint"));
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        m_ProjectRootDialog.draw(vultra::tr("launcher.createDialog.projectFolder"),
-                                 m_NewProjectRoot.data(),
-                                 m_NewProjectRoot.size());
-        const char* templates[] = {vultra::tr("launcher.createDialog.templateEmpty"),
-                                    vultra::tr("launcher.createDialog.templateMinimal")};
-        ImGui::Combo(
-            vultra::tr("launcher.createDialog.template"), &m_NewProjectTemplate, templates, IM_ARRAYSIZE(templates));
+        const auto   l        = contentLayout();
+        const ImVec2 origin   = l.origin;
+        const float  contentX = l.x;
+        const float  contentW = l.w;
+        ImDrawList*  drawList  = ImGui::GetWindowDrawList();
 
-        ImGui::Spacing();
-        ImGui::Separator();
-        const float buttonWidth = vultra::ui::dp(96.0f);
-        ImGui::SetCursorPosX(ImGui::GetWindowWidth() - buttonWidth * 2.0f - ImGui::GetStyle().ItemSpacing.x -
-                             ImGui::GetStyle().WindowPadding.x);
+        drawList->AddText(ImVec2(contentX, origin.y + vultra::ui::dp(82.0f)),
+                          theme::u32(theme::textMuted()),
+                          vultra::tr("launcher.createDialog.hint"));
+
+        // Auto-derive the folder (Documents/<NameWithoutSpaces>) from the name until the user takes
+        // over the folder field by hand.
+        if (!m_NewProjectPathEdited)
+            assignBuffer(m_NewProjectRoot.data(),
+                         m_NewProjectRoot.size(),
+                         defaultProjectPathFor(m_NewProjectName.data()).generic_string());
+
+        const float fieldWidth = std::min(vultra::ui::dp(420.0f), contentW - vultra::ui::dp(160.0f));
+        ImGui::SetCursorScreenPos(ImVec2(contentX, origin.y + vultra::ui::dp(116.0f)));
+        ImGui::PushItemWidth(fieldWidth);
+        ImGui::InputText(
+            vultra::tr("launcher.createDialog.projectName"), m_NewProjectName.data(), m_NewProjectName.size());
+        ImGui::PopItemWidth();
+
+        ImGui::SetCursorScreenPos(ImVec2(contentX, origin.y + vultra::ui::dp(158.0f)));
+        ImGui::PushItemWidth(fieldWidth);
+        if (m_ProjectRootDialog.draw(
+                vultra::tr("launcher.createDialog.projectFolder"), m_NewProjectRoot.data(), m_NewProjectRoot.size()))
+            m_NewProjectPathEdited = true;
+        ImGui::PopItemWidth();
+
+        drawList->AddText(ImVec2(contentX, origin.y + vultra::ui::dp(212.0f)),
+                          theme::u32(theme::text()),
+                          vultra::tr("launcher.createDialog.chooseTemplate"));
+
+        if (!m_TemplatesFetched)
+            refreshTemplates();
+
+        // Templates come entirely from the remote template repository / catalog; the engine ships
+        // none of its own. A Refresh retries the fetch (e.g. after fixing connectivity).
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, vultra::ui::dp(7.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(vultra::ui::dp(12.0f), vultra::ui::dp(6.0f)));
+        ImGui::SetCursorScreenPos(ImVec2(l.right - vultra::ui::dp(120.0f), origin.y + vultra::ui::dp(206.0f)));
+        if (ImGui::Button((std::string {ICON_MDI_REFRESH "  "} + vultra::tr("launcher.samples.refresh")).c_str(),
+                          ImVec2(vultra::ui::dp(120.0f), vultra::ui::dp(34.0f))))
+            refreshTemplates();
+        ImGui::PopStyleVar(2);
+
+        const float cardW   = vultra::ui::dp(196.0f);
+        const float cardH   = vultra::ui::dp(184.0f);
+        const float gap     = vultra::ui::dp(16.0f);
+        const float gridTop = origin.y + vultra::ui::dp(238.0f);
+        const float gridH   = vultra::ui::dp(212.0f);
+        const int   cols    = std::max(1, static_cast<int>((contentW + gap) / (cardW + gap)));
+
+        ImGui::SetCursorScreenPos(ImVec2(contentX, gridTop));
+        ImGui::BeginChild("##template_grid", ImVec2(contentW, gridH), false);
+        if (!m_Templates.empty())
+        {
+            int budget = 3;
+            for (int i = 0; i < static_cast<int>(m_Templates.size()); ++i)
+            {
+                const auto& tpl = m_Templates[static_cast<size_t>(i)];
+                const int   row = i / cols;
+                const int   col = i % cols;
+                ImGui::SetCursorPos(ImVec2(static_cast<float>(col) * (cardW + gap),
+                                           static_cast<float>(row) * (cardH + gap)));
+                std::filesystem::path tpath;
+                if (const auto it = m_TemplateThumbs.find(tpl.id); it != m_TemplateThumbs.end())
+                    tpath = it->second;
+                else if (budget > 0)
+                {
+                    --budget;
+                    std::string st;
+                    tpath                    = templates::cachedThumbnail(std::filesystem::current_path(), tpl, st);
+                    m_TemplateThumbs[tpl.id] = tpath;
+                }
+                const ImTextureID thumb =
+                    tpath.empty() ? ImTextureID {} : m_Previews.getImageFilePreview(ctx, tpath);
+                const auto click = drawThumbnailCard(("##rtpl_" + std::to_string(i)).c_str(),
+                                                     thumb,
+                                                     tpl.name.c_str(),
+                                                     tpl.description.c_str(),
+                                                     m_SelectedTemplateIndex == i,
+                                                     ImVec2(cardW, cardH),
+                                                     ICON_MDI_IMAGE_OUTLINE);
+                if (click.clicked || click.doubleClicked)
+                    m_SelectedTemplateIndex = i;
+            }
+            if (m_SelectedTemplateIndex < 0 || m_SelectedTemplateIndex >= static_cast<int>(m_Templates.size()))
+                m_SelectedTemplateIndex = 0;
+        }
+        else
+        {
+            m_SelectedTemplateIndex = -1;
+            ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::textMuted());
+            ImGui::TextWrapped("%s", vultra::tr("launcher.createDialog.noTemplates"));
+            ImGui::PopStyleColor();
+        }
+        ImGui::EndChild();
+
+        if (!m_TemplatesStatus.empty())
+            drawList->AddText(ImVec2(contentX, gridTop + gridH + vultra::ui::dp(2.0f)),
+                              theme::u32(theme::textMuted()),
+                              m_TemplatesStatus.c_str());
+
+        const float actionsY = gridTop + gridH + vultra::ui::dp(26.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, vultra::ui::dp(7.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(vultra::ui::dp(16.0f), vultra::ui::dp(10.0f)));
+        ImGui::SetCursorScreenPos(ImVec2(contentX, actionsY));
+        const bool canCreate = !m_Templates.empty();
+        if (!canCreate)
+            ImGui::BeginDisabled();
+        ImGui::PushStyleColor(ImGuiCol_Button, vultra::imgui_theme::accentButton());
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, vultra::imgui_theme::accentButtonHovered());
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, vultra::imgui_theme::accentButtonActive());
         if (ImGui::Button((std::string {ICON_MDI_PLUS "  "} + vultra::tr("common.create")).c_str(),
-                          ImVec2 {buttonWidth, 0.0f}))
+                          ImVec2(vultra::ui::dp(150.0f), vultra::ui::dp(40.0f))))
         {
             if (createProject(state))
-                ImGui::CloseCurrentPopup();
+                resetTo(LauncherPage::Projects);
         }
-        ImGui::SameLine();
-        if (ImGui::Button(vultra::tr("common.cancel"), ImVec2 {buttonWidth, 0.0f}))
-            ImGui::CloseCurrentPopup();
+        ImGui::PopStyleColor(3);
+        if (!canCreate)
+            ImGui::EndDisabled();
+        ImGui::SameLine(0.0f, vultra::ui::dp(12.0f));
+        if (ImGui::Button((std::string {ICON_MDI_CLOSE "  "} + vultra::tr("common.cancel")).c_str(),
+                          ImVec2(vultra::ui::dp(120.0f), vultra::ui::dp(40.0f))))
+            resetTo(LauncherPage::Projects);
+        ImGui::PopStyleVar(2);
 
-        ImGui::EndPopup();
+        if (!state.statusMessage.empty())
+            drawList->AddText(ImVec2(contentX, actionsY + vultra::ui::dp(54.0f)),
+                              theme::u32(theme::textMuted()),
+                              state.statusMessage.c_str());
     }
 
-    void ProjectLauncher::drawAddExistingProjectPopup(AppState& state)
+    void ProjectLauncher::drawOpenExistingPage(AppState& state)
     {
-        bool                 open = true;
-        ui::ScopedPopupStyle popupStyle;
-        ImGui::SetNextWindowSizeConstraints(ImVec2 {vultra::ui::dp(420.0f), 0.0f},
-                                            ImVec2 {vultra::ui::dp(620.0f), vultra::ui::dp(460.0f)});
-        if (!ImGui::BeginPopupModal(vultra::trId("launcher.existingDialog.title", "Add Existing Vultra Project"),
-                                    &open,
-                                    ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
-            return;
+        namespace theme = vultra::imgui_theme;
 
-        ui::sectionTitle(ICON_MDI_FOLDER_OPEN, vultra::tr("launcher.existingDialog.heading"));
-        ImGui::TextColored(ImVec4 {0.62f, 0.70f, 0.80f, 1.0f}, "%s", vultra::tr("launcher.existingDialog.hint"));
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
+        const auto   l        = contentLayout();
+        const ImVec2 origin   = l.origin;
+        const float  contentX = l.x;
+        const float  contentW = l.w;
+        ImDrawList*  drawList  = ImGui::GetWindowDrawList();
+
+        drawList->AddText(ImVec2(contentX, origin.y + vultra::ui::dp(84.0f)),
+                          theme::u32(theme::textMuted()),
+                          vultra::tr("launcher.existingDialog.hint"));
+
+        // Start browsing from Documents by default.
+        if (m_ExistingProjectRoot[0] == '\0')
+            assignBuffer(m_ExistingProjectRoot.data(), m_ExistingProjectRoot.size(), documentsDir().generic_string());
+
+        ImGui::SetCursorScreenPos(ImVec2(contentX, origin.y + vultra::ui::dp(120.0f)));
+        ImGui::PushItemWidth(std::min(vultra::ui::dp(580.0f), contentW));
         m_ExistingProjectDialog.draw(vultra::tr("launcher.existingDialog.projectRoot"),
                                      m_ExistingProjectRoot.data(),
                                      m_ExistingProjectRoot.size());
+        ImGui::PopItemWidth();
 
-        ImGui::Spacing();
-        ImGui::Separator();
-        const float buttonWidth = vultra::ui::dp(96.0f);
-        ImGui::SetCursorPosX(ImGui::GetWindowWidth() - buttonWidth * 2.0f - ImGui::GetStyle().ItemSpacing.x -
-                             ImGui::GetStyle().WindowPadding.x);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, vultra::ui::dp(7.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(vultra::ui::dp(16.0f), vultra::ui::dp(10.0f)));
+        ImGui::SetCursorScreenPos(ImVec2(contentX, origin.y + vultra::ui::dp(180.0f)));
+        ImGui::PushStyleColor(ImGuiCol_Button, vultra::imgui_theme::accentButton());
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, vultra::imgui_theme::accentButtonHovered());
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, vultra::imgui_theme::accentButtonActive());
         if (ImGui::Button((std::string {ICON_MDI_PLUS "  "} + vultra::tr("common.add")).c_str(),
-                          ImVec2 {buttonWidth, 0.0f}))
+                          ImVec2(vultra::ui::dp(150.0f), vultra::ui::dp(40.0f))))
         {
-            const bool valid =
-                loadVProject(normalizeProjectPath(m_ExistingProjectRoot.data())).has_value();
+            const bool valid = loadVProject(normalizeProjectPath(m_ExistingProjectRoot.data())).has_value();
             addExistingProject(state);
             if (valid)
-                ImGui::CloseCurrentPopup();
+                resetTo(LauncherPage::Projects);
         }
-        ImGui::SameLine();
-        if (ImGui::Button(vultra::tr("common.cancel"), ImVec2 {buttonWidth, 0.0f}))
-            ImGui::CloseCurrentPopup();
+        ImGui::PopStyleColor(3);
+        ImGui::SameLine(0.0f, vultra::ui::dp(12.0f));
+        if (ImGui::Button((std::string {ICON_MDI_CLOSE "  "} + vultra::tr("common.cancel")).c_str(),
+                          ImVec2(vultra::ui::dp(120.0f), vultra::ui::dp(40.0f))))
+            resetTo(LauncherPage::Projects);
+        ImGui::PopStyleVar(2);
 
-        ImGui::EndPopup();
+        if (!state.statusMessage.empty())
+            drawList->AddText(ImVec2(contentX, origin.y + vultra::ui::dp(236.0f)),
+                              theme::u32(theme::textMuted()),
+                              state.statusMessage.c_str());
+    }
+
+    void ProjectLauncher::refreshSamples()
+    {
+        m_SamplesFetched = true;
+        m_SelectedExample = -1;
+        m_ExampleThumbs.clear();
+        examples::fetchExamplesCatalog(
+            std::filesystem::current_path(), examples::defaultExamplesCatalogUrl(), m_Examples, m_SamplesStatus);
+    }
+
+    void ProjectLauncher::refreshTemplates()
+    {
+        m_TemplatesFetched      = true;
+        m_SelectedTemplateIndex = -1;
+        m_TemplateThumbs.clear();
+        templates::fetchTemplatesCatalog(std::filesystem::current_path(),
+                                         templates::defaultTemplatesCatalogUrl(),
+                                         m_Templates,
+                                         m_TemplatesStatus);
+    }
+
+    void ProjectLauncher::drawSamplesPage(AppState& state, EditorContext& ctx)
+    {
+        namespace theme = vultra::imgui_theme;
+        (void)state;
+
+        if (!m_SamplesFetched)
+            refreshSamples();
+
+        const auto   l        = contentLayout();
+        const ImVec2 origin   = l.origin;
+        const ImVec2 size     = l.size;
+        const float  contentX = l.x;
+        const float  contentW = l.w;
+        ImDrawList*  drawList  = ImGui::GetWindowDrawList();
+
+        drawList->AddText(ImVec2(contentX, origin.y + vultra::ui::dp(84.0f)),
+                          theme::u32(theme::textMuted()),
+                          vultra::tr("launcher.samples.subtitle"));
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, vultra::ui::dp(7.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(vultra::ui::dp(14.0f), vultra::ui::dp(9.0f)));
+        ImGui::SetCursorScreenPos(ImVec2(l.right - vultra::ui::dp(132.0f), origin.y + vultra::ui::dp(76.0f)));
+        if (ImGui::Button((std::string {ICON_MDI_REFRESH "  "} + vultra::tr("launcher.samples.refresh")).c_str(),
+                          ImVec2(vultra::ui::dp(132.0f), vultra::ui::dp(38.0f))))
+            refreshSamples();
+        ImGui::PopStyleVar(2);
+
+        const bool  hasSelection = m_SelectedExample >= 0 && m_SelectedExample < static_cast<int>(m_Examples.size());
+        const float gridTop      = origin.y + vultra::ui::dp(132.0f);
+        const float gridBottom   = origin.y + size.y - vultra::ui::dp(72.0f);
+
+        ImGui::SetCursorScreenPos(ImVec2(contentX, gridTop));
+        ImGui::BeginChild("##samples_grid", ImVec2(contentW, gridBottom - gridTop), false, ImGuiWindowFlags_NoScrollbar);
+        if (m_Examples.empty())
+        {
+            ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::textMuted());
+            ImGui::TextWrapped("%s", vultra::tr("launcher.samples.empty"));
+            ImGui::PopStyleColor();
+        }
+        else
+        {
+            const float cardW = vultra::ui::dp(204.0f);
+            const float cardH = vultra::ui::dp(196.0f);
+            const float gap   = vultra::ui::dp(16.0f);
+            const int   cols  = std::max(1, static_cast<int>((contentW + gap) / (cardW + gap)));
+            int         downloadBudget = 3;
+            for (int i = 0; i < static_cast<int>(m_Examples.size()); ++i)
+            {
+                const auto& entry = m_Examples[static_cast<size_t>(i)];
+                const int   row   = i / cols;
+                const int   col   = i % cols;
+                ImGui::SetCursorPos(ImVec2(static_cast<float>(col) * (cardW + gap),
+                                           static_cast<float>(row) * (cardH + gap)));
+
+                std::filesystem::path thumbPath;
+                if (const auto it = m_ExampleThumbs.find(entry.id); it != m_ExampleThumbs.end())
+                    thumbPath = it->second;
+                else if (downloadBudget > 0)
+                {
+                    --downloadBudget;
+                    std::string thumbStatus;
+                    thumbPath              = examples::cachedThumbnail(std::filesystem::current_path(), entry, thumbStatus);
+                    m_ExampleThumbs[entry.id] = thumbPath;
+                }
+
+                const ImTextureID thumb =
+                    thumbPath.empty() ? ImTextureID {} : m_Previews.getImageFilePreview(ctx, thumbPath);
+                const auto click = drawThumbnailCard(("##sample_" + std::to_string(i)).c_str(),
+                                                     thumb,
+                                                     entry.name.c_str(),
+                                                     entry.author.c_str(),
+                                                     i == m_SelectedExample,
+                                                     ImVec2(cardW, cardH),
+                                                     ICON_MDI_CUBE_OUTLINE);
+                if (click.clicked)
+                    m_SelectedExample = i;
+                if (click.doubleClicked)
+                {
+                    m_SelectedExample = i;
+                    pushPage(LauncherPage::ForkExample);
+                }
+            }
+        }
+        ImGui::EndChild();
+
+        drawList->AddLine(ImVec2(contentX, gridBottom + vultra::ui::dp(8.0f)),
+                          ImVec2(l.right, gridBottom + vultra::ui::dp(8.0f)),
+                          theme::u32(theme::withAlpha(theme::border(), 190.0f / 255.0f)),
+                          vultra::ui::dp(1.0f));
+
+        if (!m_SamplesStatus.empty())
+            drawList->AddText(ImVec2(contentX, origin.y + size.y - vultra::ui::dp(40.0f)),
+                              theme::u32(theme::textMuted()),
+                              m_SamplesStatus.c_str());
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, vultra::ui::dp(7.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(vultra::ui::dp(16.0f), vultra::ui::dp(10.0f)));
+        ImGui::SetCursorScreenPos(
+            ImVec2(l.right - vultra::ui::dp(150.0f), origin.y + size.y - vultra::ui::dp(52.0f)));
+        if (!hasSelection)
+            ImGui::BeginDisabled();
+        ImGui::PushStyleColor(ImGuiCol_Button, vultra::imgui_theme::accentButton());
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, vultra::imgui_theme::accentButtonHovered());
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, vultra::imgui_theme::accentButtonActive());
+        if (ImGui::Button((std::string {ICON_MDI_SOURCE_FORK "  "} + vultra::tr("launcher.samples.fork")).c_str(),
+                          ImVec2(vultra::ui::dp(150.0f), vultra::ui::dp(40.0f))))
+            pushPage(LauncherPage::ForkExample);
+        ImGui::PopStyleColor(3);
+        if (!hasSelection)
+            ImGui::EndDisabled();
+        ImGui::PopStyleVar(2);
+    }
+
+    void ProjectLauncher::drawForkExamplePage(AppState& state, EditorContext& ctx)
+    {
+        namespace theme = vultra::imgui_theme;
+
+        if (m_SelectedExample < 0 || m_SelectedExample >= static_cast<int>(m_Examples.size()))
+        {
+            resetTo(LauncherPage::Samples);
+            return;
+        }
+        const auto& entry = m_Examples[static_cast<size_t>(m_SelectedExample)];
+
+        // Default the destination to Documents/<ExampleNameWithoutSpaces>.
+        if (m_ForkDestRoot[0] == '\0')
+            assignBuffer(m_ForkDestRoot.data(),
+                         m_ForkDestRoot.size(),
+                         defaultProjectPathFor(entry.name.empty() ? entry.id : entry.name).generic_string());
+
+        const auto   l        = contentLayout();
+        const ImVec2 origin   = l.origin;
+        const float  contentX = l.x;
+        const float  contentW = l.w;
+        ImDrawList*  drawList  = ImGui::GetWindowDrawList();
+
+        // Selected example summary with thumbnail.
+        const float       thumbSize = vultra::ui::dp(96.0f);
+        const ImVec2      thumbMin(contentX, origin.y + vultra::ui::dp(96.0f));
+        const ImVec2      thumbMax(thumbMin.x + thumbSize, thumbMin.y + thumbSize);
+        std::filesystem::path thumbPath;
+        if (const auto it = m_ExampleThumbs.find(entry.id); it != m_ExampleThumbs.end())
+            thumbPath = it->second;
+        const ImTextureID thumb =
+            thumbPath.empty() ? ImTextureID {} : m_Previews.getImageFilePreview(ctx, thumbPath);
+        drawList->AddRectFilled(thumbMin, thumbMax, theme::u32(theme::backgroundDeep()), vultra::ui::dp(8.0f));
+        if (thumb)
+            drawList->AddImageRounded(
+                thumb, thumbMin, thumbMax, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f), IM_COL32_WHITE, vultra::ui::dp(8.0f));
+        else
+            drawList->AddText(ImVec2(thumbMin.x + thumbSize * 0.5f - vultra::ui::dp(9.0f),
+                                     thumbMin.y + thumbSize * 0.5f - vultra::ui::dp(10.0f)),
+                              theme::u32(theme::textMuted()),
+                              ICON_MDI_CUBE_OUTLINE);
+
+        const float textX = thumbMax.x + vultra::ui::dp(18.0f);
+        drawList->AddText(ImVec2(textX, origin.y + vultra::ui::dp(98.0f)), theme::u32(theme::text()), entry.name.c_str());
+        if (!entry.author.empty())
+            drawList->AddText(ImVec2(textX, origin.y + vultra::ui::dp(122.0f)),
+                              theme::u32(theme::textMuted()),
+                              entry.author.c_str());
+        drawList->PushClipRect(ImVec2(textX, origin.y + vultra::ui::dp(140.0f)),
+                               ImVec2(l.right, origin.y + vultra::ui::dp(196.0f)),
+                               true);
+        drawList->AddText(ImVec2(textX, origin.y + vultra::ui::dp(144.0f)),
+                          theme::u32(theme::textMuted()),
+                          entry.description.c_str());
+        drawList->PopClipRect();
+
+        drawList->AddText(ImVec2(contentX, origin.y + vultra::ui::dp(212.0f)),
+                          theme::u32(theme::textMuted()),
+                          vultra::tr("launcher.samples.forkHint"));
+
+        ImGui::SetCursorScreenPos(ImVec2(contentX, origin.y + vultra::ui::dp(244.0f)));
+        ImGui::PushItemWidth(std::min(vultra::ui::dp(580.0f), contentW));
+        m_ForkDestDialog.draw(
+            vultra::tr("launcher.samples.destFolder"), m_ForkDestRoot.data(), m_ForkDestRoot.size());
+        ImGui::PopItemWidth();
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, vultra::ui::dp(7.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(vultra::ui::dp(16.0f), vultra::ui::dp(10.0f)));
+        ImGui::SetCursorScreenPos(ImVec2(contentX, origin.y + vultra::ui::dp(304.0f)));
+        ImGui::PushStyleColor(ImGuiCol_Button, vultra::imgui_theme::accentButton());
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, vultra::imgui_theme::accentButtonHovered());
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, vultra::imgui_theme::accentButtonActive());
+        if (ImGui::Button((std::string {ICON_MDI_SOURCE_FORK "  "} + vultra::tr("launcher.samples.forkButton")).c_str(),
+                          ImVec2(vultra::ui::dp(160.0f), vultra::ui::dp(40.0f))))
+        {
+            const std::filesystem::path dest = std::filesystem::path(m_ForkDestRoot.data()).lexically_normal();
+            auto result = examples::forkExample(std::filesystem::current_path(), entry, dest);
+            state.statusMessage = result.status;
+            if (result.ok)
+            {
+                addKnownProject(state, result.projectFile);
+                saveKnownProjects(state);
+                resetTo(LauncherPage::Projects);
+            }
+        }
+        ImGui::PopStyleColor(3);
+        ImGui::SameLine(0.0f, vultra::ui::dp(12.0f));
+        if (ImGui::Button((std::string {ICON_MDI_CLOSE "  "} + vultra::tr("common.cancel")).c_str(),
+                          ImVec2(vultra::ui::dp(120.0f), vultra::ui::dp(40.0f))))
+            resetTo(LauncherPage::Samples);
+        ImGui::PopStyleVar(2);
+
+        if (!state.statusMessage.empty())
+            drawList->AddText(ImVec2(contentX, origin.y + vultra::ui::dp(364.0f)),
+                              theme::u32(theme::textMuted()),
+                              state.statusMessage.c_str());
     }
 
     void ProjectLauncher::loadKnownProjects(AppState& state)
@@ -1381,27 +1956,34 @@ This directory is an index, not the runtime asset root.
         }
 
         std::error_code ec;
-        if (!fs::exists(projectDir, ec))
+        if (fs::exists(projectDir, ec))
         {
-            state.statusMessage = vultra::trf("launcher.status.folderMissing", projectDir.generic_string());
-            return false;
-        }
-        if (!fs::is_directory(projectDir, ec))
-        {
-            state.statusMessage = vultra::trf("launcher.status.pathNotFolder", projectDir.generic_string());
-            return false;
-        }
-        if (!fs::is_empty(projectDir, ec) || ec)
-        {
-            state.statusMessage = ec ? vultra::trf("launcher.status.inspectFailed", ec.message()) :
-                                       vultra::trf("launcher.status.folderNotEmpty", projectDir.generic_string());
-            return false;
+            if (!fs::is_directory(projectDir, ec))
+            {
+                state.statusMessage = vultra::trf("launcher.status.pathNotFolder", projectDir.generic_string());
+                return false;
+            }
+            if (!fs::is_empty(projectDir, ec) || ec)
+            {
+                state.statusMessage = ec ? vultra::trf("launcher.status.inspectFailed", ec.message()) :
+                                           vultra::trf("launcher.status.folderNotEmpty", projectDir.generic_string());
+                return false;
+            }
         }
 
         const std::string projectName = sanitizeProjectName(projectDir.filename().generic_string());
         if (projectName.empty())
         {
             state.statusMessage = vultra::tr("launcher.status.invalidName");
+            return false;
+        }
+
+        // Create the project folder if it doesn't exist yet (the default path is derived under the
+        // user's Documents folder, which usually won't exist beforehand).
+        fs::create_directories(projectDir, ec);
+        if (ec)
+        {
+            state.statusMessage = vultra::trf("launcher.status.createFailed", ec.message());
             return false;
         }
 
@@ -1412,34 +1994,39 @@ This directory is an index, not the runtime asset root.
             return false;
         }
 
-        fs::create_directories(projectDir / "resources" / "scenes", ec);
-        if (ec)
+        // Scaffold the project content from the chosen template. Templates come entirely from the
+        // remote template repository: the selected entry is cloned and its engine-version-matched
+        // folder is copied in. The engine ships no built-in templates, so a template must be
+        // selected (the New Project page disables Create until the catalog loads one).
+        std::string errorMessage;
+        std::string editingRenderGraph;
+        if (m_SelectedTemplateIndex < 0 || m_SelectedTemplateIndex >= static_cast<int>(m_Templates.size()))
         {
-            state.statusMessage = vultra::trf("launcher.status.createFailed", ec.message());
+            state.statusMessage = vultra::tr("launcher.status.noTemplateSelected");
             return false;
         }
+        {
+            const auto& tpl = m_Templates[static_cast<size_t>(m_SelectedTemplateIndex)];
+            if (!templates::materializeTemplate(
+                    fs::current_path(), tpl, plugins::engineVersion(), projectDir, errorMessage))
+            {
+                state.statusMessage = vultra::trf("launcher.status.writeAssetsFailed", errorMessage);
+                return false;
+            }
+            editingRenderGraph = tpl.defaultRenderGraph;
+        }
 
-        std::string errorMessage;
-        const auto  templateKind =
-            m_NewProjectTemplate == 0 ? ProjectTemplateKind::Empty : ProjectTemplateKind::Minimal;
-        VProject    project {
-               .projectDir         = projectDir,
-               .name               = projectName,
-               .assetRoot          = "resources",
-               .defaultScene       = "res://scenes/main.vscn",
-               .buildScenes        = {VBuildScene {.index = 0, .uri = "res://scenes/main.vscn", .enabled = true}},
-               .editingRenderGraph = templateKind == ProjectTemplateKind::Empty ?
-                                         std::string {} :
-                                         std::string {"res://render/default.vrg.json"},
+        VProject project {
+            .projectDir         = projectDir,
+            .name               = projectName,
+            .assetRoot          = "resources",
+            .defaultScene       = "res://scenes/main.vscn",
+            .buildScenes        = {VBuildScene {.index = 0, .uri = "res://scenes/main.vscn", .enabled = true}},
+            .editingRenderGraph = editingRenderGraph,
         };
         if (!saveVProject(project, &errorMessage))
         {
             state.statusMessage = vultra::trf("launcher.status.writeVprojectFailed", errorMessage);
-            return false;
-        }
-        if (!writeProjectTemplateAssets(projectDir, templateKind, errorMessage))
-        {
-            state.statusMessage = vultra::trf("launcher.status.writeAssetsFailed", errorMessage);
             return false;
         }
 
@@ -1505,11 +2092,13 @@ This directory is an index, not the runtime asset root.
             return;
         }
 
-        // Plugins that must load before the render device exists (e.g. a Vulkan-hooking DLSS
-        // bridge) cannot be applied by this in-process transition -- the device was already
-        // created for the launcher. Hand the project off to a fresh editor process instead.
-        if (plugins::projectNeedsRelaunchForPlugins(
-                project->projectDir, project->assetRoot, project->enabledPlugins))
+        // The engine loads plugins only once, at init. An in-process launcher->editor transition
+        // therefore cannot load a project's plugins (and returning to the launcher unloads any that
+        // were loaded), so reopening a plugin-bearing project in-process would run without its
+        // plugins -- and crash if the scene/render graph/editor panels reference them. Any project
+        // with enabled plugins is handed off to a fresh editor process, which loads them cleanly at
+        // init (this already covered render-device-hooking plugins like the DLSS bridge).
+        if (!project->enabledPlugins.empty())
         {
             if (relaunchIntoProject(project->projectDir))
             {
@@ -1518,7 +2107,7 @@ This directory is an index, not the runtime asset root.
                     windowService->window().close();
                 return;
             }
-            // No relaunch available on this platform: open in-process; early-load plugins stay
+            // No relaunch available on this platform: open in-process; the project's plugins stay
             // inactive for this session.
             state.statusMessage = vultra::tr("launcher.status.relaunchForPluginsFailed");
         }

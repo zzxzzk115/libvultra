@@ -1098,6 +1098,7 @@
       "info": "ランタイムパッケージは同名の実行ファイルとVPKを使用します。"
     },
     "plugins": {
+      "needsEngine": "エンジン >= {} が必要です (現在 {})",
       "header": "プラグイン",
       "info": "カタログ/Git プラグインはプロジェクトの管理プラグインストアにインストールされます。ZIP とフォルダーのインポートは <asset-root>/plugins (例: resources/plugins) にコピーされ、プロジェクトの VPK にパックされます。プラグインはデフォルトでは無効です。有効にすると今すぐおよび次回起動時に読み込まれます。ネイティブプラグインはデスクトップ専用です。",
       "importHeader": "プラグインをインポート",
@@ -1481,7 +1482,8 @@
     "nav": {
       "projects": "プロジェクト",
       "newProject": "新規プロジェクト",
-      "openExisting": "既存を開く"
+      "openExisting": "既存を開く",
+      "samples": "サンプル"
     },
     "empty": {
       "title": "プロジェクトが見つかりません",
@@ -1493,13 +1495,26 @@
       "projectFolder": "プロジェクトフォルダー",
       "template": "テンプレート",
       "templateEmpty": "空",
-      "templateMinimal": "最小構成"
+      "templateMinimal": "最小構成",
+      "chooseTemplate": "テンプレートを選択",
+      "projectName": "プロジェクト名",
+      "noTemplates": "利用可能なテンプレートがありません。接続を確認して更新してください。"
     },
     "existingDialog": {
       "title": "既存の Vultra プロジェクトを追加",
       "heading": "既存のプロジェクト",
       "hint": ".vproject ファイルを含むプロジェクトルートを選択してください。",
       "projectRoot": "プロジェクトルート"
+    },
+    "samples": {
+      "subtitle": "公式サンプルを新規プロジェクトとして fork します。",
+      "refresh": "更新",
+      "empty": "利用可能なサンプルがありません。接続を確認して更新してください。",
+      "fork": "Fork",
+      "forkTitle": "サンプルを Fork",
+      "forkHint": "空の保存先フォルダーを選択してください。サンプルが新規プロジェクトとして複製されます。",
+      "destFolder": "保存先フォルダー",
+      "forkButton": "サンプルを Fork"
     },
     "status": {
       "addedProject": "プロジェクトを追加しました: {}",
@@ -1520,7 +1535,8 @@
       "openFailed": "project.vproject を開けませんでした。",
       "openedProject": "プロジェクトを開きました: {}",
       "relaunchingForPlugins": "このプロジェクトはレンダーデバイス作成前に読み込むプラグインを使用しています。新しいエディタープロセスで開き直しています...",
-      "relaunchForPluginsFailed": "早期読み込みプラグインのための再起動ができませんでした。このセッションでは無効のままになります。"
+      "relaunchForPluginsFailed": "早期読み込みプラグインのための再起動ができませんでした。このセッションでは無効のままになります。",
+      "noTemplateSelected": "先にテンプレートを選択してください。"
     },
     "io": {
       "createDirFailed": "ディレクトリ '{}' の作成に失敗しました: {}",

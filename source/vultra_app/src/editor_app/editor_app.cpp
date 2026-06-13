@@ -39,6 +39,7 @@
 #include <vultra/function/services/audio_service.hpp>
 #include <vultra/function/services/job_service.hpp>
 #include <vultra/function/services/physics_service.hpp>
+#include <vultra/function/services/plugin_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
@@ -1951,6 +1952,22 @@ namespace vultra_app
                 renderService->resetSceneState();
             if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
                 worldService->world().clear();
+
+            // Returning to the launcher is an in-process transition (the engine and its plugin
+            // system persist), so the project's plugins must be torn down explicitly here -- the
+            // engine only unloads them at process shutdown. Without this their native DLLs, Lua
+            // state, registered services/passes, editor panels and plugins:// content all leak into
+            // the launcher and into the next project opened in-process. Unload in reverse load order
+            // (mirrors PluginSystem::onShutdown) so dependencies tear down after their dependents.
+            // The GPU is idle and the scene/world are already cleared, so freeing plugin-owned
+            // render resources is safe. unloadPlugin is idempotent, so the duplicate call during the
+            // app-exit path (onBeforeShutdown -> here, then PluginSystem::onShutdown) is harmless.
+            if (auto* pluginService = ctx.services->tryGet<vultra::IPluginService>())
+            {
+                const auto loaded = pluginService->loadedPlugins(); // in load order
+                for (auto it = loaded.rbegin(); it != loaded.rend(); ++it)
+                    pluginService->unloadPlugin(*it);
+            }
         }
 
         m_WindowManager.destroy(ctx);

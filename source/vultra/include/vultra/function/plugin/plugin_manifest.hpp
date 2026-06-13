@@ -65,6 +65,10 @@ namespace vultra
         std::string              id;
         std::string              name;
         std::string              version;
+        // Lowest engine version this plugin supports, as a dotted semantic string (manifest
+        // "minEngineVersion"). Empty = no declared minimum (treated as compatible). The editor uses
+        // this to gate install/enable against the running engine version.
+        std::string              minEngineVersion;
         std::string              author;
         std::string              description;
         std::string              readme;     // relative path to a README file (optional)

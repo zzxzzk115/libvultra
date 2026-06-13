@@ -35,6 +35,9 @@ namespace vultra_app::ui
         bool        hasCachedImageFilePreview(EditorContext& ctx, const std::filesystem::path& path) const;
         ImTextureID getImageFilePreview(EditorContext& ctx, const std::filesystem::path& path, bool allowLoad = true);
         ImTextureID getBuiltinIcon(EditorContext& ctx, BuiltinAssetIcon icon, float requestedSize);
+        // Decode a builtin (lz4-embedded) PNG by its logical path, e.g.
+        // "textures/editor/folder_icon.png", into an ImGui texture. Cached by logical path.
+        ImTextureID getBuiltinImagePreview(EditorContext& ctx, std::string_view logicalPath, bool allowLoad = true);
         void        clear(EditorContext& ctx);
         void        trim(EditorContext& ctx, std::size_t maxPreviewCount);
         const std::string& lastError() const { return m_LastError; }
