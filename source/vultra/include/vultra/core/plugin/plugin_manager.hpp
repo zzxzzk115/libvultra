@@ -26,6 +26,10 @@ namespace vultra
         void uninstallAll(EngineContext& ctx);
         void unloadAll(EngineContext& ctx);
 
+        // Per-frame tick for every loaded native plugin (ABI v2). Called by
+        // PluginSystem in load order.
+        void update(EngineContext& ctx, float dt);
+
     private:
         struct Loaded
         {

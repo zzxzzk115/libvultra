@@ -308,7 +308,7 @@ namespace vultra
         controller.position               = {0.0f, 1.0f, 1.5f};
         controller.yawDegrees             = -90.0f;
         controller.pitchDegrees           = -20.0f;
-        controller.fovYDegrees            = 60.0f;
+        controller.fovY            = 60.0f;
         controller.zNear                  = 0.1f;
         controller.zFar                   = 1000.0f;
         return controller;
@@ -448,8 +448,8 @@ namespace vultra
         const glm::vec3 forward = makeForward(fpsController.yawDegrees, fpsController.pitchDegrees);
         camera.view       = glm::lookAt(fpsController.position, fpsController.position + forward, glm::vec3(0, 1, 0));
         camera.projection = glm::perspectiveRH_ZO(
-            glm::radians(fpsController.fovYDegrees), aspect, fpsController.zNear, fpsController.zFar);
-        camera.fovY  = glm::radians(fpsController.fovYDegrees);
+            glm::radians(fpsController.fovY), aspect, fpsController.zNear, fpsController.zFar);
+        camera.fovY  = glm::radians(fpsController.fovY);
         camera.zNear = fpsController.zNear;
         camera.zFar  = fpsController.zFar;
 

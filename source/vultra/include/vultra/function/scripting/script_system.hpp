@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/engine/engine_subsystem.hpp"
+#include "vultra/function/editor/editor_extension_registry.hpp"
 #include "vultra/function/scripting/script_context.hpp"
 #include "vultra/function/scripting/script_engine.hpp"
 #include "vultra/function/scripting/script_instance.hpp"
@@ -8,9 +9,11 @@
 
 #include <entt/entity/entity.hpp>
 
+#include <map>
 #include <memory>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 
 namespace vultra
 {
@@ -46,13 +49,25 @@ namespace vultra
         void syncInstances();
         void destroyAllInstances();
 
+        void setInstanceEnabled(ScriptInstance& inst, bool enabled);
+        void stopCoroutines(entt::entity e);
+        void tickCoroutines(float dt);
+        void dispatchContactCallbacks();
+        void dispatchContactEvent(entt::entity target, entt::entity other, bool sensor, int phase);
+
         static void updateInstance(entt::entity e, ScriptInstance& inst, float dt);
         static void fixedUpdateInstance(entt::entity e, ScriptInstance& inst, float dt);
 
     private:
-        ScriptEngine  m_Engine;
-        ScriptContext m_ScriptContext;
-        InstanceMap   m_Instances;
+        // normalized (min, max) contact pair -> either body is a sensor;
+        // captured at enter so exit callbacks keep the right classification
+        using ContactMap = std::map<std::pair<entt::entity, entt::entity>, bool>;
+
+        ScriptEngine            m_Engine;
+        ScriptContext           m_ScriptContext;
+        EditorExtensionRegistry m_EditorExtensions; // provided as IEditorExtensionService
+        InstanceMap             m_Instances;
+        ContactMap              m_PrevContacts;
         bool          m_PlaybackPlaying {true};
         bool          m_PlaybackPaused {false};
         bool          m_SingleStepActive {false};

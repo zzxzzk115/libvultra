@@ -38,6 +38,10 @@ For game project work, also read the project-local:
 
 When adding or changing engine features that can affect gameplay authors:
 
+- Follow the normative Lua API spec in `doc/lua_api_design.md` (naming,
+  property vs method, units, error/nil style, deprecation). Run its review
+  checklist on every binding change and keep `tests/lua_api_conformance`
+  green without growing its `exceptions.lua` baseline.
 - Decide whether the feature needs a player-facing Lua binding.
 - Check existing features in the same subsystem for missing bindings.
 - If a binding is missing because the runtime service or data model is incomplete,

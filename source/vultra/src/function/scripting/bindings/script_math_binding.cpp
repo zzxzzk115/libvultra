@@ -58,6 +58,8 @@ namespace vultra
     {
         lua.new_usertype<ScriptVec2>("Vec2",
                                      sol::constructors<ScriptVec2(), ScriptVec2(float, float)>(),
+                                     sol::call_constructor,
+                                     sol::constructors<ScriptVec2(), ScriptVec2(float, float)>(),
                                      sol::meta_function::addition,
                                      sol::resolve<ScriptVec2(const ScriptVec2&, const ScriptVec2&)>(&add),
                                      sol::meta_function::subtraction,
@@ -77,6 +79,8 @@ namespace vultra
                                                          [](ScriptVec2& v, float value) { v.y = value; }));
 
         lua.new_usertype<ScriptVec3>("Vec3",
+                                     sol::constructors<ScriptVec3(), ScriptVec3(float, float, float)>(),
+                                     sol::call_constructor,
                                      sol::constructors<ScriptVec3(), ScriptVec3(float, float, float)>(),
                                      sol::meta_function::addition,
                                      sol::resolve<ScriptVec3(const ScriptVec3&, const ScriptVec3&)>(&add),
@@ -100,6 +104,8 @@ namespace vultra
                                                          [](ScriptVec3& v, float value) { v.z = value; }));
 
         lua.new_usertype<ScriptVec4>("Vec4",
+                                     sol::constructors<ScriptVec4(), ScriptVec4(float, float, float, float)>(),
+                                     sol::call_constructor,
                                      sol::constructors<ScriptVec4(), ScriptVec4(float, float, float, float)>(),
                                      sol::meta_function::addition,
                                      sol::resolve<ScriptVec4(const ScriptVec4&, const ScriptVec4&)>(&add),
@@ -125,9 +131,9 @@ namespace vultra
                                      VULTRA_LUA_PROPERTY([](const ScriptVec4& v) { return v.w; },
                                                          [](ScriptVec4& v, float value) { v.w = value; }));
 
-        lua.set_function("vec2", [](float x, float y) { return ScriptVec2 {x, y}; });
-        lua.set_function("vec3", [](float x, float y, float z) { return ScriptVec3 {x, y, z}; });
-        lua.set_function("vec4", [](float x, float y, float z, float w) { return ScriptVec4 {x, y, z, w}; });
+        // vec2/vec3/vec4 lowercase constructors are deprecated aliases of the
+        // callable Vec2/Vec3/Vec4 type tables, installed by
+        // registerScriptDeprecations.
         lua.set_function("dot", sol::overload(sol::resolve<float(const ScriptVec2&, const ScriptVec2&)>(&dot),
                                               sol::resolve<float(const ScriptVec3&, const ScriptVec3&)>(&dot),
                                               sol::resolve<float(const ScriptVec4&, const ScriptVec4&)>(&dot)));

@@ -56,10 +56,10 @@ namespace
             if (!input || !m_Clip.valid())
                 return;
 
-            if (input->getMouseButtonDown(MouseCode::eLeft))
+            if (input->isMouseButtonPressed(MouseCode::eLeft))
                 audio->playOneShot(m_Clip, 0.8f, 1.5f);
 
-            if (input->getKeyDown(KeyCode::eM))
+            if (input->isKeyPressed(KeyCode::eM))
             {
                 if (m_Music != kInvalidSoundId && audio->isPlaying(m_Music))
                 {
@@ -71,7 +71,7 @@ namespace
                     m_Music = audio->playMusic(m_Clip, {.volume = 0.5f, .loop = true, .fadeInMs = 500.0f});
                 }
             }
-            if (input->getKeyDown(KeyCode::eS))
+            if (input->isKeyPressed(KeyCode::eS))
             {
                 audio->stopMusic(500.0f);
                 m_Music = kInvalidSoundId;

@@ -153,7 +153,7 @@ namespace vultra_app
                 hashCombine(seed, camera->primary ? 1u : 0u);
                 hashCombine(seed, static_cast<uint64_t>(camera->priority));
                 hashCombine(seed, camera->projection);
-                hashFloat(seed, camera->fovYDegrees);
+                hashFloat(seed, camera->fovY);
                 hashFloat(seed, camera->orthographicHeight);
                 hashFloat(seed, camera->zNear);
                 hashFloat(seed, camera->zFar);
@@ -583,7 +583,7 @@ namespace vultra_app
                 return glm::orthoRH_ZO(-width * 0.5f, width * 0.5f, -height * 0.5f, height * 0.5f, zNear, zFar);
             }
 
-            return glm::perspectiveRH_ZO(glm::radians(camera.fovYDegrees), std::max(aspect, 0.0001f), zNear, zFar);
+            return glm::perspectiveRH_ZO(glm::radians(camera.fovY), std::max(aspect, 0.0001f), zNear, zFar);
         }
 
         vultra::RenderCamera makeGameOverlayCamera(vultra::World&        world,
@@ -604,7 +604,7 @@ namespace vultra_app
             out.projection              = makeGameProjection(camera, aspect);
             out.zNear                   = std::max(camera.zNear, 0.0001f);
             out.zFar                    = std::max(camera.zFar, out.zNear + 0.0001f);
-            out.fovY                    = glm::radians(camera.fovYDegrees);
+            out.fovY                    = glm::radians(camera.fovY);
             out.target                  = target;
             out.clearValue              = camera.clearColor;
             out.clearValue.a            = 1.0f;
@@ -749,7 +749,7 @@ namespace vultra_app
                     canvasReferencePx,
                     scale,
                     viewPanPx,
-                    pivotPx + rotateUiPoint(points[i], rect.rotationDegrees));
+                    pivotPx + rotateUiPoint(points[i], rect.rotation));
             return out;
         }
 
@@ -916,7 +916,7 @@ namespace vultra_app
             glm::vec2 pivotPx {};
             resolveUiRectTopLeft(*rect, parentMinPx, parentSizePx, minPx, sizePx, pivotPx);
             const glm::vec2 mouseUi    = screenPointToUi(viewportMin, viewportSize, canvasReferencePx, scale, viewPanPx, mouse);
-            const glm::vec2 localMouse = inverseRotateUiPoint(mouseUi - pivotPx, rect->rotationDegrees);
+            const glm::vec2 localMouse = inverseRotateUiPoint(mouseUi - pivotPx, rect->rotation);
             const glm::vec2 scaledSize = glm::max(sizePx * rect->scale, glm::vec2 {1.0f});
             const glm::vec2 localMin   = -scaledSize * rect->pivot;
             const glm::vec2 localMax   = localMin + scaledSize;
@@ -1046,10 +1046,10 @@ namespace vultra_app
                                         ImVec2(center.x + vultra::ui::dp(5.0f), center.y + vultra::ui::dp(5.0f)),
                                         IM_COL32(72, 126, 255, 255));
 
-                const glm::vec2 xAxisEndPx = pivotPx + rotateUiPoint({vultra::ui::dp(80.0f) / scale, 0.0f}, rect->rotationDegrees);
-                const glm::vec2 yAxisEndPx = pivotPx + rotateUiPoint({0.0f, vultra::ui::dp(80.0f) / scale}, rect->rotationDegrees);
+                const glm::vec2 xAxisEndPx = pivotPx + rotateUiPoint({vultra::ui::dp(80.0f) / scale, 0.0f}, rect->rotation);
+                const glm::vec2 yAxisEndPx = pivotPx + rotateUiPoint({0.0f, vultra::ui::dp(80.0f) / scale}, rect->rotation);
                 const glm::vec2 rotatePx   = pivotPx + rotateUiPoint({0.0f, (sizePx.y * rect->scale.y * (1.0f - rect->pivot.y)) + vultra::ui::dp(42.0f) / scale},
-                                                                   rect->rotationDegrees);
+                                                                   rect->rotation);
                 const ImVec2 xAxisEnd = uiPointFlippedY(viewportMin, viewportSize, canvasReferencePx, scale, viewPanPx, xAxisEndPx);
                 const ImVec2 yAxisEnd = uiPointFlippedY(viewportMin, viewportSize, canvasReferencePx, scale, viewPanPx, yAxisEndPx);
                 const ImVec2 rotateHandle = uiPointFlippedY(viewportMin, viewportSize, canvasReferencePx, scale, viewPanPx, rotatePx);
@@ -1096,7 +1096,7 @@ namespace vultra_app
                                                          canvasReferencePx,
                                                          scale,
                                                          viewPanPx,
-                                                         pivotPx + rotateUiPoint(handle.local, rect->rotationDegrees));
+                                                         pivotPx + rotateUiPoint(handle.local, rect->rotation));
                         drawList->AddRectFilled(ImVec2(p.x - vultra::ui::dp(4.0f), p.y - vultra::ui::dp(4.0f)),
                                                 ImVec2(p.x + vultra::ui::dp(4.0f), p.y + vultra::ui::dp(4.0f)),
                                                 IM_COL32(36, 43, 52, 255));
@@ -1113,7 +1113,7 @@ namespace vultra_app
                 if (allowEdit && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && reg.all_of<vultra::IDComponent>(entity))
                 {
                     const glm::vec2 mouseUi    = screenPointToUi(viewportMin, viewportSize, canvasReferencePx, scale, viewPanPx, mouse);
-                    const glm::vec2 localMouse = inverseRotateUiPoint(mouseUi - pivotPx, rect->rotationDegrees);
+                    const glm::vec2 localMouse = inverseRotateUiPoint(mouseUi - pivotPx, rect->rotation);
                     const bool      overRect =
                         localMouse.x >= localMin.x && localMouse.x <= localMax.x && localMouse.y >= localMin.y &&
                         localMouse.y <= localMax.y;
@@ -1126,7 +1126,7 @@ namespace vultra_app
                                                          canvasReferencePx,
                                                          scale,
                                                          viewPanPx,
-                                                         pivotPx + rotateUiPoint(handle.local, rect->rotationDegrees));
+                                                         pivotPx + rotateUiPoint(handle.local, rect->rotation));
                         if (screenDistance(mouse, p) <= vultra::ui::dp(10.0f))
                         {
                             hitResize = true;
@@ -1141,7 +1141,7 @@ namespace vultra_app
                     dragState.startAnchoredPositionPx = rect->anchoredPositionPx;
                     dragState.startSizeDeltaPx        = rect->sizeDeltaPx;
                     dragState.startScale              = rect->scale;
-                    dragState.startRotationDegrees    = rect->rotationDegrees;
+                    dragState.startRotationDegrees    = rect->rotation;
                     dragState.scaleAxis               = hitAxis;
                     dragState.moveAxis                = {1.0f, 1.0f};
                     const float rotateDist            = screenDistance(mouse, rotateHandle);
@@ -1190,7 +1190,7 @@ namespace vultra_app
                         if (glm::dot(v, v) > 0.0001f)
                         {
                             const float angle = glm::degrees(std::atan2(v.y, v.x));
-                            rect->rotationDegrees =
+                            rect->rotation =
                                 dragState.startRotationDegrees + (angle - dragState.startAngleDegrees);
                             edited = true;
                         }
@@ -1328,7 +1328,7 @@ namespace vultra_app
 
             const auto& request = state.sceneCameraAlignRequest;
             cameraPosition      = request.position;
-            cameraFovY          = request.fovYDegrees;
+            cameraFovY          = request.fovY;
 
             const auto forward = glm::normalize(request.rotation * glm::vec3 {0.0f, 0.0f, -1.0f});
             cameraYaw          = glm::degrees(std::atan2(forward.z, forward.x));
@@ -1964,7 +1964,7 @@ namespace vultra_app
         const auto editorCameraWorld      = glm::inverse(editorCamera.view);
         ctx.state.sceneCamera.position    = glm::vec3(editorCameraWorld[3]);
         ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
-        ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
+        ctx.state.sceneCamera.fovY = m_CameraFovY;
 
         if (!ui2DMode)
             submitSceneDebugDraw(ctx, editorCamera.view, editorCamera.projection, aspect);
@@ -2093,22 +2093,22 @@ namespace vultra_app
                     const auto forward = makeForward(m_CameraYaw, m_CameraPitch);
                     const auto right   = glm::normalize(glm::cross(forward, kWorldUp));
                     glm::vec3  move {};
-                    if (input->getKey(vultra::KeyCode::eW))
+                    if (input->isKeyHeld(vultra::KeyCode::eW))
                         move += forward;
-                    if (input->getKey(vultra::KeyCode::eS))
+                    if (input->isKeyHeld(vultra::KeyCode::eS))
                         move -= forward;
-                    if (input->getKey(vultra::KeyCode::eD))
+                    if (input->isKeyHeld(vultra::KeyCode::eD))
                         move += right;
-                    if (input->getKey(vultra::KeyCode::eA))
+                    if (input->isKeyHeld(vultra::KeyCode::eA))
                         move -= right;
-                    if (input->getKey(vultra::KeyCode::eE))
+                    if (input->isKeyHeld(vultra::KeyCode::eE))
                         move += kWorldUp;
-                    if (input->getKey(vultra::KeyCode::eQ))
+                    if (input->isKeyHeld(vultra::KeyCode::eQ))
                         move -= kWorldUp;
                     if (glm::dot(move, move) > 0.0f)
                     {
                         const bool shift =
-                            input->getKey(vultra::KeyCode::eLShift) || input->getKey(vultra::KeyCode::eRShift);
+                            input->isKeyHeld(vultra::KeyCode::eLShift) || input->isKeyHeld(vultra::KeyCode::eRShift);
                         m_CameraPosition += glm::normalize(move) * (shift ? 0.28f : 0.08f);
                     }
                 }
@@ -2142,7 +2142,7 @@ namespace vultra_app
                         }
                     }
 
-                    const float wheel = input->getMouseScrollDelta().y;
+                    const float wheel = input->mouseScrollDelta().y;
                     if (std::abs(wheel) > 0.0f)
                     {
                         m_FocusActive = false;
@@ -2165,7 +2165,7 @@ namespace vultra_app
             const auto updatedEditorCameraWorld = glm::inverse(editorCamera.view);
             ctx.state.sceneCamera.position    = glm::vec3(updatedEditorCameraWorld[3]);
             ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
-            ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
+            ctx.state.sceneCamera.fovY = m_CameraFovY;
 
             if (drawViewManipulator(imageMin, imageMax, editorCamera.view, editorCamera.projection))
             {
@@ -2184,7 +2184,7 @@ namespace vultra_app
                 const auto manipulatedEditorCameraWorld = glm::inverse(editorCamera.view);
                 ctx.state.sceneCamera.position    = glm::vec3(manipulatedEditorCameraWorld[3]);
                 ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
-                ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
+                ctx.state.sceneCamera.fovY = m_CameraFovY;
             }
         }
         else if (ui2DMode && sceneViewportHovered)
@@ -3083,7 +3083,7 @@ namespace vultra_app
 
         m_CameraPosition = glm::vec3(worldTransform[3]);
         if (camera.projection == 0u)
-            m_CameraFovY = camera.fovYDegrees;
+            m_CameraFovY = camera.fovY;
 
         const auto forward           = glm::normalize(rotation * glm::vec3 {0.0f, 0.0f, -1.0f});
         m_CameraYaw                  = glm::degrees(std::atan2(forward.z, forward.x));

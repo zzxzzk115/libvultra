@@ -82,6 +82,44 @@ namespace vultra
         entt::entity entity {entt::null};
     };
 
+    // Component refs for generated bindings (script_components_binding.gen.cpp).
+    // Each is a thin entity handle; the generated usertype resolves the
+    // component on access. Keep these POD and trivially copyable.
+    struct ScriptCapsuleShapeRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptCylinderShapeRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptEnvironmentRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptAudioSourceRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptAudioListenerRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptReflectionProbeRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptParticleEmitterRef
+    {
+        entt::entity entity {entt::null};
+    };
+
     struct ScriptVec2
     {
         float x {0.0f};

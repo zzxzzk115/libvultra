@@ -11,13 +11,16 @@
 #include "vultra/function/services/animation_service.hpp"
 #include "vultra/function/services/audio_service.hpp"
 #include "vultra/function/services/camera_service.hpp"
+#include "vultra/function/services/editor_extension_service.hpp"
 #include "vultra/function/services/frame_debugger_service.hpp"
+#include "vultra/function/services/imgui_service.hpp"
 #include "vultra/function/services/physics_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/render_service.hpp"
 #include "vultra/function/services/scene_service.hpp"
 #include "vultra/function/services/ui_service.hpp"
 #include "vultra/function/services/world_service.hpp"
+#include "vultra/function/world/components/rigid_body_component.hpp"
 #include "vultra/function/world/components/script_component.hpp"
 #include "vultra/function/world/world.hpp"
 
@@ -53,6 +56,12 @@ namespace vultra
         m_ScriptContext.animationService     = ctx().services.tryGet<IAnimationService>();
         m_ScriptContext.audioService         = ctx().services.tryGet<IAudioService>();
         m_ScriptContext.uiService            = ctx().services.tryGet<IUiService>();
+        m_ScriptContext.imguiService         = ctx().services.tryGet<IImGuiService>();
+
+        // ScriptSystem owns the editor-extension registry (registrations come
+        // from Lua) and publishes it; the editor app consumes it when present.
+        ctx().services.provide<IEditorExtensionService>(&m_EditorExtensions);
+        m_ScriptContext.editorExtensionService = &m_EditorExtensions;
 
         VULTRA_CORE_TRACE("[ScriptSystem] Registering script bindings...");
         registerScriptBindings(m_Engine.lua(), m_ScriptContext);
@@ -99,6 +108,7 @@ namespace vultra
             if (!reg.valid(e) || !reg.all_of<ScriptComponent>(e))
             {
                 clearScriptUiSignalConnections(e);
+                stopCoroutines(e);
                 it = m_Instances.erase(it);
                 continue;
             }
@@ -107,6 +117,9 @@ namespace vultra
             auto&       inst = *it->second;
             inst.enabled     = sc.enabled;
 
+            if (inst.enabled != inst.enabledActive)
+                setInstanceEnabled(inst, inst.enabled);
+
             if (inst.enabled)
                 updateInstance(e, inst, dt.count());
 
@@ -114,6 +127,7 @@ namespace vultra
         }
 
         dispatchScriptUiSignals(m_Engine.lua(), m_ScriptContext);
+        tickCoroutines(dt.count());
     }
 
     void ScriptSystem::onPhysics(fsec /*dt*/)
@@ -147,6 +161,8 @@ namespace vultra
             for (uint32_t step = 0; step < fixedSteps; ++step)
                 fixedUpdateInstance(e, inst, fixedDt);
         }
+
+        dispatchContactCallbacks();
     }
 
     void ScriptSystem::onPostUpdate(fsec /*dt*/)
@@ -220,6 +236,13 @@ namespace vultra
         inst->enabled     = sc.enabled;
         inst->env["self"] = ScriptEntity {e};
 
+        // per-entity startCoroutine/stopAllCoroutines (see coroutine runtime
+        // in script_engine.cpp); bound before the chunk runs so top-level
+        // script code can already use them
+        sol::table coroutines = lua["__vultraCoroutines"];
+        if (coroutines.valid())
+            coroutines["bindEnv"](inst->env, static_cast<uint32_t>(e));
+
         auto execRes = lua.safe_script(textRes.value(), inst->env, &sol::script_pass_on_error);
         if (!execRes.valid())
         {
@@ -228,11 +251,19 @@ namespace vultra
             return false;
         }
 
-        inst->onCreate      = inst->env["OnCreate"];
-        inst->onDestroy     = inst->env["OnDestroy"];
-        inst->onUpdate      = inst->env["OnUpdate"];
-        inst->onFixedUpdate = inst->env["OnFixedUpdate"];
-        inst->valid         = true;
+        inst->onCreate         = inst->env["OnCreate"];
+        inst->onDestroy        = inst->env["OnDestroy"];
+        inst->onUpdate         = inst->env["OnUpdate"];
+        inst->onFixedUpdate    = inst->env["OnFixedUpdate"];
+        inst->onEnable         = inst->env["OnEnable"];
+        inst->onDisable        = inst->env["OnDisable"];
+        inst->onCollisionEnter = inst->env["OnCollisionEnter"];
+        inst->onCollisionStay  = inst->env["OnCollisionStay"];
+        inst->onCollisionExit  = inst->env["OnCollisionExit"];
+        inst->onTriggerEnter   = inst->env["OnTriggerEnter"];
+        inst->onTriggerStay    = inst->env["OnTriggerStay"];
+        inst->onTriggerExit    = inst->env["OnTriggerExit"];
+        inst->valid            = true;
 
         VULTRA_CORE_INFO(
             "[ScriptSystem] Script loaded for entity {}: OnCreate={}, OnUpdate={}, OnFixedUpdate={}, OnDestroy={}",
@@ -252,8 +283,173 @@ namespace vultra
             }
         }
 
+        if (inst->enabled)
+            setInstanceEnabled(*inst, true);
+
         m_Instances[e] = std::move(inst);
         return true;
+    }
+
+    void ScriptSystem::setInstanceEnabled(ScriptInstance& inst, bool enabled)
+    {
+        if (inst.enabledActive == enabled)
+            return;
+        inst.enabledActive = enabled;
+
+        auto& hook = enabled ? inst.onEnable : inst.onDisable;
+        if (inst.valid && hook.valid())
+        {
+            sol::protected_function_result r = hook(inst.env["self"]);
+            if (!r.valid())
+            {
+                sol::error err = r;
+                VULTRA_CORE_ERROR("[ScriptSystem] {} error for entity {}: {}",
+                                  enabled ? "OnEnable" : "OnDisable",
+                                  static_cast<uint32_t>(inst.entity),
+                                  err.what());
+            }
+        }
+
+        if (!enabled)
+            stopCoroutines(inst.entity);
+    }
+
+    void ScriptSystem::stopCoroutines(entt::entity e)
+    {
+        sol::table coroutines = m_Engine.lua()["__vultraCoroutines"];
+        if (coroutines.valid())
+            coroutines["stopAll"](static_cast<uint32_t>(e));
+    }
+
+    void ScriptSystem::tickCoroutines(float dt)
+    {
+        sol::table coroutines = m_Engine.lua()["__vultraCoroutines"];
+        if (!coroutines.valid())
+            return;
+        sol::protected_function tick = coroutines["tick"];
+        if (!tick.valid())
+            return;
+        sol::protected_function_result r = tick(dt);
+        if (!r.valid())
+        {
+            sol::error err = r;
+            VULTRA_CORE_ERROR("[ScriptSystem] coroutine tick error: {}", err.what());
+        }
+    }
+
+    void ScriptSystem::dispatchContactCallbacks()
+    {
+        auto* physicsSvc = m_ScriptContext.physicsService;
+        auto* world      = m_ScriptContext.world();
+        if (!physicsSvc || !world)
+            return;
+
+        // diff the live contact-pair set against last frame's; sensor-ness is
+        // captured at enter time so exits classify correctly even after a
+        // body/component is gone
+        ContactMap current;
+        auto&      reg = world->registry();
+        for (const auto& pair : physicsSvc->contactPairs(true))
+        {
+            entt::entity a = pair.a;
+            entt::entity b = pair.b;
+            if (b < a)
+                std::swap(a, b);
+
+            const auto key = std::make_pair(a, b);
+            const auto it  = m_PrevContacts.find(key);
+            if (it != m_PrevContacts.end())
+            {
+                current.emplace(key, it->second);
+                continue;
+            }
+
+            bool sensor = false;
+            if (auto* bodyA = reg.try_get<RigidBodyComponent>(a); bodyA && bodyA->isSensor)
+                sensor = true;
+            if (auto* bodyB = reg.try_get<RigidBodyComponent>(b); bodyB && bodyB->isSensor)
+                sensor = true;
+            current.emplace(key, sensor);
+        }
+
+        // phases: 0 = enter, 1 = stay, 2 = exit
+        for (const auto& [key, sensor] : current)
+        {
+            const bool isNew = m_PrevContacts.find(key) == m_PrevContacts.end();
+            const int  phase = isNew ? 0 : 1;
+            dispatchContactEvent(key.first, key.second, sensor, phase);
+            dispatchContactEvent(key.second, key.first, sensor, phase);
+        }
+        for (const auto& [key, sensor] : m_PrevContacts)
+        {
+            if (current.find(key) != current.end())
+                continue;
+            dispatchContactEvent(key.first, key.second, sensor, 2);
+            dispatchContactEvent(key.second, key.first, sensor, 2);
+        }
+
+        m_PrevContacts = std::move(current);
+    }
+
+    void ScriptSystem::dispatchContactEvent(entt::entity target, entt::entity other, bool sensor, int phase)
+    {
+        auto it = m_Instances.find(target);
+        if (it == m_Instances.end() || !it->second)
+            return;
+
+        auto& inst = *it->second;
+        if (!inst.valid || !inst.enabled)
+            return;
+
+        sol::protected_function* hook = nullptr;
+        const char*              name = nullptr;
+        if (sensor)
+        {
+            switch (phase)
+            {
+                case 0:
+                    hook = &inst.onTriggerEnter;
+                    name = "OnTriggerEnter";
+                    break;
+                case 1:
+                    hook = &inst.onTriggerStay;
+                    name = "OnTriggerStay";
+                    break;
+                default:
+                    hook = &inst.onTriggerExit;
+                    name = "OnTriggerExit";
+                    break;
+            }
+        }
+        else
+        {
+            switch (phase)
+            {
+                case 0:
+                    hook = &inst.onCollisionEnter;
+                    name = "OnCollisionEnter";
+                    break;
+                case 1:
+                    hook = &inst.onCollisionStay;
+                    name = "OnCollisionStay";
+                    break;
+                default:
+                    hook = &inst.onCollisionExit;
+                    name = "OnCollisionExit";
+                    break;
+            }
+        }
+
+        if (!hook->valid())
+            return;
+
+        sol::protected_function_result r = (*hook)(inst.env["self"], ScriptEntity {other});
+        if (!r.valid())
+        {
+            sol::error err = r;
+            VULTRA_CORE_ERROR(
+                "[ScriptSystem] {} error for entity {}: {}", name, static_cast<uint32_t>(target), err.what());
+        }
     }
 
     void ScriptSystem::updateInstance(entt::entity e, ScriptInstance& inst, float dt)
@@ -321,6 +517,9 @@ namespace vultra
             return;
 
         auto& inst = *it->second;
+        if (inst.enabledActive)
+            setInstanceEnabled(inst, false); // OnDisable precedes OnDestroy
+
         if (inst.onDestroy.valid())
         {
             sol::protected_function_result r = inst.onDestroy(inst.env["self"]);
@@ -331,6 +530,7 @@ namespace vultra
             }
         }
 
+        stopCoroutines(e);
         m_Instances.erase(it);
         clearScriptUiSignalConnections(e);
     }
@@ -367,7 +567,13 @@ namespace vultra
     {
         for (auto& [e, inst] : m_Instances)
         {
-            if (inst && inst->onDestroy.valid())
+            if (!inst)
+                continue;
+
+            if (inst->enabledActive)
+                setInstanceEnabled(*inst, false); // OnDisable precedes OnDestroy
+
+            if (inst->onDestroy.valid())
             {
                 sol::protected_function_result r = inst->onDestroy(inst->env["self"]);
                 if (!r.valid())
@@ -378,7 +584,12 @@ namespace vultra
             }
         }
         m_Instances.clear();
+        m_PrevContacts.clear();
         clearScriptUiSignalConnections();
+
+        sol::table coroutines = m_Engine.lua()["__vultraCoroutines"];
+        if (coroutines.valid())
+            coroutines["reset"]();
     }
 
     lua_State* ScriptSystem::luaState() { return m_Engine.lua().lua_state(); }

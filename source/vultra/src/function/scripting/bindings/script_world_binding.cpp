@@ -111,18 +111,6 @@ namespace vultra
                 world->destroyRecursive(entityValue(entity));
         }
 
-        CameraComponent& requireCamera(ScriptContext& ctx, entt::entity entity)
-        {
-            auto* world = ctx.world();
-            if (!world)
-                throw std::runtime_error("ScriptContext has no World");
-
-            auto* camera = world->registry().try_get<CameraComponent>(entity);
-            if (!camera)
-                throw std::runtime_error("Entity has no CameraComponent");
-            return *camera;
-        }
-
         template<typename Component>
         Component& requireComponent(ScriptContext& ctx, entt::entity entity, const char* componentName)
         {
@@ -274,91 +262,10 @@ namespace vultra
 
     void registerScriptWorldBindings(sol::state& lua, ScriptContext& ctx)
     {
-        lua.new_usertype<ScriptCameraRef>(
-            "CameraRef",
-            "valid",
-            VULTRA_LUA_READONLY_PROPERTY([&ctx](const ScriptCameraRef& self) {
-                auto* world = ctx.world();
-                return world && world->registry().all_of<CameraComponent>(self.entity);
-            }),
-            "primary",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptCameraRef& self) { return requireCamera(ctx, self.entity).primary; },
-                [&ctx](const ScriptCameraRef& self, bool value) { requireCamera(ctx, self.entity).primary = value; }),
-            "projection",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptCameraRef& self) { return requireCamera(ctx, self.entity).projection; },
-                [&ctx](const ScriptCameraRef& self, uint32_t value) { requireCamera(ctx, self.entity).projection = value; }),
-            "fovYDegrees",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptCameraRef& self) { return requireCamera(ctx, self.entity).fovYDegrees; },
-                [&ctx](const ScriptCameraRef& self, float value) { requireCamera(ctx, self.entity).fovYDegrees = value; }),
-            "orthographicHeight",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptCameraRef& self) { return requireCamera(ctx, self.entity).orthographicHeight; },
-                [&ctx](const ScriptCameraRef& self, float value) {
-                    requireCamera(ctx, self.entity).orthographicHeight = value;
-                }),
-            "cullingMask",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptCameraRef& self) { return requireCamera(ctx, self.entity).cullingMask; },
-                [&ctx](const ScriptCameraRef& self, uint32_t value) {
-                    requireCamera(ctx, self.entity).cullingMask = value;
-                }),
-            "rendererKey",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptCameraRef& self) { return requireCamera(ctx, self.entity).rendererKey; },
-                [&ctx](const ScriptCameraRef& self, const std::string& value) {
-                    requireCamera(ctx, self.entity).rendererKey = value;
-                }));
-
-        lua.new_usertype<ScriptLightRef>(
-            "Light",
-            "valid",
-            VULTRA_LUA_READONLY_PROPERTY([&ctx](const ScriptLightRef& self) {
-                auto* world = ctx.world();
-                return world && world->registry().all_of<LightComponent>(self.entity);
-            }),
-            "kind",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptLightRef& self) {
-                    return requireComponent<LightComponent>(ctx, self.entity, "LightComponent").kind;
-                },
-                [&ctx](const ScriptLightRef& self, uint32_t value) {
-                    requireComponent<LightComponent>(ctx, self.entity, "LightComponent").kind = value;
-                }),
-            "color",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptLightRef& self) {
-                    return toScriptVec3(requireComponent<LightComponent>(ctx, self.entity, "LightComponent").color);
-                },
-                [&ctx](const ScriptLightRef& self, const ScriptVec3& value) {
-                    requireComponent<LightComponent>(ctx, self.entity, "LightComponent").color = toGlmVec3(value);
-                }),
-            "intensity",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptLightRef& self) {
-                    return requireComponent<LightComponent>(ctx, self.entity, "LightComponent").intensity;
-                },
-                [&ctx](const ScriptLightRef& self, float value) {
-                    requireComponent<LightComponent>(ctx, self.entity, "LightComponent").intensity = value;
-                }),
-            "range",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptLightRef& self) {
-                    return requireComponent<LightComponent>(ctx, self.entity, "LightComponent").range;
-                },
-                [&ctx](const ScriptLightRef& self, float value) {
-                    requireComponent<LightComponent>(ctx, self.entity, "LightComponent").range = value;
-                }),
-            "castsShadow",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptLightRef& self) {
-                    return requireComponent<LightComponent>(ctx, self.entity, "LightComponent").castsShadow;
-                },
-                [&ctx](const ScriptLightRef& self, bool value) {
-                    requireComponent<LightComponent>(ctx, self.entity, "LightComponent").castsShadow = value;
-                }));
+        // Camera, Light, BoxShape, SphereShape, and the other pure-data
+        // component refs are generated from VLUA_* annotations; see
+        // script_components_binding.gen.cpp. Mesh stays hand-written because
+        // it exposes material-mutation methods, not just data fields.
 
         lua.new_usertype<ScriptMeshRef>(
             "Mesh",
@@ -397,38 +304,6 @@ namespace vultra
             },
             "clearMaterialProperties",
             [&ctx](const ScriptMeshRef& self, uint32_t slot) { clearMeshMaterialProperties(ctx, self, slot); });
-
-        lua.new_usertype<ScriptBoxShapeRef>(
-            "BoxShape",
-            "valid",
-            VULTRA_LUA_READONLY_PROPERTY([&ctx](const ScriptBoxShapeRef& self) {
-                auto* world = ctx.world();
-                return world && world->registry().all_of<BoxShapeComponent>(self.entity);
-            }),
-            "halfExtents",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptBoxShapeRef& self) {
-                    return toScriptVec3(requireComponent<BoxShapeComponent>(ctx, self.entity, "BoxShapeComponent").halfExtents);
-                },
-                [&ctx](const ScriptBoxShapeRef& self, const ScriptVec3& value) {
-                    requireComponent<BoxShapeComponent>(ctx, self.entity, "BoxShapeComponent").halfExtents = toGlmVec3(value);
-                }));
-
-        lua.new_usertype<ScriptSphereShapeRef>(
-            "SphereShape",
-            "valid",
-            VULTRA_LUA_READONLY_PROPERTY([&ctx](const ScriptSphereShapeRef& self) {
-                auto* world = ctx.world();
-                return world && world->registry().all_of<SphereShapeComponent>(self.entity);
-            }),
-            "radius",
-            VULTRA_LUA_PROPERTY(
-                [&ctx](const ScriptSphereShapeRef& self) {
-                    return requireComponent<SphereShapeComponent>(ctx, self.entity, "SphereShapeComponent").radius;
-                },
-                [&ctx](const ScriptSphereShapeRef& self, float value) {
-                    requireComponent<SphereShapeComponent>(ctx, self.entity, "SphereShapeComponent").radius = value;
-                }));
 
         auto world = script_binding::getOrCreateTable(lua, "World");
         world.set_function("create", [&ctx](sol::optional<std::string> name) { return createEntity(ctx, name); });

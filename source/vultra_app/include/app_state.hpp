@@ -27,7 +27,7 @@ namespace vultra_app
             bool      valid {false};
             glm::vec3 position {0.0f, 6.5f, 6.5f};
             glm::quat rotation {1.0f, 0.0f, 0.0f, 0.0f};
-            float     fovYDegrees {60.0f};
+            float     fovY {60.0f};
         };
 
         struct SceneCameraAlignRequest
@@ -35,7 +35,7 @@ namespace vultra_app
             bool      pending {false};
             glm::vec3 position {0.0f, 6.5f, 6.5f};
             glm::quat rotation {1.0f, 0.0f, 0.0f, 0.0f};
-            float     fovYDegrees {60.0f};
+            float     fovY {60.0f};
         };
 
         struct ScenePickingState

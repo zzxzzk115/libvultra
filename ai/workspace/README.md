@@ -19,6 +19,9 @@ without reading every note. Durable plans live in `ai/tasks/`; stable facts live
 Notes for work that is in progress, blocked, or otherwise still load-bearing. Keep this
 list small — these are the files a fresh agent should actually open.
 
+- [foundation-roadmap.md](foundation-roadmap.md) — full-engine audit + 6-phase
+  foundation roadmap (Lua API spec/conformance, binding generator, script lifecycle,
+  ImGui binding, editor extension API, plugin v2). Phase 1 in progress.
 - [codex-debt-review-2026-06-03.md](codex-debt-review-2026-06-03.md) — engineering-debt
   audit and the current cleanup roadmap (P0/P1/P2).
 - [codex-debt-review-round2-2026-06-09.md](codex-debt-review-round2-2026-06-09.md) —

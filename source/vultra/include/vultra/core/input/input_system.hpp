@@ -12,20 +12,20 @@ namespace vultra
     public:
         ENGINE_SUBSYSTEM(InputSystem)
 
-        bool getKey(KeyCode key) const override;
-        bool getKeyDown(KeyCode key) const override;
-        bool getKeyUp(KeyCode key) const override;
-        bool getKeyRepeat(KeyCode key) const override;
+        bool isKeyHeld(KeyCode key) const override;
+        bool isKeyPressed(KeyCode key) const override;
+        bool isKeyReleased(KeyCode key) const override;
+        bool isKeyRepeated(KeyCode key) const override;
 
-        bool getMouseButton(MouseCode button) const override;
-        bool getMouseButtonDown(MouseCode button) const override;
-        bool getMouseButtonUp(MouseCode button) const override;
-        int  getMouseButtonClicks(MouseCode button) const override;
+        bool isMouseButtonHeld(MouseCode button) const override;
+        bool isMouseButtonPressed(MouseCode button) const override;
+        bool isMouseButtonReleased(MouseCode button) const override;
+        int  mouseButtonClicks(MouseCode button) const override;
 
-        glm::vec2 getMousePosition() const override;
-        glm::vec2 getMousePositionFlipY() const override;
-        glm::vec2 getMousePositionDelta() const override;
-        glm::vec2 getMouseScrollDelta() const override;
+        glm::vec2 mousePosition() const override;
+        glm::vec2 mousePositionFlipY() const override;
+        glm::vec2 mousePositionDelta() const override;
+        glm::vec2 mouseScrollDelta() const override;
 
         void handleEvent(const os::GeneralWindowEvent& e) override;
 

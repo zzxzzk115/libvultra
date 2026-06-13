@@ -171,7 +171,11 @@ namespace vultra
             .type("CameraComponent"_hs)
             .data<&CameraComponent::primary>("primary"_hs)
             .data<&CameraComponent::projection>("projection"_hs)
-            .data<&CameraComponent::fovYDegrees>("fovYDegrees"_hs)
+            .data<&CameraComponent::fovY>("fovY"_hs)
+            // legacy .vscn key: the reader resolves fields by the name stored
+            // in the file, so old scenes keep loading after the rename; the
+            // writer (scene_system field list) emits only "fovY"
+            .data<&CameraComponent::fovY>("fovYDegrees"_hs)
             .data<&CameraComponent::orthographicHeight>("orthographicHeight"_hs)
             .data<&CameraComponent::zNear>("zNear"_hs)
             .data<&CameraComponent::zFar>("zFar"_hs)
@@ -264,7 +268,9 @@ namespace vultra
             .data<&RectTransformComponent::pivot>("pivot"_hs)
             .data<&RectTransformComponent::anchoredPositionPx>("anchoredPositionPx"_hs)
             .data<&RectTransformComponent::sizeDeltaPx>("sizeDeltaPx"_hs)
-            .data<&RectTransformComponent::rotationDegrees>("rotationDegrees"_hs)
+            .data<&RectTransformComponent::rotation>("rotation"_hs)
+            // legacy .vscn key (see CameraComponent::fovY note above)
+            .data<&RectTransformComponent::rotation>("rotationDegrees"_hs)
             .data<&RectTransformComponent::scale>("scale"_hs);
 
         entt::meta_factory<UiPanelComponent>()

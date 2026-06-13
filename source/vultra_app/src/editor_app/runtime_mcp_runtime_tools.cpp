@@ -185,7 +185,7 @@ namespace vultra_app
                 {"entity", static_cast<uint32_t>(entity)},
                 {"primary", camera.primary},
                 {"projection", camera.projection == 1 ? "orthographic" : "perspective"},
-                {"fovYDegrees", camera.fovYDegrees},
+                {"fovY", camera.fovY},
                 {"orthographicHeight", camera.orthographicHeight},
                 {"zNear", camera.zNear},
                 {"zFar", camera.zFar},
@@ -258,7 +258,7 @@ namespace vultra_app
                 const float width  = height * std::max(aspect, 0.0001f);
                 return glm::orthoRH_ZO(-width * 0.5f, width * 0.5f, -height * 0.5f, height * 0.5f, zNear, zFar);
             }
-            return glm::perspectiveRH_ZO(glm::radians(camera.fovYDegrees), std::max(aspect, 0.0001f), zNear, zFar);
+            return glm::perspectiveRH_ZO(glm::radians(camera.fovY), std::max(aspect, 0.0001f), zNear, zFar);
         }
 
         std::optional<vultra::RenderCamera> makeMcpFrameGraphCamera(vultra::World&             world,
@@ -285,7 +285,7 @@ namespace vultra_app
             out.projection              = projectionMatrix(camera, aspect);
             out.zNear                   = std::max(camera.zNear, 0.0001f);
             out.zFar                    = std::max(camera.zFar, out.zNear + 0.0001f);
-            out.fovY                    = glm::radians(camera.fovYDegrees);
+            out.fovY                    = glm::radians(camera.fovY);
             out.clearValue              = camera.clearColor;
             out.clearMode               = camera.clearMode;
             out.renderImGui             = false;

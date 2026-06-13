@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="scene_manifest"
+uid="0d4aa84f5dbbd70392394e28f0d14ac4"
+
+[source]
+file="plugins/editor_panel/vultra.plugin.vmanifest"
+
+[output]
+file="imported/scene_manifest/plugins/editor_panel/vultra.plugin.vmanifest"
+
+[params]

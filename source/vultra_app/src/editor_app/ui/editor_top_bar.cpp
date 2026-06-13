@@ -1,16 +1,22 @@
 #include "editor_app/ui/editor_top_bar.hpp"
 
+#include <vultra/core/base/common_context.hpp>
 #include <vultra/core/i18n/i18n.hpp>
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/imgui/imgui_theme.hpp>
+#include <vultra/function/services/editor_extension_service.hpp>
 #include <vultra/function/services/frame_debugger_service.hpp>
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace vultra_app
 {
@@ -26,6 +32,115 @@ namespace vultra_app
         {
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
                 ImGui::SetTooltip("%s", text);
+        }
+
+        void invokeMenuClick(const vultra::ScriptedEditorMenuItemDesc& item)
+        {
+            if (!item.onClick.valid())
+                return;
+            sol::protected_function_result r = item.onClick();
+            if (!r.valid())
+            {
+                const sol::error err = r;
+                VULTRA_CORE_ERROR("[EditorExtensions] menu item '{}' onClick error: {}", item.id, err.what());
+            }
+        }
+
+        bool menuItemEnabled(const vultra::ScriptedEditorMenuItemDesc& item)
+        {
+            if (!item.enabledWhen.valid())
+                return true;
+            sol::protected_function_result r = item.enabledWhen();
+            if (!r.valid())
+                return true; // a faulty predicate should not lock the item out
+            return r.get_type() == sol::type::boolean ? r.get<bool>() : true;
+        }
+
+        // Renders the plugin-contributed menu items under the Tools menu,
+        // nesting by the "/"-separated path (e.g. "My Plugin/Rescan" ->
+        // submenu "My Plugin" with item "Rescan"). `depth` is the path segment
+        // currently being grouped.
+        void drawScriptedMenuLevel(const std::vector<const vultra::ScriptedEditorMenuItemDesc*>& items, size_t depth)
+        {
+            // collect submenu groups (segment at this depth) in first-seen order
+            std::vector<std::string> groupOrder;
+            for (const auto* item : items)
+            {
+                std::string_view path = item->path;
+                // find the segment at `depth`
+                size_t seg = 0, start = 0, end = path.size();
+                bool   isLeafHere = true;
+                for (size_t i = 0; i <= path.size(); ++i)
+                {
+                    if (i == path.size() || path[i] == '/')
+                    {
+                        if (seg == depth)
+                        {
+                            start = (seg == 0) ? 0 : start;
+                            end   = i;
+                            isLeafHere = (i == path.size());
+                            break;
+                        }
+                        ++seg;
+                        start = i + 1;
+                    }
+                }
+                const std::string segment {path.substr(start, end - start)};
+                if (isLeafHere)
+                {
+                    // leaf at this level: render as MenuItem
+                    const auto* leaf = item;
+                    const bool  enabled = menuItemEnabled(*leaf);
+                    const char* shortcut = leaf->shortcut.empty() ? nullptr : leaf->shortcut.c_str();
+                    if (ImGui::MenuItem(segment.c_str(), shortcut, false, enabled))
+                        invokeMenuClick(*leaf);
+                }
+                else
+                {
+                    if (std::find(groupOrder.begin(), groupOrder.end(), segment) == groupOrder.end())
+                        groupOrder.push_back(segment);
+                }
+            }
+
+            // render submenus (items deeper than this level), grouped by segment
+            for (const auto& group : groupOrder)
+            {
+                std::vector<const vultra::ScriptedEditorMenuItemDesc*> children;
+                for (const auto* item : items)
+                {
+                    std::string_view path = item->path;
+                    size_t seg = 0, start = 0, end = 0;
+                    for (size_t i = 0; i <= path.size(); ++i)
+                    {
+                        if (i == path.size() || path[i] == '/')
+                        {
+                            if (seg == depth) { end = i; break; }
+                            ++seg;
+                            start = i + 1;
+                        }
+                    }
+                    if (std::string {path.substr(start, end - start)} == group && end < path.size())
+                        children.push_back(item);
+                }
+                if (!children.empty() && ImGui::BeginMenu(group.c_str()))
+                {
+                    drawScriptedMenuLevel(children, depth + 1);
+                    ImGui::EndMenu();
+                }
+            }
+        }
+
+        void drawScriptedToolsMenu(EditorContext& ctx)
+        {
+            auto* ext = ctx.services ? ctx.services->tryGet<vultra::IEditorExtensionService>() : nullptr;
+            if (!ext || ext->menuItems().empty())
+                return;
+            ImGui::Separator();
+            std::vector<const vultra::ScriptedEditorMenuItemDesc*> items;
+            items.reserve(ext->menuItems().size());
+            for (const auto& item : ext->menuItems())
+                items.push_back(&item);
+            drawScriptedMenuLevel(items, 0);
         }
 
         void drawEngineMark(const ImVec2 pos, const float radius)
@@ -340,6 +455,7 @@ namespace vultra_app
                 if (ImGui::MenuItem(vultra::tr("menu.tools.worldViewer")))
                     ctx.state.editorWindowFocusRequested = "World Viewer";
                 drawRenderDocMenu(ctx);
+                drawScriptedToolsMenu(ctx); // plugin / Lua-registered menu items
                 ImGui::EndPopup();
             }
 

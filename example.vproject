@@ -6,3 +6,4 @@ default_scene = "res://scenes/sponza.vscn"
 editing_rendergraph = "res://render/default.vrg.json"
 build_scene.0 = "res://scenes/sponza.vscn"
 build_scene_enabled.0 = true
+enabled_plugins = "com.vultra.examples.editor_panel"

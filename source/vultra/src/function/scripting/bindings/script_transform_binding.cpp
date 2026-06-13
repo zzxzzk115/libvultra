@@ -93,17 +93,38 @@ namespace vultra
                                                      tr.scale = toGlmVec3(value);
                                                      tr.dirty = true;
                                                  }),
-                                             "rotationEuler",
+                                             "rotation",
                                              VULTRA_LUA_PROPERTY(
                                                  [&ctx](const ScriptTransformRef& self) {
                                                      if (auto* rect = rectTransform(ctx, self.entity))
-                                                         return toScriptVec3(glm::vec3(0.0f, 0.0f, rect->rotationDegrees));
+                                                         return toScriptVec3(glm::vec3(0.0f, 0.0f, rect->rotation));
                                                      return eulerDegrees(requireTransform(ctx, self.entity).rotation);
                                                  },
                                                  [&ctx](const ScriptTransformRef& self, const ScriptVec3& value) {
                                                      if (auto* rect = rectTransform(ctx, self.entity))
                                                      {
-                                                         rect->rotationDegrees = value.z;
+                                                         rect->rotation = value.z;
+                                                         return;
+                                                     }
+                                                     auto& tr    = requireTransform(ctx, self.entity);
+                                                     tr.rotation = quatFromEulerDegrees(value);
+                                                     tr.dirty    = true;
+                                                 }),
+                                             "rotationEuler",
+                                             VULTRA_LUA_PROPERTY(
+                                                 [&ctx](const ScriptTransformRef& self) {
+                                                     script_binding::warnDeprecated("Transform.rotationEuler",
+                                                                                    "Transform.rotation");
+                                                     if (auto* rect = rectTransform(ctx, self.entity))
+                                                         return toScriptVec3(glm::vec3(0.0f, 0.0f, rect->rotation));
+                                                     return eulerDegrees(requireTransform(ctx, self.entity).rotation);
+                                                 },
+                                                 [&ctx](const ScriptTransformRef& self, const ScriptVec3& value) {
+                                                     script_binding::warnDeprecated("Transform.rotationEuler",
+                                                                                    "Transform.rotation");
+                                                     if (auto* rect = rectTransform(ctx, self.entity))
+                                                     {
+                                                         rect->rotation = value.z;
                                                          return;
                                                      }
                                                      auto& tr    = requireTransform(ctx, self.entity);
@@ -123,9 +144,11 @@ namespace vultra
                                              },
                                              "setEulerDegrees",
                                              [&ctx](const ScriptTransformRef& self, const ScriptVec3& value) {
+                                                 script_binding::warnDeprecated("Transform.setEulerDegrees",
+                                                                                "Transform.rotation");
                                                  if (auto* rect = rectTransform(ctx, self.entity))
                                                  {
-                                                     rect->rotationDegrees = value.z;
+                                                     rect->rotation = value.z;
                                                      return;
                                                  }
                                                  auto& tr    = requireTransform(ctx, self.entity);

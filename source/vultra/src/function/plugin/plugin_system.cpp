@@ -4,6 +4,7 @@
 #include "vultra/core/engine/engine_context.hpp"
 #include "vultra/core/plugin/plugin_manager.hpp"
 #include "vultra/function/services/asset_service.hpp"
+#include "vultra/function/services/editor_extension_service.hpp"
 #include "vultra/function/services/script_service.hpp"
 
 #include <nlohmann/json.hpp>
@@ -12,8 +13,10 @@
 #include <algorithm>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <sstream>
 #include <system_error>
+#include <unordered_map>
 
 namespace vultra
 {
@@ -98,6 +101,12 @@ namespace vultra
             for (const auto& p : *it)
                 if (p.is_string())
                     manifest.platforms.push_back(p.get<std::string>());
+        }
+        if (const auto it = json.find("dependencies"); it != json.end() && it->is_array())
+        {
+            for (const auto& d : *it)
+                if (d.is_string())
+                    manifest.dependencies.push_back(d.get<std::string>());
         }
         if (const auto it = json.find("config"); it != json.end() && it->is_array())
         {
@@ -383,11 +392,13 @@ namespace vultra
             return true;
         }
 
-        std::size_t loaded = 0;
+        // Gather enabled + platform-supported manifests, keyed by id (first
+        // directory wins on duplicate ids).
+        std::unordered_map<std::string, PluginManifest> byId;
+        std::vector<std::string>                        discoveredOrder;
         for (const auto& dir : dirs)
         {
-            const auto manifests = discover(dir);
-            for (const auto& manifest : manifests)
+            for (auto& manifest : discover(dir))
             {
                 if (std::find(enabled.begin(), enabled.end(), manifest.id) == enabled.end())
                     continue;
@@ -397,15 +408,84 @@ namespace vultra
                                      manifest.id, currentPluginPlatform());
                     continue;
                 }
-                if (loadPlugin(manifest))
-                    ++loaded;
+                if (byId.find(manifest.id) == byId.end())
+                {
+                    discoveredOrder.push_back(manifest.id);
+                    byId.emplace(manifest.id, std::move(manifest));
+                }
             }
+        }
+
+        // Topologically sort by manifest dependencies (Kahn-free DFS) so a
+        // plugin's dependencies install first. A dependency that is not in the
+        // enabled/available set is warned but does not block (ids are matched
+        // exactly; version ranges are future work). Cycles are broken with a
+        // warning, falling back to discovery order for the offending nodes.
+        std::vector<std::string>           order;
+        std::unordered_map<std::string, int> mark; // 0=unvisited,1=visiting,2=done
+        std::function<void(const std::string&)> visit = [&](const std::string& id) {
+            auto mit = mark.find(id);
+            if (mit != mark.end() && mit->second == 2)
+                return;
+            if (mit != mark.end() && mit->second == 1)
+            {
+                VULTRA_CORE_WARN("[PluginSystem] Dependency cycle involving plugin '{}'; load order is best-effort.",
+                                 id);
+                return;
+            }
+            mark[id] = 1;
+            if (auto found = byId.find(id); found != byId.end())
+            {
+                for (const auto& dep : found->second.dependencies)
+                {
+                    if (byId.find(dep) == byId.end())
+                    {
+                        VULTRA_CORE_WARN("[PluginSystem] Plugin '{}' depends on '{}', which is not enabled/available.",
+                                         id, dep);
+                        continue;
+                    }
+                    visit(dep);
+                }
+            }
+            mark[id] = 2;
+            order.push_back(id);
+        };
+        for (const auto& id : discoveredOrder)
+            visit(id);
+
+        std::size_t loaded = 0;
+        for (const auto& id : order)
+        {
+            if (loadPlugin(byId.at(id)))
+                ++loaded;
         }
         VULTRA_CORE_INFO("[PluginSystem] Loaded {} of {} enabled plugin(s) from {} directorie(s)",
                          loaded,
                          enabled.size(),
                          dirs.size());
         return true;
+    }
+
+    void PluginSystem::onUpdate(fsec dt)
+    {
+        // Native per-frame ticks (ABI v2), then Lua plugin on_update(dt).
+        if (ctx().pluginManager != nullptr)
+            ctx().pluginManager->update(ctx(), dt.count());
+
+        for (auto& plugin : m_LuaPlugins)
+        {
+            if (!plugin || !plugin->module.valid())
+                continue;
+            sol::protected_function fn = plugin->module["on_update"];
+            if (!fn.valid())
+                continue;
+            auto r = fn(dt.count());
+            if (!r.valid())
+            {
+                sol::error err = r;
+                VULTRA_CORE_ERROR("[PluginSystem] '{}' on_update error: {}", plugin->name, err.what());
+            }
+        }
     }
 
     void PluginSystem::onShutdown()
@@ -417,14 +497,17 @@ namespace vultra
             if (!plugin.module.valid())
                 continue;
             sol::protected_function fn = plugin.module["on_uninstall"];
-            if (!fn.valid())
-                continue;
-            auto r = fn();
-            if (!r.valid())
+            if (fn.valid())
             {
-                sol::error err = r;
-                VULTRA_CORE_ERROR("[PluginSystem] '{}' on_uninstall error: {}", plugin.name, err.what());
+                auto r = fn();
+                if (!r.valid())
+                {
+                    sol::error err = r;
+                    VULTRA_CORE_ERROR("[PluginSystem] '{}' on_uninstall error: {}", plugin.name, err.what());
+                }
             }
+            if (auto* editorExt = ctx().services.tryGet<IEditorExtensionService>())
+                editorExt->unregisterOwned(plugin.id);
         }
         m_LuaPlugins.clear();
         if (ctx().pluginManager != nullptr)
@@ -574,6 +657,9 @@ namespace vultra
                     }
                 }
             }
+            // tear down any editor panels/menu items this plugin registered
+            if (auto* editorExt = ctx().services.tryGet<IEditorExtensionService>())
+                editorExt->unregisterOwned(plugin.id);
             it = std::vector<std::unique_ptr<LuaPlugin>>::reverse_iterator(
                 m_LuaPlugins.erase(std::next(it).base()));
         }
@@ -619,12 +705,22 @@ namespace vultra
             sol::protected_function onInstall = plugin->module["on_install"];
             if (onInstall.valid())
             {
+                // Tag editor-extension registrations made during on_install
+                // with this plugin's id, so they are torn down automatically
+                // when the plugin unloads (see unloadPlugin/onShutdown).
+                auto* editorExt = ctx().services.tryGet<IEditorExtensionService>();
+                if (editorExt)
+                    editorExt->setCurrentOwner(manifest.id);
+
                 auto r = onInstall();
                 if (!r.valid())
                 {
                     sol::error err = r;
                     VULTRA_CORE_ERROR("[PluginSystem] '{}': on_install error: {}", manifest.id, err.what());
                 }
+
+                if (editorExt)
+                    editorExt->setCurrentOwner({});
             }
         }
         m_LuaPlugins.push_back(std::move(plugin));

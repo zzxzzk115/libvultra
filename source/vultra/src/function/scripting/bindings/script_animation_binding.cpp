@@ -208,6 +208,9 @@ namespace vultra
         animation.set_function("setTrigger", [&ctx](const ScriptEntity& entity, const std::string& name) {
             return ctx.animationService ? ctx.animationService->setTrigger(entity.value, name) : false;
         });
+        // getFloat/getBool keep the get prefix deliberately: they are
+        // parameterized lookups symmetric with setFloat/setBool (spec
+        // section 1, symmetric-pair rule).
         animation.set_function("getFloat", [&ctx](const ScriptEntity& entity, const std::string& name) {
             return ctx.animationService ? ctx.animationService->getFloat(entity.value, name) : 0.0f;
         });

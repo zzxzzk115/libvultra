@@ -1,15 +1,28 @@
 #pragma once
 
+#include "vultra/core/base/common_context.hpp"
+
 #include <magic_enum/magic_enum.hpp>
 #include <sol/sol.hpp>
 
 #include <cctype>
+#include <set>
 #include <string>
 #include <string_view>
 #include <type_traits>
 
 namespace vultra::script_binding
 {
+    // Logs a one-time deprecation warning per old name (doc/lua_api_design.md
+    // section 7). Use for usertype members that cannot go through the Lua-side
+    // alias shim in script_deprecations.cpp.
+    inline void warnDeprecated(std::string_view oldName, std::string_view newName)
+    {
+        static std::set<std::string, std::less<>> warned;
+        if (warned.emplace(oldName).second)
+            VULTRA_CORE_WARN("[Lua] '{}' is deprecated, use '{}'", oldName, newName);
+    }
+
     inline sol::table getOrCreateTable(sol::state& lua, std::string_view name)
     {
         sol::object obj = lua[name.data()];

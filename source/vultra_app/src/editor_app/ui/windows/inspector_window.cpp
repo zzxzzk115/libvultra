@@ -1172,7 +1172,7 @@ namespace vultra_app
             changed |= drawVec2Control(vultra::tr("inspector.rectTransform.anchorMax"), rect.anchorMax, glm::vec2 {0.5f}, 0.01f);
             changed |= drawVec2Control(vultra::tr("inspector.rectTransform.pivot"), rect.pivot, glm::vec2 {0.5f}, 0.01f);
             ui::beginPropertyRow(vultra::tr("common.rotation"), vultra::ui::dp(92.0f));
-            changed |= ImGui::DragFloat("##Rotation", &rect.rotationDegrees, 0.5f, 0.0f, 0.0f, "%.2f deg");
+            changed |= ImGui::DragFloat("##Rotation", &rect.rotation, 0.5f, 0.0f, 0.0f, "%.2f deg");
             ui::endPropertyRow();
             changed |= drawVec2Control(vultra::tr("common.scale"), rect.scale, glm::vec2 {1.0f}, 0.01f);
 
@@ -1856,7 +1856,7 @@ namespace vultra_app
             }
 
             if (camera.projection == 0u)
-                camera.fovYDegrees = ctx.state.sceneCamera.fovYDegrees;
+                camera.fovY = ctx.state.sceneCamera.fovY;
             ctx.state.statusMessage = vultra::tr("inspector.camera.alignedToSceneView");
             return true;
         }
@@ -1873,8 +1873,8 @@ namespace vultra_app
             ctx.state.sceneCameraAlignRequest.pending  = true;
             ctx.state.sceneCameraAlignRequest.position = glm::vec3(worldTransform[3]);
             ctx.state.sceneCameraAlignRequest.rotation = extractRotation(worldTransform);
-            ctx.state.sceneCameraAlignRequest.fovYDegrees =
-                camera.projection == 0u ? camera.fovYDegrees : ctx.state.sceneCamera.fovYDegrees;
+            ctx.state.sceneCameraAlignRequest.fovY =
+                camera.projection == 0u ? camera.fovY : ctx.state.sceneCamera.fovY;
             ctx.state.statusMessage = vultra::tr("inspector.camera.sceneViewAligned");
             return true;
         }
@@ -1947,8 +1947,8 @@ namespace vultra_app
                 return "primary";
             if (is("projection"))
                 return "projection";
-            if (is("fovYDegrees"))
-                return "fovYDegrees";
+            if (is("fovY"))
+                return "fovY";
             if (is("orthographicHeight"))
                 return "orthographicHeight";
             if (is("zNear"))
@@ -2029,8 +2029,8 @@ namespace vultra_app
                 return "anchoredPositionPx";
             if (is("sizeDeltaPx"))
                 return "sizeDeltaPx";
-            if (is("rotationDegrees"))
-                return "rotationDegrees";
+            if (is("rotation"))
+                return "rotation";
             if (is("borderRadiusPx"))
                 return "borderRadiusPx";
             if (is("texture"))

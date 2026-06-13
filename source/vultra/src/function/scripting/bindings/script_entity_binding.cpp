@@ -1,16 +1,13 @@
 #include "vultra/function/scripting/bindings/script_entity_binding.hpp"
 
 #include "vultra/function/scripting/bindings/script_binding_common.hpp"
+#include "vultra/function/scripting/bindings/script_generated_binding.hpp"
 #include "vultra/function/scripting/script_types.hpp"
 #include "vultra/function/world/components/animator_component.hpp"
-#include "vultra/function/world/components/camera_component.hpp"
-#include "vultra/function/world/components/box_shape_component.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
-#include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/rigid_body_component.hpp"
-#include "vultra/function/world/components/sphere_shape_component.hpp"
 #include "vultra/function/world/components/ui_components.hpp"
 #include "vultra/function/world/world.hpp"
 
@@ -36,7 +33,7 @@ namespace vultra
 
     void registerScriptEntityBindings(sol::state& lua, ScriptContext& ctx)
     {
-        lua.new_usertype<ScriptEntity>(
+        auto entityType = lua.new_usertype<ScriptEntity>(
             "Entity",
             "valid",
             VULTRA_LUA_READONLY_PROPERTY([&ctx](const ScriptEntity& self) { return ctx.isValid(self.value); }),
@@ -101,16 +98,12 @@ namespace vultra
             VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptUiProgressBarRef {self.value}; }),
             "rigidBody",
             VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptRigidBodyRef {self.value}; }),
-            "camera",
-            VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptCameraRef {self.value}; }),
-            "light",
-            VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptLightRef {self.value}; }),
             "mesh",
             VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptMeshRef {self.value}; }),
-            "boxShape",
-            VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptBoxShapeRef {self.value}; }),
-            "sphereShape",
-            VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptSphereShapeRef {self.value}; }),
+            // camera / light / boxShape / sphereShape / capsuleShape /
+            // cylinderShape / environment / audioSource / audioListener /
+            // reflectionProbe / particleEmitter accessors are generated; see
+            // applyGeneratedEntityAccessors below.
             "animator",
             VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptAnimatorRef {self.value}; }),
             "destroy",
@@ -143,16 +136,8 @@ namespace vultra
             },
             "hasRigidBody",
             [&ctx](const ScriptEntity& self) { return hasComponent<RigidBodyComponent>(ctx, self.value); },
-            "hasCamera",
-            [&ctx](const ScriptEntity& self) { return hasComponent<CameraComponent>(ctx, self.value); },
-            "hasLight",
-            [&ctx](const ScriptEntity& self) { return hasComponent<LightComponent>(ctx, self.value); },
             "hasMesh",
             [&ctx](const ScriptEntity& self) { return hasComponent<MeshComponent>(ctx, self.value); },
-            "hasBoxShape",
-            [&ctx](const ScriptEntity& self) { return hasComponent<BoxShapeComponent>(ctx, self.value); },
-            "hasSphereShape",
-            [&ctx](const ScriptEntity& self) { return hasComponent<SphereShapeComponent>(ctx, self.value); },
             "hasAnimator",
             [&ctx](const ScriptEntity& self) { return hasComponent<AnimatorComponent>(ctx, self.value); },
             "hasRectTransform",
@@ -165,5 +150,10 @@ namespace vultra
             [&ctx](const ScriptEntity& self) { return hasComponent<UiSliderComponent>(ctx, self.value); },
             "hasUiProgressBar",
             [&ctx](const ScriptEntity& self) { return hasComponent<UiProgressBarComponent>(ctx, self.value); });
+
+        // generated entity.<accessor> + entity:has<Name>() for annotated
+        // components (camera, light, shapes, environment, audio, probe,
+        // particle) -- single source of truth with the C++ components
+        applyGeneratedEntityAccessors(entityType, ctx);
     }
 } // namespace vultra

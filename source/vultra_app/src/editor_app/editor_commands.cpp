@@ -767,7 +767,7 @@ namespace vultra_app
                                            {{"enum",
                                              nlohmann::json::array({{{"value", 0}, {"name", "perspective"}},
                                                                     {{"value", 1}, {"name", "orthographic"}}})}}));
-                fields.push_back(fieldJson("fovYDegrees", "float"));
+                fields.push_back(fieldJson("fovY", "float"));
                 fields.push_back(fieldJson("orthographicHeight", "float"));
                 fields.push_back(fieldJson("zNear", "float"));
                 fields.push_back(fieldJson("zFar", "float"));
@@ -838,7 +838,7 @@ namespace vultra_app
                 fields.push_back(
                     fieldJson("anchoredPositionPx", "vec2", {"anchored_position_px", "anchoredPosition", "position"}));
                 fields.push_back(fieldJson("sizeDeltaPx", "vec2", {"size_delta_px", "sizeDelta", "size"}));
-                fields.push_back(fieldJson("rotationDegrees", "float", {"rotation_degrees", "rotation"}));
+                fields.push_back(fieldJson("rotation", "float", {"rotation_degrees", "rotationDegrees"}));
                 fields.push_back(fieldJson("scale", "vec2"));
             }
             else if (k == "ui_panel")
@@ -1105,7 +1105,7 @@ namespace vultra_app
                 else
                     return {{"primary", c->primary},
                             {"projection", c->projection},
-                            {"fovYDegrees", c->fovYDegrees},
+                            {"fovY", c->fovY},
                             {"orthographicHeight", c->orthographicHeight},
                             {"zNear", c->zNear},
                             {"zFar", c->zFar},
@@ -1179,7 +1179,8 @@ namespace vultra_app
                             {"pivot", vec2Json(c->pivot)},
                             {"anchoredPositionPx", vec2Json(c->anchoredPositionPx)},
                             {"sizeDeltaPx", vec2Json(c->sizeDeltaPx)},
-                            {"rotationDegrees", c->rotationDegrees},
+                            {"rotation", c->rotation},
+                            {"rotationDegrees", c->rotation}, // legacy key
                             {"scale", vec2Json(c->scale)}};
             }
             else if (k == "ui_panel")
@@ -1317,11 +1318,11 @@ namespace vultra_app
                 vec2Arg(args, "size_delta_px", vec2Arg(args, "sizeDelta", vec2Arg(args, "size", rect.sizeDeltaPx))));
             rect.scale = vec2Arg(args, "scale", rect.scale);
             if (args.contains("rotationDegrees"))
-                rect.rotationDegrees = args.value("rotationDegrees", rect.rotationDegrees);
+                rect.rotation = args.value("rotationDegrees", rect.rotation);
             if (args.contains("rotation_degrees"))
-                rect.rotationDegrees = args.value("rotation_degrees", rect.rotationDegrees);
+                rect.rotation = args.value("rotation_degrees", rect.rotation);
             if (args.contains("rotation") && args["rotation"].is_number())
-                rect.rotationDegrees = args["rotation"].get<float>();
+                rect.rotation = args["rotation"].get<float>();
         }
 
         bool addOrUpdateComponent(vultra::World&        world,
@@ -1715,7 +1716,7 @@ namespace vultra_app
                 auto& camera              = reg.get_or_emplace<vultra::CameraComponent>(entity);
                 camera.primary            = args.value("primary", camera.primary);
                 camera.projection         = args.value("projection", camera.projection);
-                camera.fovYDegrees        = args.value("fovYDegrees", camera.fovYDegrees);
+                camera.fovY        = args.value("fovY", camera.fovY);
                 camera.orthographicHeight = args.value("orthographicHeight", camera.orthographicHeight);
                 camera.zNear              = args.value("zNear", camera.zNear);
                 camera.zFar               = args.value("zFar", camera.zFar);

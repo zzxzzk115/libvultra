@@ -20,10 +20,12 @@
 #include "editor_app/ui/windows/render_graph_window.hpp"
 #include "editor_app/ui/windows/scene_hierarchy_window.hpp"
 #include "editor_app/ui/windows/scene_view_window.hpp"
+#include "editor_app/ui/windows/scripted_window.hpp"
 #include "editor_app/ui/windows/world_viewer_window.hpp"
 #include "vproject.hpp"
 
 #include <vultra/core/base/common_context.hpp>
+#include <vultra/function/services/editor_extension_service.hpp>
 #include <vultra/core/i18n/i18n.hpp>
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/asset/asset_system.hpp>
@@ -344,7 +346,7 @@ namespace vultra_app
             request.pending            = true;
             request.position           = glm::vec3(worldTransform[3]);
             request.rotation           = glm::normalize(glm::quat_cast(worldTransform));
-            request.fovYDegrees        = camera.fovYDegrees;
+            request.fovY        = camera.fovY;
         }
 
         std::string rendererKeyFromRenderGraphUri(std::string_view uri)
@@ -518,7 +520,29 @@ namespace vultra_app
         if (ctx.state.mode == AppMode::Editor && !isProjectLoading())
         {
             ensureInitialized();
+            syncScriptedPanels(ctx);
             m_WindowManager.tick(ctx);
+        }
+    }
+
+    void EditorApp::syncScriptedPanels(EditorContext& ctx)
+    {
+        auto* ext = ctx.services ? ctx.services->tryGet<vultra::IEditorExtensionService>() : nullptr;
+        if (!ext)
+            return;
+
+        // Removals first so a re-registered panel (remove + add with the same
+        // id in one frame) ends up present.
+        for (const auto& id : ext->takeRemovedPanelIds())
+            m_WindowManager.removeWindow(ctx, id);
+
+        for (auto& panel : ext->takeAddedPanels())
+        {
+            // a stale window with this id can linger if a plugin re-registers
+            // without unregistering; replace it
+            if (m_WindowManager.hasWindow(panel.id))
+                m_WindowManager.removeWindow(ctx, panel.id);
+            m_WindowManager.addWindow(std::make_unique<ScriptedEditorWindow>(std::move(panel)));
         }
     }
 

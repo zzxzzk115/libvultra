@@ -220,10 +220,59 @@ xmake run vultra-runtime --plugins-dir examples/plugins --render-mode none
 # [native_math] length3(3,4,12) = 13.0   (after building plugin-native-math)
 ```
 
+## Plugin lifecycle v2
+
+Native plugins (`EnginePlugin`) and Lua plugins both get a per-frame update and explicit ABI/
+dependency handling:
+
+- **Per-frame update.** Native: override `void update(EngineContext&, float dt)` (default no-op).
+  Lua: define `function M.on_update(dt)` on the module table. `PluginSystem` ticks all native
+  plugins then all Lua plugins each frame, in load order.
+- **ABI version (native).** Export `VULTRA_PLUGIN_API unsigned int vultraPluginAbiVersion()`
+  returning `vultra::kEnginePluginAbiVersion`. `PluginManager` refuses a plugin whose ABI does not
+  match the engine's (clear "rebuild your plugin" error instead of a crash). A plugin without the
+  symbol is treated as legacy v1.
+- **Dependencies.** A manifest may declare `"dependencies": ["com.x.y", ...]`; `PluginSystem`
+  topologically sorts the enabled set so dependencies install first. A missing/disabled dependency
+  warns but fails only that plugin; cycles are broken with a warning. Ids are matched exactly
+  (version-range matching is future work).
+
+## Editor extension API
+
+Plugins (and entity scripts) running in the editor can add UI through the `Editor` Lua table,
+which exists only when an editor is present — guard with `if Editor then ... end`. Registrations
+made during a plugin's `on_install` are tagged with the plugin id and torn down automatically on
+unload.
+
+```lua
+function M.on_install()
+  if not Editor then return end
+  Editor.registerPanel{
+    id = "com.example.myplugin.stats", title = "Stats", defaultOpen = true,
+    onDraw = function()           -- runs inside the panel's ImGui Begin/End
+      ImGui.Text("Hello from a plugin panel")
+      if ImGui.Button("Do it") then --[[ ... ]] end
+    end,
+  }
+  Editor.registerMenuItem{
+    id = "com.example.myplugin.rescan", path = "My Plugin/Rescan",  -- nested under Tools
+    onClick = function() --[[ ... ]] end,
+    enabledWhen = function() return true end,                       -- optional
+  }
+end
+```
+
+`registerPanel`/`registerMenuItem` return `ok, err`. `Editor.unregister(id)` removes one
+explicitly (also automatic on unload). `Editor.registerInspector` is reserved (returns `false`
+until implemented). See [resources/plugins/editor_panel/](../resources/plugins/editor_panel/) — the
+example project enables it, so launching the editor shows a "Lua Demo Panel" and a Tools menu item.
+The panel body is drawn with the `ImGui.*` Lua bindings (see [lua_scripting.md](lua_scripting.md)).
+
 ## Limitations / future work
 
 - Native plugins are desktop-only (dynamic loading); wasm/android plugins would need a different
   mechanism.
 - No hot-reload yet; plugins load at startup / on demand and unload at shutdown.
-- A richer editor-extension API (panels, commands, gizmos registered from Lua) can build on the
-  shared Lua state.
+- `Editor.registerInspector` (custom component drawers) and gizmo registration are not implemented
+  yet; the panel/menu surface above is the current editor-extension API.
+- Plugin dependency declarations match ids exactly; semver version ranges are future work.

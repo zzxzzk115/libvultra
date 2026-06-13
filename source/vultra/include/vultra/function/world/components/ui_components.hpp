@@ -26,7 +26,7 @@ namespace vultra
         glm::vec2 pivot {0.5f, 0.5f};
         glm::vec2 anchoredPositionPx {0.0f, 0.0f};
         glm::vec2 sizeDeltaPx {100.0f, 100.0f};
-        float     rotationDegrees {0.0f};
+        float     rotation {0.0f};
         glm::vec2 scale {1.0f, 1.0f};
     };
 

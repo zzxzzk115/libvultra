@@ -20,6 +20,8 @@ namespace vultra
     class IAnimationService;
     class IAudioService;
     class IUiService;
+    class IImGuiService;
+    class IEditorExtensionService;
 
     struct ScriptContext
     {
@@ -38,6 +40,8 @@ namespace vultra
         IAnimationService* animationService {nullptr};
         IAudioService* audioService {nullptr};
         IUiService* uiService {nullptr};
+        IImGuiService* imguiService {nullptr};
+        IEditorExtensionService* editorExtensionService {nullptr};
 
         World* world() const;
         bool   isValid(entt::entity e) const;

@@ -390,13 +390,23 @@ namespace vultra
                 [&ctx](const ScriptRectTransformRef& self, const ScriptVec2& value) {
                     requireRectTransform(ctx, self.entity).scale = toGlmVec2(value);
                 }),
+            "rotation",
+            VULTRA_LUA_PROPERTY(
+                [&ctx](const ScriptRectTransformRef& self) {
+                    return requireRectTransform(ctx, self.entity).rotation;
+                },
+                [&ctx](const ScriptRectTransformRef& self, float value) {
+                    requireRectTransform(ctx, self.entity).rotation = value;
+                }),
             "rotationDegrees",
             VULTRA_LUA_PROPERTY(
                 [&ctx](const ScriptRectTransformRef& self) {
-                    return requireRectTransform(ctx, self.entity).rotationDegrees;
+                    script_binding::warnDeprecated("RectTransform.rotationDegrees", "RectTransform.rotation");
+                    return requireRectTransform(ctx, self.entity).rotation;
                 },
                 [&ctx](const ScriptRectTransformRef& self, float value) {
-                    requireRectTransform(ctx, self.entity).rotationDegrees = value;
+                    script_binding::warnDeprecated("RectTransform.rotationDegrees", "RectTransform.rotation");
+                    requireRectTransform(ctx, self.entity).rotation = value;
                 }));
 
         lua.new_usertype<ScriptUiButtonRef>(
@@ -415,8 +425,13 @@ namespace vultra
             VULTRA_LUA_READONLY_PROPERTY([&ctx](const ScriptUiButtonRef& self) {
                 return requireButton(ctx, self.entity).pressed;
             }),
+            "onClick",
+            sol::property([](const ScriptUiButtonRef& self) {
+                return ScriptUiSignalRef {self.entity, "onClick"};
+            }),
             "clicked",
             sol::property([](const ScriptUiButtonRef& self) {
+                script_binding::warnDeprecated("UiButton.clicked", "UiButton.onClick");
                 return ScriptUiSignalRef {self.entity, "clicked"};
             }),
             "clickedThisFrame",
@@ -438,8 +453,13 @@ namespace vultra
                 [&ctx](const ScriptUiToggleRef& self, bool value) {
                     requireToggle(ctx, self.entity).checked = value;
                 }),
+            "onClick",
+            sol::property([](const ScriptUiToggleRef& self) {
+                return ScriptUiSignalRef {self.entity, "onClick"};
+            }),
             "clicked",
             sol::property([](const ScriptUiToggleRef& self) {
+                script_binding::warnDeprecated("UiToggle.clicked", "UiToggle.onClick");
                 return ScriptUiSignalRef {self.entity, "clicked"};
             }));
 
@@ -508,7 +528,7 @@ namespace vultra
                 return toScriptHit(ctx.uiService->raycast(toGlmVec2(*screenPx)));
             if (!ctx.inputService)
                 return ScriptUiRaycastHit {};
-            return toScriptHit(ctx.uiService->raycast(ctx.inputService->getMousePosition()));
+            return toScriptHit(ctx.uiService->raycast(ctx.inputService->mousePosition()));
         });
         ui.set_function("events", [&ctx](sol::this_state luaState) {
             sol::state_view luaView(luaState);

@@ -701,7 +701,7 @@ namespace vultra
         m_ComponentRegistry.registerComponent<CameraComponent>("CameraComponent",
                                                                {"primary",
                                                                 "projection",
-                                                                "fovYDegrees",
+                                                                "fovY",
                                                                 "orthographicHeight",
                                                                 "zNear",
                                                                 "zFar",
@@ -764,7 +764,7 @@ namespace vultra
                                                                        "pivot",
                                                                        "anchoredPositionPx",
                                                                        "sizeDeltaPx",
-                                                                       "rotationDegrees",
+                                                                       "rotation",
                                                                        "scale"});
         m_ComponentRegistry.registerComponent<UiPanelComponent>(
             "UiPanelComponent", {"enabled", "color", "borderRadiusPx"});

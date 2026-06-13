@@ -180,7 +180,7 @@ namespace vultra
             if (ctx.renderService)
                 ctx.renderService->onResize(width, height);
         });
-        render.set_function("getGaussianSplatSettings", [&ctx]() {
+        render.set_function("gaussianSplatSettings", [&ctx]() {
             return ctx.renderService ? toScriptSettings(ctx.renderService->gaussianSplatSettings()) :
                                        ScriptGaussianSplatSettings {};
         });
@@ -188,7 +188,7 @@ namespace vultra
             if (ctx.renderService)
                 applyScriptSettings(ctx.renderService->gaussianSplatSettings(), settings);
         });
-        render.set_function("getGaussianSplatFrameStats", [&ctx]() {
+        render.set_function("gaussianSplatFrameStats", [&ctx]() {
             return ctx.renderService ? toScriptStats(ctx.renderService->gaussianSplatFrameStats()) :
                                        ScriptGaussianSplatFrameStats {};
         });

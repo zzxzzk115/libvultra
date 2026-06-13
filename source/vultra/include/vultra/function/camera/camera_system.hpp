@@ -36,7 +36,7 @@ namespace vultra
         float     yawDegrees {-90.0f};
         float     pitchDegrees {-20.0f};
 
-        float fovYDegrees {60.0f};
+        float fovY {60.0f};
         float zNear {0.1f};
         float zFar {1000.0f};
     };

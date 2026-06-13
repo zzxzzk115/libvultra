@@ -5,6 +5,11 @@ They run only while editor/runtime playback is active. Scripts are loaded throug
 the asset system, so use engine URIs such as `res://scripts/player.lua` instead
 of raw filesystem paths.
 
+> API authors: the Lua surface follows the normative rules in
+> [lua_api_design.md](lua_api_design.md) (naming, properties vs methods, units,
+> error/nil conventions, deprecation). New or changed bindings must keep
+> `tests/lua_api_conformance` green.
+
 ## Lifecycle
 
 Define any of these functions in a script:
@@ -13,10 +18,16 @@ Define any of these functions in a script:
 function OnCreate(self)
 end
 
+function OnEnable(self)
+end
+
 function OnUpdate(self, dt)
 end
 
 function OnFixedUpdate(self, fixedDt)
+end
+
+function OnDisable(self)
 end
 
 function OnDestroy(self)
@@ -26,12 +37,101 @@ end
 `self` is the entity that owns the `ScriptComponent`.
 
 - `OnCreate` is called when playback starts or the script is loaded/reloaded.
+- `OnEnable` is called after `OnCreate` when the script starts enabled, and
+  whenever `ScriptComponent.enabled` flips back to true.
 - `OnUpdate` is called once per rendered frame while playback is not paused.
 - `OnFixedUpdate` is called once for each physics fixed step.
+- `OnDisable` is called when the component is disabled, and always before
+  `OnDestroy`. Coroutines owned by the script stop here.
 - `OnDestroy` is called when the script instance is destroyed.
+
+Guaranteed order: `OnCreate -> OnEnable -> updates... -> OnDisable -> OnDestroy`.
 
 Entity handles are lightweight C++ references. Always check `entity.valid`
 before using cached handles across frames or after scene reloads.
+
+### Collision And Trigger Callbacks
+
+Scripts on either entity of a physics contact receive callbacks, dispatched
+once per physics update from contact-pair diffing (`other` is the colliding
+entity):
+
+```lua
+function OnCollisionEnter(self, other)
+end
+
+function OnCollisionStay(self, other)
+end
+
+function OnCollisionExit(self, other)
+end
+
+function OnTriggerEnter(self, other) -- either body has isSensor = true
+end
+
+function OnTriggerStay(self, other)
+end
+
+function OnTriggerExit(self, other)
+end
+```
+
+Polling via `Physics.contactEvents()` still works and is unaffected by these
+callbacks. On exit events, `other` may already be invalid -- check
+`other.valid` before touching it.
+
+### Debug UI (ImGui)
+
+In editor and dev builds (when the ImGui service exists), scripts can draw
+debug UI through the `ImGui` table. It keeps upstream Dear ImGui PascalCase
+names (the documented exception in [lua_api_design.md](lua_api_design.md)) so
+upstream docs apply directly. Calls outside the ImGui frame raise an error;
+in shipped headless runtimes the `ImGui` global is absent -- guard with
+`if ImGui then`.
+
+```lua
+function OnUpdate(self, dt)
+  if not ImGui then return end
+  local visible = ImGui.Begin("Debug")
+  if visible then
+    ImGui.Text("entity: " .. self.name)
+    if ImGui.Button("Reset") then
+      self.transform.position = Vec3(0, 0, 0)
+    end
+    local changed, v = ImGui.SliderFloat("speed", Player.speed, 0, 10)
+    if changed then Player.speed = v end
+  end
+  ImGui.End()
+end
+```
+
+Out-parameters become extra return values (`changed, newValue`). Enum/flag
+values live in sub-tables: `ImGui.WindowFlags.NoTitleBar`, `ImGui.Cond.Once`.
+The binding is generated from dear_bindings metadata
+(`tools/python/gen_imgui_lua.py`); `InputText` returns
+`changed, newText`.
+
+### Coroutines
+
+Each script can run coroutines that persist across frames:
+
+```lua
+function OnCreate(self)
+  startCoroutine(function()
+    print("first slice runs immediately")
+    wait(1.5)            -- seconds
+    print("1.5s later")
+    waitFrames(10)       -- frames
+    print("10 frames later")
+  end)
+end
+```
+
+- `startCoroutine(fn, ...)` runs the first slice immediately and returns the
+  coroutine; extra arguments are passed to `fn`.
+- `wait(seconds)` / `waitFrames(n)` suspend the current coroutine.
+- `stopAllCoroutines()` cancels this script's coroutines; they also stop
+  automatically on `OnDisable` and `OnDestroy`.
 
 ## Binding Parity For Engine Work
 
@@ -51,7 +151,7 @@ players:
 Use constructors for vector values:
 
 ```lua
-local a = vec3(1, 2, 3)
+local a = Vec3(1, 2, 3)
 local b = Vec3(4, 5, 6)
 ```
 
@@ -164,7 +264,7 @@ overrides without editing the shared `.vmat.json`:
 ```lua
 self.mesh:setMaterial(0, "res://materials/red.vmat.json")
 self.mesh:setMaterialFloat(0, "roughness", 0.8)
-self.mesh:setMaterialColor(0, "baseColor", vec4(1, 0, 0, 1))
+self.mesh:setMaterialColor(0, "baseColor", Vec4(1, 0, 0, 1))
 self.mesh:setMaterialTexture(0, "baseColorTexture", "res://textures/albedo.png")
 self.mesh:clearMaterialProperty(0, "roughness")
 self.mesh:clearMaterialProperties(0)
@@ -182,18 +282,16 @@ Transform access:
 
 ```lua
 local p = self.transform.position
-self.transform.position = vec3(p.x, p.y + 1, p.z)
-self.transform.scale = vec3(1, 1, 1)
-self.transform.rotationEuler = vec3(0, 45, 0)
-self.transform:translate(vec3(0, 0, 1))
-self.transform:setEulerDegrees(vec3(0, 90, 0))
-self.transform:lookAt(vec3(0, 0, 0))
+self.transform.position = Vec3(p.x, p.y + 1, p.z)
+self.transform.scale = Vec3(1, 1, 1)
+self.transform.rotation = Vec3(0, 45, 0) -- euler degrees
+self.transform:translate(Vec3(0, 0, 1))
+self.transform:lookAt(Vec3(0, 0, 0))
 ```
 
 If an entity has `RectTransformComponent`, it is treated as a UI entity.
-`entity.transform.position`, `scale`, `rotationEuler`, `translate`, and
-`setEulerDegrees` forward to RectTransform pixel fields instead of the hidden
-3D `TransformComponent`.
+`entity.transform.position`, `scale`, `rotation`, and `translate` forward to
+RectTransform pixel fields instead of the hidden 3D `TransformComponent`.
 
 ## UI
 
@@ -205,10 +303,10 @@ RectTransform access:
 
 ```lua
 local rect = self.rectTransform
-rect.anchoredPositionPx = vec2(320, 180)
-rect.sizeDeltaPx = vec2(240, 64)
-rect.rotationDegrees = 0
-rect.scale = vec2(1, 1)
+rect.anchoredPositionPx = Vec2(320, 180)
+rect.sizeDeltaPx = Vec2(240, 64)
+rect.rotation = 0
+rect.scale = Vec2(1, 1)
 ```
 
 Button and pointer state:
@@ -227,7 +325,7 @@ Signal-based UI events are the recommended authoring style:
 
 ```lua
 function OnCreate(self)
-  self.uiButton.clicked:connect(function(event)
+  self.uiButton.onClick:connect(function(event)
     print("Clicked", event.target.name)
   end)
 
@@ -247,7 +345,7 @@ Common UI controls expose thin component references:
 function OnCreate(self)
   if self:hasUiToggle() then
     self.uiToggle.checked = true
-    self.uiToggle.clicked:connect(function(event)
+    self.uiToggle.onClick:connect(function(event)
       print("toggle", self.uiToggle.checked)
     end)
   end
@@ -298,7 +396,7 @@ Primary camera lookup:
 ```lua
 local camera = Camera.findPrimary()
 if camera.valid then
-  camera.transform.position = vec3(0, 6, 8)
+  camera.transform.position = Vec3(0, 6, 8)
   camera.transform:lookAt(self.transform.position)
 end
 ```
@@ -321,32 +419,32 @@ Layer mask constants are available through `Layer.Default`, `Layer.UI`, and
 Keyboard and mouse input are exposed through `Input`.
 
 ```lua
-if Input.getKey(KeyCode.W) then
+if Input.isKeyHeld(KeyCode.W) then
   print("W is held")
 end
 
-if Input.getKeyDown(KeyCode.Space) then
+if Input.isKeyPressed(KeyCode.Space) then
   print("Space pressed this frame")
 end
 ```
 
 Keyboard functions:
 
-- `Input.getKey(key)`
-- `Input.getKeyDown(key)`
-- `Input.getKeyUp(key)`
-- `Input.getKeyRepeat(key)`
+- `Input.isKeyHeld(key)`
+- `Input.isKeyPressed(key)`
+- `Input.isKeyReleased(key)`
+- `Input.isKeyRepeated(key)`
 
 Mouse functions:
 
-- `Input.getMouseButton(button)`
-- `Input.getMouseButtonDown(button)`
-- `Input.getMouseButtonUp(button)`
-- `Input.getMouseButtonClicks(button)`
-- `Input.getMousePosition()`
-- `Input.getMousePositionFlipY()`
-- `Input.getMousePositionDelta()`
-- `Input.getMouseScrollDelta()`
+- `Input.isMouseButtonHeld(button)`
+- `Input.isMouseButtonPressed(button)`
+- `Input.isMouseButtonReleased(button)`
+- `Input.mouseButtonClicks(button)`
+- `Input.mousePosition()`
+- `Input.mousePositionFlipY()`
+- `Input.mousePositionDelta()`
+- `Input.mouseScrollDelta()`
 
 Use `KeyCode` and `MouseCode` enum values rather than integer literals.
 
@@ -361,7 +459,7 @@ function OnFixedUpdate(self, fixedDt)
     return
   end
 
-  self.rigidBody:addForce(vec3(10, 0, 0))
+  self.rigidBody:addForce(Vec3(10, 0, 0))
   self.rigidBody:activate()
 end
 ```
@@ -433,7 +531,7 @@ through the `Character` table:
 ```lua
 function OnFixedUpdate(self, fixedDt)
   local e = self.entity
-  Character.move(e, vec3(Input.axisX() * 4.0, 0, Input.axisZ() * 4.0))
+  Character.move(e, Vec3(Input.axisX() * 4.0, 0, Input.axisZ() * 4.0))
   if Input.isKeyPressed("space") and Character.isGrounded(e) then
     Character.jump(e, 6.0)
   end
@@ -501,12 +599,12 @@ local function movementInput()
   local x = 0.0
   local z = 0.0
 
-  if Input.getKey(KeyCode.A) then x = x - 1.0 end
-  if Input.getKey(KeyCode.D) then x = x + 1.0 end
-  if Input.getKey(KeyCode.W) then z = z - 1.0 end
-  if Input.getKey(KeyCode.S) then z = z + 1.0 end
+  if Input.isKeyHeld(KeyCode.A) then x = x - 1.0 end
+  if Input.isKeyHeld(KeyCode.D) then x = x + 1.0 end
+  if Input.isKeyHeld(KeyCode.W) then z = z - 1.0 end
+  if Input.isKeyHeld(KeyCode.S) then z = z + 1.0 end
 
-  return vec3(x, 0.0, z)
+  return Vec3(x, 0.0, z)
 end
 
 function OnCreate(self)
@@ -530,7 +628,7 @@ function OnFixedUpdate(self, fixedDt)
   end
 
   local input = movementInput()
-  self.rigidBody:addForce(vec3(input.x * RollABall.moveForce, 0.0, input.z * RollABall.moveForce))
+  self.rigidBody:addForce(Vec3(input.x * RollABall.moveForce, 0.0, input.z * RollABall.moveForce))
   self.rigidBody:activate()
 end
 
@@ -539,7 +637,7 @@ function OnUpdate(self, dt)
 
   local camera = Camera.findPrimary()
   if camera.valid then
-    camera.transform.position = vec3(playerPos.x, playerPos.y + 6.0, playerPos.z + 7.0)
+    camera.transform.position = Vec3(playerPos.x, playerPos.y + 6.0, playerPos.z + 7.0)
     camera.transform:lookAt(playerPos)
   end
 
@@ -640,9 +738,9 @@ Render APIs:
 - `Render.isProfilerEnabled()`
 - `Render.profilerHistorySize()`
 - `Render.captureFrame()`
-- `Render.getGaussianSplatSettings()`
+- `Render.gaussianSplatSettings()`
 - `Render.setGaussianSplatSettings(settings)`
-- `Render.getGaussianSplatFrameStats()`
+- `Render.gaussianSplatFrameStats()`
 - `RenderBackend.isXREnabled()`
 - `RenderBackend.isXRMirrorEnabled()`
 - `RenderBackend.isExitRequested()`

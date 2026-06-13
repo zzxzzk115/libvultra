@@ -355,7 +355,7 @@ namespace vultra
             return;
         }
 
-        const glm::vec2 mouse = input->getMousePosition();
+        const glm::vec2 mouse = input->mousePosition();
         m_PreviousHoveredEntity = m_HoveredEntity;
         m_HoveredEntity = entt::null;
         if (auto hit = raycast(mouse))
@@ -374,7 +374,7 @@ namespace vultra
         if (auto* button = reg.try_get<UiButtonComponent>(m_HoveredEntity); button && button->enabled)
             button->hovered = true;
 
-        if (m_HoveredEntity != entt::null && input->getMouseButtonDown(MouseCode::eLeft))
+        if (m_HoveredEntity != entt::null && input->isMouseButtonPressed(MouseCode::eLeft))
         {
             m_PressedEntity = m_HoveredEntity;
             pushEvent(UiEventType::PointerDown, m_PressedEntity, mouse, 0u);
@@ -386,12 +386,12 @@ namespace vultra
         if (m_PressedEntity != entt::null)
         {
             if (auto* button = reg.try_get<UiButtonComponent>(m_PressedEntity))
-                button->pressed = input->getMouseButton(MouseCode::eLeft);
+                button->pressed = input->isMouseButtonHeld(MouseCode::eLeft);
             if (auto* slider = reg.try_get<UiSliderComponent>(m_PressedEntity); slider && slider->enabled && slider->interactable)
-                if (input->getMouseButton(MouseCode::eLeft))
+                if (input->isMouseButtonHeld(MouseCode::eLeft))
                     if (auto rect = resolvedRect(m_PressedEntity))
                         setSliderFromPointer(*slider, *rect, mouse);
-            if (input->getMouseButtonUp(MouseCode::eLeft))
+            if (input->isMouseButtonReleased(MouseCode::eLeft))
             {
                 pushEvent(UiEventType::PointerUp, m_PressedEntity, mouse, 0u);
                 if (m_HoveredEntity == m_PressedEntity)

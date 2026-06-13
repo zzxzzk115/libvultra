@@ -544,7 +544,7 @@ namespace vultra_app::ui
                 return glm::orthoRH_ZO(-width * 0.5f, width * 0.5f, -height * 0.5f, height * 0.5f, zNear, zFar);
             }
 
-            return glm::perspectiveRH_ZO(glm::radians(camera.fovYDegrees), std::max(aspect, 0.0001f), zNear, zFar);
+            return glm::perspectiveRH_ZO(glm::radians(camera.fovY), std::max(aspect, 0.0001f), zNear, zFar);
         }
 
         vultra::RenderCamera makeSceneThumbnailCamera(vultra::World&        world,
@@ -563,7 +563,7 @@ namespace vultra_app::ui
             out.projection              = makeSceneProjection(camera, 1.0f);
             out.zNear                   = std::max(camera.zNear, 0.0001f);
             out.zFar                    = std::max(camera.zFar, out.zNear + 0.0001f);
-            out.fovY                    = glm::radians(camera.fovYDegrees);
+            out.fovY                    = glm::radians(camera.fovY);
             out.target                  = target;
             out.clearValue              = camera.clearColor;
             out.clearValue.a            = 1.0f;

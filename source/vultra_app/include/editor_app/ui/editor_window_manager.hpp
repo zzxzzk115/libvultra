@@ -22,6 +22,13 @@ namespace vultra_app
             return ref;
         }
 
+        // Runtime add/remove for dynamically-registered windows (Lua-scripted
+        // panels). addWindow takes ownership; removeWindow drops the window
+        // with the given stable name() and returns true if one was removed.
+        EditorWindow& addWindow(std::unique_ptr<EditorWindow> window);
+        bool          removeWindow(EditorContext& ctx, std::string_view name);
+        [[nodiscard]] bool hasWindow(std::string_view name) const;
+
         void draw(EditorContext& ctx);
         void tick(EditorContext& ctx);
         void destroy(EditorContext& ctx);

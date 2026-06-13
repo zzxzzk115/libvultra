@@ -111,5 +111,6 @@ namespace
 #define PLUGIN_EXPORT extern "C" __attribute__((visibility("default")))
 #endif
 
+PLUGIN_EXPORT unsigned int          vultraPluginAbiVersion() { return vultra::kEnginePluginAbiVersion; }
 PLUGIN_EXPORT vultra::EnginePlugin* vultraCreatePlugin() { return new NoopUpscalerPlugin(); }
 PLUGIN_EXPORT void                  vultraDestroyPlugin(vultra::EnginePlugin* plugin) { delete plugin; }

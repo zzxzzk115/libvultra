@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "com.vultra.examples.editor_panel",
+  "name": "Editor Panel Example",
+  "version": "0.1.0",
+  "author": "Vultra",
+  "description": "Pure-Lua example: registers a custom editor panel (drawn with the ImGui Lua bindings) and a Tools menu item via the Editor extension API.",
+  "platforms": ["windows", "linux", "macos"],
+  "entry": "init.lua"
+}

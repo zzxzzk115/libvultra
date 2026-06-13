@@ -132,6 +132,42 @@ namespace vultra_app
             renderGraphWindow->drawRuntimeFrameGraphViewer(ctx);
     }
 
+    EditorWindow& EditorWindowManager::addWindow(std::unique_ptr<EditorWindow> window)
+    {
+        auto& ref = *window;
+        m_Windows.push_back(std::move(window));
+        // keep the parallel open-state vector aligned (draw() also self-heals
+        // on a size mismatch, but staying consistent avoids a one-frame glitch)
+        if (m_WasOpen.size() + 1 == m_Windows.size())
+            m_WasOpen.push_back(ref.open());
+        return ref;
+    }
+
+    bool EditorWindowManager::removeWindow(EditorContext& ctx, std::string_view name)
+    {
+        for (std::size_t i = 0; i < m_Windows.size(); ++i)
+        {
+            if (m_Windows[i]->name() != name)
+                continue;
+            m_Windows[i]->onDestroy(ctx);
+            m_Windows.erase(m_Windows.begin() + static_cast<std::ptrdiff_t>(i));
+            if (i < m_WasOpen.size())
+                m_WasOpen.erase(m_WasOpen.begin() + static_cast<std::ptrdiff_t>(i));
+            return true;
+        }
+        return false;
+    }
+
+    bool EditorWindowManager::hasWindow(std::string_view name) const
+    {
+        for (const auto& window : m_Windows)
+        {
+            if (window->name() == name)
+                return true;
+        }
+        return false;
+    }
+
     void EditorWindowManager::destroy(EditorContext& ctx)
     {
         for (auto& window : m_Windows)

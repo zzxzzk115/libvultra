@@ -188,7 +188,7 @@ namespace vultra
                 return glm::orthoRH_ZO(-width * 0.5f, width * 0.5f, -height * 0.5f, height * 0.5f, zNear, zFar);
             }
 
-            return glm::perspectiveRH_ZO(glm::radians(camera.fovYDegrees), std::max(aspect, 0.0001f), zNear, zFar);
+            return glm::perspectiveRH_ZO(glm::radians(camera.fovY), std::max(aspect, 0.0001f), zNear, zFar);
         }
     } // namespace
 
@@ -311,7 +311,7 @@ namespace vultra
                     cam.projection  = makeProjectionMatrix(camera, aspect);
                     cam.zNear       = std::max(camera.zNear, 0.0001f);
                     cam.zFar        = std::max(camera.zFar, cam.zNear + 0.0001f);
-                    cam.fovY        = glm::radians(camera.fovYDegrees);
+                    cam.fovY        = glm::radians(camera.fovY);
                     cam.clearValue  = camera.clearColor;
                     cam.clearMode   = camera.clearMode;
                     cam.renderImGui = false;
@@ -536,12 +536,12 @@ namespace vultra
         auto& camera = m_Manual[m_FPSManualCameraIndex];
 
         auto&      window      = ctx().services.require<IWindowService>().window();
-        const bool flyActive   = input.getMouseButton(MouseCode::eRight);
-        const bool shiftHeld   = input.getKey(KeyCode::eLShift) || input.getKey(KeyCode::eRShift);
-        const bool orbitActive = input.getMouseButton(MouseCode::eLeft) && !shiftHeld;
+        const bool flyActive   = input.isMouseButtonHeld(MouseCode::eRight);
+        const bool shiftHeld   = input.isKeyHeld(KeyCode::eLShift) || input.isKeyHeld(KeyCode::eRShift);
+        const bool orbitActive = input.isMouseButtonHeld(MouseCode::eLeft) && !shiftHeld;
         const bool panActive =
-            input.getMouseButton(MouseCode::eMiddle) || (input.getMouseButton(MouseCode::eLeft) && shiftHeld);
-        const float scrollY = input.getMouseScrollDelta().y;
+            input.isMouseButtonHeld(MouseCode::eMiddle) || (input.isMouseButtonHeld(MouseCode::eLeft) && shiftHeld);
+        const float scrollY = input.mouseScrollDelta().y;
         m_ActiveControlMode = flyActive ? CameraControlMode::eFly : CameraControlMode::eOrbit;
 
         if (std::abs(scrollY) > 0.0f)
@@ -575,13 +575,13 @@ namespace vultra
             m_MouseCaptureApplied = false;
         }
 
-        const glm::vec2 mouseDelta = input.getMousePositionDelta();
+        const glm::vec2 mouseDelta = input.mousePositionDelta();
         if (flyActive)
         {
             controller.yawDegrees += mouseDelta.x * controller.mouseSensitivity;
             controller.pitchDegrees -= mouseDelta.y * controller.mouseSensitivity;
         }
-        else if (input.getMouseButton(MouseCode::eLeft) && !shiftHeld)
+        else if (input.isMouseButtonHeld(MouseCode::eLeft) && !shiftHeld)
         {
             controller.yawDegrees += mouseDelta.x * controller.orbitRotateSensitivity;
             controller.pitchDegrees -= mouseDelta.y * controller.orbitRotateSensitivity;
@@ -595,23 +595,23 @@ namespace vultra
         if (flyActive)
         {
             glm::vec3 moveDir {0.0f};
-            if (input.getKey(KeyCode::eW))
+            if (input.isKeyHeld(KeyCode::eW))
                 moveDir += forward;
-            if (input.getKey(KeyCode::eS))
+            if (input.isKeyHeld(KeyCode::eS))
                 moveDir -= forward;
-            if (input.getKey(KeyCode::eD))
+            if (input.isKeyHeld(KeyCode::eD))
                 moveDir += right;
-            if (input.getKey(KeyCode::eA))
+            if (input.isKeyHeld(KeyCode::eA))
                 moveDir -= right;
-            if (input.getKey(KeyCode::eE))
+            if (input.isKeyHeld(KeyCode::eE))
                 moveDir += kWorldUp;
-            if (input.getKey(KeyCode::eQ))
+            if (input.isKeyHeld(KeyCode::eQ))
                 moveDir -= kWorldUp;
 
             float speed = controller.moveSpeed;
-            if (input.getKey(KeyCode::eLShift) || input.getKey(KeyCode::eRShift))
+            if (input.isKeyHeld(KeyCode::eLShift) || input.isKeyHeld(KeyCode::eRShift))
                 speed *= controller.sprintMultiplier;
-            if (input.getKey(KeyCode::eLCtrl) || input.getKey(KeyCode::eRCtrl))
+            if (input.isKeyHeld(KeyCode::eLCtrl) || input.isKeyHeld(KeyCode::eRCtrl))
                 speed *= 0.35f;
 
             if (glm::dot(moveDir, moveDir) > 0.0f)
@@ -621,7 +621,7 @@ namespace vultra
         else
         {
             const bool panActive =
-                input.getMouseButton(MouseCode::eMiddle) || (input.getMouseButton(MouseCode::eLeft) && shiftHeld);
+                input.isMouseButtonHeld(MouseCode::eMiddle) || (input.isMouseButtonHeld(MouseCode::eLeft) && shiftHeld);
             if (panActive)
             {
                 const float panScale = controller.orbitPanSensitivity * std::max(controller.orbitDistance, 0.1f);
@@ -650,9 +650,9 @@ namespace vultra
         forward     = makeForward(controller.yawDegrees, controller.pitchDegrees);
         camera.view = glm::lookAt(controller.position, controller.position + forward, kWorldUp);
         camera.projection =
-            glm::perspectiveRH_ZO(glm::radians(controller.fovYDegrees), aspect, controller.zNear, controller.zFar);
+            glm::perspectiveRH_ZO(glm::radians(controller.fovY), aspect, controller.zNear, controller.zFar);
 
-        camera.fovY  = glm::radians(controller.fovYDegrees);
+        camera.fovY  = glm::radians(controller.fovY);
         camera.zNear = controller.zNear;
         camera.zFar  = controller.zFar;
     }

@@ -28,8 +28,9 @@ namespace vultra_app
         virtual void onDestroy(EditorContext& /*ctx*/) {}
 
         // Rebuild the visible title from the active language. Called once at construction and again by
-        // the window manager whenever the language changes.
-        void refreshLocalization()
+        // the window manager whenever the language changes. Virtual so windows with a non-i18n literal
+        // title (e.g. Lua-scripted panels) can keep their own label across a language switch.
+        virtual void refreshLocalization()
         {
             const std::string label = m_TitleKey.empty() ? m_Name : std::string {vultra::tr(m_TitleKey)};
             m_DisplayName           = m_Icon.empty() ? label : m_Icon + "  " + label;

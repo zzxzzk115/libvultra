@@ -51,8 +51,10 @@ namespace vultra
             VULTRA_CLIENT_INFO("[Lua] {}", stream.str());
         });
 
+
         return true;
     }
+
 
     void ScriptEngine::shutdown()
     {

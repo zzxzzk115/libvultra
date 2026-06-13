@@ -167,6 +167,13 @@ target("vultra")
 
     -- add deps
     add_deps("vasset", "renderdoc", "IconFontCppHeaders", "imgui-ext", "debug_draw", "vultra_builtin_assets")
+    -- regenerate Lua bindings from VLUA_*-annotated headers before compiling
+    -- (phony, host-only, best-effort -- see tools/xmake.lua). The generated
+    -- .gen.cpp files are checked in, so cross builds and toolchain-less builds
+    -- simply consume them.
+    if not is_plat("wasm") and not is_plat("android") then
+        add_deps("lua-codegen")
+    end
     if not is_plat("wasm") then
         add_deps("vrdx")
     end

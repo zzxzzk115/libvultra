@@ -15,19 +15,19 @@ namespace vultra
 
         virtual void handleEvent(const os::GeneralWindowEvent& e) = 0;
 
-        virtual bool getKey(KeyCode key) const       = 0;
-        virtual bool getKeyDown(KeyCode key) const   = 0;
-        virtual bool getKeyUp(KeyCode key) const     = 0;
-        virtual bool getKeyRepeat(KeyCode key) const = 0;
+        virtual bool isKeyHeld(KeyCode key) const       = 0;
+        virtual bool isKeyPressed(KeyCode key) const   = 0;
+        virtual bool isKeyReleased(KeyCode key) const     = 0;
+        virtual bool isKeyRepeated(KeyCode key) const = 0;
 
-        virtual bool getMouseButton(MouseCode button) const       = 0;
-        virtual bool getMouseButtonDown(MouseCode button) const   = 0;
-        virtual bool getMouseButtonUp(MouseCode button) const     = 0;
-        virtual int  getMouseButtonClicks(MouseCode button) const = 0;
+        virtual bool isMouseButtonHeld(MouseCode button) const       = 0;
+        virtual bool isMouseButtonPressed(MouseCode button) const   = 0;
+        virtual bool isMouseButtonReleased(MouseCode button) const     = 0;
+        virtual int  mouseButtonClicks(MouseCode button) const = 0;
 
-        virtual glm::vec2 getMousePosition() const      = 0;
-        virtual glm::vec2 getMousePositionFlipY() const = 0;
-        virtual glm::vec2 getMousePositionDelta() const = 0;
-        virtual glm::vec2 getMouseScrollDelta() const   = 0;
+        virtual glm::vec2 mousePosition() const      = 0;
+        virtual glm::vec2 mousePositionFlipY() const = 0;
+        virtual glm::vec2 mousePositionDelta() const = 0;
+        virtual glm::vec2 mouseScrollDelta() const   = 0;
     };
 } // namespace vultra

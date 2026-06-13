@@ -157,6 +157,26 @@ namespace vultra
             return false;
         }
 
+        // ABI guard: a plugin built against a different EnginePlugin contract
+        // would crash on the first virtual call. Reject it up front with an
+        // actionable message. Absent symbol == legacy v1 plugin.
+        const unsigned int pluginAbi =
+            [&]() -> unsigned int {
+            if (auto abiFn = reinterpret_cast<AbiVersionFn>(getSym(h, "vultraPluginAbiVersion")))
+                return abiFn();
+            return 1u;
+        }();
+        if (pluginAbi != kEnginePluginAbiVersion)
+        {
+            VULTRA_CORE_ERROR("[PluginManager] '{}' ABI mismatch: plugin built for v{}, engine is v{}. "
+                              "Rebuild the plugin against this engine.",
+                              path,
+                              pluginAbi,
+                              kEnginePluginAbiVersion);
+            (void)closeLib(h);
+            return false;
+        }
+
         EnginePlugin* p = create();
         if (!p)
         {
@@ -222,6 +242,15 @@ namespace vultra
             return true;
         }
         return false;
+    }
+
+    void PluginManager::update(EngineContext& ctx, float dt)
+    {
+        for (auto& loaded : m_Loaded)
+        {
+            if (!loaded.uninstalled && loaded.plugin)
+                loaded.plugin->update(ctx, dt);
+        }
     }
 
     void PluginManager::uninstallAll(EngineContext& ctx)

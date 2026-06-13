@@ -1,5 +1,39 @@
 -- Build-time host tools.
 
+-- lua-codegen: regenerates the Lua binding glue (component usertypes, ImGui
+-- subset, LuaLS stub) from VLUA_*-annotated headers + dear_bindings metadata,
+-- inside a project-local .venv provisioned from tools/python/requirements.txt.
+-- A phony target so it slots into the build graph: targets that consume the
+-- generated .gen.cpp add_deps("lua-codegen"), so it runs before they compile.
+-- Best-effort -- the generated files are checked in, so this is a no-op when
+-- nothing changed and a graceful skip when the Python toolchain is absent
+-- (see xmake/lua_codegen.lua / xmake/python_venv.lua).
+target("lua-codegen")
+    set_kind("phony")
+    set_default(false)
+    -- never run codegen under cross toolchains (host-only python tooling); the
+    -- committed generated files are consumed as-is on wasm/android.
+    on_build(function (target)
+        if target:is_plat("wasm") or target:is_plat("android") then
+            return
+        end
+        import("lua_codegen", { rootdir = path.join(os.projectdir(), "xmake") })
+        lua_codegen()
+    end)
+
+-- `xmake codegen`: run the generators on demand (same path as the build hook).
+task("codegen")
+    set_menu {
+        usage = "xmake codegen",
+        description = "Regenerate Lua bindings (component usertypes, ImGui, stub) into a .venv.",
+        options = {}
+    }
+    on_run(function ()
+        import("lua_codegen", { rootdir = path.join(os.projectdir(), "xmake") })
+        lua_codegen()
+    end)
+
+
 -- builtinpack: packs libvultra's builtin engine resources into a single zstd VPK,
 -- which vultra.builtin_pack embeds into self-contained binaries (editor, examples).
 target("builtinpack")

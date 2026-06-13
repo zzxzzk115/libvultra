@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="script_lua"
+uid="913ffd39c75e19310e34993e096f0cb6"
+
+[source]
+file="plugins/editor_panel/init.lua"
+
+[output]
+file="imported/script_lua/plugins/editor_panel/init.lua"
+
+[params]

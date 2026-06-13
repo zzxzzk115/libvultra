@@ -21,7 +21,7 @@ function OnCreate(self)
     local splat = Asset.loadGaussianSplat("res://models/3dgs/hornedlizard.spz")
     local stats = Asset.memoryStats()
     local overlay = Camera.overlayInfo()
-    local gs = Render.getGaussianSplatSettings()
+    local gs = Render.gaussianSplatSettings()
 
     Render.setGaussianSplatSettings(gs)
 
@@ -49,9 +49,9 @@ function OnUpdate(self, dt)
     t.position = pos
 
     if not BindingProbe.logged and BindingProbe.elapsed > 1.0 then
-        local mouse = Input.getMousePosition()
-        local delta = Input.getMousePositionDelta()
-        local renderStats = Render.getGaussianSplatFrameStats()
+        local mouse = Input.mousePosition()
+        local delta = Input.mousePositionDelta()
+        local renderStats = Render.gaussianSplatFrameStats()
 
         print("[binding_probe] script.hasInstance=" .. bool_text(Script.hasInstance(self)))
         print("[binding_probe] fps=" .. tostring(Time.framesPerSecond()))

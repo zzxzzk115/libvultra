@@ -3,7 +3,12 @@
 #include "vultra/function/scripting/bindings/script_animation_binding.hpp"
 #include "vultra/function/scripting/bindings/script_asset_binding.hpp"
 #include "vultra/function/scripting/bindings/script_audio_binding.hpp"
+#include "vultra/function/scripting/bindings/script_coroutine_binding.hpp"
+#include "vultra/function/scripting/bindings/script_deprecations.hpp"
+#include "vultra/function/scripting/bindings/script_editor_binding.hpp"
 #include "vultra/function/scripting/bindings/script_entity_binding.hpp"
+#include "vultra/function/scripting/bindings/script_generated_binding.hpp"
+#include "vultra/function/scripting/bindings/script_imgui_binding.hpp"
 #include "vultra/function/scripting/bindings/script_input_binding.hpp"
 #include "vultra/function/scripting/bindings/script_math_binding.hpp"
 #include "vultra/function/scripting/bindings/script_physics_binding.hpp"
@@ -35,5 +40,12 @@ namespace vultra
         registerScriptRenderBindings(lua, ctx);
         registerScriptUpscalerBindings(lua, ctx);
         registerScriptUiBindings(lua, ctx);
+        registerGeneratedComponentBindings(lua, ctx);
+        registerScriptCoroutineRuntime(lua);
+        registerScriptImGuiBindings(lua, ctx);  // no-op without IImGuiService
+        registerScriptEditorBindings(lua, ctx); // no-op without IEditorExtensionService
+
+        // must run last: wraps old names of the bindings registered above
+        registerScriptDeprecations(lua);
     }
 } // namespace vultra

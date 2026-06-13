@@ -25,6 +25,7 @@ namespace vultra
 
         bool onInit() override;
         void onShutdown() override;
+        void onUpdate(fsec dt) override; // ticks native (ABI v2) + Lua plugins each frame
 
         std::vector<PluginManifest> discover(const std::filesystem::path& dir) const override;
         std::vector<PluginContentRoot> contentRoots() override;

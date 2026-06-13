@@ -105,6 +105,9 @@ namespace vultra_app
         };
 
         void ensureInitialized();
+        // Materializes Lua-registered editor panels into windows and removes
+        // unregistered ones, draining IEditorExtensionService each frame.
+        void syncScriptedPanels(EditorContext& ctx);
         bool isProjectLoading() const;
         bool updateProjectLoading(EditorContext& ctx);
         void updateBuildAndRun(EditorContext& ctx);

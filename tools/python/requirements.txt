@@ -1,0 +1,9 @@
+# Python dependencies for build-time code generation (provisioned into a
+# project-local .venv by xmake/python_venv.lua; see the `lua-codegen` target
+# in tools/xmake.lua). Pinned loosely -- these tools are stable.
+
+# libclang: parses VLUA_*-annotated component headers for gen_lua_bindings.py
+libclang>=18.1.1
+
+# ply: required by dear_bindings (gen_imgui_lua.py's upstream metadata step)
+ply>=3.11

@@ -2,28 +2,28 @@
 
 namespace vultra
 {
-    bool Input::getKey(KeyCode key) { return s_KeyStates[static_cast<int>(key)].pressed; }
+    bool Input::isKeyHeld(KeyCode key) { return s_KeyStates[static_cast<int>(key)].pressed; }
 
-    bool Input::getKeyDown(KeyCode key) { return s_KeyStates[static_cast<int>(key)].down; }
+    bool Input::isKeyPressed(KeyCode key) { return s_KeyStates[static_cast<int>(key)].down; }
 
-    bool Input::getKeyUp(KeyCode key) { return s_KeyStates[static_cast<int>(key)].up; }
+    bool Input::isKeyReleased(KeyCode key) { return s_KeyStates[static_cast<int>(key)].up; }
 
-    bool Input::getKeyRepeat(KeyCode key) { return s_KeyStates[static_cast<int>(key)].repeat; }
+    bool Input::isKeyRepeated(KeyCode key) { return s_KeyStates[static_cast<int>(key)].repeat; }
 
-    bool Input::getMouseButton(MouseCode button) { return s_MouseButtonStates[static_cast<int>(button)].pressed; }
+    bool Input::isMouseButtonHeld(MouseCode button) { return s_MouseButtonStates[static_cast<int>(button)].pressed; }
 
-    bool Input::getMouseButtonDown(MouseCode button)
+    bool Input::isMouseButtonPressed(MouseCode button)
     {
         return s_MouseButtonStates[static_cast<int>(button)].clicks > 0;
     }
 
-    bool Input::getMouseButtonUp(MouseCode button)
+    bool Input::isMouseButtonReleased(MouseCode button)
     {
         auto& state = s_MouseButtonStates[static_cast<int>(button)];
         return (!state.pressed && state.clicks > 0);
     }
 
-    int Input::getMouseButtonClicks(MouseCode button) { return s_MouseButtonStates[static_cast<int>(button)].clicks; }
+    int Input::mouseButtonClicks(MouseCode button) { return s_MouseButtonStates[static_cast<int>(button)].clicks; }
 
     void Input::setKeyState(int key, InputAction action)
     {

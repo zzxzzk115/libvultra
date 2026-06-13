@@ -16,20 +16,20 @@ namespace vultra
     class Input
     {
     public:
-        static bool getKey(KeyCode key);
-        static bool getKeyDown(KeyCode key);
-        static bool getKeyUp(KeyCode key);
-        static bool getKeyRepeat(KeyCode key);
+        static bool isKeyHeld(KeyCode key);
+        static bool isKeyPressed(KeyCode key);
+        static bool isKeyReleased(KeyCode key);
+        static bool isKeyRepeated(KeyCode key);
 
-        static bool getMouseButton(MouseCode button);
-        static bool getMouseButtonDown(MouseCode button);
-        static bool getMouseButtonUp(MouseCode button);
-        static int  getMouseButtonClicks(MouseCode button);
+        static bool isMouseButtonHeld(MouseCode button);
+        static bool isMouseButtonPressed(MouseCode button);
+        static bool isMouseButtonReleased(MouseCode button);
+        static int  mouseButtonClicks(MouseCode button);
 
-        static glm::vec2 getMousePosition() { return s_MousePosition; }
-        static glm::vec2 getMousePositionFlipY() { return s_MousePositionFlipY; }
-        static glm::vec2 getMousePositionDelta() { return s_MousePositionDelta; }
-        static glm::vec2 getMouseScrollDelta() { return s_MouseScrollDelta; }
+        static glm::vec2 mousePosition() { return s_MousePosition; }
+        static glm::vec2 mousePositionFlipY() { return s_MousePositionFlipY; }
+        static glm::vec2 mousePositionDelta() { return s_MousePositionDelta; }
+        static glm::vec2 mouseScrollDelta() { return s_MouseScrollDelta; }
 
     private:
         template<typename T>

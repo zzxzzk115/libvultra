@@ -72,6 +72,12 @@ namespace vultra
         bool                     restartRequired {false}; // manifest "restartRequired": true
         std::string              native;     // relative native library name (optional)
         std::string              entry;      // relative Lua entry script (optional)
+        // Ids of other plugins that must load before this one (manifest
+        // "dependencies": ["com.x.y", ...]). PluginSystem topologically sorts
+        // the enabled set by this; a missing/disabled dependency fails only
+        // this plugin, not the whole boot. (Version-range matching is future
+        // work; ids are matched exactly today.)
+        std::vector<std::string>       dependencies;
         std::vector<PluginConfigParam> configParams;
 
         std::filesystem::path directory;    // the plugin's folder

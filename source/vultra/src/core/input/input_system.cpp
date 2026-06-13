@@ -122,68 +122,68 @@ namespace vultra
         m_MouseScrollDelta = {};
     }
 
-    bool InputSystem::getKey(KeyCode key) const
+    bool InputSystem::isKeyHeld(KeyCode key) const
     {
         auto it = m_KeyStates.find(key);
 
         return it != m_KeyStates.end() && it->second.pressed;
     }
 
-    bool InputSystem::getKeyDown(KeyCode key) const
+    bool InputSystem::isKeyPressed(KeyCode key) const
     {
         auto it = m_KeyStates.find(key);
 
         return it != m_KeyStates.end() && it->second.down;
     }
 
-    bool InputSystem::getKeyUp(KeyCode key) const
+    bool InputSystem::isKeyReleased(KeyCode key) const
     {
         auto it = m_KeyStates.find(key);
 
         return it != m_KeyStates.end() && it->second.up;
     }
 
-    bool InputSystem::getKeyRepeat(KeyCode key) const
+    bool InputSystem::isKeyRepeated(KeyCode key) const
     {
         auto it = m_KeyStates.find(key);
 
         return it != m_KeyStates.end() && it->second.repeat;
     }
 
-    bool InputSystem::getMouseButton(MouseCode button) const
+    bool InputSystem::isMouseButtonHeld(MouseCode button) const
     {
         auto it = m_MouseButtonStates.find(button);
 
         return it != m_MouseButtonStates.end() && it->second.pressed;
     }
 
-    bool InputSystem::getMouseButtonDown(MouseCode button) const
+    bool InputSystem::isMouseButtonPressed(MouseCode button) const
     {
         auto it = m_MouseButtonStates.find(button);
 
         return it != m_MouseButtonStates.end() && it->second.clicks > 0;
     }
 
-    bool InputSystem::getMouseButtonUp(MouseCode button) const
+    bool InputSystem::isMouseButtonReleased(MouseCode button) const
     {
         auto it = m_MouseButtonStates.find(button);
 
         return it != m_MouseButtonStates.end() && !it->second.pressed && it->second.clicks > 0;
     }
 
-    int InputSystem::getMouseButtonClicks(MouseCode button) const
+    int InputSystem::mouseButtonClicks(MouseCode button) const
     {
         auto it = m_MouseButtonStates.find(button);
 
         return it != m_MouseButtonStates.end() ? it->second.clicks : 0;
     }
 
-    glm::vec2 InputSystem::getMousePosition() const { return m_MousePosition; }
+    glm::vec2 InputSystem::mousePosition() const { return m_MousePosition; }
 
-    glm::vec2 InputSystem::getMousePositionFlipY() const { return m_MousePositionFlipY; }
+    glm::vec2 InputSystem::mousePositionFlipY() const { return m_MousePositionFlipY; }
 
-    glm::vec2 InputSystem::getMousePositionDelta() const { return m_MousePositionDelta; }
+    glm::vec2 InputSystem::mousePositionDelta() const { return m_MousePositionDelta; }
 
-    glm::vec2 InputSystem::getMouseScrollDelta() const { return m_MouseScrollDelta; }
+    glm::vec2 InputSystem::mouseScrollDelta() const { return m_MouseScrollDelta; }
 
 } // namespace vultra
