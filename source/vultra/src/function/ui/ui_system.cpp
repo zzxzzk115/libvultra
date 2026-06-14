@@ -67,6 +67,17 @@ namespace vultra
             return false;
         }
 
+        // The interactive target for a hovered entity: itself if interactable, otherwise its nearest
+        // interactable ancestor. Lets a non-interactive child graphic (e.g. a Text label drawn on top
+        // of a button) still drive the button's hover/press state.
+        [[nodiscard]] entt::entity nearestInteractable(const entt::registry& reg, World& world, entt::entity entity)
+        {
+            for (auto current = entity; current != entt::null && reg.valid(current); current = world.parent(current))
+                if (uiInteractable(reg, current))
+                    return current;
+            return entt::null;
+        }
+
         void setSliderFromPointer(UiSliderComponent& slider, const UiResolvedRect& rect, const glm::vec2 screenPx)
         {
             const float width = std::max(rect.maxPx.x - rect.minPx.x, 1.0f);
@@ -109,6 +120,14 @@ namespace vultra
         m_HoveredEntity = entt::null;
         m_PreviousHoveredEntity = entt::null;
         m_PressedEntity = entt::null;
+        m_InputViewport = {};
+    }
+
+    void UiSystem::setInputViewport(bool active, glm::vec2 mousePx, glm::vec2 renderSizePx)
+    {
+        m_InputViewport.active       = active;
+        m_InputViewport.mousePx      = mousePx;
+        m_InputViewport.renderSizePx = renderSizePx;
     }
 
     void UiSystem::onUpdate(fsec)
@@ -225,7 +244,10 @@ namespace vultra
 
         auto& world = worldService->world();
         auto& reg   = world.registry();
-        const auto windowPx = windowExtentPx(ctx().services);
+        const glm::vec2 windowPx =
+            (m_InputViewport.active && m_InputViewport.renderSizePx.x > 0.0f && m_InputViewport.renderSizePx.y > 0.0f) ?
+                m_InputViewport.renderSizePx :
+                windowExtentPx(ctx().services);
 
         auto pushChildren = [&](auto&& self,
                                 entt::entity canvasEntity,
@@ -355,7 +377,9 @@ namespace vultra
             return;
         }
 
-        const glm::vec2 mouse = input->mousePosition();
+        auto& world = worldService->world();
+
+        const glm::vec2 mouse = m_InputViewport.active ? m_InputViewport.mousePx : input->mousePosition();
         m_PreviousHoveredEntity = m_HoveredEntity;
         m_HoveredEntity = entt::null;
         if (auto hit = raycast(mouse))
@@ -371,12 +395,16 @@ namespace vultra
         if (m_HoveredEntity != entt::null)
             pushEvent(UiEventType::PointerMove, m_HoveredEntity, mouse);
 
-        if (auto* button = reg.try_get<UiButtonComponent>(m_HoveredEntity); button && button->enabled)
+        // Hover/press target the nearest interactable ancestor, so a child graphic on top of a
+        // button (e.g. its Text label) still drives the button.
+        const entt::entity interactive = nearestInteractable(reg, world, m_HoveredEntity);
+
+        if (auto* button = reg.try_get<UiButtonComponent>(interactive); button && button->enabled)
             button->hovered = true;
 
-        if (m_HoveredEntity != entt::null && input->isMouseButtonPressed(MouseCode::eLeft))
+        if (interactive != entt::null && input->isMouseButtonPressed(MouseCode::eLeft))
         {
-            m_PressedEntity = m_HoveredEntity;
+            m_PressedEntity = interactive;
             pushEvent(UiEventType::PointerDown, m_PressedEntity, mouse, 0u);
             if (auto* slider = reg.try_get<UiSliderComponent>(m_PressedEntity); slider && slider->enabled && slider->interactable)
                 if (auto rect = resolvedRect(m_PressedEntity))
@@ -394,7 +422,7 @@ namespace vultra
             if (input->isMouseButtonReleased(MouseCode::eLeft))
             {
                 pushEvent(UiEventType::PointerUp, m_PressedEntity, mouse, 0u);
-                if (m_HoveredEntity == m_PressedEntity)
+                if (interactive == m_PressedEntity)
                 {
                     pushEvent(UiEventType::Click, m_PressedEntity, mouse, 0u, 1u);
                     if (auto* button = reg.try_get<UiButtonComponent>(m_PressedEntity))

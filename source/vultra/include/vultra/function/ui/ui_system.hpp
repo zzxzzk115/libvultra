@@ -26,6 +26,7 @@ namespace vultra
         std::optional<UiRaycastHit> raycast(glm::vec2 screenPx) const override;
         std::optional<UiRaycastHit> raycastCanvas(entt::entity canvasEntity, glm::vec2 canvasPx) const override;
         const std::vector<UiPointerEvent>& eventsThisFrame() const override { return m_Events; }
+        void setInputViewport(bool active, glm::vec2 mousePx, glm::vec2 renderSizePx) override;
 
         const std::vector<UiResolvedRect>& resolvedRects() const { return m_Rects; }
 
@@ -45,5 +46,14 @@ namespace vultra
         entt::entity m_PreviousHoveredEntity {entt::null};
         entt::entity m_PressedEntity {entt::null};
         uint64_t     m_NextEventSequence {1};
+
+        // Embedded-viewport input override (editor Game View). See setInputViewport().
+        struct InputViewport
+        {
+            bool      active {false};
+            glm::vec2 mousePx {0.0f};
+            glm::vec2 renderSizePx {0.0f};
+        };
+        InputViewport m_InputViewport;
     };
 } // namespace vultra

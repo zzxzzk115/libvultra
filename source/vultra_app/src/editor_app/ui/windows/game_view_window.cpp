@@ -13,6 +13,7 @@
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
+#include <vultra/function/services/ui_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/components/hierarchy_component.hpp>
@@ -389,6 +390,32 @@ namespace vultra_app
         const auto max = ImGui::GetItemRectMax();
         auto*      dl  = ImGui::GetWindowDrawList();
         dl->AddRect(min, max, IM_COL32(70, 78, 90, 255));
+
+        // Feed pointer input into the game render-target space so in-game UI (buttons/sliders/etc.)
+        // is interactable while playing inside the editor Game View. Uses ImGui coords throughout so
+        // the mapping is correct regardless of where the panel is docked. Mouse outside the image
+        // maps outside the canvas (no hover). UI input is otherwise gated to play mode by UiSystem.
+        if (ctx.services)
+        {
+            if (auto* uiService = ctx.services->tryGet<vultra::IUiService>())
+            {
+                const bool feed = ctx.state.editorPlaying && !useXrMirrorPreview &&
+                                  m_ActiveRenderTarget.textureId && (max.x > min.x) && (max.y > min.y);
+                if (feed)
+                {
+                    const ImVec2    m = ImGui::GetMousePos();
+                    const glm::vec2 renderSize {static_cast<float>(std::max(ctx.state.gameViewRenderWidth, 1u)),
+                                                static_cast<float>(std::max(ctx.state.gameViewRenderHeight, 1u))};
+                    const glm::vec2 renderMouse {(m.x - min.x) / (max.x - min.x) * renderSize.x,
+                                                 (m.y - min.y) / (max.y - min.y) * renderSize.y};
+                    uiService->setInputViewport(true, renderMouse, renderSize);
+                }
+                else
+                {
+                    uiService->setInputViewport(false, glm::vec2 {0.0f}, glm::vec2 {0.0f});
+                }
+            }
+        }
 
         if (ctx.services)
         {

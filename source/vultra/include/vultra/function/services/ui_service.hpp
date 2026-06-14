@@ -69,5 +69,11 @@ namespace vultra
         virtual std::optional<UiRaycastHit> raycast(glm::vec2 screenPx) const = 0;
         virtual std::optional<UiRaycastHit> raycastCanvas(entt::entity canvasEntity, glm::vec2 canvasPx) const = 0;
         virtual const std::vector<UiPointerEvent>& eventsThisFrame() const = 0;
+
+        // Override the UI input source for an embedded viewport (e.g. the editor Game View). When
+        // active, UI layout uses renderSizePx as the screen extent and mousePx as the pointer
+        // position, both in the render target's pixel space. When inactive (default / standalone
+        // runtime), the UI uses the OS window extent and the raw OS mouse. Call every frame.
+        virtual void setInputViewport(bool active, glm::vec2 mousePx, glm::vec2 renderSizePx) = 0;
     };
 } // namespace vultra
