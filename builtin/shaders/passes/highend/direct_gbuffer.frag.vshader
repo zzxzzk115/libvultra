@@ -117,8 +117,11 @@ void main()
         // PBR Specular-Glossiness: the specular map (mrTex slot) drives F0 (stored mono
         // as mra.x); a separate glossiness map (roughnessTex slot) drives roughness =
         // 1 - glossiness. Both replace the scalar fallbacks rather than multiplying.
+        // The specular map is an sRGB-encoded color (like baseColor); decode it to linear
+        // before deriving F0, otherwise F0 is inflated up to ~2.4x and the surface reads
+        // as a near-mirror. Glossiness is a linear scalar and stays raw.
         if (mrTex != 0u)
-            mra.x = dot(sampleBindless(mrTex, v_TexCoord0).rgb, vec3(0.2126, 0.7152, 0.0722));
+            mra.x = dot(sRGBToLinear(sampleBindless(mrTex, v_TexCoord0).rgb), vec3(0.2126, 0.7152, 0.0722));
         if (roughnessTex != 0u)
             mra.y = 1.0 - sampleBindless(roughnessTex, v_TexCoord0).r;
     }

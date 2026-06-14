@@ -1131,11 +1131,18 @@ namespace vultra
 
     bool AssetSystem::materialTextureDependenciesReady(const vasset::VMaterial& material)
     {
+        // PASSIVE residency check -- must not trigger a load here. This runs inside
+        // update() -> refreshPendingMaterialParams(); calling loadTextureAsync() (which under sync
+        // loading is loadTextureSync -> loadGpuAssetSync -> update()) re-enters update() recursively
+        // and starves the upload-drain that would actually make the texture resident, so the material
+        // could stay stuck on the fallback (white/flat) texture indefinitely. The textures are loaded
+        // by the material's resolveTex (packMaterialParams*); here we only observe GPU residency.
         auto ready = [this](const CoreUUID& uuid) {
             if (!uuid.valid())
                 return true;
-            const auto texture = loadTextureAsync(uuid);
-            return texture.ready() && texture.gpuIndex() != std::numeric_limits<uint32_t>::max();
+            auto* rec = m_TextureCache.findOrCreate(uuid);
+            return rec != nullptr && rec->state.load(std::memory_order_acquire) == AssetState::eReady &&
+                   rec->gpuIndex.load(std::memory_order_acquire) != std::numeric_limits<uint32_t>::max();
         };
 
         switch (material.model)
@@ -1149,8 +1156,13 @@ namespace vultra
                        ready(CoreUUID(material.core.pbrMR.ambientOcclusionTexture.uuid)) &&
                        ready(CoreUUID(material.core.pbrMR.emissiveTexture.uuid));
             case vasset::VMaterialModel::ePBRSpecularGlossiness:
+                // Wait for EVERY texture packMaterialParamsPBRSG binds. Mixamo SG exports a separate
+                // glossiness map + normal map; omitting them let the material be re-packed and dropped
+                // from the refresh queue while those were still the white/flat fallback (wrong "反光").
                 return ready(CoreUUID(material.core.pbrSG.diffuseTexture.uuid)) &&
-                       ready(CoreUUID(material.core.pbrSG.specularGlossinessTexture.uuid));
+                       ready(CoreUUID(material.core.pbrSG.specularGlossinessTexture.uuid)) &&
+                       ready(CoreUUID(material.core.pbrSG.glossinessTexture.uuid)) &&
+                       ready(CoreUUID(material.core.pbrSG.normalTexture.uuid));
             case vasset::VMaterialModel::eUnlit:
                 return ready(CoreUUID(material.core.unlit.colorTexture.uuid));
             case vasset::VMaterialModel::ePhong:
