@@ -2954,10 +2954,20 @@ namespace vultra_app
             if (!assetService)
                 return {};
 
+            // Show a human-readable scheme-prefixed path (builtin://, res://, plugin://, ...) instead
+            // of a raw UUID. Prefer the project asset's SOURCE path (e.g. res://textures/foo.png)
+            // over the cooked/imported output path, which is opaque. Fall back to resolveAssetUri for
+            // builtin assets (builtin textures/fonts) and other schemes the project registry omits.
+            if (const auto entry = assetService->registry().lookup(uuid.native());
+                entry.type != vasset::VAssetType::eUnknown && !entry.sourcePath.empty())
+                return "res://" + std::filesystem::path(entry.sourcePath).generic_string();
+
             std::string uri;
-            if (!assetService->resolver().resolve(uuid.native(), uri))
-                return {};
-            return uri;
+            if (assetService->resolveAssetUri(uuid, uri) && !uri.empty())
+                return uri;
+            if (assetService->resolver().resolve(uuid.native(), uri))
+                return uri;
+            return {};
         }
 
         bool isImportedAssetPath(const std::string& path)
