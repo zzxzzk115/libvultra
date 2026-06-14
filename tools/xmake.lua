@@ -1,7 +1,7 @@
 -- Build-time host tools.
 
--- lua-codegen: regenerates the Lua binding glue (component usertypes, ImGui
--- subset, LuaLS stub) from VLUA_*-annotated headers + dear_bindings metadata,
+-- lua-codegen: regenerates the script binding glue (the VBIND_* IR pipeline ->
+-- sol2 .gen.cpp + LuaLS stub, plus the ImGui subset from dear_bindings metadata)
 -- inside a project-local .venv provisioned from tools/python/requirements.txt.
 -- A phony target so it slots into the build graph: targets that consume the
 -- generated .gen.cpp add_deps("lua-codegen"), so it runs before they compile.

@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "libvultra script-binding IR",
+  "description": "Language-neutral description of the scriptable API surface, produced by tools/python/extract_bindings.py (from VBIND_* annotations) and consumed by per-language backends (bindgen.backends.*). Single source of truth; checked in. Mirrors tools/python/bindgen/ir_model.py.",
+  "type": "object",
+  "required": ["schemaVersion", "modules", "usertypes", "enums", "structs"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "generator": { "type": "string" },
+    "modules": { "type": "array", "items": { "$ref": "#/$defs/module" } },
+    "usertypes": { "type": "array", "items": { "$ref": "#/$defs/usertype" } },
+    "enums": { "type": "array", "items": { "$ref": "#/$defs/enum" } },
+    "structs": { "type": "array", "items": { "$ref": "#/$defs/struct" } },
+    "raws": { "type": "array", "items": { "$ref": "#/$defs/raw" } }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "properties": { "file": { "type": "string" }, "line": { "type": "integer" } }
+    },
+    "typeToken": {
+      "type": "string",
+      "description": "Neutral type token; each backend realizes it (see bindgen.marshallers). `raw` carries a verbatim C++ spelling in `cpp` for shim passthrough.",
+      "enum": ["void", "bool", "int", "uint", "uint64", "float", "double", "string",
+               "vec2", "vec3", "vec4", "uuid", "entity", "enum", "struct", "raw"]
+    },
+    "param": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "$ref": "#/$defs/typeToken" },
+        "cpp": { "type": ["string", "null"], "description": "concrete C++ type for enum/struct/raw tokens" }
+      }
+    },
+    "function": {
+      "type": "object",
+      "required": ["luaName", "callForm", "bodyKind", "cppCall"],
+      "properties": {
+        "luaName": { "type": "string" },
+        "callForm": { "enum": ["namespace", "method"] },
+        "bodyKind": { "enum": ["serviceForward", "shimCall"],
+                      "description": "serviceForward: generator emits ctx.<svc>->cppCall(args). shimCall: generator forwards to the hand-written shim cppCall(ctx, ...)." },
+        "cppCall": { "type": "string" },
+        "params": { "type": "array", "items": { "$ref": "#/$defs/param" } },
+        "returnType": { "$ref": "#/$defs/typeToken" },
+        "returnCpp": { "type": ["string", "null"] },
+        "serviceDep": { "type": ["string", "null"], "description": "ScriptContext pointer member, null-checked" },
+        "nullReturn": { "type": ["string", "null"] },
+        "selfHandle": { "type": ["string", "null"] },
+        "overloadGroup": { "type": ["string", "null"] },
+        "deprecatedAlias": { "type": ["string", "null"] },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "property": {
+      "type": "object",
+      "required": ["luaName", "getterShim"],
+      "description": "Usertype property backed by hand-written getter/setter shims.",
+      "properties": {
+        "luaName": { "type": "string" },
+        "getterShim": { "type": "string" },
+        "setterShim": { "type": ["string", "null"] },
+        "setterParam": { "type": "string" },
+        "readonly": { "type": "boolean" }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": ["name", "type"],
+      "description": "Data field: a value-struct member, or a component field bound via requireComponentRef.",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "$ref": "#/$defs/typeToken" },
+        "cpp": { "type": ["string", "null"], "description": "the C++ field name (component fields) or type cpp (value structs)" },
+        "readonly": { "type": "boolean" },
+        "deprecated": { "type": ["string", "null"] }
+      }
+    },
+    "module": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "description": "PascalCase namespace table" },
+        "area": { "type": "string", "description": "registrar/.gen.cpp stem" },
+        "serviceDep": { "type": ["string", "null"] },
+        "header": { "type": "string" },
+        "functions": { "type": "array", "items": { "$ref": "#/$defs/function" } },
+        "properties": { "type": "array" },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "usertype": {
+      "type": "object",
+      "required": ["name", "handle"],
+      "properties": {
+        "name": { "type": "string" },
+        "handle": { "type": "string", "description": "ref struct (entt::entity holder)" },
+        "area": { "type": "string" },
+        "header": { "type": "string" },
+        "component": { "type": ["string", "null"], "description": "auto `valid` + requireComponentRef/has<Name>" },
+        "accessor": { "type": ["string", "null"], "description": "entity.<accessor>" },
+        "postRegister": { "type": ["string", "null"], "description": "fn(usertype&, ctx) run after registration" },
+        "methods": { "type": "array", "items": { "$ref": "#/$defs/function" } },
+        "properties": { "type": "array", "items": { "$ref": "#/$defs/property" } },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/field" }, "description": "component fields (requireComponentRef get/set)" },
+        "componentHeader": { "type": "string" },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "enum": {
+      "type": "object",
+      "required": ["luaName", "cpp", "values"],
+      "properties": {
+        "luaName": { "type": "string" },
+        "cpp": { "type": "string" },
+        "header": { "type": "string" },
+        "stripE": { "type": "boolean" },
+        "module": { "type": ["string", "null"] },
+        "area": { "type": "string" },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "value"],
+            "properties": { "name": { "type": "string" }, "value": { "type": "integer" } }
+          }
+        },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "struct": {
+      "type": "object",
+      "required": ["luaName", "cpp"],
+      "properties": {
+        "luaName": { "type": "string" },
+        "cpp": { "type": "string" },
+        "header": { "type": "string" },
+        "module": { "type": ["string", "null"] },
+        "area": { "type": "string" },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/field" } },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "raw": {
+      "type": "object",
+      "required": ["area", "symbol"],
+      "description": "Escape-hatch hook: void symbol(sol::state&, ScriptContext&) called by the area registrar.",
+      "properties": {
+        "area": { "type": "string" },
+        "symbol": { "type": "string" },
+        "header": { "type": "string" },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    }
+  }
+}

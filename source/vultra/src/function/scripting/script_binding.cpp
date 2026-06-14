@@ -7,7 +7,7 @@
 #include "vultra/function/scripting/bindings/script_deprecations.hpp"
 #include "vultra/function/scripting/bindings/script_editor_binding.hpp"
 #include "vultra/function/scripting/bindings/script_entity_binding.hpp"
-#include "vultra/function/scripting/bindings/script_generated_binding.hpp"
+#include "vultra/function/scripting/bindings/script_components_binding.hpp"
 #include "vultra/function/scripting/bindings/script_imgui_binding.hpp"
 #include "vultra/function/scripting/bindings/script_input_binding.hpp"
 #include "vultra/function/scripting/bindings/script_math_binding.hpp"
@@ -25,7 +25,7 @@ namespace vultra
 {
     void registerScriptBindings(sol::state& lua, ScriptContext& ctx)
     {
-        registerScriptMathBindings(lua);
+        registerScriptMathBindings(lua, ctx);
         registerScriptTransformBindings(lua, ctx);
         registerScriptEntityBindings(lua, ctx);
         registerScriptWorldBindings(lua, ctx);
@@ -40,7 +40,7 @@ namespace vultra
         registerScriptRenderBindings(lua, ctx);
         registerScriptUpscalerBindings(lua, ctx);
         registerScriptUiBindings(lua, ctx);
-        registerGeneratedComponentBindings(lua, ctx);
+        registerScriptComponentsBindings(lua, ctx);
         registerScriptCoroutineRuntime(lua);
         registerScriptImGuiBindings(lua, ctx);  // no-op without IImGuiService
         registerScriptEditorBindings(lua, ctx); // no-op without IEditorExtensionService

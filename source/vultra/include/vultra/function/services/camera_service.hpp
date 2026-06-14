@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/core/base/script_annotations.hpp"
 #include <vbase/service/service_registry.hpp>
 
 #include <cstdint>
@@ -11,7 +12,7 @@ namespace vultra
 {
     struct RenderCamera;
 
-    enum class CameraControlMode : uint8_t
+    enum class VBIND_ENUM(name = CameraControlMode, stripE, module = Render) CameraControlMode : uint8_t
     {
         eDisabled = 0,
         eOrbit    = 1,

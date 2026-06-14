@@ -1,11 +1,11 @@
 #pragma once
 
-#include "vultra/core/base/lua_annotations.hpp"
+#include "vultra/core/base/script_annotations.hpp"
 
 namespace vultra
 {
-    struct VLUA_CLASS(name = SphereShape, ref = ScriptSphereShapeRef, accessor = sphereShape) SphereShapeComponent
+    struct VBIND_USERTYPE(name = SphereShape, handle = ScriptSphereShapeRef, accessor = sphereShape) SphereShapeComponent
     {
-        VLUA_FIELD() float radius {0.5f};
+        VBIND_FIELD() float radius {0.5f};
     };
 } // namespace vultra

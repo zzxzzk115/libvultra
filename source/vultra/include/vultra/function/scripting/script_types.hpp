@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vultra/core/base/script_annotations.hpp"
+
 #include <entt/entity/entity.hpp>
 
 #include <cstdint>
@@ -141,28 +143,28 @@ namespace vultra
         float w {0.0f};
     };
 
-    struct ScriptAssetHandle
+    struct VBIND_STRUCT(name = AssetHandle, module = Asset) ScriptAssetHandle
     {
-        bool        valid {false};
-        bool        ready {false};
-        std::string uuid;
-        int         state {0};
-        uint32_t    gpuIndex {UINT32_MAX};
+        VBIND_FIELD() bool        valid {false};
+        VBIND_FIELD() bool        ready {false};
+        VBIND_FIELD() std::string uuid;
+        VBIND_FIELD() int         state {0};
+        VBIND_FIELD() uint32_t    gpuIndex {UINT32_MAX};
     };
 
-    struct ScriptTextAssetResult
+    struct VBIND_STRUCT(name = TextAssetResult, module = Asset) ScriptTextAssetResult
     {
-        bool        ok {false};
-        std::string text;
-        std::string error;
+        VBIND_FIELD() bool        ok {false};
+        VBIND_FIELD() std::string text;
+        VBIND_FIELD() std::string error;
     };
 
-    struct ScriptAssetMemoryStats
+    struct VBIND_STRUCT(name = AssetMemoryStats, module = Asset) ScriptAssetMemoryStats
     {
-        uint64_t cpuCacheBytes {0};
+        VBIND_FIELD() uint64_t cpuCacheBytes {0};
     };
 
-    struct ScriptPhysicsRaycastHit
+    struct VBIND_STRUCT(name = PhysicsRaycastHit, module = Physics, allFields) ScriptPhysicsRaycastHit
     {
         bool         hit {false};
         ScriptEntity entity;
@@ -172,13 +174,13 @@ namespace vultra
         float        distance {0.0f};
     };
 
-    struct ScriptPhysicsContactPair
+    struct VBIND_STRUCT(name = PhysicsContactPair, module = Physics, allFields) ScriptPhysicsContactPair
     {
         ScriptEntity a;
         ScriptEntity b;
     };
 
-    struct ScriptAnimatorPlaybackState
+    struct VBIND_STRUCT(name = AnimatorPlaybackState, module = Animation, allFields) ScriptAnimatorPlaybackState
     {
         bool        valid {false};
         bool        playing {false};
@@ -191,13 +193,13 @@ namespace vultra
         std::string animation;
     };
 
-    struct ScriptCameraOverlayInfo
+    struct VBIND_STRUCT(name = CameraOverlayInfo, module = Render, allFields) ScriptCameraOverlayInfo
     {
         bool enabled {false};
         int  mode {0};
     };
 
-    struct ScriptGaussianSplatSettings
+    struct VBIND_STRUCT(name = GaussianSplatSettings, module = Render, allFields) ScriptGaussianSplatSettings
     {
         int      baselineMode {0};
         uint32_t lodBudget {0};
@@ -214,7 +216,7 @@ namespace vultra
         float      foveatedBudgetAdjustRate {0.05f};
     };
 
-    struct ScriptGaussianSplatFrameStats
+    struct VBIND_STRUCT(name = GaussianSplatFrameStats, module = Render, allFields) ScriptGaussianSplatFrameStats
     {
         uint64_t frameIndex {0};
         int      baselineMode {0};

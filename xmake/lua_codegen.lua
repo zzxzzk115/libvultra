@@ -37,30 +37,66 @@ function main()
         return os.isfile(stamp) and os.mtime(stamp) >= newest_mtime(inputs)
     end
 
-    -- gen_lua_bindings needs compile_commands.json for include paths/defines.
-    -- The compile_commands.autoupdate rule writes it to .vscode after a build,
-    -- so the first ever build has none -> skip and use the committed .gen.cpp.
+    -- The IR pipeline (below) needs compile_commands.json for include paths/
+    -- defines; the compile_commands.autoupdate rule writes it to .vscode after a
+    -- build, so the first ever build has none -> skip and use the committed
+    -- artifacts. (Components are now part of the IR pipeline -- the legacy
+    -- gen_lua_bindings.py was retired.)
     local cc = path.join(projectdir, ".vscode", "compile_commands.json")
-    if os.isfile(cc) then
-        local script     = path.join(projectdir, "tools", "python", "gen_lua_bindings.py")
-        local stamp      = path.join(projectdir, "build", ".lua-codegen.stamp")
-        local components = os.files(path.join(projectdir, "source", "vultra", "include", "vultra",
-                                              "function", "world", "components", "*.hpp"))
-        local inputs     = table.join(components, {script})
-        if fresh(stamp, inputs) then
-            cprint("${dim}[lua-codegen] component bindings up to date")
-        else
-            local ok = try { function() os.vrunv(py, {script}); return true end }
-            if ok then
-                io.writefile(stamp, os.date("%Y-%m-%d %H:%M:%S"))
-                cprint("${color.success}[lua-codegen] component bindings regenerated")
-            else
-                cprint("${color.warning}[lua-codegen] gen_lua_bindings failed; using checked-in .gen.cpp")
+    if not os.isfile(cc) then
+        cprint("${color.warning}[lua-codegen] no .vscode/compile_commands.json yet; "
+               .. "skipping binding regen (build once to enable)")
+    end
+
+    -- IR-based binding pipeline (extract_bindings.py -> gen_lua.py). Two stages,
+    -- each stamp-guarded: stage 1 reparses C++ (libclang) only when an annotated
+    -- header, the manifest, or the extractor changes; stage 2 re-emits sol2
+    -- glue + the LuaLS stub only when the IR or a backend changes. The IR and
+    -- generated files are checked in, so this whole block is skippable.
+    local manifest = path.join(projectdir, "tools", "bindings", "headers.json")
+    if os.isfile(cc) and os.isfile(manifest) then
+        local headers = {}
+        local json = import("core.base.json")
+        local data = try { function() return json.loadfile(manifest) end }
+        if data and data.headers then
+            for _, h in ipairs(data.headers) do
+                table.insert(headers, path.join(projectdir, h))
             end
         end
-    else
-        cprint("${color.warning}[lua-codegen] no .vscode/compile_commands.json yet; "
-               .. "skipping component-binding regen (build once to enable)")
+        local ir        = path.join(projectdir, "tools", "bindings", "ir", "bindings.ir.json")
+        local extractor = path.join(projectdir, "tools", "python", "extract_bindings.py")
+        local genlua    = path.join(projectdir, "tools", "python", "gen_lua.py")
+        local bindgen   = os.files(path.join(projectdir, "tools", "python", "bindgen", "**.py"))
+
+        -- stage 1: annotated headers -> IR
+        local s1_stamp  = path.join(projectdir, "build", ".bindings-extract.stamp")
+        local s1_inputs = table.join(headers, bindgen, {extractor, manifest})
+        if fresh(s1_stamp, s1_inputs) then
+            cprint("${dim}[lua-codegen] binding IR up to date")
+        else
+            local ok = try { function() os.vrunv(py, {extractor}); return true end }
+            if ok then
+                io.writefile(s1_stamp, os.date("%Y-%m-%d %H:%M:%S"))
+                cprint("${color.success}[lua-codegen] binding IR extracted")
+            else
+                cprint("${color.warning}[lua-codegen] extract_bindings failed; using checked-in IR")
+            end
+        end
+
+        -- stage 2: IR -> sol2 .gen.cpp + LuaLS stub
+        local s2_stamp  = path.join(projectdir, "build", ".bindings-lua.stamp")
+        local s2_inputs = table.join(bindgen, {genlua, ir})
+        if fresh(s2_stamp, s2_inputs) then
+            cprint("${dim}[lua-codegen] generated Lua bindings up to date")
+        else
+            local ok = try { function() os.vrunv(py, {genlua}); return true end }
+            if ok then
+                io.writefile(s2_stamp, os.date("%Y-%m-%d %H:%M:%S"))
+                cprint("${color.success}[lua-codegen] generated Lua bindings regenerated")
+            else
+                cprint("${color.warning}[lua-codegen] gen_lua failed; using checked-in .gen.cpp")
+            end
+        end
     end
 
     -- gen_imgui_lua needs dear_bindings metadata (build/.tmp/cimgui.json), a

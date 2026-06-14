@@ -5,7 +5,7 @@
 -- venv's python interpreter. Installation is stamp-guarded so it runs once and
 -- again only when requirements.txt changes -- subsequent builds are no-ops.
 --
--- Reused by every build-time python tool (gen_lua_bindings, gen_imgui_lua, ...)
+-- Reused by every build-time python tool (extract_bindings, gen_lua, gen_imgui_lua, ...)
 -- so they share one environment. Callers:
 --   import("python_venv", { rootdir = path.join(os.projectdir(), "xmake") })
 --   local py = python_venv()            -- raises on failure

@@ -1,9 +1,11 @@
 #pragma once
+#include "vultra/core/base/script_annotations.hpp"
+
 #include <cstdint>
 
 namespace vultra
 {
-    enum class AssetState : uint8_t
+    enum class VBIND_ENUM(name = AssetState, stripE, module = Asset) AssetState : uint8_t
     {
         eUnloaded = 0,
 

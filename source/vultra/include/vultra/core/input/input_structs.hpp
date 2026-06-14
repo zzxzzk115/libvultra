@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vultra/core/base/script_annotations.hpp"
+
 #include <cstdint>
 
 namespace vultra
@@ -25,7 +27,7 @@ namespace vultra
         int  clicks {0};
     };
 
-    enum class KeyCode : uint16_t
+    enum class VBIND_ENUM(name = KeyCode, stripE, module = Input) KeyCode : uint16_t
     {
         eUnknown = 0,
 
@@ -142,7 +144,7 @@ namespace vultra
         eMenu,
     };
 
-    enum class MouseCode : uint8_t
+    enum class VBIND_ENUM(name = MouseCode, stripE, module = Input) MouseCode : uint8_t
     {
         eLeft   = 1,
         eMiddle = 2,

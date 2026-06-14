@@ -739,3 +739,1025 @@ function ImGui.PushStyleVarVec2(idx, val) end
 function ImGui.PopStyleVar() end
 
 -- <<<END GENERATED IMGUI BINDINGS>>>
+
+-- <<<BEGIN GENERATED (extract_bindings.py) -- do not edit>>>
+
+--- `Animation` namespace (generated).
+---@class Animation
+Animation = {}
+
+---@param entity any
+---@param restart any
+function Animation.play(entity, restart) end
+
+---@param entity any
+function Animation.pause(entity) end
+
+---@param entity any
+function Animation.stop(entity) end
+
+---@param entity any
+---@param animationUuid any
+---@param restart any
+function Animation.setAnimation(entity, animationUuid, restart) end
+
+---@param entity any
+---@param seconds any
+function Animation.setTime(entity, seconds) end
+
+---@param entity any
+---@param normalizedTime any
+function Animation.setNormalizedTime(entity, normalizedTime) end
+
+---@param entity any
+---@param speed any
+function Animation.setSpeed(entity, speed) end
+
+---@param entity any
+---@param loop any
+function Animation.setLoop(entity, loop) end
+
+---@param entity any
+function Animation.state(entity) end
+
+---@param skeletonUuid any
+function Animation.jointCount(skeletonUuid) end
+
+---@param animationUuid any
+function Animation.duration(animationUuid) end
+
+---@param entity any
+---@param name any
+---@param value any
+function Animation.setFloat(entity, name, value) end
+
+---@param entity any
+---@param name any
+---@param value any
+function Animation.setBool(entity, name, value) end
+
+---@param entity any
+---@param name any
+function Animation.setTrigger(entity, name) end
+
+---@param entity any
+---@param name any
+function Animation.getFloat(entity, name) end
+
+---@param entity any
+---@param name any
+function Animation.getBool(entity, name) end
+
+---@param luaState any
+---@param entity any
+function Animation.currentState(luaState, entity) end
+
+--- `Asset` namespace (generated).
+---@class Asset
+Asset = {}
+
+---@param uri any
+function Asset.resolveUri(uri) end
+
+---@param uri any
+function Asset.loadText(uri) end
+
+---@param uri any
+function Asset.loadMesh(uri) end
+
+---@param uri any
+function Asset.loadTexture(uri) end
+
+---@param uri any
+function Asset.loadGaussianSplat(uri) end
+
+function Asset.memoryStats() end
+
+--- `Audio` namespace (generated).
+---@class Audio
+Audio = {}
+
+---@param clip any
+function Audio.preloadClip(clip) end
+
+---@param clip any
+---@param volume any
+---@param pitch any
+function Audio.playOneShot(clip, volume, pitch) end
+
+---@param clip any
+---@param position any
+---@param volume any
+---@param pitch any
+function Audio.playOneShotAt(clip, position, volume, pitch) end
+
+---@param clip any
+---@param options any
+function Audio.playMusic(clip, options) end
+
+---@param fadeOutMs any
+function Audio.stopMusic(fadeOutMs) end
+
+---@param id any
+---@param fadeOutMs any
+function Audio.stopSound(id, fadeOutMs) end
+
+---@param id any
+function Audio.pauseSound(id) end
+
+---@param id any
+function Audio.resumeSound(id) end
+
+---@param id any
+---@param volume any
+function Audio.setVolume(id, volume) end
+
+---@param id any
+---@param pitch any
+function Audio.setPitch(id, pitch) end
+
+---@param id any
+---@param loop any
+function Audio.setLooping(id, loop) end
+
+---@param id any
+function Audio.isPlaying(id) end
+
+---@param entity any
+---@param restart any
+function Audio.play(entity, restart) end
+
+---@param entity any
+function Audio.pause(entity) end
+
+---@param entity any
+function Audio.stop(entity) end
+
+---@param volume any
+function Audio.setMasterVolume(volume) end
+
+function Audio.masterVolume() end
+
+function Audio.backendReady() end
+
+--- `Camera` namespace (generated).
+---@class Camera
+Camera = {}
+
+function Camera.count() end
+
+function Camera.overlayInfo() end
+
+---@param suppressed any
+function Camera.setInputSuppressed(suppressed) end
+
+function Camera.findPrimary() end
+
+--- `Character` namespace (generated).
+---@class Character
+Character = {}
+
+---@param entity any
+function Character.has(entity) end
+
+---@param entity any
+---@param horizontalVelocity any
+function Character.move(entity, horizontalVelocity) end
+
+---@param entity any
+---@param speed any
+function Character.jump(entity, speed) end
+
+---@param entity any
+function Character.isGrounded(entity) end
+
+---@param entity any
+function Character.velocity(entity) end
+
+---@param entity any
+function Character.groundNormal(entity) end
+
+---@param entity any
+---@param position any
+function Character.setPosition(entity, position) end
+
+--- `Input` namespace (generated).
+---@class Input
+Input = {}
+
+---@param key KeyCode
+---@return boolean
+function Input.isKeyHeld(key) end
+
+---@param key KeyCode
+---@return boolean
+function Input.isKeyPressed(key) end
+
+---@param key KeyCode
+---@return boolean
+function Input.isKeyReleased(key) end
+
+---@param key KeyCode
+---@return boolean
+function Input.isKeyRepeated(key) end
+
+---@param button MouseCode
+---@return boolean
+function Input.isMouseButtonHeld(button) end
+
+---@param button MouseCode
+---@return boolean
+function Input.isMouseButtonPressed(button) end
+
+---@param button MouseCode
+---@return boolean
+function Input.isMouseButtonReleased(button) end
+
+---@param button MouseCode
+---@return integer
+function Input.mouseButtonClicks(button) end
+
+---@return Vec2
+function Input.mousePosition() end
+
+---@return Vec2
+function Input.mousePositionFlipY() end
+
+---@return Vec2
+function Input.mousePositionDelta() end
+
+---@return Vec2
+function Input.mouseScrollDelta() end
+
+--- `Physics` namespace (generated).
+---@class Physics
+Physics = {}
+
+function Physics.enabled() end
+
+---@param enabled any
+function Physics.setEnabled(enabled) end
+
+function Physics.bodyCount() end
+
+---@param entity any
+function Physics.hasBody(entity) end
+
+function Physics.fixedTimeStep() end
+
+---@param seconds any
+function Physics.setFixedTimeStep(seconds) end
+
+---@param entity any
+---@param force any
+function Physics.addForce(entity, force) end
+
+---@param entity any
+---@param impulse any
+function Physics.addImpulse(entity, impulse) end
+
+---@param entity any
+---@param position any
+---@param activate any
+function Physics.setPosition(entity, position, activate) end
+
+---@param origin any
+---@param direction any
+---@param maxDistance any
+---@param activeOnly any
+---@param layerMask any
+function Physics.raycast(origin, direction, maxDistance, activeOnly, layerMask) end
+
+---@param luaState any
+---@param origin any
+---@param direction any
+---@param maxDistance any
+---@param activeOnly any
+---@param layerMask any
+function Physics.raycastAll(luaState, origin, direction, maxDistance, activeOnly, layerMask) end
+
+---@param luaState any
+---@param origin any
+---@param direction any
+---@param radius any
+---@param maxDistance any
+---@param activeOnly any
+---@param layerMask any
+function Physics.sphereCast(luaState, origin, direction, radius, maxDistance, activeOnly, layerMask) end
+
+---@param luaState any
+---@param center any
+---@param radius any
+---@param activeOnly any
+function Physics.overlapSphere(luaState, center, radius, activeOnly) end
+
+---@param luaState any
+---@param center any
+---@param halfExtents any
+---@param activeOnly any
+function Physics.overlapBox(luaState, center, halfExtents, activeOnly) end
+
+---@param luaState any
+---@param center any
+---@param halfHeight any
+---@param radius any
+---@param activeOnly any
+---@param layerMask any
+function Physics.overlapCapsule(luaState, center, halfHeight, radius, activeOnly, layerMask) end
+
+---@param luaState any
+---@param activeOnly any
+function Physics.contactPairs(luaState, activeOnly) end
+
+---@param luaState any
+function Physics.contactEvents(luaState) end
+
+---@param entity any
+---@param torque any
+function Physics.addTorque(entity, torque) end
+
+---@param entity any
+---@param impulse any
+function Physics.addAngularImpulse(entity, impulse) end
+
+---@param entity any
+---@param eulerDegrees any
+---@param activate any
+function Physics.setRotation(entity, eulerDegrees, activate) end
+
+function Physics.gravity() end
+
+---@param gravity any
+function Physics.setGravity(gravity) end
+
+---@param a any
+---@param b any
+---@param enabled any
+function Physics.setLayerCollision(a, b, enabled) end
+
+---@param a any
+---@param b any
+function Physics.layerCollision(a, b) end
+
+--- `Render` namespace (generated).
+---@class Render
+Render = {}
+
+---@param width any
+---@param height any
+function Render.resize(width, height) end
+
+function Render.gaussianSplatSettings() end
+
+---@param settings any
+function Render.setGaussianSplatSettings(settings) end
+
+function Render.gaussianSplatFrameStats() end
+
+---@param enabled any
+function Render.setProfilerEnabled(enabled) end
+
+function Render.isProfilerEnabled() end
+
+function Render.profilerHistorySize() end
+
+function Render.captureFrame() end
+
+--- `RenderBackend` namespace (generated).
+---@class RenderBackend
+RenderBackend = {}
+
+function RenderBackend.isXREnabled() end
+
+function RenderBackend.isXRMirrorEnabled() end
+
+function RenderBackend.isExitRequested() end
+
+--- `Scene` namespace (generated).
+---@class Scene
+Scene = {}
+
+---@param uri any
+function Scene.load(uri) end
+
+---@param uri any
+function Scene.instantiate(uri) end
+
+---@param uri any
+---@param parent any
+---@param clearWorld any
+function Scene.instantiateChild(uri, parent, clearWorld) end
+
+---@param uri any
+function Scene.saveWorld(uri) end
+
+---@param uri any
+---@param root any
+function Scene.saveEntity(uri, root) end
+
+--- `Script` namespace (generated).
+---@class Script
+Script = {}
+
+---@param e Entity
+---@return boolean
+function Script.reloadEntity(e) end
+
+---@return boolean
+function Script.reloadAll() end
+
+---@param e Entity
+---@return boolean
+function Script.hasInstance(e) end
+
+---@param e Entity
+function Script.destroyInstance(e) end
+
+---@param playing boolean
+---@param paused boolean
+function Script.setPlaybackState(playing, paused) end
+
+---@return boolean
+function Script.isPlaybackPlaying() end
+
+---@return boolean
+function Script.isPlaybackPaused() end
+
+---@param code string
+---@return boolean
+function Script.runString(code) end
+
+--- `Time` namespace (generated).
+---@class Time
+Time = {}
+
+---@return number
+function Time.deltaTime() end
+
+---@return number
+function Time.fixedDeltaTime() end
+
+---@return number
+function Time.unscaledDeltaTime() end
+
+---@return number
+function Time.smoothedDeltaTime() end
+
+---@return number
+function Time.totalTime() end
+
+---@return number
+function Time.unscaledTotalTime() end
+
+---@return number
+function Time.averageFrameTime() end
+
+---@return number
+function Time.framesPerSecond() end
+
+---@return number
+function Time.timeScale() end
+
+---@return number
+function Time.fixedAlpha() end
+
+---@return integer
+function Time.fixedStepsThisFrame() end
+
+---@return integer
+function Time.frameIndex() end
+
+---@return number
+function Time.maxDeltaTime() end
+
+---@param dt number
+function Time.setFixedDeltaTime(dt) end
+
+---@param scale number
+function Time.setTimeScale(scale) end
+
+---@param maxSteps integer
+function Time.setMaxFixedStepsPerFrame(maxSteps) end
+
+---@param dt number
+function Time.setMaxDeltaTime(dt) end
+
+---@param factor number
+function Time.setDeltaSmoothingFactor(factor) end
+
+--- `Upscaler` namespace (generated).
+---@class Upscaler
+Upscaler = {}
+
+---@param state any
+function Upscaler.providers(state) end
+
+---@param state any
+function Upscaler.active(state) end
+
+---@param name any
+function Upscaler.setActive(name) end
+
+---@param enabled any
+function Upscaler.setEnabled(enabled) end
+
+---@param mode any
+function Upscaler.setMode(mode) end
+
+---@param state any
+function Upscaler.status(state) end
+
+--- `World` namespace (generated).
+---@class World
+World = {}
+
+---@param name any
+function World.create(name) end
+
+---@param entity any
+function World.destroy(entity) end
+
+function World.count() end
+
+---@param name any
+function World.findByName(name) end
+
+---@param luaState any
+---@param prefix any
+function World.findByNamePrefix(luaState, prefix) end
+
+---@param luaState any
+function World.entities(luaState) end
+
+---@param entity any
+function World.addRigidBody(entity) end
+
+---@param entity any
+function World.removeRigidBody(entity) end
+
+---@param entity any
+function World.addCamera(entity) end
+
+---@param entity any
+function World.removeCamera(entity) end
+
+---@param entity any
+function World.addLight(entity) end
+
+---@param entity any
+function World.removeLight(entity) end
+
+---@param entity any
+function World.addMesh(entity) end
+
+---@param entity any
+function World.removeMesh(entity) end
+
+---@param entity any
+function World.addBoxShape(entity) end
+
+---@param entity any
+function World.removeBoxShape(entity) end
+
+---@param entity any
+function World.addSphereShape(entity) end
+
+---@param entity any
+function World.removeSphereShape(entity) end
+
+---@param entity any
+function World.addAnimator(entity) end
+
+---@param entity any
+function World.removeAnimator(entity) end
+
+--- Animator usertype (generated).
+---@class Animator
+---@field valid boolean @ read-only
+---@field skeleton any
+---@field animation any
+---@field playing any
+---@field loop any
+---@field speed any
+---@field time any
+local Animator = {}
+
+function Animator:play(restart) end
+
+function Animator:pause() end
+
+function Animator:stop() end
+
+function Animator:setNormalizedTime(normalizedTime) end
+
+function Animator:state() end
+
+--- AudioListener usertype (generated).
+---@class AudioListener
+---@field valid boolean @ read-only
+local AudioListener = {}
+
+--- AudioSource usertype (generated).
+---@class AudioSource
+---@field valid boolean @ read-only
+local AudioSource = {}
+
+--- BoxShape usertype (generated).
+---@class BoxShape
+---@field valid boolean @ read-only
+local BoxShape = {}
+
+--- CameraRef usertype (generated).
+---@class CameraRef
+---@field valid boolean @ read-only
+local CameraRef = {}
+
+--- CapsuleShape usertype (generated).
+---@class CapsuleShape
+---@field valid boolean @ read-only
+local CapsuleShape = {}
+
+--- CylinderShape usertype (generated).
+---@class CylinderShape
+---@field valid boolean @ read-only
+local CylinderShape = {}
+
+--- Entity usertype (generated).
+---@class Entity
+---@field valid any @ read-only
+---@field id any @ read-only
+---@field name any
+---@field active any
+---@field visible any
+---@field transform any @ read-only
+---@field rectTransform any @ read-only
+---@field ui any @ read-only
+---@field uiButton any @ read-only
+---@field uiToggle any @ read-only
+---@field uiSlider any @ read-only
+---@field uiProgressBar any @ read-only
+---@field rigidBody any @ read-only
+---@field mesh any @ read-only
+---@field animator any @ read-only
+local Entity = {}
+
+function Entity:destroy() end
+
+function Entity:parent() end
+
+function Entity:firstChild() end
+
+function Entity:nextSibling() end
+
+function Entity:setParent(parent) end
+
+function Entity:hasRigidBody() end
+
+function Entity:hasMesh() end
+
+function Entity:hasAnimator() end
+
+function Entity:hasRectTransform() end
+
+function Entity:hasUiButton() end
+
+function Entity:hasUiToggle() end
+
+function Entity:hasUiSlider() end
+
+function Entity:hasUiProgressBar() end
+
+--- Environment usertype (generated).
+---@class Environment
+---@field valid boolean @ read-only
+local Environment = {}
+
+--- Light usertype (generated).
+---@class Light
+---@field valid boolean @ read-only
+local Light = {}
+
+--- Mesh usertype (generated).
+---@class Mesh
+---@field valid boolean @ read-only
+---@field builtinGeometry any
+local Mesh = {}
+
+function Mesh:setMaterial(slot, uri) end
+
+function Mesh:setMaterialFloat(slot, name, value) end
+
+function Mesh:setMaterialColor(slot, name, value) end
+
+function Mesh:setMaterialTexture(slot, name, uri) end
+
+function Mesh:clearMaterialProperty(slot, name) end
+
+function Mesh:clearMaterialProperties(slot) end
+
+--- ParticleEmitter usertype (generated).
+---@class ParticleEmitter
+---@field valid boolean @ read-only
+local ParticleEmitter = {}
+
+--- ReflectionProbe usertype (generated).
+---@class ReflectionProbe
+---@field valid boolean @ read-only
+local ReflectionProbe = {}
+
+--- RigidBody usertype (generated).
+---@class RigidBody
+---@field valid boolean @ read-only
+---@field linearVelocity any
+---@field angularVelocity any
+---@field motionType any
+---@field objectLayer any
+---@field isSensor any
+---@field motionQuality any
+---@field allowSleeping any
+---@field mass any
+---@field overrideMass any
+---@field friction any
+---@field restitution any
+---@field linearDamping any
+---@field angularDamping any
+---@field gravityFactor any
+---@field maxLinearVelocity any
+---@field maxAngularVelocity any
+local RigidBody = {}
+
+function RigidBody:activate() end
+
+function RigidBody:addForce(force) end
+
+function RigidBody:addImpulse(impulse) end
+
+function RigidBody:setPosition(position, activate) end
+
+--- SphereShape usertype (generated).
+---@class SphereShape
+---@field valid boolean @ read-only
+local SphereShape = {}
+
+--- Transform usertype (generated).
+---@class Transform
+---@field position any
+---@field scale any
+---@field rotation any
+---@field rotationEuler any
+local Transform = {}
+
+function Transform:translate(delta) end
+
+function Transform:setEulerDegrees(value) end
+
+function Transform:lookAt(target) end
+
+--- Enum generated from vultra::AssetState.
+---@class AssetState
+---@field Unloaded integer
+---@field Loaded integer
+---@field LoadingCPU integer
+---@field CPUReady integer
+---@field UploadQueued integer
+---@field UploadingGPU integer
+---@field Ready integer
+---@field Failed integer
+AssetState = {}
+
+--- Enum generated from vultra::CameraControlMode.
+---@class CameraControlMode
+---@field Disabled integer
+---@field Orbit integer
+---@field Fly integer
+CameraControlMode = {}
+
+--- Enum generated from vultra::GaussianSplatBaselineMode.
+---@class GaussianSplatBaselineMode
+---@field Baseline integer
+---@field OrderedClod integer
+GaussianSplatBaselineMode = {}
+
+--- Enum generated from vultra::GaussianSplatFoveatedRenderMode.
+---@class GaussianSplatFoveatedRenderMode
+---@field SinglePass integer
+---@field LayeredComposite integer
+GaussianSplatFoveatedRenderMode = {}
+
+--- Enum generated from vultra::KeyCode.
+---@class KeyCode
+---@field Unknown integer
+---@field A integer
+---@field B integer
+---@field C integer
+---@field D integer
+---@field E integer
+---@field F integer
+---@field G integer
+---@field H integer
+---@field I integer
+---@field J integer
+---@field K integer
+---@field L integer
+---@field M integer
+---@field N integer
+---@field O integer
+---@field P integer
+---@field Q integer
+---@field R integer
+---@field S integer
+---@field T integer
+---@field U integer
+---@field V integer
+---@field W integer
+---@field X integer
+---@field Y integer
+---@field Z integer
+---@field Num1 integer
+---@field Num2 integer
+---@field Num3 integer
+---@field Num4 integer
+---@field Num5 integer
+---@field Num6 integer
+---@field Num7 integer
+---@field Num8 integer
+---@field Num9 integer
+---@field Num0 integer
+---@field Return integer
+---@field Escape integer
+---@field Backspace integer
+---@field Tab integer
+---@field Space integer
+---@field Minus integer
+---@field Equals integer
+---@field LeftBracket integer
+---@field RightBracket integer
+---@field Backslash integer
+---@field Semicolon integer
+---@field Apostrophe integer
+---@field Grave integer
+---@field Comma integer
+---@field Period integer
+---@field Slash integer
+---@field CapsLock integer
+---@field F1 integer
+---@field F2 integer
+---@field F3 integer
+---@field F4 integer
+---@field F5 integer
+---@field F6 integer
+---@field F7 integer
+---@field F8 integer
+---@field F9 integer
+---@field F10 integer
+---@field F11 integer
+---@field F12 integer
+---@field PrintScreen integer
+---@field ScrollLock integer
+---@field Pause integer
+---@field Insert integer
+---@field Home integer
+---@field PageUp integer
+---@field Delete integer
+---@field End integer
+---@field PageDown integer
+---@field Right integer
+---@field Left integer
+---@field Down integer
+---@field Up integer
+---@field NumLock integer
+---@field KPDivide integer
+---@field KPMultiply integer
+---@field KPMinus integer
+---@field KPPlus integer
+---@field KPEnter integer
+---@field KP1 integer
+---@field KP2 integer
+---@field KP3 integer
+---@field KP4 integer
+---@field KP5 integer
+---@field KP6 integer
+---@field KP7 integer
+---@field KP8 integer
+---@field KP9 integer
+---@field KP0 integer
+---@field KPPeriod integer
+---@field LCtrl integer
+---@field LShift integer
+---@field LAlt integer
+---@field LGUI integer
+---@field RCtrl integer
+---@field RShift integer
+---@field RAlt integer
+---@field RGUI integer
+---@field Menu integer
+KeyCode = {}
+
+--- Enum generated from vultra::MouseCode.
+---@class MouseCode
+---@field Left integer
+---@field Middle integer
+---@field Right integer
+---@field X1 integer
+---@field X2 integer
+MouseCode = {}
+
+--- Value struct generated from ScriptAnimatorPlaybackState.
+---@class AnimatorPlaybackState
+---@field valid boolean
+---@field playing boolean
+---@field loop boolean
+---@field speed number
+---@field time number
+---@field duration number
+---@field normalizedTime number
+---@field skeleton string
+---@field animation string
+local AnimatorPlaybackState = {}
+
+--- Value struct generated from ScriptAssetHandle.
+---@class AssetHandle
+---@field valid boolean
+---@field ready boolean
+---@field uuid string
+---@field state integer
+---@field gpuIndex integer
+local AssetHandle = {}
+
+--- Value struct generated from ScriptAssetMemoryStats.
+---@class AssetMemoryStats
+---@field cpuCacheBytes integer
+local AssetMemoryStats = {}
+
+--- Value struct generated from ScriptCameraOverlayInfo.
+---@class CameraOverlayInfo
+---@field enabled boolean
+---@field mode integer
+local CameraOverlayInfo = {}
+
+--- Value struct generated from ScriptGaussianSplatFrameStats.
+---@class GaussianSplatFrameStats
+---@field frameIndex integer
+---@field baselineMode integer
+---@field foveatedRenderMode integer
+---@field lodBudgetEnabled boolean
+---@field foveatedClodEnabled boolean
+---@field foveatedLayeredCompositeEnabled boolean
+---@field foveatedBudgetControllerEnabled boolean
+---@field directPrefix boolean
+---@field lodBudget integer
+---@field foveatedRingLevels Vec3
+---@field foveatedResolutionScales Vec3
+---@field foveatedRingDegrees Vec2
+---@field foveatedTargetFrameMs number
+---@field splatAssets integer
+---@field drawRecords integer
+---@field totalSplats integer
+---@field preparedSplats integer
+---@field maxVisibleSplatCap integer
+---@field lodSelectedRawSplats integer
+---@field visibleSplats integer
+---@field drawnSplats integer
+local GaussianSplatFrameStats = {}
+
+--- Value struct generated from ScriptGaussianSplatSettings.
+---@class GaussianSplatSettings
+---@field baselineMode integer
+---@field lodBudget integer
+---@field clodLevel number
+---@field foveatedClodEnabled boolean
+---@field foveatedRenderMode integer
+---@field foveatedGaze Vec2
+---@field foveatedRingDegrees Vec2
+---@field foveatedRingLevels Vec3
+---@field foveatedResolutionScales Vec3
+---@field foveatedTransitionDegrees number
+---@field foveatedBudgetControllerEnabled boolean
+---@field foveatedTargetFrameMs number
+---@field foveatedBudgetAdjustRate number
+local GaussianSplatSettings = {}
+
+--- Value struct generated from ScriptPhysicsContactPair.
+---@class PhysicsContactPair
+---@field a Entity
+---@field b Entity
+local PhysicsContactPair = {}
+
+--- Value struct generated from ScriptPhysicsRaycastHit.
+---@class PhysicsRaycastHit
+---@field hit boolean
+---@field entity Entity
+---@field point Vec3
+---@field normal Vec3
+---@field fraction number
+---@field distance number
+local PhysicsRaycastHit = {}
+
+--- Value struct generated from ScriptTextAssetResult.
+---@class TextAssetResult
+---@field ok boolean
+---@field text string
+---@field error string
+local TextAssetResult = {}
+
+-- <<<END GENERATED (extract_bindings.py)>>>

@@ -1,12 +1,12 @@
 #pragma once
 
-#include "vultra/core/base/lua_annotations.hpp"
+#include "vultra/core/base/script_annotations.hpp"
 
 namespace vultra
 {
-    struct VLUA_CLASS(name = CapsuleShape, ref = ScriptCapsuleShapeRef, accessor = capsuleShape) CapsuleShapeComponent
+    struct VBIND_USERTYPE(name = CapsuleShape, handle = ScriptCapsuleShapeRef, accessor = capsuleShape) CapsuleShapeComponent
     {
-        VLUA_FIELD() float halfHeightOfCylinder {0.5f};
-        VLUA_FIELD() float radius {0.25f};
+        VBIND_FIELD() float halfHeightOfCylinder {0.5f};
+        VBIND_FIELD() float radius {0.25f};
     };
 } // namespace vultra

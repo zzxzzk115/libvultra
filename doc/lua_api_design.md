@@ -170,21 +170,71 @@ cannot parse):
 
 ## Binding generator
 
-Mechanical component-ref bindings (property get/set over a component field)
-are generated, not hand-written. Annotate the component header with
-`VLUA_CLASS`/`VLUA_FIELD` (see `vultra/core/base/lua_annotations.hpp`), then:
+> **Adding or changing a binding? Read [script_binding_codegen.md](script_binding_codegen.md)** —
+> the authoring standard (annotation vocabulary, decision guide, recipes, the
+> step-by-step, and the conventions every new binding must follow). The summary
+> below is the rationale; that doc is the how-to.
+
+Bindings are generated from annotated C++ through a two-stage, IR-based,
+multi-language pipeline. Annotations are language-neutral `VBIND_*` markers
+(see `vultra/core/base/script_annotations.hpp`); a libclang frontend extracts
+them into a checked-in IR, and per-language backends emit bindings from that IR:
 
 ```
-pip install libclang
-python tools/python/gen_lua_bindings.py
+# stage 1: annotated headers -> tools/bindings/ir/bindings.ir.json
+python tools/python/extract_bindings.py
+# stage 2: IR -> sol2 .gen.cpp + the generated LuaLS stub sections
+python tools/python/gen_lua.py
 ```
 
-This emits `script_components_binding.gen.cpp` (checked in) and refreshes the
-generated section of `tools/lua-stubs/vultra.lua` from one source of truth.
-The generator enforces the naming rules above at generation time; renames use
-`VLUA_FIELD(name = newName, deprecated = oldName)` which also emits the
-warn-once alias. Shaped APIs (options tables, signals, entity handles) remain
-hand-written.
+Both run automatically via the `lua-codegen` xmake target (best-effort,
+stamp-guarded). The IR -- not any one generated file -- is the single source of
+truth; the LuaLS stub is itself a backend output, so it cannot drift from the
+bound surface. A future Python / C# backend reads the same IR without re-running
+the C++ extraction. The frontend enforces the naming rules above at extraction
+time.
+
+An **area** = one `registerScript<Area>Bindings` + one `.gen.cpp` (the existing
+hand-written registrar, so the generated file is a drop-in). Areas aggregate
+everything tagged with `area=`: namespace tables, usertypes, structs, enums, raw
+hooks. The annotation vocabulary:
+
+* **Modules** (`VBIND_MODULE` + `VBIND_FN`) -- namespace tables. Two body kinds:
+  `serviceForward` (annotate a service interface directly; the generator emits
+  the whole body `ctx.<svc>->method(args)` with a service null-check + `isValid`
+  guard for entity params -- no hand-written code) and `shimCall`
+  (`VBIND_FN(... body = shim)` on a `namespace vultra` free function taking
+  `ScriptContext&` first; the generator forwards, the hand-written shim body owns
+  irregular glue: options tables, table building, multi-return, UUID-or-uri).
+* **Usertypes** (`VBIND_USERTYPE` + `VBIND_PROPERTY` getters/setters +
+  `VBIND_FN(usertype=...)` methods) -- entity-ref handle usertypes. `component=`
+  auto-emits `valid`; `postRegister=` runs a hook after registration (e.g. the
+  generated component accessors on `Entity`).
+* **Enums** (`VBIND_ENUM`) -- enumerators read directly, never hand-listed.
+* **Value structs** (`VBIND_STRUCT` + `VBIND_FIELD`, or `allFields` to bind every
+  public field) -- subsume the legacy `VLUA_CLASS`/`VLUA_FIELD` component pattern.
+* **Raw hooks** (`VBIND_RAW` on a `void f(sol::state&, ScriptContext&)`) -- the
+  escape hatch for irreducibly-sol2 registration that can't be expressed
+  declaratively: constant tables (`Layer`), `meta_function` operators (`Math`
+  Vec types), and signal connect/dispatch machinery (`UI`). The area registrar
+  calls the hook; the body is hand-written. **Only the body, never the surface.**
+
+Renames use `VBIND_FIELD(name = newName, deprecated = oldName)` (or the matching
+option on `VBIND_FN`/`VBIND_PROPERTY`), which also emits the warn-once alias.
+
+**Status:** everything runs through this one pipeline. Every API-surface
+subsystem is migrated -- Input, Time, Script, Scene, Asset, Upscaler, Audio,
+Render, Animation, Transform, Entity, World, Physics, Math, UI, Editor -- and the
+pure-data **components** (Camera/Light/shapes/audio/probe/particle) too: their
+field bindings (`requireComponentRef` get/set + `entity.<accessor>` +
+`entity:has<Name>()`) are generated with no shim. The legacy
+`gen_lua_bindings.py` was retired; the extractor reads both `VBIND_*` and the
+components' existing `VLUA_CLASS`/`VLUA_FIELD` (mapping `ref=`->`handle=`). Only
+the coroutine runtime + deprecation-alias registry (engine machinery, not API
+surface) and ImGui (its own `gen_imgui_lua.py`) remain hand-written. The
+conformance test + `exceptions.lua` burn-down proved parity at each step
+(303 -> 15 baselined; the remaining are `Layer`/`UI` raw-hook surfaces, which a
+future stub backend for raw hooks can cover).
 
 ## Review checklist
 

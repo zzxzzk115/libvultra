@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/core/base/script_annotations.hpp"
 #include "vultra/core/base/uuid.hpp"
 #include "vultra/function/world/components/layer_component.hpp"
 #include "vultra/function/world/components/particle_emitter_component.hpp"
@@ -256,13 +257,14 @@ namespace vultra
     // Gaussian splat rendering has one LOD path: imported/trained assets are
     // physically sorted by importance, and Ordered CLOD renders a prefix of that
     // packed order. There is no hierarchy/proxy LOD or runtime importance sort.
-    enum class GaussianSplatBaselineMode : uint8_t
+    enum class VBIND_ENUM(name = GaussianSplatBaselineMode, stripE, module = Render) GaussianSplatBaselineMode : uint8_t
     {
         eBaseline = 0,
         eOrderedClod,
     };
 
-    enum class GaussianSplatFoveatedRenderMode : uint8_t
+    enum class VBIND_ENUM(name = GaussianSplatFoveatedRenderMode, stripE, module = Render)
+        GaussianSplatFoveatedRenderMode : uint8_t
     {
         eSinglePass = 0,
         eLayeredComposite,
