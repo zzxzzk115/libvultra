@@ -66,7 +66,9 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include <numeric>
 #include <optional>
@@ -2409,6 +2411,59 @@ namespace vultra
             return handle.gpuIndex();
         }
 
+        // The font a UiTextComponent should render with: its assigned font, or the default builtin.
+        [[nodiscard]] CoreUUID effectiveUiFontUuid(const CoreUUID& font)
+        {
+            return font.valid() ? font : builtinFontUuidForUri(kBuiltinDefaultFontUri);
+        }
+
+        // Resolve raw font bytes (a .ttf/.otf the GlyphAtlas can hand to FreeType) for a font UUID.
+        // Works for project font assets (source path) and builtin fonts (builtin:// pack).
+        [[nodiscard]] std::vector<std::byte> resolveUiFontBytes(IAssetService& assets, const CoreUUID& font)
+        {
+            const CoreUUID effective = effectiveUiFontUuid(font);
+            std::string    uri;
+            if (!assets.resolveAssetUri(effective, uri) || uri.empty())
+                uri = std::string(kBuiltinDefaultFontUri);
+            auto r = assets.loadBinaryAssetSync(uri);
+            if (!r)
+                return {};
+            const auto&            bytes = r.value();
+            std::vector<std::byte> out(bytes.size());
+            std::memcpy(out.data(), bytes.data(), bytes.size());
+            return out;
+        }
+
+        // Minimal UTF-8 decoder: appends code points, substituting U+FFFD on malformed input.
+        void decodeUtf8(const std::string& s, std::vector<uint32_t>& out)
+        {
+            const size_t n = s.size();
+            size_t       i = 0;
+            while (i < n)
+            {
+                const unsigned char c     = static_cast<unsigned char>(s[i]);
+                uint32_t            cp     = 0;
+                size_t              extra  = 0;
+                if (c < 0x80u) { cp = c; extra = 0; }
+                else if ((c >> 5) == 0x6u) { cp = c & 0x1Fu; extra = 1; }
+                else if ((c >> 4) == 0xEu) { cp = c & 0x0Fu; extra = 2; }
+                else if ((c >> 3) == 0x1Eu) { cp = c & 0x07u; extra = 3; }
+                else { out.push_back(0xFFFDu); ++i; continue; }
+
+                if (i + extra >= n) { out.push_back(0xFFFDu); break; }
+                bool ok = true;
+                for (size_t k = 1; k <= extra; ++k)
+                {
+                    const unsigned char cc = static_cast<unsigned char>(s[i + k]);
+                    if ((cc >> 6) != 0x2u) { ok = false; break; }
+                    cp = (cp << 6) | (cc & 0x3Fu);
+                }
+                if (!ok) { out.push_back(0xFFFDu); ++i; continue; }
+                out.push_back(cp);
+                i += extra + 1;
+            }
+        }
+
         void resolveUiRectTopLeft(const RectTransformComponent& rect,
                                   const glm::vec2&             parentMin,
                                   const glm::vec2&             parentSize,
@@ -2430,7 +2485,9 @@ namespace vultra
                             const CanvasComponent& canvas,
                             const glm::mat4&       canvasWorldMatrix,
                             const int              sortOrder,
-                            const uint32_t         depth)
+                            const uint32_t         depth,
+                            rendering::GlyphAtlas* glyphAtlas,
+                            const uint32_t         glyphAtlasIndex)
         {
             auto& reg = world.registry();
             auto* rect = reg.try_get<RectTransformComponent>(entity);
@@ -2572,6 +2629,87 @@ namespace vultra
                 pushItem(color, textureIndex.value_or(0u), textureIndex ? 1u : 0u, image->fitMode);
             }
 
+            if (const auto* textC = reg.try_get<UiTextComponent>(entity);
+                textC && textC->enabled && glyphAtlas && glyphAtlasIndex != 0u && !textC->text.empty())
+            {
+                const uint32_t pixelSize =
+                    static_cast<uint32_t>(std::clamp(std::lround(textC->fontSizePx), 1L, 256L));
+                const uint64_t fontKey = std::hash<CoreUUID> {}(effectiveUiFontUuid(textC->font));
+
+                if (glyphAtlas->ensureFont(fontKey, [&] { return resolveUiFontBytes(assets, textC->font); }))
+                {
+                    // Glyph quad with the atlas sub-rect; flags = textured(1) | coverage(2).
+                    const auto pushGlyphItem = [&](const glm::vec2& drawMin,
+                                                   const glm::vec2& drawMax,
+                                                   const glm::vec2& uvMin,
+                                                   const glm::vec2& uvMax) {
+                        RenderUiDrawItem item {};
+                        if (const auto* id = reg.try_get<IDComponent>(entity))
+                            item.entity = id->uuid;
+                        item.rectMinPx         = drawMin;
+                        item.rectMaxPx         = drawMax;
+                        item.canvasReferencePx = glm::max(canvas.referenceResolutionPx, glm::vec2 {1.0f});
+                        item.color             = textC->color;
+                        item.uvMin             = uvMin;
+                        item.uvMax             = uvMax;
+                        item.textureIndex      = glyphAtlasIndex;
+                        item.flags             = 3u; // textured | coverage glyph
+                        item.scaleMode         = canvas.scaleMode;
+                        item.fitMode           = 0u;
+                        item.sortOrder         = sortOrder;
+                        item.depth             = depth * 16u + localDrawOrder++;
+                        item.layerMask         = entityLayerMask(reg, entity, kRenderLayerUiMask);
+                        item.space             = canvas.renderMode == 1u ? 1u : 0u;
+                        item.pixelsPerUnit     = canvas.pixelsPerUnit > 0.0f ? canvas.pixelsPerUnit : 250.0f;
+                        item.worldMatrix       = canvasWorldMatrix;
+                        out.uiDrawItems.push_back(item);
+                    };
+
+                    float ascentPx = static_cast<float>(pixelSize);
+                    float lineHeightPx = static_cast<float>(pixelSize);
+                    glyphAtlas->fontMetrics(fontKey, pixelSize, ascentPx, lineHeightPx);
+
+                    std::vector<uint32_t> codepoints;
+                    decodeUtf8(textC->text, codepoints);
+
+                    // Single-line layout: measure advance, then place by h/v alignment in the rect.
+                    float totalAdvance = 0.0f;
+                    for (const uint32_t cp : codepoints)
+                        if (const auto* g = glyphAtlas->getGlyph(fontKey, pixelSize, cp))
+                            totalAdvance += g->advancePx;
+
+                    const float boxW = maxPx.x - minPx.x;
+                    const float boxH = maxPx.y - minPx.y;
+                    float       penX = minPx.x;
+                    if (textC->horizontalAlign == 1u)
+                        penX += (boxW - totalAdvance) * 0.5f;
+                    else if (textC->horizontalAlign == 2u)
+                        penX += (boxW - totalAdvance);
+
+                    float baselineY;
+                    if (textC->verticalAlign == 0u)
+                        baselineY = minPx.y + ascentPx;
+                    else if (textC->verticalAlign == 2u)
+                        baselineY = maxPx.y - (lineHeightPx - ascentPx);
+                    else
+                        baselineY = minPx.y + (boxH - lineHeightPx) * 0.5f + ascentPx;
+
+                    for (const uint32_t cp : codepoints)
+                    {
+                        const auto* g = glyphAtlas->getGlyph(fontKey, pixelSize, cp);
+                        if (!g)
+                            continue;
+                        if (g->hasBitmap)
+                        {
+                            const glm::vec2 gMin {penX + g->bearingPx.x, baselineY - g->bearingPx.y};
+                            const glm::vec2 gMax {gMin.x + g->sizePx.x, gMin.y + g->sizePx.y};
+                            pushGlyphItem(gMin, gMax, g->uvMin, g->uvMax);
+                        }
+                        penX += g->advancePx;
+                    }
+                }
+            }
+
             const auto* layout = reg.try_get<UiLayoutComponent>(entity);
             uint32_t childIndex = 0u;
             for (auto child = world.firstChild(entity); child != entt::null; child = world.nextSibling(child))
@@ -2608,13 +2746,27 @@ namespace vultra
                     }
                 }
 
-                cookUiChildren(
-                    world, assets, out, child, minPx, maxPx - minPx, canvas, canvasWorldMatrix, sortOrder, depth + 1u);
+                cookUiChildren(world,
+                               assets,
+                               out,
+                               child,
+                               minPx,
+                               maxPx - minPx,
+                               canvas,
+                               canvasWorldMatrix,
+                               sortOrder,
+                               depth + 1u,
+                               glyphAtlas,
+                               glyphAtlasIndex);
                 ++childIndex;
             }
         }
 
-        void cookUi(World& world, IAssetService& assets, RenderWorld& out)
+        void cookUi(World&                 world,
+                    IAssetService&         assets,
+                    RenderWorld&           out,
+                    rendering::GlyphAtlas* glyphAtlas,
+                    const uint32_t         glyphAtlasIndex)
         {
             auto& reg = world.registry();
             auto  canvasView = reg.view<CanvasComponent>();
@@ -2630,8 +2782,18 @@ namespace vultra
                     if (const auto* tr = reg.try_get<TransformComponent>(canvasEntity))
                         canvasWorldMatrix = tr->worldMatrix;
                 for (auto child = world.firstChild(canvasEntity); child != entt::null; child = world.nextSibling(child))
-                    cookUiChildren(
-                        world, assets, out, child, {0.0f, 0.0f}, canvasSize, canvas, canvasWorldMatrix, canvas.sortOrder, 1u);
+                    cookUiChildren(world,
+                                   assets,
+                                   out,
+                                   child,
+                                   {0.0f, 0.0f},
+                                   canvasSize,
+                                   canvas,
+                                   canvasWorldMatrix,
+                                   canvas.sortOrder,
+                                   1u,
+                                   glyphAtlas,
+                                   glyphAtlasIndex);
             }
 
             std::sort(out.uiDrawItems.begin(), out.uiDrawItems.end(), [](const RenderUiDrawItem& a, const RenderUiDrawItem& b) {
@@ -3121,14 +3283,15 @@ namespace vultra
         }
     } // namespace
 
-    void RenderWorldCooker::cook(World&               world,
-                                 IAssetService&       assets,
-                                 IGpuResourceService& gpuResources,
-                                 rhi::RenderDevice&   rd,
-                                 GeometryFactory&     geometryFactory,
-                                 RenderWorld&         out,
-                                 IShaderService*      shaderService,
-                                 const float          timeSeconds)
+    void RenderWorldCooker::cook(World&                 world,
+                                 IAssetService&         assets,
+                                 IGpuResourceService&   gpuResources,
+                                 rhi::RenderDevice&     rd,
+                                 GeometryFactory&       geometryFactory,
+                                 RenderWorld&           out,
+                                 IShaderService*        shaderService,
+                                 const float            timeSeconds,
+                                 rendering::GlyphAtlas* glyphAtlas)
     {
         RuntimeProfiler::ExternalScope cookScope {"RenderWorldCooker::cook/total"};
         out.clear();
@@ -3492,7 +3655,29 @@ namespace vultra
 
         {
             RuntimeProfiler::ExternalScope uiScope {"RenderWorldCooker::cook/ui"};
-            cookUi(world, assets, out);
+            // Only touch the glyph atlas when the world actually has renderable text, so text-less
+            // scenes never allocate the FreeType library or the atlas GPU texture.
+            bool hasText = false;
+            for (auto textEntity : reg.view<UiTextComponent>())
+            {
+                const auto& textC = reg.get<UiTextComponent>(textEntity);
+                if (textC.enabled && !textC.text.empty())
+                {
+                    hasText = true;
+                    break;
+                }
+            }
+
+            uint32_t               glyphAtlasIndex = 0u;
+            rendering::GlyphAtlas* uiGlyphAtlas    = (glyphAtlas && hasText) ? glyphAtlas : nullptr;
+            if (uiGlyphAtlas)
+            {
+                glyphAtlasIndex       = uiGlyphAtlas->ensureRegistered(rd, gpuResources);
+                out.glyphAtlasTexture = uiGlyphAtlas->texture();
+            }
+            cookUi(world, assets, out, uiGlyphAtlas, glyphAtlasIndex);
+            if (uiGlyphAtlas)
+                uiGlyphAtlas->flush(rd);
         }
     }
 
@@ -3593,6 +3778,10 @@ namespace vultra
 
         // Release persistent GPU particle pools while the device is still alive (after waitIdle).
         m_ParticleManager.clear();
+
+        // Release the glyph atlas GPU texture while the device is still alive (its Ref otherwise
+        // outlives the device until ~RenderSystem, leaking the image/VMA allocation).
+        m_GlyphAtlas.releaseGpu();
 
         for (auto& [key, renderer] : m_Renderers)
             renderer = nullptr;
@@ -4368,7 +4557,8 @@ namespace vultra
                         m_GeometryFactory,
                         m_RenderWorldBack,
                         &shaderService,
-                        renderTimeSeconds);
+                        renderTimeSeconds,
+                        &m_GlyphAtlas);
         }
         m_RenderWorldBack.frameIndex = m_FrameCounter;
 
@@ -4979,7 +5169,8 @@ namespace vultra
                             m_GeometryFactory,
                             slot.renderWorld,
                             &shaderService,
-                            cookTimeSeconds);
+                            cookTimeSeconds,
+                            &m_GlyphAtlas);
             }
             slot.renderWorld.frameIndex = m_FrameCounter;
             buildCpuDrivenGpuSceneForRenderWorld(

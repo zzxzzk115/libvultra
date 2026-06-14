@@ -30,6 +30,7 @@ namespace vultra
             glm::vec4 color;
             glm::vec4 canvas;
             glm::uvec4 texture;
+            glm::vec4 uvRect; // uvMin.xy, uvMax.xy (glyph atlas sub-rect; (0,0,1,1) for full-texture items)
             glm::vec4 params; // space, pixelsPerUnit, 0, 0
             glm::mat4 worldMatrix;
         };
@@ -85,6 +86,7 @@ namespace vultra
                            static_cast<float>(item.scaleMode),
                            static_cast<float>(item.fitMode)},
                 .texture     = {item.textureIndex, item.flags, item.space, 0u},
+                .uvRect      = {item.uvMin.x, item.uvMin.y, item.uvMax.x, item.uvMax.y},
                 .params      = {static_cast<float>(item.space), item.pixelsPerUnit, 0.0f, 0.0f},
                 .worldMatrix = item.worldMatrix,
             });
@@ -190,8 +192,14 @@ namespace vultra
                     for (uint32_t i = 0u; i < itemCount; ++i)
                     {
                         const uint32_t textureIndex = i < itemTextureIndices.size() ? itemTextureIndices[i] : 0u;
+                        const bool isGlyph = i < itemFlags.size() && (itemFlags[i] & 2u) != 0u;
                         const bool textured = i < itemFlags.size() && itemFlags[i] != 0u && textureIndex < materialTextures.size();
-                        const auto* texture = textured ? materialTextures[textureIndex] : fallbackTexture;
+                        // Glyph (coverage) items sample the glyph atlas, bound directly from the render
+                        // world rather than via the bindless scene pool (which may not carry the atlas).
+                        const auto* texture = (isGlyph && renderWorld->glyphAtlasTexture) ?
+                                                  renderWorld->glyphAtlasTexture :
+                                              textured ? materialTextures[textureIndex] :
+                                                         fallbackTexture;
                         if (!texture)
                             texture = fallbackTexture;
 

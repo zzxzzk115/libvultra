@@ -1,5 +1,6 @@
 #include "vultra/function/asset/builtin_assets_io.hpp"
 
+#include "vultra/core/builtin/builtin_resources.hpp"       // builtin::list() pack enumeration
 #include "vultra/function/asset/builtin_assets.hpp"       // kBuiltin* URI constants + UUID helpers
 #include "vultra/function/asset/builtin_resource_ids.hpp" // kBuiltinResourceCitrusOrchardSkyTexture
 
@@ -116,6 +117,8 @@ namespace vultra::asset_io
         return uri.starts_with(kBuiltinMaterialUriPrefix);
     }
 
+    bool isBuiltinFontUri(std::string_view uri) { return uri.starts_with(kBuiltinFontUriPrefix); }
+
     std::filesystem::path builtinTexturePathForUri(std::string_view uri)
     {
         if (!isBuiltinTextureUri(uri))
@@ -130,6 +133,14 @@ namespace vultra::asset_io
             return {};
         const auto rel = std::string(uri.substr(kBuiltinMaterialUriPrefix.size()));
         return (std::filesystem::path("builtin") / "materials" / std::filesystem::path(rel)).lexically_normal();
+    }
+
+    std::filesystem::path builtinFontPathForUri(std::string_view uri)
+    {
+        if (!isBuiltinFontUri(uri))
+            return {};
+        const auto rel = std::string(uri.substr(kBuiltinFontUriPrefix.size()));
+        return (std::filesystem::path("builtin") / "fonts" / std::filesystem::path(rel)).lexically_normal();
     }
 
     vbase::Result<std::string, std::string> readBuiltinTextFile(const std::filesystem::path& path)
@@ -150,6 +161,16 @@ namespace vultra::asset_io
     {
         if (uuid == builtinCitrusOrchardSkyTextureUuid())
             return std::string(kBuiltinCitrusOrchardSkyTextureUri);
+
+        // Packaged runtime has no builtin/ folder on disk: enumerate the mounted builtin pack
+        // (logical paths like "textures/icons/folder.vtexture") and match by UUID. The editor also
+        // has the pack mounted, so this path covers both.
+        for (const auto& logical : vultra::builtin::list("textures/"))
+        {
+            const auto uri = std::string("builtin://") + logical;
+            if (builtinTextureUuidForUri(uri) == uuid)
+                return uri;
+        }
 
         const auto root = std::filesystem::path("builtin") / "textures";
         std::error_code ec;
@@ -173,6 +194,54 @@ namespace vultra::asset_io
             }
             const auto uri = builtinTextureUriForPath(entry.path());
             if (!uri.empty() && builtinTextureUuidForUri(uri) == uuid)
+                return uri;
+        }
+        return {};
+    }
+
+    std::string builtinFontUriForUuid(const CoreUUID& uuid)
+    {
+        // Mounted builtin pack (works in the packaged runtime where builtin/fonts is not on disk,
+        // and also covers the editor since the pack is mounted there too).
+        for (const auto& logical : vultra::builtin::list("fonts/"))
+        {
+            const auto uri = std::string("builtin://") + logical;
+            if (builtinFontUuidForUri(uri) == uuid)
+                return uri;
+        }
+
+        // Project-added builtin fonts on disk (editor).
+        const auto      root = std::filesystem::path("builtin") / "fonts";
+        std::error_code ec;
+        if (!std::filesystem::exists(root, ec) || ec)
+            return {};
+        for (auto it = std::filesystem::recursive_directory_iterator(
+                 root, std::filesystem::directory_options::skip_permission_denied, ec);
+             it != std::filesystem::recursive_directory_iterator {};
+             it.increment(ec))
+        {
+            if (ec)
+            {
+                ec.clear();
+                continue;
+            }
+            const auto& entry = *it;
+            if (!entry.is_regular_file(ec) || ec)
+            {
+                ec.clear();
+                continue;
+            }
+            const auto ext = entry.path().extension().generic_string();
+            if (ext != ".ttf" && ext != ".otf")
+                continue;
+            const auto rel = std::filesystem::relative(entry.path().lexically_normal(), root.lexically_normal(), ec);
+            if (ec || rel.empty())
+            {
+                ec.clear();
+                continue;
+            }
+            const auto uri = std::string(kBuiltinFontUriPrefix) + rel.generic_string();
+            if (builtinFontUuidForUri(uri) == uuid)
                 return uri;
         }
         return {};

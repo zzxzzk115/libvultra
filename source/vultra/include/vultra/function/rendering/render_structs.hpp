@@ -144,6 +144,10 @@ namespace vultra
         glm::vec2 rectMaxPx {0.0f};
         glm::vec2 canvasReferencePx {1920.0f, 1080.0f};
         glm::vec4 color {1.0f};
+        // Texture/atlas UV sub-rect. Default covers the whole texture; glyph items set it to
+        // the glyph's region in the font atlas.
+        glm::vec2 uvMin {0.0f, 0.0f};
+        glm::vec2 uvMax {1.0f, 1.0f};
         uint32_t  textureIndex {0u};
         uint32_t  flags {0u};
         uint32_t  scaleMode {0u};
@@ -502,6 +506,11 @@ namespace vultra
         resource::GpuSceneDatabase* gpuSceneDatabase {nullptr};
         resource::GpuSceneView*     gpuSceneView {nullptr};
 
+        // Glyph atlas texture for UiTextComponent rendering. Bound directly by UiOverlayPass for
+        // coverage (glyph) draw items, so text does not depend on the atlas living in the bindless
+        // scene texture pool (which differs between main and override render worlds).
+        const rhi::Texture*         glyphAtlasTexture {nullptr};
+
         void clear()
         {
             cameras.clear();
@@ -512,6 +521,7 @@ namespace vultra
             lights.clear();
             environment = {};
             reflectionProbes.clear();
+            glyphAtlasTexture = nullptr;
             hasBounds = false;
             boundsMin = glm::vec3 {0.0f};
             boundsMax = glm::vec3 {0.0f};

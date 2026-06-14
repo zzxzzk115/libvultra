@@ -2047,6 +2047,8 @@ namespace vultra_app
                 return "horizontalAlign";
             if (is("verticalAlign"))
                 return "verticalAlign";
+            if (is("font"))
+                return "font";
             if (is("interactable"))
                 return "interactable";
             if (is("targetGraphic"))
@@ -2137,6 +2139,8 @@ namespace vultra_app
                 return vasset::VAssetType::eTexture;
             if (std::strcmp(fieldName, "clip") == 0)
                 return vasset::VAssetType::eAudio;
+            if (std::strcmp(fieldName, "font") == 0)
+                return vasset::VAssetType::eFont;
             return vasset::VAssetType::eUnknown;
         }
 
@@ -2155,6 +2159,8 @@ namespace vultra_app
                 return vultra::tr("inspector.assetType.texture");
             if (type == vasset::VAssetType::eAudio)
                 return vultra::tr("inspector.assetType.audio");
+            if (type == vasset::VAssetType::eFont)
+                return vultra::tr("inspector.assetType.font");
             return vultra::tr("inspector.assetType.asset");
         }
 
@@ -3012,6 +3018,25 @@ namespace vultra_app
                 ImGui::TextUnformatted(vultra::trf("inspector.assetPicker.select", vasset::toString(expectedType)).c_str());
                 ImGui::Separator();
                 bool any = false;
+
+                // Builtin fonts are not in the project registry; surface the general-purpose text
+                // font (Noto Sans CJK) so UiTextComponent can use it via its deterministic builtin
+                // UUID. The emoji/icon builtin fonts are intentionally not offered as text fonts.
+                if (expectedType == vasset::VAssetType::eFont)
+                {
+                    constexpr const char* uri      = "builtin://fonts/noto_sans_cjk.otf";
+                    const auto            candidate = vultra::builtinFontUuidForUri(uri);
+                    any                            = true;
+                    const std::string label = std::string(ICON_MDI_FORMAT_FONT "  ") + uri + "##" + uri;
+                    if (ImGui::Selectable(label.c_str(), uuid == candidate))
+                    {
+                        uuid    = candidate;
+                        changed = true;
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::Separator();
+                }
+
                 for (const auto& [uuidText, entry] : assetService->registry().getRegistry())
                 {
                     if (entry.type != expectedType)

@@ -10,6 +10,7 @@
 #include "vultra/function/rendering/runtime_profiler.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/renderer.hpp"
+#include "vultra/function/rendering/text/glyph_atlas.hpp"
 #include "vultra/function/resource/geometry_factory.hpp"
 #include "vultra/function/resource/gpu_scene_database.hpp"
 #include "vultra/function/resource/gpu_scene_view.hpp"
@@ -206,6 +207,8 @@ namespace vultra
         GaussianSplatFrameStats     m_GaussianSplatStats;
         BuiltinRenderSettings       m_BuiltinRenderSettings;
         GeometryFactory             m_GeometryFactory;
+        // Persistent FreeType glyph atlas for in-game UiTextComponent rendering.
+        rendering::GlyphAtlas       m_GlyphAtlas;
 
         struct OverrideRenderWorldSlot
         {
@@ -229,6 +232,7 @@ namespace vultra
                          GeometryFactory&    geometryFactory,
                          RenderWorld&        out,
                          IShaderService*     shaderService = nullptr,
-                         float               timeSeconds = 0.0f);
+                         float               timeSeconds = 0.0f,
+                         rendering::GlyphAtlas* glyphAtlas = nullptr);
     };
 } // namespace vultra

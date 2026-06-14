@@ -21,14 +21,19 @@ namespace vultra::asset_io
 
     [[nodiscard]] bool isBuiltinTextureUri(std::string_view uri);
     [[nodiscard]] bool isBuiltinMaterialUri(std::string_view uri);
+    [[nodiscard]] bool isBuiltinFontUri(std::string_view uri);
 
     [[nodiscard]] std::filesystem::path builtinTexturePathForUri(std::string_view uri);
     [[nodiscard]] std::filesystem::path builtinMaterialPathForUri(std::string_view uri);
+    [[nodiscard]] std::filesystem::path builtinFontPathForUri(std::string_view uri);
 
     [[nodiscard]] vbase::Result<std::string, std::string> readBuiltinTextFile(const std::filesystem::path& path);
 
     // Reverse lookup: the builtin texture URI for a UUID (scans builtin/textures); empty if none.
     [[nodiscard]] std::string builtinTextureUriForUuid(const CoreUUID& uuid);
+
+    // Reverse lookup: the builtin font URI for a UUID (scans builtin/fonts); empty if none.
+    [[nodiscard]] std::string builtinFontUriForUuid(const CoreUUID& uuid);
 
     // Embedded builtin texture bytes (Windows .rc resource / linker-embedded symbols).
     [[nodiscard]] vbase::Result<std::vector<std::byte>, std::string> readResourceBuiltinTextureBytes(std::string_view uri);

@@ -865,6 +865,7 @@ namespace vultra_app
                 fields.push_back(fieldJson("fontSizePx", "float", {"font_size_px"}));
                 fields.push_back(fieldJson("horizontalAlign", "uint32", {"horizontal_align"}));
                 fields.push_back(fieldJson("verticalAlign", "uint32", {"vertical_align"}));
+                fields.push_back(fieldJson("font", "uuid", {"fontUuid"}));
             }
             else if (k == "ui_button")
             {
@@ -1214,7 +1215,8 @@ namespace vultra_app
                             {"color", vec4Json(c->color)},
                             {"fontSizePx", c->fontSizePx},
                             {"horizontalAlign", c->horizontalAlign},
-                            {"verticalAlign", c->verticalAlign}};
+                            {"verticalAlign", c->verticalAlign},
+                            {"font", uuidJson(c->font)}};
             }
             else if (k == "ui_button")
             {
@@ -1424,6 +1426,7 @@ namespace vultra_app
                 text.horizontalAlign =
                     args.value("horizontalAlign", args.value("horizontal_align", text.horizontalAlign));
                 text.verticalAlign = args.value("verticalAlign", args.value("vertical_align", text.verticalAlign));
+                uuidArg(args, "font", text.font);
                 (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
                 return true;
             }

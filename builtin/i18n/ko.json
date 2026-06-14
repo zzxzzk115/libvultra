@@ -333,6 +333,7 @@
       "gaussianSplat": "가우시안 스플랫",
       "texture": "텍스처",
       "audio": "오디오",
+      "font": "글꼴",
       "asset": "에셋"
     },
     "assetField": {

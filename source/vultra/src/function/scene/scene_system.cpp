@@ -771,7 +771,7 @@ namespace vultra
         m_ComponentRegistry.registerComponent<UiImageComponent>(
             "UiImageComponent", {"enabled", "texture", "tint", "fitMode"});
         m_ComponentRegistry.registerComponent<UiTextComponent>(
-            "UiTextComponent", {"enabled", "text", "color", "fontSizePx", "horizontalAlign", "verticalAlign"});
+            "UiTextComponent", {"enabled", "text", "color", "fontSizePx", "horizontalAlign", "verticalAlign", "font"});
         m_ComponentRegistry.registerComponent<UiButtonComponent>(
             "UiButtonComponent",
             {"enabled", "interactable", "targetGraphic", "normalColor", "hoveredColor", "pressedColor"});

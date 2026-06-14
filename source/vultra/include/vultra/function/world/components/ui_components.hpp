@@ -53,6 +53,9 @@ namespace vultra
         float       fontSizePx {24.0f};
         uint32_t    horizontalAlign {0}; // 0: left, 1: center, 2: right.
         uint32_t    verticalAlign {1};   // 0: top, 1: middle, 2: bottom.
+        // Font asset: a project font (eFont) UUID or a builtin font (builtinFontUuidForUri,
+        // e.g. "builtin://fonts/noto_sans_cjk.otf"). Empty = default builtin font.
+        CoreUUID    font;
     };
 
     struct UiButtonComponent

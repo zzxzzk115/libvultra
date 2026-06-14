@@ -70,6 +70,8 @@ namespace vultra_app::ui
             return ICON_MDI_RUN_FAST;
         if (hasExtension(path, {".gltf", ".glb", ".obj", ".fbx", ".dae", ".ply", ".spz"}))
             return ICON_MDI_CUBE_OUTLINE;
+        if (hasExtension(path, {".ttf", ".otf"}))
+            return ICON_MDI_FORMAT_FONT;
         if (hasExtension(path, {".lua"}))
             return ICON_MDI_LANGUAGE_LUA;
         if (hasSuffix(name, ".vshaderlib.lua"))

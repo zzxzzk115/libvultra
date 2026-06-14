@@ -16,6 +16,7 @@ struct UiDrawItem
     vec4 color;
     vec4 canvas;
     uvec4 texture;
+    vec4 uvRect;       // uvMin.xy, uvMax.xy (glyph atlas sub-rect; (0,0,1,1) for full-texture items)
     vec4 params;       // space, pixelsPerUnit, 0, 0
     mat4 worldMatrix;
 };
@@ -64,7 +65,7 @@ void main()
         vec2 centered = px - reference * 0.5;
         // UI y grows downward; world y grows upward.
         vec3 localPos = vec3(centered.x / ppu, -centered.y / ppu, 0.0);
-        v_Uv = corner3;
+        v_Uv = mix(item.uvRect.xy, item.uvRect.zw, corner3);
         gl_Position = viewProjection * item.worldMatrix * vec4(localPos, 1.0);
         return;
     }
@@ -89,7 +90,7 @@ void main()
     vec4 rect = vec4(item.rectPx.xy * scale + offsetPx, item.rectPx.zw * scale + offsetPx);
     vec2 corner = cornerForVertex(uint(gl_VertexIndex));
     vec2 px = mix(rect.xy, rect.zw, corner);
-    v_Uv = corner;
+    v_Uv = mix(item.uvRect.xy, item.uvRect.zw, corner);
 
     vec2 ndc = vec2((px.x / max(targetResolutionPx.x, 1.0)) * 2.0 - 1.0,
                     (px.y / max(targetResolutionPx.y, 1.0)) * 2.0 - 1.0);
@@ -101,12 +102,17 @@ layout(location = 0) in vec2 v_Uv;
 layout(location = 1) flat in uint v_ItemIndex;
 layout(location = 0) out vec4 FragColor;
 
+// Must match the vertex-stage struct byte-for-byte: both stages index the same std430
+// buffer by v_ItemIndex, so the array stride has to be identical in each stage.
 struct UiDrawItem
 {
     vec4 rectPx;
     vec4 color;
     vec4 canvas;
     uvec4 texture;
+    vec4 uvRect;
+    vec4 params;
+    mat4 worldMatrix;
 };
 
 layout(set = 1, binding = 31, std430) readonly buffer UiDrawItems
@@ -129,9 +135,17 @@ void main()
     UiDrawItem item = u_Ui.items[v_ItemIndex];
     vec4 color = item.color;
 
+    // Sample unconditionally (keeps texture() in uniform control flow for the WebGPU/WGSL backend).
     vec4 sampleColor = texture(u_Texture, v_Uv);
-    float textureWeight = item.texture.y != 0u ? 1.0 : 0.0;
-    color *= mix(vec4(1.0), sampleColor, textureWeight);
+
+    uint flags = item.texture.y;
+    bool textured = (flags & 1u) != 0u;
+    bool coverage = (flags & 2u) != 0u; // R8 glyph coverage: modulate alpha by sampled coverage
+
+    if (coverage)
+        color.a *= sampleColor.r;
+    else
+        color *= mix(vec4(1.0), sampleColor, textured ? 1.0 : 0.0);
 
     if (color.a <= 0.001)
         discard;

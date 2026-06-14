@@ -967,6 +967,12 @@ namespace vultra
             return true;
         }
 
+        if (const auto builtinFontUri = builtinFontUriForUuid(uuid); !builtinFontUri.empty())
+        {
+            outUri = builtinFontUri;
+            return true;
+        }
+
         auto entry = m_Registry.lookup(uuid);
         if (entry.type == vasset::VAssetType::eUnknown)
             return false;
@@ -986,6 +992,12 @@ namespace vultra
         if (isBuiltinTextureUri(uri))
         {
             outUUID = builtinTextureUuidForUri(uri);
+            return true;
+        }
+
+        if (isBuiltinFontUri(uri))
+        {
+            outUUID = builtinFontUuidForUri(uri);
             return true;
         }
 
@@ -1021,6 +1033,31 @@ namespace vultra
             if (!bytes.empty() && !file.read(reinterpret_cast<char*>(bytes.data()), size))
                 return builtinFallback();
             return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(bytes));
+        }
+
+        if (isBuiltinFontUri(uri))
+        {
+            // builtin/fonts on disk (editor), then the mounted builtin:: pack (packaged runtime).
+            const auto    path = builtinFontPathForUri(uri);
+            std::ifstream file(path, std::ios::binary | std::ios::ate);
+            if (file)
+            {
+                const auto             size = static_cast<std::streamsize>(file.tellg());
+                std::vector<std::byte> bytes(static_cast<size_t>(std::max<std::streamsize>(size, 0)));
+                file.seekg(0);
+                if (bytes.empty() || file.read(reinterpret_cast<char*>(bytes.data()), size))
+                    return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(bytes));
+            }
+
+            std::string_view           logical = uri;
+            constexpr std::string_view kScheme = "builtin://";
+            if (logical.starts_with(kScheme))
+                logical.remove_prefix(kScheme.size());
+            std::vector<std::byte> packed;
+            if (builtin::read(logical, packed) && !packed.empty())
+                return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(packed));
+            return vbase::Result<std::vector<std::byte>, std::string>::err("failed to read builtin font " +
+                                                                           std::string(uri));
         }
 
         auto br = m_VFS.readAll(uri);
@@ -2528,7 +2565,9 @@ namespace vultra
 
     vbase::Result<std::vector<uint8_t>, std::string> AssetSystem::loadBinaryAssetSync(std::string_view uri)
     {
-        auto bytesResult = m_VFS.readAll(uri);
+        // Route through readAssetBytes so builtin:// URIs (textures, fonts) resolve via the
+        // mounted builtin pack, not just the project VFS.
+        auto bytesResult = readAssetBytes(uri);
         if (!bytesResult)
             return vbase::Result<std::vector<uint8_t>, std::string>::err("Failed to read binary asset: " +
                                                                          std::string(uri));

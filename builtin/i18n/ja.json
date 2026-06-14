@@ -333,6 +333,7 @@
       "gaussianSplat": "ガウシアンスプラット",
       "texture": "テクスチャ",
       "audio": "オーディオ",
+      "font": "フォント",
       "asset": "アセット"
     },
     "assetField": {

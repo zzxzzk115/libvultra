@@ -293,7 +293,8 @@ namespace vultra
             .data<&UiTextComponent::color>("color"_hs)
             .data<&UiTextComponent::fontSizePx>("fontSizePx"_hs)
             .data<&UiTextComponent::horizontalAlign>("horizontalAlign"_hs)
-            .data<&UiTextComponent::verticalAlign>("verticalAlign"_hs);
+            .data<&UiTextComponent::verticalAlign>("verticalAlign"_hs)
+            .data<&UiTextComponent::font>("font"_hs);
 
         entt::meta_factory<UiButtonComponent>()
             .type("UiButtonComponent"_hs)
