@@ -218,7 +218,8 @@ maintainers.
 
 | Project | Role |
 | --- | --- |
-| [SDL3](https://github.com/libsdl-org/SDL) | Cross-platform windowing and input |
+| [SDL3](https://github.com/libsdl-org/SDL) | Cross-platform windowing and input (primary desktop backend) |
+| [GLFW](https://github.com/glfw/glfw) | Alternative windowing/input backend (used on Web/WASM) |
 
 ### UI / ImGui Ecosystem
 
