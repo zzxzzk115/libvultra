@@ -1,5 +1,7 @@
 # Plugin system
 
+**English** | [简体中文](zh_CN/plugins_CN.md)
+
 Vultra supports runtime plugins that extend the engine without rebuilding it. A plugin can be:
 
 - a **native C++ shared library** (wrap a third-party SDK, add systems, register Lua bindings),
@@ -12,7 +14,7 @@ The pieces:
 |-------|------|----------------|
 | [`PluginManager`](../source/vultra/include/vultra/core/plugin/plugin_manager.hpp) | core | dlopen/LoadLibrary a native library and call its `EnginePlugin` |
 | [`PluginSystem`](../source/vultra/include/vultra/function/plugin/plugin_system.hpp) | function subsystem | parse manifests, load native + Lua plugins, lifecycle |
-| [`IPluginService`](../source/vultra/include/vultra/function/services/plugin_service.hpp) | service | `loadPlugin` / `loadPluginsFromDirectory` / `loadedPlugins` |
+| [`IPluginService`](../source/vultra/include/vultra/function/services/plugin_service.hpp) | service | `discover` / `contentRoots` / `loadPlugin` / `unloadPlugin` / `loadedPlugins` / `isLoaded` (directory-wide discover+enable is the CLI's job via `--plugins-dir`, not a service method) |
 
 ## Plugin layout
 
@@ -34,6 +36,7 @@ The manifest is a JSON document:
   "id": "com.example.my_plugin",
   "name": "My Plugin",
   "version": "1.0.0",
+  "minEngineVersion": "0.11.0",
   "author": "Jane Doe",
   "description": "What this plugin does.",
   "readme": "README.md",
@@ -58,7 +61,13 @@ The manifest is a JSON document:
 
 `id` is the unique handle used to enable the plugin. `platforms` (empty/absent = all) gates loading
 to `windows` / `linux` / `macos` / `wasm` / `android`. `native` (extension appended automatically)
-and `entry` are both optional.
+and `entry` are both optional. `schemaVersion` is a forward-compatibility convention: the
+plugin-manifest parser currently ignores it (only the catalog and `vultra.plugins.lock` files read
+it), so keep it for future-proofing but it has no effect today.
+
+`minEngineVersion` is optional: the lowest engine version the plugin supports, as a dotted semantic
+string (e.g. `"0.11.0"`). Empty/absent means no declared minimum (always compatible). The editor
+checks it against the running engine version to gate install/enable.
 
 `editorOnly` and `editorOnlyFiles` keep editor-only code out of exported VPKs (see
 [Editor extension API](#editor-extension-api)). Both are optional and only affect packaging — the
@@ -75,7 +84,9 @@ Vulkan hook ownership before instance/device/swapchain creation.
 
 `config` is optional self-description for editor/project settings. Each item has a `key`, display
 `label`, `type` (`string`, `path`, `bool`, `int`, `float`, `enum`), optional `default`, optional
-`description`, optional `env`/`envVar`, and `required`. An `enum` parameter also declares
+`description`, optional `env`/`envVar`, `required`, and optional `secret` (a hint that the value is
+machine-local or sensitive and should be sourced from a `.env` file rather than committed to the
+`.vproject` — see the `.env` guidance below). An `enum` parameter also declares
 `"options": ["a", "b", ...]` and is drawn as a dropdown; the stored/exported value is the option
 string. Project Settings -> Plugins draws these fields; edits stay pending until applied per
 plugin (Apply persists into the `.vproject`/`.env` and Revert restores the last applied state).
@@ -213,13 +224,15 @@ available to plugins at install time.
 
 ## Try it
 
-The example project ([example.vproject](../example.vproject)) enables the `hello` plugin in its
-[plugins/](../plugins/) folder, so launching the editor loads it:
+The example project ([example.vproject](../example.vproject)) enables the `editor_panel` plugin
+(`com.vultra.examples.editor_panel`), which lives at
+[resources/plugins/editor_panel/](../resources/plugins/editor_panel/), so launching the editor loads
+it:
 
 ```
 # editor: Project Settings -> Plugins toggles the per-project enabled set
 xmake run vultra-app --editor --project example.vproject
-# [PluginSystem] Plugin 'Hello' (com.vultra.examples.hello) installed.
+# [PluginSystem] Plugin 'Editor Panel Example' (com.vultra.examples.editor_panel) installed.
 
 # runtime CLI opt-in (loads every plugin in the dir):
 xmake run vultra-runtime --plugins-dir examples/plugins --render-mode none

@@ -1,5 +1,7 @@
 # Vultra Lua Scripting
 
+**English** | [简体中文](zh_CN/lua_scripting_CN.md)
+
 Vultra gameplay scripts are Lua files referenced by `ScriptComponent::scriptUri`.
 They run only while editor/runtime playback is active. Scripts are loaded through
 the asset system, so use engine URIs such as `res://scripts/player.lua` instead
@@ -105,11 +107,47 @@ function OnUpdate(self, dt)
 end
 ```
 
-Out-parameters become extra return values (`changed, newValue`). Enum/flag
-values live in sub-tables: `ImGui.WindowFlags.NoTitleBar`, `ImGui.Cond.Once`.
-The binding is generated from dear_bindings metadata
-(`tools/python/gen_imgui_lua.py`); `InputText` returns
-`changed, newText`.
+Out-parameters become extra return values (`changed, newValue`). For example,
+`ImGui.InputFloat("speed", Player.speed)` and `ImGui.InputInt("count", n)`
+return `changed, newValue`. Enum/flag values live in sub-tables:
+`ImGui.WindowFlags.NoTitleBar`, `ImGui.Cond.Once`. The binding is generated from
+dear_bindings metadata (`tools/python/gen_imgui_lua.py`).
+
+### ImGui extensions (imgui-ext)
+
+Several imgui-ext widgets are exposed as their own tables, keeping their upstream
+PascalCase names (like `ImGui`). They are only present in editor/dev builds (an
+ImGui service must be active). Matrices are Lua arrays of 16 numbers
+(column-major); vec3s are arrays of 3.
+
+- **`ImGuizmo`** — 3D transform gizmos: `Manipulate(view, projection, operation,
+  mode, matrix[, snap]) -> changed, newMatrix`, plus `SetRect`, `SetDrawlist`,
+  `SetOrthographic`, `Enable`, `IsOver`, `IsUsing`, `IsUsingAny`,
+  `DecomposeMatrixToComponents`/`RecomposeMatrixFromComponents`. Operations live
+  in `ImGuizmo.OPERATION` (`TRANSLATE`/`ROTATE`/`SCALE`/`UNIVERSAL`/…) and modes
+  in `ImGuizmo.MODE` (`LOCAL`/`WORLD`).
+- **`ImOGuizmo`** — orientation cube: `SetRect`, `BeginFrame`,
+  `DrawGizmo(view, projection[, pivotDistance]) -> interacted, newView`.
+- **`ImPlot`** — plotting: wrap in `BeginPlot(title[, sizeX, sizeY, flags])` /
+  `EndPlot()`, then `PlotLine`/`PlotScatter`/`PlotBars(label, ys)` or
+  `(label, xs, ys)`. Helpers: `SetupAxes`, `SetupAxesLimits`, `SetupLegend`.
+  Enums: `ImPlot.Axis`, `ImPlot.Flags`, `ImPlot.AxisFlags`, `ImPlot.Location`.
+- **`ImGuiFileDialog`** — modal file/folder picker: `OpenDialog(key, title, filters[,
+  path])`, then each frame `Display(key)`; when it returns true, check `IsOk()` and
+  read `GetFilePathName()` / `GetCurrentPath()` / `GetSelection()`, then `Close()`.
+- **`ImNodes`** — node-graph editor: wrap in `BeginNodeEditor()`/`EndNodeEditor()`;
+  per node `BeginNode(id)`/`EndNode()` with `BeginInputAttribute`/`BeginOutputAttribute`
+  pins and `Link(id, startAttr, endAttr)`. Query interactions with
+  `IsLinkCreated()`/`IsLinkDestroyed()` (each returns the relevant ids).
+
+```lua
+-- a tiny plot in an editor panel
+if ImPlot.BeginPlot("Frame time (ms)", -1, 160) then
+  ImPlot.SetupAxes("frame", "ms")
+  ImPlot.PlotLine("dt", samples)   -- samples is a Lua array of numbers
+  ImPlot.EndPlot()
+end
+```
 
 ### Coroutines
 
@@ -187,7 +225,7 @@ end
 
 ## World And Entities
 
-The `World` table exposes basic entity lookup and component creation:
+The `World` table exposes basic entity lookup and lifetime:
 
 ```lua
 local player = World.findByName("Player")
@@ -204,14 +242,8 @@ Available functions:
 - `World.findByName(name)`
 - `World.findByNamePrefix(prefix)`
 - `World.entities()`
-- `World.addRigidBody(entity)` / `World.removeRigidBody(entity)`
-- `World.addCamera(entity)` / `World.removeCamera(entity)`
-- `World.addLight(entity)` / `World.removeLight(entity)`
-- `World.addMesh(entity)` / `World.removeMesh(entity)`
-- `World.addBoxShape(entity)` / `World.removeBoxShape(entity)`
-- `World.addSphereShape(entity)` / `World.removeSphereShape(entity)`
 
-Entity properties:
+Entity properties (the only direct fields on a handle):
 
 - `entity.valid`
 - `entity.id`
@@ -219,17 +251,6 @@ Entity properties:
 - `entity.active`
 - `entity.visible`
 - `entity.transform`
-- `entity.rigidBody`
-- `entity.camera`
-- `entity.light`
-- `entity.mesh`
-- `entity.boxShape`
-- `entity.sphereShape`
-- `entity.rectTransform`
-- `entity.uiButton`
-- `entity.uiToggle`
-- `entity.uiSlider`
-- `entity.uiProgressBar`
 
 Entity methods use `:` syntax:
 
@@ -242,19 +263,68 @@ local child = entity:firstChild()
 local sibling = entity:nextSibling()
 ```
 
-Component checks:
+### Components
 
-- `entity:hasRigidBody()`
-- `entity:hasCamera()`
-- `entity:hasLight()`
-- `entity:hasMesh()`
-- `entity:hasBoxShape()`
-- `entity:hasSphereShape()`
-- `entity:hasRectTransform()`
-- `entity:hasUiButton()`
-- `entity:hasUiToggle()`
-- `entity:hasUiSlider()`
-- `entity:hasUiProgressBar()`
+Every component other than the always-on `transform` is reached through a single
+Unity-style generic API keyed by a `Component.*` token, rather than per-component
+properties:
+
+```lua
+local body = self:addComponent(Component.RigidBody) -- adds if absent, returns the ref
+local cam = self:getComponent(Component.Camera)     -- ref, or nil if absent
+local had = self:removeComponent(Component.Light)   -- true if one was removed
+
+if self:hasComponent(Component.Mesh) then
+  self:getComponent(Component.Mesh):setMaterial(0, "res://materials/red.vmat.json")
+end
+```
+
+- `entity:addComponent(Component.X)` adds the component if absent and returns its
+  reference.
+- `entity:getComponent(Component.X)` returns the component reference, or `nil`
+  when the entity does not have it.
+- `entity:removeComponent(Component.X)` returns `true` if a component was removed.
+- `entity:hasComponent(Component.X)` returns a boolean.
+
+The returned references are the same typed component refs documented in the
+sections below (`RigidBody`, `Camera`, `Mesh`, `Animator`, ...); only how you
+obtain them changed. `getComponent` returning `nil` is the idiomatic existence
+check before use:
+
+```lua
+local body = self:getComponent(Component.RigidBody)
+if body then
+  body:addForce(Vec3(10, 0, 0))
+end
+```
+
+`Component` is a global enum table of typed tokens:
+
+- `Component.Transform`, `Component.RigidBody`, `Component.Camera`,
+  `Component.Light`, `Component.Mesh`
+- `Component.BoxShape`, `Component.SphereShape`, `Component.CapsuleShape`,
+  `Component.CylinderShape`
+- `Component.Animator`, `Component.AudioSource`, `Component.AudioListener`
+- `Component.Environment`, `Component.ParticleEmitter`,
+  `Component.ReflectionProbe`
+- `Component.RectTransform`, `Component.UiButton`, `Component.UiToggle`,
+  `Component.UiSlider`, `Component.UiProgressBar`
+
+### WorldHelper
+
+`WorldHelper` is a global table of convenience constructors that each create an
+entity with common components already attached and return the new handle:
+
+```lua
+local empty = WorldHelper.addEmpty("Spawn")
+local cam = WorldHelper.addMainCamera("Main Camera") -- camera with primary = true
+```
+
+- `WorldHelper.addEmpty(name?)` -- transform only
+- `WorldHelper.addMainCamera(name?)` -- camera with `primary = true`
+- `WorldHelper.addCamera(name?)`
+- `WorldHelper.addLight(name?)`
+- `WorldHelper.addMesh(name?)`
 
 ## Mesh Materials
 
@@ -262,12 +332,13 @@ Mesh scripts can assign a mesh slot material asset and per-entity property
 overrides without editing the shared `.vmat.json`:
 
 ```lua
-self.mesh:setMaterial(0, "res://materials/red.vmat.json")
-self.mesh:setMaterialFloat(0, "roughness", 0.8)
-self.mesh:setMaterialColor(0, "baseColor", Vec4(1, 0, 0, 1))
-self.mesh:setMaterialTexture(0, "baseColorTexture", "res://textures/albedo.png")
-self.mesh:clearMaterialProperty(0, "roughness")
-self.mesh:clearMaterialProperties(0)
+local mesh = self:getComponent(Component.Mesh)
+mesh:setMaterial(0, "res://materials/red.vmat.json")
+mesh:setMaterialFloat(0, "roughness", 0.8)
+mesh:setMaterialColor(0, "baseColor", Vec4(1, 0, 0, 1))
+mesh:setMaterialTexture(0, "baseColorTexture", "res://textures/albedo.png")
+mesh:clearMaterialProperty(0, "roughness")
+mesh:clearMaterialProperties(0)
 ```
 
 `setMaterial` expects a `.vmat.json` URI. The property methods write the
@@ -299,10 +370,10 @@ Runtime UI V1 is screen-space and uses pixels authored relative to the owning
 Canvas reference resolution. RectTransform, layout spacing, padding, margins,
 text size, and button hit rects are pixel values before Canvas scaling.
 
-RectTransform access:
+RectTransform access (reach it with `Component.RectTransform`):
 
 ```lua
-local rect = self.rectTransform
+local rect = self:getComponent(Component.RectTransform)
 rect.anchoredPositionPx = Vec2(320, 180)
 rect.sizeDeltaPx = Vec2(240, 64)
 rect.rotation = 0
@@ -316,48 +387,50 @@ if UI.isPointerOverUI() then
   local hovered = UI.hoveredEntity()
 end
 
-if self.uiButton.clickedThisFrame then
+local button = self:getComponent(Component.UiButton)
+if button and button.clickedThisFrame then
   print("Clicked")
 end
 ```
 
-Signal-based UI events are the recommended authoring style:
+Signal-based UI events are the recommended authoring style. The `onClick` signal
+on a button reference bubbles from the hit target through its parents up to the
+owning Canvas:
 
 ```lua
 function OnCreate(self)
-  self.uiButton.onClick:connect(function(event)
-    print("Clicked", event.target.name)
-  end)
-
-  self.ui.onPointerEnter:connect(function(event)
-    print("Pointer entered", event.currentTarget.name)
-  end)
-
-  self.ui.onClick:connect(function(event)
-    event:stopPropagation()
-  end)
+  local button = self:getComponent(Component.UiButton)
+  if button then
+    button.onClick:connect(function(event)
+      print("Clicked", event.target.name)
+      event:stopPropagation()
+    end)
+  end
 end
 ```
 
-Common UI controls expose thin component references:
+Common UI controls expose thin component references reached the same way:
 
 ```lua
 function OnCreate(self)
-  if self:hasUiToggle() then
-    self.uiToggle.checked = true
-    self.uiToggle.onClick:connect(function(event)
-      print("toggle", self.uiToggle.checked)
+  local toggle = self:getComponent(Component.UiToggle)
+  if toggle then
+    toggle.checked = true
+    toggle.onClick:connect(function(event)
+      print("toggle", toggle.checked)
     end)
   end
 
-  if self:hasUiSlider() then
-    self.uiSlider.minValue = 0
-    self.uiSlider.maxValue = 100
-    self.uiSlider.value = 50
+  local slider = self:getComponent(Component.UiSlider)
+  if slider then
+    slider.minValue = 0
+    slider.maxValue = 100
+    slider.value = 50
   end
 
-  if self:hasUiProgressBar() then
-    self.uiProgressBar.value = 0.5
+  local progress = self:getComponent(Component.UiProgressBar)
+  if progress then
+    progress.value = 0.5
   end
 end
 ```
@@ -375,17 +448,16 @@ UI functions:
 - `UI.raycast(screenPosition?)`
 - `UI.events()`
 
-UI component references:
+UI component references (reached via `Component.RectTransform`,
+`Component.UiButton`, `Component.UiToggle`, `Component.UiSlider`,
+`Component.UiProgressBar`):
 
 - `RectTransform`: `anchorMin`, `anchorMax`, `pivot`, `anchoredPositionPx`,
-  `sizeDeltaPx`, `scale`, `rotationDegrees`
-- `UiButton`: `interactable`, `hovered`, `pressed`, `clicked`,
-  `clickedThisFrame`
-- `UiToggle`: `interactable`, `checked`, `clicked`
+  `sizeDeltaPx`, `scale`, `rotation`
+- `UiButton`: `interactable`, `hovered`, `pressed`, `clickedThisFrame`, `onClick`
+- `UiToggle`: `interactable`, `checked`, `onClick`
 - `UiSlider`: `interactable`, `value`, `minValue`, `maxValue`
 - `UiProgressBar`: `value`, `minValue`, `maxValue`
-- `Ui`: `onPointerEnter`, `onPointerExit`, `onPointerMove`, `onPointerDown`,
-  `onPointerUp`, `onClick`
 
 UI event fields are `type`, `target`, `currentTarget`, `canvas`,
 `screenPosition`, `canvasPosition`, `localPosition`, `button`, `clickCount`,
@@ -401,15 +473,24 @@ if camera.valid then
 end
 ```
 
-Camera component properties:
+The `Camera` reference (obtained via `entity:getComponent(Component.Camera)`)
+exposes:
 
-- `camera.camera.valid`
-- `camera.camera.primary`
-- `camera.camera.projection`
-- `camera.camera.fovYDegrees`
-- `camera.camera.orthographicHeight`
-- `camera.camera.cullingMask`
-- `camera.camera.rendererKey`
+```lua
+local cam = camera:getComponent(Component.Camera)
+if cam then
+  cam.primary = true
+  cam.fovY = 60
+end
+```
+
+- `camera.valid`
+- `camera.primary`
+- `camera.projection`
+- `camera.fovY`
+- `camera.orthographicHeight`
+- `camera.cullingMask`
+- `camera.rendererKey`
 
 Layer mask constants are available through `Layer.Default`, `Layer.UI`, and
 `Layer.All`.
@@ -455,12 +536,13 @@ global `Physics` table.
 
 ```lua
 function OnFixedUpdate(self, fixedDt)
-  if not self:hasRigidBody() then
+  local body = self:getComponent(Component.RigidBody)
+  if not body then
     return
   end
 
-  self.rigidBody:addForce(Vec3(10, 0, 0))
-  self.rigidBody:activate()
+  body:addForce(Vec3(10, 0, 0))
+  body:activate()
 end
 ```
 
@@ -530,10 +612,9 @@ through the `Character` table:
 
 ```lua
 function OnFixedUpdate(self, fixedDt)
-  local e = self.entity
-  Character.move(e, Vec3(Input.axisX() * 4.0, 0, Input.axisZ() * 4.0))
-  if Input.isKeyPressed("space") and Character.isGrounded(e) then
-    Character.jump(e, 6.0)
+  Character.move(self, Vec3(Input.axisX() * 4.0, 0, Input.axisZ() * 4.0))
+  if Input.isKeyPressed("space") and Character.isGrounded(self) then
+    Character.jump(self, 6.0)
   end
 end
 ```
@@ -611,25 +692,27 @@ function OnCreate(self)
   RollABall.score = 0
   RollABall.won = false
 
-  if self:hasRigidBody() then
-    self.rigidBody.mass = 1.0
-    self.rigidBody.overrideMass = true
-    self.rigidBody.friction = 0.25
-    self.rigidBody.restitution = 1.0
-    self.rigidBody.gravityFactor = 1.0
+  local body = self:getComponent(Component.RigidBody)
+  if body then
+    body.mass = 1.0
+    body.overrideMass = true
+    body.friction = 0.25
+    body.restitution = 1.0
+    body.gravityFactor = 1.0
   end
 
   print("[RollABall] started")
 end
 
 function OnFixedUpdate(self, fixedDt)
-  if not self:hasRigidBody() then
+  local body = self:getComponent(Component.RigidBody)
+  if not body then
     return
   end
 
   local input = movementInput()
-  self.rigidBody:addForce(Vec3(input.x * RollABall.moveForce, 0.0, input.z * RollABall.moveForce))
-  self.rigidBody:activate()
+  body:addForce(Vec3(input.x * RollABall.moveForce, 0.0, input.z * RollABall.moveForce))
+  body:activate()
 end
 
 function OnUpdate(self, dt)
@@ -757,20 +840,88 @@ Upscaler APIs:
 These are high-level controls only. Lua scripts cannot access native textures, command buffers, Vulkan
 handles, or provider-owned SDK objects.
 
+## Audio
+
+Audio playback is driven through the global `Audio` table. Clips are addressed
+by either a registry UUID string or a `res://` URI; pass the same string to any
+clip-taking call. Sound-handle functions take the `SoundId` returned by the
+`play*` calls. When no audio backend is available the calls are safe no-ops
+(`backendReady()` reports `false`).
+
+```lua
+function OnCreate(self)
+  Audio.preloadClip("res://audio/coin.wav")
+end
+
+function OnUpdate(self, dt)
+  if Input.isKeyPressed(KeyCode.Space) then
+    Audio.playOneShot("res://audio/coin.wav", 0.8) -- volume, optional pitch
+  end
+end
+```
+
+One-shots and music:
+
+- `Audio.preloadClip(clip)` -- warm the cache; returns `true` on success
+- `Audio.playOneShot(clip, volume?, pitch?)` -- fire-and-forget 2D sound, returns a `SoundId`
+- `Audio.playOneShotAt(clip, position, volume?, pitch?)` -- spatialized one-shot at a world position
+- `Audio.playMusic(clip, options?)` -- looping by default; `options` is a table of `volume`, `pitch`, `loop`, `fadeInMs`
+- `Audio.stopMusic(fadeOutMs?)`
+
+Sound-handle control (by `SoundId`):
+
+- `Audio.stopSound(id, fadeOutMs?)`
+- `Audio.pauseSound(id)` / `Audio.resumeSound(id)`
+- `Audio.setVolume(id, volume)` / `Audio.setPitch(id, pitch)` / `Audio.setLooping(id, loop)`
+- `Audio.isPlaying(id)`
+
+Entity-driven playback (uses the entity's `AudioSourceComponent`):
+
+- `Audio.play(entity, restart?)`
+- `Audio.pause(entity)`
+- `Audio.stop(entity)`
+
+Global mixer:
+
+- `Audio.setMasterVolume(volume)` / `Audio.masterVolume()`
+- `Audio.backendReady()`
+
+Components are reachable through `entity:getComponent(Component.AudioSource)` and
+`entity:getComponent(Component.AudioListener)`:
+
+```lua
+local source = self:getComponent(Component.AudioSource)
+if source then
+  source.clip = "res://audio/engine.wav"
+  source.volume = 0.5
+  source.loop = true
+  source.spatial = true
+  Audio.play(self)
+end
+```
+
+`AudioSource` properties: `valid`, `clip`, `volume`, `pitch`, `loop`,
+`playOnStart`, `playing`, `spatial`, `minDistance`, `maxDistance`, `rolloff`.
+`AudioListener` properties: `valid`, `primary`.
+
 ## Animation
 
-Animator playback can be controlled either through `entity.animator` or the
-global `Animation` table.
+Animator playback can be controlled either through the `Animator` component
+reference (`entity:getComponent(Component.Animator)`) or the global `Animation`
+table.
 
 ```lua
 local actor = World.findByName("Actor")
-if actor.valid and actor:hasAnimator() then
-  actor.animator:play(true)
-  actor.animator.speed = 1.0
-  actor.animator.loop = true
+if actor.valid then
+  local animator = actor:getComponent(Component.Animator)
+  if animator then
+    animator:play(true)
+    animator.speed = 1.0
+    animator.loop = true
 
-  local state = actor.animator:state()
-  print("animation time " .. tostring(state.time))
+    local state = animator:state()
+    print("animation time " .. tostring(state.time))
+  end
 end
 ```
 
@@ -806,6 +957,14 @@ Global animation APIs:
 - `Animation.jointCount(skeletonUuid)`
 - `Animation.duration(animationUuid)`
 
+Animation-controller parameters (for entities with controller data):
+
+- `Animation.setFloat(entity, name, value)` / `Animation.getFloat(entity, name)`
+- `Animation.setBool(entity, name, value)` / `Animation.getBool(entity, name)`
+- `Animation.setTrigger(entity, name)`
+- `Animation.currentState(entity)` -- returns `{valid, currentState, nextState,
+  transitioning, transitionProgress, normalizedTime}`
+
 `Animation.state` returns an `AnimatorPlaybackState`:
 
 - `valid`
@@ -821,19 +980,29 @@ Global animation APIs:
 ## Common Pitfalls
 
 - Use `:` for bound methods such as `entity:destroy()` and
-  `self.rigidBody:addForce(force)`.
+  `entity:getComponent(Component.RigidBody):addForce(force)`.
 - Check `entity.valid` and component-specific `valid` fields before using
   handles found by name.
-- Accessing a missing component property may raise a Lua error. Prefer
-  `entity:hasRigidBody()` and similar checks first.
+- Reach every component other than `transform` through the generic
+  `entity:getComponent(Component.X)` (returns `nil` when absent),
+  `entity:addComponent(Component.X)`, `entity:removeComponent(Component.X)`, and
+  `entity:hasComponent(Component.X)`. The old per-component properties
+  (`entity.rigidBody`, `entity.camera`, ...), the `entity:hasRigidBody()`-style
+  methods, and the `World.add*/remove*` family were removed; bind the new value
+  to a local and nil-check it before use.
 - Use `OnFixedUpdate` for physics forces. Use `OnUpdate` for input sampling,
   camera follow, score checks, and non-physics animation.
-- Collision event callbacks are not part of the current Lua API yet. For simple
-  pickups and trigger volumes, use `Physics.overlapSphere`,
-  `Physics.overlapBox`, or `Physics.contactPairs`.
-- Animator playback is single-clip playback per `AnimatorComponent` for now.
-  Blend trees, state machines, masks, and retargeting need dedicated animation
-  controller data.
+- Prefer the `OnCollisionEnter/Stay/Exit` and `OnTriggerEnter/Stay/Exit`
+  callbacks (see "Collision And Trigger Callbacks") for contact-driven logic.
+  For polling-style queries, `Physics.overlapSphere`, `Physics.overlapBox`,
+  `Physics.contactPairs`, and `Physics.contactEvents` are also available.
+- Beyond single-clip playback, the `Animation` table also drives
+  animation-controller state machines via parameters: `Animation.setFloat`,
+  `Animation.setBool`, `Animation.setTrigger`, `Animation.getFloat`,
+  `Animation.getBool`, and `Animation.currentState(entity)` (returns the current
+  controller state, transition progress, and normalized time). These require the
+  entity to have controller data authored; masks and retargeting are not yet
+  exposed.
 - Imported visual assets may have very small or very large source units. Verify
   scale in Game View after instantiation.
 - Embedded textures inside GLB imports must be validated by rendered material

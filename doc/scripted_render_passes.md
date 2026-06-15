@@ -1,5 +1,7 @@
 # Scripted Render Passes (Lua `setup` + `execute`)
 
+**English** | [简体中文](zh_CN/scripted_render_passes_CN.md)
+
 The declarative renderer supports two kinds of project-authored render-graph
 passes:
 
@@ -37,8 +39,8 @@ return RenderGraphPass {
         ctx:writeColor(out)
         ctx:setOutput("color", out)
         ctx:useGraphicsShader {
-            vertexLibrary = "builtin", vertex = "fullscreen_triangle.vert",
-            fragmentLibrary = "project", fragment = "my_pass.frag",
+            vertexLibrary = "builtin", vertex = "builtin/general/fullscreen_triangle.vert",
+            fragmentLibrary = "project", fragment = "project/fullscreen/my_pass.frag",
         }
         state.strength = ctx:paramFloat("strength", 0.5)
     end,
@@ -58,8 +60,10 @@ Then reference it from a render graph (`.vrg.json`) by `type`:
 { "id": "MyPass", "type": "MyPass", "inputs": { "source": "SsrComposite.color" } }
 ```
 
-See [`resources/render/passes/scripted_pixelate.lua`](../resources/render/passes/scripted_pixelate.lua)
-for a complete working example that reuses the existing `pixelate.frag` shader.
+See [`resources/render/passes/pixelate.lua`](../resources/render/passes/pixelate.lua)
+for a complete working example that reuses the existing `pixelate.frag` shader. It
+also shows the optional `menuPath` field, which places the pass in the editor's
+add-pass menu (e.g. `"Post Processing/Pixelate"`).
 
 ## Node params from shader reflection
 

@@ -1,5 +1,7 @@
 # Cross-platform export templates
 
+**English** | [简体中文](zh_CN/cross_platform_export_CN.md)
+
 > **Status (2026-06):**
 > - **Desktop (Vulkan):** working.
 > - **Web (WASM / WebGPU):** the whole pipeline is in place and the runtime **builds, links,
@@ -26,7 +28,10 @@ the same two ideas:
 The runtime player used as the template source for *all* platforms is the editor-free
 `vultra-runtime` target ([source/xmake.lua](../source/xmake.lua),
 [runtime_main.cpp](../source/vultra_app/src/runtime/runtime_main.cpp)). It builds for desktop,
-wasm and android and contains none of the editor / launcher / MCP / asset-import code.
+wasm and android and contains none of the editor / launcher / MCP / asset-import code. It is the
+*source* binary; it also reaches users as a published release asset — a prebuilt runtime the editor
+can download instead of building locally (see [Export templates / downloadable
+runtime](#export-templates--downloadable-runtime)).
 
 The editor's export dispatcher (`runBuildAndLaunch`) switches on `BuildSettings.targetPlatform`:
 `Windows`/`macOS`/`Linux` → `exportDesktop`; `WebGPU` → `exportWeb`; `Android` → planned.
@@ -34,7 +39,53 @@ The editor's export dispatcher (`runBuildAndLaunch`) switches on `BuildSettings.
 ## Desktop
 
 `exportDesktop` packs `<Project>.vpk`, copies the runtime executable next to it, and launches
-`vultra --vpk <Project>.vpk --scene res://...`. Unchanged from the original pipeline.
+`vultra --vpk <Project>.vpk --scene res://...`.
+
+It resolves the runtime to copy in priority order
+([editor_app_build.cpp](../source/vultra_app/src/editor_app/editor_app_build.cpp)):
+
+1. an explicit `exportTemplatePath` from the export settings, if set;
+2. otherwise an **official template downloaded** from the remote catalog for the target
+   platform+arch+engine-version, resolved offline via
+   `export_templates::cachedExportTemplate(...)` (see below);
+3. otherwise the editor's own executable, but only when exporting for the host platform.
+
+So the editor's exe is now just the last-resort source; the recommended path is a prebuilt
+editor-free runtime (an explicit one, or a downloaded official template).
+
+## Export templates / downloadable runtime
+
+Export Settings can download a **prebuilt, editor-free `vultra-runtime`** for the target
+platform+arch+engine-version instead of requiring a local build. The subsystem lives in
+[export_templates_repository.hpp](../source/vultra_app/include/editor_app/export_templates_repository.hpp)
+/ [.cpp](../source/vultra_app/src/editor_app/export_templates_repository.cpp).
+
+- **Remote catalog.** A JSON catalog enumerates `ExportTemplateEntry` (platform + arch) → newest-first
+  `ExportTemplateVersion` list (`version`, `minEngineVersion`, release-asset `url`, optional
+  `sha256` / `size`). The catalog points at GitHub Release assets on
+  `zzxzzk115/vultra-export-templates`; the binaries are **not** in the catalog repo and are
+  downloaded on demand. `bestVersion` picks an exact engine-version match, else the highest version
+  whose `minEngineVersion` is satisfied.
+- **Cache layout** (rooted at the editor-global cache root):
+  ```
+  .vultra/export-templates/
+    catalogs/<owner>-<repo>.json                    downloaded catalog (offline fallback)
+    <platform>-<arch>/<version>/vultra-runtime[.exe]  materialized runtime binaries
+  ```
+  `fetchExportTemplatesCatalog` caches the catalog so it still renders offline; on a catalog miss the
+  previously cached copy is used. `materializeExportTemplate` downloads a binary once (skipped if
+  already present and the expected size matches).
+- **Offline build resolver.** During export, `cachedExportTemplate(cacheRoot, platform, arch,
+  engineVersion)` returns the already-cached runtime path with **no network access** (the
+  "Download official template" button in Export Settings is what fetched it earlier). This is step 2
+  of the `exportDesktop` resolution order above.
+- **Release CI.** [.github/workflows/release_export_templates.yaml](../.github/workflows/release_export_templates.yaml)
+  builds the editor-free `vultra-runtime` per platform/arch on a `v*` tag (or manual dispatch) and
+  publishes it as a release asset on `zzxzzk115/vultra-export-templates`
+  (`vultra-export-template-<platform>-<arch>-<version>[.exe]`, release tag `v<version>` from
+  `xmake.lua`'s `set_version`). It requires an `EXPORT_TEMPLATES_TOKEN` PAT to push to the separate
+  templates repo. The matrix currently ships windows/x64, with other rows reserved as cross-platform
+  runners come online.
 
 ## Web (WASM / WebGPU) — pipeline complete, rendering WIP
 

@@ -1,5 +1,7 @@
 # Custom Material-Graph Nodes (BXDF / helper functions)
 
+**English** | [简体中文](zh_CN/material_custom_nodes_CN.md)
+
 Projects can add custom material-graph nodes by dropping a `*.vmatnode.json`
 descriptor anywhere under the project. They are scanned and layered on top of the
 builtin node set (`loadProjectMaterialGraphNodes` → `makeBuiltinNodeRegistry()`),

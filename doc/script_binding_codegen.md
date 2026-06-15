@@ -1,5 +1,7 @@
 # Script Binding Codegen — Authoring Standard
 
+**English** | [简体中文](zh_CN/script_binding_codegen_CN.md)
+
 This is the **normative guide** for adding or changing Lua script bindings in
 libvultra. Bindings are **generated** from `VBIND_*` annotations through a
 two-stage IR pipeline; you almost never hand-write registration code. Read this
@@ -81,7 +83,7 @@ nothing in normal builds.
 | Macro | On | Purpose |
 |---|---|---|
 | `VBIND_MODULE(name=, area=, service=)` | a class/struct (a service interface, or a tag struct) | declares a `name` namespace table in `area`; `service=` is the null-checked `ScriptContext` member |
-| `VBIND_FN(name=, body=shim, self=, service=, null=, deprecated=, module=, usertype=)` | a method of a `VBIND_MODULE` class, **or** a free shim function | a namespace function (or usertype method via `usertype=`). Without `body=shim` on a service method → **serviceForward** (full body generated). `body=shim`/free function → forwards to a hand-written shim |
+| `VBIND_FN(name=, body=shim, self=, service=, null=, deprecated=, module=, usertype=)` | a method of a `VBIND_MODULE` class, **or** a free shim function | a namespace function, or a usertype method when `usertype=` is given (`usertype=`, not `self=`, selects the method form; `self=` is an optional handle hint). Without `body=shim` on a service method → **serviceForward** (full body generated). `body=shim`/free function → forwards to a hand-written shim |
 | `VBIND_USERTYPE(name=, handle=, area=, component=, accessor=, postRegister=)` | a struct/class (a component struct, or a tag struct) | entity-ref usertype. `handle=` ref struct; `component=` → auto `valid` + `requireComponentRef`; `accessor=` → `entity.<accessor>`/`entity:has<Name>()`; `postRegister=` → `fn(usertype&, ctx)` run after registration |
 | `VBIND_FIELD(name=, readonly, deprecated=)` | a data member of a `VBIND_USERTYPE`/`VBIND_STRUCT` | a property; on a component usertype the generator emits `requireComponentRef` get/set |
 | `VBIND_PROPERTY(usertype=, name=, set=)` | a getter shim function | a usertype property backed by hand-written getter/`set=` setter shims |

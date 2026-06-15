@@ -31,6 +31,13 @@
   </a>
 </p>
 
+<p align="center">
+  <b>English</b> | <a href="doc/zh_CN/README_CN.md">简体中文</a>
+</p>
+
+> [!NOTE]
+> This project was formerly named **libvultra**; it is now **VultraEngine**.
+
 ## Motivation
 
 VultraEngine started as a research vehicle for **VR/XR graphics**: a place to prototype
@@ -62,8 +69,19 @@ web, and head-mounted displays.
   materials, animations, audio, and Gaussian Splats.
 - **Virtual file system** — `vfilesystem` provides `res://` URIs and mounted `VPK` packages, so
   the same code path serves loose project files while editing and cooked bundles at runtime.
-- **Lua scripting** — engine service bindings for scene, entity, transform, input, timing, asset,
-  and render access, generated from a single IR-based binding pipeline.
+- **Entity-Component-System world** — an EnTT-based ECS with reflected components — Transform,
+  Camera, Light, Mesh/Material, Animator, Jolt rigid-body physics, 3D audio source/listener, a full
+  Canvas/RectTransform UI set, particle emitters, and scripts — all editable in the inspector and
+  round-tripped through scenes.
+- **Lua scripting with hot reload** — engine service bindings for scene, entity, transform, input,
+  timing, asset, audio, and render access, generated from a single IR-based binding pipeline; entity
+  scripts reload live (`Script.reloadEntity` / `Script.reloadAll`) and an editor file watcher picks up
+  edits on save.
+- **3D spatial audio** — positional audio with distance attenuation and a listener that rides the
+  active camera or an explicit `AudioListener`, backed by miniaudio.
+- **Human- and AI-readable project formats** — scenes are diffable plain-text `.vscn`
+  (`Component/field = value`), while render graphs, material graphs, projects, and manifests are JSON —
+  easy for version control, external tooling, and AI coding agents to read and edit directly.
 - **Plugin system** — runtime-loadable native C++ and/or Lua plugins with a managed catalog,
   per-project enablement, render-pass/shader-library contribution, and an editor-extension API.
 - **Modern rendering features** — deferred lighting, shadow maps, SSAO, SSR, FXAA, tone mapping,
@@ -78,9 +96,9 @@ web, and head-mounted displays.
   and reason about a project.
 - **Embodied-AI friendly runtime** — a localhost Runtime MCP/RPC endpoint for editor automation,
   headless/offscreen simulation, and browser/Python visual capture streams.
-- **First-class i18n** — lz4-embedded JSON catalogs, a fully localized editor (English, Simplified
-  Chinese, Japanese, Korean), OS-language auto-detection, live switching, and a bundled pan-CJK +
-  color-emoji font; games can register and override their own catalogs.
+- **Built-in i18n** — lz4-embedded JSON catalogs, a localized editor (English, Simplified Chinese,
+  Japanese, Korean), OS-language auto-detection, live switching, and a bundled pan-CJK + color-emoji
+  font; games can register and override their own catalogs.
 
 ## Architecture
 
@@ -166,25 +184,156 @@ samples — see [zzxzzk115/vultra-examples](https://github.com/zzxzzk115/vultra-
 Build instructions are intentionally kept out of this README and will live in a dedicated
 **`BUILD.md`** (coming soon), covering desktop, WebAssembly, and Android toolchains.
 
+## Command-Line Reference
+
+The runtime executable is `vultra` (the build target is `vultra-app`). The same binary is the project
+launcher, editor, runtime player, and tool host. Run `vultra help` for the built-in usage text.
+
+```
+vultra [options]
+vultra <subcommand> ...
+```
+
+### Options
+
+**Project & runtime**
+
+| Option | Description |
+| --- | --- |
+| `--project <dir\|.vproject>` | Open a project. Required by `--editor`. |
+| `--editor` | Launch the editor (requires `--project`). |
+| `--vpk <file>` | Run a packaged project from a `.vpk`. |
+| `--scene <res://...>` | Scene to load on start. |
+| `--plugins-dir <dir>` | Discover and enable every plugin in a directory (runtime opt-in). |
+| `--render-mode <visible\|offscreen\|none>` | Render mode (default `visible`). `offscreen` = no window but render services stay active; `none` = no window and no render backend. |
+
+**Automation (Runtime MCP / RPC)**
+
+| Option | Description |
+| --- | --- |
+| `--mcp` | Enable the localhost Runtime MCP/RPC endpoint. |
+| `--mcp-host <host>` | MCP bind host. |
+| `--mcp-port <port>` | MCP port (e.g. `8848`). |
+
+**XR**
+
+| Option | Description |
+| --- | --- |
+| `--xr`, `--no-xr` | Enable / disable the OpenXR session. |
+| `--xr-mirror`, `--no-xr-mirror` | Enable / disable the desktop mirror view. |
+
+**Graphics debugging**
+
+| Option | Description |
+| --- | --- |
+| `--validation`, `--no-validation` | Vulkan validation layers. |
+| `--debug-markers`, `--no-debug-markers` | GPU debug markers. |
+| `--renderdoc`, `--no-renderdoc` | RenderDoc in-app integration. |
+
+**Export**
+
+| Option | Description |
+| --- | --- |
+| `--export` | Export a packaged build (non-interactive). |
+| `--export-output <dir>`, `--out <dir>` | Export output directory. |
+| `--export-platform <platform>` | Target platform for the export. |
+| `--export-run` | Run the exported build after export. |
+
+**Misc**
+
+| Option | Description |
+| --- | --- |
+| `-h`, `--help` | Show usage. |
+
+> `--backend` / `--render-backend` and `--render-profile` are accepted for forward compatibility but
+> are not applied yet.
+
+**Default resolution behavior**
+
+- Without `--vpk`, `vultra` first looks for `<executable-name>.vpk` next to the executable, then for
+  `resources.vpk` in common locations.
+- With no VPK and no project, it opens the **Project Launcher**.
+- `--render-mode=none` disables visual-capture tools; `--render-mode=offscreen` keeps them available.
+
+### Tool subcommands
+
+These bypass the engine UI (the first argument selects the tool):
+
+```bash
+# Asset pipeline ('asset' also accepts 'vasset' / 'vasset-cli')
+vultra asset import <asset-root> [--reimport]
+vultra asset pack <asset-root> <out.vpk> [--zstd N] [--include logical/path] [--root res://...]
+vultra asset validate-vpk <resources.vpk> [--asset-root <root>] [--registry <asset_registry.tsv>]
+
+# Shader compiler CLI ('shader' also accepts 'vshaderc'); build | compile | pack-glsl | wgsl | ...
+vultra shader <vshaderc args>
+vultra shader --help
+
+# Stdio<->HTTP bridge to the editor's MCP server (launched by MCP clients)
+vultra mcp-stdio-bridge [--host 127.0.0.1] [--port 8848]
+
+# Built-in
+vultra help
+vultra version
+```
+
+### Examples
+
+```bash
+# Open the Project Launcher (no project, no package)
+vultra
+
+# Edit a project
+vultra --editor --project example.vproject
+
+# Edit with Runtime MCP enabled and XR off
+vultra --editor --mcp --project example.vproject --no-xr
+
+# Run a packaged project
+vultra --vpk resources.vpk --scene res://scenes/main.vscn
+
+# Run a project from loose files (no editor)
+vultra --project example.vproject --scene res://scenes/main.vscn
+
+# Headless offscreen runtime with MCP on a fixed port (visual capture available)
+vultra --mcp --mcp-port 8848 --project example.vproject --render-mode offscreen --no-xr
+
+# Headless simulation-only: no window, no GPU/render backend
+vultra --mcp --mcp-port 8848 --project example.vproject --render-mode none --no-xr
+
+# Vulkan validation + GPU debug markers + RenderDoc capture
+vultra --editor --project example.vproject --validation --debug-markers --renderdoc
+
+# XR session in the editor with the mirror view off
+vultra --editor --project example.vproject --xr --no-xr-mirror
+
+# Export a packaged build and run it
+vultra --export --project example.vproject --export-output build/export --export-run
+
+# Tools
+vultra asset import resources --reimport
+vultra asset pack resources resources.vpk --zstd 6
+vultra shader compile -i path/to/shader.vshader -o build/shaders
+```
+
+During development the same arguments work through xmake, e.g.
+`xmake run vultra-app --editor --project example.vproject`.
+
 ## Documentation
 
-Design and subsystem documentation lives under [`doc/`](./doc/):
+Human-facing documentation lives under [`doc/`](./doc/). Start at the
+**[documentation wiki](./doc/wiki.md)** — the organized entry point to every page.
 
-| Topic | Document |
+| Start here | |
 | --- | --- |
-| Asset system architecture | [doc/architecture/asset-system.md](./doc/architecture/asset-system.md) |
-| Render system architecture | [doc/architecture/render-system.md](./doc/architecture/render-system.md) |
-| GPU-driven pipeline | [doc/gpu_driven_pipeline.md](./doc/gpu_driven_pipeline.md) |
-| Scripted render passes | [doc/scripted_render_passes.md](./doc/scripted_render_passes.md) |
-| Render upscaler plugins | [doc/render_upscaler_plugins.md](./doc/render_upscaler_plugins.md) |
-| Material custom nodes | [doc/material_custom_nodes.md](./doc/material_custom_nodes.md) |
-| Particle system | [doc/particle_system.md](./doc/particle_system.md) |
-| Lua scripting | [doc/lua_scripting.md](./doc/lua_scripting.md) |
-| Lua API design | [doc/lua_api_design.md](./doc/lua_api_design.md) |
-| Script binding codegen | [doc/script_binding_codegen.md](./doc/script_binding_codegen.md) |
-| Plugin system | [doc/plugins.md](./doc/plugins.md) |
-| Internationalization (i18n) | [doc/i18n.md](./doc/i18n.md) |
-| Cross-platform export | [doc/cross_platform_export.md](./doc/cross_platform_export.md) |
+| [Getting Started](./doc/getting_started.md) | Launch modes, creating projects, an editor tour. |
+| [Architecture overview](./doc/architecture.md) | How the engine fits together. |
+| [Project & assets](./doc/project_and_assets.md) | Project files, the asset pipeline, the VFS. |
+| [Scenes & components](./doc/scene_and_components.md) | ECS, the `.vscn` format, the component catalog. |
+| [Render graphs](./doc/render_graphs.md) · [Shaders](./doc/shader_system.md) · [Lua scripting](./doc/lua_scripting.md) · [Plugins](./doc/plugins.md) · [VR/XR](./doc/vr_xr.md) | Core subsystems. |
+
+See the [wiki](./doc/wiki.md) for the full index (rendering deep-dives, gameplay systems, material
+nodes, i18n, cross-platform export, and more).
 
 ## Contributing
 
@@ -301,5 +450,3 @@ VultraEngine is released under the [MIT](LICENSE) license.
 
 The project may adopt a donation/sponsorship model in the future to sustain development; the source
 will remain open under a permissive license.
-</content>
-</invoke>

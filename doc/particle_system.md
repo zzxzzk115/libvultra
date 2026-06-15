@@ -1,5 +1,7 @@
 # Particle system
 
+**English** | [简体中文](zh_CN/particle_system_CN.md)
+
 A particle system driven by a `ParticleEmitterComponent`, with two interchangeable backends.
 
 > **Status:** the default backend simulates particles in a **GPU compute shader** and renders them as
@@ -16,7 +18,7 @@ world position.
 | Field | Meaning |
 |-------|---------|
 | `playing` | emit or pause |
-| `worldSpace` | simulate in world space (vs local to the emitter) |
+| `worldSpace` | authoring-only no-op (see Roadmap): simulation origin is always the emitter's world matrix; local-space simulation is unimplemented |
 | `gpu` | backend select: GPU compute + billboards (`true`, default) or CPU debug-draw (`false`) |
 | `maxParticles` | hard cap on live particles (GPU: fixed pool size) |
 | `emissionRate` | particles spawned per second |
@@ -48,8 +50,12 @@ When `gpu == true` the emitter is driven entirely on the GPU:
    pool slot with additive blending and a soft circular sprite + soft-depth fade against the scene
    depth, in HDR before tone mapping.
 
-Both passes are builtin render-graph passes wired into `universal.vrg.json` (and the project
-`default.vrg.json`) between `GeneralGaussianSplatComposite` and `Ssr`.
+These are not two separate graph nodes: a single builtin `ParticleRender` graph node — wired into
+`universal.vrg.json` (and the project `default.vrg.json`) between `GeneralGaussianSplatComposite`
+and `Ssr` — runs both passes internally. Its handler calls `ParticleSimulatePass` (compute) and
+then `ParticleRenderPass` (graphics) in sequence. The builtin graph also ships tier variants
+`universal_compat.vrg.json` and `universal_rt.vrg.json` (the default file is still named
+`universal.vrg.json`).
 
 ## CPU backend (fallback)
 
@@ -82,3 +88,6 @@ subsystem set in [demo_app_host.cpp](../source/vultra/src/core/app/demo_app_host
 - Texture/atlas sprites, emission shapes, color/size-over-life curves, and sub-emitters.
 - Alive/dead-list recycling + indirect dispatch/draw and optional depth sorting (the RHI already has
   a radix sorter) for large alpha-blended systems.
+- Local-space simulation: the `worldSpace` field is currently reflected/serialized/scriptable but
+  read by neither backend (the emitter's world matrix is always the origin), so it is an
+  authoring-only no-op until local-space integration lands.

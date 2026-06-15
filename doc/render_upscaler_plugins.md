@@ -1,5 +1,7 @@
 # Render Upscaler Plugins
 
+**English** | [简体中文](zh_CN/render_upscaler_plugins_CN.md)
+
 The engine owns a generic upscaler bridge. Vendor SDK code, DLLs, headers, libraries, signatures, and
 feature-specific calls live in an external native plugin.
 
