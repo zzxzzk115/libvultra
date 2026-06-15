@@ -1,7 +1,7 @@
 # VultraEngine
 
 <h4 align="center">
-  A C++23 game and rendering runtime built around Vulkan, WebGPU, OpenXR, data-driven assets, and editable render pipelines.
+  A C++23  game engine for VR/XR rendering research and game development.
 </h4>
 
 <p align="center">
@@ -20,9 +20,6 @@
   <a href="https://github.com/zzxzzk115/VultraEngine/actions/workflows/build_wasm.yaml">
     <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/VultraEngine/build_wasm.yaml?branch=master&label=Build-WASM&logo=github" alt="Build-WASM" />
   </a>
-  <a href="https://github.com/zzxzzk115/VultraEngine/actions/workflows/deploy_pages.yaml">
-    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/VultraEngine/deploy_pages.yaml?branch=master&label=Deploy-Pages&logo=github" alt="Deploy-Pages" />
-  </a>
   <a href="https://www.codefactor.io/repository/github/zzxzzk115/VultraEngine">
     <img src="https://www.codefactor.io/repository/github/zzxzzk115/VultraEngine/badge" alt="CodeFactor" />
   </a>
@@ -34,78 +31,97 @@
   </a>
 </p>
 
-## What It Is
+## Motivation
 
-VultraEngine is split into two clear layers:
+VultraEngine started as a research vehicle for **VR/XR graphics**: a place to prototype
+stereo rendering, novel-view synthesis, Gaussian Splatting, GPU-driven pipelines, and ray
+tracing on top of a real, modern RHI — without fighting a monolithic commercial engine. At
+the same time it is built to be a practical **game development** runtime: a self-contained
+player, an editor, a data-driven asset pipeline, scripting, and a plugin system.
 
-- `vultra`: the engine library. It is built as a static library and contains the core runtime, RHI, asset system, ECS/world layer, scripting, rendering systems, OpenXR integration, and platform backends.
-- `vultra-app`: the application shell. The same executable can act as the project launcher, editor, command-line asset/shader tool host, and standalone packaged runtime.
-
-The desktop runtime path is designed around a self-contained executable plus a `VPK` asset package. There is no separate Vultra engine DLL to ship beside the app: `vultra-app` can run directly from project resources while editing, or load cooked assets from `resources.vpk` for standalone runtime builds.
+The goal is a single codebase that is equally comfortable as a **lab bench** for rendering
+experiments and as a **shipping runtime** for interactive applications across desktop, mobile,
+web, and head-mounted displays.
 
 ## Highlights
 
-- Vulkan and WebGPU rendering backends behind a shared RHI.
-- Native WebGPU and browser WebGPU through WebAssembly / Emscripten.
-- OpenXR runtime support on the Vulkan backend, with scene-driven XR cameras, editor/runtime mirror views, and stereo render graph templates.
-- Scriptable Render Pipeline architecture with data-driven renderers and editable `.vrg.json` render graphs.
-- Render Graph editor with live runtime preview, runtime graph inspection, resource thumbnails, and Lua-authored project passes.
-- Material Graph editor and compiler, including generated shader output and project material graph assets.
-- Custom asset pipeline based on `vasset v0.3`, with import metadata, asset registries, source-to-runtime conversion, and package manifests.
-- Custom virtual file system integration through `vfilesystem`, including `res://` URIs and mounted `VPK` packages.
-- Integrated `vultra asset ...` and `vultra shader ...` command-line tools through `vultra-app`.
-- `VPK` package import, compression, validation, loading, editor export, and export-and-run workflow.
-- Lua scripting with engine service bindings for scene, entity, transform, input, timing, asset, render, and script access. See `doc/lua_scripting.md` for gameplay scripting examples and API notes.
-- Built-in renderer features including deferred lighting, shadow maps, SSAO, SSR, FXAA, tone mapping, selection outlines, meshlet/visibility-buffer paths, ray tracing examples, and Gaussian Splatting.
-- Project launcher that creates `.vproject` workspaces with scenes, render graphs, shader libraries, scripts, assets, and AI workspace scaffolding.
-- Engine-wide i18n subsystem with lz4-embedded JSON catalogs, a fully localized editor UI (English, Simplified Chinese, Japanese, Korean), OS-language auto-detection, live language switching, and a bundled pan-CJK font; games can register and override their own catalogs.
+- **Multi-backend RHI** — Vulkan and WebGPU behind one render hardware interface, including
+  native WebGPU and browser WebGPU via WebAssembly / Emscripten.
+- **OpenXR VR/XR runtime** — scene-driven XR cameras, stereo render-graph templates,
+  editor/runtime mirror views, and view-synthesis experiments on the Vulkan backend.
+- **Editable, data-driven render pipelines** — an SRP-style architecture where renderers are
+  declarative `.vrg.json` **render graphs** with a live-preview graph editor, and project passes
+  can be authored in Lua without forking the engine.
+- **Material Graph** — a node-based material editor and compiler that emits real shader sources
+  and per-model GBuffer output nodes (`.vmatgraph.json`).
+- **`vshadersystem` — an extended GLSL toolchain** — a `.vshader` dialect with deep-namespaced
+  shader IDs, VFS-mounted `#include` resolution, shader libraries, and multi-backend compilation
+  (Vulkan SPIR-V / WebGPU), usable both as a build step and a runtime CLI.
+- **`vasset` asset system** — a custom import-to-runtime pipeline with import metadata, a
+  UUID-based asset registry, source cooking, and `VPK` package manifests for meshes, textures,
+  materials, animations, audio, and Gaussian Splats.
+- **Virtual file system** — `vfilesystem` provides `res://` URIs and mounted `VPK` packages, so
+  the same code path serves loose project files while editing and cooked bundles at runtime.
+- **Lua scripting** — engine service bindings for scene, entity, transform, input, timing, asset,
+  and render access, generated from a single IR-based binding pipeline.
+- **Plugin system** — runtime-loadable native C++ and/or Lua plugins with a managed catalog,
+  per-project enablement, render-pass/shader-library contribution, and an editor-extension API.
+- **Modern rendering features** — deferred lighting, shadow maps, SSAO, SSR, FXAA, tone mapping,
+  selection outlines, a meshlet / visibility-buffer GPU-driven path, hardware ray tracing examples,
+  and 3D Gaussian Splatting.
+- **Built-in graphics-research tooling** — an in-editor **Frame Debugger** (per-pass frame-graph
+  inspection with resource thumbnails), a **GPU/CPU Profiler** (command-buffer timing with Tracy
+  integration), a live Render Graph viewer, and RenderDoc / validation-layer hooks — so rendering
+  experiments are observable without leaving the engine.
+- **AI-assisted development** — an editor Agent layer built on MCP, AI Auto Layout, and per-project
+  `ai/` workspace scaffolding (specs, tasks, knowledge) that lets coding/agent tools drive the editor
+  and reason about a project.
+- **Embodied-AI friendly runtime** — a localhost Runtime MCP/RPC endpoint for editor automation,
+  headless/offscreen simulation, and browser/Python visual capture streams.
+- **First-class i18n** — lz4-embedded JSON catalogs, a fully localized editor (English, Simplified
+  Chinese, Japanese, Korean), OS-language auto-detection, live switching, and a bundled pan-CJK +
+  color-emoji font; games can register and override their own catalogs.
 
-## Platform Targets
+## Architecture
 
-| Platform | Primary backend | Notes |
-| --- | --- | --- |
-| Windows | Vulkan + WebGPU | Editor, launcher, runtime, tools, OpenXR, examples. |
-| Linux | Vulkan + WebGPU | Editor/runtime path with SDL, optional Wayland configuration. |
-| macOS | Vulkan + WebGPU | Desktop runtime/editor builds with packaged runtime rpaths. |
-| Android | Vulkan | Runtime-oriented path with bundled `resources.vpk`. |
-| Web | WebGPU | WebAssembly / Emscripten builds with preloaded `resources.vpk`. |
+VultraEngine began life as **`libvultra`** — a headless rendering/runtime library with no editor,
+which is the **`vultra`** static library you see today. Editor, launcher, and tooling were layered on
+top over time to grow it into the full engine. That history is reflected in the current two-layer split:
+
+- **`vultra`** — the engine library (static). It contains the core runtime, RHI, asset system,
+  ECS/world layer, scripting, rendering systems, OpenXR integration, and platform backends. It is
+  usable on its own, and the `examples/` in this repository are **`libvultra` examples** that link
+  directly against it.
+- **`vultra-app`** — the application shell. The same executable acts as project launcher, editor,
+  command-line asset/shader tool host, and standalone packaged runtime.
+
+The desktop runtime is a single self-contained executable plus a `VPK` asset package — there is no
+separate engine DLL to ship alongside the app. `vultra-app` can run directly from project resources
+while editing, or load cooked assets from `resources.vpk` for standalone builds.
 
 ## Rendering
 
-Vultra's rendering stack is built around SRP-style camera cooking, renderer selection, a frame graph, and declarative render graphs:
+The rendering stack is built around SRP-style camera cooking, renderer selection, a frame graph,
+and declarative render graphs:
 
-- `.vrg.json` stores render graph nodes, resources, editor layout, and pass parameters.
-- `.vrp.lua` stores Lua-authored render pipeline or pass definitions.
-- `.vshaderlib.lua` declares project shader libraries and shader globs.
-- `.vmatgraph.json` stores material graphs, which compile to generated shader sources.
+- `.vrg.json` — render-graph nodes, resources, editor layout, and pass parameters.
+- `.vrp.lua` — Lua-authored render pipeline / pass definitions.
+- `.vshaderlib.lua` — project shader-library declarations and shader globs.
+- `.vmatgraph.json` — material graphs compiled to generated shader sources.
 
-The built-in renderer includes compatibility and high-end paths, and the project graph system lets game projects replace or extend passes without forking the engine.
+The built-in renderer ships explicit tiers (high-end, compatibility, and ray-tracing paths), and the
+project graph system lets games **replace or extend passes** — declaratively or with full
+Lua-authored `setup`/`execute` passes — without forking the engine.
 
-## Asset Pipeline
+## Asset & Content Pipeline
 
-Vultra projects use a custom asset workflow:
+- `.vproject` — identifies the project, asset root, default scene, and editable render graph.
+- `.vimport` — tracks imported sources and their cooked outputs.
+- `.vscn` — scene entities and reflected component fields.
+- `resources.vpk` — the runtime asset bundle.
+- `res://` — paths resolved through the asset system and virtual file system.
 
-- `.vproject` identifies the project, asset root, default scene, and editable render graph.
-- `.vimport` files track imported sources and cooked outputs.
-- `.vscn` stores scene entities and reflected component fields.
-- `resources.vpk` is the runtime asset bundle.
-- `res://` paths are resolved through the asset system and virtual file system.
-
-Assets can be imported and packed from scripts:
-
-```bash
-./scripts/import.sh <repo-root> <asset-root>
-./scripts/pack.sh <repo-root> <asset-root> <out.vpk>
-```
-
-On Windows PowerShell:
-
-```powershell
-.\scripts\import.ps1 <repo-root> <asset-root>
-.\scripts\pack.ps1 <repo-root> <asset-root> <out.vpk>
-```
-
-The same functionality is available through the runtime tool host:
+Assets and shaders are also reachable through the integrated tool host:
 
 ```bash
 vultra asset import resources --reimport
@@ -113,7 +129,20 @@ vultra asset pack resources resources.vpk --zstd 6
 vultra shader compile -i path/to/shader.vshader -o build/shaders
 ```
 
+## Platform Targets
+
+| Platform | Primary backend | Notes |
+| --- | --- | --- |
+| Windows | Vulkan + WebGPU | Editor, launcher, runtime, tools, OpenXR, examples. |
+| Linux | Vulkan + WebGPU | Editor/runtime path with SDL, optional Wayland. |
+| macOS | Vulkan + WebGPU | Desktop runtime/editor builds with packaged runtime rpaths. |
+| Android | Vulkan | Runtime-oriented path with bundled `resources.vpk`. |
+| Web | WebGPU | WebAssembly / Emscripten builds with preloaded `resources.vpk`. |
+
 ## Showcase
+
+The following are **`libvultra` examples** that ship in this repository and link directly against the
+`vultra` library:
 
 - [GLTF Viewer](./examples/gltf_viewer/main.cpp)
 - [Demo App](./examples/demo_app/main.cpp)
@@ -126,302 +155,150 @@ vultra shader compile -i path/to/shader.vshader -o build/shaders
 - [Ray Tracing Examples](./examples/raytracing/)
 - [Mesh Shading Example](./examples/meshshading/triangle/)
 
+For a broader, continually growing collection of examples — including full-project and game-oriented
+samples — see [zzxzzk115/vultra-examples](https://github.com/zzxzzk115/vultra-examples).
+
 ![Example: GLTF Viewer](./media/images/example-gltf-viewer.png)
 ![Example: Sponza](./media/images/example-sponza.png)
 
-## Build
+## Getting Started
 
-### Prerequisites
+Build instructions are intentionally kept out of this README and will live in a dedicated
+**`BUILD.md`** (coming soon), covering desktop, WebAssembly, and Android toolchains.
 
-- Git
-- XMake
-- Vulkan SDK for Vulkan desktop targets
-- Android SDK + NDK for Android
-- Emscripten SDK for WebAssembly
-- Visual Studio on Windows, or Clang/GCC on Linux/macOS
+## Documentation
 
-### Desktop
+Design and subsystem documentation lives under [`doc/`](./doc/):
 
-```bash
-git clone --recursive https://github.com/zzxzzk115/VultraEngine.git
-cd VultraEngine
-git submodule update --init --recursive
-xmake f -y
-xmake build -y vultra-app
-```
+| Topic | Document |
+| --- | --- |
+| Asset system architecture | [doc/architecture/asset-system.md](./doc/architecture/asset-system.md) |
+| Render system architecture | [doc/architecture/render-system.md](./doc/architecture/render-system.md) |
+| GPU-driven pipeline | [doc/gpu_driven_pipeline.md](./doc/gpu_driven_pipeline.md) |
+| Scripted render passes | [doc/scripted_render_passes.md](./doc/scripted_render_passes.md) |
+| Render upscaler plugins | [doc/render_upscaler_plugins.md](./doc/render_upscaler_plugins.md) |
+| Material custom nodes | [doc/material_custom_nodes.md](./doc/material_custom_nodes.md) |
+| Particle system | [doc/particle_system.md](./doc/particle_system.md) |
+| Lua scripting | [doc/lua_scripting.md](./doc/lua_scripting.md) |
+| Lua API design | [doc/lua_api_design.md](./doc/lua_api_design.md) |
+| Script binding codegen | [doc/script_binding_codegen.md](./doc/script_binding_codegen.md) |
+| Plugin system | [doc/plugins.md](./doc/plugins.md) |
+| Internationalization (i18n) | [doc/i18n.md](./doc/i18n.md) |
+| Cross-platform export | [doc/cross_platform_export.md](./doc/cross_platform_export.md) |
 
-Run the launcher/editor:
+## Contributing
 
-```bash
-xmake run vultra-app
-```
+Contributions are welcome — bug reports, feature proposals, documentation, examples, and plugins.
 
-Run a project in editor mode:
+- Open issues and feature requests on the [issue tracker](https://github.com/zzxzzk115/VultraEngine/issues).
+- The subsystem docs under [`doc/`](./doc/) are the best starting point for understanding the
+  architecture before making changes.
+- A detailed **`CONTRIBUTING.md`** (coding style, branch/PR workflow, and review process) is planned
+  alongside `BUILD.md`.
 
-```bash
-vultra --editor --project <project-dir>
-```
+## Acknowledgements
 
-Run a packaged project:
+VultraEngine stands on the shoulders of many open-source projects. Thanks to all their authors and
+maintainers.
 
-```bash
-vultra --vpk resources.vpk --scene res://scenes/main.vscn
-```
+### Graphics, RHI & XR
 
-## Runtime MCP, Headless, and Offscreen
+| Project | Role |
+| --- | --- |
+| [Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers) | Vulkan API headers and type definitions |
+| [VulkanMemoryAllocator-Hpp](https://github.com/YaaZ/VulkanMemoryAllocator-Hpp) | C++ bindings for AMD's Vulkan GPU memory allocator |
+| [WebGPU-distribution (Dawn)](https://github.com/eliemichel/WebGPU-distribution) | WebGPU backend headers/binaries (desktop + browser) |
+| [OpenXR-SDK](https://github.com/KhronosGroup/OpenXR-SDK) | VR/XR runtime integration |
+| [RenderDoc](https://github.com/baldurk/renderdoc) | In-app GPU capture/debugging integration |
+| [vulkan_radix_sort (vrdx)](https://github.com/jaesung-cs/vulkan_radix_sort) | Vulkan GPU radix sort (Gaussian Splat ordering) |
+| [debug-draw](https://github.com/glampert/debug-draw) | Immediate-mode 3D debug primitives |
+| [Tracy](https://github.com/wolfpld/tracy) | Real-time frame/CPU/GPU profiler (optional) |
 
-`vultra-app` can expose a localhost Runtime MCP/RPC endpoint for editor
-automation, simulation control, visual capture, and browser/Python preview
-streams. `--rpc` is an alias for `--mcp`.
+### Windowing, Input & Platform
 
-Run the editor with Runtime MCP enabled:
+| Project | Role |
+| --- | --- |
+| [SDL3](https://github.com/libsdl-org/SDL) | Cross-platform windowing and input |
 
-```text
-xmake run vultra-app --editor --rpc --project example.vproject --no-xr
-```
+### UI / ImGui Ecosystem
 
-Run an offscreen project runtime for visual embodied AI workflows:
+| Project | Role |
+| --- | --- |
+| [Dear ImGui](https://github.com/ocornut/imgui) | Immediate-mode GUI (docking branch, FreeType + 32-bit wchar) |
+| [ImGuizmo](https://github.com/CedricGuillemet/ImGuizmo) | 3D transform gizmos |
+| [imoguizmo](https://github.com/fknfilewalker/imOGuizmo) | Orientation cube gizmo |
+| [imnodes](https://github.com/Nelarius/imnodes) | Node-graph editor widgets (render/material graphs) |
+| [implot](https://github.com/epezent/implot) | Plotting/visualization widgets |
+| [ImGuiAl](https://github.com/leiradel/ImGuiAl) | Extra ImGui widgets (terminal, sparkline, msgbox) |
+| [ImGuiFileDialog](https://github.com/aiekick/ImGuiFileDialog) | File/folder picker dialog |
+| [imgui_graphnode](https://github.com/anthofoxo/imgui_graphnode) | Graphviz-backed graph rendering for ImGui |
+| [IconFontCppHeaders](https://github.com/juliettef/IconFontCppHeaders) | Icon-font glyph constants |
+| [FreeType](https://freetype.org/) | Glyph rasterization (UI text + color emoji) |
 
-```text
-xmake run vultra-app --rpc --mcp-port 8848 --project example.vproject --render-mode offscreen --no-xr
-```
+### Asset Import, Codecs & Math
 
-Run a simulation-only headless project runtime with no GPU/render path:
+| Project | Role |
+| --- | --- |
+| [Assimp](https://github.com/assimp/assimp) | Model import (glTF/FBX/OBJ/...) in the importer path |
+| [KTX-Software](https://github.com/KhronosGroup/KTX-Software) | KTX2 / Basis Universal GPU texture transcoding |
+| [meshoptimizer](https://github.com/zeux/meshoptimizer) | Mesh optimization, meshlet generation |
+| [stb](https://github.com/nothings/stb) | Image load/write |
+| [tinyexr](https://github.com/syoyo/tinyexr) | OpenEXR / HDR image loading |
+| [miniply](https://github.com/vilya/miniply) | Fast PLY parsing (point clouds / splats) |
+| [dds-ktx](https://github.com/septag/dds-ktx) | DDS/KTX header parsing |
+| [spz](https://github.com/nianticlabs/spz) | 3D Gaussian Splat compression format |
+| [GaussForge](https://github.com/zzxzzk115/GaussForge) | Gaussian Splat processing/IO |
+| [miniaudio](https://github.com/mackron/miniaudio) | Audio decoding/playback |
+| [GLM](https://github.com/g-truc/glm) | Vector/matrix/quaternion math |
+| [OpenCL-Headers](https://github.com/KhronosGroup/OpenCL-Headers) | Optional GPU-accelerated texture transcoding |
 
-```text
-xmake run vultra-app --rpc --mcp-port 8848 --project example.vproject --render-mode none --no-xr
-```
+### Scripting, ECS, Animation & Physics
 
-`--render-mode` accepts:
+| Project | Role |
+| --- | --- |
+| [sol2](https://github.com/ThePhD/sol2) | Lua ↔ C++ binding layer |
+| [EnTT](https://github.com/skypjack/entt) | Entity-component-system |
+| [Jolt Physics](https://github.com/jrouwe/JoltPhysics) | Rigid-body physics simulation |
+| [ozz-animation](https://github.com/guillaumeblanc/ozz-animation) | Skeletal animation runtime |
 
-- `visible`: normal visible rendering.
-- `offscreen`: no visible window, render services stay active, RGB/depth
-  capture and video stream tools are available.
-- `none`: no visible window and no render backend; simulation/RPC tools remain
-  available, visual capture tools return explicit errors.
+### Serialization, Compression & Utilities
 
-Runtime MCP uses HTTP JSON-RPC on `POST /mcp`, so any HTTP client can drive it.
-For any of the JSON bodies below, put the body in `request.json` and send it
-with either command:
+| Project | Role |
+| --- | --- |
+| [cereal](https://github.com/USCiLab/cereal) | C++ object serialization |
+| [zstd](https://github.com/facebook/zstd) | VPK package compression |
+| [lz4](https://github.com/lz4/lz4) | Fast decompression of embedded builtin blobs (fonts/catalogs) |
+| [zlib](https://github.com/madler/zlib) | Deflate compression |
+| [xxHash](https://github.com/Cyan4973/xxHash) | Fast hashing for asset UUIDs/checksums |
+| [{fmt}](https://github.com/fmtlib/fmt) | String formatting |
+| [spdlog](https://github.com/gabime/spdlog) | Logging |
+| [magic_enum](https://github.com/Neargye/magic_enum) | Compile-time enum reflection |
+| [argparse](https://github.com/p-ranav/argparse) | CLI argument parsing |
+| [enkiTS](https://github.com/dougbinks/enkiTS) | Task scheduler (via vtask) |
+| [Graphviz](https://gitlab.com/graphviz/graphviz) + [Expat](https://github.com/libexpat/libexpat) | Graph layout for editor visualizations |
+| [GoogleTest](https://github.com/google/googletest) | Unit testing |
 
-```text
-curl -s http://127.0.0.1:8848/mcp -H "Content-Type: application/json" --data-binary @request.json
-```
+> Exact versions and per-platform configuration flags are defined in the `xmake.lua` files.
+> Third-party packages are fetched through a [maintained xmake-repo fork](https://github.com/zzxzzk115/xmake-repo).
 
-```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8848/mcp" -Method Post -ContentType "application/json" -Body (Get-Content request.json -Raw)
-```
+### The Vultra Ecosystem
 
-Check runtime status with this JSON body:
+These first-party libraries are developed alongside the engine and used as submodules/packages:
 
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/call",
-  "params": {
-    "name": "vultra.runtime.status",
-    "arguments": {}
-  }
-}
-```
-
-Start a browser-friendly MJPEG preview stream with this JSON body:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "method": "tools/call",
-  "params": {
-    "name": "vultra.render.stream",
-    "arguments": {
-      "action": "start",
-      "fps": 0,
-      "jpegQuality": 65,
-      "maxHeight": 540
-    }
-  }
-}
-```
-
-The returned JSON contains a URL like:
-
-```text
-http://127.0.0.1:8848/stream/mjpeg_...
-```
-
-Open that URL in a browser to preview the offscreen scene. `maxHeight=540` is
-only a high-FPS preview recommendation, not a limit. Omit `maxWidth` and
-`maxHeight` to stream at native backbuffer resolution:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "method": "tools/call",
-  "params": {
-    "name": "vultra.render.stream",
-    "arguments": {
-      "action": "start",
-      "fps": 0,
-      "jpegQuality": 80
-    }
-  }
-}
-```
-
-Native resolution is useful when fidelity matters, but it can be much heavier:
-the runtime still uses async GPU readback, but MJPEG encoding, RGB conversion,
-browser decode, and network bandwidth scale with pixel count. For responsive
-browser preview or teleoperation, prefer `maxHeight=540` or `maxHeight=720`.
-
-Open the returned stream URL from a shell:
-
-```bash
-# Linux
-xdg-open "http://127.0.0.1:8848/stream/mjpeg_..."
-
-# macOS
-open "http://127.0.0.1:8848/stream/mjpeg_..."
-```
-
-```bat
-start "" "http://127.0.0.1:8848/stream/mjpeg_..."
-```
-
-```powershell
-Start-Process "http://127.0.0.1:8848/stream/mjpeg_..."
-```
-
-Stop the stream:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 3,
-  "method": "tools/call",
-  "params": {
-    "name": "vultra.render.stream",
-    "arguments": {
-      "action": "stop"
-    }
-  }
-}
-```
-
-Windows `cmd.exe` can use the same endpoint with a readable JSON request file:
-
-```bat
-> stream-start.json (
-  echo {
-  echo   "jsonrpc": "2.0",
-  echo   "id": 2,
-  echo   "method": "tools/call",
-  echo   "params": {
-  echo     "name": "vultra.render.stream",
-  echo     "arguments": {
-  echo       "action": "start",
-  echo       "fps": 0,
-  echo       "jpegQuality": 65,
-  echo       "maxHeight": 540
-  echo     }
-  echo   }
-  echo }
-)
-
-curl -s http://127.0.0.1:8848/mcp ^
-  -H "Content-Type: application/json" ^
-  --data-binary @stream-start.json
-```
-
-To start a stream and immediately open the returned URL in PowerShell:
-
-```powershell
-$body = @{
-  jsonrpc = "2.0"
-  id = 2
-  method = "tools/call"
-  params = @{
-    name = "vultra.render.stream"
-    arguments = @{
-      action = "start"
-      fps = 0
-      jpegQuality = 65
-      maxHeight = 540
-    }
-  }
-} | ConvertTo-Json -Depth 10
-
-$result = Invoke-RestMethod `
-  -Uri "http://127.0.0.1:8848/mcp" `
-  -Method Post `
-  -ContentType "application/json" `
-  -Body $body
-
-$stream = $result.result.content[0].text | ConvertFrom-Json
-Start-Process $stream.stream.url
-```
-
-### WebAssembly
-
-Build a host `vultra-app` first. The WASM asset packing rule runs before the
-example build and uses that host executable to import resources and generate the
-preloaded `resources.vpk`.
-
-On Linux/macOS:
-
-```bash
-xmake f -y
-xmake build -y vultra-app
-xmake f -p wasm --vultra_build_examples=y --vultra_build_tests=n -y
-xmake build -y example-demo-app
-```
-
-On Windows PowerShell:
-
-```powershell
-xmake f -y
-xmake build -y vultra-app
-xmake f -p wasm --vultra_build_examples=y --vultra_build_tests=n -y
-xmake build -y example-demo-app
-```
-
-If the host executable lives outside the default build output, set `VULTRA` to
-the full path before building the WASM example. `example-demo-app` and
-`example-gaussian-splatting` use `resources.vpk_pack` to import selected
-resources, pack `build/.generated/wasm_resources/<target>/resources.vpk`, and
-preload it into the Emscripten filesystem at `/resources.vpk`.
-
-### Android
-
-```bash
-xmake f -p android --ndk=/path/to/Android/Sdk/ndk/30.0.14904198 --vultra_build_examples=n --vultra_build_tests=n -y
-xmake build -y
-```
-
-## Run Examples
-
-```bash
-xmake run example-demo-app
-xmake run example-imgui
-xmake run example-gltf-viewer
-xmake run example-sponza
-xmake run example-gaussian-splatting
-xmake run example-openxr-triangle
-```
-
-## Starter Template
-
-Create an external project with:
-
-- [VultraEngine-starter-template](https://github.com/zzxzzk115/VultraEngine-starter-template)
-
-For Android host integration reference:
-
-- [`template/android`](./template/android/)
-- [`examples/android_app`](./examples/android_app/)
+| Project | Role |
+| --- | --- |
+| [vasset](https://github.com/zzxzzk115/vasset) | Asset formats, importers, registry, and VPK packing |
+| [vfilesystem](https://github.com/zzxzzk115/vfilesystem) | Virtual file system (`res://`, mounted VPK) |
+| [vtask](https://github.com/zzxzzk115/vtask) | Task/job scheduling |
+| [vbase](https://github.com/zzxzzk115/vbase) | Shared base utilities |
+| [vrendergraph](https://github.com/zzxzzk115/vrendergraph) | Frame/render graph abstraction |
+| [vshadersystem](https://github.com/zzxzzk115/vshadersystem) | Extended GLSL toolchain and shader libraries |
 
 ## License
 
 VultraEngine is released under the [MIT](LICENSE) license.
+
+The project may adopt a donation/sponsorship model in the future to sustain development; the source
+will remain open under a permissive license.
+</content>
+</invoke>
