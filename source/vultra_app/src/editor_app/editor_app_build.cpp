@@ -1,5 +1,6 @@
 #include "editor_app/editor_app.hpp"
 
+#include "editor_app/export_templates_repository.hpp"
 #include "editor_app/plugin_repository.hpp"
 #include "editor_app/project_asset_utils.hpp"
 #include "editor_app/ui/settings_widgets.hpp"
@@ -88,6 +89,15 @@ namespace vultra_app
         }
 
         bool targetNeedsExecutableExtension(const std::string& targetPlatform) { return targetPlatform == "Windows"; }
+
+        std::string currentHostArch()
+        {
+#if defined(__aarch64__) || defined(_M_ARM64)
+            return "arm64";
+#else
+            return "x64";
+#endif
+        }
 
         std::string quoteCommandArg(const std::string& text)
         {
@@ -519,6 +529,7 @@ namespace vultra_app
                                      const std::string&                    sceneUri,
                                      const std::filesystem::path&          outputFolder,
                                      const std::string&                    targetPlatform,
+                                     const std::string&                    architecture,
                                      const std::string&                    exportTemplatePath,
                                      const bool                            launchRuntime,
                                      std::shared_ptr<BuildRunTaskProgress> progress)
@@ -580,6 +591,16 @@ namespace vultra_app
             fs::path runtimeExecutable;
             if (!exportTemplatePath.empty())
                 runtimeExecutable = fs::path {exportTemplatePath}.lexically_normal();
+            // An official export template downloaded earlier (cached under .vultra/export-templates)
+            // is preferred over the editor's own executable: it is the editor-free runtime, not the
+            // editor. The lookup is offline -- the UI's "Download official template" already fetched it.
+            else if (auto cached = export_templates::cachedExportTemplate(
+                         fs::current_path(),
+                         export_templates::catalogPlatform(targetPlatform),
+                         architecture,
+                         vultra_app::plugins::engineVersion());
+                     !cached.empty())
+                runtimeExecutable = cached;
             else if (targetPlatform == currentHostPlatform())
                 runtimeExecutable = currentExecutablePath();
             else
@@ -843,6 +864,7 @@ namespace vultra_app
                                          const std::string&                    sceneUri,
                                          const std::filesystem::path&          outputFolder,
                                          const std::string&                    targetPlatform,
+                                         const std::string&                    architecture,
                                          const std::string&                    exportTemplatePath,
                                          const bool                            launchRuntime,
                                          std::shared_ptr<BuildRunTaskProgress> progress)
@@ -860,6 +882,7 @@ namespace vultra_app
                                  sceneUri,
                                  outputFolder,
                                  targetPlatform,
+                                 architecture,
                                  exportTemplatePath,
                                  launchRuntime,
                                  progress);
@@ -900,6 +923,7 @@ namespace vultra_app
                                           fs::path {options.exportOutput}.lexically_normal();
         const std::string targetPlatform =
             options.exportPlatform.empty() ? currentHostPlatform() : options.exportPlatform;
+        const std::string architecture = currentHostArch();
 
         std::cout << "[export] project=" << projectName << " scene=" << sceneUri << " platform=" << targetPlatform
                   << " output=" << outputFolder.generic_string() << (options.exportRun ? " (run)" : "") << "\n";
@@ -911,6 +935,7 @@ namespace vultra_app
                                               sceneUri,
                                               outputFolder,
                                               targetPlatform,
+                                              architecture,
                                               std::string {},
                                               options.exportRun,
                                               progress);
@@ -1108,6 +1133,7 @@ namespace vultra_app
         const auto sceneUri           = ctx.state.currentDefaultScene;
         const auto outputDir          = outputFolder.lexically_normal();
         const auto targetPlatform     = ctx.state.buildSettings.targetPlatform;
+        const auto architecture       = ctx.state.buildSettings.architecture;
         const auto exportTemplatePath = ctx.state.buildSettings.exportTemplatePath;
 
         ctx.state.statusMessage = launchRuntime ? vultra::tr("editorBuild.status.exportRunStartedPackaging") :
@@ -1128,6 +1154,7 @@ namespace vultra_app
                                        sceneUri,
                                        outputDir,
                                        targetPlatform,
+                                       architecture,
                                        exportTemplatePath,
                                        launchRuntime,
                                        progress]() {
@@ -1137,6 +1164,7 @@ namespace vultra_app
                                                                    sceneUri,
                                                                    outputDir,
                                                                    targetPlatform,
+                                                                   architecture,
                                                                    exportTemplatePath,
                                                                    launchRuntime,
                                                                    progress);

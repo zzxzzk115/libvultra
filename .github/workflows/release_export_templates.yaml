@@ -1,0 +1,116 @@
+name: Release Export Templates
+
+# Builds the editor-free vultra-runtime per platform/arch and publishes it as an "export template"
+# release asset on the zzxzzk115/vultra-export-templates repo. The editor's Export Settings can then
+# download the prebuilt runtime instead of requiring a locally built one. See ../vultra-export-templates.
+#
+# Asset name convention: vultra-export-template-<platform>-<arch>-<version>[.exe]
+# The release tag on the templates repo is v<version> (version comes from xmake.lua set_version).
+#
+# Requires a repo secret EXPORT_TEMPLATES_TOKEN: a PAT with `contents: write` on
+# zzxzzk115/vultra-export-templates (the default GITHUB_TOKEN cannot push to another repo).
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build only; do not upload to the release'
+        type: boolean
+        default: true
+
+env:
+  TEMPLATES_REPO: zzxzzk115/vultra-export-templates
+
+jobs:
+  release:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Start with windows/x64; add { platform: linux, arch: x64, os: ubuntu-latest, ext: '' } etc.
+        # as cross-platform runtime runners come online. `os` selects the runner per row.
+        include:
+          - platform: windows
+            arch: x64
+            ext: '.exe'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Sync submodules
+        shell: pwsh
+        run: git submodule update --init --recursive
+
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+          actions-cache-folder: '.xmake-cache'
+          build-cache: true
+
+      - name: Prepare Vulkan SDK
+        uses: humbletim/setup-vulkan-sdk@v1.2.1
+        with:
+          vulkan-query-version: 1.4.304.1
+          vulkan-components: Vulkan-Headers, Vulkan-Loader
+          vulkan-use-cache: true
+
+      - name: Resolve engine version
+        id: ver
+        shell: pwsh
+        run: |
+          $content = Get-Content xmake.lua -Raw
+          $m = [regex]::Match($content, 'set_version\("([^"]+)"\)')
+          if (-not $m.Success) { throw "Could not read set_version from xmake.lua" }
+          $version = $m.Groups[1].Value
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Engine version: $version"
+
+      - name: Configure
+        shell: pwsh
+        run: xmake f -p ${{ matrix.platform }} -a ${{ matrix.arch }} -m release --policies=build.ccache:y -y
+
+      - name: Build vultra-runtime
+        shell: pwsh
+        run: xmake repo -u; xmake build -y vultra-runtime
+
+      - name: Stage export-template asset
+        id: stage
+        shell: pwsh
+        run: |
+          $version = "${{ steps.ver.outputs.version }}"
+          $built = "build/${{ matrix.platform }}/${{ matrix.arch }}/release/vultra-runtime/vultra-runtime${{ matrix.ext }}"
+          if (-not (Test-Path $built)) { throw "Built runtime not found at $built" }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $asset = "dist/vultra-export-template-${{ matrix.platform }}-${{ matrix.arch }}-$version${{ matrix.ext }}"
+          Copy-Item $built $asset -Force
+          $sha = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLower()
+          $size = (Get-Item $asset).Length
+          "asset=$asset" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Asset: $asset"
+          Write-Host "sha256: $sha"
+          Write-Host "size: $size"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: export-template-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/*
+
+      - name: Publish to vultra-export-templates release
+        if: ${{ github.event_name == 'push' || github.event.inputs.dry_run == 'false' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.EXPORT_TEMPLATES_TOKEN }}
+        run: |
+          $version = "${{ steps.ver.outputs.version }}"
+          $tag = "v$version"
+          # Create the release if it does not exist yet, then upload (clobbering a prior asset).
+          gh release view $tag --repo $env:TEMPLATES_REPO 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --repo $env:TEMPLATES_REPO --title "Export Templates $version" --notes "Prebuilt vultra-runtime export templates for engine $version."
+          }
+          gh release upload $tag "${{ steps.stage.outputs.asset }}" --repo $env:TEMPLATES_REPO --clobber

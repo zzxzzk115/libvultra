@@ -1061,6 +1061,8 @@
   "architecture": "Architecture",
   "buildConfiguration": "Build Configuration",
   "exportTemplate": "Export Template",
+  "downloadOfficialTemplate": "Download official template ({})",
+  "downloadingOfficialTemplate": "Downloading official template...",
   "hostExportInfo": "Host platform export can use the current editor executable when empty.",
   "crossExportInfo": "Cross-platform export requires a target runtime executable.",
   "outputDirectory": "Output Directory",

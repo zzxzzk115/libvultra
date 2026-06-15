@@ -1061,6 +1061,8 @@
   "architecture": "架构",
   "buildConfiguration": "构建配置",
   "exportTemplate": "导出模板",
+  "downloadOfficialTemplate": "下载官方模板（{}）",
+  "downloadingOfficialTemplate": "正在下载官方模板...",
   "hostExportInfo": "主机平台导出在为空时可使用当前编辑器可执行文件。",
   "crossExportInfo": "跨平台导出需要目标运行时可执行文件。",
   "outputDirectory": "输出目录",

@@ -2,6 +2,7 @@
 
 #include "common/process_relaunch.hpp"
 #include "editor_app/editor_settings_persistence.hpp"
+#include "editor_app/export_templates_repository.hpp"
 #include "editor_app/plugin_repository.hpp"
 #include "editor_app/project_asset_utils.hpp"
 #include "editor_app/ui/settings_widgets.hpp"
@@ -24,9 +25,11 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <cstdio>
 #include <filesystem>
+#include <future>
 #include <initializer_list>
 #include <optional>
 #include <string>
@@ -1878,6 +1881,82 @@ namespace vultra_app
         ImGui::EndPopup();
     }
 
+    void EditorApp::drawExportTemplateDownloadRow(AppState::BuildSettings& settings)
+    {
+        // Official export-template download: fetch the prebuilt runtime for the selected
+        // platform/arch from the center and fill the template path. Desktop targets only -- Web
+        // self-resolves its template from build/web-template and Android export is not implemented.
+        const bool desktopTarget = settings.targetPlatform == "Windows" ||
+                                   settings.targetPlatform == "macOS" || settings.targetPlatform == "Linux";
+
+        // Reap a finished download.
+        if (m_ExportTemplateDownloading && m_ExportTemplateDownloadFuture.valid() &&
+            m_ExportTemplateDownloadFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        {
+            const auto result              = m_ExportTemplateDownloadFuture.get();
+            m_ExportTemplateDownloading     = false;
+            m_ExportTemplateDownloadStatus  = result.status;
+            if (result.ok)
+            {
+                setBuffer(m_ExportTemplateBuffer, result.templatePath.generic_string());
+                settings.exportTemplatePath = result.templatePath.generic_string();
+            }
+        }
+
+        if (!desktopTarget)
+            return;
+
+        ImGui::Indent(vultra::ui::dp(150.0f));
+        const std::string slug =
+            export_templates::catalogPlatform(settings.targetPlatform) + "-" + settings.architecture;
+        if (m_ExportTemplateDownloading)
+        {
+            ImGui::BeginDisabled();
+            ImGui::Button(vultra::tr("exportSettings.downloadingOfficialTemplate"));
+            ImGui::EndDisabled();
+        }
+        else if (ImGui::Button(vultra::trf("exportSettings.downloadOfficialTemplate", slug).c_str()))
+        {
+            const std::string platform = export_templates::catalogPlatform(settings.targetPlatform);
+            const std::string arch     = settings.architecture;
+            const std::string engine   = plugins::engineVersion();
+            m_ExportTemplateDownloading    = true;
+            m_ExportTemplateDownloadStatus = vultra::tr("exportSettings.downloadingOfficialTemplate");
+            m_ExportTemplateDownloadFuture = std::async(std::launch::async, [platform, arch, engine]() {
+                ExportTemplateDownloadResult                     out;
+                std::vector<export_templates::ExportTemplateEntry> entries;
+                std::string                                      status;
+                if (!export_templates::fetchExportTemplatesCatalog(std::filesystem::current_path(),
+                                                                   export_templates::defaultExportTemplatesCatalogUrl(),
+                                                                   entries,
+                                                                   status))
+                {
+                    out.status = status;
+                    return out;
+                }
+                const auto* entry = export_templates::findEntry(entries, platform, arch);
+                if (entry == nullptr)
+                {
+                    out.status = "No official export template for " + platform + "-" + arch + ".";
+                    return out;
+                }
+                const auto* version = export_templates::bestVersion(*entry, engine);
+                if (version == nullptr)
+                {
+                    out.status = "No export template compatible with engine " + engine + ".";
+                    return out;
+                }
+                out.templatePath = export_templates::materializeExportTemplate(
+                    std::filesystem::current_path(), *entry, *version, out.status);
+                out.ok = !out.templatePath.empty();
+                return out;
+            });
+        }
+        if (!m_ExportTemplateDownloadStatus.empty())
+            ImGui::TextWrapped("%s", m_ExportTemplateDownloadStatus.c_str());
+        ImGui::Unindent(vultra::ui::dp(150.0f));
+    }
+
     void EditorApp::drawBuildSettingsPopup(EditorContext& ctx)
     {
         if (ctx.state.buildSettingsOpen)
@@ -1937,6 +2016,7 @@ namespace vultra_app
         ui::beginSettingsRow(vultra::tr("exportSettings.exportTemplate"));
         m_ExportTemplateDialog.drawBrowseOnly("", m_ExportTemplateBuffer.data(), m_ExportTemplateBuffer.size());
         ui::endSettingsRow();
+        drawExportTemplateDownloadRow(settings);
         ImGui::Indent(vultra::ui::dp(150.0f));
         ui::drawInfoRegion(sameHost ? vultra::tr("exportSettings.hostExportInfo") :
                                       vultra::tr("exportSettings.crossExportInfo"));

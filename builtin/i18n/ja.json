@@ -1241,6 +1241,8 @@
     "architecture": "アーキテクチャ",
     "buildConfiguration": "ビルド構成",
     "exportTemplate": "エクスポートテンプレート",
+    "downloadOfficialTemplate": "公式テンプレートをダウンロード（{}）",
+    "downloadingOfficialTemplate": "公式テンプレートをダウンロード中...",
     "hostExportInfo": "ホストプラットフォームへのエクスポートでは、空の場合は現在のエディター実行ファイルを使用できます。",
     "crossExportInfo": "クロスプラットフォームエクスポートにはターゲットランタイムの実行ファイルが必要です。",
     "outputDirectory": "出力ディレクトリ",

@@ -47,6 +47,14 @@ namespace vultra_app
         std::string message;
     };
 
+    // Result of the asynchronous "Download official export template" action in the Export Settings.
+    struct ExportTemplateDownloadResult
+    {
+        bool                  ok {false};
+        std::string           status;
+        std::filesystem::path templatePath;
+    };
+
     class EditorApp
     {
     public:
@@ -171,6 +179,7 @@ namespace vultra_app
         void           drawProjectSettingsPopup(EditorContext& ctx);
         void           drawEditorSettingsPopup(EditorContext& ctx);
         void           drawBuildSettingsPopup(EditorContext& ctx);
+        void           drawExportTemplateDownloadRow(AppState::BuildSettings& settings);
         void           saveCurrentScene(EditorContext& ctx);
         void           saveCurrentSceneThumbnail(EditorContext& ctx);
         void           updateEditorGameClock(EditorContext& ctx);
@@ -254,6 +263,9 @@ namespace vultra_app
         std::array<char, 512>                m_AgentCliPathBuffer {};
         RuntimeMcpServer                     m_RuntimeMcpServer;
         EditorPluginManager                  m_PluginManager;
+        std::future<ExportTemplateDownloadResult> m_ExportTemplateDownloadFuture;
+        bool                                 m_ExportTemplateDownloading {false};
+        std::string                          m_ExportTemplateDownloadStatus;
         std::optional<vultra::SceneDocument> m_PlayModeSnapshot;
         bool                                 m_PlayModeSceneDirtySnapshot {false};
         bool                                 m_Initialized {false};
