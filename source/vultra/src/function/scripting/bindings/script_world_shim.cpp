@@ -173,63 +173,6 @@ namespace vultra
         return result;
     }
 
-    ScriptRigidBodyRef worldAddRigidBody(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return addComponent<RigidBodyComponent, ScriptRigidBodyRef>(ctx, entity);
-    }
-    bool worldRemoveRigidBody(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return removeComponent<RigidBodyComponent>(ctx, entity);
-    }
-    ScriptCameraRef worldAddCamera(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return addComponent<CameraComponent, ScriptCameraRef>(ctx, entity);
-    }
-    bool worldRemoveCamera(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return removeComponent<CameraComponent>(ctx, entity);
-    }
-    ScriptLightRef worldAddLight(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return addComponent<LightComponent, ScriptLightRef>(ctx, entity);
-    }
-    bool worldRemoveLight(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return removeComponent<LightComponent>(ctx, entity);
-    }
-    ScriptMeshRef worldAddMesh(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return addComponent<MeshComponent, ScriptMeshRef>(ctx, entity);
-    }
-    bool worldRemoveMesh(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return removeComponent<MeshComponent>(ctx, entity);
-    }
-    ScriptBoxShapeRef worldAddBoxShape(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return addComponent<BoxShapeComponent, ScriptBoxShapeRef>(ctx, entity);
-    }
-    bool worldRemoveBoxShape(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return removeComponent<BoxShapeComponent>(ctx, entity);
-    }
-    ScriptSphereShapeRef worldAddSphereShape(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return addComponent<SphereShapeComponent, ScriptSphereShapeRef>(ctx, entity);
-    }
-    bool worldRemoveSphereShape(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return removeComponent<SphereShapeComponent>(ctx, entity);
-    }
-    ScriptAnimatorRef worldAddAnimator(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return addComponent<AnimatorComponent, ScriptAnimatorRef>(ctx, entity);
-    }
-    bool worldRemoveAnimator(ScriptContext& ctx, const ScriptEntity& entity)
-    {
-        return removeComponent<AnimatorComponent>(ctx, entity);
-    }
-
     std::uint32_t meshGetBuiltinGeometry(ScriptContext& ctx, const ScriptMeshRef& self)
     {
         return requireComponent<MeshComponent>(ctx, self.entity, "MeshComponent").builtinGeometry;
@@ -305,5 +248,49 @@ namespace vultra
         layer["Default"] = kRenderLayerDefaultMask;
         layer["UI"]      = kRenderLayerUiMask;
         layer["All"]     = kRenderLayerAllMask;
+    }
+
+    void worldRegisterHelpers(sol::state& lua, ScriptContext& ctx)
+    {
+        auto helper = script_binding::getOrCreateTable(lua, "WorldHelper");
+
+        auto create = [&ctx](const std::string& fallback, sol::optional<std::string> name) -> ScriptEntity {
+            auto* world = ctx.world();
+            if (!world)
+                return {};
+            const auto        entity = world->createEntity();
+            const std::string n      = (name && !name->empty()) ? *name : fallback;
+            if (!n.empty())
+                ensureName(*world, entity).name = n;
+            return ScriptEntity {entity};
+        };
+
+        helper["addEmpty"] = [create](sol::optional<std::string> name) -> ScriptEntity {
+            return create("Entity", name);
+        };
+        helper["addMainCamera"] = [&ctx, create](sol::optional<std::string> name) -> ScriptEntity {
+            auto entity = create("Main Camera", name);
+            if (auto* world = ctx.world(); world && ctx.isValid(entity.value))
+                world->registry().emplace_or_replace<CameraComponent>(entity.value).primary = true;
+            return entity;
+        };
+        helper["addCamera"] = [&ctx, create](sol::optional<std::string> name) -> ScriptEntity {
+            auto entity = create("Camera", name);
+            if (auto* world = ctx.world(); world && ctx.isValid(entity.value))
+                world->registry().emplace_or_replace<CameraComponent>(entity.value);
+            return entity;
+        };
+        helper["addLight"] = [&ctx, create](sol::optional<std::string> name) -> ScriptEntity {
+            auto entity = create("Light", name);
+            if (auto* world = ctx.world(); world && ctx.isValid(entity.value))
+                world->registry().emplace_or_replace<LightComponent>(entity.value);
+            return entity;
+        };
+        helper["addMesh"] = [&ctx, create](sol::optional<std::string> name) -> ScriptEntity {
+            auto entity = create("Mesh", name);
+            if (auto* world = ctx.world(); world && ctx.isValid(entity.value))
+                world->registry().emplace_or_replace<MeshComponent>(entity.value);
+            return entity;
+        };
     }
 } // namespace vultra

@@ -9,7 +9,7 @@
 
 namespace vultra
 {
-    struct VBIND_USERTYPE(name = ReflectionProbe, handle = ScriptReflectionProbeRef, accessor = reflectionProbe)
+    struct VBIND_USERTYPE(name = ReflectionProbe, handle = ScriptReflectionProbeRef)
         ReflectionProbeComponent
     {
         VBIND_FIELD() bool     active {true};

@@ -30,6 +30,7 @@ namespace vultra
             return;
 
         registerGeneratedImGuiBindings(lua);
+        registerImGuiExtBindings(lua);
 
         sol::table imgui = lua["ImGui"];
 

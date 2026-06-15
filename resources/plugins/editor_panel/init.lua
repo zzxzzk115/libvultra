@@ -57,11 +57,12 @@ function M.on_install()
             end
 
             ImGui.Separator()
-            -- Camera.findPrimary returns an Entity; its camera component ref
-            -- exposes the generated fovY field (entity.camera, entity:hasCamera()).
+            -- Camera.findPrimary returns an Entity; getComponent(Component.Camera)
+            -- returns the camera reference (or nil), which exposes the fovY field.
             local cam = Camera.findPrimary()
-            if cam and cam.valid and cam:hasCamera() then
-                ImGui.Text(string.format("Primary camera fovY: %.1f deg", cam.camera.fovY))
+            local camera = cam and cam.valid and cam:getComponent(Component.Camera)
+            if camera then
+                ImGui.Text(string.format("Primary camera fovY: %.1f deg", camera.fovY))
             else
                 ImGui.TextDisabled("No primary camera in scene")
             end

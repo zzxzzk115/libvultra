@@ -7,7 +7,7 @@
 
 namespace vultra
 {
-    struct VBIND_USERTYPE(name = Environment, handle = ScriptEnvironmentRef, accessor = environment) EnvironmentComponent
+    struct VBIND_USERTYPE(name = Environment, handle = ScriptEnvironmentRef) EnvironmentComponent
     {
         VBIND_FIELD() bool active {true};
 

@@ -21,7 +21,7 @@ namespace vultra
     {
     };
     struct VBIND_USERTYPE(name = Mesh, handle = ScriptMeshRef, area = world,
-                          component = MeshComponent, accessor = mesh) MeshUsertype
+                          component = MeshComponent) MeshUsertype
     {
     };
 
@@ -38,35 +38,6 @@ namespace vultra
     sol::table worldFindByNamePrefix(ScriptContext& ctx, sol::this_state luaState, const std::string& prefix);
     VBIND_FN(module = World, name = entities, body = shim)
     sol::table worldEntities(ScriptContext& ctx, sol::this_state luaState);
-
-    VBIND_FN(module = World, name = addRigidBody, body = shim)
-    ScriptRigidBodyRef worldAddRigidBody(ScriptContext& ctx, const ScriptEntity& entity);
-    VBIND_FN(module = World, name = removeRigidBody, body = shim)
-    bool worldRemoveRigidBody(ScriptContext& ctx, const ScriptEntity& entity);
-    VBIND_FN(module = World, name = addCamera, body = shim)
-    ScriptCameraRef worldAddCamera(ScriptContext& ctx, const ScriptEntity& entity);
-    VBIND_FN(module = World, name = removeCamera, body = shim)
-    bool worldRemoveCamera(ScriptContext& ctx, const ScriptEntity& entity);
-    VBIND_FN(module = World, name = addLight, body = shim)
-    ScriptLightRef worldAddLight(ScriptContext& ctx, const ScriptEntity& entity);
-    VBIND_FN(module = World, name = removeLight, body = shim)
-    bool worldRemoveLight(ScriptContext& ctx, const ScriptEntity& entity);
-    VBIND_FN(module = World, name = addMesh, body = shim)
-    ScriptMeshRef worldAddMesh(ScriptContext& ctx, const ScriptEntity& entity);
-    VBIND_FN(module = World, name = removeMesh, body = shim)
-    bool worldRemoveMesh(ScriptContext& ctx, const ScriptEntity& entity);
-    VBIND_FN(module = World, name = addBoxShape, body = shim)
-    ScriptBoxShapeRef worldAddBoxShape(ScriptContext& ctx, const ScriptEntity& entity);
-    VBIND_FN(module = World, name = removeBoxShape, body = shim)
-    bool worldRemoveBoxShape(ScriptContext& ctx, const ScriptEntity& entity);
-    VBIND_FN(module = World, name = addSphereShape, body = shim)
-    ScriptSphereShapeRef worldAddSphereShape(ScriptContext& ctx, const ScriptEntity& entity);
-    VBIND_FN(module = World, name = removeSphereShape, body = shim)
-    bool worldRemoveSphereShape(ScriptContext& ctx, const ScriptEntity& entity);
-    VBIND_FN(module = World, name = addAnimator, body = shim)
-    ScriptAnimatorRef worldAddAnimator(ScriptContext& ctx, const ScriptEntity& entity);
-    VBIND_FN(module = World, name = removeAnimator, body = shim)
-    bool worldRemoveAnimator(ScriptContext& ctx, const ScriptEntity& entity);
 
     // --- Mesh usertype ---
     VBIND_PROPERTY(usertype = Mesh, name = builtinGeometry, set = meshSetBuiltinGeometry)
@@ -93,4 +64,8 @@ namespace vultra
     // --- Layer constant table ---
     VBIND_RAW(area = world)
     void worldRegisterLayerTable(sol::state& lua, ScriptContext& ctx);
+
+    // --- WorldHelper convenience constructors (Unity-style "create" helpers) ---
+    VBIND_RAW(area = world)
+    void worldRegisterHelpers(sol::state& lua, ScriptContext& ctx);
 } // namespace vultra

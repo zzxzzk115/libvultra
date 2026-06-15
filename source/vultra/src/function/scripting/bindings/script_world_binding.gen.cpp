@@ -7,6 +7,7 @@
 #include "vultra/function/scripting/script_context.hpp"
 #include "vultra/function/scripting/script_types.hpp"
 #include "vultra/function/world/world.hpp"
+#include "vultra/function/scripting/bindings/script_entity_shim.hpp"
 #include "vultra/function/scripting/bindings/script_world_shim.hpp"
 
 #include <cstdint>
@@ -78,64 +79,10 @@ namespace vultra
                 [&ctx](sol::this_state luaState) {
                     return worldEntities(ctx, luaState);
                 });
-            ns.set_function("addRigidBody",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldAddRigidBody(ctx, entity);
-                });
-            ns.set_function("removeRigidBody",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldRemoveRigidBody(ctx, entity);
-                });
-            ns.set_function("addCamera",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldAddCamera(ctx, entity);
-                });
-            ns.set_function("removeCamera",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldRemoveCamera(ctx, entity);
-                });
-            ns.set_function("addLight",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldAddLight(ctx, entity);
-                });
-            ns.set_function("removeLight",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldRemoveLight(ctx, entity);
-                });
-            ns.set_function("addMesh",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldAddMesh(ctx, entity);
-                });
-            ns.set_function("removeMesh",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldRemoveMesh(ctx, entity);
-                });
-            ns.set_function("addBoxShape",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldAddBoxShape(ctx, entity);
-                });
-            ns.set_function("removeBoxShape",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldRemoveBoxShape(ctx, entity);
-                });
-            ns.set_function("addSphereShape",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldAddSphereShape(ctx, entity);
-                });
-            ns.set_function("removeSphereShape",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldRemoveSphereShape(ctx, entity);
-                });
-            ns.set_function("addAnimator",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldAddAnimator(ctx, entity);
-                });
-            ns.set_function("removeAnimator",
-                [&ctx](const ScriptEntity & entity) {
-                    return worldRemoveAnimator(ctx, entity);
-                });
         }
 
+        script_binding::bindEnumTable<vultra::ScriptComponentType>(lua, "Component");
         worldRegisterLayerTable(lua, ctx);
+        worldRegisterHelpers(lua, ctx);
     }
 } // namespace vultra

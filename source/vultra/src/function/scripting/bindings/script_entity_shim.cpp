@@ -1,22 +1,125 @@
 #include "vultra/function/scripting/bindings/script_entity_shim.hpp"
 
 #include "vultra/function/world/components/animator_component.hpp"
+#include "vultra/function/world/components/audio_listener_component.hpp"
+#include "vultra/function/world/components/audio_source_component.hpp"
+#include "vultra/function/world/components/box_shape_component.hpp"
+#include "vultra/function/world/components/camera_component.hpp"
+#include "vultra/function/world/components/capsule_shape_component.hpp"
+#include "vultra/function/world/components/cylinder_shape_component.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
+#include "vultra/function/world/components/environment_component.hpp"
+#include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
+#include "vultra/function/world/components/particle_emitter_component.hpp"
+#include "vultra/function/world/components/reflection_probe_component.hpp"
 #include "vultra/function/world/components/rigid_body_component.hpp"
+#include "vultra/function/world/components/sphere_shape_component.hpp"
+#include "vultra/function/world/components/transform_component.hpp"
 #include "vultra/function/world/components/ui_components.hpp"
 #include "vultra/function/world/world.hpp"
+
+// Single source of truth mapping a Component token to its C++ component type and
+// its Lua ref handle. Used by every generic component method below.
+#define VULTRA_SCRIPT_COMPONENTS(X)                                                                 \
+    X(eTransform, TransformComponent, ScriptTransformRef)                                           \
+    X(eRigidBody, RigidBodyComponent, ScriptRigidBodyRef)                                           \
+    X(eCamera, CameraComponent, ScriptCameraRef)                                                    \
+    X(eLight, LightComponent, ScriptLightRef)                                                       \
+    X(eMesh, MeshComponent, ScriptMeshRef)                                                          \
+    X(eBoxShape, BoxShapeComponent, ScriptBoxShapeRef)                                              \
+    X(eSphereShape, SphereShapeComponent, ScriptSphereShapeRef)                                     \
+    X(eCapsuleShape, CapsuleShapeComponent, ScriptCapsuleShapeRef)                                  \
+    X(eCylinderShape, CylinderShapeComponent, ScriptCylinderShapeRef)                               \
+    X(eAnimator, AnimatorComponent, ScriptAnimatorRef)                                              \
+    X(eAudioSource, AudioSourceComponent, ScriptAudioSourceRef)                                     \
+    X(eAudioListener, AudioListenerComponent, ScriptAudioListenerRef)                               \
+    X(eEnvironment, EnvironmentComponent, ScriptEnvironmentRef)                                      \
+    X(eParticleEmitter, ParticleEmitterComponent, ScriptParticleEmitterRef)                         \
+    X(eReflectionProbe, ReflectionProbeComponent, ScriptReflectionProbeRef)                         \
+    X(eRectTransform, RectTransformComponent, ScriptRectTransformRef)                               \
+    X(eUiButton, UiButtonComponent, ScriptUiButtonRef)                                              \
+    X(eUiToggle, UiToggleComponent, ScriptUiToggleRef)                                              \
+    X(eUiSlider, UiSliderComponent, ScriptUiSliderRef)                                              \
+    X(eUiProgressBar, UiProgressBarComponent, ScriptUiProgressBarRef)
 
 namespace vultra
 {
     namespace
     {
         template<typename Component>
-        bool hasComponent(ScriptContext& ctx, entt::entity entity)
+        bool hasComponentT(ScriptContext& ctx, entt::entity entity)
         {
             auto* world = ctx.world();
-            return world && world->registry().all_of<Component>(entity);
+            return world && ctx.isValid(entity) && world->registry().all_of<Component>(entity);
+        }
+        template<typename Component>
+        void addComponentT(ScriptContext& ctx, entt::entity entity)
+        {
+            auto* world = ctx.world();
+            if (world && ctx.isValid(entity) && !world->registry().all_of<Component>(entity))
+                world->registry().emplace<Component>(entity);
+        }
+        template<typename Component>
+        bool removeComponentT(ScriptContext& ctx, entt::entity entity)
+        {
+            auto* world = ctx.world();
+            if (!world || !ctx.isValid(entity) || !world->registry().all_of<Component>(entity))
+                return false;
+            world->registry().remove<Component>(entity);
+            return true;
+        }
+
+        bool componentHas(ScriptContext& ctx, entt::entity e, ScriptComponentType type)
+        {
+            switch (type)
+            {
+#define X(TOK, COMP, REF)                                                                          \
+    case ScriptComponentType::TOK:                                                                 \
+        return hasComponentT<COMP>(ctx, e);
+                VULTRA_SCRIPT_COMPONENTS(X)
+#undef X
+            }
+            return false;
+        }
+        sol::object componentGet(ScriptContext& ctx, entt::entity e, ScriptComponentType type, sol::state_view lua)
+        {
+            switch (type)
+            {
+#define X(TOK, COMP, REF)                                                                          \
+    case ScriptComponentType::TOK:                                                                 \
+        return hasComponentT<COMP>(ctx, e) ? sol::object(sol::make_object(lua, REF {e}))           \
+                                           : sol::object(sol::lua_nil);
+                VULTRA_SCRIPT_COMPONENTS(X)
+#undef X
+            }
+            return sol::lua_nil;
+        }
+        sol::object componentAdd(ScriptContext& ctx, entt::entity e, ScriptComponentType type, sol::state_view lua)
+        {
+            switch (type)
+            {
+#define X(TOK, COMP, REF)                                                                          \
+    case ScriptComponentType::TOK:                                                                 \
+        addComponentT<COMP>(ctx, e);                                                               \
+        return sol::make_object(lua, REF {e});
+                VULTRA_SCRIPT_COMPONENTS(X)
+#undef X
+            }
+            return sol::lua_nil;
+        }
+        bool componentRemove(ScriptContext& ctx, entt::entity e, ScriptComponentType type)
+        {
+            switch (type)
+            {
+#define X(TOK, COMP, REF)                                                                          \
+    case ScriptComponentType::TOK:                                                                 \
+        return removeComponentT<COMP>(ctx, e);
+                VULTRA_SCRIPT_COMPONENTS(X)
+#undef X
+            }
+            return false;
         }
 
         EntityStatusComponent& ensureStatus(ScriptContext& ctx, entt::entity entity)
@@ -75,22 +178,10 @@ namespace vultra
             ensureStatus(ctx, self.value).visible = value;
     }
 
-    ScriptTransformRef entityTransform(ScriptContext&, const ScriptEntity& self) { return ScriptTransformRef {self.value}; }
-    ScriptRectTransformRef entityRectTransform(ScriptContext&, const ScriptEntity& self)
+    ScriptTransformRef entityTransform(ScriptContext&, const ScriptEntity& self)
     {
-        return ScriptRectTransformRef {self.value};
+        return ScriptTransformRef {self.value};
     }
-    ScriptUiRef entityUi(ScriptContext&, const ScriptEntity& self) { return ScriptUiRef {self.value}; }
-    ScriptUiButtonRef entityUiButton(ScriptContext&, const ScriptEntity& self) { return ScriptUiButtonRef {self.value}; }
-    ScriptUiToggleRef entityUiToggle(ScriptContext&, const ScriptEntity& self) { return ScriptUiToggleRef {self.value}; }
-    ScriptUiSliderRef entityUiSlider(ScriptContext&, const ScriptEntity& self) { return ScriptUiSliderRef {self.value}; }
-    ScriptUiProgressBarRef entityUiProgressBar(ScriptContext&, const ScriptEntity& self)
-    {
-        return ScriptUiProgressBarRef {self.value};
-    }
-    ScriptRigidBodyRef entityRigidBody(ScriptContext&, const ScriptEntity& self) { return ScriptRigidBodyRef {self.value}; }
-    ScriptMeshRef entityMesh(ScriptContext&, const ScriptEntity& self) { return ScriptMeshRef {self.value}; }
-    ScriptAnimatorRef entityAnimator(ScriptContext&, const ScriptEntity& self) { return ScriptAnimatorRef {self.value}; }
 
     void entityDestroy(ScriptContext& ctx, const ScriptEntity& self)
     {
@@ -120,12 +211,24 @@ namespace vultra
             return;
         world->setParent(self.value, ctx.isValid(parent.value) ? parent.value : entt::null);
     }
-    bool entityHasRigidBody(ScriptContext& ctx, const ScriptEntity& self) { return hasComponent<RigidBodyComponent>(ctx, self.value); }
-    bool entityHasMesh(ScriptContext& ctx, const ScriptEntity& self) { return hasComponent<MeshComponent>(ctx, self.value); }
-    bool entityHasAnimator(ScriptContext& ctx, const ScriptEntity& self) { return hasComponent<AnimatorComponent>(ctx, self.value); }
-    bool entityHasRectTransform(ScriptContext& ctx, const ScriptEntity& self) { return hasComponent<RectTransformComponent>(ctx, self.value); }
-    bool entityHasUiButton(ScriptContext& ctx, const ScriptEntity& self) { return hasComponent<UiButtonComponent>(ctx, self.value); }
-    bool entityHasUiToggle(ScriptContext& ctx, const ScriptEntity& self) { return hasComponent<UiToggleComponent>(ctx, self.value); }
-    bool entityHasUiSlider(ScriptContext& ctx, const ScriptEntity& self) { return hasComponent<UiSliderComponent>(ctx, self.value); }
-    bool entityHasUiProgressBar(ScriptContext& ctx, const ScriptEntity& self) { return hasComponent<UiProgressBarComponent>(ctx, self.value); }
+
+    void entityRegisterComponentApi(sol::state& lua, ScriptContext& ctx)
+    {
+        sol::table entity = lua["Entity"];
+        if (!entity.valid())
+            return;
+
+        entity["hasComponent"] = [&ctx](const ScriptEntity& self, int type) -> bool {
+            return componentHas(ctx, self.value, static_cast<ScriptComponentType>(type));
+        };
+        entity["getComponent"] = [&ctx](const ScriptEntity& self, int type, sol::this_state ts) -> sol::object {
+            return componentGet(ctx, self.value, static_cast<ScriptComponentType>(type), sol::state_view {ts});
+        };
+        entity["addComponent"] = [&ctx](const ScriptEntity& self, int type, sol::this_state ts) -> sol::object {
+            return componentAdd(ctx, self.value, static_cast<ScriptComponentType>(type), sol::state_view {ts});
+        };
+        entity["removeComponent"] = [&ctx](const ScriptEntity& self, int type) -> bool {
+            return componentRemove(ctx, self.value, static_cast<ScriptComponentType>(type));
+        };
+    }
 } // namespace vultra

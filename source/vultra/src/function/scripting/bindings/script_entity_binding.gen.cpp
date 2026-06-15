@@ -16,7 +16,7 @@ namespace vultra
     void registerScriptEntityBindings(sol::state& lua, ScriptContext& ctx)
     {
         (void)ctx;
-        auto ScriptEntityType = lua.new_usertype<ScriptEntity>(
+        lua.new_usertype<ScriptEntity>(
             "Entity",
             "valid",
             script_binding::readonlyProperty([&ctx](const ScriptEntity& self) { return entityGetValid(ctx, self); }),
@@ -33,24 +33,6 @@ namespace vultra
             [&ctx](const ScriptEntity& self, bool value) { entitySetVisible(ctx, self, value); }),
             "transform",
             script_binding::readonlyProperty([&ctx](const ScriptEntity& self) { return entityTransform(ctx, self); }),
-            "rectTransform",
-            script_binding::readonlyProperty([&ctx](const ScriptEntity& self) { return entityRectTransform(ctx, self); }),
-            "ui",
-            script_binding::readonlyProperty([&ctx](const ScriptEntity& self) { return entityUi(ctx, self); }),
-            "uiButton",
-            script_binding::readonlyProperty([&ctx](const ScriptEntity& self) { return entityUiButton(ctx, self); }),
-            "uiToggle",
-            script_binding::readonlyProperty([&ctx](const ScriptEntity& self) { return entityUiToggle(ctx, self); }),
-            "uiSlider",
-            script_binding::readonlyProperty([&ctx](const ScriptEntity& self) { return entityUiSlider(ctx, self); }),
-            "uiProgressBar",
-            script_binding::readonlyProperty([&ctx](const ScriptEntity& self) { return entityUiProgressBar(ctx, self); }),
-            "rigidBody",
-            script_binding::readonlyProperty([&ctx](const ScriptEntity& self) { return entityRigidBody(ctx, self); }),
-            "mesh",
-            script_binding::readonlyProperty([&ctx](const ScriptEntity& self) { return entityMesh(ctx, self); }),
-            "animator",
-            script_binding::readonlyProperty([&ctx](const ScriptEntity& self) { return entityAnimator(ctx, self); }),
             "destroy",
             [&ctx](const ScriptEntity & self) {
                 entityDestroy(ctx, self);
@@ -70,40 +52,8 @@ namespace vultra
             "setParent",
             [&ctx](const ScriptEntity & self, const ScriptEntity & parent) {
                 entitySetParent(ctx, self, parent);
-            },
-            "hasRigidBody",
-            [&ctx](const ScriptEntity & self) {
-                return entityHasRigidBody(ctx, self);
-            },
-            "hasMesh",
-            [&ctx](const ScriptEntity & self) {
-                return entityHasMesh(ctx, self);
-            },
-            "hasAnimator",
-            [&ctx](const ScriptEntity & self) {
-                return entityHasAnimator(ctx, self);
-            },
-            "hasRectTransform",
-            [&ctx](const ScriptEntity & self) {
-                return entityHasRectTransform(ctx, self);
-            },
-            "hasUiButton",
-            [&ctx](const ScriptEntity & self) {
-                return entityHasUiButton(ctx, self);
-            },
-            "hasUiToggle",
-            [&ctx](const ScriptEntity & self) {
-                return entityHasUiToggle(ctx, self);
-            },
-            "hasUiSlider",
-            [&ctx](const ScriptEntity & self) {
-                return entityHasUiSlider(ctx, self);
-            },
-            "hasUiProgressBar",
-            [&ctx](const ScriptEntity & self) {
-                return entityHasUiProgressBar(ctx, self);
             });
-        applyGeneratedEntityAccessors(ScriptEntityType, ctx);
 
+        entityRegisterComponentApi(lua, ctx);
     }
 } // namespace vultra

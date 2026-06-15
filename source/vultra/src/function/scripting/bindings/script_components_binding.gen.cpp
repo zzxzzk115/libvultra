@@ -19,7 +19,6 @@
 #include "vultra/function/world/components/reflection_probe_component.hpp"
 #include "vultra/function/world/components/sphere_shape_component.hpp"
 #include "vultra/core/base/uuid.hpp"
-#include "vultra/function/scripting/bindings/script_generated_binding.hpp"
 
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
@@ -642,75 +641,5 @@ namespace vultra
                 requireComponentRef<SphereShapeComponent>(ctx, self.entity, "SphereShapeComponent").radius = value;
             }));
 
-    }
-
-    void applyGeneratedEntityAccessors(sol::usertype<ScriptEntity>& entityType, ScriptContext& ctx)
-    {
-        entityType["audioListener"] =
-            sol::readonly_property([](const ScriptEntity& self) { return ScriptAudioListenerRef {self.value}; });
-        entityType["hasAudioListener"] = [&ctx](const ScriptEntity& self) {
-            auto* world = ctx.world();
-            return world && ctx.isValid(self.value) && world->registry().all_of<AudioListenerComponent>(self.value);
-        };
-        entityType["audioSource"] =
-            sol::readonly_property([](const ScriptEntity& self) { return ScriptAudioSourceRef {self.value}; });
-        entityType["hasAudioSource"] = [&ctx](const ScriptEntity& self) {
-            auto* world = ctx.world();
-            return world && ctx.isValid(self.value) && world->registry().all_of<AudioSourceComponent>(self.value);
-        };
-        entityType["boxShape"] =
-            sol::readonly_property([](const ScriptEntity& self) { return ScriptBoxShapeRef {self.value}; });
-        entityType["hasBoxShape"] = [&ctx](const ScriptEntity& self) {
-            auto* world = ctx.world();
-            return world && ctx.isValid(self.value) && world->registry().all_of<BoxShapeComponent>(self.value);
-        };
-        entityType["camera"] =
-            sol::readonly_property([](const ScriptEntity& self) { return ScriptCameraRef {self.value}; });
-        entityType["hasCamera"] = [&ctx](const ScriptEntity& self) {
-            auto* world = ctx.world();
-            return world && ctx.isValid(self.value) && world->registry().all_of<CameraComponent>(self.value);
-        };
-        entityType["capsuleShape"] =
-            sol::readonly_property([](const ScriptEntity& self) { return ScriptCapsuleShapeRef {self.value}; });
-        entityType["hasCapsuleShape"] = [&ctx](const ScriptEntity& self) {
-            auto* world = ctx.world();
-            return world && ctx.isValid(self.value) && world->registry().all_of<CapsuleShapeComponent>(self.value);
-        };
-        entityType["cylinderShape"] =
-            sol::readonly_property([](const ScriptEntity& self) { return ScriptCylinderShapeRef {self.value}; });
-        entityType["hasCylinderShape"] = [&ctx](const ScriptEntity& self) {
-            auto* world = ctx.world();
-            return world && ctx.isValid(self.value) && world->registry().all_of<CylinderShapeComponent>(self.value);
-        };
-        entityType["environment"] =
-            sol::readonly_property([](const ScriptEntity& self) { return ScriptEnvironmentRef {self.value}; });
-        entityType["hasEnvironment"] = [&ctx](const ScriptEntity& self) {
-            auto* world = ctx.world();
-            return world && ctx.isValid(self.value) && world->registry().all_of<EnvironmentComponent>(self.value);
-        };
-        entityType["light"] =
-            sol::readonly_property([](const ScriptEntity& self) { return ScriptLightRef {self.value}; });
-        entityType["hasLight"] = [&ctx](const ScriptEntity& self) {
-            auto* world = ctx.world();
-            return world && ctx.isValid(self.value) && world->registry().all_of<LightComponent>(self.value);
-        };
-        entityType["particleEmitter"] =
-            sol::readonly_property([](const ScriptEntity& self) { return ScriptParticleEmitterRef {self.value}; });
-        entityType["hasParticleEmitter"] = [&ctx](const ScriptEntity& self) {
-            auto* world = ctx.world();
-            return world && ctx.isValid(self.value) && world->registry().all_of<ParticleEmitterComponent>(self.value);
-        };
-        entityType["reflectionProbe"] =
-            sol::readonly_property([](const ScriptEntity& self) { return ScriptReflectionProbeRef {self.value}; });
-        entityType["hasReflectionProbe"] = [&ctx](const ScriptEntity& self) {
-            auto* world = ctx.world();
-            return world && ctx.isValid(self.value) && world->registry().all_of<ReflectionProbeComponent>(self.value);
-        };
-        entityType["sphereShape"] =
-            sol::readonly_property([](const ScriptEntity& self) { return ScriptSphereShapeRef {self.value}; });
-        entityType["hasSphereShape"] = [&ctx](const ScriptEntity& self) {
-            auto* world = ctx.world();
-            return world && ctx.isValid(self.value) && world->registry().all_of<SphereShapeComponent>(self.value);
-        };
     }
 } // namespace vultra

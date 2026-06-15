@@ -17,7 +17,7 @@ namespace vultra
     //    instanced, camera-facing, additive billboards via builtin render-graph passes.
     //  - CPU (gpu == false): the ParticleSystem subsystem simulates on the CPU and previews particles
     //    through the debug-draw path. Kept as a fallback / debugging aid.
-    struct VBIND_USERTYPE(name = ParticleEmitter, handle = ScriptParticleEmitterRef, accessor = particleEmitter)
+    struct VBIND_USERTYPE(name = ParticleEmitter, handle = ScriptParticleEmitterRef)
         ParticleEmitterComponent
     {
         VBIND_FIELD() bool playing {true};

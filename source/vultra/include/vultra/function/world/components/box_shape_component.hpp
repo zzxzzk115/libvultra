@@ -6,7 +6,7 @@
 
 namespace vultra
 {
-    struct VBIND_USERTYPE(name = BoxShape, handle = ScriptBoxShapeRef, accessor = boxShape) BoxShapeComponent
+    struct VBIND_USERTYPE(name = BoxShape, handle = ScriptBoxShapeRef) BoxShapeComponent
     {
         VBIND_FIELD() glm::vec3 halfExtents {0.5f};
     };

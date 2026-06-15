@@ -4,7 +4,7 @@
 
 namespace vultra
 {
-    struct VBIND_USERTYPE(name = CapsuleShape, handle = ScriptCapsuleShapeRef, accessor = capsuleShape) CapsuleShapeComponent
+    struct VBIND_USERTYPE(name = CapsuleShape, handle = ScriptCapsuleShapeRef) CapsuleShapeComponent
     {
         VBIND_FIELD() float halfHeightOfCylinder {0.5f};
         VBIND_FIELD() float radius {0.25f};

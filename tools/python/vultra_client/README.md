@@ -29,7 +29,7 @@ Start Vultra with:
 
 ```bash
 xmake run vultra-app \
-  --rpc \
+  --mcp \
   --project example.vproject \
   --render-mode offscreen
 ```

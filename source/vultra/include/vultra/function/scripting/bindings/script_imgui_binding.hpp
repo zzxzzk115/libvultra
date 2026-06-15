@@ -21,4 +21,10 @@ namespace vultra
     // Irregular functions (InputText) are hand-written here on top of the
     // generated subset.
     void registerScriptImGuiBindings(sol::state& lua, ScriptContext& ctx);
+
+    // Registers the imgui-ext extension tables (ImGuizmo, ImOGuizmo, ...) onto
+    // the Lua state. Hand-written (these libraries have no dear_bindings
+    // metadata). Called from registerScriptImGuiBindings after the ImGui table.
+    // Extension tables keep their upstream PascalCase names, like ImGui.
+    void registerImGuiExtBindings(sol::state& lua);
 } // namespace vultra

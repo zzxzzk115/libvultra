@@ -8,7 +8,7 @@ namespace vultra
     // Plays a cooked audio clip (vaudio asset) at the entity. Runtime sound instances
     // live in AudioSystem; this component only stores the desired state, which the
     // system reconciles every frame (including stopping sounds of destroyed entities).
-    struct VBIND_USERTYPE(name = AudioSource, handle = ScriptAudioSourceRef, accessor = audioSource) AudioSourceComponent
+    struct VBIND_USERTYPE(name = AudioSource, handle = ScriptAudioSourceRef) AudioSourceComponent
     {
         VBIND_FIELD() CoreUUID clip;
 

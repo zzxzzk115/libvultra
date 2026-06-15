@@ -69,7 +69,14 @@ local deprecated = type(__vultraDeprecated) == "table" and __vultraDeprecated or
 -- conditionally-registered tables: absent in headless runs (stale-stub check
 -- skipped), and spec-exempt from naming rules when present (upstream names;
 -- doc/lua_api_design.md section 9)
-local conditionalTops = { ImGui = true }
+local conditionalTops = {
+    ImGui = true,
+    ImGuizmo = true,
+    ImOGuizmo = true,
+    ImPlot = true,
+    ImGuiFileDialog = true,
+    ImNodes = true,
+}
 
 -- sol2 injects these helpers into every usertype table; they are machinery,
 -- not API surface

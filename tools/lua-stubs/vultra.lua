@@ -169,12 +169,189 @@ function Input.mousePositionDelta() end
 function Input.mouseScrollDelta() end
 
 --- Entity handle. Check entity.valid before use across frames.
---- TODO(stub): document remaining fields/methods (tracked in conformance exceptions.lua).
+--- Only the always-on members are direct fields (valid/id/name/active/visible/
+--- transform, declared on the generated Entity class below); every other
+--- component is reached through addComponent/getComponent/removeComponent/
+--- hasComponent, keyed by a Component.* token.
 ---@class Entity
----@field valid boolean
----@field name string
----@field transform Transform
 local Entity = {}
+
+--- Add a component (no-op if already present) and return its reference.
+---@param type integer @ a Component.* token (e.g. Component.RigidBody)
+---@return any @ the component reference
+function Entity:addComponent(type) end
+
+--- Get a component reference, or nil if the entity does not have it.
+---@param type integer @ a Component.* token
+---@return any|nil
+function Entity:getComponent(type) end
+
+--- Remove a component. Returns true if one was removed.
+---@param type integer @ a Component.* token
+---@return boolean
+function Entity:removeComponent(type) end
+
+--- Whether the entity has the given component.
+---@param type integer @ a Component.* token
+---@return boolean
+function Entity:hasComponent(type) end
+
+--- Convenience constructors that create an entity with common components already
+--- attached. Each returns the new entity handle.
+---@class WorldHelper
+WorldHelper = {}
+
+--- Create an empty entity (transform only).
+---@param name? string
+---@return Entity
+function WorldHelper.addEmpty(name) end
+
+--- Create an entity with a primary CameraComponent.
+---@param name? string
+---@return Entity
+function WorldHelper.addMainCamera(name) end
+
+--- Create an entity with a CameraComponent.
+---@param name? string
+---@return Entity
+function WorldHelper.addCamera(name) end
+
+--- Create an entity with a LightComponent.
+---@param name? string
+---@return Entity
+function WorldHelper.addLight(name) end
+
+--- Create an entity with a MeshComponent.
+---@param name? string
+---@return Entity
+function WorldHelper.addMesh(name) end
+
+-- imgui-ext extension tables. Like ImGui, these keep upstream PascalCase names
+-- and are only present when an ImGui service is active (editor/dev builds).
+-- Matrices are arrays of 16 numbers (column-major); vec3s are arrays of 3.
+
+--- ImGuizmo: 3D transform gizmos. Call inside an ImGui window.
+---@class ImGuizmo
+---@field OPERATION table<string, integer> @ TRANSLATE/ROTATE/SCALE/SCALEU/UNIVERSAL/BOUNDS + per-axis
+---@field MODE table<string, integer> @ LOCAL / WORLD
+ImGuizmo = {}
+function ImGuizmo.BeginFrame() end
+---@param enable boolean
+function ImGuizmo.Enable(enable) end
+---@param ortho boolean
+function ImGuizmo.SetOrthographic(ortho) end
+function ImGuizmo.SetDrawlist() end
+---@param x number @param y number @param width number @param height number
+function ImGuizmo.SetRect(x, y, width, height) end
+---@return boolean
+function ImGuizmo.IsOver() end
+---@return boolean
+function ImGuizmo.IsUsing() end
+---@return boolean
+function ImGuizmo.IsUsingAny() end
+--- Manipulate a model matrix. Returns changed, newMatrix.
+---@param view number[] @param projection number[] @param operation integer @param mode integer @param matrix number[] @param snap? number[]
+---@return boolean, number[]
+function ImGuizmo.Manipulate(view, projection, operation, mode, matrix, snap) end
+---@param matrix number[]
+---@return number[], number[], number[] @ translation, rotation(deg), scale
+function ImGuizmo.DecomposeMatrixToComponents(matrix) end
+---@param translation number[] @param rotation number[] @param scale number[]
+---@return number[]
+function ImGuizmo.RecomposeMatrixFromComponents(translation, rotation, scale) end
+
+--- ImOGuizmo: orientation cube. Returns interacted, newView from DrawGizmo.
+---@class ImOGuizmo
+ImOGuizmo = {}
+---@param x number @param y number @param size number
+function ImOGuizmo.SetRect(x, y, size) end
+function ImOGuizmo.SetDrawList() end
+---@param background? boolean
+function ImOGuizmo.BeginFrame(background) end
+---@param view number[] @param projection number[] @param pivotDistance? number
+---@return boolean, number[]
+function ImOGuizmo.DrawGizmo(view, projection, pivotDistance) end
+
+--- ImPlot: plotting. Wrap plots in BeginPlot/EndPlot; data are number arrays.
+---@class ImPlot
+---@field Axis table<string, integer> @ X1/X2/X3/Y1/Y2/Y3
+---@field Flags table<string, integer>
+---@field AxisFlags table<string, integer>
+---@field Location table<string, integer> @ legend location
+ImPlot = {}
+---@param title string @param sizeX? number @param sizeY? number @param flags? integer
+---@return boolean
+function ImPlot.BeginPlot(title, sizeX, sizeY, flags) end
+function ImPlot.EndPlot() end
+---@param xLabel string @param yLabel string @param xFlags? integer @param yFlags? integer
+function ImPlot.SetupAxes(xLabel, yLabel, xFlags, yFlags) end
+---@param xMin number @param xMax number @param yMin number @param yMax number @param cond? integer
+function ImPlot.SetupAxesLimits(xMin, xMax, yMin, yMax, cond) end
+---@param location integer @param flags? integer
+function ImPlot.SetupLegend(location, flags) end
+--- Plot a line. Plot*(label, ys) uses implicit x; Plot*(label, xs, ys) is explicit.
+---@param label string @param a number[] @param b? number[]
+function ImPlot.PlotLine(label, a, b) end
+---@param label string @param a number[] @param b? number[]
+function ImPlot.PlotScatter(label, a, b) end
+---@param label string @param a number[] @param b? number[] @param barSize? number
+function ImPlot.PlotBars(label, a, b, barSize) end
+
+--- ImGuiFileDialog: modal file/folder picker.
+---@class ImGuiFileDialog
+ImGuiFileDialog = {}
+---@param key string @param title string @param filters? string @param path? string
+function ImGuiFileDialog.OpenDialog(key, title, filters, path) end
+---@param key string @param flags? integer
+---@return boolean @ true the frame a result is produced
+function ImGuiFileDialog.Display(key, flags) end
+---@return boolean
+function ImGuiFileDialog.IsOk() end
+---@return string
+function ImGuiFileDialog.GetFilePathName() end
+---@return string
+function ImGuiFileDialog.GetCurrentFileName() end
+---@return string
+function ImGuiFileDialog.GetCurrentPath() end
+---@return table<string, string> @ fileName -> filePathName
+function ImGuiFileDialog.GetSelection() end
+function ImGuiFileDialog.Close() end
+---@param key? string
+---@return boolean
+function ImGuiFileDialog.IsOpened(key) end
+
+--- ImNodes: node-graph editor. Wrap in BeginNodeEditor/EndNodeEditor.
+---@class ImNodes
+---@field PinShape table<string, integer> @ Circle/CircleFilled/Triangle/Quad
+ImNodes = {}
+function ImNodes.BeginNodeEditor() end
+function ImNodes.EndNodeEditor() end
+---@param id integer
+function ImNodes.BeginNode(id) end
+function ImNodes.EndNode() end
+function ImNodes.BeginNodeTitleBar() end
+function ImNodes.EndNodeTitleBar() end
+---@param id integer
+function ImNodes.BeginInputAttribute(id) end
+function ImNodes.EndInputAttribute() end
+---@param id integer
+function ImNodes.BeginOutputAttribute(id) end
+function ImNodes.EndOutputAttribute() end
+---@param id integer
+function ImNodes.BeginStaticAttribute(id) end
+function ImNodes.EndStaticAttribute() end
+---@param id integer @param startAttr integer @param endAttr integer
+function ImNodes.Link(id, startAttr, endAttr) end
+---@param id integer @param x number @param y number
+function ImNodes.SetNodeGridSpacePos(id, x, y) end
+---@param id integer @param x number @param y number
+function ImNodes.SetNodeScreenSpacePos(id, x, y) end
+---@return boolean, integer, integer @ created, startAttr, endAttr
+function ImNodes.IsLinkCreated() end
+---@return boolean, integer @ destroyed, linkId
+function ImNodes.IsLinkDestroyed() end
+---@return boolean, integer @ hovered, nodeId
+function ImNodes.IsNodeHovered() end
 
 --- Gaussian splat renderer settings snapshot (see Render.gaussianSplatSettings).
 --- TODO(stub): document fields.
@@ -1289,48 +1466,6 @@ function World.findByNamePrefix(luaState, prefix) end
 ---@param luaState any
 function World.entities(luaState) end
 
----@param entity any
-function World.addRigidBody(entity) end
-
----@param entity any
-function World.removeRigidBody(entity) end
-
----@param entity any
-function World.addCamera(entity) end
-
----@param entity any
-function World.removeCamera(entity) end
-
----@param entity any
-function World.addLight(entity) end
-
----@param entity any
-function World.removeLight(entity) end
-
----@param entity any
-function World.addMesh(entity) end
-
----@param entity any
-function World.removeMesh(entity) end
-
----@param entity any
-function World.addBoxShape(entity) end
-
----@param entity any
-function World.removeBoxShape(entity) end
-
----@param entity any
-function World.addSphereShape(entity) end
-
----@param entity any
-function World.removeSphereShape(entity) end
-
----@param entity any
-function World.addAnimator(entity) end
-
----@param entity any
-function World.removeAnimator(entity) end
-
 --- Animator usertype (generated).
 ---@class Animator
 ---@field valid boolean @ read-only
@@ -1390,15 +1525,6 @@ local CylinderShape = {}
 ---@field active any
 ---@field visible any
 ---@field transform any @ read-only
----@field rectTransform any @ read-only
----@field ui any @ read-only
----@field uiButton any @ read-only
----@field uiToggle any @ read-only
----@field uiSlider any @ read-only
----@field uiProgressBar any @ read-only
----@field rigidBody any @ read-only
----@field mesh any @ read-only
----@field animator any @ read-only
 local Entity = {}
 
 function Entity:destroy() end
@@ -1410,22 +1536,6 @@ function Entity:firstChild() end
 function Entity:nextSibling() end
 
 function Entity:setParent(parent) end
-
-function Entity:hasRigidBody() end
-
-function Entity:hasMesh() end
-
-function Entity:hasAnimator() end
-
-function Entity:hasRectTransform() end
-
-function Entity:hasUiButton() end
-
-function Entity:hasUiToggle() end
-
-function Entity:hasUiSlider() end
-
-function Entity:hasUiProgressBar() end
 
 --- Environment usertype (generated).
 ---@class Environment
@@ -1531,6 +1641,30 @@ AssetState = {}
 ---@field Orbit integer
 ---@field Fly integer
 CameraControlMode = {}
+
+--- Enum generated from vultra::ScriptComponentType.
+---@class Component
+---@field Transform integer
+---@field RigidBody integer
+---@field Camera integer
+---@field Light integer
+---@field Mesh integer
+---@field BoxShape integer
+---@field SphereShape integer
+---@field CapsuleShape integer
+---@field CylinderShape integer
+---@field Animator integer
+---@field AudioSource integer
+---@field AudioListener integer
+---@field Environment integer
+---@field ParticleEmitter integer
+---@field ReflectionProbe integer
+---@field RectTransform integer
+---@field UiButton integer
+---@field UiToggle integer
+---@field UiSlider integer
+---@field UiProgressBar integer
+Component = {}
 
 --- Enum generated from vultra::GaussianSplatBaselineMode.
 ---@class GaussianSplatBaselineMode

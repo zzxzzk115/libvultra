@@ -10,7 +10,7 @@ namespace vultra
 {
     // Numeric light kind keeps .vscn v1 serialization simple:
     // 0 = directional, 1 = point, 2 = spot, 3 = rectangle area.
-    struct VBIND_USERTYPE(name = Light, handle = ScriptLightRef, accessor = light) LightComponent
+    struct VBIND_USERTYPE(name = Light, handle = ScriptLightRef) LightComponent
     {
         VBIND_FIELD() uint32_t kind {0};
 

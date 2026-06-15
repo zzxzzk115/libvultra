@@ -2764,342 +2764,6 @@
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
             "line": 40
           }
-        },
-        {
-          "luaName": "addRigidBody",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldAddRigidBody",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "ScriptRigidBodyRef",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 43
-          }
-        },
-        {
-          "luaName": "removeRigidBody",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldRemoveRigidBody",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 45
-          }
-        },
-        {
-          "luaName": "addCamera",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldAddCamera",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "ScriptCameraRef",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 47
-          }
-        },
-        {
-          "luaName": "removeCamera",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldRemoveCamera",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 49
-          }
-        },
-        {
-          "luaName": "addLight",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldAddLight",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "ScriptLightRef",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 51
-          }
-        },
-        {
-          "luaName": "removeLight",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldRemoveLight",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 53
-          }
-        },
-        {
-          "luaName": "addMesh",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldAddMesh",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "ScriptMeshRef",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 55
-          }
-        },
-        {
-          "luaName": "removeMesh",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldRemoveMesh",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 57
-          }
-        },
-        {
-          "luaName": "addBoxShape",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldAddBoxShape",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "ScriptBoxShapeRef",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 59
-          }
-        },
-        {
-          "luaName": "removeBoxShape",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldRemoveBoxShape",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 61
-          }
-        },
-        {
-          "luaName": "addSphereShape",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldAddSphereShape",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "ScriptSphereShapeRef",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 63
-          }
-        },
-        {
-          "luaName": "removeSphereShape",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldRemoveSphereShape",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 65
-          }
-        },
-        {
-          "luaName": "addAnimator",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldAddAnimator",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "ScriptAnimatorRef",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 67
-          }
-        },
-        {
-          "luaName": "removeAnimator",
-          "callForm": "namespace",
-          "bodyKind": "shimCall",
-          "cppCall": "worldRemoveAnimator",
-          "params": [
-            {
-              "name": "entity",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 69
-          }
         }
       ],
       "properties": [],
@@ -4393,7 +4057,7 @@
       "header": "vultra/function/scripting/bindings/script_entity_shim.hpp",
       "component": null,
       "accessor": null,
-      "postRegister": "applyGeneratedEntityAccessors",
+      "postRegister": null,
       "methods": [
         {
           "luaName": "destroy",
@@ -4416,7 +4080,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 58
+            "line": 71
           }
         },
         {
@@ -4440,7 +4104,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 60
+            "line": 73
           }
         },
         {
@@ -4464,7 +4128,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 62
+            "line": 75
           }
         },
         {
@@ -4488,7 +4152,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 64
+            "line": 77
           }
         },
         {
@@ -4517,199 +4181,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 66
-          }
-        },
-        {
-          "luaName": "hasRigidBody",
-          "callForm": "method",
-          "bodyKind": "shimCall",
-          "cppCall": "entityHasRigidBody",
-          "params": [
-            {
-              "name": "self",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 68
-          }
-        },
-        {
-          "luaName": "hasMesh",
-          "callForm": "method",
-          "bodyKind": "shimCall",
-          "cppCall": "entityHasMesh",
-          "params": [
-            {
-              "name": "self",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 70
-          }
-        },
-        {
-          "luaName": "hasAnimator",
-          "callForm": "method",
-          "bodyKind": "shimCall",
-          "cppCall": "entityHasAnimator",
-          "params": [
-            {
-              "name": "self",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 72
-          }
-        },
-        {
-          "luaName": "hasRectTransform",
-          "callForm": "method",
-          "bodyKind": "shimCall",
-          "cppCall": "entityHasRectTransform",
-          "params": [
-            {
-              "name": "self",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 74
-          }
-        },
-        {
-          "luaName": "hasUiButton",
-          "callForm": "method",
-          "bodyKind": "shimCall",
-          "cppCall": "entityHasUiButton",
-          "params": [
-            {
-              "name": "self",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 76
-          }
-        },
-        {
-          "luaName": "hasUiToggle",
-          "callForm": "method",
-          "bodyKind": "shimCall",
-          "cppCall": "entityHasUiToggle",
-          "params": [
-            {
-              "name": "self",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 78
-          }
-        },
-        {
-          "luaName": "hasUiSlider",
-          "callForm": "method",
-          "bodyKind": "shimCall",
-          "cppCall": "entityHasUiSlider",
-          "params": [
-            {
-              "name": "self",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 80
-          }
-        },
-        {
-          "luaName": "hasUiProgressBar",
-          "callForm": "method",
-          "bodyKind": "shimCall",
-          "cppCall": "entityHasUiProgressBar",
-          "params": [
-            {
-              "name": "self",
-              "type": "raw",
-              "cpp": "const ScriptEntity &"
-            }
-          ],
-          "returnType": "raw",
-          "returnCpp": "bool",
-          "serviceDep": null,
-          "nullReturn": null,
-          "selfHandle": null,
-          "overloadGroup": null,
-          "deprecatedAlias": null,
-          "source": {
-            "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 82
+            "line": 79
           }
         }
       ],
@@ -4755,76 +4227,13 @@
           "setterShim": null,
           "setterParam": "ScriptTransformRef",
           "readonly": true
-        },
-        {
-          "luaName": "rectTransform",
-          "getterShim": "entityRectTransform",
-          "setterShim": null,
-          "setterParam": "ScriptRectTransformRef",
-          "readonly": true
-        },
-        {
-          "luaName": "ui",
-          "getterShim": "entityUi",
-          "setterShim": null,
-          "setterParam": "ScriptUiRef",
-          "readonly": true
-        },
-        {
-          "luaName": "uiButton",
-          "getterShim": "entityUiButton",
-          "setterShim": null,
-          "setterParam": "ScriptUiButtonRef",
-          "readonly": true
-        },
-        {
-          "luaName": "uiToggle",
-          "getterShim": "entityUiToggle",
-          "setterShim": null,
-          "setterParam": "ScriptUiToggleRef",
-          "readonly": true
-        },
-        {
-          "luaName": "uiSlider",
-          "getterShim": "entityUiSlider",
-          "setterShim": null,
-          "setterParam": "ScriptUiSliderRef",
-          "readonly": true
-        },
-        {
-          "luaName": "uiProgressBar",
-          "getterShim": "entityUiProgressBar",
-          "setterShim": null,
-          "setterParam": "ScriptUiProgressBarRef",
-          "readonly": true
-        },
-        {
-          "luaName": "rigidBody",
-          "getterShim": "entityRigidBody",
-          "setterShim": null,
-          "setterParam": "ScriptRigidBodyRef",
-          "readonly": true
-        },
-        {
-          "luaName": "mesh",
-          "getterShim": "entityMesh",
-          "setterShim": null,
-          "setterParam": "ScriptMeshRef",
-          "readonly": true
-        },
-        {
-          "luaName": "animator",
-          "getterShim": "entityAnimator",
-          "setterShim": null,
-          "setterParam": "ScriptAnimatorRef",
-          "readonly": true
         }
       ],
       "fields": [],
       "componentHeader": "",
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-        "line": 18
+        "line": 49
       }
     },
     {
@@ -4833,7 +4242,7 @@
       "area": "world",
       "header": "vultra/function/scripting/bindings/script_world_shim.hpp",
       "component": "MeshComponent",
-      "accessor": "mesh",
+      "accessor": null,
       "postRegister": null,
       "methods": [
         {
@@ -4867,7 +4276,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 77
+            "line": 48
           }
         },
         {
@@ -4906,7 +4315,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 79
+            "line": 50
           }
         },
         {
@@ -4945,7 +4354,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 82
+            "line": 53
           }
         },
         {
@@ -4984,7 +4393,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 85
+            "line": 56
           }
         },
         {
@@ -5018,7 +4427,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 88
+            "line": 59
           }
         },
         {
@@ -5047,7 +4456,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-            "line": 91
+            "line": 62
           }
         }
       ],
@@ -5320,7 +4729,7 @@
       "area": "components",
       "header": "vultra/function/world/components/audio_listener_component.hpp",
       "component": "AudioListenerComponent",
-      "accessor": "audioListener",
+      "accessor": null,
       "postRegister": null,
       "methods": [],
       "properties": [],
@@ -5345,7 +4754,7 @@
       "area": "components",
       "header": "vultra/function/world/components/audio_source_component.hpp",
       "component": "AudioSourceComponent",
-      "accessor": "audioSource",
+      "accessor": null,
       "postRegister": null,
       "methods": [],
       "properties": [],
@@ -5433,7 +4842,7 @@
       "area": "components",
       "header": "vultra/function/world/components/box_shape_component.hpp",
       "component": "BoxShapeComponent",
-      "accessor": "boxShape",
+      "accessor": null,
       "postRegister": null,
       "methods": [],
       "properties": [],
@@ -5458,7 +4867,7 @@
       "area": "components",
       "header": "vultra/function/world/components/camera_component.hpp",
       "component": "CameraComponent",
-      "accessor": "camera",
+      "accessor": null,
       "postRegister": null,
       "methods": [],
       "properties": [],
@@ -5553,7 +4962,7 @@
       "area": "components",
       "header": "vultra/function/world/components/capsule_shape_component.hpp",
       "component": "CapsuleShapeComponent",
-      "accessor": "capsuleShape",
+      "accessor": null,
       "postRegister": null,
       "methods": [],
       "properties": [],
@@ -5585,7 +4994,7 @@
       "area": "components",
       "header": "vultra/function/world/components/cylinder_shape_component.hpp",
       "component": "CylinderShapeComponent",
-      "accessor": "cylinderShape",
+      "accessor": null,
       "postRegister": null,
       "methods": [],
       "properties": [],
@@ -5617,7 +5026,7 @@
       "area": "components",
       "header": "vultra/function/world/components/environment_component.hpp",
       "component": "EnvironmentComponent",
-      "accessor": "environment",
+      "accessor": null,
       "postRegister": null,
       "methods": [],
       "properties": [],
@@ -5684,7 +5093,7 @@
       "area": "components",
       "header": "vultra/function/world/components/light_component.hpp",
       "component": "LightComponent",
-      "accessor": "light",
+      "accessor": null,
       "postRegister": null,
       "methods": [],
       "properties": [],
@@ -5765,7 +5174,7 @@
       "area": "components",
       "header": "vultra/function/world/components/particle_emitter_component.hpp",
       "component": "ParticleEmitterComponent",
-      "accessor": "particleEmitter",
+      "accessor": null,
       "postRegister": null,
       "methods": [],
       "properties": [],
@@ -5888,7 +5297,7 @@
       "area": "components",
       "header": "vultra/function/world/components/reflection_probe_component.hpp",
       "component": "ReflectionProbeComponent",
-      "accessor": "reflectionProbe",
+      "accessor": null,
       "postRegister": null,
       "methods": [],
       "properties": [],
@@ -5976,7 +5385,7 @@
       "area": "components",
       "header": "vultra/function/world/components/sphere_shape_component.hpp",
       "component": "SphereShapeComponent",
-      "accessor": "sphereShape",
+      "accessor": null,
       "postRegister": null,
       "methods": [],
       "properties": [],
@@ -6580,6 +5989,100 @@
         "file": "source/vultra/include/vultra/function/services/camera_service.hpp",
         "line": 15
       }
+    },
+    {
+      "luaName": "Component",
+      "cpp": "vultra::ScriptComponentType",
+      "header": "vultra/function/scripting/bindings/script_entity_shim.hpp",
+      "stripE": true,
+      "module": "World",
+      "area": "world",
+      "values": [
+        {
+          "name": "Transform",
+          "value": 0
+        },
+        {
+          "name": "RigidBody",
+          "value": 1
+        },
+        {
+          "name": "Camera",
+          "value": 2
+        },
+        {
+          "name": "Light",
+          "value": 3
+        },
+        {
+          "name": "Mesh",
+          "value": 4
+        },
+        {
+          "name": "BoxShape",
+          "value": 5
+        },
+        {
+          "name": "SphereShape",
+          "value": 6
+        },
+        {
+          "name": "CapsuleShape",
+          "value": 7
+        },
+        {
+          "name": "CylinderShape",
+          "value": 8
+        },
+        {
+          "name": "Animator",
+          "value": 9
+        },
+        {
+          "name": "AudioSource",
+          "value": 10
+        },
+        {
+          "name": "AudioListener",
+          "value": 11
+        },
+        {
+          "name": "Environment",
+          "value": 12
+        },
+        {
+          "name": "ParticleEmitter",
+          "value": 13
+        },
+        {
+          "name": "ReflectionProbe",
+          "value": 14
+        },
+        {
+          "name": "RectTransform",
+          "value": 15
+        },
+        {
+          "name": "UiButton",
+          "value": 16
+        },
+        {
+          "name": "UiToggle",
+          "value": 17
+        },
+        {
+          "name": "UiSlider",
+          "value": 18
+        },
+        {
+          "name": "UiProgressBar",
+          "value": 19
+        }
+      ],
+      "source": {
+        "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
+        "line": 25
+      }
     }
   ],
   "structs": [
@@ -7137,12 +6640,30 @@
   ],
   "raws": [
     {
+      "area": "entity",
+      "symbol": "entityRegisterComponentApi",
+      "header": "vultra/function/scripting/bindings/script_entity_shim.hpp",
+      "source": {
+        "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
+        "line": 84
+      }
+    },
+    {
       "area": "world",
       "symbol": "worldRegisterLayerTable",
       "header": "vultra/function/scripting/bindings/script_world_shim.hpp",
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
-        "line": 95
+        "line": 66
+      }
+    },
+    {
+      "area": "world",
+      "symbol": "worldRegisterHelpers",
+      "header": "vultra/function/scripting/bindings/script_world_shim.hpp",
+      "source": {
+        "file": "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
+        "line": 70
       }
     },
     {

@@ -127,7 +127,7 @@ namespace ImOGuizmo {
 			}
 		}
 
-		void lookAt(ImVec3 const& eye, ImVec3 const& at, ImVec3 const& up, float* viewMatrix)
+		inline void lookAt(ImVec3 const& eye, ImVec3 const& at, ImVec3 const& up, float* viewMatrix)
 		{
 #ifdef IMOGUIZMO_LEFT_HANDED
 			const auto f = normalize(at - eye);

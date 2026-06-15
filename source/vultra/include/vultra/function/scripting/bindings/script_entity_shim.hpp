@@ -1,21 +1,52 @@
 #pragma once
 
-// Shim declarations for the Lua `Entity` usertype. Generated into the `entity`
-// area; postRegister calls applyGeneratedEntityAccessors (the legacy component
-// accessors: camera/light/etc.). Bodies in script_entity_shim.cpp.
+// Shim declarations for the Lua `Entity` usertype.
+//
+// Entity exposes only the always-on members directly: valid / id / name /
+// active / visible / transform, plus hierarchy. Every other component is reached
+// through the Unity-style generic API (addComponent / getComponent /
+// removeComponent / hasComponent), keyed by the `Component` enum. Those four
+// methods and the `Component` token table are registered by the hand-written raw
+// hook entityRegisterComponentApi (script_entity_shim.cpp).
 
 #include "vultra/core/base/script_annotations.hpp"
-#include "vultra/function/scripting/bindings/script_generated_binding.hpp"
 #include "vultra/function/scripting/script_context.hpp"
 #include "vultra/function/scripting/script_types.hpp"
+
+#include <sol/sol.hpp>
 
 #include <cstdint>
 #include <string>
 
 namespace vultra
 {
-    struct VBIND_USERTYPE(name = Entity, handle = ScriptEntity, area = entity,
-                          postRegister = applyGeneratedEntityAccessors) EntityUsertype
+    // Component tokens for entity:addComponent/getComponent/removeComponent/hasComponent.
+    // Lua side: Component.Transform, Component.RigidBody, ... (PascalCase via stripE).
+    enum class VBIND_ENUM(name = Component, stripE, module = World) ScriptComponentType : int
+    {
+        eTransform,
+        eRigidBody,
+        eCamera,
+        eLight,
+        eMesh,
+        eBoxShape,
+        eSphereShape,
+        eCapsuleShape,
+        eCylinderShape,
+        eAnimator,
+        eAudioSource,
+        eAudioListener,
+        eEnvironment,
+        eParticleEmitter,
+        eReflectionProbe,
+        eRectTransform,
+        eUiButton,
+        eUiToggle,
+        eUiSlider,
+        eUiProgressBar,
+    };
+
+    struct VBIND_USERTYPE(name = Entity, handle = ScriptEntity, area = entity) EntityUsertype
     {
     };
 
@@ -35,24 +66,6 @@ namespace vultra
 
     VBIND_PROPERTY(usertype = Entity, name = transform)
     ScriptTransformRef entityTransform(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_PROPERTY(usertype = Entity, name = rectTransform)
-    ScriptRectTransformRef entityRectTransform(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_PROPERTY(usertype = Entity, name = ui)
-    ScriptUiRef entityUi(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_PROPERTY(usertype = Entity, name = uiButton)
-    ScriptUiButtonRef entityUiButton(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_PROPERTY(usertype = Entity, name = uiToggle)
-    ScriptUiToggleRef entityUiToggle(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_PROPERTY(usertype = Entity, name = uiSlider)
-    ScriptUiSliderRef entityUiSlider(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_PROPERTY(usertype = Entity, name = uiProgressBar)
-    ScriptUiProgressBarRef entityUiProgressBar(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_PROPERTY(usertype = Entity, name = rigidBody)
-    ScriptRigidBodyRef entityRigidBody(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_PROPERTY(usertype = Entity, name = mesh)
-    ScriptMeshRef entityMesh(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_PROPERTY(usertype = Entity, name = animator)
-    ScriptAnimatorRef entityAnimator(ScriptContext& ctx, const ScriptEntity& self);
 
     VBIND_FN(usertype = Entity, name = destroy, body = shim)
     void entityDestroy(ScriptContext& ctx, const ScriptEntity& self);
@@ -64,20 +77,9 @@ namespace vultra
     ScriptEntity entityNextSibling(ScriptContext& ctx, const ScriptEntity& self);
     VBIND_FN(usertype = Entity, name = setParent, body = shim)
     void entitySetParent(ScriptContext& ctx, const ScriptEntity& self, const ScriptEntity& parent);
-    VBIND_FN(usertype = Entity, name = hasRigidBody, body = shim)
-    bool entityHasRigidBody(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_FN(usertype = Entity, name = hasMesh, body = shim)
-    bool entityHasMesh(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_FN(usertype = Entity, name = hasAnimator, body = shim)
-    bool entityHasAnimator(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_FN(usertype = Entity, name = hasRectTransform, body = shim)
-    bool entityHasRectTransform(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_FN(usertype = Entity, name = hasUiButton, body = shim)
-    bool entityHasUiButton(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_FN(usertype = Entity, name = hasUiToggle, body = shim)
-    bool entityHasUiToggle(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_FN(usertype = Entity, name = hasUiSlider, body = shim)
-    bool entityHasUiSlider(ScriptContext& ctx, const ScriptEntity& self);
-    VBIND_FN(usertype = Entity, name = hasUiProgressBar, body = shim)
-    bool entityHasUiProgressBar(ScriptContext& ctx, const ScriptEntity& self);
+
+    // Registers the generic component API (addComponent/getComponent/removeComponent/hasComponent)
+    // onto the Entity usertype. Runs after the Entity usertype is built in the `entity` area.
+    VBIND_RAW(area = entity)
+    void entityRegisterComponentApi(sol::state& lua, ScriptContext& ctx);
 } // namespace vultra

@@ -10,7 +10,7 @@
 
 namespace vultra
 {
-    struct VBIND_USERTYPE(name = CameraRef, handle = ScriptCameraRef, accessor = camera) CameraComponent
+    struct VBIND_USERTYPE(name = CameraRef, handle = ScriptCameraRef) CameraComponent
     {
         VBIND_FIELD() bool primary {false};
 
