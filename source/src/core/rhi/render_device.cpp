@@ -458,8 +458,11 @@ namespace vultra
         {
             assert(m_MemoryAllocator);
 
-            vk::BufferUsageFlags usage =
-                vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst;
+            vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eStorageBuffer |
+                                         vk::BufferUsageFlagBits::eTransferDst |
+                                         // Allow storage buffers to also drive indirect commands
+                                         // (e.g. GPU-built vkCmdTraceRaysIndirectKHR argument buffers).
+                                         vk::BufferUsageFlagBits::eIndirectBuffer;
 
             if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
@@ -1214,6 +1217,8 @@ namespace vultra
 
                 // Enable raytracing pipeline features
                 rayTracingFeatures.rayTracingPipeline = VK_TRUE;
+                // Enable GPU-driven indirect ray dispatch (vkCmdTraceRaysIndirectKHR)
+                rayTracingFeatures.rayTracingPipelineTraceRaysIndirect = VK_TRUE;
 
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&rayTracingFeatures));
             }

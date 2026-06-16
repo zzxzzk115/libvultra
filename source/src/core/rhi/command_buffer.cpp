@@ -287,6 +287,48 @@ namespace vultra
             return *this;
         }
 
+        CommandBuffer& CommandBuffer::traceRaysIndirect(const ShaderBindingTable& sbt,
+                                                        vk::DeviceAddress         indirectDeviceAddress)
+        {
+            assert(invariant(State::eRecording, InvariantFlags::eValidRayTracingPipeline));
+            assert(indirectDeviceAddress != 0);
+
+            TRACY_GPU_ZONE2_("TraceRaysIndirect");
+            flushBarriers();
+
+            vk::StridedDeviceAddressRegionKHR raygenShaderBindingTable {};
+            vk::StridedDeviceAddressRegionKHR missShaderBindingTable {};
+            vk::StridedDeviceAddressRegionKHR hitShaderBindingTable {};
+            vk::StridedDeviceAddressRegionKHR callableShaderBindingTable {};
+
+            raygenShaderBindingTable.deviceAddress = sbt.regions().raygen.deviceAddress;
+            raygenShaderBindingTable.stride        = sbt.regions().raygen.stride;
+            raygenShaderBindingTable.size          = sbt.regions().raygen.size;
+
+            missShaderBindingTable.deviceAddress = sbt.regions().miss.deviceAddress;
+            missShaderBindingTable.stride        = sbt.regions().miss.stride;
+            missShaderBindingTable.size          = sbt.regions().miss.size;
+
+            hitShaderBindingTable.deviceAddress = sbt.regions().hit.deviceAddress;
+            hitShaderBindingTable.stride        = sbt.regions().hit.stride;
+            hitShaderBindingTable.size          = sbt.regions().hit.size;
+
+            if (sbt.regions().callable.has_value())
+            {
+                callableShaderBindingTable.deviceAddress = sbt.regions().callable->deviceAddress;
+                callableShaderBindingTable.stride        = sbt.regions().callable->stride;
+                callableShaderBindingTable.size          = sbt.regions().callable->size;
+            }
+
+            m_Handle.traceRaysIndirectKHR(&raygenShaderBindingTable,
+                                          &missShaderBindingTable,
+                                          &hitShaderBindingTable,
+                                          &callableShaderBindingTable,
+                                          indirectDeviceAddress);
+
+            return *this;
+        }
+
         CommandBuffer& CommandBuffer::bindDescriptorSet(const DescriptorSetIndex index,
                                                         const vk::DescriptorSet  descriptorSet)
         {

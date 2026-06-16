@@ -14,6 +14,7 @@ namespace vultra
             eNone = VK_PIPELINE_STAGE_2_NONE,
 
             eTop               = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+            eDrawIndirect      = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
             eVertexInput       = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT,
             eVertexShader      = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
             eGeometryShader    = VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT,

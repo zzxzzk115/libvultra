@@ -96,6 +96,12 @@ namespace vultra
 
             CommandBuffer& traceRays(const ShaderBindingTable& sbt, const glm::uvec3& extent);
 
+            // GPU-driven ray dispatch. The launch dimensions are read on the device from a
+            // VkTraceRaysIndirectCommandKHR { uint32 width, height, depth } located at
+            // 'indirectDeviceAddress' (must be 4-byte aligned and reside in a buffer created with
+            // eIndirectBuffer | eShaderDeviceAddress usage).
+            CommandBuffer& traceRaysIndirect(const ShaderBindingTable& sbt, vk::DeviceAddress indirectDeviceAddress);
+
             CommandBuffer& bindDescriptorSet(const DescriptorSetIndex, const vk::DescriptorSet);
 
             CommandBuffer&
