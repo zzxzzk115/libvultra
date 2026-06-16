@@ -309,6 +309,78 @@ namespace vultra
         return ctx.physicsService ? ctx.physicsService->layerCollision(a, b) : true;
     }
 
+    // --- Constraints / joints ---
+    namespace
+    {
+        entt::entity resolveBody(const sol::optional<ScriptEntity>& body)
+        {
+            return body ? body->value : entt::null;
+        }
+    } // namespace
+
+    std::uint32_t physicsAddFixedConstraint(ScriptContext& ctx, const ScriptEntity& bodyA, sol::optional<ScriptEntity> bodyB)
+    {
+        return ctx.physicsService ? ctx.physicsService->addFixedConstraint(bodyA.value, resolveBody(bodyB)) : 0u;
+    }
+    std::uint32_t physicsAddPointConstraint(ScriptContext& ctx, const ScriptEntity& bodyA, sol::optional<ScriptEntity> bodyB, const ScriptVec3& point)
+    {
+        return ctx.physicsService ?
+                   ctx.physicsService->addPointConstraint(bodyA.value, resolveBody(bodyB), toGlmVec3(point)) :
+                   0u;
+    }
+    std::uint32_t physicsAddDistanceConstraint(ScriptContext& ctx, const ScriptEntity& bodyA, sol::optional<ScriptEntity> bodyB, float minDistance, float maxDistance)
+    {
+        return ctx.physicsService ?
+                   ctx.physicsService->addDistanceConstraint(bodyA.value, resolveBody(bodyB), minDistance, maxDistance) :
+                   0u;
+    }
+    std::uint32_t physicsAddHingeConstraint(ScriptContext& ctx, const ScriptEntity& bodyA, sol::optional<ScriptEntity> bodyB, const ScriptVec3& point, const ScriptVec3& axis, float minAngleDegrees, float maxAngleDegrees)
+    {
+        return ctx.physicsService ?
+                   ctx.physicsService->addHingeConstraint(bodyA.value,
+                                                          resolveBody(bodyB),
+                                                          toGlmVec3(point),
+                                                          toGlmVec3(axis),
+                                                          minAngleDegrees,
+                                                          maxAngleDegrees) :
+                   0u;
+    }
+    std::uint32_t physicsAddSliderConstraint(ScriptContext& ctx, const ScriptEntity& bodyA, sol::optional<ScriptEntity> bodyB, const ScriptVec3& point, const ScriptVec3& axis, float minDistance, float maxDistance)
+    {
+        return ctx.physicsService ?
+                   ctx.physicsService->addSliderConstraint(bodyA.value,
+                                                           resolveBody(bodyB),
+                                                           toGlmVec3(point),
+                                                           toGlmVec3(axis),
+                                                           minDistance,
+                                                           maxDistance) :
+                   0u;
+    }
+    std::uint32_t physicsAddConeConstraint(ScriptContext& ctx, const ScriptEntity& bodyA, sol::optional<ScriptEntity> bodyB, const ScriptVec3& point, const ScriptVec3& twistAxis, float halfAngleDegrees)
+    {
+        return ctx.physicsService ?
+                   ctx.physicsService->addConeConstraint(bodyA.value,
+                                                         resolveBody(bodyB),
+                                                         toGlmVec3(point),
+                                                         toGlmVec3(twistAxis),
+                                                         halfAngleDegrees) :
+                   0u;
+    }
+    bool physicsRemoveConstraint(ScriptContext& ctx, std::uint32_t constraintId)
+    {
+        return ctx.physicsService ? ctx.physicsService->removeConstraint(constraintId) : false;
+    }
+    bool physicsIsConstraintValid(ScriptContext& ctx, std::uint32_t constraintId)
+    {
+        return ctx.physicsService ? ctx.physicsService->isConstraintValid(constraintId) : false;
+    }
+    bool physicsSetConstraintMotor(ScriptContext& ctx, std::uint32_t constraintId, bool enabled, float targetVelocity, float maxForce)
+    {
+        return ctx.physicsService ?
+                   ctx.physicsService->setConstraintMotor(constraintId, enabled, targetVelocity, maxForce) :
+                   false;
+    }
+
     // --- Character namespace ---
     bool characterHas(ScriptContext& ctx, const ScriptEntity& entity)
     {

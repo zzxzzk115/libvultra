@@ -28,7 +28,14 @@ utilities, decals/fog, particle depth.
 
 ## P0 — remove hard blockers (highest ROI)
 
-### P0.1 Gamepad/controller input + desktop action mapping
+> **Status (2026-06-15): all of P0 implemented.** Specs/tasks under `ai/specs/` +
+> `ai/tasks/`: `input-gamepad-action-map`, `navigation-recast`, `physics-joints`. Code,
+> Lua bindings (regenerated), LuaLS stub, EN+CN docs, and demos landed. Final compile/run +
+> `test-lua-api-conformance` verification is pending a local build (user runs builds; the
+> first build fetches the `recastnavigation` package — run `xmake repo -u` if the index is
+> stale). Per-card follow-ons are noted in each spec's "Out of scope".
+
+### P0.1 Gamepad/controller input + desktop action mapping ✅ (done — Godot-style project config)
 - **Goal:** first-class gamepad support and a key/mouse/gamepad/XR action-mapping layer
   (bindings + rebinding), so games aren't keyboard/mouse-only.
 - **Unlocks:** controller-first / console / Steam Deck targeting, couch input, better
@@ -48,7 +55,7 @@ utilities, decals/fog, particle depth.
   works; `xmake run test-lua-api-conformance` PASS; doc in `doc/lua_scripting.md` (EN+CN).
 - **Effort:** low–medium. **Depends on:** nothing.
 
-### P0.2 Navigation / pathfinding (Recast/Detour + NavAgent)
+### P0.2 Navigation / pathfinding (Recast/Detour + NavAgent) ✅ (done)
 - **Goal:** bake a navmesh from level geometry and let agents path + avoid obstacles.
 - **Unlocks:** AI movement, RTS, stealth/patrols, open-world NPCs, click-to-move RPG,
   enemy obstacle avoidance — the #1 gameplay-AI blocker (zero base today).
@@ -62,7 +69,7 @@ utilities, decals/fog, particle depth.
   request a path; navmesh visualizes in the editor; conformance PASS; doc added.
 - **Effort:** medium. **Depends on:** nothing (can reuse character controller for movement).
 
-### P0.3 Physics joints / constraints (expose existing Jolt capability)
+### P0.3 Physics joints / constraints (expose existing Jolt capability) ✅ (done)
 - **Goal:** rigid-body constraints: hinge, fixed, distance, slider/prismatic, point,
   cone/swing-twist; plus a vehicle constraint.
 - **Unlocks:** ragdolls, doors/levers/hatches, vehicles, chains/swings, articulated rigs.
@@ -84,7 +91,14 @@ utilities, decals/fog, particle depth.
 
 ## P1 — polish that broadens viable genres
 
-### P1.1 Animation: events, then blend trees, then root motion
+> **Status (2026-06-16): all of P1 implemented.** P1.1 events + blend trees + root motion;
+> P1.2 save (KV + slots) + DontDestroyOnLoad; P1.3 tween/timer/timeline. Specs/tasks:
+> `animation-events`, `animation-blend-trees-root-motion`, `save-persistence`,
+> `gameplay-tween-timer-timeline`. All shipped work has Lua bindings, LuaLS stub, EN+CN docs,
+> and builds + passes conformance. Per-card follow-ons are noted in each spec's "Out of scope"
+> (2D blend trees, single-clip root motion, nested-table KV values, etc.).
+
+### P1.1 Animation: events ✅, blend trees ✅, root motion ✅
 - **Goal:** keyframe **events** (fire SFX/damage/footstep callbacks), 1D/2D **blend
   trees** (directional locomotion), and **root motion** (animation-driven movement).
 - **Unlocks:** polished action/RPG/platformer locomotion + combat.
@@ -101,7 +115,7 @@ utilities, decals/fog, particle depth.
   PASS; doc added.
 - **Effort:** events low; blend trees medium; root motion medium. **Depends on:** nothing.
 
-### P1.2 Save / persistence system
+### P1.2 Save / persistence system ✅ (KV + slots + DontDestroyOnLoad)
 - **Goal:** save slots, a key-value store, and a runtime-state serialization API exposed
   to Lua; plus a DontDestroyOnLoad-style persistence across scene loads.
 - **Unlocks:** any progression game (RPG, metroidvania, roguelite).
@@ -116,7 +130,7 @@ utilities, decals/fog, particle depth.
   conformance PASS; doc added.
 - **Effort:** medium. **Depends on:** nothing (scene serialization is the foundation).
 
-### P1.3 Gameplay utilities: tween/easing + timers + simple timeline
+### P1.3 Gameplay utilities: tween/easing + timers + simple timeline ✅ (done)
 - **Goal:** tweening/easing, delayed/scheduled callbacks, and a minimal sequencer.
 - **Unlocks:** game-feel/juice, UI animation, cutscene-ish sequences across all genres.
 - **Current state:** ABSENT except Lua coroutines (`script_coroutine_binding.cpp`,

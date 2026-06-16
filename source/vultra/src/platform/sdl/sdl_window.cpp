@@ -6,6 +6,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_gamepad.h>
 #include <SDL3/SDL_mouse.h>
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
 #include <SDL3/SDL_vulkan.h>
@@ -27,6 +28,31 @@ namespace vultra::platform::sdl
         constexpr int  kBorderlessControlsWidth = 112;
 
         float sanitizeScale(const float scale) { return scale > 0.0f ? scale : 1.0f; }
+
+        // SDL_GamepadButton/Axis enumerators line up 1:1 with vultra's GamepadButton/GamepadAxis
+        // (same order); validate the range and cast.
+        bool translateGamepadButton(const int sdlButton, GamepadButton& out)
+        {
+            if (sdlButton < 0 || sdlButton >= static_cast<int>(GamepadButton::eCount))
+                return false;
+            out = static_cast<GamepadButton>(sdlButton);
+            return true;
+        }
+
+        bool translateGamepadAxis(const int sdlAxis, GamepadAxis& out)
+        {
+            if (sdlAxis < 0 || sdlAxis >= static_cast<int>(GamepadAxis::eCount))
+                return false;
+            out = static_cast<GamepadAxis>(sdlAxis);
+            return true;
+        }
+
+        // Normalize SDL's int16 axis range. Sticks -> [-1,1]; triggers (index >= eLeftTrigger) -> [0,1].
+        float normalizeGamepadAxis(const GamepadAxis axis, const int rawValue)
+        {
+            const float normalized = std::clamp(static_cast<float>(rawValue) / 32767.0f, -1.0f, 1.0f);
+            return axis >= GamepadAxis::eLeftTrigger ? std::max(0.0f, normalized) : normalized;
+        }
 
         bool cursorImagesEqual(const os::Window::CursorImage& lhs, const os::Window::CursorImage& rhs)
         {
@@ -219,6 +245,11 @@ namespace vultra::platform::sdl
 
     SDLWindow::~SDLWindow()
     {
+        if (m_Gamepad)
+        {
+            SDL_CloseGamepad(m_Gamepad);
+            m_Gamepad = nullptr;
+        }
         if (m_OverrideCursorHandle)
         {
             SDL_DestroyCursor(m_OverrideCursorHandle);
@@ -712,6 +743,61 @@ namespace vultra::platform::sdl
                     }
                     break;
 
+                case SDL_EVENT_GAMEPAD_ADDED:
+                    openGamepad(static_cast<int>(event.gdevice.which));
+                    if (m_Gamepad != nullptr && static_cast<int>(event.gdevice.which) == m_GamepadId)
+                    {
+                        generalEvent.type              = event::WindowEventType::eGamepadConnected;
+                        generalEvent.gamepadConnection = event::GamepadConnectionEvent {
+                            .which = m_GamepadId, .connected = true};
+                        emitEvent(generalEvent);
+                    }
+                    break;
+
+                case SDL_EVENT_GAMEPAD_REMOVED:
+                    if (static_cast<int>(event.gdevice.which) == m_GamepadId)
+                    {
+                        closeGamepad(static_cast<int>(event.gdevice.which));
+                        generalEvent.type              = event::WindowEventType::eGamepadDisconnected;
+                        generalEvent.gamepadConnection = event::GamepadConnectionEvent {
+                            .which = static_cast<int>(event.gdevice.which), .connected = false};
+                        emitEvent(generalEvent);
+                    }
+                    break;
+
+                case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+                case SDL_EVENT_GAMEPAD_BUTTON_UP:
+                    if (static_cast<int>(event.gbutton.which) == m_GamepadId)
+                    {
+                        GamepadButton button {};
+                        if (translateGamepadButton(event.gbutton.button, button))
+                        {
+                            generalEvent.type = event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
+                                                    ? event::WindowEventType::eGamepadButtonDown
+                                                    : event::WindowEventType::eGamepadButtonUp;
+                            generalEvent.gamepadButton =
+                                event::GamepadButtonEvent {.button = button, .which = m_GamepadId};
+                            emitEvent(generalEvent);
+                        }
+                    }
+                    break;
+
+                case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+                    if (static_cast<int>(event.gaxis.which) == m_GamepadId)
+                    {
+                        GamepadAxis axis {};
+                        if (translateGamepadAxis(event.gaxis.axis, axis))
+                        {
+                            generalEvent.type        = event::WindowEventType::eGamepadAxisMotion;
+                            generalEvent.gamepadAxis = event::GamepadAxisEvent {
+                                .axis  = axis,
+                                .value = normalizeGamepadAxis(axis, event.gaxis.value),
+                                .which = m_GamepadId};
+                            emitEvent(generalEvent);
+                        }
+                    }
+                    break;
+
                 default:
                     // Dear ImGui needs raw SDL events beyond the engine input subset
                     // (text input, IME composition, focus, etc.). Forward them as
@@ -727,6 +813,38 @@ namespace vultra::platform::sdl
             SDL_Delay(10);
             m_IsMinimized = true;
         }
+    }
+
+    void SDLWindow::openGamepad(const int instanceId)
+    {
+        // Single-player: only track the first gamepad that connects.
+        if (m_Gamepad != nullptr)
+            return;
+        if (SDL_Gamepad* pad = SDL_OpenGamepad(static_cast<SDL_JoystickID>(instanceId)))
+        {
+            m_Gamepad   = pad;
+            m_GamepadId = instanceId;
+            VULTRA_CORE_INFO("[SDLWindow] Gamepad connected: {}", SDL_GetGamepadName(pad));
+        }
+    }
+
+    void SDLWindow::closeGamepad(const int instanceId)
+    {
+        if (m_Gamepad == nullptr || instanceId != m_GamepadId)
+            return;
+        SDL_CloseGamepad(m_Gamepad);
+        m_Gamepad   = nullptr;
+        m_GamepadId = 0;
+        VULTRA_CORE_INFO("[SDLWindow] Gamepad disconnected");
+    }
+
+    void SDLWindow::setGamepadRumble(const float lowFrequency, const float highFrequency, const uint32_t durationMs)
+    {
+        if (m_Gamepad == nullptr)
+            return;
+        const auto low  = static_cast<Uint16>(std::clamp(lowFrequency, 0.0f, 1.0f) * 65535.0f);
+        const auto high = static_cast<Uint16>(std::clamp(highFrequency, 0.0f, 1.0f) * 65535.0f);
+        SDL_RumbleGamepad(m_Gamepad, low, high, durationMs);
     }
 
     void SDLWindow::close()

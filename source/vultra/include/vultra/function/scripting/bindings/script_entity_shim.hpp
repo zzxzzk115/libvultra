@@ -44,6 +44,7 @@ namespace vultra
         eUiToggle,
         eUiSlider,
         eUiProgressBar,
+        eNavAgent,
     };
 
     struct VBIND_USERTYPE(name = Entity, handle = ScriptEntity, area = entity) EntityUsertype

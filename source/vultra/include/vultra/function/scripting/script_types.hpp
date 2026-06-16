@@ -24,6 +24,11 @@ namespace vultra
         entt::entity entity {entt::null};
     };
 
+    struct ScriptNavAgentRef
+    {
+        entt::entity entity {entt::null};
+    };
+
     struct ScriptCameraRef
     {
         entt::entity entity {entt::null};

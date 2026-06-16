@@ -75,9 +75,75 @@ namespace vultra
                 [&ctx]() {
                     return ctx.inputService ? toScript(ctx.inputService->mouseScrollDelta()) : ScriptVec2 {};
                 });
+            ns.set_function("isGamepadConnected",
+                [&ctx]() {
+                    return ctx.inputService ? ctx.inputService->isGamepadConnected() : false;
+                });
+            ns.set_function("isGamepadButtonHeld",
+                [&ctx](int button) {
+                    return ctx.inputService ? ctx.inputService->isGamepadButtonHeld(static_cast<vultra::GamepadButton>(button)) : false;
+                });
+            ns.set_function("isGamepadButtonPressed",
+                [&ctx](int button) {
+                    return ctx.inputService ? ctx.inputService->isGamepadButtonPressed(static_cast<vultra::GamepadButton>(button)) : false;
+                });
+            ns.set_function("isGamepadButtonReleased",
+                [&ctx](int button) {
+                    return ctx.inputService ? ctx.inputService->isGamepadButtonReleased(static_cast<vultra::GamepadButton>(button)) : false;
+                });
+            ns.set_function("gamepadAxis",
+                [&ctx](int axis) {
+                    return ctx.inputService ? ctx.inputService->gamepadAxis(static_cast<vultra::GamepadAxis>(axis)) : 0.0f;
+                });
+            ns.set_function("rumble",
+                [&ctx](float lowFrequency, float highFrequency, int durationMs) {
+                    if (ctx.inputService) ctx.inputService->rumble(lowFrequency, highFrequency, durationMs);
+                });
+            ns.set_function("hasAction",
+                [&ctx](const std::string& action) {
+                    return ctx.inputService ? ctx.inputService->hasAction(action) : false;
+                });
+            ns.set_function("isActionHeld",
+                [&ctx](const std::string& action) {
+                    return ctx.inputService ? ctx.inputService->isActionHeld(action) : false;
+                });
+            ns.set_function("isActionPressed",
+                [&ctx](const std::string& action) {
+                    return ctx.inputService ? ctx.inputService->isActionPressed(action) : false;
+                });
+            ns.set_function("isActionReleased",
+                [&ctx](const std::string& action) {
+                    return ctx.inputService ? ctx.inputService->isActionReleased(action) : false;
+                });
+            ns.set_function("actionAxis",
+                [&ctx](const std::string& action) {
+                    return ctx.inputService ? ctx.inputService->actionAxis(action) : 0.0f;
+                });
+            ns.set_function("clearActionEvents",
+                [&ctx](const std::string& action) {
+                    if (ctx.inputService) ctx.inputService->clearActionEvents(action);
+                });
+            ns.set_function("bindActionKey",
+                [&ctx](const std::string& action, int key) {
+                    if (ctx.inputService) ctx.inputService->bindActionKey(action, static_cast<vultra::KeyCode>(key));
+                });
+            ns.set_function("bindActionMouseButton",
+                [&ctx](const std::string& action, int button) {
+                    if (ctx.inputService) ctx.inputService->bindActionMouseButton(action, static_cast<vultra::MouseCode>(button));
+                });
+            ns.set_function("bindActionGamepadButton",
+                [&ctx](const std::string& action, int button) {
+                    if (ctx.inputService) ctx.inputService->bindActionGamepadButton(action, static_cast<vultra::GamepadButton>(button));
+                });
+            ns.set_function("bindActionGamepadAxis",
+                [&ctx](const std::string& action, int axis, float scale) {
+                    if (ctx.inputService) ctx.inputService->bindActionGamepadAxis(action, static_cast<vultra::GamepadAxis>(axis), scale);
+                });
         }
 
         script_binding::bindEnumTable<vultra::KeyCode>(lua, "KeyCode");
         script_binding::bindEnumTable<vultra::MouseCode>(lua, "MouseCode");
+        script_binding::bindEnumTable<vultra::GamepadButton>(lua, "GamepadButton");
+        script_binding::bindEnumTable<vultra::GamepadAxis>(lua, "GamepadAxis");
     }
 } // namespace vultra

@@ -38,6 +38,14 @@ namespace vultra
                 [&ctx](const std::string & uri, const ScriptEntity & root) {
                     return sceneSaveEntity(ctx, uri, root);
                 });
+            ns.set_function("dontDestroyOnLoad",
+                [&ctx](const ScriptEntity & entity) {
+                    sceneDontDestroyOnLoad(ctx, entity);
+                });
+            ns.set_function("isPersistent",
+                [&ctx](const ScriptEntity & entity) {
+                    return sceneIsPersistent(ctx, entity);
+                });
         }
 
     }

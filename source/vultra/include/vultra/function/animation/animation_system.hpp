@@ -12,6 +12,8 @@
 #include <ozz/animation/runtime/animation.h>
 #include <ozz/animation/runtime/skeleton.h>
 
+#include <glm/vec2.hpp>
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -22,6 +24,7 @@ namespace vultra
     class IAssetService;
     class IWorldService;
     class ITimingService;
+    class IScriptService;
     struct AnimatorComponent;
 
     class AnimationSystem final : public EngineSubsystem, public IAnimationService
@@ -86,6 +89,13 @@ namespace vultra
             float                                  targetTime {0.0f};
             float                                  transitionTime {0.0f};
             float                                  transitionDuration {0.0f};
+            // Keyframe-event scan cursor: the state we last scanned and its normalized time,
+            // so we can fire events crossed between frames (handling looping).
+            int                                    eventScanState {-1};
+            float                                  eventScanNorm {0.0f};
+            // Root-motion tracking: previous frame's root-joint horizontal model position.
+            bool                                   hasPrevRoot {false};
+            glm::vec2                              prevRootXZ {0.0f, 0.0f};
         };
 
         const ozz::animation::Skeleton*  runtimeSkeleton(const CoreUUID& uuid);
@@ -100,6 +110,7 @@ namespace vultra
         IAssetService* m_Assets {nullptr};
         IWorldService* m_Worlds {nullptr};
         ITimingService* m_Timing {nullptr};
+        IScriptService* m_Scripts {nullptr};
 
         bool     m_PlaybackPlaying {true};
         bool     m_PlaybackPaused {false};

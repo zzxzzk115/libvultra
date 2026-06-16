@@ -1,6 +1,12 @@
 {
   "inspector": {
     "field": {
+      "stoppingDistance": "정지 거리",
+      "targetPosition": "목표 위치",
+      "hasTarget": "목표 있음",
+      "moving": "이동 중",
+      "keepOnLoad": "로드 시 유지",
+      "applyRootMotion": "루트 모션 적용",
       "active": "활성",
       "allowSleeping": "슬립 허용",
       "ambientColor": "앰비언트 색상",
@@ -208,7 +214,10 @@
       "prefab": "프리팹",
       "material": "머티리얼",
       "audioSource": "오디오 소스",
-      "audioListener": "오디오 리스너"
+      "audioListener": "오디오 리스너",
+      "characterController": "캐릭터 컨트롤러",
+      "navAgent": "내비 에이전트",
+      "persistent": "영속 (DontDestroyOnLoad)"
     },
     "category": {
       "core": "코어",
@@ -217,6 +226,7 @@
       "animation": "애니메이션",
       "lighting": "라이팅",
       "physics": "물리",
+      "navigation": "내비게이션",
       "camera": "카메라",
       "scripting": "스크립팅",
       "audio": "오디오"
@@ -941,14 +951,20 @@
       "graph": "그래프",
       "parameters": "파라미터",
       "state": "스테이트",
-      "transition": "트랜지션"
+      "transition": "트랜지션",
+      "blendTree": "블렌드 트리 (1D)",
+      "events": "이벤트"
     },
     "field": {
       "entry": "엔트리",
       "clip": "클립",
       "speed": "속도",
       "loop": "루프",
-      "noAnimationAssets": "(가져온 애니메이션 에셋 없음)"
+      "noAnimationAssets": "(가져온 애니메이션 에셋 없음)",
+      "useBlendTree": "블렌드 트리 사용",
+      "blendParameter": "파라미터 (실수)",
+      "addBlendEntry": "블렌드 항목 추가",
+      "addEvent": "이벤트 추가"
     },
     "param": {
       "add": "파라미터 추가",
@@ -1059,11 +1075,19 @@
       "buildScenes": "빌드 씬",
       "packaging": "패키징",
       "plugins": "플러그인",
+      "input": "입력 맵",
       "engine": "엔진",
       "general": "일반",
       "rendering": "렌더링",
       "materials": "머티리얼",
       "scripting": "스크립팅"
+    },
+    "input": {
+      "header": "입력 액션",
+      "save": "input.actions.json 저장",
+      "addAction": "액션 추가",
+      "deadzone": "데드존",
+      "addEvent": "이벤트 추가"
     },
     "info": {
       "header": "프로젝트 정보",

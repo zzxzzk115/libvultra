@@ -28,7 +28,15 @@
 #include <Jolt/Physics/Body/BodyInterface.h>
 #include <Jolt/Physics/Body/BodyLock.h>
 #include <Jolt/Physics/Body/BodyLockInterface.h>
+#include <Jolt/Physics/Body/BodyLockMulti.h>
 #include <Jolt/Physics/Body/MotionType.h>
+#include <Jolt/Physics/Constraints/ConeConstraint.h>
+#include <Jolt/Physics/Constraints/Constraint.h>
+#include <Jolt/Physics/Constraints/DistanceConstraint.h>
+#include <Jolt/Physics/Constraints/FixedConstraint.h>
+#include <Jolt/Physics/Constraints/HingeConstraint.h>
+#include <Jolt/Physics/Constraints/PointConstraint.h>
+#include <Jolt/Physics/Constraints/SliderConstraint.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
 #include <Jolt/Physics/Collision/CastResult.h>
@@ -538,6 +546,16 @@ namespace vultra
         BodySignature signature;
     };
 
+    struct PhysicsSystem::ConstraintRecord
+    {
+        JPH::Ref<JPH::Constraint> constraint;
+        entt::entity              bodyA {entt::null};
+        entt::entity              bodyB {entt::null}; // entt::null => anchored to world
+        JPH::BodyID               idA;               // captured ids; if a body is recreated we drop the constraint
+        JPH::BodyID               idB;
+        uint8_t                   type {0}; // 0 fixed, 1 point, 2 distance, 3 hinge, 4 slider, 5 cone
+    };
+
     struct PhysicsSystem::CharacterRecord
     {
         JPH::Ref<JPH::CharacterVirtual> character;
@@ -565,6 +583,7 @@ namespace vultra
         std::unique_ptr<JPH::PhysicsSystem> physics;
         std::unordered_map<entt::entity, BodyRecord> bodies;
         std::unordered_map<entt::entity, CharacterRecord> characters;
+        std::unordered_map<uint32_t, ConstraintRecord> constraints;
     };
 
     PhysicsSystem::PhysicsSystem() = default;
@@ -1393,6 +1412,8 @@ namespace vultra
         {
             if (!reg.valid(it->first) || !reg.all_of<RigidBodyComponent, TransformComponent>(it->first))
             {
+                // Constraints referencing this body must be removed before the body itself.
+                removeConstraintsForEntity(it->first);
                 auto& bodyInterface = m_Impl->physics->GetBodyInterface();
                 bodyInterface.RemoveBody(it->second.id);
                 bodyInterface.DestroyBody(it->second.id);
@@ -1410,6 +1431,7 @@ namespace vultra
     void PhysicsSystem::clearBodies()
     {
         clearCharacters();
+        clearConstraints();
 
         if (!m_Impl || !m_Impl->physics || m_Impl->bodies.empty())
             return;
@@ -1767,10 +1789,254 @@ namespace vultra
         if (it == m_Impl->bodies.end())
             return;
 
+        // Jolt requires constraints to be removed before the bodies they reference.
+        removeConstraintsForEntity(entity);
+
         auto& bodyInterface = m_Impl->physics->GetBodyInterface();
         bodyInterface.RemoveBody(it->second.id);
         bodyInterface.DestroyBody(it->second.id);
         m_Impl->bodyToEntity.erase(it->second.id.GetIndexAndSequenceNumber());
         m_Impl->bodies.erase(it);
+    }
+
+    void PhysicsSystem::removeConstraintsForEntity(entt::entity entity)
+    {
+        if (!m_Impl || !m_Impl->physics)
+            return;
+        for (auto it = m_Impl->constraints.begin(); it != m_Impl->constraints.end();)
+        {
+            if (it->second.bodyA == entity || it->second.bodyB == entity)
+            {
+                m_Impl->physics->RemoveConstraint(it->second.constraint.GetPtr());
+                it = m_Impl->constraints.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
+
+    void PhysicsSystem::clearConstraints()
+    {
+        if (!m_Impl || !m_Impl->physics)
+            return;
+        for (auto& [id, record] : m_Impl->constraints)
+        {
+            (void)id;
+            m_Impl->physics->RemoveConstraint(record.constraint.GetPtr());
+        }
+        m_Impl->constraints.clear();
+    }
+
+    namespace
+    {
+        // A normal axis perpendicular to `axis`, for hinge/cone constraint frames.
+        JPH::Vec3 perpendicularAxis(const JPH::Vec3& axis)
+        {
+            const JPH::Vec3 reference = std::abs(axis.GetX()) < 0.9f ? JPH::Vec3(1, 0, 0) : JPH::Vec3(0, 1, 0);
+            JPH::Vec3       normal    = axis.Cross(reference);
+            const float     length    = normal.Length();
+            return length > 1.0e-4f ? normal / length : JPH::Vec3(0, 1, 0);
+        }
+    } // namespace
+
+    template<typename CreateFn>
+    uint32_t PhysicsSystem::createConstraint(entt::entity bodyA, entt::entity bodyB, uint8_t type, CreateFn&& create)
+    {
+        if (!m_Impl || !m_Impl->physics)
+            return 0;
+
+        // Bodies must exist before a constraint can reference them; create them on demand.
+        if (!ensureBody(bodyA))
+            return 0;
+        auto itA = m_Impl->bodies.find(bodyA);
+        if (itA == m_Impl->bodies.end())
+            return 0;
+        const JPH::BodyID idA = itA->second.id;
+
+        const bool  worldAnchor = (bodyB == entt::null);
+        JPH::BodyID idB;
+        if (!worldAnchor)
+        {
+            if (!ensureBody(bodyB))
+                return 0;
+            auto itB = m_Impl->bodies.find(bodyB);
+            if (itB == m_Impl->bodies.end())
+                return 0;
+            idB = itB->second.id;
+        }
+
+        JPH::Constraint* constraint    = nullptr;
+        auto&            lockInterface = m_Impl->physics->GetBodyLockInterface();
+        if (worldAnchor)
+        {
+            JPH::BodyLockWrite lock(lockInterface, idA);
+            if (!lock.Succeeded())
+                return 0;
+            constraint = create(lock.GetBody(), JPH::Body::sFixedToWorld);
+        }
+        else
+        {
+            const JPH::BodyID       ids[2] = {idA, idB};
+            JPH::BodyLockMultiWrite lock(lockInterface, ids, 2);
+            JPH::Body*              a = lock.GetBody(0);
+            JPH::Body*              b = lock.GetBody(1);
+            if (a == nullptr || b == nullptr)
+                return 0;
+            constraint = create(*a, *b);
+        }
+        if (constraint == nullptr)
+            return 0;
+
+        m_Impl->physics->AddConstraint(constraint);
+        const uint32_t id = m_NextConstraintId++;
+        m_Impl->constraints.emplace(id,
+                                    ConstraintRecord {.constraint = constraint,
+                                                      .bodyA      = bodyA,
+                                                      .bodyB      = bodyB,
+                                                      .idA        = idA,
+                                                      .idB        = idB,
+                                                      .type       = type});
+        return id;
+    }
+
+    uint32_t PhysicsSystem::addFixedConstraint(entt::entity bodyA, entt::entity bodyB)
+    {
+        return createConstraint(bodyA, bodyB, 0, [](JPH::Body& a, JPH::Body& b) -> JPH::Constraint* {
+            JPH::FixedConstraintSettings settings;
+            settings.mAutoDetectPoint = true;
+            return settings.Create(a, b);
+        });
+    }
+
+    uint32_t PhysicsSystem::addPointConstraint(entt::entity bodyA, entt::entity bodyB, const glm::vec3& point)
+    {
+        return createConstraint(bodyA, bodyB, 1, [&](JPH::Body& a, JPH::Body& b) -> JPH::Constraint* {
+            JPH::PointConstraintSettings settings;
+            settings.mSpace  = JPH::EConstraintSpace::WorldSpace;
+            settings.mPoint1 = toJoltR(point);
+            settings.mPoint2 = toJoltR(point);
+            return settings.Create(a, b);
+        });
+    }
+
+    uint32_t
+    PhysicsSystem::addDistanceConstraint(entt::entity bodyA, entt::entity bodyB, float minDistance, float maxDistance)
+    {
+        return createConstraint(bodyA, bodyB, 2, [&](JPH::Body& a, JPH::Body& b) -> JPH::Constraint* {
+            JPH::DistanceConstraintSettings settings;
+            settings.mSpace       = JPH::EConstraintSpace::WorldSpace;
+            settings.mPoint1      = a.GetCenterOfMassPosition();
+            settings.mPoint2      = b.GetCenterOfMassPosition();
+            settings.mMinDistance = minDistance;
+            settings.mMaxDistance = maxDistance;
+            return settings.Create(a, b);
+        });
+    }
+
+    uint32_t PhysicsSystem::addHingeConstraint(entt::entity     bodyA,
+                                               entt::entity     bodyB,
+                                               const glm::vec3& point,
+                                               const glm::vec3& axis,
+                                               float            minAngleDegrees,
+                                               float            maxAngleDegrees)
+    {
+        return createConstraint(bodyA, bodyB, 3, [&](JPH::Body& a, JPH::Body& b) -> JPH::Constraint* {
+            const JPH::Vec3 hingeAxis = toJolt(glm::normalize(axis));
+            JPH::HingeConstraintSettings settings;
+            settings.mSpace       = JPH::EConstraintSpace::WorldSpace;
+            settings.mPoint1      = toJoltR(point);
+            settings.mPoint2      = toJoltR(point);
+            settings.mHingeAxis1  = hingeAxis;
+            settings.mHingeAxis2  = hingeAxis;
+            settings.mNormalAxis1 = perpendicularAxis(hingeAxis);
+            settings.mNormalAxis2 = settings.mNormalAxis1;
+            settings.mLimitsMin   = glm::radians(minAngleDegrees);
+            settings.mLimitsMax   = glm::radians(maxAngleDegrees);
+            return settings.Create(a, b);
+        });
+    }
+
+    uint32_t PhysicsSystem::addSliderConstraint(entt::entity     bodyA,
+                                                entt::entity     bodyB,
+                                                const glm::vec3& point,
+                                                const glm::vec3& axis,
+                                                float            minDistance,
+                                                float            maxDistance)
+    {
+        return createConstraint(bodyA, bodyB, 4, [&](JPH::Body& a, JPH::Body& b) -> JPH::Constraint* {
+            JPH::SliderConstraintSettings settings;
+            settings.mSpace = JPH::EConstraintSpace::WorldSpace;
+            settings.SetSliderAxis(toJolt(glm::normalize(axis)));
+            settings.mPoint1    = toJoltR(point);
+            settings.mPoint2    = toJoltR(point);
+            settings.mLimitsMin = minDistance;
+            settings.mLimitsMax = maxDistance;
+            return settings.Create(a, b);
+        });
+    }
+
+    uint32_t PhysicsSystem::addConeConstraint(entt::entity     bodyA,
+                                              entt::entity     bodyB,
+                                              const glm::vec3& point,
+                                              const glm::vec3& twistAxis,
+                                              float            halfAngleDegrees)
+    {
+        return createConstraint(bodyA, bodyB, 5, [&](JPH::Body& a, JPH::Body& b) -> JPH::Constraint* {
+            const JPH::Vec3 axis = toJolt(glm::normalize(twistAxis));
+            JPH::ConeConstraintSettings settings;
+            settings.mSpace         = JPH::EConstraintSpace::WorldSpace;
+            settings.mPoint1        = toJoltR(point);
+            settings.mPoint2        = toJoltR(point);
+            settings.mTwistAxis1    = axis;
+            settings.mTwistAxis2    = axis;
+            settings.mHalfConeAngle = glm::radians(halfAngleDegrees);
+            return settings.Create(a, b);
+        });
+    }
+
+    bool PhysicsSystem::removeConstraint(uint32_t constraintId)
+    {
+        if (!m_Impl || !m_Impl->physics)
+            return false;
+        auto it = m_Impl->constraints.find(constraintId);
+        if (it == m_Impl->constraints.end())
+            return false;
+        m_Impl->physics->RemoveConstraint(it->second.constraint.GetPtr());
+        m_Impl->constraints.erase(it);
+        return true;
+    }
+
+    bool PhysicsSystem::isConstraintValid(uint32_t constraintId) const
+    {
+        return m_Impl && m_Impl->constraints.find(constraintId) != m_Impl->constraints.end();
+    }
+
+    bool PhysicsSystem::setConstraintMotor(uint32_t constraintId, bool enabled, float targetVelocity, float maxForce)
+    {
+        if (!m_Impl)
+            return false;
+        auto it = m_Impl->constraints.find(constraintId);
+        if (it == m_Impl->constraints.end())
+            return false;
+
+        if (it->second.type == 3) // hinge: angular motor, degrees/sec
+        {
+            auto* hinge = static_cast<JPH::HingeConstraint*>(it->second.constraint.GetPtr());
+            hinge->SetMotorState(enabled ? JPH::EMotorState::Velocity : JPH::EMotorState::Off);
+            hinge->SetTargetAngularVelocity(glm::radians(targetVelocity));
+            hinge->GetMotorSettings().SetTorqueLimit(maxForce);
+            return true;
+        }
+        if (it->second.type == 4) // slider: linear motor, m/s
+        {
+            auto* slider = static_cast<JPH::SliderConstraint*>(it->second.constraint.GetPtr());
+            slider->SetMotorState(enabled ? JPH::EMotorState::Velocity : JPH::EMotorState::Off);
+            slider->SetTargetVelocity(targetVelocity);
+            slider->GetMotorSettings().SetForceLimit(maxForce);
+            return true;
+        }
+        return false;
     }
 } // namespace vultra

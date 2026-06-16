@@ -36,4 +36,10 @@ namespace vultra
 
     VBIND_FN(module = Scene, name = saveEntity, body = shim)
     bool sceneSaveEntity(ScriptContext& ctx, const std::string& uri, const ScriptEntity& root);
+
+    // DontDestroyOnLoad: keep `entity` (and its subtree) across scene replacement.
+    VBIND_FN(module = Scene, name = dontDestroyOnLoad, body = shim)
+    void sceneDontDestroyOnLoad(ScriptContext& ctx, const ScriptEntity& entity);
+    VBIND_FN(module = Scene, name = isPersistent, body = shim)
+    bool sceneIsPersistent(ScriptContext& ctx, const ScriptEntity& entity);
 } // namespace vultra

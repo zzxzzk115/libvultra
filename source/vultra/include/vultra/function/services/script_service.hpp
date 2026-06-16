@@ -36,5 +36,10 @@ namespace vultra
         virtual void requestSingleStep()                                    = 0;
 
         VBIND_FN() virtual bool runString(std::string_view code) = 0;
+
+        // Engine-internal (not bound to Lua): invoke an entity script's
+        // `OnAnimationEvent(self, name)` callback. Called by the animation system when a
+        // keyframe event fires.
+        virtual void dispatchAnimationEvent(entt::entity e, std::string_view eventName) = 0;
     };
 } // namespace vultra

@@ -22,6 +22,11 @@ namespace vultra::event
         eMouseMotion,
         eMouseWheel,
         eFileDrop,
+        eGamepadButtonDown,
+        eGamepadButtonUp,
+        eGamepadAxisMotion,
+        eGamepadConnected,
+        eGamepadDisconnected,
     };
 
     enum class NativeEventSource
@@ -44,6 +49,9 @@ namespace vultra::event
         std::optional<MouseMotionEvent> mouseMotion;
         std::optional<MouseWheelEvent>  mouseWheel;
         std::optional<FileDropEvent>    fileDrop;
+        std::optional<GamepadButtonEvent>     gamepadButton;
+        std::optional<GamepadAxisEvent>       gamepadAxis;
+        std::optional<GamepadConnectionEvent> gamepadConnection;
         const void*                     nativeEvent {nullptr};
         NativeEventSource               nativeEventSource {NativeEventSource::eNone};
     };

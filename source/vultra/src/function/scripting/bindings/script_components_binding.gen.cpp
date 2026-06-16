@@ -15,10 +15,12 @@
 #include "vultra/function/world/components/cylinder_shape_component.hpp"
 #include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/light_component.hpp"
+#include "vultra/function/world/components/nav_agent_component.hpp"
 #include "vultra/function/world/components/particle_emitter_component.hpp"
 #include "vultra/function/world/components/reflection_probe_component.hpp"
 #include "vultra/function/world/components/sphere_shape_component.hpp"
 #include "vultra/core/base/uuid.hpp"
+#include "vultra/function/scripting/bindings/script_generated_binding.hpp"
 
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
@@ -435,6 +437,60 @@ namespace vultra
                 requireComponentRef<LightComponent>(ctx, self.entity, "LightComponent").twoSided = value;
             }));
 
+        lua.new_usertype<ScriptNavAgentRef>(
+            "NavAgent",
+            "valid",
+            script_binding::readonlyProperty([&ctx](const ScriptNavAgentRef& self) {
+                auto* world = ctx.world();
+                return world && world->registry().all_of<NavAgentComponent>(self.entity);
+            }),
+            "radius",
+            script_binding::property([&ctx](const ScriptNavAgentRef& self) {
+                return requireComponentRef<NavAgentComponent>(ctx, self.entity, "NavAgentComponent").radius;
+            },
+            [&ctx](const ScriptNavAgentRef& self, const float& value) {
+                requireComponentRef<NavAgentComponent>(ctx, self.entity, "NavAgentComponent").radius = value;
+            }),
+            "height",
+            script_binding::property([&ctx](const ScriptNavAgentRef& self) {
+                return requireComponentRef<NavAgentComponent>(ctx, self.entity, "NavAgentComponent").height;
+            },
+            [&ctx](const ScriptNavAgentRef& self, const float& value) {
+                requireComponentRef<NavAgentComponent>(ctx, self.entity, "NavAgentComponent").height = value;
+            }),
+            "speed",
+            script_binding::property([&ctx](const ScriptNavAgentRef& self) {
+                return requireComponentRef<NavAgentComponent>(ctx, self.entity, "NavAgentComponent").speed;
+            },
+            [&ctx](const ScriptNavAgentRef& self, const float& value) {
+                requireComponentRef<NavAgentComponent>(ctx, self.entity, "NavAgentComponent").speed = value;
+            }),
+            "stoppingDistance",
+            script_binding::property([&ctx](const ScriptNavAgentRef& self) {
+                return requireComponentRef<NavAgentComponent>(ctx, self.entity, "NavAgentComponent").stoppingDistance;
+            },
+            [&ctx](const ScriptNavAgentRef& self, const float& value) {
+                requireComponentRef<NavAgentComponent>(ctx, self.entity, "NavAgentComponent").stoppingDistance = value;
+            }),
+            "targetPosition",
+            script_binding::property([&ctx](const ScriptNavAgentRef& self) {
+                return toScript(requireComponentRef<NavAgentComponent>(ctx, self.entity, "NavAgentComponent").targetPosition);
+            },
+            [&ctx](const ScriptNavAgentRef& self, const ScriptVec3& value) {
+                requireComponentRef<NavAgentComponent>(ctx, self.entity, "NavAgentComponent").targetPosition = fromScript(value);
+            }),
+            "hasTarget",
+            script_binding::property([&ctx](const ScriptNavAgentRef& self) {
+                return requireComponentRef<NavAgentComponent>(ctx, self.entity, "NavAgentComponent").hasTarget;
+            },
+            [&ctx](const ScriptNavAgentRef& self, const bool& value) {
+                requireComponentRef<NavAgentComponent>(ctx, self.entity, "NavAgentComponent").hasTarget = value;
+            }),
+            "moving",
+            script_binding::readonlyProperty([&ctx](const ScriptNavAgentRef& self) {
+                return requireComponentRef<NavAgentComponent>(ctx, self.entity, "NavAgentComponent").moving;
+            }));
+
         lua.new_usertype<ScriptParticleEmitterRef>(
             "ParticleEmitter",
             "valid",
@@ -641,5 +697,15 @@ namespace vultra
                 requireComponentRef<SphereShapeComponent>(ctx, self.entity, "SphereShapeComponent").radius = value;
             }));
 
+    }
+
+    void applyGeneratedEntityAccessors(sol::usertype<ScriptEntity>& entityType, ScriptContext& ctx)
+    {
+        entityType["navAgent"] =
+            sol::readonly_property([](const ScriptEntity& self) { return ScriptNavAgentRef {self.value}; });
+        entityType["hasNavAgent"] = [&ctx](const ScriptEntity& self) {
+            auto* world = ctx.world();
+            return world && ctx.isValid(self.value) && world->registry().all_of<NavAgentComponent>(self.value);
+        };
     }
 } // namespace vultra

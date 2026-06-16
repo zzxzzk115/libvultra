@@ -54,14 +54,41 @@ namespace vultra::animator_graph
         float                  exitTime {1.0f};    // normalized [0,1] of source clip
     };
 
+    // A keyframe event fired while a state's clip plays past `normalizedTime`. The animation
+    // system dispatches it to the entity's Lua `OnAnimationEvent(name)` callback.
+    struct Event
+    {
+        std::string name;
+        float       normalizedTime {0.0f}; // [0,1] within the clip
+    };
+
+    // One clip in a 1D blend tree, placed at `threshold` along the blend parameter axis.
+    struct BlendEntry
+    {
+        CoreUUID animation;
+        float    threshold {0.0f};
+    };
+
+    // A 1D blend tree: blends its entries by the float parameter `parameter` (e.g. "speed").
+    // Empty `entries` means the state plays its single `animation` clip instead.
+    struct BlendTree
+    {
+        std::string             parameter;
+        std::vector<BlendEntry> entries; // kept sorted by threshold
+    };
+
     struct State
     {
         std::string             name;
-        CoreUUID                animation; // clip asset
+        CoreUUID                animation; // single-clip mode (used when blendTree is empty)
+        BlendTree               blendTree; // 1D blend tree (overrides `animation` when non-empty)
         float                   speed {1.0f};
         bool                    loop {true};
         std::vector<Transition> transitions;
+        std::vector<Event>      events;
         nlohmann::json          editor; // node editor layout (pos, etc.)
+
+        [[nodiscard]] bool hasBlendTree() const { return !blendTree.entries.empty(); }
     };
 
     struct Graph

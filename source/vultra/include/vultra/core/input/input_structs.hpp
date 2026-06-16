@@ -152,4 +152,48 @@ namespace vultra
         eX1     = 4,
         eX2     = 5
     };
+
+    // Logical gamepad buttons (SDL_Gamepad layout, Xbox-style names). Values match the
+    // order of SDL_GamepadButton; the SDL backend translates between the two.
+    enum class VBIND_ENUM(name = GamepadButton, stripE, module = Input) GamepadButton : uint8_t
+    {
+        eSouth = 0, // A (Xbox) / Cross (PS)
+        eEast,      // B / Circle
+        eWest,      // X / Square
+        eNorth,     // Y / Triangle
+        eBack,
+        eGuide,
+        eStart,
+        eLeftStick,
+        eRightStick,
+        eLeftShoulder,
+        eRightShoulder,
+        eDpadUp,
+        eDpadDown,
+        eDpadLeft,
+        eDpadRight,
+
+        eCount
+    };
+
+    // Analog gamepad axes. Sticks report [-1, 1] (up/left negative, like SDL); triggers
+    // report [0, 1].
+    enum class VBIND_ENUM(name = GamepadAxis, stripE, module = Input) GamepadAxis : uint8_t
+    {
+        eLeftX = 0,
+        eLeftY,
+        eRightX,
+        eRightY,
+        eLeftTrigger,
+        eRightTrigger,
+
+        eCount
+    };
+
+    struct GamepadButtonState
+    {
+        bool pressed {false}; // currently held
+        bool down {false};    // went down this frame
+        bool up {false};      // went up this frame
+    };
 } // namespace vultra

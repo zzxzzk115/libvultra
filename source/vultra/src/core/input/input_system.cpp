@@ -1,6 +1,9 @@
 #include "vultra/core/input/input_system.hpp"
 #include "vultra/core/base/common_context.hpp"
 
+#include <algorithm>
+#include <cmath>
+
 namespace vultra
 {
     bool InputSystem::onInit()
@@ -66,6 +69,41 @@ namespace vultra
                 }
                 break;
 
+            case event::WindowEventType::eGamepadButtonDown:
+                if (e.gamepadButton.has_value())
+                {
+                    auto& s   = m_GamepadButtons[static_cast<size_t>(e.gamepadButton->button)];
+                    s.pressed = true;
+                    s.down    = true;
+                }
+                break;
+
+            case event::WindowEventType::eGamepadButtonUp:
+                if (e.gamepadButton.has_value())
+                {
+                    auto& s   = m_GamepadButtons[static_cast<size_t>(e.gamepadButton->button)];
+                    s.pressed = false;
+                    s.up      = true;
+                }
+                break;
+
+            case event::WindowEventType::eGamepadAxisMotion:
+                if (e.gamepadAxis.has_value())
+                {
+                    m_GamepadAxes[static_cast<size_t>(e.gamepadAxis->axis)] = e.gamepadAxis->value;
+                }
+                break;
+
+            case event::WindowEventType::eGamepadConnected:
+                m_GamepadConnected = true;
+                break;
+
+            case event::WindowEventType::eGamepadDisconnected:
+                m_GamepadConnected = false;
+                m_GamepadButtons.fill({});
+                m_GamepadAxes.fill(0.0f);
+                break;
+
             default:
                 break;
         }
@@ -115,6 +153,12 @@ namespace vultra
         for (auto& [b, s] : m_MouseButtonStates)
         {
             s.clicks = 0;
+        }
+
+        for (auto& s : m_GamepadButtons)
+        {
+            s.down = false;
+            s.up   = false;
         }
 
         m_MousePositionDelta = {};
@@ -185,5 +229,206 @@ namespace vultra
     glm::vec2 InputSystem::mousePositionDelta() const { return m_MousePositionDelta; }
 
     glm::vec2 InputSystem::mouseScrollDelta() const { return m_MouseScrollDelta; }
+
+    // --- Gamepad ---
+
+    bool InputSystem::isGamepadConnected() const { return m_GamepadConnected; }
+
+    bool InputSystem::isGamepadButtonHeld(GamepadButton button) const
+    {
+        const auto i = static_cast<size_t>(button);
+        return i < m_GamepadButtons.size() && m_GamepadButtons[i].pressed;
+    }
+
+    bool InputSystem::isGamepadButtonPressed(GamepadButton button) const
+    {
+        const auto i = static_cast<size_t>(button);
+        return i < m_GamepadButtons.size() && m_GamepadButtons[i].down;
+    }
+
+    bool InputSystem::isGamepadButtonReleased(GamepadButton button) const
+    {
+        const auto i = static_cast<size_t>(button);
+        return i < m_GamepadButtons.size() && m_GamepadButtons[i].up;
+    }
+
+    float InputSystem::gamepadAxis(GamepadAxis axis) const
+    {
+        const auto i = static_cast<size_t>(axis);
+        return i < m_GamepadAxes.size() ? m_GamepadAxes[i] : 0.0f;
+    }
+
+    void InputSystem::rumble(float lowFrequency, float highFrequency, int durationMs)
+    {
+        if (m_Window)
+            m_Window->setGamepadRumble(std::clamp(lowFrequency, 0.0f, 1.0f),
+                                       std::clamp(highFrequency, 0.0f, 1.0f),
+                                       static_cast<uint32_t>(std::max(durationMs, 0)));
+    }
+
+    void InputSystem::attachWindow(os::Window* window) { m_Window = window; }
+
+    // --- Action map ---
+
+    bool InputSystem::loadActionsFromJson(std::string_view json)
+    {
+        std::string error;
+        InputActionMap parsed;
+        if (!parseInputActionMapJson(json, parsed, &error))
+        {
+            VULTRA_CORE_WARN("[InputSystem] Failed to parse input action map: {}", error);
+            return false;
+        }
+        m_Actions = std::move(parsed);
+        VULTRA_CORE_INFO("[InputSystem] Loaded {} input action(s)", m_Actions.size());
+        return true;
+    }
+
+    const InputActionDef* InputSystem::findAction(const std::string& action) const
+    {
+        auto it = m_Actions.find(action);
+        return it != m_Actions.end() ? &it->second : nullptr;
+    }
+
+    InputActionDef& InputSystem::ensureAction(const std::string& action) { return m_Actions[action]; }
+
+    bool InputSystem::eventActive(const InputActionEvent& event, float deadzone) const
+    {
+        switch (event.kind)
+        {
+            case InputActionEvent::Kind::eKey:
+                return isKeyHeld(event.key);
+            case InputActionEvent::Kind::eMouseButton:
+                return isMouseButtonHeld(event.mouseButton);
+            case InputActionEvent::Kind::eGamepadButton:
+                return isGamepadButtonHeld(event.gamepadButton);
+            case InputActionEvent::Kind::eGamepadAxis:
+                return std::abs(gamepadAxis(event.gamepadAxis) * event.scale) >= deadzone;
+        }
+        return false;
+    }
+
+    float InputSystem::eventValue(const InputActionEvent& event) const
+    {
+        switch (event.kind)
+        {
+            case InputActionEvent::Kind::eKey:
+                return isKeyHeld(event.key) ? event.scale : 0.0f;
+            case InputActionEvent::Kind::eMouseButton:
+                return isMouseButtonHeld(event.mouseButton) ? event.scale : 0.0f;
+            case InputActionEvent::Kind::eGamepadButton:
+                return isGamepadButtonHeld(event.gamepadButton) ? event.scale : 0.0f;
+            case InputActionEvent::Kind::eGamepadAxis:
+                return gamepadAxis(event.gamepadAxis) * event.scale;
+        }
+        return 0.0f;
+    }
+
+    bool InputSystem::hasAction(const std::string& action) const { return findAction(action) != nullptr; }
+
+    bool InputSystem::isActionHeld(const std::string& action) const
+    {
+        const auto* def = findAction(action);
+        if (!def)
+            return false;
+        return std::any_of(def->events.begin(), def->events.end(),
+                           [&](const InputActionEvent& e) { return eventActive(e, def->deadzone); });
+    }
+
+    bool InputSystem::isActionPressed(const std::string& action) const
+    {
+        const auto* def = findAction(action);
+        if (!def)
+            return false;
+        for (const auto& e : def->events)
+        {
+            switch (e.kind)
+            {
+                case InputActionEvent::Kind::eKey:
+                    if (isKeyPressed(e.key))
+                        return true;
+                    break;
+                case InputActionEvent::Kind::eMouseButton:
+                    if (isMouseButtonPressed(e.mouseButton))
+                        return true;
+                    break;
+                case InputActionEvent::Kind::eGamepadButton:
+                    if (isGamepadButtonPressed(e.gamepadButton))
+                        return true;
+                    break;
+                case InputActionEvent::Kind::eGamepadAxis:
+                    break; // axes have no discrete press edge
+            }
+        }
+        return false;
+    }
+
+    bool InputSystem::isActionReleased(const std::string& action) const
+    {
+        const auto* def = findAction(action);
+        if (!def)
+            return false;
+        for (const auto& e : def->events)
+        {
+            switch (e.kind)
+            {
+                case InputActionEvent::Kind::eKey:
+                    if (isKeyReleased(e.key))
+                        return true;
+                    break;
+                case InputActionEvent::Kind::eMouseButton:
+                    if (isMouseButtonReleased(e.mouseButton))
+                        return true;
+                    break;
+                case InputActionEvent::Kind::eGamepadButton:
+                    if (isGamepadButtonReleased(e.gamepadButton))
+                        return true;
+                    break;
+                case InputActionEvent::Kind::eGamepadAxis:
+                    break;
+            }
+        }
+        return false;
+    }
+
+    float InputSystem::actionAxis(const std::string& action) const
+    {
+        const auto* def = findAction(action);
+        if (!def)
+            return 0.0f;
+        float value = 0.0f;
+        for (const auto& e : def->events)
+            value += eventValue(e);
+        // Apply deadzone to the combined analog value, then clamp.
+        if (std::abs(value) < def->deadzone)
+            return 0.0f;
+        return std::clamp(value, -1.0f, 1.0f);
+    }
+
+    void InputSystem::clearActionEvents(const std::string& action) { ensureAction(action).events.clear(); }
+
+    void InputSystem::bindActionKey(const std::string& action, KeyCode key)
+    {
+        ensureAction(action).events.push_back(
+            InputActionEvent {.kind = InputActionEvent::Kind::eKey, .key = key});
+    }
+
+    void InputSystem::bindActionMouseButton(const std::string& action, MouseCode button)
+    {
+        ensureAction(action).events.push_back(
+            InputActionEvent {.kind = InputActionEvent::Kind::eMouseButton, .mouseButton = button});
+    }
+
+    void InputSystem::bindActionGamepadButton(const std::string& action, GamepadButton button)
+    {
+        ensureAction(action).events.push_back(
+            InputActionEvent {.kind = InputActionEvent::Kind::eGamepadButton, .gamepadButton = button});
+    }
+
+    void InputSystem::bindActionGamepadAxis(const std::string& action, GamepadAxis axis, float scale)
+    {
+        ensureAction(action).events.push_back(
+            InputActionEvent {.kind = InputActionEvent::Kind::eGamepadAxis, .gamepadAxis = axis, .scale = scale});
+    }
 
 } // namespace vultra

@@ -10,6 +10,7 @@
 
 struct SDL_Window;
 struct SDL_Cursor;
+struct SDL_Gamepad;
 
 namespace vultra::platform::sdl
 {
@@ -77,6 +78,7 @@ namespace vultra::platform::sdl
         [[nodiscard]] WGPUSurface                  createWebGPUSurface(WGPUInstance instance) const override;
 
         void pollEvents(int timeoutMillis = 0) override;
+        void setGamepadRumble(float lowFrequency, float highFrequency, uint32_t durationMs) override;
         void close() override;
         void minimize() override;
         void maximize() override;
@@ -95,6 +97,9 @@ namespace vultra::platform::sdl
         [[nodiscard]] static DriverType translateDriverType();
         [[nodiscard]] static KeyCode    translateKeyCode(int scancode);
         [[nodiscard]] static MouseCode  translateMouseCode(uint8_t button);
+
+        void openGamepad(int instanceId);
+        void closeGamepad(int instanceId);
 
     private:
         std::string m_Title;
@@ -118,6 +123,9 @@ namespace vultra::platform::sdl
         Position    m_RestorePosition {};
 
         SDL_Window*              m_WindowHandle {nullptr};
+        // First connected gamepad (single-player). m_GamepadId is its SDL instance id.
+        SDL_Gamepad* m_Gamepad {nullptr};
+        int          m_GamepadId {0};
         std::array<SDL_Cursor*, static_cast<size_t>(CursorType::eCount)> m_CursorHandles {};
         SDL_Cursor*              m_CustomCursorHandle {nullptr};
         std::optional<CursorImage> m_CustomCursorImage;

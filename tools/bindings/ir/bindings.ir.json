@@ -29,7 +29,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 23
+            "line": 26
           }
         },
         {
@@ -53,7 +53,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 24
+            "line": 27
           }
         },
         {
@@ -77,7 +77,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 25
+            "line": 28
           }
         },
         {
@@ -101,7 +101,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 26
+            "line": 29
           }
         },
         {
@@ -125,7 +125,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 28
+            "line": 31
           }
         },
         {
@@ -149,7 +149,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 29
+            "line": 32
           }
         },
         {
@@ -173,7 +173,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 30
+            "line": 33
           }
         },
         {
@@ -197,7 +197,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 31
+            "line": 34
           }
         },
         {
@@ -215,7 +215,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 33
+            "line": 36
           }
         },
         {
@@ -233,7 +233,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 34
+            "line": 37
           }
         },
         {
@@ -251,7 +251,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 35
+            "line": 38
           }
         },
         {
@@ -269,14 +269,427 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 36
+            "line": 39
+          }
+        },
+        {
+          "luaName": "isGamepadConnected",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "isGamepadConnected",
+          "params": [],
+          "returnType": "bool",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "false",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 42
+          }
+        },
+        {
+          "luaName": "isGamepadButtonHeld",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "isGamepadButtonHeld",
+          "params": [
+            {
+              "name": "button",
+              "type": "enum",
+              "cpp": "vultra::GamepadButton"
+            }
+          ],
+          "returnType": "bool",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "false",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 43
+          }
+        },
+        {
+          "luaName": "isGamepadButtonPressed",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "isGamepadButtonPressed",
+          "params": [
+            {
+              "name": "button",
+              "type": "enum",
+              "cpp": "vultra::GamepadButton"
+            }
+          ],
+          "returnType": "bool",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "false",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 44
+          }
+        },
+        {
+          "luaName": "isGamepadButtonReleased",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "isGamepadButtonReleased",
+          "params": [
+            {
+              "name": "button",
+              "type": "enum",
+              "cpp": "vultra::GamepadButton"
+            }
+          ],
+          "returnType": "bool",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "false",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 45
+          }
+        },
+        {
+          "luaName": "gamepadAxis",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "gamepadAxis",
+          "params": [
+            {
+              "name": "axis",
+              "type": "enum",
+              "cpp": "vultra::GamepadAxis"
+            }
+          ],
+          "returnType": "float",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "0.0f",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 46
+          }
+        },
+        {
+          "luaName": "rumble",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "rumble",
+          "params": [
+            {
+              "name": "lowFrequency",
+              "type": "float",
+              "cpp": null
+            },
+            {
+              "name": "highFrequency",
+              "type": "float",
+              "cpp": null
+            },
+            {
+              "name": "durationMs",
+              "type": "int",
+              "cpp": null
+            }
+          ],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 48
+          }
+        },
+        {
+          "luaName": "hasAction",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "hasAction",
+          "params": [
+            {
+              "name": "action",
+              "type": "string",
+              "cpp": null
+            }
+          ],
+          "returnType": "bool",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "false",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 54
+          }
+        },
+        {
+          "luaName": "isActionHeld",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "isActionHeld",
+          "params": [
+            {
+              "name": "action",
+              "type": "string",
+              "cpp": null
+            }
+          ],
+          "returnType": "bool",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "false",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 55
+          }
+        },
+        {
+          "luaName": "isActionPressed",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "isActionPressed",
+          "params": [
+            {
+              "name": "action",
+              "type": "string",
+              "cpp": null
+            }
+          ],
+          "returnType": "bool",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "false",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 56
+          }
+        },
+        {
+          "luaName": "isActionReleased",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "isActionReleased",
+          "params": [
+            {
+              "name": "action",
+              "type": "string",
+              "cpp": null
+            }
+          ],
+          "returnType": "bool",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "false",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 57
+          }
+        },
+        {
+          "luaName": "actionAxis",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "actionAxis",
+          "params": [
+            {
+              "name": "action",
+              "type": "string",
+              "cpp": null
+            }
+          ],
+          "returnType": "float",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "0.0f",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 58
+          }
+        },
+        {
+          "luaName": "clearActionEvents",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "clearActionEvents",
+          "params": [
+            {
+              "name": "action",
+              "type": "string",
+              "cpp": null
+            }
+          ],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 61
+          }
+        },
+        {
+          "luaName": "bindActionKey",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "bindActionKey",
+          "params": [
+            {
+              "name": "action",
+              "type": "string",
+              "cpp": null
+            },
+            {
+              "name": "key",
+              "type": "enum",
+              "cpp": "vultra::KeyCode"
+            }
+          ],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 62
+          }
+        },
+        {
+          "luaName": "bindActionMouseButton",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "bindActionMouseButton",
+          "params": [
+            {
+              "name": "action",
+              "type": "string",
+              "cpp": null
+            },
+            {
+              "name": "button",
+              "type": "enum",
+              "cpp": "vultra::MouseCode"
+            }
+          ],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 63
+          }
+        },
+        {
+          "luaName": "bindActionGamepadButton",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "bindActionGamepadButton",
+          "params": [
+            {
+              "name": "action",
+              "type": "string",
+              "cpp": null
+            },
+            {
+              "name": "button",
+              "type": "enum",
+              "cpp": "vultra::GamepadButton"
+            }
+          ],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 64
+          }
+        },
+        {
+          "luaName": "bindActionGamepadAxis",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "bindActionGamepadAxis",
+          "params": [
+            {
+              "name": "action",
+              "type": "string",
+              "cpp": null
+            },
+            {
+              "name": "axis",
+              "type": "enum",
+              "cpp": "vultra::GamepadAxis"
+            },
+            {
+              "name": "scale",
+              "type": "float",
+              "cpp": null
+            }
+          ],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 65
           }
         }
       ],
       "properties": [],
       "source": {
         "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-        "line": 16
+        "line": 19
       }
     },
     {
@@ -977,6 +1390,54 @@
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_scene_shim.hpp",
             "line": 38
+          }
+        },
+        {
+          "luaName": "dontDestroyOnLoad",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "sceneDontDestroyOnLoad",
+          "params": [
+            {
+              "name": "entity",
+              "type": "raw",
+              "cpp": "const ScriptEntity &"
+            }
+          ],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_scene_shim.hpp",
+            "line": 42
+          }
+        },
+        {
+          "luaName": "isPersistent",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "sceneIsPersistent",
+          "params": [
+            {
+              "name": "entity",
+              "type": "raw",
+              "cpp": "const ScriptEntity &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_scene_shim.hpp",
+            "line": 44
           }
         }
       ],
@@ -3519,6 +3980,337 @@
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
             "line": 87
           }
+        },
+        {
+          "luaName": "addFixedConstraint",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "physicsAddFixedConstraint",
+          "params": [
+            {
+              "name": "bodyA",
+              "type": "raw",
+              "cpp": "const ScriptEntity &"
+            },
+            {
+              "name": "bodyB",
+              "type": "raw",
+              "cpp": "sol::optional<ScriptEntity>"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "std::uint32_t",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
+            "line": 90
+          }
+        },
+        {
+          "luaName": "addPointConstraint",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "physicsAddPointConstraint",
+          "params": [
+            {
+              "name": "bodyA",
+              "type": "raw",
+              "cpp": "const ScriptEntity &"
+            },
+            {
+              "name": "bodyB",
+              "type": "raw",
+              "cpp": "sol::optional<ScriptEntity>"
+            },
+            {
+              "name": "point",
+              "type": "raw",
+              "cpp": "const ScriptVec3 &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "std::uint32_t",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
+            "line": 91
+          }
+        },
+        {
+          "luaName": "addDistanceConstraint",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "physicsAddDistanceConstraint",
+          "params": [
+            {
+              "name": "bodyA",
+              "type": "raw",
+              "cpp": "const ScriptEntity &"
+            },
+            {
+              "name": "bodyB",
+              "type": "raw",
+              "cpp": "sol::optional<ScriptEntity>"
+            },
+            {
+              "name": "minDistance",
+              "type": "raw",
+              "cpp": "float"
+            },
+            {
+              "name": "maxDistance",
+              "type": "raw",
+              "cpp": "float"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "std::uint32_t",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
+            "line": 92
+          }
+        },
+        {
+          "luaName": "addHingeConstraint",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "physicsAddHingeConstraint",
+          "params": [
+            {
+              "name": "bodyA",
+              "type": "raw",
+              "cpp": "const ScriptEntity &"
+            },
+            {
+              "name": "bodyB",
+              "type": "raw",
+              "cpp": "sol::optional<ScriptEntity>"
+            },
+            {
+              "name": "point",
+              "type": "raw",
+              "cpp": "const ScriptVec3 &"
+            },
+            {
+              "name": "axis",
+              "type": "raw",
+              "cpp": "const ScriptVec3 &"
+            },
+            {
+              "name": "minAngleDegrees",
+              "type": "raw",
+              "cpp": "float"
+            },
+            {
+              "name": "maxAngleDegrees",
+              "type": "raw",
+              "cpp": "float"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "std::uint32_t",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
+            "line": 93
+          }
+        },
+        {
+          "luaName": "addSliderConstraint",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "physicsAddSliderConstraint",
+          "params": [
+            {
+              "name": "bodyA",
+              "type": "raw",
+              "cpp": "const ScriptEntity &"
+            },
+            {
+              "name": "bodyB",
+              "type": "raw",
+              "cpp": "sol::optional<ScriptEntity>"
+            },
+            {
+              "name": "point",
+              "type": "raw",
+              "cpp": "const ScriptVec3 &"
+            },
+            {
+              "name": "axis",
+              "type": "raw",
+              "cpp": "const ScriptVec3 &"
+            },
+            {
+              "name": "minDistance",
+              "type": "raw",
+              "cpp": "float"
+            },
+            {
+              "name": "maxDistance",
+              "type": "raw",
+              "cpp": "float"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "std::uint32_t",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
+            "line": 94
+          }
+        },
+        {
+          "luaName": "addConeConstraint",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "physicsAddConeConstraint",
+          "params": [
+            {
+              "name": "bodyA",
+              "type": "raw",
+              "cpp": "const ScriptEntity &"
+            },
+            {
+              "name": "bodyB",
+              "type": "raw",
+              "cpp": "sol::optional<ScriptEntity>"
+            },
+            {
+              "name": "point",
+              "type": "raw",
+              "cpp": "const ScriptVec3 &"
+            },
+            {
+              "name": "twistAxis",
+              "type": "raw",
+              "cpp": "const ScriptVec3 &"
+            },
+            {
+              "name": "halfAngleDegrees",
+              "type": "raw",
+              "cpp": "float"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "std::uint32_t",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
+            "line": 95
+          }
+        },
+        {
+          "luaName": "removeConstraint",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "physicsRemoveConstraint",
+          "params": [
+            {
+              "name": "constraintId",
+              "type": "raw",
+              "cpp": "std::uint32_t"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
+            "line": 96
+          }
+        },
+        {
+          "luaName": "isConstraintValid",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "physicsIsConstraintValid",
+          "params": [
+            {
+              "name": "constraintId",
+              "type": "raw",
+              "cpp": "std::uint32_t"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
+            "line": 97
+          }
+        },
+        {
+          "luaName": "setConstraintMotor",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "physicsSetConstraintMotor",
+          "params": [
+            {
+              "name": "constraintId",
+              "type": "raw",
+              "cpp": "std::uint32_t"
+            },
+            {
+              "name": "enabled",
+              "type": "raw",
+              "cpp": "bool"
+            },
+            {
+              "name": "targetVelocity",
+              "type": "raw",
+              "cpp": "float"
+            },
+            {
+              "name": "maxForce",
+              "type": "raw",
+              "cpp": "float"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
+            "line": 98
+          }
         }
       ],
       "properties": [],
@@ -3554,7 +4346,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
-            "line": 90
+            "line": 101
           }
         },
         {
@@ -3583,7 +4375,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
-            "line": 91
+            "line": 102
           }
         },
         {
@@ -3612,7 +4404,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
-            "line": 92
+            "line": 103
           }
         },
         {
@@ -3636,7 +4428,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
-            "line": 93
+            "line": 104
           }
         },
         {
@@ -3660,7 +4452,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
-            "line": 94
+            "line": 105
           }
         },
         {
@@ -3684,7 +4476,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
-            "line": 95
+            "line": 106
           }
         },
         {
@@ -3713,7 +4505,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
-            "line": 96
+            "line": 107
           }
         }
       ],
@@ -3721,6 +4513,494 @@
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
         "line": 22
+      }
+    },
+    {
+      "name": "Nav",
+      "area": "navigation",
+      "serviceDep": "navService",
+      "header": "vultra/function/scripting/bindings/script_nav_shim.hpp",
+      "functions": [
+        {
+          "luaName": "bake",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "navBake",
+          "params": [],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_nav_shim.hpp",
+            "line": 18
+          }
+        },
+        {
+          "luaName": "isBaked",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "navIsBaked",
+          "params": [],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_nav_shim.hpp",
+            "line": 19
+          }
+        },
+        {
+          "luaName": "findPath",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "navFindPath",
+          "params": [
+            {
+              "name": "luaState",
+              "type": "raw",
+              "cpp": "sol::this_state"
+            },
+            {
+              "name": "start",
+              "type": "raw",
+              "cpp": "const ScriptVec3 &"
+            },
+            {
+              "name": "end",
+              "type": "raw",
+              "cpp": "const ScriptVec3 &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "sol::table",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_nav_shim.hpp",
+            "line": 20
+          }
+        },
+        {
+          "luaName": "nearestPoint",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "navNearestPoint",
+          "params": [
+            {
+              "name": "point",
+              "type": "raw",
+              "cpp": "const ScriptVec3 &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "ScriptVec3",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_nav_shim.hpp",
+            "line": 21
+          }
+        },
+        {
+          "luaName": "setAgentDestination",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "navSetAgentDestination",
+          "params": [
+            {
+              "name": "entity",
+              "type": "raw",
+              "cpp": "const ScriptEntity &"
+            },
+            {
+              "name": "target",
+              "type": "raw",
+              "cpp": "const ScriptVec3 &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_nav_shim.hpp",
+            "line": 22
+          }
+        },
+        {
+          "luaName": "stopAgent",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "navStopAgent",
+          "params": [
+            {
+              "name": "entity",
+              "type": "raw",
+              "cpp": "const ScriptEntity &"
+            }
+          ],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_nav_shim.hpp",
+            "line": 23
+          }
+        },
+        {
+          "luaName": "agentHasPath",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "navAgentHasPath",
+          "params": [
+            {
+              "name": "entity",
+              "type": "raw",
+              "cpp": "const ScriptEntity &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_nav_shim.hpp",
+            "line": 24
+          }
+        },
+        {
+          "luaName": "setDebugDrawEnabled",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "navSetDebugDrawEnabled",
+          "params": [
+            {
+              "name": "enabled",
+              "type": "raw",
+              "cpp": "bool"
+            }
+          ],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_nav_shim.hpp",
+            "line": 25
+          }
+        },
+        {
+          "luaName": "debugDrawEnabled",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "navDebugDrawEnabled",
+          "params": [],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_nav_shim.hpp",
+            "line": 26
+          }
+        }
+      ],
+      "properties": [],
+      "source": {
+        "file": "source/vultra/include/vultra/function/scripting/bindings/script_nav_shim.hpp",
+        "line": 14
+      }
+    },
+    {
+      "name": "Save",
+      "area": "save",
+      "serviceDep": "saveService",
+      "header": "vultra/function/scripting/bindings/script_save_shim.hpp",
+      "functions": [
+        {
+          "luaName": "set",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "saveSet",
+          "params": [
+            {
+              "name": "key",
+              "type": "raw",
+              "cpp": "const std::string &"
+            },
+            {
+              "name": "value",
+              "type": "raw",
+              "cpp": "sol::object"
+            }
+          ],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
+            "line": 20
+          }
+        },
+        {
+          "luaName": "get",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "saveGet",
+          "params": [
+            {
+              "name": "luaState",
+              "type": "raw",
+              "cpp": "sol::this_state"
+            },
+            {
+              "name": "key",
+              "type": "raw",
+              "cpp": "const std::string &"
+            },
+            {
+              "name": "fallback",
+              "type": "raw",
+              "cpp": "sol::object"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "sol::object",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
+            "line": 22
+          }
+        },
+        {
+          "luaName": "has",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "saveHas",
+          "params": [
+            {
+              "name": "key",
+              "type": "raw",
+              "cpp": "const std::string &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
+            "line": 23
+          }
+        },
+        {
+          "luaName": "remove",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "saveRemove",
+          "params": [
+            {
+              "name": "key",
+              "type": "raw",
+              "cpp": "const std::string &"
+            }
+          ],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
+            "line": 24
+          }
+        },
+        {
+          "luaName": "clear",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "saveClear",
+          "params": [],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
+            "line": 25
+          }
+        },
+        {
+          "luaName": "save",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "saveSave",
+          "params": [
+            {
+              "name": "slot",
+              "type": "raw",
+              "cpp": "const std::string &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
+            "line": 27
+          }
+        },
+        {
+          "luaName": "load",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "saveLoad",
+          "params": [
+            {
+              "name": "slot",
+              "type": "raw",
+              "cpp": "const std::string &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
+            "line": 28
+          }
+        },
+        {
+          "luaName": "hasSlot",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "saveHasSlot",
+          "params": [
+            {
+              "name": "slot",
+              "type": "raw",
+              "cpp": "const std::string &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
+            "line": 29
+          }
+        },
+        {
+          "luaName": "deleteSlot",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "saveDeleteSlot",
+          "params": [
+            {
+              "name": "slot",
+              "type": "raw",
+              "cpp": "const std::string &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
+            "line": 30
+          }
+        },
+        {
+          "luaName": "listSlots",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "saveListSlots",
+          "params": [
+            {
+              "name": "luaState",
+              "type": "raw",
+              "cpp": "sol::this_state"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "sol::table",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
+            "line": 31
+          }
+        }
+      ],
+      "properties": [],
+      "source": {
+        "file": "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
+        "line": 15
       }
     }
   ],
@@ -4080,7 +5360,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 71
+            "line": 72
           }
         },
         {
@@ -4104,7 +5384,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 73
+            "line": 74
           }
         },
         {
@@ -4128,7 +5408,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 75
+            "line": 76
           }
         },
         {
@@ -4152,7 +5432,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 77
+            "line": 78
           }
         },
         {
@@ -4181,7 +5461,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 79
+            "line": 80
           }
         }
       ],
@@ -4233,7 +5513,7 @@
       "componentHeader": "",
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-        "line": 49
+        "line": 50
       }
     },
     {
@@ -5169,6 +6449,73 @@
       }
     },
     {
+      "name": "NavAgent",
+      "handle": "ScriptNavAgentRef",
+      "area": "components",
+      "header": "vultra/function/world/components/nav_agent_component.hpp",
+      "component": "NavAgentComponent",
+      "accessor": "navAgent",
+      "postRegister": null,
+      "methods": [],
+      "properties": [],
+      "fields": [
+        {
+          "name": "radius",
+          "type": "float",
+          "cpp": "radius",
+          "readonly": false,
+          "deprecated": null
+        },
+        {
+          "name": "height",
+          "type": "float",
+          "cpp": "height",
+          "readonly": false,
+          "deprecated": null
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "cpp": "speed",
+          "readonly": false,
+          "deprecated": null
+        },
+        {
+          "name": "stoppingDistance",
+          "type": "float",
+          "cpp": "stoppingDistance",
+          "readonly": false,
+          "deprecated": null
+        },
+        {
+          "name": "targetPosition",
+          "type": "vec3",
+          "cpp": "targetPosition",
+          "readonly": false,
+          "deprecated": null
+        },
+        {
+          "name": "hasTarget",
+          "type": "bool",
+          "cpp": "hasTarget",
+          "readonly": false,
+          "deprecated": null
+        },
+        {
+          "name": "moving",
+          "type": "bool",
+          "cpp": "moving",
+          "readonly": true,
+          "deprecated": null
+        }
+      ],
+      "componentHeader": "vultra/function/world/components/nav_agent_component.hpp",
+      "source": {
+        "file": "source/vultra/include/vultra/function/world/components/nav_agent_component.hpp",
+        "line": 14
+      }
+    },
+    {
       "name": "ParticleEmitter",
       "handle": "ScriptParticleEmitterRef",
       "area": "components",
@@ -5875,6 +7222,126 @@
       }
     },
     {
+      "luaName": "GamepadButton",
+      "cpp": "vultra::GamepadButton",
+      "header": "vultra/core/input/input_structs.hpp",
+      "stripE": true,
+      "module": "Input",
+      "area": "input",
+      "values": [
+        {
+          "name": "South",
+          "value": 0
+        },
+        {
+          "name": "East",
+          "value": 1
+        },
+        {
+          "name": "West",
+          "value": 2
+        },
+        {
+          "name": "North",
+          "value": 3
+        },
+        {
+          "name": "Back",
+          "value": 4
+        },
+        {
+          "name": "Guide",
+          "value": 5
+        },
+        {
+          "name": "Start",
+          "value": 6
+        },
+        {
+          "name": "LeftStick",
+          "value": 7
+        },
+        {
+          "name": "RightStick",
+          "value": 8
+        },
+        {
+          "name": "LeftShoulder",
+          "value": 9
+        },
+        {
+          "name": "RightShoulder",
+          "value": 10
+        },
+        {
+          "name": "DpadUp",
+          "value": 11
+        },
+        {
+          "name": "DpadDown",
+          "value": 12
+        },
+        {
+          "name": "DpadLeft",
+          "value": 13
+        },
+        {
+          "name": "DpadRight",
+          "value": 14
+        },
+        {
+          "name": "Count",
+          "value": 15
+        }
+      ],
+      "source": {
+        "file": "source/vultra/include/vultra/core/input/input_structs.hpp",
+        "line": 158
+      }
+    },
+    {
+      "luaName": "GamepadAxis",
+      "cpp": "vultra::GamepadAxis",
+      "header": "vultra/core/input/input_structs.hpp",
+      "stripE": true,
+      "module": "Input",
+      "area": "input",
+      "values": [
+        {
+          "name": "LeftX",
+          "value": 0
+        },
+        {
+          "name": "LeftY",
+          "value": 1
+        },
+        {
+          "name": "RightX",
+          "value": 2
+        },
+        {
+          "name": "RightY",
+          "value": 3
+        },
+        {
+          "name": "LeftTrigger",
+          "value": 4
+        },
+        {
+          "name": "RightTrigger",
+          "value": 5
+        },
+        {
+          "name": "Count",
+          "value": 6
+        }
+      ],
+      "source": {
+        "file": "source/vultra/include/vultra/core/input/input_structs.hpp",
+        "line": 181
+      }
+    },
+    {
       "luaName": "AssetState",
       "cpp": "vultra::AssetState",
       "header": "vultra/function/asset/asset_state.hpp",
@@ -6077,6 +7544,10 @@
         {
           "name": "UiProgressBar",
           "value": 19
+        },
+        {
+          "name": "NavAgent",
+          "value": 20
         }
       ],
       "source": {
@@ -6131,7 +7602,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 146
+        "line": 151
       }
     },
     {
@@ -6165,7 +7636,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 155
+        "line": 160
       }
     },
     {
@@ -6185,7 +7656,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 162
+        "line": 167
       }
     },
     {
@@ -6240,7 +7711,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 167
+        "line": 172
       }
     },
     {
@@ -6267,7 +7738,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 177
+        "line": 182
       }
     },
     {
@@ -6343,7 +7814,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 183
+        "line": 188
       }
     },
     {
@@ -6370,7 +7841,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 196
+        "line": 201
       }
     },
     {
@@ -6474,7 +7945,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 202
+        "line": 207
       }
     },
     {
@@ -6634,7 +8105,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 219
+        "line": 224
       }
     }
   ],
@@ -6645,7 +8116,7 @@
       "header": "vultra/function/scripting/bindings/script_entity_shim.hpp",
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-        "line": 84
+        "line": 85
       }
     },
     {

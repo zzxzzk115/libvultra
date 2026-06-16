@@ -81,6 +81,22 @@ end
 在退出（exit）事件中，`other` 可能已经失效——在使用它之前请检查
 `other.valid`。
 
+### 动画事件回调（Animation Event Callback）
+
+如果实体的动画状态机定义了关键帧事件（见 **Animation**），当播放越过某个事件的时间点时，
+脚本的 `OnAnimationEvent(self, name)` 会在该帧被调用：
+
+```lua
+function OnAnimationEvent(self, name)
+  if name == "footstep" then
+    Audio.play(self) -- 播放脚步声
+  end
+end
+```
+
+事件在当前播放的状态上触发、随片段循环重复，并在状态切换时重置（进入某状态时不会“补发”
+之前的事件）。
+
 ### Debug UI (ImGui)
 
 在编辑器和开发构建中（当 ImGui 服务存在时），脚本可以通过 `ImGui` 表
@@ -166,6 +182,41 @@ end
 - `wait(seconds)` / `waitFrames(n)` 挂起当前协程。
 - `stopAllCoroutines()` 取消该脚本的协程；它们也会在 `OnDisable` 和
   `OnDestroy` 时自动停止。
+
+### 补间、定时器、时间线（Tween, Timer, Timeline）
+
+逐帧驱动的游戏性工具（全局表，由脚本系统每帧推进一次）。与协程不同，它们是全局的、并非
+按实体管理，因此请取消不再需要的句柄，并在回调中对涉及实体的操作做保护（实体可能已被销毁）。
+
+```lua
+-- 把任意表的数值字段补间到目标值（在 duration 秒内）。
+local pos = self.transform.position
+Tween.to(pos, { y = pos.y + 2 }, 0.5, {
+  ease = Ease.cubicOut,
+  onUpdate = function(t) self.transform.position = pos end, -- 每帧写回
+  onComplete = function() print("done") end,
+})
+
+-- 一次性与重复定时器。
+Timer.after(2.0, function() print("2s later") end)
+local h = Timer.every(0.5, function() spawnEnemy() end) -- fn 返回 false 可停止
+Timer.cancel(h)
+
+-- 一个小型有序时间线（类似过场）。
+Timeline.new()
+  :call(function() openDoor() end)
+  :wait(1.0)
+  :call(function() spawnBoss() end)
+  :start()
+```
+
+- `Tween.to(obj, toFields, duration, opts?)` -> 句柄。`opts = { ease, onUpdate(t),
+  onComplete }`。`Tween.cancel(handle)`。
+- `Timer.after(seconds, fn)` / `Timer.every(seconds, fn)`（fn 返回 `false` 可停止）-> 句柄。
+  `Timer.cancel(handle)`。
+- `Timeline.new():wait(s):call(fn):start()` -> 句柄（可链式调用）。
+- `Ease`：`linear`、`quadIn/Out/InOut`、`cubicIn/Out/InOut`、`sineIn/Out/InOut`、
+  `expoIn/Out`、`backOut`、`bounceOut`。
 
 ## Binding Parity For Engine Work
 
@@ -513,6 +564,98 @@ end
 
 请使用 `KeyCode` 和 `MouseCode` 枚举值，而不是整数字面量。
 
+### 手柄（Gamepad）
+
+第一个连接的手柄通过 `Input` 暴露（基于 SDL_Gamepad，采用 Xbox 风格命名）。
+
+```lua
+if Input.isGamepadConnected() then
+  local lx = Input.gamepadAxis(GamepadAxis.LeftX)       -- 摇杆：[-1, 1]
+  local lt = Input.gamepadAxis(GamepadAxis.LeftTrigger) -- 扳机：[0, 1]
+  if Input.isGamepadButtonPressed(GamepadButton.South) then -- A / Cross
+    Input.rumble(0.6, 0.6, 200) -- low、high 取值 [0,1]；duration 单位毫秒
+  end
+end
+```
+
+- `Input.isGamepadConnected()`
+- `Input.isGamepadButtonHeld(button)` / `Input.isGamepadButtonPressed(button)` / `Input.isGamepadButtonReleased(button)`
+- `Input.gamepadAxis(axis)`
+- `Input.rumble(lowFrequency, highFrequency, durationMs)`
+
+请使用 `GamepadButton`（`South`/`East`/`West`/`North`、`Start`、`Back`、`Guide`、
+`LeftShoulder`/`RightShoulder`、`LeftStick`/`RightStick`、`DpadUp`/`DpadDown`/`DpadLeft`/
+`DpadRight`）和 `GamepadAxis`（`LeftX`/`LeftY`/`RightX`/`RightY`、`LeftTrigger`/
+`RightTrigger`）枚举值。
+
+### 输入动作（项目级映射）
+
+类似 Godot 的具名动作，让游戏逻辑绑定到“意图”（如 "Jump"）而非具体按键，并支持玩家重新
+绑定。动作定义在项目文件 `res://input.actions.json` 中，于启动时加载。每个动作包含一个
+`deadzone`（死区）和一组 `events`；只要任一 event 处于激活状态，该动作即被激活。
+
+```json
+{
+  "actions": {
+    "Jump":  { "deadzone": 0.5, "events": [ {"key":"Space"}, {"gamepadButton":"South"} ] },
+    "MoveX": { "deadzone": 0.2, "events": [ {"gamepadAxis":"LeftX"}, {"key":"D","scale":1}, {"key":"A","scale":-1} ] }
+  }
+}
+```
+
+event 类型：`key`、`mouseButton`、`gamepadButton`、`gamepadAxis`。可选的 `scale` 设置该
+event 模拟量贡献的符号/幅度（例如轴的“向左”键用 `-1`）。名称使用去掉前缀的枚举形式，与
+`KeyCode`/`GamepadButton`/`GamepadAxis` 表一致（`Space`、`South`、`LeftX`）。
+
+```lua
+if Input.isActionPressed("Jump") then jump() end   -- 当前帧按下边沿
+local move = Input.actionAxis("MoveX")              -- 带符号 [-1, 1]，已应用死区
+```
+
+- `Input.hasAction(name)`
+- `Input.isActionHeld(name)`（当前按住）/ `Input.isActionPressed(name)` /
+  `Input.isActionReleased(name)`（当前帧边沿，语义同 `isKeyHeld` 与 `isKeyPressed`）
+- `Input.actionAxis(name)`（合并后的带符号模拟量）
+
+运行时重绑定（仅内存；持久化请编辑 JSON）：
+
+- `Input.clearActionEvents(name)`
+- `Input.bindActionKey(name, key)` / `Input.bindActionMouseButton(name, button)`
+- `Input.bindActionGamepadButton(name, button)` / `Input.bindActionGamepadAxis(name, axis, scale)`
+
+完整示例 —— 挂到一个实体上；配合上面的动作映射，它会随 WASD 或左摇杆移动，按 Space /
+South 键跳跃（带震动），并读取原始手柄输入：
+
+```lua
+function OnCreate(self)
+  print("gamepad connected = " .. tostring(Input.isGamepadConnected()))
+  -- 运行时重绑定：让 North/Y 键也能触发 Jump。
+  Input.bindActionGamepadButton("Jump", GamepadButton.North)
+end
+
+function OnUpdate(self, dt)
+  if Input.isActionPressed("Jump") then
+    Input.rumble(0.6, 0.6, 200) -- 短促震动
+  end
+
+  -- 合并摇杆 + WASD 的模拟量移动。
+  local moveX = Input.actionAxis("MoveX")
+  local moveY = Input.actionAxis("MoveY")
+  if math.abs(moveX) > 0.0 or math.abs(moveY) > 0.0 then
+    local t = self.transform
+    local pos = t.position
+    pos.x = pos.x + moveX * dt * 4.0
+    pos.z = pos.z + moveY * dt * 4.0
+    t.position = pos
+  end
+
+  -- 原始设备层。
+  if Input.isGamepadButtonPressed(GamepadButton.Start) then
+    print("left trigger = " .. string.format("%.2f", Input.gamepadAxis(GamepadAxis.LeftTrigger)))
+  end
+end
+```
+
 ## Physics
 
 刚体通过实体上的 `RigidBody` 引用或全局的 `Physics` 表来控制。
@@ -646,6 +789,98 @@ end
 每渲染一帧就写入 `Transform.position`，除非该实体有意是运动学的
 （kinematic）或在物理模拟之外脚本化控制的。
 
+### 约束 / 关节（Constraints / joints）
+
+用 Jolt 约束连接两个刚体（铰链 hinge、固定 fixed、距离 distance、滑动 slider、点 point、
+锥形 cone）。第二个物体传 `nil` 表示锚定到世界。`point`/`axis` 为创建时的世界空间坐标；
+角度为度，距离为米。每个 `add*` 返回一个不透明的约束 id（失败返回 `0`），用于
+`removeConstraint` / 电机。
+
+```lua
+-- 一扇铰链门，锚定到世界，并用电机驱动开门。
+local hinge = Physics.addHingeConstraint(door, nil, Vec3(0, 1, -1), Vec3(0, 1, 0), -110, 0)
+Physics.setConstraintMotor(hinge, true, 90, 200) -- 目标 90 度/秒，最大力矩 200
+
+-- 绳索：让两个物体保持在 [0.5, 4] 米之间。
+local rope = Physics.addDistanceConstraint(bob, anchor, 0.5, 4.0)
+
+-- 断开关节。
+Physics.removeConstraint(rope)
+```
+
+- `Physics.addFixedConstraint(bodyA, bodyB?)`
+- `Physics.addPointConstraint(bodyA, bodyB?, point)`
+- `Physics.addDistanceConstraint(bodyA, bodyB?, minDistance, maxDistance)`
+- `Physics.addHingeConstraint(bodyA, bodyB?, point, axis, minAngleDegrees, maxAngleDegrees)`
+- `Physics.addSliderConstraint(bodyA, bodyB?, point, axis, minDistance, maxDistance)`
+- `Physics.addConeConstraint(bodyA, bodyB?, point, twistAxis, halfAngleDegrees)`
+- `Physics.removeConstraint(id)` / `Physics.isConstraintValid(id)`
+- `Physics.setConstraintMotor(id, enabled, targetVelocity, maxForce)` — 铰链电机为角速度
+  （度/秒），滑动电机为线速度（米/秒）
+
+若实体带有 `RigidBodyComponent`，物体会按需创建。当被引用的任一物体被销毁时，约束会自动
+移除。布娃娃（ragdoll）由胶囊体刚体 + 锥形（摆动-扭转）约束构成。
+
+## Navigation（Recast/Detour 导航）
+
+从关卡几何烘焙导航网格（navmesh）并驱动代理沿路径移动。带 `MeshComponent` +
+`TransformComponent` 的导入网格会被烘焙；内置图元会被跳过。
+
+```lua
+function OnCreate(self)
+  Nav.bake()                      -- 从世界几何烘焙导航网格
+  Nav.setDebugDrawEnabled(true)   -- 在编辑器中可视化导航网格与路径
+end
+
+function OnUpdate(self, dt)
+  if Input.isMouseButtonPressed(MouseCode.Left) then
+    Nav.setAgentDestination(self, Vec3(10, 0, 4)) -- 代理走过去，绕开障碍
+  end
+end
+```
+
+为实体添加 `NavAgentComponent`（`entity:addComponent(Component.NavAgent)`）使其成为代理；
+若同时带有 `CharacterControllerComponent`，代理会通过角色控制器移动，否则直接移动其
+transform。
+
+- `Nav.bake()` — （重新）构建导航网格；成功返回 `true`
+- `Nav.isBaked()`
+- `Nav.findPath(start, end)` — 返回 `Vec3` 路点数组（不可达时为空）
+- `Nav.nearestPoint(point)` — 导航网格上最近的点
+- `Nav.setAgentDestination(entity, target)` / `Nav.stopAgent(entity)` / `Nav.agentHasPath(entity)`
+- `Nav.setDebugDrawEnabled(enabled)` / `Nav.debugDrawEnabled()`
+
+`NavAgent` 字段：`radius`、`height`、`speed`、`stoppingDistance`、`targetPosition`、
+`hasTarget`、`moving`（只读）。
+
+完整示例 —— 挂到一个实体上（最好带 `CharacterControllerComponent`）。它在启动时烘焙导航
+网格、把自己变成代理、绘制导航网格，并在左键点击时走向目标：
+
+```lua
+function OnCreate(self)
+  if not self:hasComponent(Component.NavAgent) then
+    self:addComponent(Component.NavAgent)
+  end
+  if not Nav.bake() then
+    print("navmesh bake failed (no imported geometry?)")
+  end
+  Nav.setDebugDrawEnabled(true) -- 在编辑器中显示导航网格与路径
+end
+
+function OnUpdate(self, dt)
+  if Input.isMouseButtonPressed(MouseCode.Left) then
+    Nav.setAgentDestination(self, Vec3(4.0, 0.0, 0.0))
+  end
+  if Input.isKeyPressed(KeyCode.Escape) then
+    Nav.stopAgent(self)
+  end
+  if Input.isKeyPressed(KeyCode.P) then
+    local path = Nav.findPath(self.transform.position, Vec3(4.0, 0.0, 0.0))
+    print("path has " .. #path .. " waypoints")
+  end
+end
+```
+
 ## Roll-A-Ball Example
 
 这个示例使用 WASD 来推动一个动态小球，让游戏相机跟随它，并将附近的
@@ -761,6 +996,38 @@ end
 - `Scene.instantiateChild(uri, parent, clearWorld)`
 - `Scene.saveWorld(uri)`
 - `Scene.saveEntity(uri, root)`
+- `Scene.dontDestroyOnLoad(entity)` —— 在下次场景加载 / `Scene.instantiate(..., clearWorld=true)`
+  时保留 `entity`（及其子树）；它会被提升为根并存活下来
+- `Scene.isPersistent(entity)`
+
+## Save / Persistence（存档 / 持久化）
+
+`Save` 是一个带类型的键/值存储，外加具名的、基于文件的存档槽（slot）——用于玩家进度、
+设置、解锁等。KV 存储位于内存中，并且**在场景加载/重载之间保持存在**（它是引擎服务，而非
+世界数据）；`Save.save(slot)` / `Save.load(slot)` 将其持久化到磁盘并从磁盘恢复（位于操作系统
+的 app-data 目录，或 `VULTRA_SAVE_DIR`）。
+
+```lua
+-- 写入进度，然后持久化到 slot1。
+Save.set("level", 3)
+Save.set("playerName", "Ada")
+Save.set("musicOn", true)
+Save.save("slot1")
+
+-- 之后（即使重载了场景）：恢复并读回。
+if Save.load("slot1") then
+  local level = Save.get("level", 1)       -- 3（缺失时返回默认值 1）
+  local name  = Save.get("playerName", "?")
+end
+```
+
+- `Save.set(key, value)` —— `value` 为 number、boolean 或 string
+- `Save.get(key, default?)` —— 返回存储的值（带类型）或 `default` / `nil`
+- `Save.has(key)`、`Save.remove(key)`、`Save.clear()`
+- `Save.save(slot)` / `Save.load(slot)` -> boolean
+- `Save.hasSlot(slot)`、`Save.deleteSlot(slot)`、`Save.listSlots()` -> 存档槽名数组
+
+存档槽名会被规整为安全的文件名。对于复杂的表，请存储 JSON 字符串（在 Lua 中编码）。
 
 ## Script And Render Utilities
 
@@ -956,6 +1223,69 @@ Animator 方法：
 - `normalizedTime`
 - `skeleton`
 - `animation`
+
+### 关键帧事件（Keyframe events）
+
+动画状态机的状态可以携带**事件**——位于片段某个归一化时间点的具名标记。当播放越过某个
+事件时，动画系统会调用实体脚本的 `OnAnimationEvent(self, name)`（见 **动画事件回调**）。
+在 `.vanimgraph.json` 中按状态编写：
+
+```json
+{
+  "states": [
+    {
+      "name": "Walk",
+      "animation": "<clip-uuid>",
+      "loop": true,
+      "events": [
+        { "name": "footstepLeft",  "normalizedTime": 0.25 },
+        { "name": "footstepRight", "normalizedTime": 0.75 }
+      ],
+      "transitions": []
+    }
+  ],
+  "version": 1
+}
+```
+
+`normalizedTime` 取值 `[0,1]`（片段内）。事件在激活状态上触发、每次循环重复，并按状态隔离。
+（单片段动画——`mode 0`——没有状态，因此事件需要状态机模式。）
+
+### 混合树（Blend trees）
+
+状态可以是 **1D 混合树**，而非单个片段：它按一个浮点参数（例如用 `speed` 在 idle/walk/run
+之间）混合多个片段。在 `.vanimgraph.json` 的状态上编写；各片段以共享、相位对齐的 ratio
+采样，并由参数值两侧相邻的两个 entry 进行混合。用 `Animation.setFloat(entity, "speed", v)`
+驱动参数。
+
+```json
+{
+  "states": [
+    {
+      "name": "Locomotion",
+      "loop": true,
+      "blendTree": {
+        "parameter": "speed",
+        "entries": [
+          { "animation": "<idle-uuid>", "threshold": 0.0 },
+          { "animation": "<walk-uuid>", "threshold": 1.0 },
+          { "animation": "<run-uuid>",  "threshold": 4.0 }
+        ]
+      }
+    }
+  ],
+  "version": 1
+}
+```
+
+当存在 `blendTree.entries` 时，它会覆盖该状态的单个 `animation`。混合树状态上事件仍会触发。
+
+### 根运动（Root motion）
+
+设置 `AnimatorComponent.applyRootMotion = true`（状态机模式），让当前播放片段的根关节驱动
+**实体 transform**（水平移动），而不是让网格在原地滑动。显示的骨架会保持在实体中心，由
+transform 吸收每帧的根位移（按实体朝向旋转）。在交叉淡入淡出期间以及循环回绕帧会被跳过，
+并假定关节 0 为骨架根。
 
 ## Common Pitfalls
 

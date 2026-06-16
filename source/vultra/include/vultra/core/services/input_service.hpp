@@ -7,6 +7,9 @@
 
 #include <glm/glm.hpp>
 
+#include <string>
+#include <string_view>
+
 namespace vultra
 {
     // Lua namespace `Input` (doc/lua_api_design.md). The script bindings are
@@ -34,5 +37,38 @@ namespace vultra
         VBIND_FN() virtual glm::vec2 mousePositionFlipY() const = 0;
         VBIND_FN() virtual glm::vec2 mousePositionDelta() const = 0;
         VBIND_FN() virtual glm::vec2 mouseScrollDelta() const   = 0;
+
+        // --- Gamepad (first connected controller) ---
+        VBIND_FN() virtual bool  isGamepadConnected() const                       = 0;
+        VBIND_FN() virtual bool  isGamepadButtonHeld(GamepadButton button) const  = 0;
+        VBIND_FN() virtual bool  isGamepadButtonPressed(GamepadButton button) const  = 0;
+        VBIND_FN() virtual bool  isGamepadButtonReleased(GamepadButton button) const = 0;
+        VBIND_FN() virtual float gamepadAxis(GamepadAxis axis) const              = 0;
+        // Play a rumble effect on the first connected gamepad. Frequencies in [0,1].
+        VBIND_FN() virtual void  rumble(float lowFrequency, float highFrequency, int durationMs) = 0;
+
+        // --- Action map (Godot-style, loaded from res://input.actions.json) ---
+        // isActionHeld == currently down; isActionPressed/Released == this-frame edges
+        // (consistent with isKeyHeld vs isKeyPressed). actionAxis returns the signed
+        // analog value combining the action's events, clamped to [-1, 1].
+        VBIND_FN() virtual bool  hasAction(const std::string& action) const         = 0;
+        VBIND_FN() virtual bool  isActionHeld(const std::string& action) const      = 0;
+        VBIND_FN() virtual bool  isActionPressed(const std::string& action) const   = 0;
+        VBIND_FN() virtual bool  isActionReleased(const std::string& action) const  = 0;
+        VBIND_FN() virtual float actionAxis(const std::string& action) const        = 0;
+        // Runtime rebinding. clearActionEvents wipes an action's bindings; the bind*
+        // helpers append a binding (creating the action if absent).
+        VBIND_FN() virtual void clearActionEvents(const std::string& action)                          = 0;
+        VBIND_FN() virtual void bindActionKey(const std::string& action, KeyCode key)                 = 0;
+        VBIND_FN() virtual void bindActionMouseButton(const std::string& action, MouseCode button)    = 0;
+        VBIND_FN() virtual void bindActionGamepadButton(const std::string& action, GamepadButton button) = 0;
+        VBIND_FN() virtual void bindActionGamepadAxis(const std::string& action, GamepadAxis axis, float scale) = 0;
+
+        // --- Engine/app wiring (not exposed to Lua) ---
+        // Connect the platform window so rumble can reach the device.
+        virtual void attachWindow(os::Window* window) = 0;
+        // Replace the action map from JSON (see parseInputActionMapJson). Returns false on
+        // parse failure; the app feeds res://input.actions.json at startup.
+        virtual bool loadActionsFromJson(std::string_view json) = 0;
     };
 } // namespace vultra

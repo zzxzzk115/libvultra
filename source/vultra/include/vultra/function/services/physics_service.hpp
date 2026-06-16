@@ -148,5 +148,42 @@ namespace vultra
         virtual glm::vec3 characterVelocity(entt::entity entity) const = 0;
         virtual glm::vec3 characterGroundNormal(entt::entity entity) const = 0;
         virtual bool      characterSetPosition(entt::entity entity, const glm::vec3& position) = 0;
+
+        // --- Constraints / joints (Jolt two-body constraints) ---
+        // Connect two rigid bodies. `bodyB == entt::null` anchors `bodyA` to the world.
+        // `point`/`axis` are world-space at creation; angles in degrees, distances in meters.
+        // Each returns an opaque constraint id (0 == failure); pass it to remove/motor.
+        // Missing bodies are created on demand if the entity has a RigidBodyComponent.
+        virtual uint32_t addFixedConstraint(entt::entity bodyA, entt::entity bodyB) = 0;
+        virtual uint32_t addPointConstraint(entt::entity bodyA, entt::entity bodyB, const glm::vec3& point) = 0;
+        virtual uint32_t addDistanceConstraint(entt::entity bodyA,
+                                               entt::entity bodyB,
+                                               float        minDistance,
+                                               float        maxDistance) = 0;
+        virtual uint32_t addHingeConstraint(entt::entity     bodyA,
+                                            entt::entity     bodyB,
+                                            const glm::vec3& point,
+                                            const glm::vec3& axis,
+                                            float            minAngleDegrees,
+                                            float            maxAngleDegrees) = 0;
+        virtual uint32_t addSliderConstraint(entt::entity     bodyA,
+                                             entt::entity     bodyB,
+                                             const glm::vec3& point,
+                                             const glm::vec3& axis,
+                                             float            minDistance,
+                                             float            maxDistance) = 0;
+        virtual uint32_t addConeConstraint(entt::entity     bodyA,
+                                           entt::entity     bodyB,
+                                           const glm::vec3& point,
+                                           const glm::vec3& twistAxis,
+                                           float            halfAngleDegrees) = 0;
+        virtual bool removeConstraint(uint32_t constraintId) = 0;
+        virtual bool isConstraintValid(uint32_t constraintId) const = 0;
+        // Drive a hinge (angular, degrees/sec) or slider (linear, m/s) motor toward a target
+        // velocity. `enabled == false` frees the motor. `maxForce` caps the motor torque/force.
+        virtual bool setConstraintMotor(uint32_t constraintId,
+                                        bool     enabled,
+                                        float    targetVelocity,
+                                        float    maxForce) = 0;
     };
 } // namespace vultra

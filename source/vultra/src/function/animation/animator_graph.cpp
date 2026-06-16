@@ -192,6 +192,31 @@ namespace vultra::animator_graph
                 if (auto tr = s.find("transitions"); tr != s.end() && tr->is_array())
                     for (const auto& t : *tr)
                         state.transitions.push_back(transitionFromJson(t));
+                if (auto ev = s.find("events"); ev != s.end() && ev->is_array())
+                    for (const auto& e : *ev)
+                    {
+                        Event event;
+                        event.name           = e.value("name", std::string {});
+                        event.normalizedTime = e.value("normalizedTime", e.value("time", 0.0f));
+                        if (!event.name.empty())
+                            state.events.push_back(std::move(event));
+                    }
+                if (auto bt = s.find("blendTree"); bt != s.end() && bt->is_object())
+                {
+                    state.blendTree.parameter = bt->value("parameter", std::string {});
+                    if (auto en = bt->find("entries"); en != bt->end() && en->is_array())
+                        for (const auto& e : *en)
+                        {
+                            BlendEntry entry;
+                            entry.animation = uuidFromString(e.value("animation", std::string {}));
+                            entry.threshold = e.value("threshold", 0.0f);
+                            if (entry.animation.valid())
+                                state.blendTree.entries.push_back(entry);
+                        }
+                    std::sort(state.blendTree.entries.begin(),
+                              state.blendTree.entries.end(),
+                              [](const BlendEntry& a, const BlendEntry& b) { return a.threshold < b.threshold; });
+                }
                 if (!state.name.empty())
                     graph.states.push_back(std::move(state));
             }
@@ -239,6 +264,20 @@ namespace vultra::animator_graph
                                {"speed", s.speed},
                                {"loop", s.loop},
                                {"transitions", std::move(transitions)}};
+            if (!s.events.empty())
+            {
+                nlohmann::json events = nlohmann::json::array();
+                for (const auto& e : s.events)
+                    events.push_back({{"name", e.name}, {"normalizedTime", e.normalizedTime}});
+                sj["events"] = std::move(events);
+            }
+            if (s.hasBlendTree())
+            {
+                nlohmann::json entries = nlohmann::json::array();
+                for (const auto& e : s.blendTree.entries)
+                    entries.push_back({{"animation", e.animation.toString()}, {"threshold", e.threshold}});
+                sj["blendTree"] = {{"parameter", s.blendTree.parameter}, {"entries", std::move(entries)}};
+            }
             if (!s.editor.is_null())
                 sj["editor"] = s.editor;
             states.push_back(std::move(sj));

@@ -24,6 +24,7 @@
 #include "vultra/function/world/components/hierarchy_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/layer_component.hpp"
+#include "vultra/function/world/components/persistent_component.hpp"
 #include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/particle_emitter_component.hpp"
@@ -47,6 +48,7 @@
 #include <charconv>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <sstream>
 #include <unordered_set>
 #include <vector>
@@ -1404,7 +1406,41 @@ namespace vultra
 
     void SceneSystem::clearWorldForSceneReplacement(World& world)
     {
-        world.clear();
+        auto& reg = world.registry();
+
+        // DontDestroyOnLoad: entities tagged persistent (and their subtrees) survive a scene
+        // replacement. Promote each to a root so it stands alone, collect the kept subtrees,
+        // then destroy only the non-kept roots. Falls back to a full clear when none persist.
+        std::vector<entt::entity> persistent;
+        reg.view<PersistentComponent>().each([&](entt::entity e, const PersistentComponent& p) {
+            if (p.keepOnLoad)
+                persistent.push_back(e);
+        });
+
+        if (persistent.empty())
+        {
+            world.clear();
+        }
+        else
+        {
+            for (auto e : persistent)
+                if (reg.valid(e))
+                    world.removeParent(e);
+
+            std::unordered_set<entt::entity> keep;
+            const std::function<void(entt::entity)> collect = [&](entt::entity e) {
+                if (!reg.valid(e) || !keep.insert(e).second)
+                    return;
+                for (entt::entity c = world.firstChild(e); c != entt::null; c = world.nextSibling(c))
+                    collect(c);
+            };
+            for (auto e : persistent)
+                collect(e);
+
+            for (auto root : world.roots())
+                if (reg.valid(root) && keep.find(root) == keep.end())
+                    world.destroyRecursive(root);
+        }
 
         auto* worldService = ctx().services.tryGet<IWorldService>();
         if (!worldService || &worldService->world() != &world)

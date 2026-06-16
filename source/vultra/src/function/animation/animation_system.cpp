@@ -4,10 +4,12 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/services/timing_service.hpp"
 #include "vultra/function/services/asset_service.hpp"
+#include "vultra/function/services/script_service.hpp"
 #include "vultra/function/services/world_service.hpp"
 #include "vultra/function/world/components/animator_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/skin_palette_component.hpp"
+#include "vultra/function/world/components/transform_component.hpp"
 #include "vultra/function/world/world.hpp"
 
 #include <vasset/vmesh.hpp>
@@ -22,6 +24,8 @@
 #include <ozz/base/io/stream.h>
 #include <ozz/base/maths/soa_transform.h>
 #include <ozz/base/span.h>
+
+#include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -128,6 +132,37 @@ namespace vultra
             }
             return out;
         }
+
+        // 1D blend weights: linear interpolation between the two adjacent entries bracketing
+        // `value`, clamped at the ends. `entries` must be sorted by threshold.
+        void blendWeights1D(const std::vector<animator_graph::BlendEntry>& entries, float value, std::vector<float>& out)
+        {
+            out.assign(entries.size(), 0.0f);
+            if (entries.empty())
+                return;
+            if (entries.size() == 1 || value <= entries.front().threshold)
+            {
+                out.front() = 1.0f;
+                return;
+            }
+            if (value >= entries.back().threshold)
+            {
+                out.back() = 1.0f;
+                return;
+            }
+            for (size_t i = 0; i + 1 < entries.size(); ++i)
+            {
+                const float a = entries[i].threshold;
+                const float b = entries[i + 1].threshold;
+                if (value >= a && value <= b)
+                {
+                    const float t = b > a ? (value - a) / (b - a) : 0.0f;
+                    out[i]        = 1.0f - t;
+                    out[i + 1]    = t;
+                    return;
+                }
+            }
+        }
     } // namespace
 
     bool AnimationSystem::onInit()
@@ -136,6 +171,7 @@ namespace vultra
         m_Assets = &ctx().services.require<IAssetService>();
         m_Worlds = &ctx().services.require<IWorldService>();
         m_Timing = ctx().services.tryGet<ITimingService>();
+        m_Scripts = ctx().services.tryGet<IScriptService>();
         return true;
     }
 
@@ -147,6 +183,7 @@ namespace vultra
         m_Assets = nullptr;
         m_Worlds = nullptr;
         m_Timing = nullptr;
+        m_Scripts = nullptr;
         m_PlaybackPlaying = true;
         m_PlaybackPaused = false;
         m_SingleStepRequests = 0u;
@@ -537,9 +574,26 @@ namespace vultra
 
             const float dtScaled = std::max(dt.count(), 0.0f) * cc.speed;
 
+            // Effective clip duration of a state: for a blend tree, the phase-matched weighted
+            // average of its active entries' durations (so all clips stay synchronized).
+            const auto stateDuration = [&](int stateIndex) -> float {
+                const auto& st = rt->graph.states[static_cast<size_t>(stateIndex)];
+                if (!st.hasBlendTree())
+                    return std::max(animationDuration(st.animation), 0.0f);
+                const auto  pit   = rt->floats.find(st.blendTree.parameter);
+                const float param = pit != rt->floats.end() ? pit->second : 0.0f;
+                std::vector<float> weights;
+                blendWeights1D(st.blendTree.entries, param, weights);
+                float dur = 0.0f;
+                for (size_t i = 0; i < weights.size(); ++i)
+                    if (weights[i] > 0.0f)
+                        dur += weights[i] * std::max(animationDuration(st.blendTree.entries[i].animation), 0.0f);
+                return std::max(dur, 0.0f);
+            };
+
             const auto advance = [&](int stateIndex, float& time) {
                 const auto& st       = rt->graph.states[static_cast<size_t>(stateIndex)];
-                const float duration = std::max(animationDuration(st.animation), 0.0f);
+                const float duration = stateDuration(stateIndex);
                 time += dtScaled * st.speed;
                 if (duration > 0.0f)
                 {
@@ -557,6 +611,32 @@ namespace vultra
 
             const float curDuration = advance(rt->currentState, rt->currentTime);
             const float curNorm     = curDuration > 0.0f ? std::clamp(rt->currentTime / curDuration, 0.0f, 1.0f) : 0.0f;
+
+            const bool  stateChanged  = rt->eventScanState != rt->currentState;
+            const float prevNorm      = stateChanged ? curNorm : rt->eventScanNorm;
+            const bool  currentLooped = curNorm < prevNorm; // playback wrapped past the clip end
+            if (stateChanged)
+                rt->hasPrevRoot = false; // don't carry root-motion delta across a state switch
+
+            // Fire keyframe events crossed on the current state this frame (-> Lua OnAnimationEvent).
+            {
+                if (!m_Scripts)
+                    m_Scripts = ctx().services.tryGet<IScriptService>();
+                const auto& curState = rt->graph.states[static_cast<size_t>(rt->currentState)];
+                if (m_Scripts && !curState.events.empty())
+                {
+                    for (const auto& ev : curState.events)
+                    {
+                        const bool fired = currentLooped
+                                               ? (ev.normalizedTime > prevNorm || ev.normalizedTime <= curNorm)
+                                               : (ev.normalizedTime > prevNorm && ev.normalizedTime <= curNorm);
+                        if (fired)
+                            m_Scripts->dispatchAnimationEvent(entity, ev.name);
+                    }
+                }
+                rt->eventScanState = rt->currentState;
+                rt->eventScanNorm  = curNorm;
+            }
 
             if (rt->targetState >= 0)
             {
@@ -621,20 +701,80 @@ namespace vultra
             if (!skeleton)
                 return;
 
-            const auto sampleInto = [&](int stateIndex, float time, ozz::vector<ozz::math::SoaTransform>& out) -> bool {
-                const auto* animation = runtimeAnimation(rt->graph.states[static_cast<size_t>(stateIndex)].animation);
+            // Sample one clip at a normalized ratio into `out`.
+            const auto sampleClip = [&](const ozz::animation::Animation* animation,
+                                        float                            ratio,
+                                        ozz::vector<ozz::math::SoaTransform>& out) -> bool {
                 if (!animation)
                     return false;
-                const float duration = std::max(animation->duration(), 0.0001f);
                 ozz::animation::SamplingJob::Context context;
                 context.Resize(animation->num_tracks());
                 out.resize(skeleton->num_soa_joints());
                 ozz::animation::SamplingJob sampling;
                 sampling.animation = animation;
                 sampling.context   = &context;
-                sampling.ratio     = std::clamp(time / duration, 0.0f, 1.0f);
+                sampling.ratio     = std::clamp(ratio, 0.0f, 1.0f);
                 sampling.output    = ozz::make_span(out);
                 return sampling.Run();
+            };
+
+            const auto sampleInto = [&](int stateIndex, float time, ozz::vector<ozz::math::SoaTransform>& out) -> bool {
+                const auto& st = rt->graph.states[static_cast<size_t>(stateIndex)];
+                if (!st.hasBlendTree())
+                {
+                    const auto* animation = runtimeAnimation(st.animation);
+                    const float duration  = animation ? std::max(animation->duration(), 0.0001f) : 1.0f;
+                    return sampleClip(animation, time / duration, out);
+                }
+
+                // Blend tree: every active entry is sampled at the same phase ratio, then
+                // blended by its 1D weight (ozz BlendingJob, N layers).
+                const auto  pit   = rt->floats.find(st.blendTree.parameter);
+                const float param = pit != rt->floats.end() ? pit->second : 0.0f;
+                std::vector<float> weights;
+                blendWeights1D(st.blendTree.entries, param, weights);
+                const float refDuration = std::max(stateDuration(stateIndex), 0.0001f);
+                const float ratio       = time / refDuration;
+
+                struct ActiveClip
+                {
+                    ozz::vector<ozz::math::SoaTransform> locals;
+                    float                                weight {0.0f};
+                };
+                std::vector<ActiveClip> active;
+                active.reserve(weights.size());
+                for (size_t i = 0; i < weights.size(); ++i)
+                {
+                    if (weights[i] <= 1.0e-4f)
+                        continue;
+                    ActiveClip clip;
+                    clip.weight = weights[i];
+                    if (sampleClip(runtimeAnimation(st.blendTree.entries[i].animation), ratio, clip.locals))
+                        active.push_back(std::move(clip));
+                }
+                if (active.empty())
+                    return false;
+                if (active.size() == 1)
+                {
+                    out = std::move(active.front().locals);
+                    return true;
+                }
+
+                std::vector<ozz::animation::BlendingJob::Layer> layers;
+                layers.reserve(active.size());
+                for (auto& clip : active)
+                {
+                    ozz::animation::BlendingJob::Layer layer;
+                    layer.transform = ozz::make_span(clip.locals);
+                    layer.weight    = clip.weight;
+                    layers.push_back(layer);
+                }
+                out.resize(skeleton->num_soa_joints());
+                ozz::animation::BlendingJob blend;
+                blend.layers    = ozz::make_span(layers);
+                blend.rest_pose = skeleton->joint_rest_poses();
+                blend.output    = ozz::make_span(out);
+                return blend.Run();
             };
 
             ozz::vector<ozz::math::SoaTransform> localsA;
@@ -675,6 +815,34 @@ namespace vultra
             palette.matrices.resize(models.size());
             for (size_t i = 0; i < models.size(); ++i)
                 palette.matrices[i] = toGlm(models[i]);
+
+            // Root motion (graph mode, opt-in): move the entity by the root joint's horizontal
+            // delta and keep the displayed skeleton centered. Skipped during cross-fades and on
+            // the loop-wrap frame. Joint 0 is assumed to be the skeleton root.
+            if (cc.applyRootMotion && rt->targetState < 0 && !palette.matrices.empty())
+            {
+                auto* transform = reg.try_get<TransformComponent>(entity);
+                if (transform)
+                {
+                    const glm::mat4& rootMatrix = palette.matrices[0];
+                    const glm::vec2  rootXZ {rootMatrix[3].x, rootMatrix[3].z};
+                    if (rt->hasPrevRoot && !currentLooped)
+                    {
+                        const glm::vec2 deltaXZ = rootXZ - rt->prevRootXZ;
+                        transform->position += transform->rotation * glm::vec3 {deltaXZ.x, 0.0f, deltaXZ.y};
+                        transform->dirty = true;
+                    }
+                    rt->prevRootXZ  = rootXZ;
+                    rt->hasPrevRoot = true;
+                    // Remove the accumulated horizontal root translation from the pose so the
+                    // mesh stays at the entity origin while the transform carries the motion.
+                    for (auto& m : palette.matrices)
+                    {
+                        m[3].x -= rootXZ.x;
+                        m[3].z -= rootXZ.y;
+                    }
+                }
+            }
         }
     }
 

@@ -41,6 +41,7 @@ namespace vultra
         bool isPlaybackPaused() const override { return m_PlaybackPaused; }
         void requestSingleStep() override;
         bool runString(std::string_view code) override;
+        void dispatchAnimationEvent(entt::entity e, std::string_view eventName) override;
 
     private:
         using InstanceMap = std::unordered_map<entt::entity, std::unique_ptr<ScriptInstance>>;
@@ -52,6 +53,7 @@ namespace vultra
         void setInstanceEnabled(ScriptInstance& inst, bool enabled);
         void stopCoroutines(entt::entity e);
         void tickCoroutines(float dt);
+        void tickTweens(float dt);
         void dispatchContactCallbacks();
         void dispatchContactEvent(entt::entity target, entt::entity other, bool sensor, int phase);
 

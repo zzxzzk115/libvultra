@@ -31,6 +31,10 @@ namespace vultra
         sol::protected_function onTriggerStay;
         sol::protected_function onTriggerExit;
 
+        // Keyframe animation event, dispatched by ScriptSystem when the animation
+        // system crosses a state event time: OnAnimationEvent(self, name).
+        sol::protected_function onAnimationEvent;
+
         std::string loadedUri;
         bool        valid {false};
         bool        enabled {true};

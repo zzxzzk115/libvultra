@@ -86,6 +86,17 @@ namespace vultra
     VBIND_FN(module = Physics, name = setLayerCollision, body = shim) void physicsSetLayerCollision(ScriptContext& ctx, std::uint32_t a, std::uint32_t b, bool enabled);
     VBIND_FN(module = Physics, name = layerCollision, body = shim) bool physicsLayerCollision(ScriptContext& ctx, std::uint32_t a, std::uint32_t b);
 
+    // --- Constraints / joints --- (bodyB omitted/nil => anchored to the world)
+    VBIND_FN(module = Physics, name = addFixedConstraint, body = shim) std::uint32_t physicsAddFixedConstraint(ScriptContext& ctx, const ScriptEntity& bodyA, sol::optional<ScriptEntity> bodyB);
+    VBIND_FN(module = Physics, name = addPointConstraint, body = shim) std::uint32_t physicsAddPointConstraint(ScriptContext& ctx, const ScriptEntity& bodyA, sol::optional<ScriptEntity> bodyB, const ScriptVec3& point);
+    VBIND_FN(module = Physics, name = addDistanceConstraint, body = shim) std::uint32_t physicsAddDistanceConstraint(ScriptContext& ctx, const ScriptEntity& bodyA, sol::optional<ScriptEntity> bodyB, float minDistance, float maxDistance);
+    VBIND_FN(module = Physics, name = addHingeConstraint, body = shim) std::uint32_t physicsAddHingeConstraint(ScriptContext& ctx, const ScriptEntity& bodyA, sol::optional<ScriptEntity> bodyB, const ScriptVec3& point, const ScriptVec3& axis, float minAngleDegrees, float maxAngleDegrees);
+    VBIND_FN(module = Physics, name = addSliderConstraint, body = shim) std::uint32_t physicsAddSliderConstraint(ScriptContext& ctx, const ScriptEntity& bodyA, sol::optional<ScriptEntity> bodyB, const ScriptVec3& point, const ScriptVec3& axis, float minDistance, float maxDistance);
+    VBIND_FN(module = Physics, name = addConeConstraint, body = shim) std::uint32_t physicsAddConeConstraint(ScriptContext& ctx, const ScriptEntity& bodyA, sol::optional<ScriptEntity> bodyB, const ScriptVec3& point, const ScriptVec3& twistAxis, float halfAngleDegrees);
+    VBIND_FN(module = Physics, name = removeConstraint, body = shim) bool physicsRemoveConstraint(ScriptContext& ctx, std::uint32_t constraintId);
+    VBIND_FN(module = Physics, name = isConstraintValid, body = shim) bool physicsIsConstraintValid(ScriptContext& ctx, std::uint32_t constraintId);
+    VBIND_FN(module = Physics, name = setConstraintMotor, body = shim) bool physicsSetConstraintMotor(ScriptContext& ctx, std::uint32_t constraintId, bool enabled, float targetVelocity, float maxForce);
+
     // --- Character namespace ---
     VBIND_FN(module = Character, name = has, body = shim) bool characterHas(ScriptContext& ctx, const ScriptEntity& entity);
     VBIND_FN(module = Character, name = move, body = shim) bool characterMove(ScriptContext& ctx, const ScriptEntity& entity, const ScriptVec3& horizontalVelocity);

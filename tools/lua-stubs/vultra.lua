@@ -108,6 +108,84 @@ function wait(seconds) end
 ---@param frames integer
 function waitFrames(frames) end
 
+--- Easing functions: map a normalized t in [0,1] to an eased value in [0,1].
+--- Pass one as `opts.ease` to Tween.to (e.g. Ease.cubicInOut).
+---@class Ease
+---@field linear fun(t:number):number
+---@field quadIn fun(t:number):number
+---@field quadOut fun(t:number):number
+---@field quadInOut fun(t:number):number
+---@field cubicIn fun(t:number):number
+---@field cubicOut fun(t:number):number
+---@field cubicInOut fun(t:number):number
+---@field sineIn fun(t:number):number
+---@field sineOut fun(t:number):number
+---@field sineInOut fun(t:number):number
+---@field expoIn fun(t:number):number
+---@field expoOut fun(t:number):number
+---@field backOut fun(t:number):number
+---@field bounceOut fun(t:number):number
+Ease = {}
+
+--- Frame-driven tweening of a table's numeric fields.
+---@class Tween
+Tween = {}
+
+--- Interpolate `obj`'s fields toward `toFields` over `duration` seconds.
+--- `opts` is an optional table: { ease = fun(t):number, onUpdate = fun(t), onComplete = fun() }.
+---@param obj table
+---@param toFields table @ { field = targetNumber, ... }
+---@param duration number @ seconds
+---@param opts? table
+---@return integer handle @ pass to Tween.cancel
+function Tween.to(obj, toFields, duration, opts) end
+
+--- Cancel a running tween.
+---@param handle integer
+function Tween.cancel(handle) end
+
+--- Delayed and repeating callbacks driven by the frame tick.
+---@class Timer
+Timer = {}
+
+--- Call `fn` once after `seconds`.
+---@param seconds number
+---@param fn fun()
+---@return integer handle
+function Timer.after(seconds, fn) end
+
+--- Call `fn` every `seconds`; returning false from `fn` stops the timer.
+---@param seconds number
+---@param fn fun():boolean?
+---@return integer handle
+function Timer.every(seconds, fn) end
+
+--- Cancel a running timer.
+---@param handle integer
+function Timer.cancel(handle) end
+
+--- An ordered sequence of waits and calls. Chain `:wait`/`:call`, then `:start`.
+---@class Timeline
+Timeline = {}
+
+--- Create a new timeline.
+---@return Timeline
+function Timeline.new() end
+
+--- Append a wait step (seconds). Returns self for chaining.
+---@param seconds number
+---@return Timeline
+function Timeline:wait(seconds) end
+
+--- Append a call step. Returns self for chaining.
+---@param fn fun()
+---@return Timeline
+function Timeline:call(fn) end
+
+--- Start running the timeline.
+---@return integer handle
+function Timeline:start() end
+
 --- Keyboard and mouse polling. Boolean queries are isX; value queries are nouns.
 ---@class Input
 Input = {}
@@ -1166,6 +1244,101 @@ function Input.mousePositionDelta() end
 ---@return Vec2
 function Input.mouseScrollDelta() end
 
+---@return boolean
+function Input.isGamepadConnected() end
+
+---@param button GamepadButton
+---@return boolean
+function Input.isGamepadButtonHeld(button) end
+
+---@param button GamepadButton
+---@return boolean
+function Input.isGamepadButtonPressed(button) end
+
+---@param button GamepadButton
+---@return boolean
+function Input.isGamepadButtonReleased(button) end
+
+---@param axis GamepadAxis
+---@return number
+function Input.gamepadAxis(axis) end
+
+---@param lowFrequency number
+---@param highFrequency number
+---@param durationMs integer
+function Input.rumble(lowFrequency, highFrequency, durationMs) end
+
+---@param action string
+---@return boolean
+function Input.hasAction(action) end
+
+---@param action string
+---@return boolean
+function Input.isActionHeld(action) end
+
+---@param action string
+---@return boolean
+function Input.isActionPressed(action) end
+
+---@param action string
+---@return boolean
+function Input.isActionReleased(action) end
+
+---@param action string
+---@return number
+function Input.actionAxis(action) end
+
+---@param action string
+function Input.clearActionEvents(action) end
+
+---@param action string
+---@param key KeyCode
+function Input.bindActionKey(action, key) end
+
+---@param action string
+---@param button MouseCode
+function Input.bindActionMouseButton(action, button) end
+
+---@param action string
+---@param button GamepadButton
+function Input.bindActionGamepadButton(action, button) end
+
+---@param action string
+---@param axis GamepadAxis
+---@param scale number
+function Input.bindActionGamepadAxis(action, axis, scale) end
+
+--- `Nav` namespace (generated).
+---@class Nav
+Nav = {}
+
+function Nav.bake() end
+
+function Nav.isBaked() end
+
+---@param luaState any
+---@param start any
+---@param end any
+function Nav.findPath(luaState, start, end) end
+
+---@param point any
+function Nav.nearestPoint(point) end
+
+---@param entity any
+---@param target any
+function Nav.setAgentDestination(entity, target) end
+
+---@param entity any
+function Nav.stopAgent(entity) end
+
+---@param entity any
+function Nav.agentHasPath(entity) end
+
+---@param enabled any
+function Nav.setDebugDrawEnabled(enabled) end
+
+function Nav.debugDrawEnabled() end
+
 --- `Physics` namespace (generated).
 ---@class Physics
 Physics = {}
@@ -1276,6 +1449,56 @@ function Physics.setLayerCollision(a, b, enabled) end
 ---@param b any
 function Physics.layerCollision(a, b) end
 
+---@param bodyA any
+---@param bodyB any
+function Physics.addFixedConstraint(bodyA, bodyB) end
+
+---@param bodyA any
+---@param bodyB any
+---@param point any
+function Physics.addPointConstraint(bodyA, bodyB, point) end
+
+---@param bodyA any
+---@param bodyB any
+---@param minDistance any
+---@param maxDistance any
+function Physics.addDistanceConstraint(bodyA, bodyB, minDistance, maxDistance) end
+
+---@param bodyA any
+---@param bodyB any
+---@param point any
+---@param axis any
+---@param minAngleDegrees any
+---@param maxAngleDegrees any
+function Physics.addHingeConstraint(bodyA, bodyB, point, axis, minAngleDegrees, maxAngleDegrees) end
+
+---@param bodyA any
+---@param bodyB any
+---@param point any
+---@param axis any
+---@param minDistance any
+---@param maxDistance any
+function Physics.addSliderConstraint(bodyA, bodyB, point, axis, minDistance, maxDistance) end
+
+---@param bodyA any
+---@param bodyB any
+---@param point any
+---@param twistAxis any
+---@param halfAngleDegrees any
+function Physics.addConeConstraint(bodyA, bodyB, point, twistAxis, halfAngleDegrees) end
+
+---@param constraintId any
+function Physics.removeConstraint(constraintId) end
+
+---@param constraintId any
+function Physics.isConstraintValid(constraintId) end
+
+---@param constraintId any
+---@param enabled any
+---@param targetVelocity any
+---@param maxForce any
+function Physics.setConstraintMotor(constraintId, enabled, targetVelocity, maxForce) end
+
 --- `Render` namespace (generated).
 ---@class Render
 Render = {}
@@ -1310,6 +1533,42 @@ function RenderBackend.isXRMirrorEnabled() end
 
 function RenderBackend.isExitRequested() end
 
+--- `Save` namespace (generated).
+---@class Save
+Save = {}
+
+---@param key any
+---@param value any
+function Save.set(key, value) end
+
+---@param luaState any
+---@param key any
+---@param fallback any
+function Save.get(luaState, key, fallback) end
+
+---@param key any
+function Save.has(key) end
+
+---@param key any
+function Save.remove(key) end
+
+function Save.clear() end
+
+---@param slot any
+function Save.save(slot) end
+
+---@param slot any
+function Save.load(slot) end
+
+---@param slot any
+function Save.hasSlot(slot) end
+
+---@param slot any
+function Save.deleteSlot(slot) end
+
+---@param luaState any
+function Save.listSlots(luaState) end
+
 --- `Scene` namespace (generated).
 ---@class Scene
 Scene = {}
@@ -1331,6 +1590,12 @@ function Scene.saveWorld(uri) end
 ---@param uri any
 ---@param root any
 function Scene.saveEntity(uri, root) end
+
+---@param entity any
+function Scene.dontDestroyOnLoad(entity) end
+
+---@param entity any
+function Scene.isPersistent(entity) end
 
 --- `Script` namespace (generated).
 ---@class Script
@@ -1565,6 +1830,11 @@ function Mesh:clearMaterialProperty(slot, name) end
 
 function Mesh:clearMaterialProperties(slot) end
 
+--- NavAgent usertype (generated).
+---@class NavAgent
+---@field valid boolean @ read-only
+local NavAgent = {}
+
 --- ParticleEmitter usertype (generated).
 ---@class ParticleEmitter
 ---@field valid boolean @ read-only
@@ -1664,7 +1934,39 @@ CameraControlMode = {}
 ---@field UiToggle integer
 ---@field UiSlider integer
 ---@field UiProgressBar integer
+---@field NavAgent integer
 Component = {}
+
+--- Enum generated from vultra::GamepadAxis.
+---@class GamepadAxis
+---@field LeftX integer
+---@field LeftY integer
+---@field RightX integer
+---@field RightY integer
+---@field LeftTrigger integer
+---@field RightTrigger integer
+---@field Count integer
+GamepadAxis = {}
+
+--- Enum generated from vultra::GamepadButton.
+---@class GamepadButton
+---@field South integer
+---@field East integer
+---@field West integer
+---@field North integer
+---@field Back integer
+---@field Guide integer
+---@field Start integer
+---@field LeftStick integer
+---@field RightStick integer
+---@field LeftShoulder integer
+---@field RightShoulder integer
+---@field DpadUp integer
+---@field DpadDown integer
+---@field DpadLeft integer
+---@field DpadRight integer
+---@field Count integer
+GamepadButton = {}
 
 --- Enum generated from vultra::GaussianSplatBaselineMode.
 ---@class GaussianSplatBaselineMode

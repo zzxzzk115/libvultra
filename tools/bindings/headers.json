@@ -19,6 +19,8 @@
     "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
     "source/vultra/include/vultra/function/scripting/bindings/script_world_shim.hpp",
     "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
+    "source/vultra/include/vultra/function/scripting/bindings/script_nav_shim.hpp",
+    "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
     "source/vultra/include/vultra/function/scripting/bindings/script_math_shim.hpp",
     "source/vultra/include/vultra/function/scripting/bindings/script_ui_shim.hpp",
     "source/vultra/include/vultra/function/scripting/bindings/script_editor_shim.hpp",
@@ -30,6 +32,7 @@
     "source/vultra/include/vultra/function/world/components/cylinder_shape_component.hpp",
     "source/vultra/include/vultra/function/world/components/environment_component.hpp",
     "source/vultra/include/vultra/function/world/components/light_component.hpp",
+    "source/vultra/include/vultra/function/world/components/nav_agent_component.hpp",
     "source/vultra/include/vultra/function/world/components/particle_emitter_component.hpp",
     "source/vultra/include/vultra/function/world/components/reflection_probe_component.hpp",
     "source/vultra/include/vultra/function/world/components/sphere_shape_component.hpp"

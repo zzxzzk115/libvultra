@@ -209,6 +209,42 @@ namespace vultra
                 [&ctx](std::uint32_t a, std::uint32_t b) {
                     return physicsLayerCollision(ctx, a, b);
                 });
+            ns.set_function("addFixedConstraint",
+                [&ctx](const ScriptEntity & bodyA, sol::optional<ScriptEntity> bodyB) {
+                    return physicsAddFixedConstraint(ctx, bodyA, bodyB);
+                });
+            ns.set_function("addPointConstraint",
+                [&ctx](const ScriptEntity & bodyA, sol::optional<ScriptEntity> bodyB, const ScriptVec3 & point) {
+                    return physicsAddPointConstraint(ctx, bodyA, bodyB, point);
+                });
+            ns.set_function("addDistanceConstraint",
+                [&ctx](const ScriptEntity & bodyA, sol::optional<ScriptEntity> bodyB, float minDistance, float maxDistance) {
+                    return physicsAddDistanceConstraint(ctx, bodyA, bodyB, minDistance, maxDistance);
+                });
+            ns.set_function("addHingeConstraint",
+                [&ctx](const ScriptEntity & bodyA, sol::optional<ScriptEntity> bodyB, const ScriptVec3 & point, const ScriptVec3 & axis, float minAngleDegrees, float maxAngleDegrees) {
+                    return physicsAddHingeConstraint(ctx, bodyA, bodyB, point, axis, minAngleDegrees, maxAngleDegrees);
+                });
+            ns.set_function("addSliderConstraint",
+                [&ctx](const ScriptEntity & bodyA, sol::optional<ScriptEntity> bodyB, const ScriptVec3 & point, const ScriptVec3 & axis, float minDistance, float maxDistance) {
+                    return physicsAddSliderConstraint(ctx, bodyA, bodyB, point, axis, minDistance, maxDistance);
+                });
+            ns.set_function("addConeConstraint",
+                [&ctx](const ScriptEntity & bodyA, sol::optional<ScriptEntity> bodyB, const ScriptVec3 & point, const ScriptVec3 & twistAxis, float halfAngleDegrees) {
+                    return physicsAddConeConstraint(ctx, bodyA, bodyB, point, twistAxis, halfAngleDegrees);
+                });
+            ns.set_function("removeConstraint",
+                [&ctx](std::uint32_t constraintId) {
+                    return physicsRemoveConstraint(ctx, constraintId);
+                });
+            ns.set_function("isConstraintValid",
+                [&ctx](std::uint32_t constraintId) {
+                    return physicsIsConstraintValid(ctx, constraintId);
+                });
+            ns.set_function("setConstraintMotor",
+                [&ctx](std::uint32_t constraintId, bool enabled, float targetVelocity, float maxForce) {
+                    return physicsSetConstraintMotor(ctx, constraintId, enabled, targetVelocity, maxForce);
+                });
         }
 
         {

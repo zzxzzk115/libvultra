@@ -11,12 +11,15 @@
 #include "vultra/function/scripting/bindings/script_imgui_binding.hpp"
 #include "vultra/function/scripting/bindings/script_input_binding.hpp"
 #include "vultra/function/scripting/bindings/script_math_binding.hpp"
+#include "vultra/function/scripting/bindings/script_navigation_binding.hpp"
 #include "vultra/function/scripting/bindings/script_physics_binding.hpp"
 #include "vultra/function/scripting/bindings/script_render_binding.hpp"
+#include "vultra/function/scripting/bindings/script_save_binding.hpp"
 #include "vultra/function/scripting/bindings/script_scene_binding.hpp"
 #include "vultra/function/scripting/bindings/script_script_binding.hpp"
 #include "vultra/function/scripting/bindings/script_timing_binding.hpp"
 #include "vultra/function/scripting/bindings/script_transform_binding.hpp"
+#include "vultra/function/scripting/bindings/script_tween_binding.hpp"
 #include "vultra/function/scripting/bindings/script_ui_binding.hpp"
 #include "vultra/function/scripting/bindings/script_upscaler_binding.hpp"
 #include "vultra/function/scripting/bindings/script_world_binding.hpp"
@@ -30,6 +33,8 @@ namespace vultra
         registerScriptEntityBindings(lua, ctx);
         registerScriptWorldBindings(lua, ctx);
         registerScriptPhysicsBindings(lua, ctx);
+        registerScriptNavigationBindings(lua, ctx);
+        registerScriptSaveBindings(lua, ctx);
         registerScriptAnimationBindings(lua, ctx);
         registerScriptAudioBindings(lua, ctx);
         registerScriptInputBindings(lua, ctx);
@@ -42,6 +47,7 @@ namespace vultra
         registerScriptUiBindings(lua, ctx);
         registerScriptComponentsBindings(lua, ctx);
         registerScriptCoroutineRuntime(lua);
+        registerScriptTweenRuntime(lua);
         registerScriptImGuiBindings(lua, ctx);  // no-op without IImGuiService
         registerScriptEditorBindings(lua, ctx); // no-op without IEditorExtensionService
 

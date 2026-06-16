@@ -14,7 +14,9 @@
 #include "vultra/function/services/editor_extension_service.hpp"
 #include "vultra/function/services/frame_debugger_service.hpp"
 #include "vultra/function/services/imgui_service.hpp"
+#include "vultra/function/services/navigation_service.hpp"
 #include "vultra/function/services/physics_service.hpp"
+#include "vultra/function/services/save_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/render_service.hpp"
 #include "vultra/function/services/scene_service.hpp"
@@ -57,6 +59,8 @@ namespace vultra
         m_ScriptContext.audioService         = ctx().services.tryGet<IAudioService>();
         m_ScriptContext.uiService            = ctx().services.tryGet<IUiService>();
         m_ScriptContext.imguiService         = ctx().services.tryGet<IImGuiService>();
+        m_ScriptContext.navService           = ctx().services.tryGet<INavigationService>();
+        m_ScriptContext.saveService          = ctx().services.tryGet<ISaveService>();
 
         // ScriptSystem owns the editor-extension registry (registrations come
         // from Lua) and publishes it; the editor app consumes it when present.
@@ -128,6 +132,7 @@ namespace vultra
 
         dispatchScriptUiSignals(m_Engine.lua(), m_ScriptContext);
         tickCoroutines(dt.count());
+        tickTweens(dt.count());
     }
 
     void ScriptSystem::onPhysics(fsec /*dt*/)
@@ -263,6 +268,7 @@ namespace vultra
         inst->onTriggerEnter   = inst->env["OnTriggerEnter"];
         inst->onTriggerStay    = inst->env["OnTriggerStay"];
         inst->onTriggerExit    = inst->env["OnTriggerExit"];
+        inst->onAnimationEvent = inst->env["OnAnimationEvent"];
         inst->valid            = true;
 
         VULTRA_CORE_INFO(
@@ -337,6 +343,22 @@ namespace vultra
         }
     }
 
+    void ScriptSystem::tickTweens(float dt)
+    {
+        sol::table tween = m_Engine.lua()["__vultraTween"];
+        if (!tween.valid())
+            return;
+        sol::protected_function tick = tween["tick"];
+        if (!tick.valid())
+            return;
+        sol::protected_function_result r = tick(dt);
+        if (!r.valid())
+        {
+            sol::error err = r;
+            VULTRA_CORE_ERROR("[ScriptSystem] tween tick error: {}", err.what());
+        }
+    }
+
     void ScriptSystem::dispatchContactCallbacks()
     {
         auto* physicsSvc = m_ScriptContext.physicsService;
@@ -389,6 +411,27 @@ namespace vultra
         }
 
         m_PrevContacts = std::move(current);
+    }
+
+    void ScriptSystem::dispatchAnimationEvent(entt::entity e, std::string_view eventName)
+    {
+        auto it = m_Instances.find(e);
+        if (it == m_Instances.end() || !it->second)
+            return;
+
+        auto& inst = *it->second;
+        if (!inst.valid || !inst.enabled || !inst.onAnimationEvent.valid())
+            return;
+
+        sol::protected_function_result r = inst.onAnimationEvent(inst.env["self"], std::string(eventName));
+        if (!r.valid())
+        {
+            sol::error err = r;
+            VULTRA_CORE_ERROR("[ScriptSystem] OnAnimationEvent({}) error for entity {}: {}",
+                              eventName,
+                              static_cast<uint32_t>(e),
+                              err.what());
+        }
     }
 
     void ScriptSystem::dispatchContactEvent(entt::entity target, entt::entity other, bool sensor, int phase)
@@ -590,6 +633,10 @@ namespace vultra
         sol::table coroutines = m_Engine.lua()["__vultraCoroutines"];
         if (coroutines.valid())
             coroutines["reset"]();
+
+        sol::table tween = m_Engine.lua()["__vultraTween"];
+        if (tween.valid())
+            tween["reset"]();
     }
 
     lua_State* ScriptSystem::luaState() { return m_Engine.lua().lua_state(); }

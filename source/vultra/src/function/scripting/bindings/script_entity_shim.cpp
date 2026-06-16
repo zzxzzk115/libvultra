@@ -12,6 +12,7 @@
 #include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
+#include "vultra/function/world/components/nav_agent_component.hpp"
 #include "vultra/function/world/components/particle_emitter_component.hpp"
 #include "vultra/function/world/components/reflection_probe_component.hpp"
 #include "vultra/function/world/components/rigid_body_component.hpp"
@@ -42,7 +43,8 @@
     X(eUiButton, UiButtonComponent, ScriptUiButtonRef)                                              \
     X(eUiToggle, UiToggleComponent, ScriptUiToggleRef)                                              \
     X(eUiSlider, UiSliderComponent, ScriptUiSliderRef)                                              \
-    X(eUiProgressBar, UiProgressBarComponent, ScriptUiProgressBarRef)
+    X(eUiProgressBar, UiProgressBarComponent, ScriptUiProgressBarRef)                               \
+    X(eNavAgent, NavAgentComponent, ScriptNavAgentRef)
 
 namespace vultra
 {

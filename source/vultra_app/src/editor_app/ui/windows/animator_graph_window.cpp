@@ -801,13 +801,15 @@ namespace vultra_app
             }
         }
 
-        // Clip selector - pick an animation asset from the project registry (no manual UUIDs).
-        {
-            auto*             assets     = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
-            const std::string currentKey = state.animation.valid() ? state.animation.toString() : std::string {};
+        // Clip picker (reused for the single clip and for each blend-tree entry): choose an
+        // animation asset from the project registry, no manual UUIDs.
+        auto* assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
+        const auto clipCombo = [&](const char* id, vultra::CoreUUID& target) -> bool {
+            bool              changed    = false;
+            const std::string currentKey = target.valid() ? target.toString() : std::string {};
             std::string       preview    = vultra::tr("common.none");
             std::string       currentSource;
-            if (assets && state.animation.valid())
+            if (assets && target.valid())
             {
                 const auto& reg = assets->registry().getRegistry();
                 const auto  it  = reg.find(currentKey);
@@ -817,15 +819,14 @@ namespace vultra_app
                     preview       = clipDisplayName(currentSource);
                 }
                 else
-                    preview = shortUuid(state.animation);
+                    preview = shortUuid(target);
             }
-            ImGui::SetNextItemWidth(vultra::ui::dp(-72.0f)); // wide combo, leave room for the "Clip" label
-            if (ImGui::BeginCombo(vultra::tr("animatorGraph.field.clip"), preview.c_str()))
+            if (ImGui::BeginCombo(id, preview.c_str()))
             {
-                if (ImGui::Selectable(vultra::tr("common.none"), !state.animation.valid()))
+                if (ImGui::Selectable(vultra::tr("common.none"), !target.valid()))
                 {
-                    state.animation = {};
-                    markDirty();
+                    target  = {};
+                    changed = true;
                 }
                 if (assets)
                 {
@@ -840,8 +841,8 @@ namespace vultra_app
                         {
                             vbase::UUID parsed {};
                             vbase::try_parse_uuid(uuidStr.c_str(), parsed);
-                            state.animation = vultra::CoreUUID {parsed};
-                            markDirty();
+                            target  = vultra::CoreUUID {parsed};
+                            changed = true;
                         }
                         if (ImGui::IsItemHovered())
                             ImGui::SetTooltip("%s", source.c_str());
@@ -851,14 +852,122 @@ namespace vultra_app
                 }
                 ImGui::EndCombo();
             }
-            // Full source path on hover so the exact clip is always identifiable.
             if (ImGui::IsItemHovered() && !currentSource.empty())
                 ImGui::SetTooltip("%s", currentSource.c_str());
-        }
+            return changed;
+        };
+
+        // Single clip (overridden by the blend tree when one is configured).
+        ImGui::BeginDisabled(state.hasBlendTree());
+        ImGui::SetNextItemWidth(vultra::ui::dp(-72.0f));
+        if (clipCombo(vultra::tr("animatorGraph.field.clip"), state.animation))
+            markDirty();
+        ImGui::EndDisabled();
         if (ImGui::DragFloat(vultra::tr("animatorGraph.field.speed"), &state.speed, 0.02f, 0.0f, 8.0f))
             markDirty();
         if (ImGui::Checkbox(vultra::tr("animatorGraph.field.loop"), &state.loop))
             markDirty();
+
+        // --- Blend tree (1D) ---
+        ImGui::SeparatorText(vultra::tr("animatorGraph.section.blendTree"));
+        bool useBlend = state.hasBlendTree();
+        if (ImGui::Checkbox(vultra::tr("animatorGraph.field.useBlendTree"), &useBlend))
+        {
+            if (useBlend && state.blendTree.entries.empty())
+            {
+                if (state.blendTree.parameter.empty())
+                    state.blendTree.parameter = "speed";
+                state.blendTree.entries.push_back(ag::BlendEntry {.animation = state.animation, .threshold = 0.0f});
+            }
+            else if (!useBlend)
+                state.blendTree.entries.clear();
+            markDirty();
+        }
+        if (state.hasBlendTree())
+        {
+            std::array<char, 64> paramBuf {};
+            std::snprintf(paramBuf.data(), paramBuf.size(), "%s", state.blendTree.parameter.c_str());
+            ImGui::SetNextItemWidth(vultra::ui::dp(-120.0f));
+            if (ImGui::InputText(vultra::tr("animatorGraph.field.blendParameter"),
+                                 paramBuf.data(),
+                                 paramBuf.size()))
+            {
+                state.blendTree.parameter = paramBuf.data();
+                markDirty();
+            }
+
+            int  removeEntry = -1;
+            bool reorder     = false;
+            for (size_t i = 0; i < state.blendTree.entries.size(); ++i)
+            {
+                auto& entry = state.blendTree.entries[i];
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::SetNextItemWidth(vultra::ui::dp(90.0f));
+                if (ImGui::DragFloat("##threshold", &entry.threshold, 0.02f))
+                {
+                    markDirty();
+                    reorder = true;
+                }
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(vultra::ui::dp(-32.0f));
+                if (clipCombo("##entryClip", entry.animation))
+                    markDirty();
+                ImGui::SameLine();
+                if (ImGui::Button(ICON_MDI_DELETE "##delEntry"))
+                    removeEntry = static_cast<int>(i);
+                ImGui::PopID();
+            }
+            if (removeEntry >= 0)
+            {
+                state.blendTree.entries.erase(state.blendTree.entries.begin() + removeEntry);
+                markDirty();
+            }
+            if (ImGui::Button((std::string {ICON_MDI_PLUS " "} + vultra::tr("animatorGraph.field.addBlendEntry")).c_str()))
+            {
+                state.blendTree.entries.push_back(ag::BlendEntry {.animation = {}, .threshold = 0.0f});
+                markDirty();
+            }
+            // Keep entries sorted by threshold so the runtime's 1D lookup is correct.
+            if (reorder)
+                std::sort(state.blendTree.entries.begin(),
+                          state.blendTree.entries.end(),
+                          [](const ag::BlendEntry& a, const ag::BlendEntry& b) { return a.threshold < b.threshold; });
+        }
+
+        // --- Keyframe events ---
+        ImGui::SeparatorText(vultra::tr("animatorGraph.section.events"));
+        int eventRemove = -1;
+        for (size_t i = 0; i < state.events.size(); ++i)
+        {
+            auto& ev = state.events[i];
+            ImGui::PushID(static_cast<int>(i + 1000));
+            std::array<char, 64> evBuf {};
+            std::snprintf(evBuf.data(), evBuf.size(), "%s", ev.name.c_str());
+            ImGui::SetNextItemWidth(vultra::ui::dp(140.0f));
+            if (ImGui::InputText("##evName", evBuf.data(), evBuf.size()))
+            {
+                ev.name = evBuf.data();
+                markDirty();
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(vultra::ui::dp(-32.0f));
+            if (ImGui::SliderFloat("##evTime", &ev.normalizedTime, 0.0f, 1.0f))
+                markDirty();
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_MDI_DELETE "##delEvent"))
+                eventRemove = static_cast<int>(i);
+            ImGui::PopID();
+        }
+        if (eventRemove >= 0)
+        {
+            state.events.erase(state.events.begin() + eventRemove);
+            markDirty();
+        }
+        if (ImGui::Button((std::string {ICON_MDI_PLUS " "} + vultra::tr("animatorGraph.field.addEvent")).c_str()))
+        {
+            state.events.push_back(ag::Event {.name = "event", .normalizedTime = 0.0f});
+            markDirty();
+        }
 
         const bool isEntry = m_Graph.entry == state.name;
         ImGui::BeginDisabled(isEntry);

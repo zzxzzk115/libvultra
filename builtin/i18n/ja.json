@@ -1,6 +1,12 @@
 {
   "inspector": {
     "field": {
+      "stoppingDistance": "停止距離",
+      "targetPosition": "目標位置",
+      "hasTarget": "目標あり",
+      "moving": "移動中",
+      "keepOnLoad": "ロード時に保持",
+      "applyRootMotion": "ルートモーションを適用",
       "active": "アクティブ",
       "allowSleeping": "スリープを許可",
       "ambientColor": "アンビエントカラー",
@@ -208,7 +214,10 @@
       "prefab": "プレハブ",
       "material": "マテリアル",
       "audioSource": "オーディオソース",
-      "audioListener": "オーディオリスナー"
+      "audioListener": "オーディオリスナー",
+      "characterController": "キャラクターコントローラー",
+      "navAgent": "ナビゲーションエージェント",
+      "persistent": "永続 (DontDestroyOnLoad)"
     },
     "category": {
       "core": "コア",
@@ -217,6 +226,7 @@
       "animation": "アニメーション",
       "lighting": "ライティング",
       "physics": "物理",
+      "navigation": "ナビゲーション",
       "camera": "カメラ",
       "scripting": "スクリプティング",
       "audio": "オーディオ"
@@ -941,14 +951,20 @@
       "graph": "グラフ",
       "parameters": "パラメーター",
       "state": "ステート",
-      "transition": "トランジション"
+      "transition": "トランジション",
+      "blendTree": "ブレンドツリー (1D)",
+      "events": "イベント"
     },
     "field": {
       "entry": "エントリ",
       "clip": "クリップ",
       "speed": "速度",
       "loop": "ループ",
-      "noAnimationAssets": "(アニメーションアセットが未インポート)"
+      "noAnimationAssets": "(アニメーションアセットが未インポート)",
+      "useBlendTree": "ブレンドツリーを使用",
+      "blendParameter": "パラメーター (浮動小数点)",
+      "addBlendEntry": "ブレンド項目を追加",
+      "addEvent": "イベントを追加"
     },
     "param": {
       "add": "パラメーターを追加",
@@ -1059,11 +1075,19 @@
       "buildScenes": "ビルドシーン",
       "packaging": "パッケージング",
       "plugins": "プラグイン",
+      "input": "入力マップ",
       "engine": "エンジン",
       "general": "一般",
       "rendering": "レンダリング",
       "materials": "マテリアル",
       "scripting": "スクリプティング"
+    },
+    "input": {
+      "header": "入力アクション",
+      "save": "input.actions.json を保存",
+      "addAction": "アクションを追加",
+      "deadzone": "デッドゾーン",
+      "addEvent": "イベントを追加"
     },
     "info": {
       "header": "プロジェクト情報",

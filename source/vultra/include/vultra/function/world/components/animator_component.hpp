@@ -29,5 +29,9 @@ namespace vultra
 
         // --- Graph mode ---
         std::string graph; // res:// URI of the .vanimgraph.json
+
+        // Root motion (graph mode): when true, the playing clip's root-joint horizontal
+        // translation drives the entity transform instead of sliding the mesh in place.
+        bool applyRootMotion {false};
     };
 } // namespace vultra

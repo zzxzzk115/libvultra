@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace vultra
 {
@@ -52,6 +53,8 @@ namespace vultra
         entt::entity firstChild(entt::entity e) const;
         entt::entity nextSibling(entt::entity e) const;
         entt::entity parent(entt::entity e) const;
+        // Top-level entities, in sibling order.
+        std::vector<entt::entity> roots() const;
 
     private:
         entt::registry m_Registry;

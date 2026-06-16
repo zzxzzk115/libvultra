@@ -107,11 +107,36 @@ namespace vultra
         glm::vec3 characterGroundNormal(entt::entity entity) const override;
         bool      characterSetPosition(entt::entity entity, const glm::vec3& position) override;
 
+        uint32_t addFixedConstraint(entt::entity bodyA, entt::entity bodyB) override;
+        uint32_t addPointConstraint(entt::entity bodyA, entt::entity bodyB, const glm::vec3& point) override;
+        uint32_t addDistanceConstraint(entt::entity bodyA, entt::entity bodyB, float minDistance, float maxDistance) override;
+        uint32_t addHingeConstraint(entt::entity     bodyA,
+                                    entt::entity     bodyB,
+                                    const glm::vec3& point,
+                                    const glm::vec3& axis,
+                                    float            minAngleDegrees,
+                                    float            maxAngleDegrees) override;
+        uint32_t addSliderConstraint(entt::entity     bodyA,
+                                     entt::entity     bodyB,
+                                     const glm::vec3& point,
+                                     const glm::vec3& axis,
+                                     float            minDistance,
+                                     float            maxDistance) override;
+        uint32_t addConeConstraint(entt::entity     bodyA,
+                                   entt::entity     bodyB,
+                                   const glm::vec3& point,
+                                   const glm::vec3& twistAxis,
+                                   float            halfAngleDegrees) override;
+        bool removeConstraint(uint32_t constraintId) override;
+        bool isConstraintValid(uint32_t constraintId) const override;
+        bool setConstraintMotor(uint32_t constraintId, bool enabled, float targetVelocity, float maxForce) override;
+
     private:
         struct Impl;
         struct BodyRecord;
         struct BodySignature;
         struct CharacterRecord;
+        struct ConstraintRecord;
 
         void ensureJoltGlobals();
         void releaseJoltGlobals();
@@ -133,6 +158,13 @@ namespace vultra
         void clearCharacters();
         bool ensureCharacter(entt::entity entity);
 
+        void removeConstraintsForEntity(entt::entity entity);
+        void clearConstraints();
+        // Locks the two bodies (bodyB == null => world anchor), invokes `create(Body&, Body&)`
+        // to build a Jolt constraint, registers it, and returns its opaque id (0 on failure).
+        template<typename CreateFn>
+        uint32_t createConstraint(entt::entity bodyA, entt::entity bodyB, uint8_t type, CreateFn&& create);
+
         std::unique_ptr<Impl> m_Impl;
 
         IWorldService* m_WorldService {nullptr};
@@ -150,6 +182,7 @@ namespace vultra
         float m_Accumulator {0.0f};
         uint32_t m_FallbackMaxSubSteps {8};
         uint32_t m_PendingSingleSteps {0};
+        uint32_t m_NextConstraintId {1};
 
     };
 } // namespace vultra

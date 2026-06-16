@@ -115,6 +115,7 @@ if not is_plat("wasm") then
 end
 add_requires("vrendergraph v0.3.0", {configs = { debug = is_mode("debug") }})
 add_requires("ozz-animation", {configs = {tools = false, fbx = false, gltf = false, data = false, debug = is_mode("debug")}})
+add_requires("recastnavigation v1.6.0") -- navmesh bake (Recast) + pathfinding (Detour)
 
 -- target defination, name: vultra
 target("vultra")
@@ -192,6 +193,7 @@ target("vultra")
     add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vrendergraph", "sol2", "joltphysics", "ozz-animation", { public = true })
     add_packages("lz4") -- private: only imgui_system.cpp decompresses embedded fonts
     add_packages("freetype") -- private: only the glyph atlas (function/rendering/text) uses the FreeType C API
+    add_packages("recastnavigation") -- private: only the navigation system uses Recast/Detour
     if not is_plat("wasm") then
         add_packages("vulkan-headers", "vulkan-memory-allocator-hpp", { public = true })
     else

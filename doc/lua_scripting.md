@@ -82,6 +82,22 @@ Polling via `Physics.contactEvents()` still works and is unaffected by these
 callbacks. On exit events, `other` may already be invalid -- check
 `other.valid` before touching it.
 
+### Animation Event Callback
+
+If the entity's animator graph defines keyframe events (see **Animation**), the script's
+`OnAnimationEvent(self, name)` is called the frame playback crosses each event's time:
+
+```lua
+function OnAnimationEvent(self, name)
+  if name == "footstep" then
+    Audio.play(self) -- play a footstep SFX
+  end
+end
+```
+
+Events fire on the currently-playing graph state, loop with the clip, and reset across
+transitions (no retroactive burst when a state is entered).
+
 ### Debug UI (ImGui)
 
 In editor and dev builds (when the ImGui service exists), scripts can draw
@@ -170,6 +186,42 @@ end
 - `wait(seconds)` / `waitFrames(n)` suspend the current coroutine.
 - `stopAllCoroutines()` cancels this script's coroutines; they also stop
   automatically on `OnDisable` and `OnDestroy`.
+
+### Tween, Timer, Timeline
+
+Frame-driven gameplay utilities (global tables, advanced once per frame by the script
+system). Unlike coroutines they are global, not per-entity, so cancel handles you no longer
+need and guard callbacks that touch entities (the entity may have been destroyed).
+
+```lua
+-- Tween numeric fields of any table toward targets over a duration.
+local pos = self.transform.position
+Tween.to(pos, { y = pos.y + 2 }, 0.5, {
+  ease = Ease.cubicOut,
+  onUpdate = function(t) self.transform.position = pos end, -- write back each frame
+  onComplete = function() print("done") end,
+})
+
+-- One-shot and repeating timers.
+Timer.after(2.0, function() print("2s later") end)
+local h = Timer.every(0.5, function() spawnEnemy() end) -- return false from fn to stop
+Timer.cancel(h)
+
+-- A small ordered sequencer (cutscene-ish).
+Timeline.new()
+  :call(function() openDoor() end)
+  :wait(1.0)
+  :call(function() spawnBoss() end)
+  :start()
+```
+
+- `Tween.to(obj, toFields, duration, opts?)` -> handle. `opts = { ease, onUpdate(t),
+  onComplete }`. `Tween.cancel(handle)`.
+- `Timer.after(seconds, fn)` / `Timer.every(seconds, fn)` (return `false` from `fn` to stop)
+  -> handle. `Timer.cancel(handle)`.
+- `Timeline.new():wait(s):call(fn):start()` -> handle (chainable).
+- `Ease`: `linear`, `quadIn/Out/InOut`, `cubicIn/Out/InOut`, `sineIn/Out/InOut`,
+  `expoIn/Out`, `backOut`, `bounceOut`.
 
 ## Binding Parity For Engine Work
 
@@ -529,6 +581,100 @@ Mouse functions:
 
 Use `KeyCode` and `MouseCode` enum values rather than integer literals.
 
+### Gamepad
+
+The first connected controller is exposed through `Input` (SDL_Gamepad, Xbox-style names).
+
+```lua
+if Input.isGamepadConnected() then
+  local lx = Input.gamepadAxis(GamepadAxis.LeftX)      -- sticks: [-1, 1]
+  local lt = Input.gamepadAxis(GamepadAxis.LeftTrigger) -- triggers: [0, 1]
+  if Input.isGamepadButtonPressed(GamepadButton.South) then -- A / Cross
+    Input.rumble(0.6, 0.6, 200) -- low, high in [0,1]; duration in ms
+  end
+end
+```
+
+- `Input.isGamepadConnected()`
+- `Input.isGamepadButtonHeld(button)` / `Input.isGamepadButtonPressed(button)` / `Input.isGamepadButtonReleased(button)`
+- `Input.gamepadAxis(axis)`
+- `Input.rumble(lowFrequency, highFrequency, durationMs)`
+
+Use `GamepadButton` (`South`/`East`/`West`/`North`, `Start`, `Back`, `Guide`,
+`LeftShoulder`/`RightShoulder`, `LeftStick`/`RightStick`, `DpadUp`/`DpadDown`/`DpadLeft`/
+`DpadRight`) and `GamepadAxis` (`LeftX`/`LeftY`/`RightX`/`RightY`, `LeftTrigger`/
+`RightTrigger`) enum values.
+
+### Input actions (project-level map)
+
+Godot-style named actions let gameplay bind to intents ("Jump") instead of raw keys, and
+players rebind. Actions are defined in the project file `res://input.actions.json`, loaded at
+startup. Each action has a `deadzone` and a list of `events`; an action is active when any of
+its events is active.
+
+```json
+{
+  "actions": {
+    "Jump":  { "deadzone": 0.5, "events": [ {"key":"Space"}, {"gamepadButton":"South"} ] },
+    "MoveX": { "deadzone": 0.2, "events": [ {"gamepadAxis":"LeftX"}, {"key":"D","scale":1}, {"key":"A","scale":-1} ] }
+  }
+}
+```
+
+Event kinds: `key`, `mouseButton`, `gamepadButton`, `gamepadAxis`. The optional `scale`
+sets the sign/magnitude of an event's analog contribution (e.g. `-1` for the "left" key of an
+axis). Names use the stripped enum forms, matching the `KeyCode`/`GamepadButton`/`GamepadAxis`
+tables (`Space`, `South`, `LeftX`).
+
+```lua
+if Input.isActionPressed("Jump") then jump() end   -- this-frame edge
+local move = Input.actionAxis("MoveX")              -- signed [-1, 1], deadzone applied
+```
+
+- `Input.hasAction(name)`
+- `Input.isActionHeld(name)` (currently down) / `Input.isActionPressed(name)` /
+  `Input.isActionReleased(name)` (this-frame edges, like `isKeyHeld` vs `isKeyPressed`)
+- `Input.actionAxis(name)` (combined signed analog value)
+
+Runtime rebinding (in-memory; persist by editing the JSON):
+
+- `Input.clearActionEvents(name)`
+- `Input.bindActionKey(name, key)` / `Input.bindActionMouseButton(name, button)`
+- `Input.bindActionGamepadButton(name, button)` / `Input.bindActionGamepadAxis(name, axis, scale)`
+
+Complete example — attach to an entity; with the action map above it moves on WASD or the
+left stick, jumps on Space / the South button (with rumble), and reads raw gamepad input:
+
+```lua
+function OnCreate(self)
+  print("gamepad connected = " .. tostring(Input.isGamepadConnected()))
+  -- Runtime rebind: also let the North/Y face button trigger Jump.
+  Input.bindActionGamepadButton("Jump", GamepadButton.North)
+end
+
+function OnUpdate(self, dt)
+  if Input.isActionPressed("Jump") then
+    Input.rumble(0.6, 0.6, 200) -- short rumble burst
+  end
+
+  -- Analog movement combining stick + WASD.
+  local moveX = Input.actionAxis("MoveX")
+  local moveY = Input.actionAxis("MoveY")
+  if math.abs(moveX) > 0.0 or math.abs(moveY) > 0.0 then
+    local t = self.transform
+    local pos = t.position
+    pos.x = pos.x + moveX * dt * 4.0
+    pos.z = pos.z + moveY * dt * 4.0
+    t.position = pos
+  end
+
+  -- Raw device layer.
+  if Input.isGamepadButtonPressed(GamepadButton.Start) then
+    print("left trigger = " .. string.format("%.2f", Input.gamepadAxis(GamepadAxis.LeftTrigger)))
+  end
+end
+```
+
 ## Physics
 
 Rigid bodies are controlled with the `RigidBody` reference on an entity or the
@@ -662,6 +808,100 @@ For dynamic rigid bodies, prefer `OnFixedUpdate` plus forces or impulses. Avoid
 writing `Transform.position` every rendered frame on a dynamic body unless the
 entity is intentionally kinematic or scripted outside the physics simulation.
 
+### Constraints / joints
+
+Connect two rigid bodies with a Jolt constraint (hinge, fixed, distance, slider,
+point, cone). Pass `nil` as the second body to anchor to the world. `point`/`axis`
+are world-space at creation; angles are degrees, distances meters. Each `add*`
+returns an opaque constraint id (`0` on failure) for `removeConstraint` / motors.
+
+```lua
+-- A hinged door anchored to the world, with a motor that swings it open.
+local hinge = Physics.addHingeConstraint(door, nil, Vec3(0, 1, -1), Vec3(0, 1, 0), -110, 0)
+Physics.setConstraintMotor(hinge, true, 90, 200) -- target 90 deg/s, max torque 200
+
+-- A rope: keep two bodies within [0.5, 4] meters.
+local rope = Physics.addDistanceConstraint(bob, anchor, 0.5, 4.0)
+
+-- Break a joint.
+Physics.removeConstraint(rope)
+```
+
+- `Physics.addFixedConstraint(bodyA, bodyB?)`
+- `Physics.addPointConstraint(bodyA, bodyB?, point)`
+- `Physics.addDistanceConstraint(bodyA, bodyB?, minDistance, maxDistance)`
+- `Physics.addHingeConstraint(bodyA, bodyB?, point, axis, minAngleDegrees, maxAngleDegrees)`
+- `Physics.addSliderConstraint(bodyA, bodyB?, point, axis, minDistance, maxDistance)`
+- `Physics.addConeConstraint(bodyA, bodyB?, point, twistAxis, halfAngleDegrees)`
+- `Physics.removeConstraint(id)` / `Physics.isConstraintValid(id)`
+- `Physics.setConstraintMotor(id, enabled, targetVelocity, maxForce)` — hinge motor is
+  angular (deg/s), slider motor is linear (m/s)
+
+Bodies are created on demand if the entity has a `RigidBodyComponent`. A constraint is
+automatically removed when either referenced body is destroyed. A ragdoll is built from
+capsule bodies linked by cone (swing-twist) constraints.
+
+## Navigation (Recast/Detour)
+
+Bake a navmesh from level geometry and steer agents along paths. Imported meshes with a
+`MeshComponent` + `TransformComponent` are baked; builtin primitives are skipped.
+
+```lua
+function OnCreate(self)
+  Nav.bake()                      -- build the navmesh from world geometry
+  Nav.setDebugDrawEnabled(true)   -- visualize navmesh + paths in the editor
+end
+
+function OnUpdate(self, dt)
+  if Input.isMouseButtonPressed(MouseCode.Left) then
+    Nav.setAgentDestination(self, Vec3(10, 0, 4)) -- agent walks there, avoiding obstacles
+  end
+end
+```
+
+Add a `NavAgentComponent` (`entity:addComponent(Component.NavAgent)`) to make an entity an
+agent; if it also has a `CharacterControllerComponent` the agent is steered through it,
+otherwise its transform is moved directly.
+
+- `Nav.bake()` — (re)build the navmesh; returns `true` on success
+- `Nav.isBaked()`
+- `Nav.findPath(start, end)` — returns an array of `Vec3` waypoints (empty if unreachable)
+- `Nav.nearestPoint(point)` — closest point on the navmesh
+- `Nav.setAgentDestination(entity, target)` / `Nav.stopAgent(entity)` / `Nav.agentHasPath(entity)`
+- `Nav.setDebugDrawEnabled(enabled)` / `Nav.debugDrawEnabled()`
+
+`NavAgent` fields: `radius`, `height`, `speed`, `stoppingDistance`, `targetPosition`,
+`hasTarget`, `moving` (read-only).
+
+Complete example — attach to an entity (ideally one with a `CharacterControllerComponent`).
+It bakes the navmesh on start, makes itself an agent, draws the navmesh, and walks to a target
+on left-click:
+
+```lua
+function OnCreate(self)
+  if not self:hasComponent(Component.NavAgent) then
+    self:addComponent(Component.NavAgent)
+  end
+  if not Nav.bake() then
+    print("navmesh bake failed (no imported geometry?)")
+  end
+  Nav.setDebugDrawEnabled(true) -- show navmesh + paths in the editor
+end
+
+function OnUpdate(self, dt)
+  if Input.isMouseButtonPressed(MouseCode.Left) then
+    Nav.setAgentDestination(self, Vec3(4.0, 0.0, 0.0))
+  end
+  if Input.isKeyPressed(KeyCode.Escape) then
+    Nav.stopAgent(self)
+  end
+  if Input.isKeyPressed(KeyCode.P) then
+    local path = Nav.findPath(self.transform.position, Vec3(4.0, 0.0, 0.0))
+    print("path has " .. #path .. " waypoints")
+  end
+end
+```
+
 ## Roll-A-Ball Example
 
 This example uses WASD to push a dynamic ball, follows it with the game camera,
@@ -779,6 +1019,39 @@ Scene APIs:
 - `Scene.instantiateChild(uri, parent, clearWorld)`
 - `Scene.saveWorld(uri)`
 - `Scene.saveEntity(uri, root)`
+- `Scene.dontDestroyOnLoad(entity)` — keep `entity` (and its subtree) across the next scene
+  load / `Scene.instantiate(..., clearWorld=true)`; it is promoted to a root and survives
+- `Scene.isPersistent(entity)`
+
+## Save / Persistence
+
+`Save` is a typed key/value store plus named, file-backed slots — for player progress,
+options, unlocks, etc. The KV store lives in memory and **survives scene loads/reloads** (it
+is an engine service, not world data); `Save.save(slot)` / `Save.load(slot)` persist it to and
+restore it from disk (under the OS app-data dir, or `VULTRA_SAVE_DIR`).
+
+```lua
+-- Write progress, then persist slot 1.
+Save.set("level", 3)
+Save.set("playerName", "Ada")
+Save.set("musicOn", true)
+Save.save("slot1")
+
+-- Later (even after a scene reload): restore and read back.
+if Save.load("slot1") then
+  local level = Save.get("level", 1)       -- 3 (default 1 if absent)
+  local name  = Save.get("playerName", "?")
+end
+```
+
+- `Save.set(key, value)` — `value` is a number, boolean, or string
+- `Save.get(key, default?)` — returns the stored value (typed) or `default` / `nil`
+- `Save.has(key)`, `Save.remove(key)`, `Save.clear()`
+- `Save.save(slot)` / `Save.load(slot)` -> boolean
+- `Save.hasSlot(slot)`, `Save.deleteSlot(slot)`, `Save.listSlots()` -> array of slot names
+
+Slot names are sanitized to a safe filename. For complex tables, store JSON strings (encode
+in Lua) under a key.
 
 ## Script And Render Utilities
 
@@ -976,6 +1249,73 @@ Animation-controller parameters (for entities with controller data):
 - `normalizedTime`
 - `skeleton`
 - `animation`
+
+### Keyframe events
+
+Animator-graph states can carry **events** — named markers at a normalized time in the
+clip. When playback crosses an event, the animation system calls the entity script's
+`OnAnimationEvent(self, name)` (see **Animation Event Callback**). Author them per state in
+the `.vanimgraph.json`:
+
+```json
+{
+  "states": [
+    {
+      "name": "Walk",
+      "animation": "<clip-uuid>",
+      "loop": true,
+      "events": [
+        { "name": "footstepLeft",  "normalizedTime": 0.25 },
+        { "name": "footstepRight", "normalizedTime": 0.75 }
+      ],
+      "transitions": []
+    }
+  ],
+  "version": 1
+}
+```
+
+`normalizedTime` is `[0,1]` within the clip. Events fire on the active state, repeat each
+loop, and are scoped to that state across transitions. (Single-clip animators — `mode 0` —
+have no states, so events require the graph mode.)
+
+### Blend trees
+
+A graph state can be a **1D blend tree** instead of a single clip: it blends several clips by a
+float parameter (e.g. idle/walk/run by `speed`). Author it on the state in `.vanimgraph.json`;
+clips are sampled at a shared, phase-matched ratio and blended by the two entries bracketing
+the parameter value. Drive the parameter with `Animation.setFloat(entity, "speed", v)`.
+
+```json
+{
+  "states": [
+    {
+      "name": "Locomotion",
+      "loop": true,
+      "blendTree": {
+        "parameter": "speed",
+        "entries": [
+          { "animation": "<idle-uuid>", "threshold": 0.0 },
+          { "animation": "<walk-uuid>", "threshold": 1.0 },
+          { "animation": "<run-uuid>",  "threshold": 4.0 }
+        ]
+      }
+    }
+  ],
+  "version": 1
+}
+```
+
+When `blendTree.entries` is present it overrides the state's single `animation`. Events still
+fire on a blend-tree state.
+
+### Root motion
+
+Set `AnimatorComponent.applyRootMotion = true` (graph mode) to let the playing clip's root
+joint drive the **entity transform** (horizontal motion) instead of sliding the mesh in place.
+The displayed skeleton stays centered on the entity; the transform absorbs the per-frame root
+delta (rotated by the entity's orientation). It is skipped during cross-fades and on the
+loop-wrap frame, and assumes joint 0 is the skeleton root.
 
 ## Common Pitfalls
 

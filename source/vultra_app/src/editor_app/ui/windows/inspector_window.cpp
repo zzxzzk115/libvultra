@@ -41,6 +41,9 @@
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/particle_emitter_component.hpp>
+#include <vultra/function/world/components/character_controller_component.hpp>
+#include <vultra/function/world/components/nav_agent_component.hpp>
+#include <vultra/function/world/components/persistent_component.hpp>
 #include <vultra/function/world/components/prefab_instance_component.hpp>
 #include <vultra/function/world/components/reflection_probe_component.hpp>
 #include <vultra/function/world/components/rigid_body_component.hpp>
@@ -4548,6 +4551,10 @@ namespace vultra_app
                     "SphereShape", "Sphere Shape", fitSphereShapeToMeshBounds),
                 addPhysicsShapeComponentDescriptor<vultra::CapsuleShapeComponent>(
                     "CapsuleShape", "Capsule Shape", fitCapsuleShapeToMeshBounds),
+                addComponentDescriptor<vultra::CharacterControllerComponent>(
+                    "CharacterController", "Character Controller", "Physics"),
+                addComponentDescriptor<vultra::NavAgentComponent>("NavAgent", "Nav Agent", "Navigation"),
+                addComponentDescriptor<vultra::PersistentComponent>("Persistent", "Persistent", "Core"),
                 addComponentDescriptor<vultra::CameraComponent>("Camera", "Camera", "Camera"),
                 addComponentDescriptor<vultra::XRViewComponent>("XRView", "XR View", "Camera"),
                 addComponentDescriptor<vultra::ScriptComponent>("Script", "Script", "Scripting"),
@@ -4583,11 +4590,14 @@ namespace vultra_app
                 "BoxShape",
                 "SphereShape",
                 "CapsuleShape",
+                "CharacterController",
+                "NavAgent",
                 "Camera",
                 "XRView",
                 "Script",
                 "AudioSource",
                 "AudioListener",
+                "Persistent",
                 "Prefab",
             };
             return order;
@@ -4642,6 +4652,12 @@ namespace vultra_app
                 return reg.all_of<vultra::SphereShapeComponent>(entity);
             if (key == "CapsuleShape")
                 return reg.all_of<vultra::CapsuleShapeComponent>(entity);
+            if (key == "CharacterController")
+                return reg.all_of<vultra::CharacterControllerComponent>(entity);
+            if (key == "NavAgent")
+                return reg.all_of<vultra::NavAgentComponent>(entity);
+            if (key == "Persistent")
+                return reg.all_of<vultra::PersistentComponent>(entity);
             if (key == "Camera")
                 return reg.all_of<vultra::CameraComponent>(entity);
             if (key == "XRView")
@@ -4722,6 +4738,12 @@ namespace vultra_app
                 return "inspector.component.sphereShape";
             if (key == "CapsuleShape")
                 return "inspector.component.capsuleShape";
+            if (key == "CharacterController")
+                return "inspector.component.characterController";
+            if (key == "NavAgent")
+                return "inspector.component.navAgent";
+            if (key == "Persistent")
+                return "inspector.component.persistent";
             if (key == "Camera")
                 return "inspector.component.camera";
             if (key == "XRView")
@@ -4760,6 +4782,8 @@ namespace vultra_app
                 return vultra::trId("inspector.category.lighting", "Lighting");
             if (std::strcmp(category, "Physics") == 0)
                 return vultra::trId("inspector.category.physics", "Physics");
+            if (std::strcmp(category, "Navigation") == 0)
+                return vultra::trId("inspector.category.navigation", "Navigation");
             if (std::strcmp(category, "Camera") == 0)
                 return vultra::trId("inspector.category.camera", "Camera");
             if (std::strcmp(category, "Scripting") == 0)
@@ -4817,6 +4841,12 @@ namespace vultra_app
                 reg.remove<vultra::SphereShapeComponent>(entity);
             else if (key == "CapsuleShape")
                 reg.remove<vultra::CapsuleShapeComponent>(entity);
+            else if (key == "CharacterController")
+                reg.remove<vultra::CharacterControllerComponent>(entity);
+            else if (key == "NavAgent")
+                reg.remove<vultra::NavAgentComponent>(entity);
+            else if (key == "Persistent")
+                reg.remove<vultra::PersistentComponent>(entity);
             else if (key == "Camera")
             {
                 reg.remove<vultra::CameraComponent>(entity);
@@ -5422,6 +5452,36 @@ namespace vultra_app
                             ctx.history->setNextLabel("Edit Capsule Shape");
                     }
             }
+            else if (key == "CharacterController")
+            {
+                if (auto* controller = reg.try_get<vultra::CharacterControllerComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *controller))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Character Controller");
+                    }
+            }
+            else if (key == "NavAgent")
+            {
+                if (auto* agent = reg.try_get<vultra::NavAgentComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *agent))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Nav Agent");
+                    }
+            }
+            else if (key == "Persistent")
+            {
+                if (auto* persistent = reg.try_get<vultra::PersistentComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *persistent))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Persistent");
+                    }
+            }
             else if (key == "Camera")
             {
                 if (auto* camera = reg.try_get<vultra::CameraComponent>(e))
@@ -5541,6 +5601,7 @@ namespace vultra_app
                 "Animation",
                 "Lighting",
                 "Physics",
+                "Navigation",
                 "Camera",
                 "Scripting",
                 "Audio",

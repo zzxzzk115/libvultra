@@ -18,9 +18,11 @@
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
 #include "vultra/function/openxr/xr_runtime_system.hpp"
 #endif
+#include "vultra/function/navigation/navigation_system.hpp"
 #include "vultra/function/particle/particle_system.hpp"
 #include "vultra/function/physics/physics_system.hpp"
 #include "vultra/function/plugin/plugin_system.hpp"
+#include "vultra/function/save/save_system.hpp"
 #include "vultra/function/rendering/backend/render_backend_extension_system.hpp"
 #include "vultra/function/rendering/backend/render_backend_system.hpp"
 #include "vultra/function/rendering/render_upscaler_system.hpp"
@@ -31,6 +33,7 @@
 #include "vultra/function/resource/gpu_resource_system.hpp"
 #include "vultra/function/scene/scene_system.hpp"
 #include "vultra/function/scripting/script_system.hpp"
+#include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/render_service.hpp"
 #include "vultra/function/services/render_upscaler_service.hpp"
@@ -482,7 +485,11 @@ namespace vultra
         {
             engine.emplaceSubsystem<GpuResourceSystem>();
             engine.emplaceSubsystem<AssetSystem>();
+            engine.emplaceSubsystem<SaveSystem>();
             engine.emplaceSubsystem<SceneSystem>();
+            // After Asset/Scene/Physics so navmesh bake can read mesh geometry and steer
+            // agents through the character controller.
+            engine.emplaceSubsystem<NavigationSystem>();
             // Before ScriptSystem: it captures IAudioService into the Lua ScriptContext in onInit.
             engine.emplaceSubsystem<AudioSystem>();
             engine.emplaceSubsystem<ScriptSystem>();
@@ -502,6 +509,19 @@ namespace vultra
     {
         auto& window = engine.ctx().services.require<IWindowService>().window();
         window.on<os::GeneralWindowEvent>([this](const os::GeneralWindowEvent& e, os::Window&) { onWindowEvent(e); });
+
+        // Connect the platform window for gamepad rumble and load the project's Godot-style
+        // input action map (res://input.actions.json). Both are optional: rumble is a no-op
+        // without a gamepad, and a project without an action map simply has no named actions.
+        if (auto* inputService = engine.ctx().services.tryGet<IInputService>())
+        {
+            inputService->attachWindow(&window);
+            if (auto* assetService = engine.ctx().services.tryGet<IAssetService>())
+            {
+                if (auto text = assetService->loadTextAssetSync("res://input.actions.json"))
+                    inputService->loadActionsFromJson(text.value());
+            }
+        }
 
         const bool webgpuSafeMode = (engine.ctx().config.render.backendApi == rhi::RenderBackendApi::eWebGPU) &&
                                     !demoEnableExperimentalWebGPUContent();

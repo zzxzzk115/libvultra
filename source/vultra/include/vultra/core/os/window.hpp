@@ -177,6 +177,12 @@ namespace vultra
             [[nodiscard]] virtual WGPUSurface createWebGPUSurface(WGPUInstance instance) const = 0;
 
             virtual void pollEvents(int timeoutMillis = 0) = 0;
+
+            // Rumble the first connected gamepad. lowFrequency/highFrequency are in [0,1];
+            // durationMs is how long the effect plays. No-op when the platform has no
+            // gamepad support or none is connected.
+            virtual void setGamepadRumble(float /*lowFrequency*/, float /*highFrequency*/, uint32_t /*durationMs*/) {}
+
             virtual void close()                           = 0;
             virtual void minimize()                        = 0;
             virtual void maximize()                        = 0;

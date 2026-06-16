@@ -9,6 +9,8 @@
 #include "vproject.hpp"
 
 #include <vultra/core/i18n/i18n.hpp>
+#include <vultra/core/input/input_action.hpp>
+#include <vultra/core/input/input_structs.hpp>
 #include <vultra/core/services/i18n_service.hpp>
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/imgui/imgui_dpi.hpp>
@@ -21,6 +23,10 @@
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
+#include <magic_enum/magic_enum.hpp>
+
+#include <fstream>
+#include <sstream>
 
 #include <algorithm>
 #include <array>
@@ -497,6 +503,194 @@ namespace vultra_app
             return false;
         }
 
+        // ---- Input Map (project-level input actions) page ----------------------------------
+
+        // Strip the enumerator 'e' prefix for display ("eSpace" -> "Space").
+        template<typename Enum>
+        std::string enumLabel(Enum value)
+        {
+            const auto name = magic_enum::enum_name(value);
+            return name.size() > 1 && name.front() == 'e' ? std::string(name.substr(1)) : std::string(name);
+        }
+
+        // A combo over an enum's values (skipping Unknown/Count sentinels).
+        template<typename Enum>
+        bool enumCombo(const char* id, Enum& value, float width)
+        {
+            bool changed = false;
+            ImGui::SetNextItemWidth(width);
+            if (ImGui::BeginCombo(id, enumLabel(value).c_str()))
+            {
+                for (const Enum candidate : magic_enum::enum_values<Enum>())
+                {
+                    const auto raw = magic_enum::enum_name(candidate);
+                    if (raw == "eCount" || raw == "eUnknown")
+                        continue;
+                    if (ImGui::Selectable(enumLabel(candidate).c_str(), candidate == value))
+                    {
+                        value   = candidate;
+                        changed = true;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            return changed;
+        }
+
+        // Edited copy of the project's input.actions.json (ordered for stable display + rename).
+        struct InputMapEditState
+        {
+            std::filesystem::path                                       loadedFor;
+            bool                                                        loaded {false};
+            std::vector<std::pair<std::string, vultra::InputActionDef>> actions;
+            std::string                                                 status;
+        };
+
+        InputMapEditState& inputMapState()
+        {
+            static InputMapEditState state;
+            return state;
+        }
+
+        std::filesystem::path inputActionsPath(const std::filesystem::path& projectRoot, const std::string& assetRoot)
+        {
+            return (projectRoot / assetRoot / "input.actions.json").lexically_normal();
+        }
+
+        void loadInputMap(const std::filesystem::path& projectRoot, const std::string& assetRoot)
+        {
+            auto& s = inputMapState();
+            s.actions.clear();
+            s.status.clear();
+            s.loadedFor = projectRoot;
+            s.loaded    = true;
+
+            std::ifstream file(inputActionsPath(projectRoot, assetRoot));
+            if (!file)
+                return; // no file yet: start empty
+
+            std::stringstream ss;
+            ss << file.rdbuf();
+            vultra::InputActionMap map;
+            std::string            error;
+            if (!vultra::parseInputActionMapJson(ss.str(), map, &error))
+            {
+                s.status = "Parse error: " + error;
+                return;
+            }
+            for (auto& [name, def] : map)
+                s.actions.emplace_back(name, def);
+            std::sort(s.actions.begin(), s.actions.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        }
+
+        void saveInputMap(const std::filesystem::path& projectRoot, const std::string& assetRoot)
+        {
+            auto&                  s = inputMapState();
+            vultra::InputActionMap map;
+            for (auto& [name, def] : s.actions)
+                if (!name.empty())
+                    map[name] = def;
+
+            const auto      path = inputActionsPath(projectRoot, assetRoot);
+            std::error_code ec;
+            std::filesystem::create_directories(path.parent_path(), ec);
+            std::ofstream file(path, std::ios::trunc);
+            if (!file)
+            {
+                s.status = "Write failed: " + path.generic_string();
+                return;
+            }
+            file << vultra::inputActionMapToJson(map);
+            s.status = "Saved " + path.generic_string();
+        }
+
+        void drawInputMapPage(const std::filesystem::path& projectRoot, const std::string& assetRoot)
+        {
+            auto& s = inputMapState();
+            if (!s.loaded || s.loadedFor != projectRoot)
+                loadInputMap(projectRoot, assetRoot);
+
+            ui::drawSettingsSectionHeader(vultra::tr("projectSettings.input.header"));
+            ImGui::TextDisabled("%s", inputActionsPath(projectRoot, assetRoot).generic_string().c_str());
+
+            if (ImGui::Button(ICON_MDI_CONTENT_SAVE " "))
+                saveInputMap(projectRoot, assetRoot);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", vultra::tr("projectSettings.input.save"));
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_MDI_REFRESH " "))
+                loadInputMap(projectRoot, assetRoot);
+            ImGui::SameLine();
+            if (ImGui::Button((std::string {ICON_MDI_PLUS " "} + vultra::tr("projectSettings.input.addAction")).c_str()))
+                s.actions.emplace_back("NewAction", vultra::InputActionDef {});
+            if (!s.status.empty())
+                ImGui::TextDisabled("%s", s.status.c_str());
+            ImGui::Separator();
+
+            int removeAction = -1;
+            for (size_t i = 0; i < s.actions.size(); ++i)
+            {
+                auto& name = s.actions[i].first;
+                auto& def  = s.actions[i].second;
+                ImGui::PushID(static_cast<int>(i));
+
+                std::array<char, 64> nameBuf {};
+                std::snprintf(nameBuf.data(), nameBuf.size(), "%s", name.c_str());
+                ImGui::SetNextItemWidth(vultra::ui::dp(180.0f));
+                if (ImGui::InputText("##actionName", nameBuf.data(), nameBuf.size()))
+                    name = nameBuf.data();
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(vultra::ui::dp(110.0f));
+                ImGui::DragFloat(vultra::tr("projectSettings.input.deadzone"), &def.deadzone, 0.01f, 0.0f, 1.0f);
+                ImGui::SameLine();
+                if (ImGui::Button(ICON_MDI_DELETE "##delAction"))
+                    removeAction = static_cast<int>(i);
+
+                ImGui::Indent(vultra::ui::dp(16.0f));
+                int removeEvent = -1;
+                for (size_t j = 0; j < def.events.size(); ++j)
+                {
+                    auto& ev = def.events[j];
+                    ImGui::PushID(static_cast<int>(j));
+                    if (enumCombo("##kind", ev.kind, vultra::ui::dp(120.0f)))
+                    {
+                    }
+                    ImGui::SameLine();
+                    switch (ev.kind)
+                    {
+                        case vultra::InputActionEvent::Kind::eKey:
+                            enumCombo("##key", ev.key, vultra::ui::dp(120.0f));
+                            break;
+                        case vultra::InputActionEvent::Kind::eMouseButton:
+                            enumCombo("##mouse", ev.mouseButton, vultra::ui::dp(120.0f));
+                            break;
+                        case vultra::InputActionEvent::Kind::eGamepadButton:
+                            enumCombo("##pad", ev.gamepadButton, vultra::ui::dp(120.0f));
+                            break;
+                        case vultra::InputActionEvent::Kind::eGamepadAxis:
+                            enumCombo("##axis", ev.gamepadAxis, vultra::ui::dp(120.0f));
+                            break;
+                    }
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(vultra::ui::dp(80.0f));
+                    ImGui::DragFloat("##scale", &ev.scale, 0.05f);
+                    ImGui::SameLine();
+                    if (ImGui::Button(ICON_MDI_DELETE "##delEvent"))
+                        removeEvent = static_cast<int>(j);
+                    ImGui::PopID();
+                }
+                if (removeEvent >= 0)
+                    def.events.erase(def.events.begin() + removeEvent);
+                if (ImGui::Button((std::string {ICON_MDI_PLUS " "} + vultra::tr("projectSettings.input.addEvent")).c_str()))
+                    def.events.push_back(vultra::InputActionEvent {});
+                ImGui::Unindent(vultra::ui::dp(16.0f));
+                ImGui::Separator();
+                ImGui::PopID();
+            }
+            if (removeAction >= 0)
+                s.actions.erase(s.actions.begin() + removeAction);
+        }
+
     } // namespace
 
     void EditorApp::drawProjectSettingsPopup(EditorContext& ctx)
@@ -579,6 +773,8 @@ namespace vultra_app
             selectedPage = 3;
         if (ui::settingsNavItem(vultra::trId("projectSettings.nav.plugins", "Plugins"), selectedPage == 4))
             selectedPage = 4;
+        if (ui::settingsNavItem(vultra::trId("projectSettings.nav.input", "Input Map"), selectedPage == 5))
+            selectedPage = 5;
         ImGui::Spacing();
         ImGui::TextUnformatted(vultra::tr("projectSettings.nav.engine"));
         ImGui::BeginDisabled();
@@ -1586,6 +1782,10 @@ namespace vultra_app
                     ImGui::CloseCurrentPopup();
                 ImGui::EndPopup();
             }
+        }
+        else if (selectedPage == 5)
+        {
+            drawInputMapPage(ctx.state.currentProject, bufferString(m_ProjectAssetRootBuffer));
         }
         ImGui::EndChild();
         if (projectSettingsChanged)

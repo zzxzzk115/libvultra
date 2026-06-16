@@ -19,6 +19,8 @@
 #include "vultra/function/world/components/particle_emitter_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
+#include "vultra/function/world/components/nav_agent_component.hpp"
+#include "vultra/function/world/components/persistent_component.hpp"
 #include "vultra/function/world/components/reflection_probe_component.hpp"
 #include "vultra/function/world/components/rigid_body_component.hpp"
 #include "vultra/function/world/components/script_component.hpp"
@@ -129,6 +131,20 @@ namespace vultra
             .data<&CharacterControllerComponent::velocity>("velocity"_hs)
             .data<&CharacterControllerComponent::grounded>("grounded"_hs);
 
+        entt::meta_factory<NavAgentComponent>()
+            .type("NavAgentComponent"_hs)
+            .data<&NavAgentComponent::radius>("radius"_hs)
+            .data<&NavAgentComponent::height>("height"_hs)
+            .data<&NavAgentComponent::speed>("speed"_hs)
+            .data<&NavAgentComponent::stoppingDistance>("stoppingDistance"_hs)
+            .data<&NavAgentComponent::targetPosition>("targetPosition"_hs)
+            .data<&NavAgentComponent::hasTarget>("hasTarget"_hs)
+            .data<&NavAgentComponent::moving>("moving"_hs);
+
+        entt::meta_factory<PersistentComponent>()
+            .type("PersistentComponent"_hs)
+            .data<&PersistentComponent::keepOnLoad>("keepOnLoad"_hs);
+
         entt::meta_factory<MeshComponent>()
             .type("MeshComponent"_hs)
             .data<&MeshComponent::mesh>("mesh"_hs)
@@ -144,7 +160,8 @@ namespace vultra
             .data<&AnimatorComponent::loop>("loop"_hs)
             .data<&AnimatorComponent::speed>("speed"_hs)
             .data<&AnimatorComponent::time>("time"_hs)
-            .data<&AnimatorComponent::graph>("graph"_hs);
+            .data<&AnimatorComponent::graph>("graph"_hs)
+            .data<&AnimatorComponent::applyRootMotion>("applyRootMotion"_hs);
 
         entt::meta_factory<AudioSourceComponent>()
             .type("AudioSourceComponent"_hs)

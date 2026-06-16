@@ -79,6 +79,14 @@ namespace vultra
         m_FirstRoot = entt::null;
     }
 
+    std::vector<entt::entity> World::roots() const
+    {
+        std::vector<entt::entity> out;
+        for (entt::entity e = m_FirstRoot; e != entt::null; e = nextSibling(e))
+            out.push_back(e);
+        return out;
+    }
+
     entt::entity World::createEntity()
     {
         entt::entity e = m_Registry.create();
