@@ -195,6 +195,7 @@
       "uiSlider": "UI スライダー",
       "uiProgressBar": "UI プログレスバー",
       "uiInputField": "UI 入力フィールド",
+      "uiDropdown": "UI ドロップダウン",
       "uiLayout": "UI レイアウト",
       "status": "ステータス",
       "hierarchy": "階層",
@@ -306,6 +307,10 @@
         "vertical": "垂直",
         "grid": "グリッド"
       }
+    },
+    "uiDropdown": {
+      "options": "選択肢",
+      "addOption": "選択肢を追加"
     },
     "animator": {
       "modeLabel": "モード",

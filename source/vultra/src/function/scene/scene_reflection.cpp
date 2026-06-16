@@ -375,5 +375,19 @@ namespace vultra
             .data<&UiInputFieldComponent::textColor>("textColor"_hs)
             .data<&UiInputFieldComponent::placeholderColor>("placeholderColor"_hs)
             .data<&UiInputFieldComponent::caretColor>("caretColor"_hs);
+
+        entt::meta_factory<UiDropdownComponent>()
+            .type("UiDropdownComponent"_hs)
+            .data<&UiDropdownComponent::enabled>("enabled"_hs)
+            .data<&UiDropdownComponent::interactable>("interactable"_hs)
+            .data<&UiDropdownComponent::options>("options"_hs)
+            .data<&UiDropdownComponent::selectedIndex>("selectedIndex"_hs)
+            .data<&UiDropdownComponent::fontSizePx>("fontSizePx"_hs)
+            .data<&UiDropdownComponent::font>("font"_hs)
+            .data<&UiDropdownComponent::normalColor>("normalColor"_hs)
+            .data<&UiDropdownComponent::hoveredColor>("hoveredColor"_hs)
+            .data<&UiDropdownComponent::panelColor>("panelColor"_hs)
+            .data<&UiDropdownComponent::selectedColor>("selectedColor"_hs)
+            .data<&UiDropdownComponent::textColor>("textColor"_hs);
     }
 } // namespace vultra

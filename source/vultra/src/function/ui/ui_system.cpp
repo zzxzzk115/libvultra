@@ -66,6 +66,8 @@ namespace vultra
                 return slider->enabled && slider->interactable;
             if (const auto* field = reg.try_get<UiInputFieldComponent>(entity))
                 return field->enabled && field->interactable;
+            if (const auto* dropdown = reg.try_get<UiDropdownComponent>(entity))
+                return dropdown->enabled && dropdown->interactable;
             return false;
         }
 
@@ -546,7 +548,63 @@ namespace vultra
         for (auto e : reg.view<UiInputFieldComponent>())
             reg.get<UiInputFieldComponent>(e).focused = (e == m_FocusedEntity);
 
+        // --- Dropdown: header toggles open, expanded option list hit-tested in-component ---
+        if (input->isMouseButtonPressed(MouseCode::eLeft))
+        {
+            // The dropdown header (if any) under the pointer.
+            entt::entity clickedHeader = entt::null;
+            for (auto cur = m_HoveredEntity; cur != entt::null && reg.valid(cur); cur = world.parent(cur))
+                if (auto* d = reg.try_get<UiDropdownComponent>(cur); d && d->enabled && d->interactable)
+                {
+                    clickedHeader = cur;
+                    break;
+                }
+
+            bool consumed             = false; // an option row was selected
+            bool closedClickedHeader  = false; // the click closed the header it landed on (so don't reopen)
+            for (auto e : reg.view<UiDropdownComponent>())
+            {
+                auto& d = reg.get<UiDropdownComponent>(e);
+                if (!d.expanded)
+                    continue;
+                if (const auto rect = resolvedRect(e); rect && !d.options.empty())
+                {
+                    const float rowH = std::max(rect->maxPx.y - rect->minPx.y, 1.0f);
+                    for (size_t i = 0; i < d.options.size(); ++i)
+                    {
+                        const float top = rect->maxPx.y + rowH * static_cast<float>(i);
+                        if (mouse.x >= rect->minPx.x && mouse.x <= rect->maxPx.x && mouse.y >= top && mouse.y <= top + rowH)
+                        {
+                            if (d.selectedIndex != static_cast<int>(i))
+                            {
+                                d.selectedIndex = static_cast<int>(i);
+                                pushEvent(UiEventType::ValueChanged, e, mouse);
+                            }
+                            consumed = true;
+                            break;
+                        }
+                    }
+                }
+                if (e == clickedHeader)
+                    closedClickedHeader = true;
+                d.expanded = false; // any click closes an open dropdown
+            }
+
+            if (!consumed && clickedHeader != entt::null && !closedClickedHeader)
+                reg.get<UiDropdownComponent>(clickedHeader).expanded = true;
+        }
+
+        // Suppress camera control while a dropdown is open (its option list sits outside any rect).
+        bool dropdownExpanded = false;
+        for (auto e : reg.view<UiDropdownComponent>())
+            if (reg.get<UiDropdownComponent>(e).expanded)
+            {
+                dropdownExpanded = true;
+                break;
+            }
+
         if (auto* cameraService = ctx().services.tryGet<ICameraService>())
-            cameraService->setCameraControlInputSuppressed(m_HoveredEntity != entt::null || m_PressedEntity != entt::null);
+            cameraService->setCameraControlInputSuppressed(m_HoveredEntity != entt::null || m_PressedEntity != entt::null ||
+                                                           dropdownExpanded);
     }
 } // namespace vultra

@@ -195,6 +195,7 @@
       "uiSlider": "UI 슬라이더",
       "uiProgressBar": "UI 진행 표시줄",
       "uiInputField": "UI 입력 필드",
+      "uiDropdown": "UI 드롭다운",
       "uiLayout": "UI 레이아웃",
       "status": "상태",
       "hierarchy": "계층",
@@ -306,6 +307,10 @@
         "vertical": "세로",
         "grid": "그리드"
       }
+    },
+    "uiDropdown": {
+      "options": "옵션",
+      "addOption": "옵션 추가"
     },
     "animator": {
       "modeLabel": "모드",

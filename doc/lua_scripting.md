@@ -524,6 +524,22 @@ field.onValueChanged:connect(function() print("now:", field.text) end)
 field.onSubmit:connect(function() print("submitted:", field.text) end)
 ```
 
+- `UiDropdown`: `selectedIndex`, `options` (table of strings), `interactable`,
+  `expanded` (read-only), `onValueChanged`
+
+The **UiDropdown** shows the selected option in its header; clicking it expands an option list
+(hit-tested in-component, drawn as an overlay). Selecting an option collapses the list and fires
+`onValueChanged`.
+
+```lua
+local dd = self:getComponent(Component.UiDropdown)
+dd.options = {"Easy", "Normal", "Hard"}
+dd.selectedIndex = 1               -- 0-based
+dd.onValueChanged:connect(function()
+  print("difficulty:", dd.options[dd.selectedIndex + 1])
+end)
+```
+
 UI event fields are `type`, `target`, `currentTarget`, `canvas`,
 `screenPosition`, `canvasPosition`, `localPosition`, `button`, `clickCount`,
 and `handled`.

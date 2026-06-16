@@ -5703,7 +5703,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 73
+            "line": 74
           }
         },
         {
@@ -5727,7 +5727,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 75
+            "line": 76
           }
         },
         {
@@ -5751,7 +5751,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 77
+            "line": 78
           }
         },
         {
@@ -5775,7 +5775,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 79
+            "line": 80
           }
         },
         {
@@ -5804,7 +5804,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 81
+            "line": 82
           }
         }
       ],
@@ -5856,7 +5856,7 @@
       "componentHeader": "",
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-        "line": 51
+        "line": 52
       }
     },
     {
@@ -7893,8 +7893,12 @@
           "value": 20
         },
         {
-          "name": "NavAgent",
+          "name": "UiDropdown",
           "value": 21
+        },
+        {
+          "name": "NavAgent",
+          "value": 22
         }
       ],
       "source": {
@@ -8463,7 +8467,7 @@
       "header": "vultra/function/scripting/bindings/script_entity_shim.hpp",
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-        "line": 86
+        "line": 87
       }
     },
     {

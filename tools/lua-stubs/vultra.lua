@@ -499,6 +499,15 @@ local UiToggle = {}
 ---@field onSubmit UiSignal
 local UiInputField = {}
 
+--- Dropdown selector reference (entity.uiDropdown).
+---@class UiDropdown
+---@field selectedIndex integer @ 0-based index of the selected option
+---@field options string[]
+---@field interactable boolean
+---@field expanded boolean @ read-only
+---@field onValueChanged UiSignal
+local UiDropdown = {}
+
 --- Multi-subscriber UI signal; connect returns a UiSignalConnection.
 ---@class UiSignal
 local UiSignal = {}
@@ -1997,6 +2006,7 @@ CameraControlMode = {}
 ---@field UiSlider integer
 ---@field UiProgressBar integer
 ---@field UiInputField integer
+---@field UiDropdown integer
 ---@field NavAgent integer
 Component = {}
 

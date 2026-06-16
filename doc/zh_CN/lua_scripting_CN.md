@@ -508,6 +508,21 @@ field.onValueChanged:connect(function() print("当前:", field.text) end)
 field.onSubmit:connect(function() print("已提交:", field.text) end)
 ```
 
+- `UiDropdown`：`selectedIndex`、`options`（字符串表）、`interactable`、
+  `expanded`（只读）、`onValueChanged`
+
+**UiDropdown** 在标题处显示当前选中项；点击会展开选项列表（在组件内部进行命中测试，
+作为浮层绘制）。选择某项后会收起列表并触发 `onValueChanged`。
+
+```lua
+local dd = self:getComponent(Component.UiDropdown)
+dd.options = {"简单", "普通", "困难"}
+dd.selectedIndex = 1               -- 从 0 开始
+dd.onValueChanged:connect(function()
+  print("难度:", dd.options[dd.selectedIndex + 1])
+end)
+```
+
 UI 事件字段为 `type`、`target`、`currentTarget`、`canvas`、
 `screenPosition`、`canvasPosition`、`localPosition`、`button`、`clickCount`
 和 `handled`。

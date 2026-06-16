@@ -35,6 +35,7 @@
     "uiSlider": "UI Slider",
     "uiProgressBar": "UI Progress Bar",
     "uiInputField": "UI Input Field",
+    "uiDropdown": "UI Dropdown",
     "uiLayout": "UI Layout",
     "status": "Status",
     "hierarchy": "Hierarchy",
@@ -141,6 +142,10 @@
       "vertical": "Vertical",
       "grid": "Grid"
     }
+  },
+  "uiDropdown": {
+    "options": "Options",
+    "addOption": "Add Option"
   },
   "animator": {
     "modeLabel": "Mode",

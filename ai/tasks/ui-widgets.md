@@ -21,9 +21,13 @@ Spec: `ai/specs/ui-widgets.md`. Delivered as three sub-commits on `dev-next`.
 - [x] Docs: EN + CN UI section.
 
 ## b) UiDropdown (commit 2b)
-- [ ] `ui_system.cpp`: header toggle, in-component option hit-test, selection.
-- [ ] `render_system.cpp`: header + overlay list with hovered/selected highlight.
-- [ ] Bindings + reflection + inspector + i18n + docs.
+- [x] `ui_system.cpp`: header toggle, in-component option hit-test, selection, camera suppress.
+- [x] `render_system.cpp`: header + overlay list (overlayBias sort) with selected highlight.
+- [x] Bindings (script_types ref, enum+X-macro, UiDropdown usertype + onValueChanged signal).
+- [x] `scene_reflection.cpp` meta factory + `std::vector<std::string>` scene (de)serialization.
+- [x] Inspector: custom options editor + 6 registration sites (UI category).
+- [x] i18n: `inspector.component.uiDropdown` + `inspector.uiDropdown.{options,addOption}` x4.
+- [x] Docs: EN + CN UI section.
 
 ## c) UiScrollView (commit 2c)
 - [ ] `ui_system.cpp`: wheel/touch scroll, clamp, child rect offset in `rebuild`.

@@ -3973,6 +3973,13 @@ namespace vultra_app
         }
 
         template<>
+        bool shouldDrawMetaField(const vultra::UiDropdownComponent&, const char* fieldName)
+        {
+            // The option list has a dedicated editor in drawUiDropdownComponentFields.
+            return std::strcmp(fieldName, "options") != 0;
+        }
+
+        template<>
         bool shouldDrawMetaField(const vultra::EnvironmentComponent& environment, const char* fieldName)
         {
             if (std::strcmp(fieldName, "iblColor") == 0 || std::strcmp(fieldName, "iblIntensity") == 0)
@@ -4341,6 +4348,52 @@ namespace vultra_app
             return changed;
         }
 
+        bool drawUiDropdownComponentFields(EditorContext*             ctx,
+                                           ui::TextureSelectorState*  textureSelector,
+                                           vultra::UiDropdownComponent& dropdown)
+        {
+            // Generic fields (options hidden via shouldDrawMetaField).
+            bool changed = drawMetaFields(ctx, textureSelector, dropdown);
+
+            ImGui::Spacing();
+            if (ImGui::CollapsingHeader(vultra::tr("inspector.uiDropdown.options"), ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                int removeIndex = -1;
+                for (int i = 0; i < static_cast<int>(dropdown.options.size()); ++i)
+                {
+                    ImGui::PushID(i);
+                    std::array<char, 256> buffer {};
+                    copyName(buffer, dropdown.options[static_cast<size_t>(i)]);
+                    ui::beginPropertyRow(std::to_string(i).c_str());
+                    if (ImGui::InputText("##Option", buffer.data(), buffer.size()))
+                    {
+                        dropdown.options[static_cast<size_t>(i)] = buffer.data();
+                        changed                                  = true;
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE))
+                        removeIndex = i;
+                    ui::endPropertyRow();
+                    ImGui::PopID();
+                }
+                if (removeIndex >= 0)
+                {
+                    dropdown.options.erase(dropdown.options.begin() + removeIndex);
+                    changed = true;
+                }
+                if (ImGui::Button((std::string {ICON_MDI_PLUS " "} + vultra::tr("inspector.uiDropdown.addOption")).c_str(),
+                                  ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+                {
+                    dropdown.options.emplace_back("Option");
+                    changed = true;
+                }
+
+                const int count        = static_cast<int>(dropdown.options.size());
+                dropdown.selectedIndex = count > 0 ? std::clamp(dropdown.selectedIndex, 0, count - 1) : 0;
+            }
+            return changed;
+        }
+
         template<typename Component>
         const char* componentLabel()
         {
@@ -4534,6 +4587,7 @@ namespace vultra_app
                 addUiComponentDescriptor<vultra::UiSliderComponent>("UiSlider", "UI Slider"),
                 addUiComponentDescriptor<vultra::UiProgressBarComponent>("UiProgressBar", "UI Progress Bar"),
                 addUiComponentDescriptor<vultra::UiInputFieldComponent>("UiInputField", "UI Input Field"),
+                addUiComponentDescriptor<vultra::UiDropdownComponent>("UiDropdown", "UI Dropdown"),
                 addUiComponentDescriptor<vultra::UiLayoutComponent>("UiLayout", "UI Layout"),
                 addComponentDescriptor<vultra::MeshComponent>("Mesh", "Mesh", "Rendering"),
                 addAnimatorComponentDescriptor(),
@@ -4580,6 +4634,7 @@ namespace vultra_app
                 "UiSlider",
                 "UiProgressBar",
                 "UiInputField",
+                "UiDropdown",
                 "UiLayout",
                 "Mesh",
                 "Animator",
@@ -4632,6 +4687,8 @@ namespace vultra_app
                 return reg.all_of<vultra::UiProgressBarComponent>(entity);
             if (key == "UiInputField")
                 return reg.all_of<vultra::UiInputFieldComponent>(entity);
+            if (key == "UiDropdown")
+                return reg.all_of<vultra::UiDropdownComponent>(entity);
             if (key == "UiLayout")
                 return reg.all_of<vultra::UiLayoutComponent>(entity);
             if (key == "Mesh")
@@ -4720,6 +4777,8 @@ namespace vultra_app
                 return "inspector.component.uiProgressBar";
             if (key == "UiInputField")
                 return "inspector.component.uiInputField";
+            if (key == "UiDropdown")
+                return "inspector.component.uiDropdown";
             if (key == "UiLayout")
                 return "inspector.component.uiLayout";
             if (key == "Mesh")
@@ -4825,6 +4884,8 @@ namespace vultra_app
                 reg.remove<vultra::UiProgressBarComponent>(entity);
             else if (key == "UiInputField")
                 reg.remove<vultra::UiInputFieldComponent>(entity);
+            else if (key == "UiDropdown")
+                reg.remove<vultra::UiDropdownComponent>(entity);
             else if (key == "UiLayout")
                 reg.remove<vultra::UiLayoutComponent>(entity);
             else if (key == "Mesh")
@@ -5348,6 +5409,16 @@ namespace vultra_app
                         ctx.state.sceneDirty = true;
                         if (ctx.history)
                             ctx.history->setNextLabel("Edit UI Input Field");
+                    }
+            }
+            else if (key == "UiDropdown")
+            {
+                if (auto* dropdown = reg.try_get<vultra::UiDropdownComponent>(e))
+                    if (drawUiDropdownComponentFields(&ctx, &m_TextureSelector, *dropdown))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit UI Dropdown");
                     }
             }
             else if (key == "UiLayout")

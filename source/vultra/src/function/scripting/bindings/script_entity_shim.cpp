@@ -45,6 +45,7 @@
     X(eUiSlider, UiSliderComponent, ScriptUiSliderRef)                                              \
     X(eUiProgressBar, UiProgressBarComponent, ScriptUiProgressBarRef)                               \
     X(eUiInputField, UiInputFieldComponent, ScriptUiInputFieldRef)                                  \
+    X(eUiDropdown, UiDropdownComponent, ScriptUiDropdownRef)                                        \
     X(eNavAgent, NavAgentComponent, ScriptNavAgentRef)
 
 namespace vultra

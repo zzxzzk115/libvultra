@@ -35,6 +35,7 @@
     "uiSlider": "UI 滑块",
     "uiProgressBar": "UI 进度条",
     "uiInputField": "UI 输入框",
+    "uiDropdown": "UI 下拉框",
     "uiLayout": "UI 布局",
     "status": "状态",
     "hierarchy": "层级",
@@ -141,6 +142,10 @@
       "vertical": "垂直",
       "grid": "网格"
     }
+  },
+  "uiDropdown": {
+    "options": "选项",
+    "addOption": "添加选项"
   },
   "animator": {
     "modeLabel": "模式",

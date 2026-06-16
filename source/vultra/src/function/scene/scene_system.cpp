@@ -536,6 +536,23 @@ namespace vultra
             return entt::meta_any {parse_material_overrides(t)};
         }
 
+        if (expected == entt::resolve<std::vector<std::string>>())
+        {
+            std::vector<std::string> out;
+            try
+            {
+                const auto root = nlohmann::json::parse(t);
+                if (root.is_array())
+                    for (const auto& item : root)
+                        if (item.is_string())
+                            out.push_back(item.get<std::string>());
+            }
+            catch (const nlohmann::json::exception&)
+            {
+            }
+            return entt::meta_any {out};
+        }
+
         if (expected == entt::resolve<CoreUUID>())
         {
             CoreUUID id;
@@ -624,6 +641,14 @@ namespace vultra
         if (t == entt::resolve<std::vector<MaterialSlotOverride>>())
         {
             return material_overrides_to_text(v.cast<const std::vector<MaterialSlotOverride>&>());
+        }
+
+        if (t == entt::resolve<std::vector<std::string>>())
+        {
+            auto arr = nlohmann::json::array();
+            for (const auto& s : v.cast<const std::vector<std::string>&>())
+                arr.push_back(s);
+            return escape_scene_string(arr.dump());
         }
 
         // Fallback

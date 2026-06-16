@@ -238,6 +238,18 @@ namespace vultra
             return *field;
         }
 
+        UiDropdownComponent& requireDropdown(ScriptContext& ctx, entt::entity entity)
+        {
+            auto* world = ctx.world();
+            if (!world)
+                throw std::runtime_error("ScriptContext has no World");
+
+            auto* dropdown = world->registry().try_get<UiDropdownComponent>(entity);
+            if (!dropdown)
+                throw std::runtime_error("Entity has no UiDropdownComponent");
+            return *dropdown;
+        }
+
         ScriptUiSignalConnection connectSignal(const ScriptUiSignalRef& signal, sol::protected_function callback)
         {
             if (!callback.valid())
@@ -568,6 +580,41 @@ namespace vultra
             "onSubmit",
             sol::property([](const ScriptUiInputFieldRef& self) {
                 return ScriptUiSignalRef {self.entity, "onSubmit"};
+            }));
+
+        lua.new_usertype<ScriptUiDropdownRef>(
+            "UiDropdown",
+            "selectedIndex",
+            VULTRA_LUA_PROPERTY(
+                [&ctx](const ScriptUiDropdownRef& self) { return requireDropdown(ctx, self.entity).selectedIndex; },
+                [&ctx](const ScriptUiDropdownRef& self, int value) {
+                    auto& dropdown = requireDropdown(ctx, self.entity);
+                    const int count = static_cast<int>(dropdown.options.size());
+                    dropdown.selectedIndex = count > 0 ? std::clamp(value, 0, count - 1) : 0;
+                }),
+            "options",
+            VULTRA_LUA_PROPERTY(
+                [&ctx](const ScriptUiDropdownRef& self) { return requireDropdown(ctx, self.entity).options; },
+                [&ctx](const ScriptUiDropdownRef& self, sol::table value) {
+                    auto& dropdown = requireDropdown(ctx, self.entity);
+                    dropdown.options.clear();
+                    for (std::size_t i = 1; i <= value.size(); ++i)
+                        dropdown.options.push_back(value.get<std::string>(i));
+                    const int count = static_cast<int>(dropdown.options.size());
+                    dropdown.selectedIndex = count > 0 ? std::clamp(dropdown.selectedIndex, 0, count - 1) : 0;
+                }),
+            "interactable",
+            VULTRA_LUA_PROPERTY(
+                [&ctx](const ScriptUiDropdownRef& self) { return requireDropdown(ctx, self.entity).interactable; },
+                [&ctx](const ScriptUiDropdownRef& self, bool value) {
+                    requireDropdown(ctx, self.entity).interactable = value;
+                }),
+            "expanded",
+            VULTRA_LUA_READONLY_PROPERTY(
+                [&ctx](const ScriptUiDropdownRef& self) { return requireDropdown(ctx, self.entity).expanded; }),
+            "onValueChanged",
+            sol::property([](const ScriptUiDropdownRef& self) {
+                return ScriptUiSignalRef {self.entity, "onValueChanged"};
             }));
 
         auto ui = lua.create_table();

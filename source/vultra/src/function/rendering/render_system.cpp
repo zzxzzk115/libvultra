@@ -2500,6 +2500,7 @@ namespace vultra
             resolveUiRectTopLeft(*rect, parentMin, parentSize, minPx, sizePx);
             const glm::vec2 maxPx     = minPx + sizePx * rect->scale;
             uint32_t        localDrawOrder {0u};
+            int             overlayBias {0}; // added to sortOrder so an expanded dropdown list draws on top
 
             const auto pushRectItem = [&](const glm::vec2& drawMin,
                                           const glm::vec2& drawMax,
@@ -2518,7 +2519,7 @@ namespace vultra
                 item.flags             = flags;
                 item.scaleMode         = canvas.scaleMode;
                 item.fitMode           = fitMode;
-                item.sortOrder         = sortOrder;
+                item.sortOrder         = sortOrder + overlayBias;
                 item.depth             = depth * 16u + localDrawOrder++;
                 item.layerMask         = entityLayerMask(reg, entity, kRenderLayerUiMask);
                 item.space             = canvas.renderMode == 1u ? 1u : 0u;
@@ -2553,7 +2554,7 @@ namespace vultra
                 item.flags             = 3u;
                 item.scaleMode         = canvas.scaleMode;
                 item.fitMode           = 0u;
-                item.sortOrder         = sortOrder;
+                item.sortOrder         = sortOrder + overlayBias;
                 item.depth             = depth * 16u + localDrawOrder++;
                 item.layerMask         = entityLayerMask(reg, entity, kRenderLayerUiMask);
                 item.space             = canvas.renderMode == 1u ? 1u : 0u;
@@ -2808,6 +2809,68 @@ namespace vultra
                                          0u,
                                          0u);
                     }
+                }
+            }
+
+            if (const auto* dd = reg.try_get<UiDropdownComponent>(entity);
+                dd && dd->enabled && glyphAtlas && glyphAtlasIndex != 0u)
+            {
+                pushItem(dd->expanded ? dd->hoveredColor : dd->normalColor, 0u, 0u, 0u);
+
+                const uint32_t pixelSize = static_cast<uint32_t>(std::clamp(std::lround(dd->fontSizePx), 1L, 256L));
+                const uint64_t fontKey   = std::hash<CoreUUID> {}(effectiveUiFontUuid(dd->font));
+                const bool     haveFont  = glyphAtlas->ensureFont(fontKey, [&] { return resolveUiFontBytes(assets, dd->font); });
+                float          ascentPx  = static_cast<float>(pixelSize);
+                float          lineHeightPx = static_cast<float>(pixelSize);
+                if (haveFont)
+                    glyphAtlas->fontMetrics(fontKey, pixelSize, ascentPx, lineHeightPx);
+
+                // Single-line, left-aligned, clipped text inside a rect.
+                const auto drawLine = [&](const glm::vec2& rmin, const glm::vec2& rmax, const std::string& s, const glm::vec4& col) {
+                    if (!haveFont || s.empty())
+                        return;
+                    const float pad       = 6.0f;
+                    const float innerMinX = rmin.x + pad;
+                    const float innerMaxX = rmax.x - pad;
+                    const float baselineY = rmin.y + ((rmax.y - rmin.y) - lineHeightPx) * 0.5f + ascentPx;
+                    std::vector<uint32_t> cps;
+                    decodeUtf8(s, cps);
+                    float penX = innerMinX;
+                    for (const uint32_t cp : cps)
+                    {
+                        const auto* g = glyphAtlas->getGlyph(fontKey, pixelSize, cp);
+                        if (!g)
+                            continue;
+                        if (g->hasBitmap)
+                        {
+                            const glm::vec2 gMin {penX + g->bearingPx.x, baselineY - g->bearingPx.y};
+                            const glm::vec2 gMax {gMin.x + g->sizePx.x, gMin.y + g->sizePx.y};
+                            if (gMax.x > innerMinX && gMin.x < innerMaxX)
+                                pushGlyphRect(gMin, gMax, g->uvMin, g->uvMax, col);
+                        }
+                        penX += g->advancePx;
+                    }
+                };
+
+                const std::string headerText =
+                    (dd->selectedIndex >= 0 && dd->selectedIndex < static_cast<int>(dd->options.size())) ?
+                        dd->options[static_cast<size_t>(dd->selectedIndex)] :
+                        std::string {};
+                drawLine(minPx, maxPx, headerText, dd->textColor);
+
+                if (dd->expanded && !dd->options.empty())
+                {
+                    overlayBias          = 1 << 20; // draw the option list above sibling UI
+                    const float rowH     = std::max(maxPx.y - minPx.y, 1.0f);
+                    for (size_t i = 0; i < dd->options.size(); ++i)
+                    {
+                        const glm::vec2 rmin {minPx.x, maxPx.y + rowH * static_cast<float>(i)};
+                        const glm::vec2 rmax {maxPx.x, rmin.y + rowH};
+                        const bool      selected = static_cast<int>(i) == dd->selectedIndex;
+                        pushRectItem(rmin, rmax, selected ? dd->selectedColor : dd->panelColor, 0u, 0u, 0u);
+                        drawLine(rmin, rmax, dd->options[i], dd->textColor);
+                    }
+                    overlayBias = 0;
                 }
             }
 
