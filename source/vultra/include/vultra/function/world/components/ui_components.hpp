@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 
 #include <string>
+#include <vector>
 
 namespace vultra
 {
@@ -114,5 +115,57 @@ namespace vultra
         glm::vec4 marginPx {0.0f};  // left, top, right, bottom.
         float     spacingPx {0.0f};
         glm::vec2 cellSizePx {100.0f, 100.0f};
+    };
+
+    // Single-line editable text field. The UiSystem owns focus + editing (typed text via the
+    // text-input stream, Backspace/arrows/Enter); text overflow is clipped to the rect.
+    struct UiInputFieldComponent
+    {
+        bool        enabled {true};
+        bool        interactable {true};
+        std::string text;
+        std::string placeholder {"Enter text..."};
+        uint32_t    maxLength {256};
+        float       fontSizePx {20.0f};
+        CoreUUID    font; // empty = default builtin font
+        glm::vec4   normalColor {0.10f, 0.12f, 0.16f, 1.0f};
+        glm::vec4   focusedColor {0.14f, 0.17f, 0.22f, 1.0f};
+        glm::vec4   textColor {0.95f, 0.97f, 1.0f, 1.0f};
+        glm::vec4   placeholderColor {0.55f, 0.58f, 0.64f, 1.0f};
+        glm::vec4   caretColor {0.95f, 0.97f, 1.0f, 1.0f};
+        int         caret {0};       // caret index into text (runtime)
+        bool        focused {false}; // read-only: set by UiSystem
+        bool        submitted {false}; // read-only: true the frame Enter is pressed
+    };
+
+    // 1D dropdown selector. The header shows the selected option; clicking expands an immediate
+    // option list (rendered by the render system, hit-tested by the UiSystem).
+    struct UiDropdownComponent
+    {
+        bool                     enabled {true};
+        bool                     interactable {true};
+        std::vector<std::string> options;
+        int                      selectedIndex {0};
+        float                    fontSizePx {18.0f};
+        CoreUUID                 font;
+        glm::vec4                normalColor {0.16f, 0.19f, 0.24f, 1.0f};
+        glm::vec4                hoveredColor {0.22f, 0.27f, 0.34f, 1.0f};
+        glm::vec4                panelColor {0.10f, 0.12f, 0.16f, 0.98f};
+        glm::vec4                selectedColor {0.18f, 0.42f, 0.72f, 1.0f};
+        glm::vec4                textColor {0.95f, 0.97f, 1.0f, 1.0f};
+        bool                     expanded {false}; // read-only: set by UiSystem
+    };
+
+    // Clipped, scrollable viewport. The UiSystem scrolls on wheel/drag over the view and offsets
+    // its descendants; the render system clips descendant draws to the view bounds.
+    struct UiScrollViewComponent
+    {
+        bool      enabled {true};
+        glm::vec2 contentSizePx {0.0f, 0.0f}; // 0 on an axis = no scrolling on that axis
+        glm::vec2 scrollPx {0.0f, 0.0f};      // runtime scroll offset
+        bool      horizontal {false};
+        bool      vertical {true};
+        float     scrollSpeedPx {40.0f};
+        glm::vec4 backgroundColor {0.08f, 0.09f, 0.12f, 0.6f};
     };
 } // namespace vultra

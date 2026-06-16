@@ -510,6 +510,19 @@ UI component references (reached via `Component.RectTransform`,
 - `UiToggle`: `interactable`, `checked`, `onClick`
 - `UiSlider`: `interactable`, `value`, `minValue`, `maxValue`
 - `UiProgressBar`: `value`, `minValue`, `maxValue`
+- `UiInputField`: `text`, `placeholder`, `interactable`, `focused` (read-only),
+  `submitted` (read-only), `onValueChanged`, `onSubmit`
+
+The **UiInputField** is a single-line editable text field. The UI system owns focus (click to
+focus), keyboard editing (typed text, Backspace/Delete, arrows/Home/End), and Enter→submit;
+overflow is clipped to the rect.
+
+```lua
+local field = self:getComponent(Component.UiInputField)
+field.placeholder = "Name..."
+field.onValueChanged:connect(function() print("now:", field.text) end)
+field.onSubmit:connect(function() print("submitted:", field.text) end)
+```
 
 UI event fields are `type`, `target`, `currentTarget`, `canvas`,
 `screenPosition`, `canvasPosition`, `localPosition`, `button`, `clickCount`,

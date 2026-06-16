@@ -44,6 +44,7 @@ namespace vultra
         eUiToggle,
         eUiSlider,
         eUiProgressBar,
+        eUiInputField,
         eNavAgent,
     };
 

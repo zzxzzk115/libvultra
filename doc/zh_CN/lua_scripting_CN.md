@@ -495,6 +495,18 @@ UI 组件引用（通过 `Component.RectTransform`、`Component.UiButton`、
 - `UiToggle`：`interactable`、`checked`、`onClick`
 - `UiSlider`：`interactable`、`value`、`minValue`、`maxValue`
 - `UiProgressBar`：`value`、`minValue`、`maxValue`
+- `UiInputField`：`text`、`placeholder`、`interactable`、`focused`（只读）、
+  `submitted`（只读）、`onValueChanged`、`onSubmit`
+
+**UiInputField** 是单行可编辑文本框。UI 系统负责焦点管理（点击聚焦）、键盘编辑
+（输入文本、Backspace/Delete、方向键/Home/End）以及回车提交；超出部分会被裁剪到矩形内。
+
+```lua
+local field = self:getComponent(Component.UiInputField)
+field.placeholder = "Name..."
+field.onValueChanged:connect(function() print("当前:", field.text) end)
+field.onSubmit:connect(function() print("已提交:", field.text) end)
+```
 
 UI 事件字段为 `type`、`target`、`currentTarget`、`canvas`、
 `screenPosition`、`canvasPosition`、`localPosition`、`button`、`clickCount`

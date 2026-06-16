@@ -45,6 +45,7 @@ namespace vultra
         entt::entity m_HoveredEntity {entt::null};
         entt::entity m_PreviousHoveredEntity {entt::null};
         entt::entity m_PressedEntity {entt::null};
+        entt::entity m_FocusedEntity {entt::null}; // text input field / expanded dropdown
         uint64_t     m_NextEventSequence {1};
 
         // Embedded-viewport input override (editor Game View). See setInputViewport().

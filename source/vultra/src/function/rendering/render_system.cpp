@@ -2533,6 +2533,35 @@ namespace vultra
                 pushRectItem(minPx, maxPx, color, textureIndex, flags, fitMode);
             };
 
+            // A coverage glyph quad with explicit color + atlas UVs (for widgets that lay out
+            // their own text, e.g. the input field). flags = textured(1) | coverage(2).
+            const auto pushGlyphRect = [&](const glm::vec2& drawMin,
+                                           const glm::vec2& drawMax,
+                                           const glm::vec2& uvMin,
+                                           const glm::vec2& uvMax,
+                                           const glm::vec4& color) {
+                RenderUiDrawItem item {};
+                if (const auto* id = reg.try_get<IDComponent>(entity))
+                    item.entity = id->uuid;
+                item.rectMinPx         = drawMin;
+                item.rectMaxPx         = drawMax;
+                item.canvasReferencePx = glm::max(canvas.referenceResolutionPx, glm::vec2 {1.0f});
+                item.color             = color;
+                item.uvMin             = uvMin;
+                item.uvMax             = uvMax;
+                item.textureIndex      = glyphAtlasIndex;
+                item.flags             = 3u;
+                item.scaleMode         = canvas.scaleMode;
+                item.fitMode           = 0u;
+                item.sortOrder         = sortOrder;
+                item.depth             = depth * 16u + localDrawOrder++;
+                item.layerMask         = entityLayerMask(reg, entity, kRenderLayerUiMask);
+                item.space             = canvas.renderMode == 1u ? 1u : 0u;
+                item.pixelsPerUnit     = canvas.pixelsPerUnit > 0.0f ? canvas.pixelsPerUnit : 250.0f;
+                item.worldMatrix       = canvasWorldMatrix;
+                out.uiDrawItems.push_back(item);
+            };
+
             const auto normalizedRangeValue = [](float value, const float minValue, const float maxValue) {
                 if (maxValue <= minValue)
                     return 0.0f;
@@ -2711,6 +2740,73 @@ namespace vultra
                             pushGlyphItem(gMin, gMax, g->uvMin, g->uvMax);
                         }
                         penX += g->advancePx;
+                    }
+                }
+            }
+
+            if (const auto* field = reg.try_get<UiInputFieldComponent>(entity);
+                field && field->enabled && glyphAtlas && glyphAtlasIndex != 0u)
+            {
+                pushItem(field->focused ? field->focusedColor : field->normalColor, 0u, 0u, 0u);
+
+                const bool         showPlaceholder = field->text.empty() && !field->focused;
+                const std::string& shown           = showPlaceholder ? field->placeholder : field->text;
+                const glm::vec4&    glyphColor      = showPlaceholder ? field->placeholderColor : field->textColor;
+
+                const uint32_t pixelSize = static_cast<uint32_t>(std::clamp(std::lround(field->fontSizePx), 1L, 256L));
+                const uint64_t fontKey   = std::hash<CoreUUID> {}(effectiveUiFontUuid(field->font));
+                if (glyphAtlas->ensureFont(fontKey, [&] { return resolveUiFontBytes(assets, field->font); }))
+                {
+                    float ascentPx = static_cast<float>(pixelSize);
+                    float lineHeightPx = static_cast<float>(pixelSize);
+                    glyphAtlas->fontMetrics(fontKey, pixelSize, ascentPx, lineHeightPx);
+
+                    const float pad       = 6.0f;
+                    const float innerMinX = minPx.x + pad;
+                    const float innerMaxX = maxPx.x - pad;
+                    const float baselineY = minPx.y + ((maxPx.y - minPx.y) - lineHeightPx) * 0.5f + ascentPx;
+
+                    // Horizontal scroll so the caret stays in view when text overflows.
+                    float caretAdvance = 0.0f;
+                    if (field->focused)
+                    {
+                        std::vector<uint32_t> pre;
+                        const int caret = std::clamp(field->caret, 0, static_cast<int>(shown.size()));
+                        decodeUtf8(shown.substr(0, static_cast<size_t>(caret)), pre);
+                        for (const uint32_t cp : pre)
+                            if (const auto* g = glyphAtlas->getGlyph(fontKey, pixelSize, cp))
+                                caretAdvance += g->advancePx;
+                    }
+                    const float innerWidth   = std::max(innerMaxX - innerMinX, 1.0f);
+                    const float scrollOffset = std::max(0.0f, caretAdvance - innerWidth);
+
+                    std::vector<uint32_t> codepoints;
+                    decodeUtf8(shown, codepoints);
+                    float penX = innerMinX - scrollOffset;
+                    for (const uint32_t cp : codepoints)
+                    {
+                        const auto* g = glyphAtlas->getGlyph(fontKey, pixelSize, cp);
+                        if (!g)
+                            continue;
+                        if (g->hasBitmap)
+                        {
+                            const glm::vec2 gMin {penX + g->bearingPx.x, baselineY - g->bearingPx.y};
+                            const glm::vec2 gMax {gMin.x + g->sizePx.x, gMin.y + g->sizePx.y};
+                            if (gMax.x > innerMinX && gMin.x < innerMaxX) // clip overflow
+                                pushGlyphRect(gMin, gMax, g->uvMin, g->uvMax, glyphColor);
+                        }
+                        penX += g->advancePx;
+                    }
+                    if (field->focused)
+                    {
+                        const float caretX = innerMinX - scrollOffset + caretAdvance;
+                        if (caretX >= innerMinX - 1.0f && caretX <= innerMaxX + 1.0f)
+                            pushRectItem({caretX, minPx.y + pad * 0.5f},
+                                         {caretX + 2.0f, maxPx.y - pad * 0.5f},
+                                         field->caretColor,
+                                         0u,
+                                         0u,
+                                         0u);
                     }
                 }
             }

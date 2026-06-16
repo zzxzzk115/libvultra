@@ -18,6 +18,8 @@ namespace vultra
         PointerDown,
         PointerUp,
         Click,
+        ValueChanged, // input field text / dropdown selection changed
+        Submit,       // input field Enter
     };
 
     struct UiResolvedRect

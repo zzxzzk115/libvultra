@@ -84,6 +84,21 @@ namespace vultra
         entt::entity entity {entt::null};
     };
 
+    struct ScriptUiInputFieldRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptUiDropdownRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptUiScrollViewRef
+    {
+        entt::entity entity {entt::null};
+    };
+
     struct ScriptUiRef
     {
         entt::entity entity {entt::null};

@@ -64,7 +64,30 @@ namespace vultra
                 return toggle->enabled && toggle->interactable;
             if (const auto* slider = reg.try_get<UiSliderComponent>(entity))
                 return slider->enabled && slider->interactable;
+            if (const auto* field = reg.try_get<UiInputFieldComponent>(entity))
+                return field->enabled && field->interactable;
             return false;
+        }
+
+        // UTF-8 codepoint boundary stepping (caret moves over whole codepoints).
+        [[nodiscard]] int prevUtf8(const std::string& s, int i)
+        {
+            if (i <= 0)
+                return 0;
+            --i;
+            while (i > 0 && (static_cast<unsigned char>(s[static_cast<size_t>(i)]) & 0xC0) == 0x80)
+                --i;
+            return i;
+        }
+        [[nodiscard]] int nextUtf8(const std::string& s, int i)
+        {
+            const int n = static_cast<int>(s.size());
+            if (i >= n)
+                return n;
+            ++i;
+            while (i < n && (static_cast<unsigned char>(s[static_cast<size_t>(i)]) & 0xC0) == 0x80)
+                ++i;
+            return i;
         }
 
         // The interactive target for a hovered entity: itself if interactable, otherwise its nearest
@@ -120,6 +143,7 @@ namespace vultra
         m_HoveredEntity = entt::null;
         m_PreviousHoveredEntity = entt::null;
         m_PressedEntity = entt::null;
+        m_FocusedEntity = entt::null;
         m_InputViewport = {};
     }
 
@@ -144,6 +168,8 @@ namespace vultra
         auto& reg = worldService->world().registry();
         for (auto entity : reg.view<UiButtonComponent>())
             reg.get<UiButtonComponent>(entity).clicked = false;
+        for (auto entity : reg.view<UiInputFieldComponent>())
+            reg.get<UiInputFieldComponent>(entity).submitted = false;
     }
 
     bool UiSystem::buttonClicked(entt::entity entity) const
@@ -435,6 +461,90 @@ namespace vultra
                 m_PressedEntity = entt::null;
             }
         }
+
+        // --- Text input field: focus on click, then keyboard/text editing ---
+        if (input->isMouseButtonPressed(MouseCode::eLeft))
+        {
+            entt::entity newFocus = entt::null;
+            for (auto cur = m_HoveredEntity; cur != entt::null && reg.valid(cur); cur = world.parent(cur))
+                if (auto* f = reg.try_get<UiInputFieldComponent>(cur); f && f->enabled && f->interactable)
+                {
+                    newFocus = cur;
+                    break;
+                }
+            if (newFocus != m_FocusedEntity)
+            {
+                if (newFocus != entt::null)
+                    input->startTextInput();
+                else
+                    input->stopTextInput();
+                m_FocusedEntity = newFocus;
+                if (auto* f = newFocus != entt::null ? reg.try_get<UiInputFieldComponent>(newFocus) : nullptr)
+                    f->caret = static_cast<int>(f->text.size());
+            }
+        }
+
+        if (m_FocusedEntity != entt::null)
+        {
+            auto* f = reg.try_get<UiInputFieldComponent>(m_FocusedEntity);
+            if (!f || !f->enabled || !f->interactable)
+            {
+                input->stopTextInput();
+                m_FocusedEntity = entt::null;
+            }
+            else
+            {
+                f->submitted = false;
+                int caret    = std::clamp(f->caret, 0, static_cast<int>(f->text.size()));
+
+                if (const std::string typed = input->textInput(); !typed.empty() && f->text.size() < f->maxLength)
+                {
+                    std::string  ins  = typed;
+                    const size_t room = f->maxLength - f->text.size();
+                    if (ins.size() > room)
+                        ins.resize(room);
+                    f->text.insert(static_cast<size_t>(caret), ins);
+                    caret += static_cast<int>(ins.size());
+                    pushEvent(UiEventType::ValueChanged, m_FocusedEntity, mouse);
+                }
+                if (input->isKeyPressed(KeyCode::eBackspace) && caret > 0)
+                {
+                    const int prev = prevUtf8(f->text, caret);
+                    f->text.erase(static_cast<size_t>(prev), static_cast<size_t>(caret - prev));
+                    caret = prev;
+                    pushEvent(UiEventType::ValueChanged, m_FocusedEntity, mouse);
+                }
+                if (input->isKeyPressed(KeyCode::eDelete) && caret < static_cast<int>(f->text.size()))
+                {
+                    const int nxt = nextUtf8(f->text, caret);
+                    f->text.erase(static_cast<size_t>(caret), static_cast<size_t>(nxt - caret));
+                    pushEvent(UiEventType::ValueChanged, m_FocusedEntity, mouse);
+                }
+                if (input->isKeyPressed(KeyCode::eLeft))
+                    caret = prevUtf8(f->text, caret);
+                if (input->isKeyPressed(KeyCode::eRight))
+                    caret = nextUtf8(f->text, caret);
+                if (input->isKeyPressed(KeyCode::eHome))
+                    caret = 0;
+                if (input->isKeyPressed(KeyCode::eEnd))
+                    caret = static_cast<int>(f->text.size());
+                if (input->isKeyPressed(KeyCode::eReturn) || input->isKeyPressed(KeyCode::eKPEnter))
+                {
+                    f->submitted = true;
+                    pushEvent(UiEventType::Submit, m_FocusedEntity, mouse);
+                }
+                if (input->isKeyPressed(KeyCode::eEscape))
+                {
+                    input->stopTextInput();
+                    m_FocusedEntity = entt::null;
+                }
+                f->caret = std::clamp(caret, 0, static_cast<int>(f->text.size()));
+            }
+        }
+
+        // Maintain the read-only `focused` flag on every input field.
+        for (auto e : reg.view<UiInputFieldComponent>())
+            reg.get<UiInputFieldComponent>(e).focused = (e == m_FocusedEntity);
 
         if (auto* cameraService = ctx().services.tryGet<ICameraService>())
             cameraService->setCameraControlInputSuppressed(m_HoveredEntity != entt::null || m_PressedEntity != entt::null);

@@ -106,6 +106,10 @@ namespace vultra
                     return "PointerUp";
                 case UiEventType::Click:
                     return "Click";
+                case UiEventType::ValueChanged:
+                    return "ValueChanged";
+                case UiEventType::Submit:
+                    return "Submit";
             }
             return "PointerMove";
         }
@@ -124,6 +128,10 @@ namespace vultra
                 return type == UiEventType::PointerUp;
             if (signal == "onClick" || signal == "clicked")
                 return type == UiEventType::Click;
+            if (signal == "onValueChanged")
+                return type == UiEventType::ValueChanged;
+            if (signal == "onSubmit")
+                return type == UiEventType::Submit;
             return false;
         }
 
@@ -216,6 +224,18 @@ namespace vultra
             if (!progress)
                 throw std::runtime_error("Entity has no UiProgressBarComponent");
             return *progress;
+        }
+
+        UiInputFieldComponent& requireInputField(ScriptContext& ctx, entt::entity entity)
+        {
+            auto* world = ctx.world();
+            if (!world)
+                throw std::runtime_error("ScriptContext has no World");
+
+            auto* field = world->registry().try_get<UiInputFieldComponent>(entity);
+            if (!field)
+                throw std::runtime_error("Entity has no UiInputFieldComponent");
+            return *field;
         }
 
         ScriptUiSignalConnection connectSignal(const ScriptUiSignalRef& signal, sol::protected_function callback)
@@ -512,6 +532,43 @@ namespace vultra
                 [&ctx](const ScriptUiProgressBarRef& self, float value) {
                     requireProgressBar(ctx, self.entity).maxValue = value;
                 }));
+
+        lua.new_usertype<ScriptUiInputFieldRef>(
+            "UiInputField",
+            "text",
+            VULTRA_LUA_PROPERTY(
+                [&ctx](const ScriptUiInputFieldRef& self) { return requireInputField(ctx, self.entity).text; },
+                [&ctx](const ScriptUiInputFieldRef& self, std::string value) {
+                    auto& field = requireInputField(ctx, self.entity);
+                    field.text  = std::move(value);
+                    field.caret = static_cast<int>(field.text.size());
+                }),
+            "placeholder",
+            VULTRA_LUA_PROPERTY(
+                [&ctx](const ScriptUiInputFieldRef& self) { return requireInputField(ctx, self.entity).placeholder; },
+                [&ctx](const ScriptUiInputFieldRef& self, std::string value) {
+                    requireInputField(ctx, self.entity).placeholder = std::move(value);
+                }),
+            "interactable",
+            VULTRA_LUA_PROPERTY(
+                [&ctx](const ScriptUiInputFieldRef& self) { return requireInputField(ctx, self.entity).interactable; },
+                [&ctx](const ScriptUiInputFieldRef& self, bool value) {
+                    requireInputField(ctx, self.entity).interactable = value;
+                }),
+            "focused",
+            VULTRA_LUA_READONLY_PROPERTY(
+                [&ctx](const ScriptUiInputFieldRef& self) { return requireInputField(ctx, self.entity).focused; }),
+            "submitted",
+            VULTRA_LUA_READONLY_PROPERTY(
+                [&ctx](const ScriptUiInputFieldRef& self) { return requireInputField(ctx, self.entity).submitted; }),
+            "onValueChanged",
+            sol::property([](const ScriptUiInputFieldRef& self) {
+                return ScriptUiSignalRef {self.entity, "onValueChanged"};
+            }),
+            "onSubmit",
+            sol::property([](const ScriptUiInputFieldRef& self) {
+                return ScriptUiSignalRef {self.entity, "onSubmit"};
+            }));
 
         auto ui = lua.create_table();
         ui.set_function("isPointerOverUI", [&ctx]() { return ctx.uiService && ctx.uiService->pointerOverUi(); });

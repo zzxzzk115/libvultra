@@ -360,5 +360,20 @@ namespace vultra
             .data<&UiLayoutComponent::marginPx>("marginPx"_hs)
             .data<&UiLayoutComponent::spacingPx>("spacingPx"_hs)
             .data<&UiLayoutComponent::cellSizePx>("cellSizePx"_hs);
+
+        entt::meta_factory<UiInputFieldComponent>()
+            .type("UiInputFieldComponent"_hs)
+            .data<&UiInputFieldComponent::enabled>("enabled"_hs)
+            .data<&UiInputFieldComponent::interactable>("interactable"_hs)
+            .data<&UiInputFieldComponent::text>("text"_hs)
+            .data<&UiInputFieldComponent::placeholder>("placeholder"_hs)
+            .data<&UiInputFieldComponent::maxLength>("maxLength"_hs)
+            .data<&UiInputFieldComponent::fontSizePx>("fontSizePx"_hs)
+            .data<&UiInputFieldComponent::font>("font"_hs)
+            .data<&UiInputFieldComponent::normalColor>("normalColor"_hs)
+            .data<&UiInputFieldComponent::focusedColor>("focusedColor"_hs)
+            .data<&UiInputFieldComponent::textColor>("textColor"_hs)
+            .data<&UiInputFieldComponent::placeholderColor>("placeholderColor"_hs)
+            .data<&UiInputFieldComponent::caretColor>("caretColor"_hs);
     }
 } // namespace vultra

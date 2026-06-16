@@ -4533,6 +4533,7 @@ namespace vultra_app
                 addUiComponentDescriptor<vultra::UiToggleComponent>("UiToggle", "UI Toggle"),
                 addUiComponentDescriptor<vultra::UiSliderComponent>("UiSlider", "UI Slider"),
                 addUiComponentDescriptor<vultra::UiProgressBarComponent>("UiProgressBar", "UI Progress Bar"),
+                addUiComponentDescriptor<vultra::UiInputFieldComponent>("UiInputField", "UI Input Field"),
                 addUiComponentDescriptor<vultra::UiLayoutComponent>("UiLayout", "UI Layout"),
                 addComponentDescriptor<vultra::MeshComponent>("Mesh", "Mesh", "Rendering"),
                 addAnimatorComponentDescriptor(),
@@ -4578,6 +4579,7 @@ namespace vultra_app
                 "UiToggle",
                 "UiSlider",
                 "UiProgressBar",
+                "UiInputField",
                 "UiLayout",
                 "Mesh",
                 "Animator",
@@ -4628,6 +4630,8 @@ namespace vultra_app
                 return reg.all_of<vultra::UiSliderComponent>(entity);
             if (key == "UiProgressBar")
                 return reg.all_of<vultra::UiProgressBarComponent>(entity);
+            if (key == "UiInputField")
+                return reg.all_of<vultra::UiInputFieldComponent>(entity);
             if (key == "UiLayout")
                 return reg.all_of<vultra::UiLayoutComponent>(entity);
             if (key == "Mesh")
@@ -4714,6 +4718,8 @@ namespace vultra_app
                 return "inspector.component.uiSlider";
             if (key == "UiProgressBar")
                 return "inspector.component.uiProgressBar";
+            if (key == "UiInputField")
+                return "inspector.component.uiInputField";
             if (key == "UiLayout")
                 return "inspector.component.uiLayout";
             if (key == "Mesh")
@@ -4817,6 +4823,8 @@ namespace vultra_app
                 reg.remove<vultra::UiSliderComponent>(entity);
             else if (key == "UiProgressBar")
                 reg.remove<vultra::UiProgressBarComponent>(entity);
+            else if (key == "UiInputField")
+                reg.remove<vultra::UiInputFieldComponent>(entity);
             else if (key == "UiLayout")
                 reg.remove<vultra::UiLayoutComponent>(entity);
             else if (key == "Mesh")
@@ -5330,6 +5338,16 @@ namespace vultra_app
                         ctx.state.sceneDirty = true;
                         if (ctx.history)
                             ctx.history->setNextLabel("Edit UI Progress Bar");
+                    }
+            }
+            else if (key == "UiInputField")
+            {
+                if (auto* field = reg.try_get<vultra::UiInputFieldComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *field))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit UI Input Field");
                     }
             }
             else if (key == "UiLayout")

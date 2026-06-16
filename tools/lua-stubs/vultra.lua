@@ -488,6 +488,17 @@ local UiButton = {}
 ---@field onClick UiSignal
 local UiToggle = {}
 
+--- Single-line editable text field reference (entity.uiInputField).
+---@class UiInputField
+---@field text string
+---@field placeholder string
+---@field interactable boolean
+---@field focused boolean @ read-only
+---@field submitted boolean @ read-only
+---@field onValueChanged UiSignal
+---@field onSubmit UiSignal
+local UiInputField = {}
+
 --- Multi-subscriber UI signal; connect returns a UiSignalConnection.
 ---@class UiSignal
 local UiSignal = {}
@@ -1985,6 +1996,7 @@ CameraControlMode = {}
 ---@field UiToggle integer
 ---@field UiSlider integer
 ---@field UiProgressBar integer
+---@field UiInputField integer
 ---@field NavAgent integer
 Component = {}
 

@@ -5703,7 +5703,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 72
+            "line": 73
           }
         },
         {
@@ -5727,7 +5727,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 74
+            "line": 75
           }
         },
         {
@@ -5751,7 +5751,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 76
+            "line": 77
           }
         },
         {
@@ -5775,7 +5775,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 78
+            "line": 79
           }
         },
         {
@@ -5804,7 +5804,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 80
+            "line": 81
           }
         }
       ],
@@ -5856,7 +5856,7 @@
       "componentHeader": "",
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-        "line": 50
+        "line": 51
       }
     },
     {
@@ -7889,8 +7889,12 @@
           "value": 19
         },
         {
-          "name": "NavAgent",
+          "name": "UiInputField",
           "value": 20
+        },
+        {
+          "name": "NavAgent",
+          "value": 21
         }
       ],
       "source": {
@@ -7945,7 +7949,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 151
+        "line": 166
       }
     },
     {
@@ -7979,7 +7983,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 160
+        "line": 175
       }
     },
     {
@@ -7999,7 +8003,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 167
+        "line": 182
       }
     },
     {
@@ -8054,7 +8058,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 172
+        "line": 187
       }
     },
     {
@@ -8081,7 +8085,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 182
+        "line": 197
       }
     },
     {
@@ -8157,7 +8161,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 188
+        "line": 203
       }
     },
     {
@@ -8184,7 +8188,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 201
+        "line": 216
       }
     },
     {
@@ -8288,7 +8292,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 207
+        "line": 222
       }
     },
     {
@@ -8448,7 +8452,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/script_types.hpp",
-        "line": 224
+        "line": 239
       }
     }
   ],
@@ -8459,7 +8463,7 @@
       "header": "vultra/function/scripting/bindings/script_entity_shim.hpp",
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-        "line": 85
+        "line": 86
       }
     },
     {
