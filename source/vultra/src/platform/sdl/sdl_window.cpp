@@ -798,6 +798,32 @@ namespace vultra::platform::sdl
                     }
                     break;
 
+                case SDL_EVENT_FINGER_DOWN:
+                case SDL_EVENT_FINGER_UP:
+                case SDL_EVENT_FINGER_MOTION:
+                {
+                    // tfinger x/y/dx/dy are normalized [0,1] over the window; scale to logical
+                    // window pixels to match mouse coordinates.
+                    const float w = static_cast<float>(std::max(m_Extent.x, 1));
+                    const float h = static_cast<float>(std::max(m_Extent.y, 1));
+                    generalEvent.type = event.type == SDL_EVENT_FINGER_DOWN ? event::WindowEventType::eTouchDown :
+                                        event.type == SDL_EVENT_FINGER_UP   ? event::WindowEventType::eTouchUp :
+                                                                              event::WindowEventType::eTouchMotion;
+                    generalEvent.touch = event::TouchEvent {
+                        .id       = static_cast<int>(event.tfinger.fingerID),
+                        .position = {event.tfinger.x * w, event.tfinger.y * h},
+                        .delta    = {event.tfinger.dx * w, event.tfinger.dy * h},
+                    };
+                    emitEvent(generalEvent);
+                    break;
+                }
+
+                case SDL_EVENT_TEXT_INPUT:
+                    generalEvent.type      = event::WindowEventType::eTextInput;
+                    generalEvent.textInput = event::TextInputEvent {.text = event.text.text};
+                    emitEvent(generalEvent);
+                    break;
+
                 default:
                     // Dear ImGui needs raw SDL events beyond the engine input subset
                     // (text input, IME composition, focus, etc.). Forward them as
@@ -845,6 +871,18 @@ namespace vultra::platform::sdl
         const auto low  = static_cast<Uint16>(std::clamp(lowFrequency, 0.0f, 1.0f) * 65535.0f);
         const auto high = static_cast<Uint16>(std::clamp(highFrequency, 0.0f, 1.0f) * 65535.0f);
         SDL_RumbleGamepad(m_Gamepad, low, high, durationMs);
+    }
+
+    void SDLWindow::startTextInput()
+    {
+        if (m_WindowHandle)
+            SDL_StartTextInput(m_WindowHandle);
+    }
+
+    void SDLWindow::stopTextInput()
+    {
+        if (m_WindowHandle)
+            SDL_StopTextInput(m_WindowHandle);
     }
 
     void SDLWindow::close()

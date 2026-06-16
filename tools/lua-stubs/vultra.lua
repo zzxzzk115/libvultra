@@ -1196,6 +1196,27 @@ function Character.groundNormal(entity) end
 ---@param position any
 function Character.setPosition(entity, position) end
 
+--- `I18n` namespace (generated).
+---@class I18n
+I18n = {}
+
+---@param key any
+function I18n.tr(key) end
+
+---@param locale any
+function I18n.setLanguage(locale) end
+
+function I18n.language() end
+
+---@param luaState any
+function I18n.languages(luaState) end
+
+---@param locale any
+function I18n.displayName(locale) end
+
+---@param enabled any
+function I18n.setPseudolocalize(enabled) end
+
 --- `Input` namespace (generated).
 ---@class Input
 Input = {}
@@ -1267,6 +1288,36 @@ function Input.gamepadAxis(axis) end
 ---@param highFrequency number
 ---@param durationMs integer
 function Input.rumble(lowFrequency, highFrequency, durationMs) end
+
+---@return integer
+function Input.touchCount() end
+
+---@param index integer
+---@return integer
+function Input.touchId(index) end
+
+---@param index integer
+---@return Vec2
+function Input.touchPosition(index) end
+
+---@param index integer
+---@return Vec2
+function Input.touchDelta(index) end
+
+---@param index integer
+---@return boolean
+function Input.isTouchPressed(index) end
+
+---@param index integer
+---@return boolean
+function Input.isTouchReleased(index) end
+
+function Input.startTextInput() end
+
+function Input.stopTextInput() end
+
+---@return string
+function Input.textInput() end
 
 ---@param action string
 ---@return boolean

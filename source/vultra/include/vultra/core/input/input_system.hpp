@@ -36,6 +36,17 @@ namespace vultra
         float gamepadAxis(GamepadAxis axis) const override;
         void  rumble(float lowFrequency, float highFrequency, int durationMs) override;
 
+        int       touchCount() const override;
+        int       touchId(int index) const override;
+        glm::vec2 touchPosition(int index) const override;
+        glm::vec2 touchDelta(int index) const override;
+        bool      isTouchPressed(int index) const override;
+        bool      isTouchReleased(int index) const override;
+
+        void        startTextInput() override;
+        void        stopTextInput() override;
+        std::string textInput() const override;
+
         bool  hasAction(const std::string& action) const override;
         bool  isActionHeld(const std::string& action) const override;
         bool  isActionPressed(const std::string& action) const override;
@@ -89,6 +100,9 @@ namespace vultra
         bool                                                            m_GamepadConnected {false};
         std::array<GamepadButtonState, static_cast<size_t>(GamepadButton::eCount)> m_GamepadButtons {};
         std::array<float, static_cast<size_t>(GamepadAxis::eCount)>      m_GamepadAxes {};
+
+        std::vector<TouchPoint> m_Touches;
+        std::string             m_TextInput;
 
         InputActionMap m_Actions;
         os::Window*    m_Window {nullptr};

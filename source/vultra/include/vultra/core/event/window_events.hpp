@@ -27,6 +27,10 @@ namespace vultra::event
         eGamepadAxisMotion,
         eGamepadConnected,
         eGamepadDisconnected,
+        eTouchDown,
+        eTouchUp,
+        eTouchMotion,
+        eTextInput,
     };
 
     enum class NativeEventSource
@@ -52,6 +56,8 @@ namespace vultra::event
         std::optional<GamepadButtonEvent>     gamepadButton;
         std::optional<GamepadAxisEvent>       gamepadAxis;
         std::optional<GamepadConnectionEvent> gamepadConnection;
+        std::optional<TouchEvent>             touch;
+        std::optional<TextInputEvent>         textInput;
         const void*                     nativeEvent {nullptr};
         NativeEventSource               nativeEventSource {NativeEventSource::eNone};
     };

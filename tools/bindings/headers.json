@@ -21,6 +21,7 @@
     "source/vultra/include/vultra/function/scripting/bindings/script_physics_shim.hpp",
     "source/vultra/include/vultra/function/scripting/bindings/script_nav_shim.hpp",
     "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
+    "source/vultra/include/vultra/function/scripting/bindings/script_i18n_shim.hpp",
     "source/vultra/include/vultra/function/scripting/bindings/script_math_shim.hpp",
     "source/vultra/include/vultra/function/scripting/bindings/script_ui_shim.hpp",
     "source/vultra/include/vultra/function/scripting/bindings/script_editor_shim.hpp",

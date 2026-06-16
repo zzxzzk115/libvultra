@@ -24,6 +24,7 @@ namespace vultra
     class IEditorExtensionService;
     class INavigationService;
     class ISaveService;
+    class II18nService;
 
     struct ScriptContext
     {
@@ -46,6 +47,7 @@ namespace vultra
         IEditorExtensionService* editorExtensionService {nullptr};
         INavigationService* navService {nullptr};
         ISaveService* saveService {nullptr};
+        II18nService* i18nService {nullptr};
 
         World* world() const;
         bool   isValid(entt::entity e) const;

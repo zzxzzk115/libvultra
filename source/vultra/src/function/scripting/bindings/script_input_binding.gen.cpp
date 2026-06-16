@@ -99,6 +99,42 @@ namespace vultra
                 [&ctx](float lowFrequency, float highFrequency, int durationMs) {
                     if (ctx.inputService) ctx.inputService->rumble(lowFrequency, highFrequency, durationMs);
                 });
+            ns.set_function("touchCount",
+                [&ctx]() {
+                    return ctx.inputService ? ctx.inputService->touchCount() : 0;
+                });
+            ns.set_function("touchId",
+                [&ctx](int index) {
+                    return ctx.inputService ? ctx.inputService->touchId(index) : 0;
+                });
+            ns.set_function("touchPosition",
+                [&ctx](int index) {
+                    return ctx.inputService ? toScript(ctx.inputService->touchPosition(index)) : ScriptVec2 {};
+                });
+            ns.set_function("touchDelta",
+                [&ctx](int index) {
+                    return ctx.inputService ? toScript(ctx.inputService->touchDelta(index)) : ScriptVec2 {};
+                });
+            ns.set_function("isTouchPressed",
+                [&ctx](int index) {
+                    return ctx.inputService ? ctx.inputService->isTouchPressed(index) : false;
+                });
+            ns.set_function("isTouchReleased",
+                [&ctx](int index) {
+                    return ctx.inputService ? ctx.inputService->isTouchReleased(index) : false;
+                });
+            ns.set_function("startTextInput",
+                [&ctx]() {
+                    if (ctx.inputService) ctx.inputService->startTextInput();
+                });
+            ns.set_function("stopTextInput",
+                [&ctx]() {
+                    if (ctx.inputService) ctx.inputService->stopTextInput();
+                });
+            ns.set_function("textInput",
+                [&ctx]() {
+                    return ctx.inputService ? ctx.inputService->textInput() : std::string {};
+                });
             ns.set_function("hasAction",
                 [&ctx](const std::string& action) {
                     return ctx.inputService ? ctx.inputService->hasAction(action) : false;

@@ -675,6 +675,34 @@ function OnUpdate(self, dt)
 end
 ```
 
+### Touch
+
+Multi-touch is exposed through `Input` (positions in window pixels). SDL also synthesizes mouse
+events from the primary touch, so existing pointer UI works on touch automatically — these
+queries add multi-touch / gestures.
+
+```lua
+for i = 0, Input.touchCount() - 1 do
+  local p = Input.touchPosition(i)
+  if Input.isTouchPressed(i) then print("touch began at", p.x, p.y) end
+end
+```
+
+- `Input.touchCount()`
+- `Input.touchId(i)` — stable id while the finger is down
+- `Input.touchPosition(i)` / `Input.touchDelta(i)` (window pixels)
+- `Input.isTouchPressed(i)` (began this frame) / `Input.isTouchReleased(i)` (ended this frame)
+
+### Text input
+
+For typed text (e.g. a chat box or custom field), enable text input while focused and read the
+characters committed each frame:
+
+- `Input.startTextInput()` / `Input.stopTextInput()`
+- `Input.textInput()` — UTF-8 string typed this frame (`""` if none)
+
+The built-in `UiInputField` widget does this for you; use these directly only for custom input.
+
 ## Physics
 
 Rigid bodies are controlled with the `RigidBody` reference on an entity or the
@@ -1052,6 +1080,27 @@ end
 
 Slot names are sanitized to a safe filename. For complex tables, store JSON strings (encode
 in Lua) under a key.
+
+## Localization (I18n)
+
+Translate game text at runtime through `I18n`, which resolves catalog keys against the active
+language (the same catalogs the editor uses, plus any the game registers). A missing key
+returns the key itself.
+
+```lua
+I18n.setLanguage("zh-CN")
+label.text = I18n.tr("game.menu.start")            -- localized string
+local hp = string.format(I18n.tr("game.hud.hp"), 80, 100) -- format args via string.format
+```
+
+- `I18n.tr(key)` -> string (key if missing)
+- `I18n.setLanguage(locale)` -> boolean ; `I18n.language()` -> current locale
+- `I18n.languages()` -> array of available locales ; `I18n.displayName(locale)` -> string
+- `I18n.setPseudolocalize(enabled)` — bracket all strings to find un-translated literals
+
+For authored UI, set a `UiText` component's **localizationKey** (in the inspector or
+`uiText.localizationKey = "game.menu.start"`); the text then auto-resolves to the active
+language each frame, no script needed.
 
 ## Script And Render Utilities
 

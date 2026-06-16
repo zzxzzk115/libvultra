@@ -2,6 +2,8 @@
 
 #include "vultra/core/base/script_annotations.hpp"
 
+#include <glm/vec2.hpp>
+
 #include <cstdint>
 
 namespace vultra
@@ -195,5 +197,16 @@ namespace vultra
         bool pressed {false}; // currently held
         bool down {false};    // went down this frame
         bool up {false};      // went up this frame
+    };
+
+    // A single active touch point. `position`/`delta` are in window pixels; `id` is the
+    // platform finger id (stable while the finger is down). down/up are this-frame edges.
+    struct TouchPoint
+    {
+        int       id {0};
+        glm::vec2 position {0.0f};
+        glm::vec2 delta {0.0f};
+        bool      down {false};
+        bool      up {false};
     };
 } // namespace vultra

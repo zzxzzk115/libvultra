@@ -421,6 +421,198 @@
           }
         },
         {
+          "luaName": "touchCount",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "touchCount",
+          "params": [],
+          "returnType": "int",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "0",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 51
+          }
+        },
+        {
+          "luaName": "touchId",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "touchId",
+          "params": [
+            {
+              "name": "index",
+              "type": "int",
+              "cpp": null
+            }
+          ],
+          "returnType": "int",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "0",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 52
+          }
+        },
+        {
+          "luaName": "touchPosition",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "touchPosition",
+          "params": [
+            {
+              "name": "index",
+              "type": "int",
+              "cpp": null
+            }
+          ],
+          "returnType": "vec2",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "ScriptVec2 {}",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 53
+          }
+        },
+        {
+          "luaName": "touchDelta",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "touchDelta",
+          "params": [
+            {
+              "name": "index",
+              "type": "int",
+              "cpp": null
+            }
+          ],
+          "returnType": "vec2",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "ScriptVec2 {}",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 54
+          }
+        },
+        {
+          "luaName": "isTouchPressed",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "isTouchPressed",
+          "params": [
+            {
+              "name": "index",
+              "type": "int",
+              "cpp": null
+            }
+          ],
+          "returnType": "bool",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "false",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 55
+          }
+        },
+        {
+          "luaName": "isTouchReleased",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "isTouchReleased",
+          "params": [
+            {
+              "name": "index",
+              "type": "int",
+              "cpp": null
+            }
+          ],
+          "returnType": "bool",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "false",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 56
+          }
+        },
+        {
+          "luaName": "startTextInput",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "startTextInput",
+          "params": [],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 59
+          }
+        },
+        {
+          "luaName": "stopTextInput",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "stopTextInput",
+          "params": [],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 60
+          }
+        },
+        {
+          "luaName": "textInput",
+          "callForm": "namespace",
+          "bodyKind": "serviceForward",
+          "cppCall": "textInput",
+          "params": [],
+          "returnType": "string",
+          "returnCpp": null,
+          "serviceDep": "inputService",
+          "nullReturn": "std::string {}",
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/core/services/input_service.hpp",
+            "line": 61
+          }
+        },
+        {
           "luaName": "hasAction",
           "callForm": "namespace",
           "bodyKind": "serviceForward",
@@ -441,7 +633,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 54
+            "line": 67
           }
         },
         {
@@ -465,7 +657,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 55
+            "line": 68
           }
         },
         {
@@ -489,7 +681,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 56
+            "line": 69
           }
         },
         {
@@ -513,7 +705,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 57
+            "line": 70
           }
         },
         {
@@ -537,7 +729,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 58
+            "line": 71
           }
         },
         {
@@ -561,7 +753,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 61
+            "line": 74
           }
         },
         {
@@ -590,7 +782,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 62
+            "line": 75
           }
         },
         {
@@ -619,7 +811,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 63
+            "line": 76
           }
         },
         {
@@ -648,7 +840,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 64
+            "line": 77
           }
         },
         {
@@ -682,7 +874,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/core/services/input_service.hpp",
-            "line": 65
+            "line": 78
           }
         }
       ],
@@ -5002,6 +5194,157 @@
         "file": "source/vultra/include/vultra/function/scripting/bindings/script_save_shim.hpp",
         "line": 15
       }
+    },
+    {
+      "name": "I18n",
+      "area": "i18n",
+      "serviceDep": "i18nService",
+      "header": "vultra/function/scripting/bindings/script_i18n_shim.hpp",
+      "functions": [
+        {
+          "luaName": "tr",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "i18nTr",
+          "params": [
+            {
+              "name": "key",
+              "type": "raw",
+              "cpp": "const std::string &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "std::string",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_i18n_shim.hpp",
+            "line": 21
+          }
+        },
+        {
+          "luaName": "setLanguage",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "i18nSetLanguage",
+          "params": [
+            {
+              "name": "locale",
+              "type": "raw",
+              "cpp": "const std::string &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "bool",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_i18n_shim.hpp",
+            "line": 22
+          }
+        },
+        {
+          "luaName": "language",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "i18nLanguage",
+          "params": [],
+          "returnType": "raw",
+          "returnCpp": "std::string",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_i18n_shim.hpp",
+            "line": 23
+          }
+        },
+        {
+          "luaName": "languages",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "i18nLanguages",
+          "params": [
+            {
+              "name": "luaState",
+              "type": "raw",
+              "cpp": "sol::this_state"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "sol::table",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_i18n_shim.hpp",
+            "line": 24
+          }
+        },
+        {
+          "luaName": "displayName",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "i18nDisplayName",
+          "params": [
+            {
+              "name": "locale",
+              "type": "raw",
+              "cpp": "const std::string &"
+            }
+          ],
+          "returnType": "raw",
+          "returnCpp": "std::string",
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_i18n_shim.hpp",
+            "line": 25
+          }
+        },
+        {
+          "luaName": "setPseudolocalize",
+          "callForm": "namespace",
+          "bodyKind": "shimCall",
+          "cppCall": "i18nSetPseudolocalize",
+          "params": [
+            {
+              "name": "enabled",
+              "type": "raw",
+              "cpp": "bool"
+            }
+          ],
+          "returnType": "void",
+          "returnCpp": null,
+          "serviceDep": null,
+          "nullReturn": null,
+          "selfHandle": null,
+          "overloadGroup": null,
+          "deprecatedAlias": null,
+          "source": {
+            "file": "source/vultra/include/vultra/function/scripting/bindings/script_i18n_shim.hpp",
+            "line": 26
+          }
+        }
+      ],
+      "properties": [],
+      "source": {
+        "file": "source/vultra/include/vultra/function/scripting/bindings/script_i18n_shim.hpp",
+        "line": 16
+      }
     }
   ],
   "usertypes": [
@@ -7184,7 +7527,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/core/input/input_structs.hpp",
-        "line": 30
+        "line": 32
       }
     },
     {
@@ -7218,7 +7561,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/core/input/input_structs.hpp",
-        "line": 147
+        "line": 149
       }
     },
     {
@@ -7296,7 +7639,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/core/input/input_structs.hpp",
-        "line": 158
+        "line": 160
       }
     },
     {
@@ -7338,7 +7681,7 @@
       ],
       "source": {
         "file": "source/vultra/include/vultra/core/input/input_structs.hpp",
-        "line": 181
+        "line": 183
       }
     },
     {

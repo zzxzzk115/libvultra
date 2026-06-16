@@ -104,6 +104,48 @@ namespace vultra
                 m_GamepadAxes.fill(0.0f);
                 break;
 
+            case event::WindowEventType::eTouchDown:
+                if (e.touch.has_value())
+                {
+                    auto& t    = m_Touches.emplace_back();
+                    t.id       = e.touch->id;
+                    t.position = e.touch->position;
+                    t.delta    = e.touch->delta;
+                    t.down     = true;
+                }
+                break;
+
+            case event::WindowEventType::eTouchMotion:
+                if (e.touch.has_value())
+                {
+                    for (auto& t : m_Touches)
+                        if (t.id == e.touch->id)
+                        {
+                            t.position = e.touch->position;
+                            t.delta    = e.touch->delta;
+                            break;
+                        }
+                }
+                break;
+
+            case event::WindowEventType::eTouchUp:
+                if (e.touch.has_value())
+                {
+                    for (auto& t : m_Touches)
+                        if (t.id == e.touch->id)
+                        {
+                            t.position = e.touch->position;
+                            t.up       = true;
+                            break;
+                        }
+                }
+                break;
+
+            case event::WindowEventType::eTextInput:
+                if (e.textInput.has_value())
+                    m_TextInput += e.textInput->text;
+                break;
+
             default:
                 break;
         }
@@ -160,6 +202,15 @@ namespace vultra
             s.down = false;
             s.up   = false;
         }
+
+        // Drop touches that ended this frame; clear per-frame edge/delta on the rest.
+        std::erase_if(m_Touches, [](const TouchPoint& t) { return t.up; });
+        for (auto& t : m_Touches)
+        {
+            t.down  = false;
+            t.delta = {};
+        }
+        m_TextInput.clear();
 
         m_MousePositionDelta = {};
 
@@ -267,6 +318,53 @@ namespace vultra
     }
 
     void InputSystem::attachWindow(os::Window* window) { m_Window = window; }
+
+    // --- Touch ---
+
+    int InputSystem::touchCount() const { return static_cast<int>(m_Touches.size()); }
+
+    int InputSystem::touchId(int index) const
+    {
+        return (index >= 0 && index < static_cast<int>(m_Touches.size())) ? m_Touches[static_cast<size_t>(index)].id : 0;
+    }
+
+    glm::vec2 InputSystem::touchPosition(int index) const
+    {
+        return (index >= 0 && index < static_cast<int>(m_Touches.size())) ? m_Touches[static_cast<size_t>(index)].position
+                                                                          : glm::vec2 {0.0f};
+    }
+
+    glm::vec2 InputSystem::touchDelta(int index) const
+    {
+        return (index >= 0 && index < static_cast<int>(m_Touches.size())) ? m_Touches[static_cast<size_t>(index)].delta
+                                                                          : glm::vec2 {0.0f};
+    }
+
+    bool InputSystem::isTouchPressed(int index) const
+    {
+        return index >= 0 && index < static_cast<int>(m_Touches.size()) && m_Touches[static_cast<size_t>(index)].down;
+    }
+
+    bool InputSystem::isTouchReleased(int index) const
+    {
+        return index >= 0 && index < static_cast<int>(m_Touches.size()) && m_Touches[static_cast<size_t>(index)].up;
+    }
+
+    // --- Text input ---
+
+    void InputSystem::startTextInput()
+    {
+        if (m_Window)
+            m_Window->startTextInput();
+    }
+
+    void InputSystem::stopTextInput()
+    {
+        if (m_Window)
+            m_Window->stopTextInput();
+    }
+
+    std::string InputSystem::textInput() const { return m_TextInput; }
 
     // --- Action map ---
 

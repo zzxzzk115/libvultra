@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 
 #include <optional>
+#include <string>
 
 namespace vultra::event
 {
@@ -48,5 +49,17 @@ namespace vultra::event
     {
         int  which {0};
         bool connected {false};
+    };
+
+    struct TouchEvent
+    {
+        int       id {0};
+        glm::vec2 position {0.0f}; // window pixels
+        glm::vec2 delta {0.0f};
+    };
+
+    struct TextInputEvent
+    {
+        std::string text; // UTF-8 text committed this event
     };
 } // namespace vultra::event

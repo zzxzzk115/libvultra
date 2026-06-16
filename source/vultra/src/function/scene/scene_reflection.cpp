@@ -307,6 +307,7 @@ namespace vultra
             .type("UiTextComponent"_hs)
             .data<&UiTextComponent::enabled>("enabled"_hs)
             .data<&UiTextComponent::text>("text"_hs)
+            .data<&UiTextComponent::localizationKey>("localizationKey"_hs)
             .data<&UiTextComponent::color>("color"_hs)
             .data<&UiTextComponent::fontSizePx>("fontSizePx"_hs)
             .data<&UiTextComponent::horizontalAlign>("horizontalAlign"_hs)

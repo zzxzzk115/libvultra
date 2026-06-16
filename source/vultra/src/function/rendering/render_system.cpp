@@ -3,6 +3,7 @@
 
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
+#include "vultra/core/i18n/i18n.hpp"
 #include "vultra/function/debug_draw/debug_draw_interface.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
@@ -2630,8 +2631,12 @@ namespace vultra
             }
 
             if (const auto* textC = reg.try_get<UiTextComponent>(entity);
-                textC && textC->enabled && glyphAtlas && glyphAtlasIndex != 0u && !textC->text.empty())
+                textC && textC->enabled && glyphAtlas && glyphAtlasIndex != 0u &&
+                (!textC->text.empty() || !textC->localizationKey.empty()))
             {
+                // Resolve i18n: a non-empty localizationKey overrides the literal text.
+                const std::string displayText =
+                    textC->localizationKey.empty() ? textC->text : std::string(vultra::tr(textC->localizationKey));
                 const uint32_t pixelSize =
                     static_cast<uint32_t>(std::clamp(std::lround(textC->fontSizePx), 1L, 256L));
                 const uint64_t fontKey = std::hash<CoreUUID> {}(effectiveUiFontUuid(textC->font));
@@ -2670,7 +2675,7 @@ namespace vultra
                     glyphAtlas->fontMetrics(fontKey, pixelSize, ascentPx, lineHeightPx);
 
                     std::vector<uint32_t> codepoints;
-                    decodeUtf8(textC->text, codepoints);
+                    decodeUtf8(displayText, codepoints);
 
                     // Single-line layout: measure advance, then place by h/v alignment in the rect.
                     float totalAdvance = 0.0f;

@@ -656,6 +656,32 @@ function OnUpdate(self, dt)
 end
 ```
 
+### 触摸（Touch）
+
+多点触摸通过 `Input` 暴露（坐标为窗口像素）。SDL 还会从主触摸点合成鼠标事件，因此已有的
+指针 UI 在触摸下可自动工作——这些查询用于多点触摸 / 手势。
+
+```lua
+for i = 0, Input.touchCount() - 1 do
+  local p = Input.touchPosition(i)
+  if Input.isTouchPressed(i) then print("touch began at", p.x, p.y) end
+end
+```
+
+- `Input.touchCount()`
+- `Input.touchId(i)` —— 手指按下期间稳定的 id
+- `Input.touchPosition(i)` / `Input.touchDelta(i)`（窗口像素）
+- `Input.isTouchPressed(i)`（当前帧开始）/ `Input.isTouchReleased(i)`（当前帧结束）
+
+### 文本输入（Text input）
+
+对于键入文本（如聊天框或自定义输入框），在获得焦点时启用文本输入，并读取每帧提交的字符：
+
+- `Input.startTextInput()` / `Input.stopTextInput()`
+- `Input.textInput()` —— 当前帧键入的 UTF-8 字符串（无则为 `""`）
+
+内置的 `UiInputField` 组件已为你处理这些；仅在自定义输入时才直接使用它们。
+
 ## Physics
 
 刚体通过实体上的 `RigidBody` 引用或全局的 `Physics` 表来控制。
@@ -1028,6 +1054,25 @@ end
 - `Save.hasSlot(slot)`、`Save.deleteSlot(slot)`、`Save.listSlots()` -> 存档槽名数组
 
 存档槽名会被规整为安全的文件名。对于复杂的表，请存储 JSON 字符串（在 Lua 中编码）。
+
+## Localization（本地化 / I18n）
+
+通过 `I18n` 在运行时翻译游戏文本：它会按当前语言解析目录键（与编辑器使用的目录相同，外加
+游戏注册的目录）。缺失的键将返回键本身。
+
+```lua
+I18n.setLanguage("zh-CN")
+label.text = I18n.tr("game.menu.start")            -- 本地化字符串
+local hp = string.format(I18n.tr("game.hud.hp"), 80, 100) -- 格式化参数用 string.format
+```
+
+- `I18n.tr(key)` -> string（缺失时返回键）
+- `I18n.setLanguage(locale)` -> boolean ；`I18n.language()` -> 当前语言
+- `I18n.languages()` -> 可用语言数组 ；`I18n.displayName(locale)` -> string
+- `I18n.setPseudolocalize(enabled)` —— 给所有字符串加方括号，以发现未翻译的字面量
+
+对于在编辑器中编排的 UI，给 `UiText` 组件设置 **localizationKey**（在检查器中，或
+`uiText.localizationKey = "game.menu.start"`）；文本会每帧自动解析为当前语言，无需脚本。
 
 ## Script And Render Utilities
 

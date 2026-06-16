@@ -79,6 +79,8 @@ namespace vultra::platform::sdl
 
         void pollEvents(int timeoutMillis = 0) override;
         void setGamepadRumble(float lowFrequency, float highFrequency, uint32_t durationMs) override;
+        void startTextInput() override;
+        void stopTextInput() override;
         void close() override;
         void minimize() override;
         void maximize() override;

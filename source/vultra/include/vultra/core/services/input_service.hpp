@@ -47,6 +47,19 @@ namespace vultra
         // Play a rumble effect on the first connected gamepad. Frequencies in [0,1].
         VBIND_FN() virtual void  rumble(float lowFrequency, float highFrequency, int durationMs) = 0;
 
+        // --- Touch (multi-touch; positions in window pixels) ---
+        VBIND_FN() virtual int       touchCount() const             = 0;
+        VBIND_FN() virtual int       touchId(int index) const       = 0;
+        VBIND_FN() virtual glm::vec2 touchPosition(int index) const = 0;
+        VBIND_FN() virtual glm::vec2 touchDelta(int index) const    = 0;
+        VBIND_FN() virtual bool      isTouchPressed(int index) const  = 0; // began this frame
+        VBIND_FN() virtual bool      isTouchReleased(int index) const = 0; // ended this frame
+
+        // --- Text input (enable while a text field is focused) ---
+        VBIND_FN() virtual void        startTextInput() = 0;
+        VBIND_FN() virtual void        stopTextInput()  = 0;
+        VBIND_FN() virtual std::string textInput() const = 0; // UTF-8 typed this frame
+
         // --- Action map (Godot-style, loaded from res://input.actions.json) ---
         // isActionHeld == currently down; isActionPressed/Released == this-frame edges
         // (consistent with isKeyHeld vs isKeyPressed). actionAxis returns the signed

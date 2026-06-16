@@ -49,6 +49,9 @@ namespace vultra
     {
         bool        enabled {true};
         std::string text {"Text"};
+        // Optional i18n catalog key. When non-empty, the rendered string is tr(localizationKey)
+        // for the active language; otherwise the literal `text` is used.
+        std::string localizationKey;
         glm::vec4   color {1.0f};
         float       fontSizePx {24.0f};
         uint32_t    horizontalAlign {0}; // 0: left, 1: center, 2: right.

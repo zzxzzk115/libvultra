@@ -8,6 +8,7 @@
 #include "vultra/function/scripting/bindings/script_editor_binding.hpp"
 #include "vultra/function/scripting/bindings/script_entity_binding.hpp"
 #include "vultra/function/scripting/bindings/script_components_binding.hpp"
+#include "vultra/function/scripting/bindings/script_i18n_binding.hpp"
 #include "vultra/function/scripting/bindings/script_imgui_binding.hpp"
 #include "vultra/function/scripting/bindings/script_input_binding.hpp"
 #include "vultra/function/scripting/bindings/script_math_binding.hpp"
@@ -35,6 +36,7 @@ namespace vultra
         registerScriptPhysicsBindings(lua, ctx);
         registerScriptNavigationBindings(lua, ctx);
         registerScriptSaveBindings(lua, ctx);
+        registerScriptI18nBindings(lua, ctx);
         registerScriptAnimationBindings(lua, ctx);
         registerScriptAudioBindings(lua, ctx);
         registerScriptInputBindings(lua, ctx);

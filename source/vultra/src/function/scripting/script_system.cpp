@@ -1,6 +1,7 @@
 #include "vultra/function/scripting/script_system.hpp"
 
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/services/i18n_service.hpp"
 #include "vultra/core/services/input_service.hpp"
 #include "vultra/core/services/timing_service.hpp"
 #include "vultra/function/scripting/bindings/script_ui_binding.hpp"
@@ -61,6 +62,7 @@ namespace vultra
         m_ScriptContext.imguiService         = ctx().services.tryGet<IImGuiService>();
         m_ScriptContext.navService           = ctx().services.tryGet<INavigationService>();
         m_ScriptContext.saveService          = ctx().services.tryGet<ISaveService>();
+        m_ScriptContext.i18nService          = ctx().services.tryGet<II18nService>();
 
         // ScriptSystem owns the editor-extension registry (registrations come
         // from Lua) and publishes it; the editor app consumes it when present.

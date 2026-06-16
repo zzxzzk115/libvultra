@@ -183,6 +183,11 @@ namespace vultra
             // gamepad support or none is connected.
             virtual void setGamepadRumble(float /*lowFrequency*/, float /*highFrequency*/, uint32_t /*durationMs*/) {}
 
+            // Begin/end OS text input (IME + SDL_EVENT_TEXT_INPUT). Enable while a text field is
+            // focused so typed characters arrive as text-input events. No-op by default.
+            virtual void startTextInput() {}
+            virtual void stopTextInput() {}
+
             virtual void close()                           = 0;
             virtual void minimize()                        = 0;
             virtual void maximize()                        = 0;
