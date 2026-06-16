@@ -36,6 +36,7 @@
     "uiProgressBar": "UI 进度条",
     "uiInputField": "UI 输入框",
     "uiDropdown": "UI 下拉框",
+    "uiScrollView": "UI 滚动视图",
     "uiLayout": "UI 布局",
     "status": "状态",
     "hierarchy": "层级",

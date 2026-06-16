@@ -30,9 +30,14 @@ Spec: `ai/specs/ui-widgets.md`. Delivered as three sub-commits on `dev-next`.
 - [x] Docs: EN + CN UI section.
 
 ## c) UiScrollView (commit 2c)
-- [ ] `ui_system.cpp`: wheel/touch scroll, clamp, child rect offset in `rebuild`.
-- [ ] `render_system.cpp`: child clip-clamp to bounds.
-- [ ] Bindings + reflection + inspector + i18n + docs.
+- [x] `ui_system.cpp`: wheel scroll (innermost view), clamp, child rect offset in `rebuild`.
+- [x] `render_system.cpp`: generic CPU clip (rect+UV clamp) threaded through cookUiChildren;
+      scroll background + child offset + clip-to-bounds.
+- [x] Bindings (ref, enum+X-macro, UiScrollView usertype: scrollPx/contentSizePx/h/v).
+- [x] `scene_reflection.cpp` meta factory.
+- [x] Inspector: generic drawMetaFields + 6 registration sites (UI category).
+- [x] i18n: `inspector.component.uiScrollView` x4.
+- [x] Docs: EN + CN UI section.
 
 ## Verify
 - `xmake build -y vultra-app` (close running editor to relink).

@@ -4588,6 +4588,7 @@ namespace vultra_app
                 addUiComponentDescriptor<vultra::UiProgressBarComponent>("UiProgressBar", "UI Progress Bar"),
                 addUiComponentDescriptor<vultra::UiInputFieldComponent>("UiInputField", "UI Input Field"),
                 addUiComponentDescriptor<vultra::UiDropdownComponent>("UiDropdown", "UI Dropdown"),
+                addUiComponentDescriptor<vultra::UiScrollViewComponent>("UiScrollView", "UI Scroll View"),
                 addUiComponentDescriptor<vultra::UiLayoutComponent>("UiLayout", "UI Layout"),
                 addComponentDescriptor<vultra::MeshComponent>("Mesh", "Mesh", "Rendering"),
                 addAnimatorComponentDescriptor(),
@@ -4635,6 +4636,7 @@ namespace vultra_app
                 "UiProgressBar",
                 "UiInputField",
                 "UiDropdown",
+                "UiScrollView",
                 "UiLayout",
                 "Mesh",
                 "Animator",
@@ -4689,6 +4691,8 @@ namespace vultra_app
                 return reg.all_of<vultra::UiInputFieldComponent>(entity);
             if (key == "UiDropdown")
                 return reg.all_of<vultra::UiDropdownComponent>(entity);
+            if (key == "UiScrollView")
+                return reg.all_of<vultra::UiScrollViewComponent>(entity);
             if (key == "UiLayout")
                 return reg.all_of<vultra::UiLayoutComponent>(entity);
             if (key == "Mesh")
@@ -4779,6 +4783,8 @@ namespace vultra_app
                 return "inspector.component.uiInputField";
             if (key == "UiDropdown")
                 return "inspector.component.uiDropdown";
+            if (key == "UiScrollView")
+                return "inspector.component.uiScrollView";
             if (key == "UiLayout")
                 return "inspector.component.uiLayout";
             if (key == "Mesh")
@@ -4886,6 +4892,8 @@ namespace vultra_app
                 reg.remove<vultra::UiInputFieldComponent>(entity);
             else if (key == "UiDropdown")
                 reg.remove<vultra::UiDropdownComponent>(entity);
+            else if (key == "UiScrollView")
+                reg.remove<vultra::UiScrollViewComponent>(entity);
             else if (key == "UiLayout")
                 reg.remove<vultra::UiLayoutComponent>(entity);
             else if (key == "Mesh")
@@ -5419,6 +5427,16 @@ namespace vultra_app
                         ctx.state.sceneDirty = true;
                         if (ctx.history)
                             ctx.history->setNextLabel("Edit UI Dropdown");
+                    }
+            }
+            else if (key == "UiScrollView")
+            {
+                if (auto* scrollView = reg.try_get<vultra::UiScrollViewComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *scrollView))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit UI Scroll View");
                     }
             }
             else if (key == "UiLayout")

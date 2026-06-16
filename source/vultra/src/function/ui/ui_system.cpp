@@ -304,6 +304,11 @@ namespace vultra
             m_RectByEntity[entity] = m_Rects.size();
             m_Rects.push_back(resolved);
 
+            // Scroll views offset their descendants by the scroll amount (in canvas-scaled px).
+            const auto*     scrollView = reg.try_get<UiScrollViewComponent>(entity);
+            const glm::vec2 childOrigin =
+                (scrollView && scrollView->enabled) ? resolved.minPx - scrollView->scrollPx * scale : resolved.minPx;
+
             const auto* layout = reg.try_get<UiLayoutComponent>(entity);
             uint32_t childIndex = 0;
             for (auto child = world.firstChild(entity); child != entt::null; child = world.nextSibling(child))
@@ -341,7 +346,7 @@ namespace vultra
                         childRect->sizeDeltaPx = layout->cellSizePx;
                     }
                 }
-                self(self, canvasEntity, child, resolved.minPx, resolved.maxPx - resolved.minPx, scale, sortOrder, depth + 1u);
+                self(self, canvasEntity, child, childOrigin, resolved.maxPx - resolved.minPx, scale, sortOrder, depth + 1u);
                 ++childIndex;
             }
         };
@@ -592,6 +597,27 @@ namespace vultra
 
             if (!consumed && clickedHeader != entt::null && !closedClickedHeader)
                 reg.get<UiDropdownComponent>(clickedHeader).expanded = true;
+        }
+
+        // --- Scroll view: wheel over the view scrolls its content (innermost view wins) ---
+        if (const glm::vec2 wheel = input->mouseScrollDelta(); wheel.x != 0.0f || wheel.y != 0.0f)
+        {
+            for (auto cur = m_HoveredEntity; cur != entt::null && reg.valid(cur); cur = world.parent(cur))
+            {
+                auto* sv = reg.try_get<UiScrollViewComponent>(cur);
+                if (!sv || !sv->enabled)
+                    continue;
+                const auto rect = resolvedRect(cur);
+                if (!rect)
+                    break;
+                const glm::vec2 viewport  = rect->maxPx - rect->minPx;
+                const glm::vec2 maxScroll = glm::max(sv->contentSizePx - viewport, glm::vec2 {0.0f});
+                if (sv->vertical)
+                    sv->scrollPx.y = std::clamp(sv->scrollPx.y - wheel.y * sv->scrollSpeedPx, 0.0f, maxScroll.y);
+                if (sv->horizontal)
+                    sv->scrollPx.x = std::clamp(sv->scrollPx.x - wheel.x * sv->scrollSpeedPx, 0.0f, maxScroll.x);
+                break;
+            }
         }
 
         // Suppress camera control while a dropdown is open (its option list sits outside any rect).

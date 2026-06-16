@@ -250,6 +250,18 @@ namespace vultra
             return *dropdown;
         }
 
+        UiScrollViewComponent& requireScrollView(ScriptContext& ctx, entt::entity entity)
+        {
+            auto* world = ctx.world();
+            if (!world)
+                throw std::runtime_error("ScriptContext has no World");
+
+            auto* scrollView = world->registry().try_get<UiScrollViewComponent>(entity);
+            if (!scrollView)
+                throw std::runtime_error("Entity has no UiScrollViewComponent");
+            return *scrollView;
+        }
+
         ScriptUiSignalConnection connectSignal(const ScriptUiSignalRef& signal, sol::protected_function callback)
         {
             if (!callback.valid())
@@ -616,6 +628,35 @@ namespace vultra
             sol::property([](const ScriptUiDropdownRef& self) {
                 return ScriptUiSignalRef {self.entity, "onValueChanged"};
             }));
+
+        lua.new_usertype<ScriptUiScrollViewRef>(
+            "UiScrollView",
+            "scrollPx",
+            VULTRA_LUA_PROPERTY(
+                [&ctx](const ScriptUiScrollViewRef& self) { return toScriptVec2(requireScrollView(ctx, self.entity).scrollPx); },
+                [&ctx](const ScriptUiScrollViewRef& self, const ScriptVec2& value) {
+                    requireScrollView(ctx, self.entity).scrollPx = glm::max(toGlmVec2(value), glm::vec2 {0.0f});
+                }),
+            "contentSizePx",
+            VULTRA_LUA_PROPERTY(
+                [&ctx](const ScriptUiScrollViewRef& self) {
+                    return toScriptVec2(requireScrollView(ctx, self.entity).contentSizePx);
+                },
+                [&ctx](const ScriptUiScrollViewRef& self, const ScriptVec2& value) {
+                    requireScrollView(ctx, self.entity).contentSizePx = toGlmVec2(value);
+                }),
+            "horizontal",
+            VULTRA_LUA_PROPERTY(
+                [&ctx](const ScriptUiScrollViewRef& self) { return requireScrollView(ctx, self.entity).horizontal; },
+                [&ctx](const ScriptUiScrollViewRef& self, bool value) {
+                    requireScrollView(ctx, self.entity).horizontal = value;
+                }),
+            "vertical",
+            VULTRA_LUA_PROPERTY(
+                [&ctx](const ScriptUiScrollViewRef& self) { return requireScrollView(ctx, self.entity).vertical; },
+                [&ctx](const ScriptUiScrollViewRef& self, bool value) {
+                    requireScrollView(ctx, self.entity).vertical = value;
+                }));
 
         auto ui = lua.create_table();
         ui.set_function("isPointerOverUI", [&ctx]() { return ctx.uiService && ctx.uiService->pointerOverUi(); });

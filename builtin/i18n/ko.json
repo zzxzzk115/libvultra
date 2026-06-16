@@ -196,6 +196,7 @@
       "uiProgressBar": "UI 진행 표시줄",
       "uiInputField": "UI 입력 필드",
       "uiDropdown": "UI 드롭다운",
+      "uiScrollView": "UI 스크롤 뷰",
       "uiLayout": "UI 레이아웃",
       "status": "상태",
       "hierarchy": "계층",

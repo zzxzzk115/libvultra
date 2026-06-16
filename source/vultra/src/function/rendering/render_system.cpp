@@ -2488,7 +2488,9 @@ namespace vultra
                             const int              sortOrder,
                             const uint32_t         depth,
                             rendering::GlyphAtlas* glyphAtlas,
-                            const uint32_t         glyphAtlasIndex)
+                            const uint32_t         glyphAtlasIndex,
+                            const glm::vec2&       clipMin,
+                            const glm::vec2&       clipMax)
         {
             auto& reg = world.registry();
             auto* rect = reg.try_get<RectTransformComponent>(entity);
@@ -2501,6 +2503,29 @@ namespace vultra
             const glm::vec2 maxPx     = minPx + sizePx * rect->scale;
             uint32_t        localDrawOrder {0u};
             int             overlayBias {0}; // added to sortOrder so an expanded dropdown list draws on top
+
+            // CPU-side clip: clamp a draw rect (and proportionally its UVs) to the active clip
+            // rect, returning false if fully outside. A huge default clip is a no-op; scroll views
+            // tighten it for their descendants.
+            const auto applyClip = [&](glm::vec2& dMin, glm::vec2& dMax, glm::vec2& uvMin, glm::vec2& uvMax) -> bool {
+                const glm::vec2 cMin = glm::max(dMin, clipMin);
+                const glm::vec2 cMax = glm::min(dMax, clipMax);
+                if (cMax.x <= cMin.x || cMax.y <= cMin.y)
+                    return false;
+                if (cMin != dMin || cMax != dMax)
+                {
+                    const glm::vec2 size = glm::max(dMax - dMin, glm::vec2 {1e-4f});
+                    const glm::vec2 t0   = (cMin - dMin) / size;
+                    const glm::vec2 t1   = (cMax - dMin) / size;
+                    const glm::vec2 u0   = uvMin;
+                    const glm::vec2 u1   = uvMax;
+                    uvMin = u0 + (u1 - u0) * t0;
+                    uvMax = u0 + (u1 - u0) * t1;
+                    dMin  = cMin;
+                    dMax  = cMax;
+                }
+                return true;
+            };
 
             const auto pushRectItem = [&](const glm::vec2& drawMin,
                                           const glm::vec2& drawMax,
@@ -2525,6 +2550,8 @@ namespace vultra
                 item.space             = canvas.renderMode == 1u ? 1u : 0u;
                 item.pixelsPerUnit     = canvas.pixelsPerUnit > 0.0f ? canvas.pixelsPerUnit : 250.0f;
                 item.worldMatrix       = canvasWorldMatrix;
+                if (!applyClip(item.rectMinPx, item.rectMaxPx, item.uvMin, item.uvMax))
+                    return;
                 out.uiDrawItems.push_back(item);
             };
             const auto pushItem = [&](const glm::vec4& color,
@@ -2560,6 +2587,8 @@ namespace vultra
                 item.space             = canvas.renderMode == 1u ? 1u : 0u;
                 item.pixelsPerUnit     = canvas.pixelsPerUnit > 0.0f ? canvas.pixelsPerUnit : 250.0f;
                 item.worldMatrix       = canvasWorldMatrix;
+                if (!applyClip(item.rectMinPx, item.rectMaxPx, item.uvMin, item.uvMax))
+                    return;
                 out.uiDrawItems.push_back(item);
             };
 
@@ -2697,6 +2726,8 @@ namespace vultra
                         item.space             = canvas.renderMode == 1u ? 1u : 0u;
                         item.pixelsPerUnit     = canvas.pixelsPerUnit > 0.0f ? canvas.pixelsPerUnit : 250.0f;
                         item.worldMatrix       = canvasWorldMatrix;
+                        if (!applyClip(item.rectMinPx, item.rectMaxPx, item.uvMin, item.uvMax))
+                            return;
                         out.uiDrawItems.push_back(item);
                     };
 
@@ -2874,6 +2905,16 @@ namespace vultra
                 }
             }
 
+            // Scroll view: draw its background, then offset + clip its descendants.
+            const auto* scrollView = reg.try_get<UiScrollViewComponent>(entity);
+            if (scrollView && scrollView->enabled)
+                pushItem(scrollView->backgroundColor, 0u, 0u, 0u);
+
+            const glm::vec2 childParentMin =
+                (scrollView && scrollView->enabled) ? minPx - scrollView->scrollPx : minPx;
+            const glm::vec2 childClipMin = (scrollView && scrollView->enabled) ? glm::max(clipMin, minPx) : clipMin;
+            const glm::vec2 childClipMax = (scrollView && scrollView->enabled) ? glm::min(clipMax, maxPx) : clipMax;
+
             const auto* layout = reg.try_get<UiLayoutComponent>(entity);
             uint32_t childIndex = 0u;
             for (auto child = world.firstChild(entity); child != entt::null; child = world.nextSibling(child))
@@ -2914,14 +2955,16 @@ namespace vultra
                                assets,
                                out,
                                child,
-                               minPx,
+                               childParentMin,
                                maxPx - minPx,
                                canvas,
                                canvasWorldMatrix,
                                sortOrder,
                                depth + 1u,
                                glyphAtlas,
-                               glyphAtlasIndex);
+                               glyphAtlasIndex,
+                               childClipMin,
+                               childClipMax);
                 ++childIndex;
             }
         }
@@ -2957,7 +3000,9 @@ namespace vultra
                                    canvas.sortOrder,
                                    1u,
                                    glyphAtlas,
-                                   glyphAtlasIndex);
+                                   glyphAtlasIndex,
+                                   glm::vec2 {-1e9f, -1e9f},
+                                   glm::vec2 {1e9f, 1e9f});
             }
 
             std::sort(out.uiDrawItems.begin(), out.uiDrawItems.end(), [](const RenderUiDrawItem& a, const RenderUiDrawItem& b) {

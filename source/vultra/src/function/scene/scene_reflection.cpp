@@ -389,5 +389,15 @@ namespace vultra
             .data<&UiDropdownComponent::panelColor>("panelColor"_hs)
             .data<&UiDropdownComponent::selectedColor>("selectedColor"_hs)
             .data<&UiDropdownComponent::textColor>("textColor"_hs);
+
+        entt::meta_factory<UiScrollViewComponent>()
+            .type("UiScrollViewComponent"_hs)
+            .data<&UiScrollViewComponent::enabled>("enabled"_hs)
+            .data<&UiScrollViewComponent::contentSizePx>("contentSizePx"_hs)
+            .data<&UiScrollViewComponent::scrollPx>("scrollPx"_hs)
+            .data<&UiScrollViewComponent::horizontal>("horizontal"_hs)
+            .data<&UiScrollViewComponent::vertical>("vertical"_hs)
+            .data<&UiScrollViewComponent::scrollSpeedPx>("scrollSpeedPx"_hs)
+            .data<&UiScrollViewComponent::backgroundColor>("backgroundColor"_hs);
     }
 } // namespace vultra

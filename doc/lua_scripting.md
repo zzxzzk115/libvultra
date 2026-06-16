@@ -540,6 +540,18 @@ dd.onValueChanged:connect(function()
 end)
 ```
 
+- `UiScrollView`: `scrollPx` (Vec2), `contentSizePx` (Vec2), `horizontal`, `vertical`
+
+The **UiScrollView** clips its child hierarchy to the view bounds and offsets it by `scrollPx`;
+the mouse wheel scrolls it (clamped to `contentSizePx - viewport`). Set `contentSizePx` to the
+size of the content laid out inside it.
+
+```lua
+local sv = self:getComponent(Component.UiScrollView)
+sv.contentSizePx = Vec2(0, 1200)   -- taller than the viewport -> vertical scrolling
+sv.scrollPx = Vec2(0, 0)
+```
+
 UI event fields are `type`, `target`, `currentTarget`, `canvas`,
 `screenPosition`, `canvasPosition`, `localPosition`, `button`, `clickCount`,
 and `handled`.

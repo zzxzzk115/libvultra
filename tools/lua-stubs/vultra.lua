@@ -508,6 +508,15 @@ local UiInputField = {}
 ---@field onValueChanged UiSignal
 local UiDropdown = {}
 
+--- Scroll view reference (entity.uiScrollView). Children are offset by scrollPx and
+--- clipped to the view bounds.
+---@class UiScrollView
+---@field scrollPx Vec2
+---@field contentSizePx Vec2
+---@field horizontal boolean
+---@field vertical boolean
+local UiScrollView = {}
+
 --- Multi-subscriber UI signal; connect returns a UiSignalConnection.
 ---@class UiSignal
 local UiSignal = {}
@@ -2007,6 +2016,7 @@ CameraControlMode = {}
 ---@field UiProgressBar integer
 ---@field UiInputField integer
 ---@field UiDropdown integer
+---@field UiScrollView integer
 ---@field NavAgent integer
 Component = {}
 

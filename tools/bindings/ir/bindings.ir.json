@@ -5703,7 +5703,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 74
+            "line": 75
           }
         },
         {
@@ -5727,7 +5727,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 76
+            "line": 77
           }
         },
         {
@@ -5751,7 +5751,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 78
+            "line": 79
           }
         },
         {
@@ -5775,7 +5775,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 80
+            "line": 81
           }
         },
         {
@@ -5804,7 +5804,7 @@
           "deprecatedAlias": null,
           "source": {
             "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-            "line": 82
+            "line": 83
           }
         }
       ],
@@ -5856,7 +5856,7 @@
       "componentHeader": "",
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-        "line": 52
+        "line": 53
       }
     },
     {
@@ -7897,8 +7897,12 @@
           "value": 21
         },
         {
-          "name": "NavAgent",
+          "name": "UiScrollView",
           "value": 22
+        },
+        {
+          "name": "NavAgent",
+          "value": 23
         }
       ],
       "source": {
@@ -8467,7 +8471,7 @@
       "header": "vultra/function/scripting/bindings/script_entity_shim.hpp",
       "source": {
         "file": "source/vultra/include/vultra/function/scripting/bindings/script_entity_shim.hpp",
-        "line": 87
+        "line": 88
       }
     },
     {

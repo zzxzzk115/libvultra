@@ -523,6 +523,17 @@ dd.onValueChanged:connect(function()
 end)
 ```
 
+- `UiScrollView`：`scrollPx`（Vec2）、`contentSizePx`（Vec2）、`horizontal`、`vertical`
+
+**UiScrollView** 会将其子层级裁剪到视图范围内，并按 `scrollPx` 偏移；鼠标滚轮可滚动
+（钳制在 `contentSizePx - 视口` 之间）。请将 `contentSizePx` 设为内部内容的尺寸。
+
+```lua
+local sv = self:getComponent(Component.UiScrollView)
+sv.contentSizePx = Vec2(0, 1200)   -- 高于视口 -> 垂直滚动
+sv.scrollPx = Vec2(0, 0)
+```
+
 UI 事件字段为 `type`、`target`、`currentTarget`、`canvas`、
 `screenPosition`、`canvasPosition`、`localPosition`、`button`、`clickCount`
 和 `handled`。
