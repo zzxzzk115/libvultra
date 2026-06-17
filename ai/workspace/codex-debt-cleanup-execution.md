@@ -402,3 +402,24 @@ extraction (not retyping) + sed range deletes, verifying every boundary first.
 2. Import a texture / mesh / audio asset and edit its import settings: confirm the import-
    edit panels still work (validates `ImportEditState<T>`).
 3. Material/mesh/3DGS rendering still correct (validates the asset GPU/material upload move).
+
+## Round 10 (2026-06-17) — render_system.cpp: material cooking extracted
+
+Continued after user verified Round 9. Build-gated; pure code move.
+
+- Measured render_system.cpp's helper surface precisely before cutting: the first anon
+  namespace mixes material cooking, render-world/gpu-scene building, and (2nd anon ns)
+  framegraph-debug, with bidirectional coupling (resetGaussianSplatIndirectBuffers defined in
+  block2, called from block1) and a member-referenced struct (FrameGraphSnapshotWriter). Full
+  one-shot split would need a ~31-fn leaky internal header.
+- Found ONE cleanly separable sub-block: the material-cooking section [orig 96-1966] is
+  upstream-only (no back-edges) with just a 6-function external surface and 7 file-local
+  cooking structs. Extracted it to `rendering/material_cook.cpp` behind a new
+  `rendering/render_system_internal.hpp` (namespace `vultra::rsdetail`). Default args declared
+  once in the header and stripped from the moved definitions. `using namespace rsdetail;` in
+  render_system.cpp keeps the existing unqualified call sites resolving.
+- **render_system.cpp 6047 -> 4200 lines.** Commit `34b0b1c1`. Build green; `test-material-graph`
+  and `test-material-asset` pass. Live-rendering visual check still recommended.
+- The render-world cook (RenderWorldCooker::cook + buildCpuDrivenGpuScene/Splats + skin
+  helpers) and framegraph-debug (2nd anon ns + FrameGraphSnapshotWriter) sections remain in
+  render_system.cpp. They are the entangled part and should be split in an attended session.

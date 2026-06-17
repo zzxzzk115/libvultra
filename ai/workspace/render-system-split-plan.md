@@ -1,6 +1,15 @@
 # RenderSystem architecture and split plan
 
-> **STATUS (2026-06-17): DEFERRED after analysis (only step 1, material_params.hpp, done).**
+> **UPDATE (2026-06-17, Round 10): material cooking extracted.** The graph/shader/builtin
+> material-cook block (structs + graph eval + shader-material packing + ensure*GpuMaterial +
+> cooking caches) moved to `material_cook.cpp` behind `render_system_internal.hpp` (namespace
+> `vultra::rsdetail`, 6-function surface). It was upstream-only with no back-edges — the one
+> cleanly separable piece. `render_system.cpp` 6047 -> 4200. Build + material tests green.
+> The render-world cook + framegraph-debug sections remain (see below) and are the entangled
+> part (FrameGraphSnapshotWriter is member-referenced; resetGaussianSplatIndirectBuffers is a
+> block1<->block2 back-edge) — leave those for an attended session with rendering verification.
+>
+> **ORIGINAL STATUS (2026-06-17): DEFERRED after analysis (only step 1, material_params.hpp, done).**
 > Round 9 measured the actual cross-TU surface of the first anon namespace [86-2319]: ~15
 > free functions are called from RenderSystem/RenderWorldCooker members, with *bidirectional*
 > coupling (e.g. `resetGaussianSplatIndirectBuffers` is defined in the 2nd anon ns but called
