@@ -1,5 +1,13 @@
 # AssetSystem architecture and split plan
 
+> **STATUS (2026-06-17): COMPLETE.** Steps 1-3 landed earlier (material_params.hpp,
+> mesh_vertex_packing.cpp, builtin_assets_io.cpp). Steps 4-6 landed in Round 9
+> (asset_gpu_upload.cpp, asset_material_upload.cpp + imported_material_path.hpp,
+> asset_registry.cpp). `asset_system.cpp` is now 1219 lines (was 2595) and holds only
+> lifecycle + residency + async CPU loading + text/binary I/O. See
+> codex-debt-cleanup-execution.md Round 9.
+
+
 `source/vultra/src/function/asset/asset_system.cpp` is ~3000 lines covering registry,
 loading, residency, GPU upload, and material emission in one translation unit. This
 document maps those responsibilities and a build-incremental split plan. Execute in

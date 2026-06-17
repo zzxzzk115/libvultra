@@ -1,5 +1,18 @@
 # RenderSystem architecture and split plan
 
+> **STATUS (2026-06-17): DEFERRED after analysis (only step 1, material_params.hpp, done).**
+> Round 9 measured the actual cross-TU surface of the first anon namespace [86-2319]: ~15
+> free functions are called from RenderSystem/RenderWorldCooker members, with *bidirectional*
+> coupling (e.g. `resetGaussianSplatIndirectBuffers` is defined in the 2nd anon ns but called
+> from the 1st; `isEntityRenderable` is called 6x from members). The shader/graph/world cook
+> helpers are too intertwined to split into the 4 TUs below without a leaky ~15-entry internal
+> header that adds indirection for little gain, and the cut touches the live render loop
+> (needs visual verification). Recommend doing this WITH the editor open to verify rendering,
+> and likely as ONE `material_cook.cpp` block move (first anon ns) + one framegraph-debug
+> move (second anon ns) rather than the finer 4-way split. See codex-debt-cleanup-execution.md
+> Round 9.
+
+
 `source/vultra/src/function/rendering/render_system.cpp` is ~5000 lines and mixes
 many responsibilities in one translation unit. This document describes those
 responsibilities and a concrete, build-verified-incremental plan to split it. It is
