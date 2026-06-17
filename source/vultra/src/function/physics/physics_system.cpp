@@ -1,5 +1,7 @@
 #include "vultra/function/physics/physics_system.hpp"
 
+#include "physics_jolt_conversions.hpp"
+
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/base/uuid.hpp"
 #include "vultra/core/services/timing_service.hpp"
@@ -128,20 +130,6 @@ namespace vultra
         };
 
         std::atomic_uint32_t g_JoltUsers {0};
-
-        JPH::Vec3 toJolt(const glm::vec3& v) { return JPH::Vec3(v.x, v.y, v.z); }
-        JPH::RVec3 toJoltR(const glm::vec3& v) { return JPH::RVec3(v.x, v.y, v.z); }
-        JPH::Quat toJolt(const glm::quat& q) { return JPH::Quat(q.x, q.y, q.z, q.w); }
-
-        glm::vec3 fromJolt(const JPH::Vec3& v) { return {v.GetX(), v.GetY(), v.GetZ()}; }
-        glm::vec3 fromJoltR(const JPH::RVec3& v) { return {static_cast<float>(v.GetX()), static_cast<float>(v.GetY()), static_cast<float>(v.GetZ())}; }
-        glm::quat fromJolt(const JPH::Quat& q) { return {q.GetW(), q.GetX(), q.GetY(), q.GetZ()}; }
-
-        JPH::uint64 toUserData(entt::entity entity) { return static_cast<JPH::uint64>(entt::to_integral(entity)); }
-        entt::entity fromUserData(JPH::uint64 userData)
-        {
-            return static_cast<entt::entity>(static_cast<entt::id_type>(userData));
-        }
 
         bool entityActive(World& world, entt::entity entity)
         {
