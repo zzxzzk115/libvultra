@@ -335,3 +335,70 @@ readback in the frame-graph debug texture path.
 
 - Local build verification depends on the `vshadersystem` xmake package; resolved with
   `xmake repo -u`. The user owns running the build in this session.
+
+## Round 9 (2026-06-17) — AssetSystem split completion + editor de-dup
+
+Autonomous session. Every step followed by `xmake build -y vultra-app` (all GREEN); the
+asset/editor changes are behavior-preserving code moves except where noted. 5 commits on
+top of `ed50895c`.
+
+**AssetSystem split finished** (per `asset-system-split-plan.md` steps 4-6). Used awk range
+extraction (not retyping) + sed range deletes, verifying every boundary first.
+- **Step 4** `asset/asset_gpu_upload.cpp` (430 lines): `uploadTexture`/`uploadMesh`/
+  `uploadGaussianSplat` + their exclusive anon helpers (`materialNeedsAnyHit`, `sigmoid`,
+  f16 packers, quat sanitize). Commit `55ef04ea`. 2595 → 2205.
+- **Step 5** `asset/asset_material_upload.cpp` (668 lines): `materialTextureDependencies-
+  Ready`, `refreshGpuMaterialParams`, `refreshPendingMaterialParams`,
+  `createAndAppendGpuMaterial[FromAsset]`, `emitImportedMaterialAssets` + the GPU material-
+  param packers, material JSON helpers and pbrMr texture helpers used only by them. The
+  imported-material relative-path helper (shared with the import scan in `update()`/
+  `configure`) was promoted to a new header `imported_material_path.hpp` as the single
+  source of truth. Commit `f4f1609e`. 2205 → 1585.
+- **Step 6** `asset/asset_registry.cpp` (448 lines): `configure`, `reloadRegistry`,
+  `reimportAsset`, URI/UUID resolution + `makeAssetImportOptions`. Build gate caught the one
+  missing edge (`using namespace asset_io;` for the builtin-URI resolvers) — fixed, rebuilt
+  green. Commit `a9ae3a6a`. 1585 → 1219.
+- Result: **asset_system.cpp 2595 → 1219** (lifecycle + residency + async CPU load + I/O),
+  with 1546 lines moved into three focused TUs. `test-material-asset` + `test-mesh-vertex-
+  packing` + `test-lua-api-conformance` all PASS.
+
+**Editor de-dup.**
+- `ImportEditState<TParams>` template replaces the three near-identical import-state structs
+  (Texture/Mesh/Audio). Member + field names unchanged, so zero call-site churn. Commit
+  `4b947ab4`.
+- **Single source of truth for ordered-component metadata** (`inspector_window.cpp`):
+  `entityHasOrderedComponent`, `componentKeyToTrKey`, `removeOrderedComponent` were three
+  parallel ~35-branch if-chains keyed identically. Replaced with one `OrderedComponentMeta`
+  table (key, trKey, has, remove) + thin lookups. Special cases preserved exactly (Transform
+  hidden under RectTransform; Camera removal cascades to XRView; Prefab present-but-not-
+  removable). Behavior-preserving (unknown key → false/nullptr/no-op as before). Commit
+  `7e83ede2`. **Visual inspector verification still pending (see Next steps).**
+
+**Deliberately deferred / NOT done (with reasons):**
+- **render_system.cpp split (P1b)** — deferred. The first anon namespace [86-2319] is a
+  tightly-coupled material/graph/shader/GPU-scene cooking block; measured cross-TU surface
+  is ~15 functions with *bidirectional* coupling (`resetGaussianSplatIndirectBuffers` is
+  defined in the 2nd anon ns but called from the 1st; `isEntityRenderable` called 6× from
+  members). Forcing the cut yields a leaky 15-entry internal header — added indirection for
+  little gain — and touches the live render loop, which needs visual verification not
+  available in an unattended session. Recommend doing this with the editor open.
+- **`addOrUpdateComponent` missing-5 bug** (`editor_commands.cpp`) — still real: GaussianSplat,
+  ReflectionProbe, NavAgent, Persistent, and the three Ui* (InputField/Dropdown/ScrollView)
+  cannot be added/updated via the command path (28 of 33 handled). NOT fixed tonight because
+  it lives in a different file with lowercase keys + bespoke per-component JSON arg parsing;
+  defining 7 new command schemas blind (no interactive test) is riskier than the value.
+  Follow-up: derive the command dispatch from a table too and add per-component `applyArgs`.
+- **`containsIgnoreCase`** dup (`mesh_selector.cpp` / `texture_preview_utils.cpp`) — skipped;
+  the two impls differ slightly and a new shared header for a 6-line helper is churn, not
+  improvement (consistent with the review's "only when next touching" note). `trim_copy` is
+  already deduped (single definition in `scene_system.cpp`).
+
+## Morning verification checklist (for the user)
+
+1. Open the editor, select an entity: confirm the Inspector still lists components in the
+   same order, shows correct localized names, and add/remove works (esp. Transform vs
+   RectTransform visibility, removing a Camera also removing its XRView, Prefab not
+   removable). This validates the `OrderedComponentMeta` table.
+2. Import a texture / mesh / audio asset and edit its import settings: confirm the import-
+   edit panels still work (validates `ImportEditState<T>`).
+3. Material/mesh/3DGS rendering still correct (validates the asset GPU/material upload move).
