@@ -6,6 +6,7 @@
 #include "editor_app/editor_history.hpp"
 #include "editor_app/selection.hpp"
 #include "editor_app/ui/settings_widgets.hpp"
+#include "editor_app/ui/ui_layout.hpp"
 
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiFileDialog/ImGuiFileDialog.h>
@@ -5289,17 +5290,11 @@ namespace vultra_app
         ui::endPropertyRow();
 
         // Row 4: remaining status flags, laid out inline but wrapping to the next line whenever the
-        // next checkbox would overflow the panel width (a bare SameLine() would push them off-screen
-        // in a narrow inspector).
-        const float flagsRightX = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
-        bool        firstFlag   = true;
-        const auto  flagCheckbox = [&](const std::string& label, bool* value) {
-            const float itemWidth =
-                ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize(label.c_str()).x;
-            if (!firstFlag &&
-                ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + itemWidth <= flagsRightX)
-                ImGui::SameLine();
-            firstFlag = false;
+        // next checkbox would overflow the panel width (a bare SameLine() chain would push them
+        // off-screen in a narrow inspector).
+        ui::InlineFlow flagsFlow;
+        const auto     flagCheckbox = [&](const std::string& label, bool* value) {
+            flagsFlow.next(ui::checkboxWidth(label.c_str()));
             if (ImGui::Checkbox(label.c_str(), value))
                 metaChanged = true;
         };

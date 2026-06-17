@@ -1,4 +1,5 @@
 #include "editor_app/ui/settings_widgets.hpp"
+#include "editor_app/ui/ui_layout.hpp"
 #include "vproject.hpp"
 
 #include <vultra/core/i18n/i18n.hpp>
@@ -124,27 +125,11 @@ namespace vultra_app::ui
         ImGui::PushID(label);
         ImGui::AlignTextToFramePadding();
 
-        // Keep the label inside its column so a long label never overflows into (and under) the
-        // value control. If it doesn't fit, ellipsize it and show the full text on hover.
-        const float avail = labelWidth - ImGui::GetStyle().ItemSpacing.x;
-        if (avail <= 0.0f || ImGui::CalcTextSize(label).x <= avail)
-        {
-            ImGui::TextUnformatted(label);
-        }
-        else
-        {
-            constexpr const char* kEllipsis = "...";
-            const float           ellipsisW = ImGui::CalcTextSize(kEllipsis).x;
-            std::string           clipped {label};
-            while (!clipped.empty() && ImGui::CalcTextSize(clipped.c_str()).x + ellipsisW > avail)
-                clipped.pop_back();
-            clipped += kEllipsis;
-            ImGui::TextUnformatted(clipped.c_str());
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s", label);
-        }
-
-        ImGui::SameLine(labelWidth);
+        // Responsive split: the label column shrinks (and the label ellipsizes) as the panel
+        // narrows so the value control always keeps a usable width instead of being clipped.
+        const float resolved = adaptiveLabelWidth(ImGui::GetContentRegionAvail().x, labelWidth);
+        labelEllipsized(label, resolved - ImGui::GetStyle().ItemSpacing.x);
+        ImGui::SameLine(resolved);
         ImGui::SetNextItemWidth(-1.0f);
         return true;
     }

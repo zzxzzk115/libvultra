@@ -6,6 +6,7 @@
 #include "editor_app/ui/graph_history.hpp"
 #include "editor_app/ui/graph_layout.hpp"
 #include "editor_app/ui/texture_preview_utils.hpp"
+#include "editor_app/ui/ui_layout.hpp"
 
 #include <vultra/core/i18n/i18n.hpp>
 #include <vultra/core/rhi/sampler.hpp>
@@ -708,7 +709,9 @@ namespace vultra_app
 
             ImGui::PushID(param.name.c_str());
             ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(param.name.c_str());
+            // Ellipsize within the node's fixed label column so long parameter names never spill over
+            // (and under) the value control; the full name shows on hover.
+            ui::labelEllipsized(param.name.c_str(), labelWidth - ImGui::GetStyle().ItemSpacing.x);
             ImGui::SameLine(labelWidth);
             ImGui::PushItemWidth(valueWidth);
 

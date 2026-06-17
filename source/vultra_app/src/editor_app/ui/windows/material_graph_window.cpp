@@ -3,6 +3,7 @@
 #include "common/ui_widgets.hpp"
 #include "editor_app/asset_thumbnail_service.hpp"
 #include "editor_app/ui/graph_layout.hpp"
+#include "editor_app/ui/ui_layout.hpp"
 
 #include <vultra/core/i18n/i18n.hpp>
 #include <vultra/core/rhi/structs/render_device_structs.hpp>
@@ -464,12 +465,16 @@ namespace vultra_app
 
         void drawControlLabel(const char* label)
         {
+            // Responsive label column (shared logic with beginPropertyRow): the label ellipsizes as
+            // the node panel narrows so the value control beside it is never clipped.
             constexpr float kPropertyLabelWidth = 92.0f;
             const float     startX              = ImGui::GetCursorPosX();
             ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(label);
+            const float labelCol =
+                ui::adaptiveLabelWidth(ImGui::GetContentRegionAvail().x, vultra::ui::dp(kPropertyLabelWidth));
+            ui::labelEllipsized(label, labelCol - ImGui::GetStyle().ItemSpacing.x);
             ImGui::SameLine();
-            ImGui::SetCursorPosX(startX + vultra::ui::dp(kPropertyLabelWidth));
+            ImGui::SetCursorPosX(startX + labelCol);
         }
 
         bool drawJsonValue(EditorContext&                    ctx,
