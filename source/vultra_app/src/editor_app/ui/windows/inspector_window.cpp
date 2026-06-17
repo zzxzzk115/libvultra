@@ -73,6 +73,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -4764,6 +4765,25 @@ namespace vultra_app
                     nullptr,
                 },
             };
+#ifndef NDEBUG
+            // Drift guard: every user-addable and every default-ordered component key must have a
+            // metadata entry here. Catches the failure mode where a component is added to
+            // addableComponents()/componentDefaultOrder() but its has/trKey/remove wiring is
+            // forgotten -- the exact class of bug that left command/inspector lists out of sync.
+            // `table` has static storage duration, so it is referenced directly (lambdas cannot
+            // capture statics).
+            [[maybe_unused]] static const bool s_MetaCoversAllKeys = [] {
+                const auto covered = [](const char* key) {
+                    return std::ranges::any_of(
+                        table, [&](const OrderedComponentMeta& meta) { return std::strcmp(meta.key, key) == 0; });
+                };
+                for (const auto& desc : addableComponents())
+                    assert(covered(desc.key) && "addable component missing an OrderedComponentMeta entry");
+                for (const char* key : componentDefaultOrder())
+                    assert(covered(key) && "ordered component missing an OrderedComponentMeta entry");
+                return true;
+            }();
+#endif
             return table;
         }
 
