@@ -21,7 +21,7 @@ namespace vultra_app::ui
         ImVec4      active {};
     };
 
-    // Unity-style colored vector editor: a label column followed by N reset-buttoned drag floats.
+    // Colored vector editor: a label column followed by N reset-buttoned drag floats.
     // Shared body for the 2/3-component transform controls (position/rotation/scale/anchors). Each axis
     // carries its own button colors so callers can keep their exact palette (explicit or derived).
     inline bool

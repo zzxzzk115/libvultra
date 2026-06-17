@@ -4,7 +4,7 @@
 //
 // Entity exposes only the always-on members directly: valid / id / name /
 // active / visible / transform, plus hierarchy. Every other component is reached
-// through the Unity-style generic API (addComponent / getComponent /
+// through the generic component API (addComponent / getComponent /
 // removeComponent / hasComponent), keyed by the `Component` enum. Those four
 // methods and the `Component` token table are registered by the hand-written raw
 // hook entityRegisterComponentApi (script_entity_shim.cpp).

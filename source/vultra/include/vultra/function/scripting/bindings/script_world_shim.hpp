@@ -65,7 +65,7 @@ namespace vultra
     VBIND_RAW(area = world)
     void worldRegisterLayerTable(sol::state& lua, ScriptContext& ctx);
 
-    // --- WorldHelper convenience constructors (Unity-style "create" helpers) ---
+    // --- WorldHelper convenience constructors ("create" helpers) ---
     VBIND_RAW(area = world)
     void worldRegisterHelpers(sol::state& lua, ScriptContext& ctx);
 } // namespace vultra

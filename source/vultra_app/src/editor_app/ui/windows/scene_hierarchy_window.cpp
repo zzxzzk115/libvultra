@@ -644,7 +644,7 @@ namespace vultra_app
         if (!reg.valid(entity))
             return;
 
-        // Prefab content (instance root + all descendants) is tinted blue, Unity-style.
+        // Prefab content (instance root + all descendants) is tinted blue.
         const bool isPrefabRoot  = reg.all_of<vultra::PrefabInstanceComponent>(entity);
         const bool prefabContent = inPrefab || isPrefabRoot;
 
