@@ -19,14 +19,18 @@
 #include <vultra/function/world/components/cylinder_shape_component.hpp>
 #include <vultra/function/world/components/entity_status_component.hpp>
 #include <vultra/function/world/components/environment_component.hpp>
+#include <vultra/function/world/components/gaussian_splat_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
 #include <vultra/function/world/components/layer_component.hpp>
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/mesh_shape_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
+#include <vultra/function/world/components/nav_agent_component.hpp>
 #include <vultra/function/world/components/particle_emitter_component.hpp>
+#include <vultra/function/world/components/persistent_component.hpp>
 #include <vultra/function/world/components/prefab_instance_component.hpp>
+#include <vultra/function/world/components/reflection_probe_component.hpp>
 #include <vultra/function/world/components/rigid_body_component.hpp>
 #include <vultra/function/world/components/script_component.hpp>
 #include <vultra/function/world/components/sphere_shape_component.hpp>
@@ -479,6 +483,20 @@ namespace vultra_app
                 return "ui_progress_bar";
             if (kind == "uilayout" || kind == "uilayoutcomponent")
                 return "ui_layout";
+            if (kind == "gaussiansplat" || kind == "gaussiansplatcomponent" || kind == "splat")
+                return "gaussian_splat";
+            if (kind == "reflectionprobe" || kind == "reflectionprobecomponent" || kind == "probe")
+                return "reflection_probe";
+            if (kind == "navagent" || kind == "navagentcomponent" || kind == "agent")
+                return "nav_agent";
+            if (kind == "persistentcomponent" || kind == "dontdestroyonload" || kind == "keeponload")
+                return "persistent";
+            if (kind == "uiinputfield" || kind == "uiinputfieldcomponent" || kind == "ui_input" || kind == "inputfield")
+                return "ui_input_field";
+            if (kind == "uidropdown" || kind == "uidropdowncomponent" || kind == "dropdown")
+                return "ui_dropdown";
+            if (kind == "uiscrollview" || kind == "uiscrollviewcomponent" || kind == "ui_scroll" || kind == "scrollview")
+                return "ui_scroll_view";
             return kind;
         }
 
@@ -557,6 +575,8 @@ namespace vultra_app
                 "xr_view",          "script",         "canvas",          "rect_transform",
                 "ui_panel",         "ui_image",       "ui_text",         "ui_button",
                 "ui_toggle",        "ui_slider",      "ui_progress_bar", "ui_layout",
+                "gaussian_splat",   "reflection_probe", "nav_agent",     "persistent",
+                "ui_input_field",   "ui_dropdown",    "ui_scroll_view",
             });
         }
 
@@ -918,6 +938,85 @@ namespace vultra_app
                 fields.push_back(fieldJson("marginPx", "vec4", {"margin_px"}));
                 fields.push_back(fieldJson("spacingPx", "float", {"spacing_px"}));
                 fields.push_back(fieldJson("cellSizePx", "vec2", {"cell_size_px"}));
+            }
+            else if (k == "gaussian_splat")
+            {
+                out["cxxComponent"] = "GaussianSplatComponent";
+                fields.push_back(fieldJson("gaussianSplat", "uuid", {"gaussian_splat", "asset"}));
+            }
+            else if (k == "reflection_probe")
+            {
+                out["cxxComponent"] = "ReflectionProbeComponent";
+                fields.push_back(fieldJson("active", "bool"));
+                fields.push_back(fieldJson("enableIBL", "bool", {"enable_ibl"}));
+                fields.push_back(fieldJson("environmentMap", "uuid", {"environment_map"}));
+                fields.push_back(
+                    fieldJson("shape", "uint32", {}, {{"enum", nlohmann::json::array({{{"value", 0}, {"name", "box"}},
+                                                                                      {{"value", 1}, {"name", "sphere"}}})}}));
+                fields.push_back(fieldJson("boxSize", "vec3", {"box_size"}));
+                fields.push_back(fieldJson("radius", "float"));
+                fields.push_back(fieldJson("blendDistance", "float", {"blend_distance"}));
+                fields.push_back(fieldJson("intensity", "float"));
+                fields.push_back(fieldJson("priority", "int"));
+                fields.push_back(fieldJson("parallaxCorrection", "bool", {"parallax_correction"}));
+            }
+            else if (k == "nav_agent")
+            {
+                out["cxxComponent"] = "NavAgentComponent";
+                fields.push_back(fieldJson("radius", "float"));
+                fields.push_back(fieldJson("height", "float"));
+                fields.push_back(fieldJson("speed", "float"));
+                fields.push_back(fieldJson("stoppingDistance", "float", {"stopping_distance"}));
+                fields.push_back(fieldJson("targetPosition", "vec3", {"target_position"}));
+                fields.push_back(fieldJson("hasTarget", "bool", {"has_target"}));
+                fields.push_back(fieldJson("moving", "bool", {}, {{"readOnly", true}}));
+            }
+            else if (k == "persistent")
+            {
+                out["cxxComponent"] = "PersistentComponent";
+                fields.push_back(fieldJson("keepOnLoad", "bool", {"keep_on_load"}));
+            }
+            else if (k == "ui_input_field")
+            {
+                out["cxxComponent"] = "UiInputFieldComponent";
+                fields.push_back(fieldJson("enabled", "bool"));
+                fields.push_back(fieldJson("interactable", "bool"));
+                fields.push_back(fieldJson("text", "string"));
+                fields.push_back(fieldJson("placeholder", "string"));
+                fields.push_back(fieldJson("maxLength", "uint32", {"max_length"}));
+                fields.push_back(fieldJson("fontSizePx", "float", {"font_size_px"}));
+                fields.push_back(fieldJson("font", "uuid"));
+                fields.push_back(fieldJson("normalColor", "vec4/color", {"normal_color"}));
+                fields.push_back(fieldJson("focusedColor", "vec4/color", {"focused_color"}));
+                fields.push_back(fieldJson("textColor", "vec4/color", {"text_color"}));
+                fields.push_back(fieldJson("placeholderColor", "vec4/color", {"placeholder_color"}));
+                fields.push_back(fieldJson("caretColor", "vec4/color", {"caret_color"}));
+            }
+            else if (k == "ui_dropdown")
+            {
+                out["cxxComponent"] = "UiDropdownComponent";
+                fields.push_back(fieldJson("enabled", "bool"));
+                fields.push_back(fieldJson("interactable", "bool"));
+                fields.push_back(fieldJson("options", "array", {}, {{"items", {{"type", "string"}}}}));
+                fields.push_back(fieldJson("selectedIndex", "int", {"selected_index"}));
+                fields.push_back(fieldJson("fontSizePx", "float", {"font_size_px"}));
+                fields.push_back(fieldJson("font", "uuid"));
+                fields.push_back(fieldJson("normalColor", "vec4/color", {"normal_color"}));
+                fields.push_back(fieldJson("hoveredColor", "vec4/color", {"hovered_color"}));
+                fields.push_back(fieldJson("panelColor", "vec4/color", {"panel_color"}));
+                fields.push_back(fieldJson("selectedColor", "vec4/color", {"selected_color"}));
+                fields.push_back(fieldJson("textColor", "vec4/color", {"text_color"}));
+            }
+            else if (k == "ui_scroll_view")
+            {
+                out["cxxComponent"] = "UiScrollViewComponent";
+                fields.push_back(fieldJson("enabled", "bool"));
+                fields.push_back(fieldJson("contentSizePx", "vec2", {"content_size_px"}));
+                fields.push_back(fieldJson("scrollPx", "vec2", {"scroll_px"}));
+                fields.push_back(fieldJson("horizontal", "bool"));
+                fields.push_back(fieldJson("vertical", "bool"));
+                fields.push_back(fieldJson("scrollSpeedPx", "float", {"scroll_speed_px"}));
+                fields.push_back(fieldJson("backgroundColor", "vec4/color", {"background_color"}));
             }
             else
             {
@@ -1783,6 +1882,139 @@ namespace vultra_app
                 script.enabled   = args.value("enabled", script.enabled);
                 return true;
             }
+            if (kind == "gaussian_splat")
+            {
+                if (requireExisting && !reg.all_of<vultra::GaussianSplatComponent>(entity))
+                {
+                    errorMessage = "entity does not have GaussianSplatComponent";
+                    return false;
+                }
+                auto& splat = reg.get_or_emplace<vultra::GaussianSplatComponent>(entity);
+                uuidArg(args, "gaussian_splat", splat.gaussianSplat);
+                uuidArg(args, "asset", splat.gaussianSplat);
+                uuidArg(args, "gaussianSplat", splat.gaussianSplat);
+                return true;
+            }
+            if (kind == "reflection_probe")
+            {
+                if (requireExisting && !reg.all_of<vultra::ReflectionProbeComponent>(entity))
+                {
+                    errorMessage = "entity does not have ReflectionProbeComponent";
+                    return false;
+                }
+                auto& probe     = reg.get_or_emplace<vultra::ReflectionProbeComponent>(entity);
+                probe.active    = args.value("active", probe.active);
+                probe.enableIBL = args.value("enableIBL", args.value("enable_ibl", probe.enableIBL));
+                uuidArg(args, "environment_map", probe.environmentMap);
+                uuidArg(args, "environmentMap", probe.environmentMap);
+                probe.shape         = args.value("shape", probe.shape);
+                probe.boxSize       = vec3Arg(args, "boxSize", vec3Arg(args, "box_size", probe.boxSize));
+                probe.radius        = args.value("radius", probe.radius);
+                probe.blendDistance = args.value("blendDistance", args.value("blend_distance", probe.blendDistance));
+                probe.intensity     = args.value("intensity", probe.intensity);
+                probe.priority      = args.value("priority", probe.priority);
+                probe.parallaxCorrection =
+                    args.value("parallaxCorrection", args.value("parallax_correction", probe.parallaxCorrection));
+                return true;
+            }
+            if (kind == "nav_agent")
+            {
+                if (requireExisting && !reg.all_of<vultra::NavAgentComponent>(entity))
+                {
+                    errorMessage = "entity does not have NavAgentComponent";
+                    return false;
+                }
+                auto& agent  = reg.get_or_emplace<vultra::NavAgentComponent>(entity);
+                agent.radius = args.value("radius", agent.radius);
+                agent.height = args.value("height", agent.height);
+                agent.speed  = args.value("speed", agent.speed);
+                agent.stoppingDistance =
+                    args.value("stoppingDistance", args.value("stopping_distance", agent.stoppingDistance));
+                agent.targetPosition =
+                    vec3Arg(args, "targetPosition", vec3Arg(args, "target_position", agent.targetPosition));
+                agent.hasTarget = args.value("hasTarget", args.value("has_target", agent.hasTarget));
+                return true;
+            }
+            if (kind == "persistent")
+            {
+                if (requireExisting && !reg.all_of<vultra::PersistentComponent>(entity))
+                {
+                    errorMessage = "entity does not have PersistentComponent";
+                    return false;
+                }
+                auto& persistent      = reg.get_or_emplace<vultra::PersistentComponent>(entity);
+                persistent.keepOnLoad = args.value("keepOnLoad", args.value("keep_on_load", persistent.keepOnLoad));
+                return true;
+            }
+            if (kind == "ui_input_field")
+            {
+                if (requireExisting && !reg.all_of<vultra::UiInputFieldComponent>(entity))
+                {
+                    errorMessage = "entity does not have UiInputFieldComponent";
+                    return false;
+                }
+                auto& field        = reg.get_or_emplace<vultra::UiInputFieldComponent>(entity);
+                field.enabled      = args.value("enabled", field.enabled);
+                field.interactable = args.value("interactable", field.interactable);
+                field.text         = args.value("text", field.text);
+                field.placeholder  = args.value("placeholder", field.placeholder);
+                field.maxLength    = args.value("maxLength", args.value("max_length", field.maxLength));
+                field.fontSizePx   = args.value("fontSizePx", args.value("font_size_px", field.fontSizePx));
+                uuidArg(args, "font", field.font);
+                field.normalColor  = vec4Arg(args, "normalColor", vec4Arg(args, "normal_color", field.normalColor));
+                field.focusedColor = vec4Arg(args, "focusedColor", vec4Arg(args, "focused_color", field.focusedColor));
+                field.textColor    = vec4Arg(args, "textColor", vec4Arg(args, "text_color", field.textColor));
+                field.placeholderColor =
+                    vec4Arg(args, "placeholderColor", vec4Arg(args, "placeholder_color", field.placeholderColor));
+                field.caretColor = vec4Arg(args, "caretColor", vec4Arg(args, "caret_color", field.caretColor));
+                return true;
+            }
+            if (kind == "ui_dropdown")
+            {
+                if (requireExisting && !reg.all_of<vultra::UiDropdownComponent>(entity))
+                {
+                    errorMessage = "entity does not have UiDropdownComponent";
+                    return false;
+                }
+                auto& dropdown        = reg.get_or_emplace<vultra::UiDropdownComponent>(entity);
+                dropdown.enabled      = args.value("enabled", dropdown.enabled);
+                dropdown.interactable = args.value("interactable", dropdown.interactable);
+                if (args.contains("options") && args["options"].is_array())
+                {
+                    dropdown.options.clear();
+                    for (const auto& option : args["options"])
+                        if (option.is_string())
+                            dropdown.options.push_back(option.get<std::string>());
+                }
+                dropdown.selectedIndex =
+                    args.value("selectedIndex", args.value("selected_index", dropdown.selectedIndex));
+                dropdown.fontSizePx = args.value("fontSizePx", args.value("font_size_px", dropdown.fontSizePx));
+                uuidArg(args, "font", dropdown.font);
+                dropdown.normalColor   = vec4Arg(args, "normalColor", vec4Arg(args, "normal_color", dropdown.normalColor));
+                dropdown.hoveredColor  = vec4Arg(args, "hoveredColor", vec4Arg(args, "hovered_color", dropdown.hoveredColor));
+                dropdown.panelColor    = vec4Arg(args, "panelColor", vec4Arg(args, "panel_color", dropdown.panelColor));
+                dropdown.selectedColor = vec4Arg(args, "selectedColor", vec4Arg(args, "selected_color", dropdown.selectedColor));
+                dropdown.textColor     = vec4Arg(args, "textColor", vec4Arg(args, "text_color", dropdown.textColor));
+                return true;
+            }
+            if (kind == "ui_scroll_view")
+            {
+                if (requireExisting && !reg.all_of<vultra::UiScrollViewComponent>(entity))
+                {
+                    errorMessage = "entity does not have UiScrollViewComponent";
+                    return false;
+                }
+                auto& scroll         = reg.get_or_emplace<vultra::UiScrollViewComponent>(entity);
+                scroll.enabled       = args.value("enabled", scroll.enabled);
+                scroll.contentSizePx = vec2Arg(args, "contentSizePx", vec2Arg(args, "content_size_px", scroll.contentSizePx));
+                scroll.scrollPx      = vec2Arg(args, "scrollPx", vec2Arg(args, "scroll_px", scroll.scrollPx));
+                scroll.horizontal    = args.value("horizontal", scroll.horizontal);
+                scroll.vertical      = args.value("vertical", scroll.vertical);
+                scroll.scrollSpeedPx = args.value("scrollSpeedPx", args.value("scroll_speed_px", scroll.scrollSpeedPx));
+                scroll.backgroundColor =
+                    vec4Arg(args, "backgroundColor", vec4Arg(args, "background_color", scroll.backgroundColor));
+                return true;
+            }
 
             errorMessage = "unsupported component kind: " + kind;
             return false;
@@ -1853,6 +2085,20 @@ namespace vultra_app
                 return reg.remove<vultra::UiProgressBarComponent>(entity) > 0u;
             if (kind == "ui_layout")
                 return reg.remove<vultra::UiLayoutComponent>(entity) > 0u;
+            if (kind == "gaussian_splat")
+                return reg.remove<vultra::GaussianSplatComponent>(entity) > 0u;
+            if (kind == "reflection_probe")
+                return reg.remove<vultra::ReflectionProbeComponent>(entity) > 0u;
+            if (kind == "nav_agent")
+                return reg.remove<vultra::NavAgentComponent>(entity) > 0u;
+            if (kind == "persistent")
+                return reg.remove<vultra::PersistentComponent>(entity) > 0u;
+            if (kind == "ui_input_field")
+                return reg.remove<vultra::UiInputFieldComponent>(entity) > 0u;
+            if (kind == "ui_dropdown")
+                return reg.remove<vultra::UiDropdownComponent>(entity) > 0u;
+            if (kind == "ui_scroll_view")
+                return reg.remove<vultra::UiScrollViewComponent>(entity) > 0u;
             errorMessage = "unsupported component kind: " + kind;
             return false;
         }
