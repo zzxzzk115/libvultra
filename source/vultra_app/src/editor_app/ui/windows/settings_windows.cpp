@@ -111,74 +111,14 @@ namespace vultra_app
         // flip `changed` so the popup shows the unsaved-changes status.
         void drawTagsAndLayersPage(EditorContext& ctx, bool& changed)
         {
-            auto& tags = ctx.state.currentTags;
-            if (tags.empty())
-                tags = defaultTags();
-
             ui::drawSettingsSectionHeader(vultra::tr("projectSettings.tagsLayers.tagsHeader"));
-            int tagToRemove = -1;
-            for (std::size_t i = 0; i < tags.size(); ++i)
-            {
-                ImGui::PushID(static_cast<int>(i));
-                // "Untagged" is the built-in default tag: it can neither be renamed nor removed.
-                const bool           isUntagged = (tags[i] == "Untagged");
-                std::array<char, 96> buffer {};
-                setBuffer(buffer, tags[i]);
-                ImGui::BeginDisabled(isUntagged);
-                ImGui::SetNextItemWidth(vultra::ui::dp(220.0f));
-                if (ImGui::InputText("##tag", buffer.data(), buffer.size()))
-                {
-                    tags[i] = bufferString(buffer);
-                    changed = true;
-                }
-                ImGui::EndDisabled();
-                if (!isUntagged)
-                {
-                    ImGui::SameLine();
-                    if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE))
-                        tagToRemove = static_cast<int>(i);
-                }
-                ImGui::PopID();
-            }
-            if (tagToRemove >= 0)
-            {
-                tags.erase(tags.begin() + tagToRemove);
+            if (ui::drawTagListEditor(ctx.state))
                 changed = true;
-            }
-            if (ImGui::Button(vultra::tr("projectSettings.tagsLayers.addTag")))
-            {
-                tags.emplace_back("New Tag");
-                changed = true;
-            }
 
             ImGui::Spacing();
             ui::drawSettingsSectionHeader(vultra::tr("projectSettings.tagsLayers.layersHeader"));
-            auto& layers = ctx.state.currentLayerNames;
-            // Built-in layers always show their reserved names (read-only), even on projects that
-            // predate the layer table.
-            if (layers[0].empty())
-                layers[0] = "Default";
-            if (layers[5].empty())
-                layers[5] = "UI";
-            for (std::size_t i = 0; i < layers.size(); ++i)
-            {
-                ImGui::PushID(static_cast<int>(2000 + i));
-                const bool  builtin = (i == 0 || i == 5); // 0 = Default, 5 = UI
-                const auto  label   = std::to_string(i);
-                ui::beginSettingsRow(label.c_str());
-                std::array<char, 96> buffer {};
-                setBuffer(buffer, layers[i]);
-                ImGui::BeginDisabled(builtin);
-                ImGui::SetNextItemWidth(vultra::ui::dp(220.0f));
-                if (ImGui::InputText("##layer", buffer.data(), buffer.size()))
-                {
-                    layers[i] = bufferString(buffer);
-                    changed   = true;
-                }
-                ImGui::EndDisabled();
-                ui::endSettingsRow();
-                ImGui::PopID();
-            }
+            if (ui::drawRenderLayerListEditor(ctx.state))
+                changed = true;
 
             // --- Physics layers (Jolt object layers; separate from rendering layers above) ---
             ImGui::Spacing();

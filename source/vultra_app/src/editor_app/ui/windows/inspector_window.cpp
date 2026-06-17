@@ -5181,9 +5181,15 @@ namespace vultra_app
             nameChanged = true;
         }
 
+        // The Tag/Layer rows each pair a dropdown with an inline edit button that opens a quick-edit
+        // popup over the project-level table -- the same add/rename/delete UI as Project Settings.
+        // Persisting on popup close writes the .vproject (a project change, not a scene change).
+        const float editButtonWidth = ImGui::GetFrameHeight();
+        const float comboReserve    = editButtonWidth + ImGui::GetStyle().ItemSpacing.x;
+
         // Row 2: Tag dropdown (names from Project Settings; falls back to a lone "Untagged").
         ui::beginPropertyRow(displayFieldName("tag").c_str());
-        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - comboReserve);
         if (ImGui::BeginCombo("##Tag", meta.tag.empty() ? "Untagged" : meta.tag.c_str()))
         {
             const auto& tags = ctx.state.currentTags;
@@ -5205,6 +5211,29 @@ namespace vultra_app
             }
             ImGui::EndCombo();
         }
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_MDI_PENCIL "##EditTags", ImVec2 {editButtonWidth, 0.0f}))
+            ImGui::OpenPopup("EditTagsPopup");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", vultra::tr("inspector.entity.editTags"));
+        {
+            static bool tagsPopupDirty = false;
+            if (ImGui::BeginPopup("EditTagsPopup"))
+            {
+                ImGui::TextUnformatted(vultra::tr("projectSettings.tagsLayers.tagsHeader"));
+                ImGui::Separator();
+                ImGui::BeginChild("##TagsScroll", ImVec2 {vultra::ui::dp(260.0f), vultra::ui::dp(260.0f)});
+                if (ui::drawTagListEditor(ctx.state))
+                    tagsPopupDirty = true;
+                ImGui::EndChild();
+                ImGui::EndPopup();
+            }
+            else if (tagsPopupDirty) // popup just closed with pending edits
+            {
+                ui::persistTagsAndLayers(ctx.state);
+                tagsPopupDirty = false;
+            }
+        }
         ui::endPropertyRow();
 
         // Row 3: Layer dropdown -- the entity's single render layer (an index). Only layer slots
@@ -5218,7 +5247,7 @@ namespace vultra_app
             return std::to_string(index) + ": " + nm;
         };
         ui::beginPropertyRow(displayFieldName("layer").c_str());
-        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - comboReserve);
         if (ImGui::BeginCombo("##Layer", layerLabel(currentLayer).c_str()))
         {
             for (uint32_t i = 0; i < 32u; ++i)
@@ -5234,23 +5263,51 @@ namespace vultra_app
             }
             ImGui::EndCombo();
         }
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_MDI_PENCIL "##EditLayers", ImVec2 {editButtonWidth, 0.0f}))
+            ImGui::OpenPopup("EditLayersPopup");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", vultra::tr("inspector.entity.editLayers"));
+        {
+            static bool layersPopupDirty = false;
+            if (ImGui::BeginPopup("EditLayersPopup"))
+            {
+                ImGui::TextUnformatted(vultra::tr("projectSettings.tagsLayers.layersHeader"));
+                ImGui::Separator();
+                ImGui::BeginChild("##LayersScroll", ImVec2 {vultra::ui::dp(300.0f), vultra::ui::dp(380.0f)});
+                if (ui::drawRenderLayerListEditor(ctx.state))
+                    layersPopupDirty = true;
+                ImGui::EndChild();
+                ImGui::EndPopup();
+            }
+            else if (layersPopupDirty) // popup just closed with pending edits
+            {
+                ui::persistTagsAndLayers(ctx.state);
+                layersPopupDirty = false;
+            }
+        }
         ui::endPropertyRow();
 
-        // Row 4: remaining status flags, inline.
-        if (ImGui::Checkbox(displayFieldName("static").c_str(), &meta.isStatic))
-            metaChanged = true;
-        ImGui::SameLine();
-        if (ImGui::Checkbox(displayFieldName("visible").c_str(), &meta.visible))
-            metaChanged = true;
-        ImGui::SameLine();
-        if (ImGui::Checkbox(displayFieldName("locked").c_str(), &meta.locked))
-            metaChanged = true;
-        ImGui::SameLine();
-        if (ImGui::Checkbox(displayFieldName("selectable").c_str(), &meta.selectable))
-            metaChanged = true;
-        ImGui::SameLine();
-        if (ImGui::Checkbox(displayFieldName("keepOnLoad").c_str(), &meta.keepOnLoad))
-            metaChanged = true;
+        // Row 4: remaining status flags, laid out inline but wrapping to the next line whenever the
+        // next checkbox would overflow the panel width (a bare SameLine() would push them off-screen
+        // in a narrow inspector).
+        const float flagsRightX = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+        bool        firstFlag   = true;
+        const auto  flagCheckbox = [&](const std::string& label, bool* value) {
+            const float itemWidth =
+                ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize(label.c_str()).x;
+            if (!firstFlag &&
+                ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + itemWidth <= flagsRightX)
+                ImGui::SameLine();
+            firstFlag = false;
+            if (ImGui::Checkbox(label.c_str(), value))
+                metaChanged = true;
+        };
+        flagCheckbox(displayFieldName("static"), &meta.isStatic);
+        flagCheckbox(displayFieldName("visible"), &meta.visible);
+        flagCheckbox(displayFieldName("locked"), &meta.locked);
+        flagCheckbox(displayFieldName("selectable"), &meta.selectable);
+        flagCheckbox(displayFieldName("keepOnLoad"), &meta.keepOnLoad);
 
         if (metaChanged || nameChanged)
         {

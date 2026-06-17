@@ -84,7 +84,9 @@
   },
   "entity": {
     "title": "Entity",
-    "uuid": "UUID: {}"
+    "uuid": "UUID: {}",
+    "editTags": "Edit Tags...",
+    "editLayers": "Edit Rendering Layers..."
   },
   "hierarchy": {
     "children": "Children: {}",

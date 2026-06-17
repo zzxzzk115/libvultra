@@ -84,7 +84,9 @@
   },
   "entity": {
     "title": "实体",
-    "uuid": "UUID：{}"
+    "uuid": "UUID：{}",
+    "editTags": "编辑标签...",
+    "editLayers": "编辑渲染层..."
   },
   "hierarchy": {
     "children": "子节点：{}",

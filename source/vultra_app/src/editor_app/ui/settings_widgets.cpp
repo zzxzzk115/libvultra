@@ -1,11 +1,15 @@
 #include "editor_app/ui/settings_widgets.hpp"
+#include "vproject.hpp"
 
+#include <vultra/core/i18n/i18n.hpp>
 #include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/imgui/imgui_theme.hpp>
 
+#include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <string>
 
@@ -207,5 +211,104 @@ namespace vultra_app::ui
         // Keep ui::dp() in step with the style: the OS DPI factor is set once by ImGuiSystem; this is
         // the user "Application Scale" multiplier on top, so hardcoded px stay proportional to widgets.
         vultra::setImGuiUserScale(applicationScale);
+    }
+
+    namespace
+    {
+        template<std::size_t N>
+        void copyToBuffer(std::array<char, N>& buffer, const std::string& value)
+        {
+            const auto count = std::min(value.size(), N - 1);
+            std::copy_n(value.begin(), count, buffer.begin());
+            buffer[count] = '\0';
+        }
+    } // namespace
+
+    bool drawTagListEditor(AppState& state)
+    {
+        bool  changed = false;
+        auto& tags    = state.currentTags;
+        if (tags.empty())
+            tags = defaultTags();
+
+        int tagToRemove = -1;
+        for (std::size_t i = 0; i < tags.size(); ++i)
+        {
+            ImGui::PushID(static_cast<int>(i));
+            // "Untagged" is the built-in default tag: it can neither be renamed nor removed.
+            const bool           isUntagged = (tags[i] == "Untagged");
+            std::array<char, 96> buffer {};
+            copyToBuffer(buffer, tags[i]);
+            ImGui::BeginDisabled(isUntagged);
+            ImGui::SetNextItemWidth(vultra::ui::dp(220.0f));
+            if (ImGui::InputText("##tag", buffer.data(), buffer.size()))
+            {
+                tags[i] = std::string {buffer.data()};
+                changed = true;
+            }
+            ImGui::EndDisabled();
+            if (!isUntagged)
+            {
+                ImGui::SameLine();
+                if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE))
+                    tagToRemove = static_cast<int>(i);
+            }
+            ImGui::PopID();
+        }
+        if (tagToRemove >= 0)
+        {
+            tags.erase(tags.begin() + tagToRemove);
+            changed = true;
+        }
+        if (ImGui::Button(vultra::tr("projectSettings.tagsLayers.addTag")))
+        {
+            tags.emplace_back("New Tag");
+            changed = true;
+        }
+        return changed;
+    }
+
+    bool drawRenderLayerListEditor(AppState& state)
+    {
+        bool  changed = false;
+        auto& layers  = state.currentLayerNames;
+        // Built-in layers always show their reserved names (read-only), even on projects that
+        // predate the layer table.
+        if (layers[0].empty())
+            layers[0] = "Default";
+        if (layers[5].empty())
+            layers[5] = "UI";
+        for (std::size_t i = 0; i < layers.size(); ++i)
+        {
+            ImGui::PushID(static_cast<int>(2000 + i));
+            const bool builtin = (i == 0 || i == 5); // 0 = Default, 5 = UI
+            const auto label   = std::to_string(i);
+            beginSettingsRow(label.c_str());
+            std::array<char, 96> buffer {};
+            copyToBuffer(buffer, layers[i]);
+            ImGui::BeginDisabled(builtin);
+            ImGui::SetNextItemWidth(vultra::ui::dp(220.0f));
+            if (ImGui::InputText("##layer", buffer.data(), buffer.size()))
+            {
+                layers[i] = std::string {buffer.data()};
+                changed   = true;
+            }
+            ImGui::EndDisabled();
+            endSettingsRow();
+            ImGui::PopID();
+        }
+        return changed;
+    }
+
+    bool persistTagsAndLayers(const AppState& state)
+    {
+        if (state.currentProject.empty())
+            return false;
+        auto project = vultra_app::loadVProject(state.currentProject);
+        if (!project.has_value())
+            return false;
+        project->tags       = state.currentTags;
+        project->layerNames = state.currentLayerNames;
+        return vultra_app::saveVProject(*project);
     }
 } // namespace vultra_app::ui
