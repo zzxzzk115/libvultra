@@ -4662,80 +4662,123 @@ namespace vultra_app
             return order;
         }
 
+        // -----------------------------------------------------------------------------------------
+        // Single source of truth for per-key ordered-component operations (presence test, i18n label,
+        // removal). These three used to be parallel ~35-branch if-chains (entityHasOrderedComponent,
+        // componentKeyToTrKey, removeOrderedComponent) that had to be hand-maintained in lockstep.
+        // They are now derived from this one table. Keys mirror addableComponents(), plus "Prefab"
+        // (inspectable/orderable but not user-addable or -removable).
+        // -----------------------------------------------------------------------------------------
+        struct OrderedComponentMeta
+        {
+            const char* key {};
+            const char* trKey {};
+            bool (*has)(entt::registry&, entt::entity) {};
+            void (*remove)(entt::registry&, entt::entity) {}; // null => not removable (e.g. Prefab)
+        };
+
+        template<typename Component>
+        OrderedComponentMeta orderedComponentMeta(const char* key, const char* trKey)
+        {
+            return OrderedComponentMeta {
+                key,
+                trKey,
+                [](entt::registry& reg, entt::entity entity) { return reg.all_of<Component>(entity); },
+                [](entt::registry& reg, entt::entity entity) { reg.remove<Component>(entity); },
+            };
+        }
+
+        const std::vector<OrderedComponentMeta>& orderedComponentMetaTable()
+        {
+            static const std::vector<OrderedComponentMeta> table {
+                orderedComponentMeta<vultra::RectTransformComponent>("RectTransform",
+                                                                     "inspector.component.rectTransform"),
+                // Transform is hidden while a RectTransform is present (UI entities use RectTransform).
+                OrderedComponentMeta {
+                    "Transform",
+                    "inspector.component.transform",
+                    [](entt::registry& reg, entt::entity entity) {
+                        return reg.all_of<vultra::TransformComponent>(entity) &&
+                               !reg.all_of<vultra::RectTransformComponent>(entity);
+                    },
+                    [](entt::registry& reg, entt::entity entity) { reg.remove<vultra::TransformComponent>(entity); },
+                },
+                orderedComponentMeta<vultra::LayerComponent>("Layer", "inspector.component.layer"),
+                orderedComponentMeta<vultra::CanvasComponent>("Canvas", "inspector.component.canvas"),
+                orderedComponentMeta<vultra::UiPanelComponent>("UiPanel", "inspector.component.uiPanel"),
+                orderedComponentMeta<vultra::UiImageComponent>("UiImage", "inspector.component.uiImage"),
+                orderedComponentMeta<vultra::UiTextComponent>("UiText", "inspector.component.uiText"),
+                orderedComponentMeta<vultra::UiButtonComponent>("UiButton", "inspector.component.uiButton"),
+                orderedComponentMeta<vultra::UiToggleComponent>("UiToggle", "inspector.component.uiToggle"),
+                orderedComponentMeta<vultra::UiSliderComponent>("UiSlider", "inspector.component.uiSlider"),
+                orderedComponentMeta<vultra::UiProgressBarComponent>("UiProgressBar",
+                                                                     "inspector.component.uiProgressBar"),
+                orderedComponentMeta<vultra::UiInputFieldComponent>("UiInputField",
+                                                                    "inspector.component.uiInputField"),
+                orderedComponentMeta<vultra::UiDropdownComponent>("UiDropdown", "inspector.component.uiDropdown"),
+                orderedComponentMeta<vultra::UiScrollViewComponent>("UiScrollView",
+                                                                    "inspector.component.uiScrollView"),
+                orderedComponentMeta<vultra::UiLayoutComponent>("UiLayout", "inspector.component.uiLayout"),
+                orderedComponentMeta<vultra::MeshComponent>("Mesh", "inspector.component.mesh"),
+                orderedComponentMeta<vultra::AnimatorComponent>("Animator", "inspector.component.animator"),
+                orderedComponentMeta<vultra::GaussianSplatComponent>("GaussianSplat",
+                                                                     "inspector.component.gaussianSplat"),
+                orderedComponentMeta<vultra::EnvironmentComponent>("Environment", "inspector.component.environment"),
+                orderedComponentMeta<vultra::ReflectionProbeComponent>("ReflectionProbe",
+                                                                       "inspector.component.reflectionProbe"),
+                orderedComponentMeta<vultra::LightComponent>("Light", "inspector.component.light"),
+                orderedComponentMeta<vultra::ParticleEmitterComponent>("ParticleEmitter",
+                                                                       "inspector.component.particleEmitter"),
+                orderedComponentMeta<vultra::RigidBodyComponent>("RigidBody", "inspector.component.rigidBody"),
+                orderedComponentMeta<vultra::BoxShapeComponent>("BoxShape", "inspector.component.boxShape"),
+                orderedComponentMeta<vultra::SphereShapeComponent>("SphereShape", "inspector.component.sphereShape"),
+                orderedComponentMeta<vultra::CapsuleShapeComponent>("CapsuleShape",
+                                                                    "inspector.component.capsuleShape"),
+                orderedComponentMeta<vultra::CharacterControllerComponent>("CharacterController",
+                                                                           "inspector.component.characterController"),
+                orderedComponentMeta<vultra::NavAgentComponent>("NavAgent", "inspector.component.navAgent"),
+                orderedComponentMeta<vultra::PersistentComponent>("Persistent", "inspector.component.persistent"),
+                // Removing the Camera also removes its dependent XRView.
+                OrderedComponentMeta {
+                    "Camera",
+                    "inspector.component.camera",
+                    [](entt::registry& reg, entt::entity entity) { return reg.all_of<vultra::CameraComponent>(entity); },
+                    [](entt::registry& reg, entt::entity entity) {
+                        reg.remove<vultra::CameraComponent>(entity);
+                        if (reg.all_of<vultra::XRViewComponent>(entity))
+                            reg.remove<vultra::XRViewComponent>(entity);
+                    },
+                },
+                orderedComponentMeta<vultra::XRViewComponent>("XRView", "inspector.component.xrView"),
+                orderedComponentMeta<vultra::ScriptComponent>("Script", "inspector.component.script"),
+                orderedComponentMeta<vultra::AudioSourceComponent>("AudioSource", "inspector.component.audioSource"),
+                orderedComponentMeta<vultra::AudioListenerComponent>("AudioListener",
+                                                                     "inspector.component.audioListener"),
+                // Prefab is inspectable/orderable but cannot be added or removed from the inspector.
+                OrderedComponentMeta {
+                    "Prefab",
+                    "inspector.component.prefab",
+                    [](entt::registry& reg, entt::entity entity) {
+                        return reg.all_of<vultra::PrefabInstanceComponent>(entity);
+                    },
+                    nullptr,
+                },
+            };
+            return table;
+        }
+
+        const OrderedComponentMeta* findOrderedComponentMeta(const std::string& key)
+        {
+            for (const auto& meta : orderedComponentMetaTable())
+                if (key == meta.key)
+                    return &meta;
+            return nullptr;
+        }
+
         bool entityHasOrderedComponent(entt::registry& reg, entt::entity entity, const std::string& key)
         {
-            if (key == "RectTransform")
-                return reg.all_of<vultra::RectTransformComponent>(entity);
-            if (key == "Transform")
-                return reg.all_of<vultra::TransformComponent>(entity) &&
-                       !reg.all_of<vultra::RectTransformComponent>(entity);
-            if (key == "Layer")
-                return reg.all_of<vultra::LayerComponent>(entity);
-            if (key == "Canvas")
-                return reg.all_of<vultra::CanvasComponent>(entity);
-            if (key == "UiPanel")
-                return reg.all_of<vultra::UiPanelComponent>(entity);
-            if (key == "UiImage")
-                return reg.all_of<vultra::UiImageComponent>(entity);
-            if (key == "UiText")
-                return reg.all_of<vultra::UiTextComponent>(entity);
-            if (key == "UiButton")
-                return reg.all_of<vultra::UiButtonComponent>(entity);
-            if (key == "UiToggle")
-                return reg.all_of<vultra::UiToggleComponent>(entity);
-            if (key == "UiSlider")
-                return reg.all_of<vultra::UiSliderComponent>(entity);
-            if (key == "UiProgressBar")
-                return reg.all_of<vultra::UiProgressBarComponent>(entity);
-            if (key == "UiInputField")
-                return reg.all_of<vultra::UiInputFieldComponent>(entity);
-            if (key == "UiDropdown")
-                return reg.all_of<vultra::UiDropdownComponent>(entity);
-            if (key == "UiScrollView")
-                return reg.all_of<vultra::UiScrollViewComponent>(entity);
-            if (key == "UiLayout")
-                return reg.all_of<vultra::UiLayoutComponent>(entity);
-            if (key == "Mesh")
-                return reg.all_of<vultra::MeshComponent>(entity);
-            if (key == "Animator")
-                return reg.all_of<vultra::AnimatorComponent>(entity);
-            if (key == "GaussianSplat")
-                return reg.all_of<vultra::GaussianSplatComponent>(entity);
-            if (key == "Environment")
-                return reg.all_of<vultra::EnvironmentComponent>(entity);
-            if (key == "ReflectionProbe")
-                return reg.all_of<vultra::ReflectionProbeComponent>(entity);
-            if (key == "Light")
-                return reg.all_of<vultra::LightComponent>(entity);
-            if (key == "ParticleEmitter")
-                return reg.all_of<vultra::ParticleEmitterComponent>(entity);
-            if (key == "RigidBody")
-                return reg.all_of<vultra::RigidBodyComponent>(entity);
-            if (key == "BoxShape")
-                return reg.all_of<vultra::BoxShapeComponent>(entity);
-            if (key == "SphereShape")
-                return reg.all_of<vultra::SphereShapeComponent>(entity);
-            if (key == "CapsuleShape")
-                return reg.all_of<vultra::CapsuleShapeComponent>(entity);
-            if (key == "CharacterController")
-                return reg.all_of<vultra::CharacterControllerComponent>(entity);
-            if (key == "NavAgent")
-                return reg.all_of<vultra::NavAgentComponent>(entity);
-            if (key == "Persistent")
-                return reg.all_of<vultra::PersistentComponent>(entity);
-            if (key == "Camera")
-                return reg.all_of<vultra::CameraComponent>(entity);
-            if (key == "XRView")
-                return reg.all_of<vultra::XRViewComponent>(entity);
-            if (key == "Script")
-                return reg.all_of<vultra::ScriptComponent>(entity);
-            if (key == "AudioSource")
-                return reg.all_of<vultra::AudioSourceComponent>(entity);
-            if (key == "AudioListener")
-                return reg.all_of<vultra::AudioListenerComponent>(entity);
-            if (key == "Prefab")
-                return reg.all_of<vultra::PrefabInstanceComponent>(entity);
-            return false;
+            const auto* meta = findOrderedComponentMeta(key);
+            return meta != nullptr && meta->has(reg, entity);
         }
 
         void syncComponentOrder(entt::registry& reg, entt::entity entity, std::vector<std::string>& order)
@@ -4757,77 +4800,8 @@ namespace vultra_app
 
         const char* componentKeyToTrKey(const std::string& key)
         {
-            if (key == "RectTransform")
-                return "inspector.component.rectTransform";
-            if (key == "Transform")
-                return "inspector.component.transform";
-            if (key == "Layer")
-                return "inspector.component.layer";
-            if (key == "Canvas")
-                return "inspector.component.canvas";
-            if (key == "UiPanel")
-                return "inspector.component.uiPanel";
-            if (key == "UiImage")
-                return "inspector.component.uiImage";
-            if (key == "UiText")
-                return "inspector.component.uiText";
-            if (key == "UiButton")
-                return "inspector.component.uiButton";
-            if (key == "UiToggle")
-                return "inspector.component.uiToggle";
-            if (key == "UiSlider")
-                return "inspector.component.uiSlider";
-            if (key == "UiProgressBar")
-                return "inspector.component.uiProgressBar";
-            if (key == "UiInputField")
-                return "inspector.component.uiInputField";
-            if (key == "UiDropdown")
-                return "inspector.component.uiDropdown";
-            if (key == "UiScrollView")
-                return "inspector.component.uiScrollView";
-            if (key == "UiLayout")
-                return "inspector.component.uiLayout";
-            if (key == "Mesh")
-                return "inspector.component.mesh";
-            if (key == "Animator")
-                return "inspector.component.animator";
-            if (key == "GaussianSplat")
-                return "inspector.component.gaussianSplat";
-            if (key == "Environment")
-                return "inspector.component.environment";
-            if (key == "ReflectionProbe")
-                return "inspector.component.reflectionProbe";
-            if (key == "Light")
-                return "inspector.component.light";
-            if (key == "ParticleEmitter")
-                return "inspector.component.particleEmitter";
-            if (key == "RigidBody")
-                return "inspector.component.rigidBody";
-            if (key == "BoxShape")
-                return "inspector.component.boxShape";
-            if (key == "SphereShape")
-                return "inspector.component.sphereShape";
-            if (key == "CapsuleShape")
-                return "inspector.component.capsuleShape";
-            if (key == "CharacterController")
-                return "inspector.component.characterController";
-            if (key == "NavAgent")
-                return "inspector.component.navAgent";
-            if (key == "Persistent")
-                return "inspector.component.persistent";
-            if (key == "Camera")
-                return "inspector.component.camera";
-            if (key == "XRView")
-                return "inspector.component.xrView";
-            if (key == "Script")
-                return "inspector.component.script";
-            if (key == "AudioSource")
-                return "inspector.component.audioSource";
-            if (key == "AudioListener")
-                return "inspector.component.audioListener";
-            if (key == "Prefab")
-                return "inspector.component.prefab";
-            return nullptr;
+            const auto* meta = findOrderedComponentMeta(key);
+            return meta != nullptr ? meta->trKey : nullptr;
         }
 
         const char* orderedComponentLabel(const std::string& key)
@@ -4866,78 +4840,9 @@ namespace vultra_app
 
         void removeOrderedComponent(entt::registry& reg, entt::entity entity, const std::string& key)
         {
-            if (key == "RectTransform")
-                reg.remove<vultra::RectTransformComponent>(entity);
-            else if (key == "Transform")
-                reg.remove<vultra::TransformComponent>(entity);
-            else if (key == "Layer")
-                reg.remove<vultra::LayerComponent>(entity);
-            else if (key == "Canvas")
-                reg.remove<vultra::CanvasComponent>(entity);
-            else if (key == "UiPanel")
-                reg.remove<vultra::UiPanelComponent>(entity);
-            else if (key == "UiImage")
-                reg.remove<vultra::UiImageComponent>(entity);
-            else if (key == "UiText")
-                reg.remove<vultra::UiTextComponent>(entity);
-            else if (key == "UiButton")
-                reg.remove<vultra::UiButtonComponent>(entity);
-            else if (key == "UiToggle")
-                reg.remove<vultra::UiToggleComponent>(entity);
-            else if (key == "UiSlider")
-                reg.remove<vultra::UiSliderComponent>(entity);
-            else if (key == "UiProgressBar")
-                reg.remove<vultra::UiProgressBarComponent>(entity);
-            else if (key == "UiInputField")
-                reg.remove<vultra::UiInputFieldComponent>(entity);
-            else if (key == "UiDropdown")
-                reg.remove<vultra::UiDropdownComponent>(entity);
-            else if (key == "UiScrollView")
-                reg.remove<vultra::UiScrollViewComponent>(entity);
-            else if (key == "UiLayout")
-                reg.remove<vultra::UiLayoutComponent>(entity);
-            else if (key == "Mesh")
-                reg.remove<vultra::MeshComponent>(entity);
-            else if (key == "Animator")
-                reg.remove<vultra::AnimatorComponent>(entity);
-            else if (key == "GaussianSplat")
-                reg.remove<vultra::GaussianSplatComponent>(entity);
-            else if (key == "Environment")
-                reg.remove<vultra::EnvironmentComponent>(entity);
-            else if (key == "ReflectionProbe")
-                reg.remove<vultra::ReflectionProbeComponent>(entity);
-            else if (key == "Light")
-                reg.remove<vultra::LightComponent>(entity);
-            else if (key == "ParticleEmitter")
-                reg.remove<vultra::ParticleEmitterComponent>(entity);
-            else if (key == "RigidBody")
-                reg.remove<vultra::RigidBodyComponent>(entity);
-            else if (key == "BoxShape")
-                reg.remove<vultra::BoxShapeComponent>(entity);
-            else if (key == "SphereShape")
-                reg.remove<vultra::SphereShapeComponent>(entity);
-            else if (key == "CapsuleShape")
-                reg.remove<vultra::CapsuleShapeComponent>(entity);
-            else if (key == "CharacterController")
-                reg.remove<vultra::CharacterControllerComponent>(entity);
-            else if (key == "NavAgent")
-                reg.remove<vultra::NavAgentComponent>(entity);
-            else if (key == "Persistent")
-                reg.remove<vultra::PersistentComponent>(entity);
-            else if (key == "Camera")
-            {
-                reg.remove<vultra::CameraComponent>(entity);
-                if (reg.all_of<vultra::XRViewComponent>(entity))
-                    reg.remove<vultra::XRViewComponent>(entity);
-            }
-            else if (key == "XRView")
-                reg.remove<vultra::XRViewComponent>(entity);
-            else if (key == "Script")
-                reg.remove<vultra::ScriptComponent>(entity);
-            else if (key == "AudioSource")
-                reg.remove<vultra::AudioSourceComponent>(entity);
-            else if (key == "AudioListener")
-                reg.remove<vultra::AudioListenerComponent>(entity);
+            const auto* meta = findOrderedComponentMeta(key);
+            if (meta != nullptr && meta->remove != nullptr)
+                meta->remove(reg, entity);
         }
 
         std::string componentRemovalBlockReason(entt::registry& reg, entt::entity entity, const std::string& key)
