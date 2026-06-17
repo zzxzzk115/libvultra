@@ -1,7 +1,7 @@
 #pragma once
 
 // Internal interface between render_system.cpp and the material-cooking translation unit
-// material_cook.cpp (see ai/workspace/render-system-split-plan.md).
+// material_cook.cpp.
 //
 // material_cook.cpp owns the graph/shader/builtin material cooking helpers (~1.8k lines that
 // turn a material URI or material-graph into a GpuMaterial). Only the handful of entry points

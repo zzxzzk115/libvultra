@@ -4,9 +4,8 @@
 //
 // Shared between the asset registry/import scan (asset_system.cpp::configure) and the
 // material upload/emit path (asset_material_upload.cpp::emitImportedMaterialAssets), which
-// live in different translation units after the asset-system split
-// (ai/workspace/asset-system-split-plan.md). Kept header-inline so both units derive the
-// imported material's relative path from a single source of truth.
+// live in different translation units. Kept header-inline so both units derive the imported
+// material's relative path from a single source of truth.
 
 #include <cctype>
 #include <cstdint>

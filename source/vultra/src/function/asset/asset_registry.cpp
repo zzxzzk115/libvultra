@@ -1,6 +1,6 @@
 // AssetSystem registry / import / resolution translation unit.
 //
-// Split out of asset_system.cpp (see ai/workspace/asset-system-split-plan.md): the registry
+// Split out of asset_system.cpp: the registry
 // configuration + mount, asset (re)import scan, registry reload, and URI/UUID resolution.
 // These own the VAssetRegistry / VUUIDResolver / VFS members; the importer-options helper is
 // used only here. Pure code-move; AssetSystem keeps lifecycle, residency, async CPU loading

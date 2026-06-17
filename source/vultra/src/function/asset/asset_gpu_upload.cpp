@@ -1,6 +1,6 @@
 // AssetSystem GPU-upload translation unit.
 //
-// Split out of asset_system.cpp (see ai/workspace/asset-system-split-plan.md): the three
+// Split out of asset_system.cpp: the three
 // member functions that turn a decoded CPU asset into a GPU resource via the GPU resource
 // service. They are tightly coupled to m_GpuResourceService / m_RenderDevice and share no
 // state with the rest of AssetSystem beyond those members, so they move cleanly together

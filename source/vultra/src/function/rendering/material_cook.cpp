@@ -1,6 +1,6 @@
 // Material cooking translation unit.
 //
-// Split out of render_system.cpp (see ai/workspace/render-system-split-plan.md): the
+// Split out of render_system.cpp: the
 // graph/shader/builtin material cooking helpers that turn a material URI or material-graph
 // into a GpuMaterial, plus their cooking caches. These were a self-contained, upstream-only
 // block of render_system.cpp's anonymous namespace. The few entry points render_system.cpp

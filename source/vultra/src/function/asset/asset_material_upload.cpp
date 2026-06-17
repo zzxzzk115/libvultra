@@ -1,6 +1,6 @@
 // AssetSystem material upload / refresh translation unit.
 //
-// Split out of asset_system.cpp (see ai/workspace/asset-system-split-plan.md): turning a
+// Split out of asset_system.cpp: turning a
 // vasset::VMaterial into a GpuMaterial entry, refreshing GPU material params once their
 // textures become resident, and (editor only) emitting imported material assets. These share
 // the GPU material-param packers and the material JSON (de)serialization helpers, so they
