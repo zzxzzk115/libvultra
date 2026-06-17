@@ -168,10 +168,72 @@ namespace vultra_app
         std::vector<EditorCommand> pendingEditorCommands;
         EditorSettings        editorSettings;
         BuildSettings         buildSettings;
+        // Per-platform export presets (mirrors VProject::exportSettings). buildSettings is the active
+        // view of exportSettings[buildSettings.targetPlatform]. The active platform is transient (not
+        // persisted); switching it loads that platform's preset. Keyed by platform id, then setting key.
+        std::unordered_map<std::string, std::unordered_map<std::string, std::string>> exportSettings;
         // Scene document state. Tool windows should mutate this, but only document tabs should display it.
         bool                  sceneDirty {false};
         SceneCameraState      sceneCamera;
         SceneCameraAlignRequest sceneCameraAlignRequest;
         ScenePickingState     scenePicking;
     };
+
+    // Default architecture for a target platform when no preset is saved yet.
+    inline std::string defaultExportArch(const std::string& platform)
+    {
+        if (platform == "Android")
+            return "arm64";
+        if (platform == "WebGPU" || platform == "Web")
+            return "wasm32";
+        return "x64";
+    }
+
+    // Load a platform's saved export preset into the active BuildSettings (per-platform defaults when
+    // the project has no preset for it yet). Sets the active target platform. Leaves projectName (which
+    // is project-wide, not per-platform) untouched.
+    inline void loadExportPreset(AppState& state, const std::string& platform)
+    {
+        auto& bs          = state.buildSettings;
+        bs.targetPlatform = platform;
+
+        const std::unordered_map<std::string, std::string>  empty;
+        const auto                                          it = state.exportSettings.find(platform);
+        const std::unordered_map<std::string, std::string>& p  = it == state.exportSettings.end() ? empty : it->second;
+
+        const auto getOr  = [&](const char* key, const std::string& def) {
+            const auto found = p.find(key);
+            return found == p.end() ? def : found->second;
+        };
+        const auto getBool = [&](const char* key, const bool def) {
+            const auto found = p.find(key);
+            if (found == p.end())
+                return def;
+            return found->second == "true" || found->second == "1";
+        };
+
+        bs.architecture                   = getOr("architecture", defaultExportArch(platform));
+        bs.configuration                  = getOr("configuration", "Development");
+        bs.exportTemplatePath             = getOr("template", "");
+        bs.outputDirectory                = getOr("output", "");
+        bs.includeDebugSymbols            = getBool("debug_symbols", true);
+        bs.compressContent                = getBool("compress_content", true);
+        bs.usePakFiles                    = getBool("use_vpk", true);
+        bs.additionalCommandLineArguments = getOr("extra_args", "");
+    }
+
+    // Capture the active BuildSettings into the per-platform map under the current target platform.
+    inline void storeExportPreset(AppState& state)
+    {
+        const auto& bs       = state.buildSettings;
+        auto&       p        = state.exportSettings[bs.targetPlatform];
+        p["architecture"]    = bs.architecture;
+        p["configuration"]   = bs.configuration;
+        p["template"]        = bs.exportTemplatePath;
+        p["output"]          = bs.outputDirectory;
+        p["debug_symbols"]   = bs.includeDebugSymbols ? "true" : "false";
+        p["compress_content"] = bs.compressContent ? "true" : "false";
+        p["use_vpk"]         = bs.usePakFiles ? "true" : "false";
+        p["extra_args"]      = bs.additionalCommandLineArguments;
+    }
 } // namespace vultra_app

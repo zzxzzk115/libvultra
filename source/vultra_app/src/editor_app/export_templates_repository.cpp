@@ -49,7 +49,15 @@ namespace vultra_app::export_templates
 
     std::string runtimeFileName(const std::string& platform)
     {
-        return platform == "windows" ? "vultra-runtime.exe" : "vultra-runtime";
+        if (platform == "windows")
+            return "vultra-runtime.exe";
+        // The web template is a bundle (index.html + js + wasm) shipped as a .zip; the editor's
+        // exportWeb extracts it via miniz. Android ships the prebuilt .so.
+        if (platform == "wasm")
+            return "web-template.zip";
+        if (platform == "android")
+            return "libvultra-runtime.so";
+        return "vultra-runtime";
     }
 
     bool fetchExportTemplatesCatalog(const fs::path&                   cacheRoot,

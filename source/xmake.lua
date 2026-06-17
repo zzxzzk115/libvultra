@@ -79,6 +79,8 @@ option_end()
 add_requires("fmt", { system = false })
 add_requires("spdlog", "magic_enum", "entt", "cereal", "sol2", "argparse")
 add_requires("lz4") -- runtime decompression of lz4-block-compressed builtin blobs (embedded fonts)
+add_requires("miniz") -- editor-only: native .zip extraction for downloaded/selected web export templates
+add_requires("cpp-httplib", {configs = {ssl = false, zlib = false, brotli = false}}) -- editor-only: in-process static server for web Export & Run
 add_requires("freetype") -- in-game UI text: rasterize UiTextComponent glyphs into the glyph atlas
 local jolt_configs = {debug = is_mode("debug"), shared = false, object_layer_bits = "16"}
 if is_plat("wasm") then
@@ -299,6 +301,8 @@ if not is_plat("android") and not is_plat("wasm") then
         add_deps("vultra", "vasset-import")
         add_rules("vultra.builtin_pack")
         add_packages("argparse")
+        add_packages("miniz") -- native .zip extraction for web export templates (editor only)
+        add_packages("cpp-httplib") -- in-process static HTTP server for web Export & Run (editor only)
         if is_plat("windows") then
             add_syslinks("ws2_32", "winhttp")
             -- Merge a UTF-8 active-code-page manifest so std::filesystem / ImGuiFileDialog path
@@ -394,7 +398,7 @@ target("vultra-runtime")
     end
     if is_plat("wasm") then
         -- Engine-only web template: no project --preload-file (no vpk.* values set), so the
-        -- runtime fetches the project's game.vpk at page load instead of baking it in.
+        -- runtime fetches the project's resources.vpk at page load instead of baking it in.
         add_rules("wasm.link")
         set_values("wasm.shell_file", path.join(os.projectdir(), "web", "emscripten_vultra_runtime.html"))
         -- The shell's preRun fetches the VPK into MEMFS, so the FS and run-dependency runtime
@@ -402,12 +406,14 @@ target("vultra-runtime")
         set_values("wasm.extra_ldflags",
                    {
                        "-sFORCE_FILESYSTEM=1",
-                       "-sEXPORTED_RUNTIME_METHODS=['FS','callMain','addRunDependency','removeRunDependency']",
+                       -- emscripten >= 5 no longer attaches the `FS` object to Module via this list,
+                       -- so the shell uses FS_createDataFile (kept explicit here against tree-shaking).
+                       "-sEXPORTED_RUNTIME_METHODS=['FS','FS_createDataFile','callMain','addRunDependency','removeRunDependency']",
                    })
         -- Refresh the editor's default web export template from the freshly built engine bundle:
         -- index.html + the js/wasm. This is a BUILD ARTIFACT (the engine-only runtime), so it lives
         -- under build/ (git-ignored), not in a source dir. The editor copies it next to a packed
-        -- game.vpk at export time; defaultWebTemplate() in editor_app_build.cpp points here.
+        -- resources.vpk at export time; defaultWebTemplate() in editor_app_build.cpp points here.
         after_build(function (target)
             local out = path.join(os.projectdir(), "build", "web-template")
             os.mkdir(out)

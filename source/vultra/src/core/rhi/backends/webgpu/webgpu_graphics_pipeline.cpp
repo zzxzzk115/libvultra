@@ -89,7 +89,12 @@ namespace vultra
             const auto fragIt   = m_ShaderStages.find(ShaderType::eFragment);
             if (vertexIt == m_ShaderStages.end() || fragIt == m_ShaderStages.end())
             {
-                VULTRA_CORE_ERROR("[GraphicsPipeline] WebGPU requires vertex + fragment shader stages");
+                std::string present;
+                for (const auto& [stage, info] : m_ShaderStages)
+                    present += " stage" + std::to_string(static_cast<int>(stage)) + "(code=" +
+                               std::to_string(info.code.size()) + ")";
+                VULTRA_CORE_ERROR("[GraphicsPipeline] WebGPU requires vertex + fragment shader stages; present:{}",
+                                  present.empty() ? " <none>" : present.c_str());
                 return std::nullopt;
             }
 

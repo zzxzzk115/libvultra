@@ -515,7 +515,7 @@
       // (the deterministic mount path AssetSystem expects) before main() runs. The fetch is
       // gated as an emscripten run-dependency, so the engine waits for assets to be present.
       const params = new URLSearchParams(window.location.search);
-      const vpkUrl = params.get("vpk") || "game.vpk";
+      const vpkUrl = params.get("vpk") || "resources.vpk";
       const sceneUri = params.get("scene") || "";
       const VPK_MOUNT = "/resources.vpk";
 
@@ -573,7 +573,20 @@
             return response.arrayBuffer();
           })
           .then(function (buffer) {
-            Module.FS.writeFile(VPK_MOUNT, new Uint8Array(buffer));
+            var bytes = new Uint8Array(buffer);
+            // emscripten >= 5 no longer exports the `FS` object on Module even when listed in
+            // EXPORTED_RUNTIME_METHODS, but `FS_createDataFile` is still exported (FORCE_FILESYSTEM).
+            // Prefer FS.writeFile when present (older toolchains), else fall back to FS_createDataFile.
+            if (Module.FS && typeof Module.FS.writeFile === "function") {
+              Module.FS.writeFile(VPK_MOUNT, bytes);
+            } else if (typeof Module.FS_createDataFile === "function") {
+              var slash = VPK_MOUNT.lastIndexOf("/");
+              var dir = VPK_MOUNT.substring(0, slash) || "/";
+              var name = VPK_MOUNT.substring(slash + 1);
+              Module.FS_createDataFile(dir, name, bytes, true, true, true);
+            } else {
+              throw new Error("No emscripten FS API exported (need FS.writeFile or FS_createDataFile)");
+            }
             appendLog("Package mounted at " + VPK_MOUNT + " (" + buffer.byteLength + " bytes).", "ok");
             Module.removeRunDependency("fetch-vpk");
           })

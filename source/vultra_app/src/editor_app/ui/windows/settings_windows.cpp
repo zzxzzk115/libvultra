@@ -1832,6 +1832,10 @@ namespace vultra_app
                 .enabledPlugins     = s_EnabledPlugins,
                 .pluginConfigValues = projectPluginConfigValues,
             };
+            // Keep the per-platform export presets; otherwise saving Project Settings would drop the
+            // export.* keys written by Export Settings / the toolbar target-platform picker.
+            storeExportPreset(ctx.state);
+            project.exportSettings = ctx.state.exportSettings;
             std::string error;
             if (!saveProjectEnvValues(project.projectDir, envPluginConfigValues, &error))
                 ctx.state.statusMessage = vultra::trf("projectSettings.status.saveFailed", error);
@@ -2083,11 +2087,12 @@ namespace vultra_app
 
     void EditorApp::drawExportTemplateDownloadRow(AppState::BuildSettings& settings)
     {
-        // Official export-template download: fetch the prebuilt runtime for the selected
-        // platform/arch from the center and fill the template path. Desktop targets only -- Web
-        // self-resolves its template from build/web-template and Android export is not implemented.
+        // Official export-template download: fetch the prebuilt runtime/web bundle for the selected
+        // platform/arch from the center and fill the template path. Available for desktop + Web (Web's
+        // template is a .zip extracted at export time); Android export itself is not implemented yet.
         const bool desktopTarget = settings.targetPlatform == "Windows" ||
                                    settings.targetPlatform == "macOS" || settings.targetPlatform == "Linux";
+        const bool webTarget = settings.targetPlatform == "WebGPU" || settings.targetPlatform == "Web";
 
         // Reap a finished download.
         if (m_ExportTemplateDownloading && m_ExportTemplateDownloadFuture.valid() &&
@@ -2103,12 +2108,13 @@ namespace vultra_app
             }
         }
 
-        if (!desktopTarget)
+        if (!desktopTarget && !webTarget)
             return;
 
         ImGui::Indent(vultra::ui::dp(150.0f));
-        const std::string slug =
-            export_templates::catalogPlatform(settings.targetPlatform) + "-" + settings.architecture;
+        // Web bundles are arch-neutral; the catalog publishes them under the "wasm32" arch.
+        const std::string downloadArch = webTarget ? std::string {"wasm32"} : settings.architecture;
+        const std::string slug = export_templates::catalogPlatform(settings.targetPlatform) + "-" + downloadArch;
         if (m_ExportTemplateDownloading)
         {
             ImGui::BeginDisabled();
@@ -2118,7 +2124,7 @@ namespace vultra_app
         else if (ImGui::Button(vultra::trf("exportSettings.downloadOfficialTemplate", slug).c_str()))
         {
             const std::string platform = export_templates::catalogPlatform(settings.targetPlatform);
-            const std::string arch     = settings.architecture;
+            const std::string arch     = downloadArch;
             const std::string engine   = plugins::engineVersion();
             m_ExportTemplateDownloading    = true;
             m_ExportTemplateDownloadStatus = vultra::tr("exportSettings.downloadingOfficialTemplate");
@@ -2168,14 +2174,28 @@ namespace vultra_app
             setBuffer(m_ExportTemplateBuffer, ctx.state.buildSettings.exportTemplatePath);
             setBuffer(m_BuildExtraArgsBuffer, ctx.state.buildSettings.additionalCommandLineArguments);
             ImGui::OpenPopup(vultra::trId("exportSettings.title", "Export Settings"));
-            ctx.state.buildSettingsOpen = false;
+            ctx.state.buildSettingsOpen   = false;
+            m_ExportSettingsModalActive   = true;
         }
 
         ui::centerNextModalInCurrentWindow();
         ImGui::SetNextWindowSize(ImVec2 {vultra::ui::dp(920.0f), vultra::ui::dp(430.0f)}, ImGuiCond_Appearing);
         bool popupOpen = true;
         if (!ImGui::BeginPopupModal(vultra::trId("exportSettings.title", "Export Settings"), &popupOpen))
+        {
+            // Closed (Esc / click-away / X / after an export): commit the edited buffers and remember
+            // the export settings in the .vproject (persist on change).
+            if (m_ExportSettingsModalActive)
+            {
+                ctx.state.buildSettings.outputDirectory    = bufferString(m_BuildOutputFolderBuffer);
+                ctx.state.buildSettings.projectName        = bufferString(m_BuildProjectNameBuffer);
+                ctx.state.buildSettings.exportTemplatePath = bufferString(m_ExportTemplateBuffer);
+                ctx.state.buildSettings.additionalCommandLineArguments = bufferString(m_BuildExtraArgsBuffer);
+                persistExportSettings(ctx);
+                m_ExportSettingsModalActive = false;
+            }
             return;
+        }
         if (!popupOpen)
         {
             ImGui::EndPopup();
@@ -2190,8 +2210,19 @@ namespace vultra_app
         {
             const bool selected = settings.targetPlatform == platform;
             const auto label    = platformLabel(platform);
-            if (ui::settingsNavItem(label.c_str(), selected))
-                settings.targetPlatform = platform;
+            if (ui::settingsNavItem(label.c_str(), selected) && !selected)
+            {
+                // Commit edits into the current platform's preset, then load the selected platform's
+                // saved settings and refresh the text buffers (each platform keeps its own settings).
+                settings.exportTemplatePath             = bufferString(m_ExportTemplateBuffer);
+                settings.outputDirectory                = bufferString(m_BuildOutputFolderBuffer);
+                settings.additionalCommandLineArguments = bufferString(m_BuildExtraArgsBuffer);
+                storeExportPreset(ctx.state);
+                loadExportPreset(ctx.state, platform);
+                setBuffer(m_ExportTemplateBuffer, settings.exportTemplatePath);
+                setBuffer(m_BuildOutputFolderBuffer, settings.outputDirectory);
+                setBuffer(m_BuildExtraArgsBuffer, settings.additionalCommandLineArguments);
+            }
         }
         ImGui::EndChild();
 
@@ -2252,12 +2283,23 @@ namespace vultra_app
             exportBlockReason = vultra::tr("exportSettings.block.noDefaultScene");
         else if (ctx.state.editorPlaying)
             exportBlockReason = vultra::tr("exportSettings.block.stopPlayMode");
-        else if (!sameHost && templatePath.empty())
+        else if (templatePath.empty())
+            // A template is required for EVERY platform, including the host (the editor binary is never
+            // shipped as the game runtime).
             exportBlockReason = vultra::trf("exportSettings.block.missingTemplate", settings.targetPlatform);
         else if (!templatePath.empty())
         {
+            // Web templates are a directory bundle or a .zip; desktop templates are a single binary.
+            const bool      webTarget = settings.targetPlatform == "WebGPU" || settings.targetPlatform == "Web";
             std::error_code ec;
-            if (!std::filesystem::is_regular_file(std::filesystem::path {templatePath}, ec))
+            const std::filesystem::path tp {templatePath};
+            bool                        valid = false;
+            if (webTarget)
+                valid = tp.extension() == ".zip" ? std::filesystem::is_regular_file(tp, ec) :
+                                                   std::filesystem::is_directory(tp, ec);
+            else
+                valid = std::filesystem::is_regular_file(tp, ec);
+            if (!valid)
                 exportBlockReason = vultra::tr("exportSettings.block.templateMissing");
         }
 

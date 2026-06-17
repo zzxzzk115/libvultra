@@ -68,6 +68,13 @@ if is_plat("windows") then
     add_requireconfs("**", {configs = {runtimes = is_mode("debug") and "MTd" or "MT"}})
 end
 
+if is_plat("android") then
+    -- xmake maps a package's `runtimes` to CMAKE_ANDROID_STL_TYPE for CMake-based deps; pin it to a
+    -- valid Android STL so the MSVC "MT" runtime can't leak in (CMake's Android module rejects "MT").
+    -- c++_static matches the single shared-object (libvultra_runtime.so) STL layout.
+    add_requireconfs("**", {configs = {runtimes = "c++_static"}})
+end
+
 -- if build on windows
 if is_plat("windows") then
     add_cxxflags("/Zc:__cplusplus", {tools = {"msvc", "cl"}}) -- fix __cplusplus == 199711L error

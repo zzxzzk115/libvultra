@@ -1256,6 +1256,7 @@
     "webTemplateNotFound": "web export template not found: {}",
     "webTemplateExtractFailed": "failed to extract web template archive {}",
     "webTemplateNotDirOrZip": "web export template is neither a directory nor a .zip: {}",
+    "webTemplateRequired": "No web export template set. Choose a template directory or .zip in Export Settings (or download the official one).",
     "copyTemplateFileFailed": "failed to copy template file {}: {}",
     "webTemplateNoIndexHtml": "Export failed: web template did not provide index.html (template: {}).",
     "androidNotImplemented": "Android export is not implemented yet (planned).",
@@ -1299,7 +1300,8 @@
     "exportStartedPackaging": "Export started: packaging runtime..."
   },
   "web": {
-    "noPythonServer": "Serve the output folder over http(s) and open index.html (fetch is blocked on file://). No Python found to auto-launch a server.",
+    "cannotMountDir": "Could not serve the output folder over HTTP: {}",
+    "cannotBindPort": "Could not bind the local HTTP server to 127.0.0.1:{} (port in use?).",
     "servingAt": "Serving at {}"
   },
   "popup": {

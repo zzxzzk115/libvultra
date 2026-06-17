@@ -34,6 +34,37 @@ namespace vultra_app
                 ImGui::SetTooltip("%s", text);
         }
 
+        // The export target platforms selectable from the toolbar; the internal id matches
+        // BuildSettings::targetPlatform / runBuildAndLaunch (Web is "WebGPU" internally).
+        struct TargetPlatformOption
+        {
+            const char* id;   // BuildSettings::targetPlatform value
+            const char* icon; // MDI glyph
+        };
+        constexpr TargetPlatformOption kTargetPlatforms[] = {
+            {"Windows", ICON_MDI_MICROSOFT_WINDOWS},
+            {"Linux", ICON_MDI_LINUX},
+            {"macOS", ICON_MDI_APPLE},
+            {"Android", ICON_MDI_ANDROID},
+            {"WebGPU", ICON_MDI_WEB},
+        };
+
+        const TargetPlatformOption& targetPlatformOption(const std::string& id)
+        {
+            for (const auto& option : kTargetPlatforms)
+                if (id == option.id)
+                    return option;
+            return kTargetPlatforms[0];
+        }
+
+        // User-facing name (the user calls the WebGPU target "Web").
+        std::string targetPlatformDisplayName(const std::string& id)
+        {
+            if (id == "WebGPU")
+                return "Web";
+            return id;
+        }
+
         void invokeMenuClick(const vultra::ScriptedEditorMenuItemDesc& item)
         {
             if (!item.onClick.valid())
@@ -548,15 +579,45 @@ namespace vultra_app
             }
 
             ImGui::SameLine(0.0f, vultra::ui::dp(12.0f));
-            const std::string platformLabel =
-                std::string {ICON_MDI_MONITOR "  "} + vultra::tr("toolbar.platforms") + " " ICON_MDI_MENU_DOWN;
+            // The toolbar shows the current export target and lets you switch it; the selection drives
+            // Export & Run (runBuildAndLaunch reads ctx.state.buildSettings.targetPlatform).
+            const auto&       currentPlatform = ctx.state.buildSettings.targetPlatform;
+            const auto&       currentOption   = targetPlatformOption(currentPlatform);
+            const std::string platformLabel   = std::string {currentOption.icon} + "  " +
+                                              targetPlatformDisplayName(currentPlatform) + " " ICON_MDI_MENU_DOWN;
             const std::string settingsLabel = std::string {ICON_MDI_COG "  "} + vultra::tr("toolbar.settings");
             const float       platformWidth = ImGui::CalcTextSize(platformLabel.c_str()).x + vultra::ui::dp(26.0f);
             const float       settingsWidth = ImGui::CalcTextSize(settingsLabel.c_str()).x + vultra::ui::dp(26.0f);
             const float       settingsStart = ImGui::GetWindowWidth() - settingsWidth - vultra::ui::dp(18.0f);
             if (ImGui::GetCursorPosX() + platformWidth + vultra::ui::dp(20.0f) < settingsStart)
             {
-                toolbarButton(platformLabel.c_str(), vultra::tr("toolbar.targetPlatform"), ImVec2 {platformWidth, 0.0f});
+                if (toolbarButton(
+                        platformLabel.c_str(), vultra::tr("toolbar.targetPlatform"), ImVec2 {platformWidth, 0.0f}))
+                    ImGui::OpenPopup("TargetPlatformMenu");
+                if (ImGui::BeginPopup("TargetPlatformMenu"))
+                {
+                    ImGui::TextDisabled("%s", vultra::tr("toolbar.targetPlatform"));
+                    ImGui::Separator();
+                    for (const auto& option : kTargetPlatforms)
+                    {
+                        const std::string itemLabel =
+                            std::string {option.icon} + "  " + targetPlatformDisplayName(option.id);
+                        const bool selected = currentPlatform == option.id;
+                        if (ImGui::MenuItem(itemLabel.c_str(), nullptr, selected) && !selected)
+                        {
+                            // Switch the active target platform: save the current platform's settings,
+                            // then load the selected platform's saved preset (or its defaults). The
+                            // active platform is transient (not persisted); only per-platform settings
+                            // are, so a mere switch needs no disk write.
+                            storeExportPreset(ctx.state);
+                            loadExportPreset(ctx.state, option.id);
+                        }
+                    }
+                    ImGui::Separator();
+                    if (ImGui::MenuItem(vultra::tr("menu.file.exportSettings")))
+                        ctx.state.buildSettingsOpen = true;
+                    ImGui::EndPopup();
+                }
                 ImGui::SameLine(0.0f, vultra::ui::dp(8.0f));
             }
             if (settingsStart > ImGui::GetCursorPosX())

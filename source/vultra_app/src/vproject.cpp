@@ -97,6 +97,20 @@ namespace vultra_app
                 project.defaultScene = value;
             else if (key == "editing_rendergraph")
                 project.editingRenderGraph = value;
+            else if (key.starts_with("export."))
+            {
+                // export.<platform>.<setting>: platform ids and setting keys have no dots, so split on
+                // the first dot after the "export." prefix.
+                const std::string_view rest {key.data() + std::string_view {"export."}.size(),
+                                             key.size() - std::string_view {"export."}.size()};
+                const auto             dot = rest.find('.');
+                if (dot != std::string_view::npos && dot > 0 && dot + 1 < rest.size())
+                {
+                    const auto platform   = std::string(rest.substr(0, dot));
+                    const auto settingKey = std::string(rest.substr(dot + 1));
+                    project.exportSettings[platform][settingKey] = value;
+                }
+            }
             else if (key == "enabled_plugins")
             {
                 project.enabledPlugins.clear();
@@ -527,6 +541,35 @@ namespace vultra_app
         file << "asset_root = \"" << project.assetRoot << "\"\n";
         file << "default_scene = \"" << project.defaultScene << "\"\n";
         file << "editing_rendergraph = \"" << project.editingRenderGraph << "\"\n";
+        // Per-platform export settings, written deterministically (sorted by platform, then key).
+        {
+            std::vector<std::string> platforms;
+            platforms.reserve(project.exportSettings.size());
+            for (const auto& [platform, _] : project.exportSettings)
+            {
+                static_cast<void>(_);
+                platforms.push_back(platform);
+            }
+            std::sort(platforms.begin(), platforms.end());
+            for (const auto& platform : platforms)
+            {
+                const auto&              settings = project.exportSettings.at(platform);
+                std::vector<std::string> keys;
+                keys.reserve(settings.size());
+                for (const auto& [key, _] : settings)
+                {
+                    static_cast<void>(_);
+                    keys.push_back(key);
+                }
+                std::sort(keys.begin(), keys.end());
+                for (const auto& key : keys)
+                {
+                    const auto& value = settings.at(key);
+                    if (!value.empty())
+                        file << "export." << platform << "." << key << " = " << quote(value) << "\n";
+                }
+            }
+        }
         if (!project.enabledPlugins.empty())
         {
             std::string joined;

@@ -147,8 +147,11 @@ void main()
     else
         color *= mix(vec4(1.0), sampleColor, textured ? 1.0 : 0.0);
 
-    if (color.a <= 0.001)
-        discard;
-
+    // NOTE: no `discard` here on purpose. WGSL supports discard, but the vshadersystem GLSL->WGSL
+    // lowering emits it as `discard; return;`, and naga rejects the trailing return ("instructions
+    // after return"), breaking the WebGPU shader module. This overlay always alpha-blends
+    // (src=srcAlpha, dst=1-srcAlpha) with depthWrite off, so a transparent fragment already
+    // contributes nothing - equivalent to discarding. (Fix the lowering in vshadersystem to restore
+    // discard.)
     FragColor = color;
 }

@@ -257,8 +257,6 @@ namespace vultra
             .setDepthFormat(depthFormat)
             .setViewMask(viewMask)
             .setInputAssembly({})
-            .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
-            .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
             .setDepthStencil({
                 // Test world-space UI against scene depth (read-only) so geometry occludes it;
                 // screen-overlay UI is emitted at z=0 and always passes (stays on top).
@@ -270,6 +268,31 @@ namespace vultra
                 .polygonMode = rhi::PolygonMode::eFill,
                 .cullMode    = rhi::CullMode::eNone,
             });
+
+        // WebGPU consumes WGSL (the builtin web lib has no SPIR-V); Vulkan uses the builtin SPIR-V.
+        if (getRenderDevice().getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+        {
+            builder
+                .addShader(rhi::ShaderType::eVertex,
+                           rhi::ShaderStageInfo {
+                               .code           = vertexShader->wgsl,
+                               .entryPointName = "main",
+                               .defines        = {},
+                               .reflection     = vertexShader->reflection,
+                           })
+                .addShader(rhi::ShaderType::eFragment,
+                           rhi::ShaderStageInfo {
+                               .code           = fragmentShader->wgsl,
+                               .entryPointName = "main",
+                               .defines        = {},
+                               .reflection     = fragmentShader->reflection,
+                           });
+        }
+        else
+        {
+            builder.addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
+                .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader);
+        }
 
         builder.setBlending(0,
                             {

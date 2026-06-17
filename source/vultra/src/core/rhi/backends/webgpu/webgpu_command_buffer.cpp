@@ -728,15 +728,26 @@ namespace vultra
                 m_DepthView = reinterpret_cast<WGPUTextureView>(depthViewHandle);
                 if (m_DepthView != nullptr)
                 {
-                    depthDesc.view = m_DepthView;
-                    depthDesc.depthLoadOp =
-                        framebufferInfo.depthAttachment->clearValue.has_value() ||
-                                framebufferInfo.depthAttachment->loadOp == AttachmentLoadOp::eClear ?
-                            WGPULoadOp_Clear :
-                            WGPULoadOp_Load;
-                    depthDesc.depthStoreOp    = framebufferInfo.depthReadOnly ? WGPUStoreOp_Discard : WGPUStoreOp_Store;
-                    depthDesc.depthClearValue = toWgpuDepthClear(framebufferInfo.depthAttachment->clearValue);
-                    depthDesc.depthReadOnly   = framebufferInfo.depthReadOnly;
+                    depthDesc.view          = m_DepthView;
+                    depthDesc.depthReadOnly = framebufferInfo.depthReadOnly;
+                    if (framebufferInfo.depthReadOnly)
+                    {
+                        // WebGPU rejects a read-only depth attachment that also has load/store ops
+                        // ("Read-only attachment with load") - they must be Undefined.
+                        depthDesc.depthLoadOp     = WGPULoadOp_Undefined;
+                        depthDesc.depthStoreOp    = WGPUStoreOp_Undefined;
+                        depthDesc.depthClearValue = 0.0f;
+                    }
+                    else
+                    {
+                        depthDesc.depthLoadOp =
+                            framebufferInfo.depthAttachment->clearValue.has_value() ||
+                                    framebufferInfo.depthAttachment->loadOp == AttachmentLoadOp::eClear ?
+                                WGPULoadOp_Clear :
+                                WGPULoadOp_Load;
+                        depthDesc.depthStoreOp    = WGPUStoreOp_Store;
+                        depthDesc.depthClearValue = toWgpuDepthClear(framebufferInfo.depthAttachment->clearValue);
+                    }
 
                     depthDesc.stencilReadOnly   = stencilReadOnly;
                     depthDesc.stencilLoadOp     = WGPULoadOp_Undefined;

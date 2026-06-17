@@ -1,6 +1,5 @@
 #include "editor_app/editor_app.hpp"
 
-#include "editor_app/export_templates_repository.hpp"
 #include "editor_app/plugin_repository.hpp"
 #include "editor_app/project_asset_utils.hpp"
 #include "editor_app/ui/settings_widgets.hpp"
@@ -24,6 +23,10 @@
 #include <vultra/function/imgui/imgui_dpi.hpp>
 
 #include <imgui.h>
+#include <miniz.h>
+
+// cpp-httplib pulls in <windows.h>/winsock; keep it after our own includes and below NOMINMAX.
+#include <httplib.h>
 
 #include <algorithm>
 #include <cctype>
@@ -33,10 +36,12 @@
 #include <filesystem>
 #include <future>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 #if defined(_WIN32)
@@ -88,7 +93,11 @@ namespace vultra_app
 #endif
         }
 
-        bool targetNeedsExecutableExtension(const std::string& targetPlatform) { return targetPlatform == "Windows"; }
+        bool targetNeedsExecutableExtension(const std::string& targetPlatform)
+        {
+            // Case-insensitive so the CLI (`--export-platform windows`) and GUI ("Windows") agree.
+            return targetPlatform == "Windows" || targetPlatform == "windows";
+        }
 
         std::string currentHostArch()
         {
@@ -118,112 +127,6 @@ namespace vultra_app
             return quoteCommandArg(path.generic_string());
         }
 
-        std::filesystem::path currentExecutablePath()
-        {
-#if defined(_WIN32)
-            std::wstring buffer(MAX_PATH, L'\0');
-            DWORD        size = 0;
-            for (;;)
-            {
-                size = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-                if (size == 0)
-                    return {};
-                if (size < buffer.size() - 1)
-                    break;
-                buffer.resize(buffer.size() * 2);
-            }
-            return std::filesystem::path(std::wstring(buffer.data(), size));
-#elif defined(__APPLE__)
-            uint32_t size = 0;
-            _NSGetExecutablePath(nullptr, &size);
-            std::vector<char> buffer(size + 1, '\0');
-            if (_NSGetExecutablePath(buffer.data(), &size) != 0)
-                return {};
-            std::error_code ec;
-            return std::filesystem::weakly_canonical(buffer.data(), ec);
-#else
-            std::vector<char> buffer(PATH_MAX, '\0');
-            const ssize_t     size = readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
-            if (size <= 0)
-                return {};
-            buffer[static_cast<size_t>(size)] = '\0';
-            return std::filesystem::path(buffer.data());
-#endif
-        }
-
-        std::filesystem::path currentExecutableDir()
-        {
-            const auto exe = currentExecutablePath();
-            return exe.empty() ? std::filesystem::path {} : exe.parent_path();
-        }
-
-        bool hasAssimpRuntimeDll(const std::filesystem::path& dir)
-        {
-            if (dir.empty())
-                return false;
-
-            std::error_code ec;
-            for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
-            {
-                if (ec || !entry.is_regular_file(ec))
-                    continue;
-
-                auto filename = entry.path().filename().generic_string();
-                std::transform(filename.begin(), filename.end(), filename.begin(), [](const unsigned char ch) {
-                    return static_cast<char>(std::tolower(ch));
-                });
-                if (filename.find("assimp") != std::string::npos && filename.ends_with(".dll"))
-                    return true;
-            }
-            return false;
-        }
-
-        std::optional<std::filesystem::path> findPublishedRuntimeNextToEditor()
-        {
-            namespace fs = std::filesystem;
-
-            const auto exeDir = currentExecutableDir();
-            if (!hasAssimpRuntimeDll(exeDir))
-                return std::nullopt;
-
-#if defined(_WIN32)
-            const auto runtime = exeDir / "vultra.exe";
-#else
-            const auto runtime = exeDir / "vultra";
-#endif
-
-            std::error_code ec;
-            if (fs::exists(runtime, ec) && fs::is_regular_file(runtime, ec))
-                return runtime.lexically_normal();
-            return std::nullopt;
-        }
-
-        std::filesystem::path findRepoRoot()
-        {
-            namespace fs = std::filesystem;
-
-            std::vector<fs::path> starts;
-            std::error_code       ec;
-            starts.push_back(fs::current_path(ec));
-            if (const auto exe = currentExecutablePath(); !exe.empty())
-                starts.push_back(exe.parent_path());
-
-            for (auto start : starts)
-            {
-                if (start.empty())
-                    continue;
-
-                start = start.lexically_normal();
-                for (fs::path path = start; !path.empty(); path = path.parent_path())
-                {
-                    if (fs::exists(path / "source" / "xmake.lua", ec) && fs::exists(path / "external" / "vasset", ec))
-                        return path;
-                    if (path == path.root_path())
-                        break;
-                }
-            }
-            return {};
-        }
 
         int runCommand(const std::string& command) { return std::system(command.c_str()); }
 
@@ -535,49 +438,21 @@ namespace vultra_app
                                      std::shared_ptr<BuildRunTaskProgress> progress)
         {
             namespace fs = std::filesystem;
+            static_cast<void>(architecture); // template selection is explicit; arch is informational only
 
             const auto     packageName = sanitizedPackageName(projectName, projectRoot);
             const fs::path outputDir   = outputFolder.lexically_normal();
             const fs::path packageExecutable =
                 outputDir / (targetNeedsExecutableExtension(targetPlatform) ? packageName + ".exe" : packageName);
-            const fs::path vpkPath = outputDir / (packageName + ".vpk");
+            // Engine-neutral, fixed package name (findDefaultVpk() prefers "resources.vpk"); the app
+            // executable keeps the project name, only the asset package is standardized.
+            const fs::path vpkPath = outputDir / "resources.vpk";
 
             std::error_code ec;
             fs::create_directories(outputDir, ec);
             if (ec)
                 return {.ok      = false,
                         .message = vultra::trf("editorBuild.error.cannotCreateOutputFolder", outputDir.generic_string())};
-
-            if (auto publishedRuntime = findPublishedRuntimeNextToEditor(); publishedRuntime.has_value())
-            {
-                if (auto pack = packProjectVpk(projectRoot, assetRoot, projectName, sceneUri, vpkPath, progress);
-                    !pack.ok)
-                    return pack;
-
-                setBuildRunProgress(progress, 0.55f, vultra::tr("editorBuild.progress.copyingRuntime"));
-
-                std::string copyError;
-                if (!copyRuntimeToPackage(*publishedRuntime, packageExecutable, copyError))
-                    return {.ok = false, .message = vultra::trf("editorBuild.error.exportFailedDetail", copyError)};
-
-                if (launchRuntime)
-                {
-                    setBuildRunProgress(progress, 0.94f, vultra::tr("editorBuild.progress.launchingPublishedRuntime"));
-                    const int launchResult = launchPackagedRuntime(packageExecutable, vpkPath, sceneUri);
-                    if (launchResult != 0)
-                        return {.ok      = false,
-                                .message = vultra::trf("editorBuild.error.publishedRuntimeLaunchReturned", launchResult)};
-                }
-
-                setBuildRunProgress(progress,
-                                    1.0f,
-                                    launchRuntime ? vultra::tr("editorBuild.progress.runtimeLaunched") :
-                                                    vultra::tr("editorBuild.progress.exportComplete"));
-                return {.ok      = true,
-                        .message = launchRuntime ?
-                                       vultra::trf("editorBuild.status.runningPackage", packageExecutable.generic_string()) :
-                                       vultra::trf("editorBuild.status.exportComplete", packageExecutable.generic_string())};
-            }
 
             if (auto pack = packProjectVpk(projectRoot, assetRoot, projectName, sceneUri, vpkPath, progress); !pack.ok)
                 return pack;
@@ -588,28 +463,14 @@ namespace vultra_app
             }
 
             setBuildRunProgress(progress, 0.90f, vultra::tr("editorBuild.progress.copyingTemplate"));
-            fs::path runtimeExecutable;
-            if (!exportTemplatePath.empty())
-                runtimeExecutable = fs::path {exportTemplatePath}.lexically_normal();
-            // An official export template downloaded earlier (cached under .vultra/export-templates)
-            // is preferred over the editor's own executable: it is the editor-free runtime, not the
-            // editor. The lookup is offline -- the UI's "Download official template" already fetched it.
-            else if (auto cached = export_templates::cachedExportTemplate(
-                         fs::current_path(),
-                         export_templates::catalogPlatform(targetPlatform),
-                         architecture,
-                         vultra_app::plugins::engineVersion());
-                     !cached.empty())
-                runtimeExecutable = cached;
-            else if (targetPlatform == currentHostPlatform())
-                runtimeExecutable = currentExecutablePath();
-            else
-            {
+            // A runtime template is mandatory for every platform, including the host: the editor binary
+            // itself is never shipped as the game runtime (it carries editor/MCP launch options and is
+            // not a clean runtime). The template is an editor-free vultra-runtime obtained by the user
+            // (selected locally or downloaded official); no path is ever assumed.
+            if (exportTemplatePath.empty())
                 return {.ok = false, .message = vultra::tr("editorBuild.error.templateRequired")};
-            }
-
-            if (runtimeExecutable.empty() || !fs::exists(runtimeExecutable, ec) ||
-                !fs::is_regular_file(runtimeExecutable, ec))
+            const fs::path runtimeExecutable = fs::path {exportTemplatePath}.lexically_normal();
+            if (!fs::exists(runtimeExecutable, ec) || !fs::is_regular_file(runtimeExecutable, ec))
             {
                 return {.ok = false, .message = vultra::tr("editorBuild.error.templateNotFound")};
             }
@@ -640,60 +501,18 @@ namespace vultra_app
 
         // --- Web (WASM / WebGPU) export -------------------------------------------------------
 
-        std::filesystem::path defaultWebTemplate()
-        {
-            const auto repoRoot = findRepoRoot();
-            if (repoRoot.empty())
-                return {};
-            // The engine-only web template is a build artifact produced by building the wasm
-            // vultra-runtime target (its after_build copies the bundle here). See source/xmake.lua.
-            return (repoRoot / "build" / "web-template").lexically_normal();
-        }
-
-        bool extractOrCopyWebTemplate(const std::filesystem::path& templateSource,
-                                      const std::filesystem::path& outputDir,
-                                      std::string&                 errorMessage)
+        // Copies every file under srcDir into outputDir, preserving relative layout.
+        bool copyWebTemplateTree(const std::filesystem::path& srcDir,
+                                 const std::filesystem::path& outputDir,
+                                 std::string&                 errorMessage)
         {
             namespace fs = std::filesystem;
             std::error_code ec;
-
-            if (templateSource.empty() || !fs::exists(templateSource, ec))
-            {
-                errorMessage = vultra::trf("editorBuild.error.webTemplateNotFound", templateSource.generic_string());
-                return false;
-            }
-
-            // A .zip template is extracted in place; a directory template is copied file-by-file.
-            if (fs::is_regular_file(templateSource, ec) && templateSource.extension().generic_string() == ".zip")
-            {
-                std::ostringstream cmd;
-#if defined(_WIN32)
-                // bsdtar (tar.exe) ships on Windows 10+ and extracts .zip transparently.
-                cmd << "tar -xf " << quoteCommandArg(templateSource) << " -C " << quoteCommandArg(outputDir);
-#else
-                cmd << "unzip -o " << quoteCommandArg(templateSource) << " -d " << quoteCommandArg(outputDir);
-#endif
-                if (runCommand(cmd.str()) != 0)
-                {
-                    errorMessage =
-                        vultra::trf("editorBuild.error.webTemplateExtractFailed", templateSource.generic_string());
-                    return false;
-                }
-                return true;
-            }
-
-            if (!fs::is_directory(templateSource, ec))
-            {
-                errorMessage =
-                    vultra::trf("editorBuild.error.webTemplateNotDirOrZip", templateSource.generic_string());
-                return false;
-            }
-
-            for (const auto& entry : fs::recursive_directory_iterator(templateSource, ec))
+            for (const auto& entry : fs::recursive_directory_iterator(srcDir, ec))
             {
                 if (ec)
                     break;
-                const auto relative = fs::relative(entry.path(), templateSource, ec);
+                const auto relative = fs::relative(entry.path(), srcDir, ec);
                 if (ec)
                     continue;
                 const auto destination = outputDir / relative;
@@ -714,6 +533,103 @@ namespace vultra_app
                 }
             }
             return true;
+        }
+
+        bool extractOrCopyWebTemplate(const std::filesystem::path& templateSource,
+                                      const std::filesystem::path& outputDir,
+                                      std::string&                 errorMessage)
+        {
+            namespace fs = std::filesystem;
+            std::error_code ec;
+
+            if (templateSource.empty() || !fs::exists(templateSource, ec))
+            {
+                errorMessage = vultra::trf("editorBuild.error.webTemplateNotFound", templateSource.generic_string());
+                return false;
+            }
+
+            // A .zip template is extracted to a staging dir, then the directory that actually contains
+            // index.html is copied out. This tolerates archives that nest the bundle under a top-level
+            // folder (e.g. zipping the `web-template` folder itself, not its contents).
+            if (fs::is_regular_file(templateSource, ec) && templateSource.extension().generic_string() == ".zip")
+            {
+                const fs::path staging = outputDir / ".vultra_webtemplate_extract";
+                fs::remove_all(staging, ec);
+                fs::create_directories(staging, ec);
+
+                // Extract natively with miniz: no external archiver, so no PATH lookup, no shell quoting,
+                // and no locale-encoded (GBK) error text. A system tar/unzip is unreliable across machines.
+                mz_zip_archive zip;
+                mz_zip_zero_struct(&zip);
+                if (!mz_zip_reader_init_file(&zip, templateSource.string().c_str(), 0))
+                {
+                    fs::remove_all(staging, ec);
+                    errorMessage = vultra::trf("editorBuild.error.webTemplateExtractFailed",
+                                               templateSource.generic_string() + " (cannot open zip)");
+                    return false;
+                }
+                const mz_uint fileCount = mz_zip_reader_get_num_files(&zip);
+                for (mz_uint i = 0; i < fileCount; ++i)
+                {
+                    mz_zip_archive_file_stat st;
+                    if (!mz_zip_reader_file_stat(&zip, i, &st))
+                        continue;
+                    std::string name = st.m_filename;
+                    std::replace(name.begin(), name.end(), '\\', '/');
+                    // Zip-slip guard: skip absolute or parent-escaping entries.
+                    if (name.empty() || name.front() == '/' || name.find("..") != std::string::npos)
+                        continue;
+                    const fs::path dest = staging / fs::path(name);
+                    if (mz_zip_reader_is_file_a_directory(&zip, i))
+                    {
+                        fs::create_directories(dest, ec);
+                        continue;
+                    }
+                    fs::create_directories(dest.parent_path(), ec);
+                    if (!mz_zip_reader_extract_to_file(&zip, i, dest.string().c_str(), 0))
+                    {
+                        mz_zip_reader_end(&zip);
+                        fs::remove_all(staging, ec);
+                        errorMessage = vultra::trf("editorBuild.error.webTemplateExtractFailed",
+                                                   templateSource.generic_string() + " (" + name + ")");
+                        return false;
+                    }
+                }
+                mz_zip_reader_end(&zip);
+
+                // Find index.html anywhere in the extracted tree; its directory is the template root.
+                fs::path templateRoot;
+                for (const auto& entry : fs::recursive_directory_iterator(staging, ec))
+                {
+                    if (ec)
+                        break;
+                    if (entry.is_regular_file() && entry.path().filename() == "index.html")
+                    {
+                        templateRoot = entry.path().parent_path();
+                        break;
+                    }
+                }
+                if (templateRoot.empty())
+                {
+                    fs::remove_all(staging, ec);
+                    errorMessage =
+                        vultra::trf("editorBuild.error.webTemplateNoIndexHtml", templateSource.generic_string());
+                    return false;
+                }
+
+                const bool ok = copyWebTemplateTree(templateRoot, outputDir, errorMessage);
+                fs::remove_all(staging, ec);
+                return ok;
+            }
+
+            if (!fs::is_directory(templateSource, ec))
+            {
+                errorMessage =
+                    vultra::trf("editorBuild.error.webTemplateNotDirOrZip", templateSource.generic_string());
+                return false;
+            }
+
+            return copyWebTemplateTree(templateSource, outputDir, errorMessage);
         }
 
         std::string urlEncodeQueryValue(const std::string& value)
@@ -737,61 +653,67 @@ namespace vultra_app
             return out;
         }
 
-        std::optional<std::string> findStaticServerCommand()
+        // The in-process static server must outlive launchWebRuntime() so the editor keeps serving the
+        // exported build for the rest of the session; a single instance is reused across re-exports.
+        std::unique_ptr<httplib::Server> g_webServer;
+        std::thread                      g_webServerThread;
+
+        void openInBrowser(const std::string& url)
         {
-            // Prefer a Python http.server; it needs no extra dependencies on most dev machines.
-            for (const char* candidate : {"py", "python", "python3"})
-            {
 #if defined(_WIN32)
-                const std::string probe = std::string {"where "} + candidate + " >nul 2>nul";
+            std::ostringstream open;
+            open << "start \"\" " << quoteCommandArg(url);
+            runCommand(open.str());
+#elif defined(__APPLE__)
+            std::ostringstream open;
+            open << "open " << quoteCommandArg(url);
+            runCommand(open.str());
 #else
-                const std::string probe = std::string {"command -v "} + candidate + " >/dev/null 2>&1";
+            std::ostringstream open;
+            open << "xdg-open " << quoteCommandArg(url) << " >/dev/null 2>&1 &";
+            runCommand(open.str());
 #endif
-                if (runCommand(probe) == 0)
-                    return std::string {candidate};
-            }
-            return std::nullopt;
         }
 
+        // Serve `outputDir` over an in-process HTTP server (cpp-httplib) and open the browser. fetch()
+        // is blocked on file://, so a real http origin is required; bundling the server avoids a fragile
+        // external Python dependency. The server runs detached for the lifetime of the process.
         bool launchWebRuntime(const std::filesystem::path& outputDir,
                               const std::string&           sceneUri,
                               const int                    port,
                               std::string&                 message)
         {
-            const auto python = findStaticServerCommand();
-            if (!python.has_value())
+            if (g_webServer)
             {
-                message = vultra::tr("editorBuild.web.noPythonServer");
+                g_webServer->stop();
+                if (g_webServerThread.joinable())
+                    g_webServerThread.join();
+                g_webServer.reset();
+            }
+
+            auto server = std::make_unique<httplib::Server>();
+            // Serve .wasm with the correct MIME so the browser can stream-compile it.
+            server->set_file_extension_and_mimetype_mapping("wasm", "application/wasm");
+            if (!server->set_mount_point("/", outputDir.string()))
+            {
+                message = vultra::trf("editorBuild.web.cannotMountDir", outputDir.generic_string());
+                return false;
+            }
+            if (!server->bind_to_port("127.0.0.1", port))
+            {
+                message = vultra::trf("editorBuild.web.cannotBindPort", std::to_string(port));
                 return false;
             }
 
-            std::string url = "http://127.0.0.1:" + std::to_string(port) + "/index.html";
+            g_webServer       = std::move(server);
+            g_webServerThread = std::thread([] { g_webServer->listen_after_bind(); });
+            g_webServerThread.detach();
+
+            std::string url = "http://127.0.0.1:" + std::to_string(port) + "/index.html?vpk=resources.vpk";
             if (!sceneUri.empty())
-                url += "?scene=" + urlEncodeQueryValue(sceneUri);
+                url += "&scene=" + urlEncodeQueryValue(sceneUri);
 
-#if defined(_WIN32)
-            std::ostringstream serve;
-            serve << "start \"vultra-web\" /D " << quoteCommandArg(outputDir) << " " << *python
-                  << " -m http.server " << port << " --bind 127.0.0.1";
-            runCommand(serve.str());
-
-            std::ostringstream open;
-            open << "start \"\" " << quoteCommandArg(url);
-            runCommand(open.str());
-#else
-            std::ostringstream serve;
-            serve << "cd " << quoteCommandArg(outputDir) << " && " << *python << " -m http.server " << port
-                  << " --bind 127.0.0.1 >/dev/null 2>&1 &";
-            runCommand(serve.str());
-
-            std::ostringstream open;
-#if defined(__APPLE__)
-            open << "open " << quoteCommandArg(url);
-#else
-            open << "xdg-open " << quoteCommandArg(url) << " >/dev/null 2>&1 &";
-#endif
-            runCommand(open.str());
-#endif
+            openInBrowser(url);
             message = vultra::trf("editorBuild.web.servingAt", url);
             return true;
         }
@@ -814,14 +736,18 @@ namespace vultra_app
                 return {.ok      = false,
                         .message = vultra::trf("editorBuild.error.cannotCreateOutputFolder", outputDir.generic_string())};
 
-            // The web shell defaults to fetching "game.vpk"; keep the name fixed for the template.
-            const fs::path vpkPath = outputDir / "game.vpk";
+            // Fixed, engine-neutral package name (a project is not necessarily a "game"); the web
+            // shell fetches it and the runtime's findDefaultVpk() already prefers "resources.vpk".
+            const fs::path vpkPath = outputDir / "resources.vpk";
             if (auto pack = packProjectVpk(projectRoot, assetRoot, projectName, sceneUri, vpkPath, progress); !pack.ok)
                 return pack;
 
             setBuildRunProgress(progress, 0.80f, vultra::tr("editorBuild.progress.copyingWebTemplate"));
-            const fs::path templateSource =
-                exportTemplatePath.empty() ? defaultWebTemplate() : fs::path {exportTemplatePath}.lexically_normal();
+            // A web export template is mandatory and never assumed: the user must set a directory/.zip
+            // (or download the official one). No silent fallback to build/web-template.
+            if (exportTemplatePath.empty())
+                return {.ok = false, .message = vultra::tr("editorBuild.error.webTemplateRequired")};
+            const fs::path templateSource = fs::path {exportTemplatePath}.lexically_normal();
 
             std::string templateError;
             if (!extractOrCopyWebTemplate(templateSource, outputDir, templateError))
@@ -869,11 +795,16 @@ namespace vultra_app
                                          const bool                            launchRuntime,
                                          std::shared_ptr<BuildRunTaskProgress> progress)
         {
-            if (targetPlatform == "WebGPU" || targetPlatform == "Web" || targetPlatform == "wasm")
+            std::string platformKey = targetPlatform;
+            std::transform(platformKey.begin(), platformKey.end(), platformKey.begin(), [](const unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+
+            if (platformKey == "webgpu" || platformKey == "web" || platformKey == "wasm")
                 return exportWeb(
                     projectRoot, assetRoot, projectName, sceneUri, outputFolder, exportTemplatePath, launchRuntime, progress);
 
-            if (targetPlatform == "Android")
+            if (platformKey == "android")
                 return {.ok = false, .message = vultra::tr("editorBuild.error.androidNotImplemented")};
 
             return exportDesktop(projectRoot,
@@ -936,11 +867,27 @@ namespace vultra_app
                                               outputFolder,
                                               targetPlatform,
                                               architecture,
-                                              std::string {},
+                                              options.exportTemplatePath,
                                               options.exportRun,
                                               progress);
 
         std::cout << "[export] " << (result.ok ? "OK: " : "FAILED: ") << result.message << "\n";
+
+        // For web Export & Run the HTTP server lives on a detached thread in-process; block here so it
+        // keeps serving (otherwise headless exit would tear it down immediately). Ctrl+C stops it.
+        std::string platformKeyLower = targetPlatform;
+        std::transform(platformKeyLower.begin(), platformKeyLower.end(), platformKeyLower.begin(), [](const unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        if (result.ok && options.exportRun &&
+            (platformKeyLower == "web" || platformKeyLower == "wasm" || platformKeyLower == "webgpu"))
+        {
+            std::cout << "[export] Serving web build at http://127.0.0.1:8753/ -- press Ctrl+C to stop.\n";
+            std::cout.flush();
+            for (;;)
+                std::this_thread::sleep_for(std::chrono::hours(1));
+        }
+
         return result.ok ? 0 : 1;
     }
 
@@ -1010,6 +957,11 @@ namespace vultra_app
     {
         if (m_BuildRunConfigureOpen)
         {
+            // Seed the template field from this platform's saved preset so the user sees what's set.
+            std::snprintf(m_ExportTemplateBuffer.data(),
+                          m_ExportTemplateBuffer.size(),
+                          "%s",
+                          ctx.state.buildSettings.exportTemplatePath.c_str());
             ImGui::OpenPopup(vultra::trId("editorBuild.popup.exportAndRunOutput", "ExportAndRunOutputPopup"));
             m_BuildRunConfigureOpen = false;
         }
@@ -1026,22 +978,48 @@ namespace vultra_app
             return;
         }
 
+        auto& settings = ctx.state.buildSettings;
+
         ImGui::TextUnformatted(vultra::tr("editorBuild.label.exportAndRun"));
         ImGui::Spacing();
+        ImGui::Text("%s: %s", vultra::tr("exportSettings.platform"), settings.targetPlatform.c_str());
+        ImGui::Spacing();
+
         m_BuildRunOutputDialog.setDefaultPath(ctx.state.currentProject);
         m_BuildRunOutputDialog.draw(
             vultra::tr("editorBuild.label.outputFolder"), m_BuildRunOutputFolder.data(), m_BuildRunOutputFolder.size());
         ImGui::Spacing();
 
-        const bool hasOutput = m_BuildRunOutputFolder[0] != '\0';
+        // A runtime/web template is mandatory for every platform, including the host (the editor binary
+        // is never shipped as the game runtime). Offer the same options everywhere: pick a local
+        // template (a runtime binary, or a directory/.zip for Web) or download the official one.
+        m_ExportTemplateDialog.drawBrowseOnly(
+            vultra::tr("exportSettings.exportTemplate"), m_ExportTemplateBuffer.data(), m_ExportTemplateBuffer.size());
+        settings.exportTemplatePath = m_ExportTemplateBuffer.data();
+        drawExportTemplateDownloadRow(settings);
+        // The download row may have refreshed the buffer/path on completion.
+        settings.exportTemplatePath = m_ExportTemplateBuffer.data();
+        ImGui::Spacing();
+
+        const bool hasOutput   = m_BuildRunOutputFolder[0] != '\0';
+        const bool hasTemplate = m_ExportTemplateBuffer[0] != '\0';
         if (!hasOutput)
+            ImGui::TextColored(ImVec4 {1.0f, 0.32f, 0.28f, 1.0f}, "%s", vultra::tr("exportSettings.block.outputRequired"));
+        else if (!hasTemplate)
+            ImGui::TextColored(ImVec4 {1.0f, 0.32f, 0.28f, 1.0f},
+                               "%s",
+                               vultra::trf("exportSettings.block.missingTemplate", settings.targetPlatform).c_str());
+
+        const bool canRun = hasOutput && hasTemplate;
+        if (!canRun)
             ImGui::BeginDisabled();
         if (ImGui::Button(vultra::tr("editorBuild.label.exportAndRun"), ImVec2 {vultra::ui::dp(118.0f), 0.0f}))
         {
+            settings.exportTemplatePath = m_ExportTemplateBuffer.data();
             beginBuildAndRun(ctx, std::filesystem::path {m_BuildRunOutputFolder.data()});
             ImGui::CloseCurrentPopup();
         }
-        if (!hasOutput)
+        if (!canRun)
             ImGui::EndDisabled();
 
         ImGui::SameLine();
@@ -1117,6 +1095,23 @@ namespace vultra_app
         m_BuildRunConfigureOpen = true;
     }
 
+    void EditorApp::persistExportSettings(EditorContext& ctx)
+    {
+        // Best-effort: round-trip the on-disk .vproject so we only add/refresh the export_* fields and
+        // leave scenes/plugins untouched. Silently no-op without a loadable project.
+        if (ctx.state.currentProject.empty())
+            return;
+        // Capture the active platform's current settings, then write the whole per-platform map. The
+        // active target platform itself is intentionally not persisted.
+        storeExportPreset(ctx.state);
+        auto project = loadVProject(ctx.state.currentProject);
+        if (!project.has_value())
+            return;
+        project->exportSettings = ctx.state.exportSettings;
+        std::string err;
+        static_cast<void>(saveVProject(*project, &err));
+    }
+
     void
     EditorApp::beginBuildAndRun(EditorContext& ctx, const std::filesystem::path& outputFolder, const bool launchRuntime)
     {
@@ -1125,6 +1120,18 @@ namespace vultra_app
             ctx.state.statusMessage = vultra::tr("editorBuild.status.alreadyRunning");
             return;
         }
+
+        // A runtime/web template is mandatory for EVERY platform, including the host: the editor binary
+        // is never shipped as the game runtime. Never assume a path -- fail fast if none is set.
+        if (ctx.state.buildSettings.exportTemplatePath.empty())
+        {
+            ctx.state.statusMessage =
+                vultra::trf("exportSettings.block.missingTemplate", ctx.state.buildSettings.targetPlatform);
+            return;
+        }
+
+        // Remember what we're exporting with so the choice sticks across sessions (persist on export).
+        persistExportSettings(ctx);
 
         const auto projectRoot        = ctx.state.currentProject.lexically_normal();
         const auto assetRoot          = ctx.state.currentAssetRoot;

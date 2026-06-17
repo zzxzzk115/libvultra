@@ -112,6 +112,7 @@ namespace vultra_app
         program.add_argument("--export").flag();
         program.add_argument("--export-output", "--out").default_value(std::string {});
         program.add_argument("--export-platform").default_value(std::string {});
+        program.add_argument("--export-template").default_value(std::string {});
         program.add_argument("--export-run").flag();
         program.add_argument("--backend", "--render-backend").default_value(std::string {});
         program.add_argument("--render-profile").default_value(std::string {});
@@ -144,6 +145,7 @@ namespace vultra_app
             options.exportMode     = program.get<bool>("--export");
             options.exportOutput   = program.get<std::string>("--export-output");
             options.exportPlatform = program.get<std::string>("--export-platform");
+            options.exportTemplatePath = program.get<std::string>("--export-template");
             options.exportRun      = program.get<bool>("--export-run");
             if (const auto mcpHost = program.get<std::string>("--mcp-host"); !mcpHost.empty())
                 options.mcpHost = mcpHost;
@@ -225,6 +227,9 @@ namespace vultra_app
         std::vector<fs::path> candidates;
         if (const auto exe = currentExecutablePath(); !exe.empty())
         {
+            // Exported desktop bundles ship a fixed, engine-neutral "resources.vpk" next to the
+            // executable (the exe keeps the project name); prefer that, then legacy <exe-name>.vpk.
+            candidates.push_back(exe.parent_path() / "resources.vpk");
             candidates.push_back(exe.parent_path() / (exe.stem().generic_string() + ".vpk"));
             candidates.push_back(fs::current_path() / (exe.stem().generic_string() + ".vpk"));
         }

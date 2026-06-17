@@ -282,7 +282,22 @@ namespace vultra
                              passName);
         }
 
-        [[nodiscard]] bool renderGraphConditionTokenMatches(std::string_view token, const RenderView& view)
+        // Device/platform capabilities a render-graph `when` condition can branch on. Sourced from the
+        // render device at build time (see DeclarativeRenderer::RenderGraphRuntime::build). Lets a single
+        // graph degrade gracefully across backends/platforms/feature tiers instead of swapping whole graphs.
+        struct RenderGraphCapabilities
+        {
+            rhi::RenderBackendApi              backend {rhi::RenderBackendApi::eVulkan};
+            rhi::RenderDeviceFeatureFlagBits   features {rhi::RenderDeviceFeatureFlagBits::eNormal};
+            rhi::RenderDeviceFeatureReportFlagBits featureReport {rhi::RenderDeviceFeatureReportFlagBits::eNone};
+            bool                               tierHighend {true};
+            bool                               platformAndroid {false};
+            bool                               platformWeb {false};
+        };
+
+        [[nodiscard]] bool renderGraphConditionTokenMatches(std::string_view                token,
+                                                            const RenderView&               view,
+                                                            const RenderGraphCapabilities& caps)
         {
             auto normalized = normalizeRenderGraphId(std::string(token));
             while (!normalized.empty() && normalized.front() == '_')
@@ -315,11 +330,43 @@ namespace vultra
                 result = xrView && !hasXrEyeTargets;
             else if (normalized == "non_xr" || normalized == "non_vr" || normalized == "mono")
                 result = !xrView;
+            // Backend / platform / feature-tier capability predicates.
+            else if (normalized == "backend_vulkan")
+                result = caps.backend == rhi::RenderBackendApi::eVulkan;
+            else if (normalized == "backend_webgpu")
+                result = caps.backend == rhi::RenderBackendApi::eWebGPU;
+            else if (normalized == "tier_highend")
+                result = caps.tierHighend;
+            else if (normalized == "tier_compat" || normalized == "tier_compatibility")
+                result = !caps.tierHighend;
+            else if (normalized == "platform_web")
+                result = caps.platformWeb;
+            else if (normalized == "platform_android")
+                result = caps.platformAndroid;
+            else if (normalized == "platform_desktop")
+                result = !caps.platformWeb && !caps.platformAndroid;
+            else if (normalized == "feature_raytracing")
+                result = HasFlagValues(caps.features, rhi::RenderDeviceFeatureFlagBits::eRayTracing);
+            else if (normalized == "feature_rayquery")
+                result = HasFlagValues(caps.features, rhi::RenderDeviceFeatureFlagBits::eRayQuery);
+            else if (normalized == "feature_raytracing_pipeline")
+                result = HasFlagValues(caps.features, rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline);
+            else if (normalized == "feature_meshshader")
+                result = HasFlagValues(caps.features, rhi::RenderDeviceFeatureFlagBits::eMeshShader);
+            else if (normalized == "feature_xr")
+                result = HasFlagValues(caps.features, rhi::RenderDeviceFeatureFlagBits::eXR);
+            // Bindless / descriptor-indexing: the true boundary for the deferred GBuffer path (it
+            // indexes a nonuniform bindless texture array). Vulkan reports it via descriptor indexing;
+            // core WebGPU has no portable bindless, so this is false there -> compat forward path.
+            else if (normalized == "feature_bindless" || normalized == "feature_descriptor_indexing")
+                result = HasFlagValues(caps.featureReport, rhi::RenderDeviceFeatureReportFlagBits::eDescriptorIndexing);
 
             return invert ? !result : result;
         }
 
-        [[nodiscard]] bool renderGraphConditionMatches(std::string_view condition, const RenderView& view)
+        [[nodiscard]] bool renderGraphConditionMatches(std::string_view                condition,
+                                                       const RenderView&               view,
+                                                       const RenderGraphCapabilities& caps)
         {
             if (condition.empty())
                 return true;
@@ -340,7 +387,7 @@ namespace vultra
                     const auto andEnd = group.find("&&", andBegin);
                     const auto token  = group.substr(
                         andBegin, andEnd == std::string_view::npos ? std::string_view::npos : andEnd - andBegin);
-                    groupMatches = groupMatches && renderGraphConditionTokenMatches(token, view);
+                    groupMatches = groupMatches && renderGraphConditionTokenMatches(token, view, caps);
                     if (andEnd == std::string_view::npos)
                         break;
                     andBegin = andEnd + 2;
@@ -1800,6 +1847,11 @@ namespace vultra
             m_Desc                  = std::move(desc);
             m_PrefersExplicitPerEye = graphPrefersExplicitPerEye(m_Desc);
             m_LastValidationError.clear();
+
+            // Warn (non-fatal) if the graph is broken on any target capability profile, so authors catch
+            // web/android holes at load time rather than as a black frame on the target device.
+            if (std::string capError; !validateGraphAcrossCapabilities(capError))
+                VULTRA_CORE_WARN("[DeclarativeRenderer] Render graph '{}' is incomplete on {}", m_Uri, capError);
         }
 
         void invalidateShaderPipelines()
@@ -1813,7 +1865,19 @@ namespace vultra
 
         void build(FrameGraphBuildContext& ctx)
         {
-            vrendergraph::RenderGraphDesc activeDesc = makeActiveGraphWithPassthrough(m_Desc, ctx.view());
+            RenderGraphCapabilities caps;
+            caps.backend       = ctx.rd.getBackendApi();
+            caps.features      = ctx.rd.getFeatureFlag();
+            caps.featureReport = ctx.rd.getFeatureReport().flags;
+#if defined(__ANDROID__)
+            caps.platformAndroid = true;
+#endif
+            caps.platformWeb = caps.backend == rhi::RenderBackendApi::eWebGPU;
+            // Single source of truth for the active tier: web/android force compat; on desktop the
+            // owner relays the renderer's resolved compat decision (e.g. --render-profile=compat).
+            caps.tierHighend = !caps.platformAndroid && !caps.platformWeb && !m_Owner.m_ForceCompatTier;
+
+            vrendergraph::RenderGraphDesc activeDesc = makeActiveGraphWithPassthrough(m_Desc, ctx.view(), caps);
             materializeRenderGraphDefaultOutputs(m_Registry, activeDesc);
             if (activeDesc.passes.empty())
                 return;
@@ -1830,7 +1894,7 @@ namespace vultra
             }
 
             std::string validationError;
-            if (!validateActiveGraph(activeDesc, validationError))
+            if (!validateActiveGraph(activeDesc, collectGraphProducedResources(m_Desc), validationError))
             {
                 if (validationError != m_LastValidationError)
                 {
@@ -1861,12 +1925,13 @@ namespace vultra
 
     private:
         vrendergraph::RenderGraphDesc makeActiveGraphWithPassthrough(const vrendergraph::RenderGraphDesc& desc,
-                                                                     const RenderView&                    view) const
+                                                                     const RenderView&                    view,
+                                                                     const RenderGraphCapabilities&       caps) const
         {
             auto       activeDesc   = desc;
-            const auto passIsActive = [&view](const vrendergraph::PassDecl& pass) {
+            const auto passIsActive = [&view, &caps](const vrendergraph::PassDecl& pass) {
                 return pass.enabled && renderGraphViewModeMatches(pass.viewMode, view) &&
-                       renderGraphConditionMatches(pass.when, view);
+                       renderGraphConditionMatches(pass.when, view, caps);
             };
 
             bool changed = true;
@@ -1925,7 +1990,30 @@ namespace vultra
             return activeDesc;
         }
 
-        bool validateActiveGraph(const vrendergraph::RenderGraphDesc& desc, std::string& error) const
+        // Resources[] names that at least one pass writes (explicit output mapping) in the FULL desc.
+        // These are "graph-produced" (vs engine-imported data resources like camera/gpu-scene buffers,
+        // which no pass output-maps). Used by validateActiveGraph to require exactly one active writer.
+        [[nodiscard]] static std::unordered_set<std::string>
+        collectGraphProducedResources(const vrendergraph::RenderGraphDesc& desc)
+        {
+            std::unordered_set<std::string> declared;
+            for (const auto& resource : desc.resources)
+                declared.insert(resource.name);
+
+            std::unordered_set<std::string> produced;
+            for (const auto& pass : desc.passes)
+                for (const auto& [slot, ref] : pass.outputs)
+                {
+                    static_cast<void>(slot);
+                    if (declared.contains(ref))
+                        produced.insert(ref);
+                }
+            return produced;
+        }
+
+        bool validateActiveGraph(const vrendergraph::RenderGraphDesc&    desc,
+                                 const std::unordered_set<std::string>& producedResources,
+                                 std::string&                           error) const
         {
             std::unordered_set<std::string> resources;
             for (const auto& resource : desc.resources)
@@ -2030,6 +2118,131 @@ namespace vultra
                 }
             }
 
+            // --- Capability-branch integrity (the multi-tier safety net) ---
+            // Count active writers per declared resource (passes write a resource by mapping an output
+            // slot to its name). After capability pruning, each graph-produced resource must have
+            // exactly one active writer.
+            std::unordered_map<std::string, int> activeWriters;
+            for (const auto& pass : desc.passes)
+                for (const auto& [slot, ref] : pass.outputs)
+                {
+                    static_cast<void>(slot);
+                    if (resources.contains(ref))
+                        ++activeWriters[ref];
+                }
+
+            for (const auto& name : producedResources)
+            {
+                const auto it    = activeWriters.find(name);
+                const int  count = it == activeWriters.end() ? 0 : it->second;
+                if (count > 1)
+                {
+                    error = "resource '" + name + "' has " + std::to_string(count) +
+                            " active writers (expected 1) - check 'when' conditions are mutually exclusive";
+                    return false;
+                }
+            }
+
+            // A consumer of a graph-produced resource must have a producer on this profile; zero active
+            // writers means the active tier lost its only producer (a missing compatibility fallback).
+            for (const auto& pass : desc.passes)
+                for (const auto& [slot, ref] : pass.inputs)
+                {
+                    const auto parsed = parseRenderGraphResRef(ref);
+                    if (!parsed || !producedResources.contains(parsed->node))
+                        continue;
+                    const auto it = activeWriters.find(parsed->node);
+                    if (it == activeWriters.end() || it->second == 0)
+                    {
+                        error = "pass '" + pass.id + "' input '" + slot + "' reads resource '" + parsed->node +
+                                "' which has no active producer on this profile (missing compatibility fallback?)";
+                        return false;
+                    }
+                }
+
+            // A terminal graph (one that presents to a backbuffer) must have an active backbuffer writer,
+            // or nothing is presented (black frame). Feature sub-graphs that never reference a backbuffer
+            // are composed by a parent and are exempt.
+            const bool expectsBackbuffer =
+                std::any_of(desc.resources.begin(), desc.resources.end(), [](const auto& r) {
+                    return isBackbufferResource(r.name);
+                });
+            if (expectsBackbuffer)
+            {
+                bool backbufferWritten = false;
+                for (const auto& pass : desc.passes)
+                    for (const auto& [slot, ref] : pass.outputs)
+                    {
+                        static_cast<void>(slot);
+                        if (isBackbufferResource(ref))
+                            backbufferWritten = true;
+                    }
+                if (!backbufferWritten)
+                {
+                    error = "no active pass writes the backbuffer";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // Author/load-time safety net: prove the graph resolves to a complete path on every target
+        // capability profile (desktop Vulkan highend, WebGPU compat, Android compat, +RT if used), so an
+        // author can't ship a graph that silently renders black on web/android. Non-fatal (warns).
+        [[nodiscard]] bool validateGraphAcrossCapabilities(std::string& error) const
+        {
+            struct Profile
+            {
+                const char*                            label;
+                rhi::RenderBackendApi                  backend;
+                rhi::RenderDeviceFeatureFlagBits       features;
+                rhi::RenderDeviceFeatureReportFlagBits featureReport;
+                bool                                   tierHighend;
+                bool                                   android;
+                bool                                   web;
+            };
+            using FF  = rhi::RenderDeviceFeatureFlagBits;
+            using FRF = rhi::RenderDeviceFeatureReportFlagBits;
+            std::vector<Profile> profiles {
+                {"desktop/vulkan/highend", rhi::RenderBackendApi::eVulkan, FF::eNormal, FRF::eDescriptorIndexing, true, false, false},
+                {"web/webgpu/compat", rhi::RenderBackendApi::eWebGPU, FF::eNormal, FRF::eNone, false, false, true},
+                {"android/vulkan/compat", rhi::RenderBackendApi::eVulkan, FF::eNormal, FRF::eNone, false, true, false},
+            };
+            // Only exercise a ray-tracing-enabled profile if the graph actually branches on it.
+            bool usesRayTracing = false;
+            for (const auto& pass : m_Desc.passes)
+                if (pass.when.find("feature_raytracing") != std::string::npos ||
+                    pass.when.find("feature_rayquery") != std::string::npos)
+                    usesRayTracing = true;
+            if (usesRayTracing)
+                profiles.push_back({"desktop/vulkan/raytracing", rhi::RenderBackendApi::eVulkan, FF::eAll,
+                                    FRF::eDescriptorIndexing, true, false, false});
+
+            const RenderView                       monoView {};
+            const std::unordered_set<std::string>  produced = collectGraphProducedResources(m_Desc);
+            for (const auto& profile : profiles)
+            {
+                RenderGraphCapabilities caps;
+                caps.backend         = profile.backend;
+                caps.features        = profile.features;
+                caps.featureReport   = profile.featureReport;
+                caps.tierHighend     = profile.tierHighend;
+                caps.platformAndroid = profile.android;
+                caps.platformWeb     = profile.web;
+
+                auto activeDesc = makeActiveGraphWithPassthrough(m_Desc, monoView, caps);
+                materializeRenderGraphDefaultOutputs(m_Registry, activeDesc);
+                if (activeDesc.passes.empty())
+                    continue; // an empty profile (e.g. a graph that intentionally renders nothing) is not a hole
+
+                std::string profileError;
+                if (!validateActiveGraph(activeDesc, produced, profileError))
+                {
+                    error = std::string("profile '") + profile.label + "': " + profileError;
+                    return false;
+                }
+            }
             return true;
         }
 

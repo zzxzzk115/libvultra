@@ -7,6 +7,7 @@
 #include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/material/material_params.hpp"
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
 #include "vultra/function/resource/gpu_material.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
@@ -35,49 +36,11 @@ namespace vultra
             uint32_t  padding2 {0};
         };
 
-        struct alignas(16) MaterialParamsPBRMR
-        {
-            glm::vec4 baseColor {1.0f};
-            float     metallicFactor {1.0f};
-            float     roughnessFactor {1.0f};
-            uint32_t  baseColorTex {0};
-            uint32_t  normalTex {0};
-            uint32_t  mrTex {0};
-            uint32_t  occlusionTex {0};
-            uint32_t  emissiveTex {0};
-            uint32_t  pad0 {0};
-            uint32_t  pad1 {0};
-        };
-
-        struct alignas(16) MaterialParamsPBRSG
-        {
-            glm::vec4 diffuseColor {1.0f};
-            glm::vec3 specularFactor {1.0f};
-            float     glossinessFactor {1.0f};
-            uint32_t  diffuseColorTex {0};
-            uint32_t  specularGlossinessTex {0};
-            uint32_t  pad0 {0};
-            uint32_t  pad1 {0};
-        };
-
-        struct alignas(16) MaterialParamsUnlit
-        {
-            glm::vec4 color {1.0f};
-            uint32_t  colorTex {0};
-            uint32_t  pad0 {0};
-            uint32_t  pad1 {0};
-            uint32_t  pad2 {0};
-        };
-
-        struct alignas(16) MaterialParamsPhong
-        {
-            glm::vec4 diffuse {1.0f};
-            glm::vec4 specularShininess {1.0f};
-            uint32_t  diffuseTex {0};
-            uint32_t  pad0 {0};
-            uint32_t  pad1 {0};
-            uint32_t  pad2 {0};
-        };
+        // The material parameter buffer is packed once with the canonical byte layouts in
+        // vultra/function/material/material_params.hpp (shared with asset_system + DirectGBuffer).
+        // The compat pass reads that same buffer, so it MUST use those exact layouts - a divergent
+        // copy here previously read baseColorTex from the wrong offset (it landed on alphaCutoff =
+        // 0.5f = 0x3F000000), giving a garbage texture index and a black fallback.
 
         template<typename T>
         [[nodiscard]] T loadMaterialParams(const resource::MaterialBuffer& materialBuffer, const uint32_t byteOffset)

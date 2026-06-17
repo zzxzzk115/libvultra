@@ -609,6 +609,8 @@ namespace vultra_app
                              .buildAndRun = [this](EditorContext& topBarCtx) {
                                  (void)executeCommand(topBarCtx, "editor.build_and_run", nlohmann::json::object());
                              },
+                             .persistExportSettings =
+                                 [this](EditorContext& topBarCtx) { persistExportSettings(topBarCtx); },
                              .backToLauncher =
                                  [this](EditorContext& topBarCtx) {
                                      (void)executeCommand(topBarCtx, "editor.back_to_launcher", nlohmann::json::object());

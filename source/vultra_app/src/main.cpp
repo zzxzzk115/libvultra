@@ -333,6 +333,9 @@ namespace
             state.currentDefaultScene       = project->defaultScene;
             state.currentBuildScenes        = project->buildScenes;
             state.currentEditingRenderGraph = project->editingRenderGraph;
+            // Per-platform export presets; the active target platform is transient (default Windows).
+            state.exportSettings = project->exportSettings;
+            loadExportPreset(state, state.buildSettings.targetPlatform);
         }
     }
 

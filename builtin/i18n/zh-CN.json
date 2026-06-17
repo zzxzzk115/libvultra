@@ -1256,6 +1256,7 @@
     "webTemplateNotFound": "未找到网页导出模板：{}",
     "webTemplateExtractFailed": "解压网页模板压缩包失败 {}",
     "webTemplateNotDirOrZip": "网页导出模板既不是目录也不是 .zip：{}",
+    "webTemplateRequired": "未设置网页导出模板。请在导出设置中选择模板目录或 .zip（或下载官方模板）。",
     "copyTemplateFileFailed": "复制模板文件失败 {}：{}",
     "webTemplateNoIndexHtml": "导出失败：网页模板未提供 index.html（模板：{}）。",
     "androidNotImplemented": "Android 导出尚未实现（计划中）。",
@@ -1299,7 +1300,8 @@
     "exportStartedPackaging": "导出已开始：正在打包运行时..."
   },
   "web": {
-    "noPythonServer": "请通过 http(s) 提供输出文件夹并打开 index.html（file:// 下会阻止 fetch）。未找到 Python 以自动启动服务器。",
+    "cannotMountDir": "无法通过 HTTP 提供输出文件夹：{}",
+    "cannotBindPort": "无法将本地 HTTP 服务器绑定到 127.0.0.1:{}（端口被占用？）。",
     "servingAt": "正在提供服务：{}"
   },
   "popup": {

@@ -144,6 +144,34 @@ namespace vultra::rhi::webgpu
     {
         switch (format)
         {
+            // 8-bit single/dual channel (eR8_UNorm backs the font glyph atlas).
+            case PixelFormat::eR8_UNorm:
+                return WGPUTextureFormat_R8Unorm;
+            case PixelFormat::eR8_SNorm:
+                return WGPUTextureFormat_R8Snorm;
+            case PixelFormat::eR8UI:
+                return WGPUTextureFormat_R8Uint;
+            case PixelFormat::eR8I:
+                return WGPUTextureFormat_R8Sint;
+            case PixelFormat::eRG8_UNorm:
+                return WGPUTextureFormat_RG8Unorm;
+            case PixelFormat::eRG8_SNorm:
+                return WGPUTextureFormat_RG8Snorm;
+            case PixelFormat::eRG8UI:
+                return WGPUTextureFormat_RG8Uint;
+            case PixelFormat::eRG8I:
+                return WGPUTextureFormat_RG8Sint;
+            // 16-bit float/int single/dual channel.
+            case PixelFormat::eR16F:
+                return WGPUTextureFormat_R16Float;
+            case PixelFormat::eR16UI:
+                return WGPUTextureFormat_R16Uint;
+            case PixelFormat::eR16I:
+                return WGPUTextureFormat_R16Sint;
+            case PixelFormat::eRG16UI:
+                return WGPUTextureFormat_RG16Uint;
+            case PixelFormat::eRG16I:
+                return WGPUTextureFormat_RG16Sint;
             case PixelFormat::eBGRA8_UNorm:
                 return WGPUTextureFormat_BGRA8Unorm;
             case PixelFormat::eBGRA8_sRGB:

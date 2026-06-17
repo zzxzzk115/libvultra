@@ -2,135 +2,45 @@
   "meta": {
     "editor": {
       "nodes": {
-        "Bloom": {
-          "pos": [
-            2523.0,
-            -442.0
-          ]
-        },
-        "DebugDraw": {
-          "pos": [
-            4569.0,
-            618.0
-          ]
-        },
-        "DeferredLighting": {
-          "pos": [
-            1134.0,
-            -94.0
-          ]
-        },
-        "DirectDepthPre": {
-          "pos": [
-            -30.0,
-            80.0
-          ]
-        },
-        "DirectGBuffer": {
-          "pos": [
-            260.0,
-            80.0
-          ]
-        },
-        "MotionVectors": {
-          "pos": [
-            538.0,
-            89.0
-          ]
-        },
-        "FinalComposition": {
-          "pos": [
-            5321.0,
-            551.0
-          ]
-        },
-        "Fxaa": {
-          "pos": [
-            3873.0,
-            149.0
-          ]
-        },
-        "GeneralGaussianSplatComposite": {
-          "pos": [
-            1520.0,
-            315.0
-          ]
-        },
-        "Invert": {
-          "pos": [
-            3283.0,
-            -110.0
-          ]
-        },
-        "ParticleRender": {
-          "pos": [
-            1803.0,
-            -23.0
-          ]
-        },
-        "Pixelate": {
-          "pos": [
-            2935.0,
-            -316.0
-          ]
-        },
-        "SelectionOutline": {
-          "pos": [
-            4191.0,
-            191.0
-          ]
-        },
-        "ShadowMap": {
-          "pos": [
-            559.0,
-            366.0
-          ]
-        },
-        "Ssao": {
-          "pos": [
-            708.0,
-            -251.0
-          ]
-        },
-        "Ssr": {
-          "pos": [
-            1925.0,
-            433.0
-          ]
-        },
-        "SsrComposite": {
-          "pos": [
-            2219.0,
-            -99.0
-          ]
-        },
-        "ToneMapping": {
-          "pos": [
-            3584.0,
-            33.0
-          ]
-        },
-        "UiOverlay": {
-          "pos": [
-            4907.0,
-            572.0
-          ]
-        }
+        "Bloom": { "pos": [2523.0, -442.0] },
+        "DebugDraw": { "pos": [4569.0, 618.0] },
+        "DeferredLighting": { "pos": [1134.0, -94.0] },
+        "DirectDepthPre": { "pos": [-30.0, 80.0] },
+        "DirectGBuffer": { "pos": [260.0, 80.0] },
+        "MotionVectors": { "pos": [538.0, 89.0] },
+        "FinalComposition": { "pos": [5321.0, 551.0] },
+        "Fxaa": { "pos": [3873.0, 149.0] },
+        "GeneralGaussianSplatComposite": { "pos": [1520.0, 315.0] },
+        "Invert": { "pos": [3283.0, -110.0] },
+        "ParticleRender": { "pos": [1803.0, -23.0] },
+        "Pixelate": { "pos": [2935.0, -316.0] },
+        "SelectionOutline": { "pos": [4191.0, 191.0] },
+        "ShadowMap": { "pos": [559.0, 366.0] },
+        "Ssao": { "pos": [708.0, -251.0] },
+        "Ssr": { "pos": [1925.0, 433.0] },
+        "SsrComposite": { "pos": [2219.0, -99.0] },
+        "ToneMapping": { "pos": [3584.0, 33.0] },
+        "CompatibilityBaseColor": { "pos": [260.0, 980.0] },
+        "CompatGaussianSplatComposite": { "pos": [620.0, 980.0] },
+        "UiOverlay": { "pos": [4907.0, 572.0] }
       }
     }
   },
   "resources": [
-    { "name": "backbuffer" }
+    { "name": "backbuffer" },
+    { "name": "sceneColor" }
   ],
   "passes": [
     {
       "enabled": true,
       "id": "DirectDepthPre",
+      "when": "feature_bindless && platform_desktop",
       "type": "DirectDepthPre"
     },
     {
       "enabled": true,
       "id": "DirectGBuffer",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "depth": "DirectDepthPre.depth"
       },
@@ -139,6 +49,7 @@
     {
       "enabled": true,
       "id": "MotionVectors",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "depth": "DirectGBuffer.depth"
       },
@@ -150,6 +61,7 @@
     {
       "enabled": true,
       "id": "Ssao",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "depth": "DirectGBuffer.depth",
         "normal": "DirectGBuffer.normal"
@@ -168,6 +80,7 @@
     {
       "enabled": true,
       "id": "ShadowMap",
+      "when": "feature_bindless && platform_desktop",
       "params": {
         "autoFitBounds": true,
         "cascadeCount": 4,
@@ -187,6 +100,7 @@
     {
       "enabled": true,
       "id": "DeferredLighting",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "ao": "Ssao.ao",
         "color": "DirectGBuffer.color",
@@ -213,6 +127,7 @@
     {
       "enabled": true,
       "id": "GeneralGaussianSplatComposite",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "source": "DeferredLighting.color"
       },
@@ -221,6 +136,7 @@
     {
       "enabled": true,
       "id": "ParticleRender",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "depth": "DirectGBuffer.depth",
         "source": "GeneralGaussianSplatComposite.color"
@@ -230,6 +146,7 @@
     {
       "enabled": true,
       "id": "Ssr",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "color": "ParticleRender.color",
         "depth": "DirectGBuffer.depth",
@@ -249,6 +166,7 @@
     {
       "enabled": true,
       "id": "SsrComposite",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "reflection": "Ssr.reflection",
         "source": "ParticleRender.color"
@@ -261,6 +179,7 @@
     {
       "enabled": true,
       "id": "Bloom",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "source": "SsrComposite.color"
       },
@@ -277,6 +196,7 @@
     {
       "enabled": false,
       "id": "Pixelate",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "source": "Bloom.color"
       },
@@ -292,6 +212,7 @@
     {
       "enabled": false,
       "id": "Invert",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "source": "Pixelate.color"
       },
@@ -306,6 +227,7 @@
     {
       "enabled": false,
       "id": "ToneMapping",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "source": "Invert.color"
       },
@@ -319,6 +241,7 @@
     {
       "enabled": true,
       "id": "Fxaa",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "source": "ToneMapping.color"
       },
@@ -330,6 +253,7 @@
     {
       "enabled": true,
       "id": "SelectionOutline",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "depth": "DirectGBuffer.depth",
         "entityId": "DirectGBuffer.entityId",
@@ -346,9 +270,13 @@
     {
       "enabled": true,
       "id": "DebugDraw",
+      "when": "feature_bindless && platform_desktop",
       "inputs": {
         "depth": "DirectGBuffer.depth",
         "source": "SelectionOutline.color"
+      },
+      "outputs": {
+        "color": "sceneColor"
       },
       "params": {
         "enabled": true
@@ -357,9 +285,27 @@
     },
     {
       "enabled": true,
+      "id": "CompatibilityBaseColor",
+      "when": "!feature_bindless || !platform_desktop",
+      "type": "CompatibilityBaseColor"
+    },
+    {
+      "enabled": true,
+      "id": "CompatGaussianSplatComposite",
+      "when": "!feature_bindless || !platform_desktop",
+      "inputs": {
+        "source": "CompatibilityBaseColor.color"
+      },
+      "outputs": {
+        "color": "sceneColor"
+      },
+      "type": "GeneralGaussianSplatComposite"
+    },
+    {
+      "enabled": true,
       "id": "UiOverlay",
       "inputs": {
-        "source": "DebugDraw.color"
+        "source": "sceneColor"
       },
       "params": {
         "enabled": true

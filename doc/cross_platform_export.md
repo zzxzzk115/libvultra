@@ -4,16 +4,20 @@
 
 > **Status (2026-06):**
 > - **Desktop (Vulkan):** working.
-> - **Web (WASM / WebGPU):** the whole pipeline is in place and the runtime **builds, links,
->   and runs in the browser** — but it does **not render correctly yet**. The engine reaches a
->   live render loop without crashing, then produces a **black frame**: on WebGPU the universal
->   renderer falls back to an experimental *compatibility* render graph
->   (`universal_compat.vrg.json`) whose output is currently empty. This is render-correctness
->   bringup for the WebGPU backend, tracked separately from the export pipeline. The
->   architecture (editor-free `vultra-runtime` player + runtime-fetch VPK + engine-only
->   template) is sound; what remains is per-pass WebGPU debugging (RenderDoc / instrumentation).
->   The same WebGPU black-frame issue reproduces on **desktop `--backend webgpu`**, confirming it
->   is a backend issue, not wasm-specific.
+> - **Web (WASM / WebGPU):** the WebGPU backend now **renders** (the earlier black frame is
+>   fixed). Reproduced and fixed on desktop `--backend webgpu`: missing single-channel texture
+>   formats (`R8`, etc.) and a read-only-depth-attachment load-op were the backend bugs; the
+>   *scene*-level black was a render-graph + material-decode issue (a project graph using the
+>   bindless deferred path on a backend with no bindless, plus the compat pass reading material
+>   params at the wrong byte offset). The renderer now uses **capability-aware render graphs**: a
+>   single graph branches on `when` predicates (`feature_bindless`, `backend_webgpu`,
+>   `platform_*`, …) so the deferred (bindless) path runs on desktop Vulkan and a forward
+>   **base-color compat** path runs on WebGPU — verified rendering the full sponza scene on
+>   `--backend webgpu` with zero validation errors. The compat path is intentionally
+>   **base-color only** for now (no lighting/shadows/SSR, no skinning, no custom materials —
+>   tracked as follow-ups). The architecture (editor-free `vultra-runtime` + runtime-fetch VPK +
+>   engine-only template) is sound; remaining web work is end-to-end browser validation of the
+>   exported bundle.
 > - **Android:** design only (not implemented) — see the Android section.
 
 The editor's **Export & Run** packages a project for a target platform. Every target reuses
@@ -84,8 +88,11 @@ platform+arch+engine-version instead of requiring a local build. The subsystem l
   publishes it as a release asset on `zzxzzk115/vultra-export-templates`
   (`vultra-export-template-<platform>-<arch>-<version>[.exe]`, release tag `v<version>` from
   `xmake.lua`'s `set_version`). It requires an `EXPORT_TEMPLATES_TOKEN` PAT to push to the separate
-  templates repo. The matrix currently ships windows/x64, with other rows reserved as cross-platform
-  runners come online.
+  templates repo. The matrix ships **windows/x64** (`.exe`, windows runner), **android/arm64-v8a**
+  (`libvultra_runtime.so`, ubuntu runner + NDK 30) and **wasm/wasm32** (a `.zip` of the engine-only
+  web template `index.html` + `vultra-runtime.js/.wasm`, ubuntu runner + Emscripten). Android/wasm
+  build on Linux where the dependency toolchain is reliable (a Windows host hits CMake-4.x/NDK and
+  host-tool-arch issues for the cross deps).
 
 ## Web (WASM / WebGPU) — pipeline complete, rendering WIP
 

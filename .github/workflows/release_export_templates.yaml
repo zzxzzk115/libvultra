@@ -4,7 +4,10 @@ name: Release Export Templates
 # release asset on the zzxzzk115/vultra-export-templates repo. The editor's Export Settings can then
 # download the prebuilt runtime instead of requiring a locally built one. See ../vultra-export-templates.
 #
-# Asset name convention: vultra-export-template-<platform>-<arch>-<version>[.exe]
+# Asset name convention: vultra-export-template-<platform>-<arch>-<version><ext>
+#   windows  -> .exe   (the runtime binary)
+#   android  -> .so    (libvultra_runtime.so, arm64-v8a; dropped into an APK's jniLibs)
+#   wasm     -> .zip   (the engine-only web template: index.html + vultra-runtime.js/.wasm)
 # The release tag on the templates repo is v<version> (version comes from xmake.lua set_version).
 #
 # Requires a repo secret EXPORT_TEMPLATES_TOKEN: a PAT with `contents: write` on
@@ -22,19 +25,27 @@ on:
 
 env:
   TEMPLATES_REPO: zzxzzk115/vultra-export-templates
+  ANDROID_NDK_VERSION: '30.0.14904198'
 
 jobs:
   release:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # Start with windows/x64; add { platform: linux, arch: x64, os: ubuntu-latest, ext: '' } etc.
-        # as cross-platform runtime runners come online. `os` selects the runner per row.
         include:
           - platform: windows
             arch: x64
+            os: windows-latest
             ext: '.exe'
+          - platform: android
+            arch: arm64-v8a
+            os: ubuntu-latest
+            ext: '.so'
+          - platform: wasm
+            arch: wasm32
+            os: ubuntu-latest
+            ext: '.zip'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,7 +53,6 @@ jobs:
           fetch-depth: 0
 
       - name: Sync submodules
-        shell: pwsh
         run: git submodule update --init --recursive
 
       - uses: xmake-io/github-action-setup-xmake@v1
@@ -51,13 +61,37 @@ jobs:
           actions-cache-folder: '.xmake-cache'
           build-cache: true
 
-      - name: Prepare Vulkan SDK
+      # --- Per-platform toolchains -------------------------------------------------------------
+      - name: Prepare Vulkan SDK (windows)
+        if: matrix.platform == 'windows'
         uses: humbletim/setup-vulkan-sdk@v1.2.1
         with:
           vulkan-query-version: 1.4.304.1
           vulkan-components: Vulkan-Headers, Vulkan-Loader
           vulkan-use-cache: true
 
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake git clang ninja-build pkg-config
+
+      - name: Setup Emscripten SDK (wasm)
+        if: matrix.platform == 'wasm'
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: Bootstrap host vasset-cli (wasm)
+        if: matrix.platform == 'wasm'
+        run: sh scripts/bootstrap_vasset_cli.sh "$GITHUB_WORKSPACE"
+
+      - uses: android-actions/setup-android@v3
+        if: matrix.platform == 'android'
+
+      - name: Install Android NDK
+        if: matrix.platform == 'android'
+        run: sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" "ndk;${ANDROID_NDK_VERSION}"
+
+      # --- Version ------------------------------------------------------------------------------
       - name: Resolve engine version
         id: ver
         shell: pwsh
@@ -69,36 +103,95 @@ jobs:
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "Engine version: $version"
 
-      - name: Configure
-        shell: pwsh
-        run: xmake f -p ${{ matrix.platform }} -a ${{ matrix.arch }} -m release --policies=build.ccache:y -y
+      # --- Configure (per platform) -------------------------------------------------------------
+      - name: Configure (windows)
+        if: matrix.platform == 'windows'
+        run: xmake f -p windows -a x64 -m release --policies=build.ccache:y -y
+
+      - name: Configure (wasm)
+        if: matrix.platform == 'wasm'
+        run: xmake f -p wasm -m release --policies=build.ccache:y --vultra_build_examples=n --vultra_build_tests=n -y
+
+      - name: Configure (android)
+        if: matrix.platform == 'android'
+        run: xmake f -p android --ndk="${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}" -m release --policies=build.ccache:y --vultra_build_examples=n --vultra_build_tests=n -y
 
       - name: Build vultra-runtime
-        shell: pwsh
-        run: xmake repo -u; xmake build -y vultra-runtime
+        run: xmake repo -u && xmake build -y vultra-runtime
 
-      - name: Stage export-template asset
-        id: stage
+      # --- Stage the export-template asset (per platform) ---------------------------------------
+      - name: Stage export-template asset (windows)
+        if: matrix.platform == 'windows'
+        id: stage_win
         shell: pwsh
         run: |
           $version = "${{ steps.ver.outputs.version }}"
-          $built = "build/${{ matrix.platform }}/${{ matrix.arch }}/release/vultra-runtime/vultra-runtime${{ matrix.ext }}"
+          $built = "build/windows/x64/release/vultra-runtime/vultra-runtime.exe"
           if (-not (Test-Path $built)) { throw "Built runtime not found at $built" }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $asset = "dist/vultra-export-template-${{ matrix.platform }}-${{ matrix.arch }}-$version${{ matrix.ext }}"
+          $asset = "dist/vultra-export-template-windows-x64-$version.exe"
           Copy-Item $built $asset -Force
+          "asset=$asset" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Stage export-template asset (android)
+        if: matrix.platform == 'android'
+        id: stage_android
+        run: |
+          version="${{ steps.ver.outputs.version }}"
+          built="build/android/arm64-v8a/release/vultra-runtime/libvultra_runtime.so"
+          test -f "$built" || { echo "Built runtime not found at $built"; exit 1; }
+          mkdir -p dist
+          asset="dist/vultra-export-template-android-arm64-v8a-$version.so"
+          cp "$built" "$asset"
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Stage export-template asset (wasm)
+        if: matrix.platform == 'wasm'
+        id: stage_wasm
+        run: |
+          version="${{ steps.ver.outputs.version }}"
+          tpl="build/web-template"
+          test -f "$tpl/index.html" || { echo "Web template not found at $tpl"; exit 1; }
+          mkdir -p dist
+          asset="dist/vultra-export-template-wasm-wasm32-$version.zip"
+          ( cd "$tpl" && zip -r -9 "$GITHUB_WORKSPACE/$asset" index.html vultra-runtime.js vultra-runtime.wasm )
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve staged asset path
+        id: stage
+        shell: pwsh
+        run: |
+          $asset = "${{ steps.stage_win.outputs.asset }}${{ steps.stage_android.outputs.asset }}${{ steps.stage_wasm.outputs.asset }}"
+          if (-not $asset) { throw "No staged asset for ${{ matrix.platform }}" }
           $sha = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLower()
           $size = (Get-Item $asset).Length
           "asset=$asset" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          Write-Host "Asset: $asset"
-          Write-Host "sha256: $sha"
-          Write-Host "size: $size"
+          Write-Host "Asset: $asset"; Write-Host "sha256: $sha"; Write-Host "size: $size"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: export-template-${{ matrix.platform }}-${{ matrix.arch }}
           path: dist/*
+
+      - name: Collect failure logs
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p ci-logs
+          while IFS= read -r f; do
+            echo "==== $f ====" >> ci-logs/install_logs.txt
+            cat "$f" >> ci-logs/install_logs.txt
+            echo "" >> ci-logs/install_logs.txt
+          done < <(find "$HOME/.xmake/cache" -name install.txt 2>/dev/null)
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-${{ matrix.platform }}-${{ github.run_id }}
+          path: ci-logs
+          if-no-files-found: ignore
 
       - name: Publish to vultra-export-templates release
         if: ${{ github.event_name == 'push' || github.event.inputs.dry_run == 'false' }}
@@ -108,7 +201,6 @@ jobs:
         run: |
           $version = "${{ steps.ver.outputs.version }}"
           $tag = "v$version"
-          # Create the release if it does not exist yet, then upload (clobbering a prior asset).
           gh release view $tag --repo $env:TEMPLATES_REPO 2>$null
           if ($LASTEXITCODE -ne 0) {
             gh release create $tag --repo $env:TEMPLATES_REPO --title "Export Templates $version" --notes "Prebuilt vultra-runtime export templates for engine $version."

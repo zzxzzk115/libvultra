@@ -1442,6 +1442,7 @@
       "webTemplateNotFound": "web エクスポートテンプレートが見つかりません: {}",
       "webTemplateExtractFailed": "web テンプレートアーカイブの展開に失敗しました {}",
       "webTemplateNotDirOrZip": "web エクスポートテンプレートはディレクトリでも .zip でもありません: {}",
+      "webTemplateRequired": "web エクスポートテンプレートが未設定です。エクスポート設定でテンプレートのディレクトリまたは .zip を選択してください（または公式テンプレートをダウンロード）。",
       "copyTemplateFileFailed": "テンプレートファイルのコピーに失敗しました {}: {}",
       "webTemplateNoIndexHtml": "エクスポートに失敗しました: web テンプレートに index.html がありません (テンプレート: {})。",
       "androidNotImplemented": "Android エクスポートはまだ実装されていません (予定)。",
@@ -1485,7 +1486,8 @@
       "exportStartedPackaging": "エクスポートを開始しました: ランタイムをパッケージ中..."
     },
     "web": {
-      "noPythonServer": "出力フォルダーを http(s) で配信して index.html を開いてください (file:// では fetch がブロックされます)。サーバーを自動起動するための Python が見つかりませんでした。",
+      "cannotMountDir": "出力フォルダーを HTTP で配信できませんでした: {}",
+      "cannotBindPort": "ローカル HTTP サーバーを 127.0.0.1:{} にバインドできませんでした (ポート使用中?)。",
       "servingAt": "{} で配信中"
     },
     "popup": {

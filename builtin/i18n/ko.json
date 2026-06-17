@@ -1442,6 +1442,7 @@
       "webTemplateNotFound": "web 내보내기 템플릿을 찾을 수 없습니다: {}",
       "webTemplateExtractFailed": "web 템플릿 아카이브 추출 실패 {}",
       "webTemplateNotDirOrZip": "web 내보내기 템플릿이 디렉터리도 .zip도 아닙니다: {}",
+      "webTemplateRequired": "web 내보내기 템플릿이 설정되지 않았습니다. 내보내기 설정에서 템플릿 디렉터리 또는 .zip을 선택하세요(또는 공식 템플릿을 다운로드).",
       "copyTemplateFileFailed": "템플릿 파일 복사 실패 {}: {}",
       "webTemplateNoIndexHtml": "내보내기 실패: web 템플릿에 index.html이 없습니다 (템플릿: {}).",
       "androidNotImplemented": "Android 내보내기는 아직 구현되지 않았습니다 (예정).",
@@ -1485,7 +1486,8 @@
       "exportStartedPackaging": "내보내기 시작됨: 런타임 패키징 중..."
     },
     "web": {
-      "noPythonServer": "출력 폴더를 http(s)로 제공하고 index.html을 여세요 (file://에서는 fetch가 차단됩니다). 서버를 자동 실행할 Python을 찾을 수 없습니다.",
+      "cannotMountDir": "출력 폴더를 HTTP로 제공할 수 없습니다: {}",
+      "cannotBindPort": "로컬 HTTP 서버를 127.0.0.1:{}에 바인딩할 수 없습니다 (포트 사용 중?).",
       "servingAt": "{}에서 제공 중"
     },
     "popup": {

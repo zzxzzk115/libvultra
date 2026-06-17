@@ -2121,6 +2121,9 @@ This directory is an index, not the runtime asset root.
         state.currentBuildScenes        = project->buildScenes;
         state.currentEditingRenderGraph = project->editingRenderGraph;
         state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
+        // Per-platform export presets; the active target platform is transient (default Windows).
+        state.exportSettings = project->exportSettings;
+        loadExportPreset(state, state.buildSettings.targetPlatform);
         ++state.projectGeneration;
         state.renderGraphOpenRequested = false;
         state.materialGraphOpenRequested = false;

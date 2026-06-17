@@ -49,6 +49,11 @@ namespace vultra
         bool             updateRenderGraph(std::string_view uri);
         void             invalidateShaderPipelines();
 
+        // Relays the owning renderer's resolved compatibility-tier decision (e.g. a
+        // `--render-profile=compat` CLI override) into the graph's `tier_*` `when` predicates.
+        // Web/Android already force compat via device capabilities; this covers the desktop override.
+        void setForceCompatibilityTier(bool force) { m_ForceCompatTier = force; }
+
     private:
         struct ShaderRef
         {
@@ -146,5 +151,6 @@ namespace vultra
         std::vector<std::unique_ptr<RuntimeFeature>> m_RuntimeFeatures;
         FrameGraphBuildContext* m_CurrentBuildContext {nullptr};
         bool m_CurrentFrameApplyToneMapping {true};
+        bool m_ForceCompatTier {false};
     };
 } // namespace vultra

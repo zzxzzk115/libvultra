@@ -23,7 +23,8 @@ namespace vultra_app
         // Headless export: `--export --project <dir> --export-output <dir> [--export-run]`.
         bool        exportMode {false};
         std::string exportOutput;
-        std::string exportPlatform; // empty -> host desktop platform
+        std::string exportPlatform;     // empty -> host desktop platform
+        std::string exportTemplatePath; // explicit runtime/web template (file/dir/.zip); empty -> auto
         bool        exportRun {false};
         std::optional<bool> validation;
         std::optional<bool> debugMarkers;

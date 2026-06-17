@@ -121,6 +121,9 @@ namespace vultra_app
         void updateBuildAndRun(EditorContext& ctx);
         void startBuildAndRun(EditorContext& ctx);
         void beginBuildAndRun(EditorContext& ctx, const std::filesystem::path& outputFolder, bool launchRuntime = true);
+        // Writes the project's current export settings (target platform/arch/config/template/output)
+        // back into its .vproject so the choice is remembered across sessions. No-op without a project.
+        void persistExportSettings(EditorContext& ctx);
         void startProjectLoading(const std::filesystem::path& projectRoot);
         void startAssetImportTask(const std::filesystem::path&       projectRoot,
                                   const std::string&                 assetRoot,
@@ -266,6 +269,8 @@ namespace vultra_app
         std::future<ExportTemplateDownloadResult> m_ExportTemplateDownloadFuture;
         bool                                 m_ExportTemplateDownloading {false};
         std::string                          m_ExportTemplateDownloadStatus;
+        // True while the Export Settings modal is open; used to persist export settings on close.
+        bool                                 m_ExportSettingsModalActive {false};
         std::optional<vultra::SceneDocument> m_PlayModeSnapshot;
         bool                                 m_PlayModeSceneDirtySnapshot {false};
         bool                                 m_Initialized {false};

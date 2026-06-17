@@ -44,6 +44,12 @@ namespace vultra_app
         std::vector<std::string> enabledPlugins;
         // Per-plugin config values declared by plugin manifests. Indexed by plugin id, then config key.
         std::unordered_map<std::string, std::unordered_map<std::string, std::string>> pluginConfigValues;
+
+        // Per-platform export settings (Godot-style export presets): a project isn't locked to one
+        // platform/arch, so each target platform keeps its own settings (template, output, arch,
+        // configuration, ...). Keyed by platform id (Windows/Linux/macOS/Android/WebGPU), then setting
+        // key. The currently-selected target platform itself is NOT persisted. See AppState.
+        std::unordered_map<std::string, std::unordered_map<std::string, std::string>> exportSettings;
     };
 
     struct VPackageManifest

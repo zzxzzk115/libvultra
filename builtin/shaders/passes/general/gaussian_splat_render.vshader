@@ -95,7 +95,14 @@ void main()
     const float a = dot(v_ScreenPos, v_ScreenPos);
     if (!isInsideFoveatedLayer() || a > 2.0 * CUTOFF)
     {
-        discard;
+        // No `discard`: the vshadersystem GLSL->WGSL lowering emits `discard; return;` which naga
+        // rejects ("instructions after return"). Splats use premultiplied alpha blending
+        // (src=One, dst=1-srcAlpha) with depth test/write off, so writing transparent black is
+        // equivalent to discarding. (Fix the lowering in vshadersystem to restore discard.)
+        outColor = vec4(0.0);
+#if WRITE_ENTITY_ID
+        outEntityId = vec4(0.0);
+#endif
     }
     else
     {
