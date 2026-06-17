@@ -83,38 +83,21 @@ namespace vultra_app
         ui::TextureSelectorState m_TextureSelector;
         ui::MeshSelectorState m_MeshSelector;
 
-        struct TextureImportEditState
-        {
-            std::filesystem::path path;
-            std::unordered_map<std::string, std::string> originalParams;
-            vasset::TextureImportParams saved;
-            vasset::TextureImportParams edit;
-            bool                        valid {false};
-        };
-
-        TextureImportEditState m_TextureImportEdit;
-
-        struct MeshImportEditState
-        {
-            std::filesystem::path                         path;
-            std::unordered_map<std::string, std::string>  originalParams;
-            vasset::VMeshImporter::ImportOptions          saved;
-            vasset::VMeshImporter::ImportOptions          edit;
-            bool                                          valid {false};
-        };
-
-        MeshImportEditState m_MeshImportEdit;
-
-        struct AudioImportEditState
+        // One import-edit state per importable asset type. They differ only in the importer
+        // params type, so a single template replaces three near-identical structs.
+        template<typename TParams>
+        struct ImportEditState
         {
             std::filesystem::path                        path;
             std::unordered_map<std::string, std::string> originalParams;
-            vasset::AudioImportParams                    saved;
-            vasset::AudioImportParams                    edit;
+            TParams                                      saved;
+            TParams                                      edit;
             bool                                         valid {false};
         };
 
-        AudioImportEditState m_AudioImportEdit;
+        ImportEditState<vasset::TextureImportParams>          m_TextureImportEdit;
+        ImportEditState<vasset::VMeshImporter::ImportOptions> m_MeshImportEdit;
+        ImportEditState<vasset::AudioImportParams>            m_AudioImportEdit;
 
         using RenderTargetSlot = ui::RenderTargetSlot;
 
