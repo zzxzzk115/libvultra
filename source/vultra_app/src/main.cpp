@@ -332,6 +332,7 @@ namespace
             state.currentAssetRoot          = project->assetRoot;
             state.currentDefaultScene       = project->defaultScene;
             state.currentBuildScenes        = project->buildScenes;
+            applyProjectClassification(state, *project);
             state.currentEditingRenderGraph = project->editingRenderGraph;
             // Per-platform export presets; the active target platform is transient (default Windows).
             state.exportSettings = project->exportSettings;

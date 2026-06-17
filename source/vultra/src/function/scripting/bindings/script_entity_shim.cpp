@@ -132,7 +132,7 @@ namespace vultra
             auto& reg = ctx.world()->registry();
             if (auto* status = reg.try_get<EntityStatusComponent>(entity))
                 return *status;
-            return reg.emplace<EntityStatusComponent>(entity);
+            return reg.get_or_emplace<MetaComponent>(entity);
         }
     } // namespace
 
@@ -158,7 +158,7 @@ namespace vultra
         if (auto* name = reg.try_get<NameComponent>(self.value))
             name->name = value;
         else
-            reg.emplace<NameComponent>(self.value, NameComponent {value});
+            reg.get_or_emplace<MetaComponent>(self.value).name = value;
     }
     bool entityGetActive(ScriptContext& ctx, const ScriptEntity& self)
     {

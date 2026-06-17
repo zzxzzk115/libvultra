@@ -2082,7 +2082,7 @@ namespace vultra_app
         auto& reg = m_PreviewWorld.registry();
 
         m_PreviewLight = m_PreviewWorld.createEntity();
-        reg.emplace_or_replace<vultra::NameComponent>(m_PreviewLight, vultra::NameComponent {"Preview Key Light"});
+        reg.get_or_emplace<vultra::MetaComponent>(m_PreviewLight).name = "Preview Key Light";
         auto& lightTransform = reg.get<vultra::TransformComponent>(m_PreviewLight);
         lightTransform.rotation =
             glm::quatLookAt(glm::normalize(glm::vec3(0.4f, -0.8f, 0.35f)), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -2093,8 +2093,7 @@ namespace vultra_app
         l.castsShadow              = false;
 
         m_PreviewEnvironment = m_PreviewWorld.createEntity();
-        reg.emplace_or_replace<vultra::NameComponent>(m_PreviewEnvironment,
-                                                      vultra::NameComponent {"Preview Environment"});
+        reg.get_or_emplace<vultra::MetaComponent>(m_PreviewEnvironment).name = "Preview Environment";
         reg.emplace_or_replace<vultra::EnvironmentComponent>(m_PreviewEnvironment,
                                                              vultra::EnvironmentComponent {
                                                                  .ambientColor     = glm::vec3 {0.28f, 0.30f, 0.34f},
@@ -2105,7 +2104,7 @@ namespace vultra_app
                                                              });
 
         m_PreviewSphere = m_PreviewWorld.createEntity();
-        reg.emplace_or_replace<vultra::NameComponent>(m_PreviewSphere, vultra::NameComponent {"Preview Sphere"});
+        reg.get_or_emplace<vultra::MetaComponent>(m_PreviewSphere).name = "Preview Sphere";
         reg.emplace_or_replace<vultra::MeshComponent>(
             m_PreviewSphere,
             vultra::MeshComponent {

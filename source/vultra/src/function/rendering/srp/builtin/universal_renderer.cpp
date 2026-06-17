@@ -579,7 +579,7 @@ namespace vultra
             auto& registry = world.registry();
             auto  entity   = world.createEntity();
 
-            auto& nameComponent = registry.emplace<NameComponent>(entity);
+            auto& nameComponent = registry.get_or_emplace<MetaComponent>(entity);
             nameComponent.name  = name;
 
             auto& transform      = registry.emplace<TransformComponent>(entity);

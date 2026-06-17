@@ -16,6 +16,7 @@
 #include <vultra/function/imgui/imgui_dpi.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/plugin/plugin_manifest.hpp>
+#include <vultra/function/services/physics_service.hpp>
 #include <vultra/function/services/plugin_service.hpp>
 #include <vultra/function/services/render_service.hpp>
 
@@ -102,6 +103,164 @@ namespace vultra_app
                     const auto rendererKey = rendererKeyFromRenderGraphUri(ctx.state.currentEditingRenderGraph);
                     renderService->reloadRenderPipeline(ctx.state.currentEditingRenderGraph, rendererKey);
                 }
+            }
+        }
+
+        // Project Settings "Tags & Layers" page: CRUD over the project's tag list and the 32-slot
+        // layer index->name table (mirrored in ctx.state; persisted to the .vproject on Save). Edits
+        // flip `changed` so the popup shows the unsaved-changes status.
+        void drawTagsAndLayersPage(EditorContext& ctx, bool& changed)
+        {
+            auto& tags = ctx.state.currentTags;
+            if (tags.empty())
+                tags = defaultTags();
+
+            ui::drawSettingsSectionHeader(vultra::tr("projectSettings.tagsLayers.tagsHeader"));
+            int tagToRemove = -1;
+            for (std::size_t i = 0; i < tags.size(); ++i)
+            {
+                ImGui::PushID(static_cast<int>(i));
+                // "Untagged" is the built-in default tag: it can neither be renamed nor removed.
+                const bool           isUntagged = (tags[i] == "Untagged");
+                std::array<char, 96> buffer {};
+                setBuffer(buffer, tags[i]);
+                ImGui::BeginDisabled(isUntagged);
+                ImGui::SetNextItemWidth(vultra::ui::dp(220.0f));
+                if (ImGui::InputText("##tag", buffer.data(), buffer.size()))
+                {
+                    tags[i] = bufferString(buffer);
+                    changed = true;
+                }
+                ImGui::EndDisabled();
+                if (!isUntagged)
+                {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE))
+                        tagToRemove = static_cast<int>(i);
+                }
+                ImGui::PopID();
+            }
+            if (tagToRemove >= 0)
+            {
+                tags.erase(tags.begin() + tagToRemove);
+                changed = true;
+            }
+            if (ImGui::Button(vultra::tr("projectSettings.tagsLayers.addTag")))
+            {
+                tags.emplace_back("New Tag");
+                changed = true;
+            }
+
+            ImGui::Spacing();
+            ui::drawSettingsSectionHeader(vultra::tr("projectSettings.tagsLayers.layersHeader"));
+            auto& layers = ctx.state.currentLayerNames;
+            // Built-in layers always show their reserved names (read-only), even on projects that
+            // predate the layer table.
+            if (layers[0].empty())
+                layers[0] = "Default";
+            if (layers[5].empty())
+                layers[5] = "UI";
+            for (std::size_t i = 0; i < layers.size(); ++i)
+            {
+                ImGui::PushID(static_cast<int>(2000 + i));
+                const bool  builtin = (i == 0 || i == 5); // 0 = Default, 5 = UI
+                const auto  label   = std::to_string(i);
+                ui::beginSettingsRow(label.c_str());
+                std::array<char, 96> buffer {};
+                setBuffer(buffer, layers[i]);
+                ImGui::BeginDisabled(builtin);
+                ImGui::SetNextItemWidth(vultra::ui::dp(220.0f));
+                if (ImGui::InputText("##layer", buffer.data(), buffer.size()))
+                {
+                    layers[i] = bufferString(buffer);
+                    changed   = true;
+                }
+                ImGui::EndDisabled();
+                ui::endSettingsRow();
+                ImGui::PopID();
+            }
+
+            // --- Physics layers (Jolt object layers; separate from rendering layers above) ---
+            ImGui::Spacing();
+            ui::drawSettingsSectionHeader(vultra::tr("projectSettings.tagsLayers.physicsLayersHeader"));
+            auto& physicsLayers = ctx.state.currentPhysicsLayerNames;
+            if (physicsLayers[0].empty())
+                physicsLayers[0] = "Default";
+            for (std::size_t i = 0; i < physicsLayers.size(); ++i)
+            {
+                ImGui::PushID(static_cast<int>(3000 + i));
+                const bool builtin = (i == 0); // 0 = Default
+                const auto label   = std::to_string(i);
+                ui::beginSettingsRow(label.c_str());
+                std::array<char, 96> buffer {};
+                setBuffer(buffer, physicsLayers[i]);
+                ImGui::BeginDisabled(builtin);
+                ImGui::SetNextItemWidth(vultra::ui::dp(220.0f));
+                if (ImGui::InputText("##physlayer", buffer.data(), buffer.size()))
+                {
+                    physicsLayers[i] = bufferString(buffer);
+                    changed          = true;
+                }
+                ImGui::EndDisabled();
+                ui::endSettingsRow();
+                ImGui::PopID();
+            }
+
+            // Collision matrix over the named physics layers: a lower-triangular grid of pairwise
+            // checkboxes (including self-collision on the diagonal). Toggling a cell updates the
+            // matrix symmetrically and applies it live to the physics service.
+            ImGui::Spacing();
+            ui::drawSettingsSectionHeader(vultra::tr("projectSettings.tagsLayers.collisionMatrixHeader"));
+            auto* physics = ctx.services ? ctx.services->tryGet<vultra::IPhysicsService>() : nullptr;
+            std::vector<uint32_t> named;
+            for (uint32_t i = 0; i < physicsLayers.size(); ++i)
+                if (!physicsLayers[i].empty())
+                    named.push_back(i);
+            auto& matrix = ctx.state.currentPhysicsCollision;
+
+            const float labelWidth = vultra::ui::dp(180.0f);
+            const float cellWidth  = vultra::ui::dp(24.0f);
+
+            // Header row: the column index sits above each column, aligned with the cells below it.
+            // Hover reveals the full layer name (column space is too narrow for it).
+            ImGui::Dummy(ImVec2(labelWidth, ImGui::GetTextLineHeight()));
+            for (std::size_t c = 0; c < named.size(); ++c)
+            {
+                ImGui::SameLine(labelWidth + cellWidth * static_cast<float>(c));
+                ImGui::Text("%u", named[c]);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s", physicsLayers[named[c]].c_str());
+            }
+            if (!named.empty())
+                ImGui::NewLine();
+
+            for (std::size_t r = 0; r < named.size(); ++r)
+            {
+                const uint32_t a = named[r];
+                ImGui::PushID(static_cast<int>(4000 + a));
+                // Row label: "<index>: <name>", matching the index used in the header above.
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted((std::to_string(a) + ": " + physicsLayers[a]).c_str());
+                for (std::size_t c = 0; c <= r; ++c) // lower triangle, includes self-collision
+                {
+                    const uint32_t b = named[c];
+                    ImGui::PushID(static_cast<int>(b));
+                    ImGui::SameLine(labelWidth + cellWidth * static_cast<float>(c));
+                    bool collide = matrix[a * 32u + b];
+                    if (ImGui::Checkbox("##cell", &collide))
+                    {
+                        matrix[a * 32u + b] = collide;
+                        matrix[b * 32u + a] = collide;
+                        if (physics)
+                            physics->setLayerCollision(a, b, collide);
+                        changed = true;
+                    }
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s <-> %s", physicsLayers[a].c_str(), physicsLayers[b].c_str());
+                    ImGui::PopID();
+                }
+                ImGui::NewLine();
+                ImGui::PopID();
             }
         }
 
@@ -775,6 +934,8 @@ namespace vultra_app
             selectedPage = 4;
         if (ui::settingsNavItem(vultra::trId("projectSettings.nav.input", "Input Map"), selectedPage == 5))
             selectedPage = 5;
+        if (ui::settingsNavItem(vultra::trId("projectSettings.nav.tagsLayers", "Tags & Layers"), selectedPage == 6))
+            selectedPage = 6;
         ImGui::Spacing();
         ImGui::TextUnformatted(vultra::tr("projectSettings.nav.engine"));
         ImGui::BeginDisabled();
@@ -1787,6 +1948,10 @@ namespace vultra_app
         {
             drawInputMapPage(ctx.state.currentProject, bufferString(m_ProjectAssetRootBuffer));
         }
+        else if (selectedPage == 6)
+        {
+            drawTagsAndLayersPage(ctx, projectSettingsChanged);
+        }
         ImGui::EndChild();
         if (projectSettingsChanged)
         {
@@ -1829,9 +1994,17 @@ namespace vultra_app
                 .defaultScene       = ctx.state.currentDefaultScene,
                 .buildScenes        = normalizedBuildScenes(ctx.state.currentDefaultScene, ctx.state.currentBuildScenes),
                 .editingRenderGraph = ctx.state.currentEditingRenderGraph,
+                .tags               = ctx.state.currentTags,
+                .layerNames         = ctx.state.currentLayerNames,
+                .physicsLayerNames  = ctx.state.currentPhysicsLayerNames,
                 .enabledPlugins     = s_EnabledPlugins,
                 .pluginConfigValues = projectPluginConfigValues,
             };
+            // The matrix defaults to all-collide; persist only the disabled pairs (upper triangle).
+            for (uint32_t a = 0; a < 32u; ++a)
+                for (uint32_t b = a; b < 32u; ++b)
+                    if (!ctx.state.currentPhysicsCollision[a * 32u + b])
+                        project.physicsCollisionDisabled.push_back({a, b});
             // Keep the per-platform export presets; otherwise saving Project Settings would drop the
             // export.* keys written by Export Settings / the toolbar target-platform picker.
             storeExportPreset(ctx.state);

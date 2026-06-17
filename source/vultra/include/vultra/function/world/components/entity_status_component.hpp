@@ -1,12 +1,10 @@
 #pragma once
 
+#include "vultra/function/world/components/meta_component.hpp"
+
 namespace vultra
 {
-    struct EntityStatusComponent
-    {
-        bool active {true};
-        bool visible {true};
-        bool locked {false};
-        bool selectable {true};
-    };
+    // Deprecated alias: active/visible/locked/selectable now live in MetaComponent.
+    // Kept so existing call sites keep compiling; prefer MetaComponent directly.
+    using EntityStatusComponent = MetaComponent;
 } // namespace vultra

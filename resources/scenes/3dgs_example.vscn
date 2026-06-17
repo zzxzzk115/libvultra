@@ -3,11 +3,11 @@ version = 1
 root    = 0
 
 [node id=1 name="Camera" parent=0 uuid="c6bc8d4f5014817f62754b7bf55655f0"]
-NameComponent/name = "Camera"
-EntityStatusComponent/active = true
-EntityStatusComponent/visible = true
-EntityStatusComponent/locked = false
-EntityStatusComponent/selectable = true
+MetaComponent/name = "Camera"
+MetaComponent/active = true
+MetaComponent/visible = true
+MetaComponent/locked = false
+MetaComponent/selectable = true
 TransformComponent/position = (-0.228212, 1.17197, 2.22333)
 TransformComponent/rotation = (-0.222097, -0.0336899, -0.00767892, 0.974412)
 TransformComponent/scale = (1, 1, 1)
@@ -23,11 +23,11 @@ CameraComponent/priority = 0
 CameraComponent/rendererKey = "universal"
 
 [node id=2 name="hornedlizard" parent=0 uuid="b48c8cf93b6ab2d909ffc56c3150b352"]
-NameComponent/name = "hornedlizard"
-EntityStatusComponent/active = true
-EntityStatusComponent/visible = true
-EntityStatusComponent/locked = false
-EntityStatusComponent/selectable = true
+MetaComponent/name = "hornedlizard"
+MetaComponent/active = true
+MetaComponent/visible = true
+MetaComponent/locked = false
+MetaComponent/selectable = true
 TransformComponent/position = (0, 0, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
 TransformComponent/scale = (1, 1, 1)

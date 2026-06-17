@@ -139,7 +139,7 @@ namespace vultra_app
         {
             auto& reg = world.registry();
             auto  e   = world.createEntity();
-            reg.emplace<vultra::NameComponent>(e, vultra::NameComponent {"Camera"});
+            reg.get_or_emplace<vultra::MetaComponent>(e).name = "Camera";
             auto& transform    = reg.get_or_emplace<vultra::TransformComponent>(e);
             transform.position = {0.0f, 6.5f, 6.5f};
             transform.rotation = glm::angleAxis(glm::radians(-45.0f), glm::vec3 {1.0f, 0.0f, 0.0f});

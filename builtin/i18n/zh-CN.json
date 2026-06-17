@@ -687,6 +687,17 @@
     "defaultUri": "默认 URI"
   },
   "inspector": {
+    "field": {
+      "active": "激活",
+      "visible": "可见",
+      "locked": "锁定",
+      "selectable": "可选择",
+      "static": "静态",
+      "keepOnLoad": "加载时保留",
+      "tag": "标签",
+      "layer": "渲染层",
+      "objectLayer": "物理层"
+    },
     "blackboard": "黑板",
     "addParameter": "添加参数",
     "noExposedParameters": "没有暴露的参数。",
@@ -897,11 +908,19 @@
     "packaging": "打包",
     "plugins": "插件",
     "input": "输入映射",
+    "tagsLayers": "标签和层",
     "engine": "引擎",
     "general": "通用",
     "rendering": "渲染",
     "materials": "材质",
     "scripting": "脚本"
+  },
+  "tagsLayers": {
+    "tagsHeader": "标签",
+    "layersHeader": "渲染层",
+    "physicsLayersHeader": "物理层",
+    "collisionMatrixHeader": "碰撞矩阵",
+    "addTag": "添加标签"
   },
   "input": {
     "header": "输入动作",

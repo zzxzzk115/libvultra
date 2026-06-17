@@ -687,6 +687,17 @@
     "defaultUri": "Default URI"
   },
   "inspector": {
+    "field": {
+      "active": "Active",
+      "visible": "Visible",
+      "locked": "Locked",
+      "selectable": "Selectable",
+      "static": "Static",
+      "keepOnLoad": "Keep On Load",
+      "tag": "Tag",
+      "layer": "Rendering Layer",
+      "objectLayer": "Physics Layer"
+    },
     "blackboard": "Blackboard",
     "addParameter": "Add Parameter",
     "noExposedParameters": "No exposed parameters.",
@@ -897,11 +908,19 @@
     "packaging": "Packaging",
     "plugins": "Plugins",
     "input": "Input Map",
+    "tagsLayers": "Tags & Layers",
     "engine": "Engine",
     "general": "General",
     "rendering": "Rendering",
     "materials": "Materials",
     "scripting": "Scripting"
+  },
+  "tagsLayers": {
+    "tagsHeader": "Tags",
+    "layersHeader": "Rendering Layers",
+    "physicsLayersHeader": "Physics Layers",
+    "collisionMatrixHeader": "Collision Matrix",
+    "addTag": "Add Tag"
   },
   "input": {
     "header": "Input Actions",

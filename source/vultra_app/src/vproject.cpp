@@ -144,6 +144,45 @@ namespace vultra_app
                 ensureBuildScene(project.buildScenes, *index).alias = value;
             else if (auto index = parseIndexedKey(key, "build_scene_enabled."))
                 ensureBuildScene(project.buildScenes, *index).enabled = parseBool(value);
+            else if (key == "tags")
+            {
+                project.tags.clear();
+                std::string        item;
+                std::istringstream stream(value);
+                while (std::getline(stream, item, ','))
+                {
+                    item = trim(std::move(item));
+                    if (!item.empty())
+                        project.tags.push_back(item);
+                }
+            }
+            else if (auto index = parseIndexedKey(key, "layer."))
+            {
+                if (*index < project.layerNames.size())
+                    project.layerNames[*index] = value;
+            }
+            else if (auto index = parseIndexedKey(key, "physics_layer."))
+            {
+                if (*index < project.physicsLayerNames.size())
+                    project.physicsLayerNames[*index] = value;
+            }
+            else if (key == "physics_no_collide")
+            {
+                // Comma-separated "a:b" pairs whose collision is disabled.
+                project.physicsCollisionDisabled.clear();
+                std::string        item;
+                std::istringstream stream(value);
+                while (std::getline(stream, item, ','))
+                {
+                    item             = trim(std::move(item));
+                    const auto colon = item.find(':');
+                    if (colon == std::string::npos)
+                        continue;
+                    const auto a = static_cast<uint32_t>(std::stoul(item.substr(0, colon)));
+                    const auto b = static_cast<uint32_t>(std::stoul(item.substr(colon + 1)));
+                    project.physicsCollisionDisabled.push_back({a, b});
+                }
+            }
         }
 
         void applyKeyValue(VPackageManifest& manifest, std::string key, std::string value)
@@ -348,6 +387,23 @@ namespace vultra_app
         return projectDir / (filename + ".vproject");
     }
 
+    std::array<std::string, 32> defaultLayerNames()
+    {
+        std::array<std::string, 32> layers {};
+        layers[0] = "Default";
+        layers[5] = "UI";
+        return layers;
+    }
+
+    std::vector<std::string> defaultTags() { return {"Untagged"}; }
+
+    std::array<std::string, 32> defaultPhysicsLayerNames()
+    {
+        std::array<std::string, 32> layers {};
+        layers[0] = "Default";
+        return layers;
+    }
+
     std::optional<VProject> loadVProject(const std::filesystem::path& path)
     {
         namespace fs = std::filesystem;
@@ -401,6 +457,18 @@ namespace vultra_app
         project.buildScenes = normalizedBuildScenes(project.defaultScene, project.buildScenes);
         if (!hasEditingRenderGraph && project.editingRenderGraph.empty())
             project.editingRenderGraph = "res://render/default.vrg.json";
+
+        // Projects with no tag/layer config (new or pre-feature) get the built-in defaults.
+        if (project.tags.empty())
+            project.tags = defaultTags();
+        if (std::none_of(project.layerNames.begin(), project.layerNames.end(), [](const std::string& n) {
+                return !n.empty();
+            }))
+            project.layerNames = defaultLayerNames();
+        if (std::none_of(project.physicsLayerNames.begin(),
+                         project.physicsLayerNames.end(),
+                         [](const std::string& n) { return !n.empty(); }))
+            project.physicsLayerNames = defaultPhysicsLayerNames();
 
         return project;
     }
@@ -610,6 +678,39 @@ namespace vultra_app
             if (!scene.alias.empty())
                 file << "build_scene_alias." << scene.index << " = " << quote(scene.alias) << "\n";
             file << "build_scene_enabled." << scene.index << " = " << (scene.enabled ? "true" : "false") << "\n";
+        }
+        if (!project.tags.empty())
+        {
+            std::string joined;
+            for (size_t i = 0; i < project.tags.size(); ++i)
+            {
+                if (i != 0)
+                    joined += ',';
+                joined += project.tags[i];
+            }
+            file << "tags = " << quote(joined) << "\n";
+        }
+        for (size_t i = 0; i < project.layerNames.size(); ++i)
+        {
+            if (!project.layerNames[i].empty())
+                file << "layer." << i << " = " << quote(project.layerNames[i]) << "\n";
+        }
+        for (size_t i = 0; i < project.physicsLayerNames.size(); ++i)
+        {
+            if (!project.physicsLayerNames[i].empty())
+                file << "physics_layer." << i << " = " << quote(project.physicsLayerNames[i]) << "\n";
+        }
+        if (!project.physicsCollisionDisabled.empty())
+        {
+            std::string joined;
+            for (size_t i = 0; i < project.physicsCollisionDisabled.size(); ++i)
+            {
+                if (i != 0)
+                    joined += ',';
+                joined += std::to_string(project.physicsCollisionDisabled[i][0]) + ':' +
+                          std::to_string(project.physicsCollisionDisabled[i][1]);
+            }
+            file << "physics_no_collide = " << quote(joined) << "\n";
         }
         return true;
     }

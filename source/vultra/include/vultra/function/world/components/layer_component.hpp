@@ -1,15 +1,10 @@
 #pragma once
 
-#include <cstdint>
+#include "vultra/function/world/components/meta_component.hpp"
 
 namespace vultra
 {
-    constexpr uint32_t kRenderLayerDefaultMask = 1u << 0u;
-    constexpr uint32_t kRenderLayerUiMask      = 1u << 5u;
-    constexpr uint32_t kRenderLayerAllMask     = 0xFFFFFFFFu;
-
-    struct LayerComponent
-    {
-        uint32_t mask {kRenderLayerDefaultMask};
-    };
+    // Deprecated alias: the render layer now lives in MetaComponent (MetaComponent::layer).
+    // The kRenderLayer* constants live in meta_component.hpp. Kept so existing call sites keep compiling.
+    using LayerComponent = MetaComponent;
 } // namespace vultra

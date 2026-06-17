@@ -2039,6 +2039,7 @@ This directory is an index, not the runtime asset root.
         state.currentAssetRoot          = project.assetRoot;
         state.currentDefaultScene       = project.defaultScene;
         state.currentBuildScenes        = project.buildScenes;
+        applyProjectClassification(state, project);
         state.currentEditingRenderGraph = project.editingRenderGraph;
         state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
         ++state.projectGeneration;
@@ -2119,6 +2120,7 @@ This directory is an index, not the runtime asset root.
         state.currentAssetRoot          = project->assetRoot;
         state.currentDefaultScene       = project->defaultScene;
         state.currentBuildScenes        = project->buildScenes;
+        applyProjectClassification(state, *project);
         state.currentEditingRenderGraph = project->editingRenderGraph;
         state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
         // Per-platform export presets; the active target platform is transient (default Windows).

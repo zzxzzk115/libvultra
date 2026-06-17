@@ -732,6 +732,15 @@ namespace vultra_app
         if (ctx.state.editorPlaying && !m_PlaybackWasPlaying)
         {
             capturePlayModeSnapshot(ctx);
+            // Push the project's physics collision matrix into the live physics service so play mode
+            // respects it even if Project Settings was never opened this session.
+            if (physicsService)
+            {
+                const auto& m = ctx.state.currentPhysicsCollision;
+                for (uint32_t a = 0; a < 32u; ++a)
+                    for (uint32_t b = a; b < 32u; ++b)
+                        physicsService->setLayerCollision(a, b, m[a * 32u + b]);
+            }
             // Entering play mode jumps to the Game View so you immediately see the running game.
             ctx.state.editorWindowFocusRequested = "Game View";
         }
@@ -1572,7 +1581,7 @@ namespace vultra_app
         auto& window = windowService->window();
         resetWindowModeForShellState(*windowService);
 
-        // Window title mirrors Unity's layout: "<Project> - <Editor> <Backend | GPU>". The project
+        // Window title layout: "<Project> - <Editor> <Backend | GPU>". The project
         // name prefixes the editor name (when a project is open), and the active render backend + GPU
         // device are stamped in the trailing angle brackets so the surface in use is visible at a glance.
         std::string title = ctx.state.currentProjectName.empty() ?
@@ -1922,7 +1931,7 @@ namespace vultra_app
                           detail.c_str());
 
         // Project name pinned to the bottom-right corner in bold pure white -- the splash's product
-        // branding, mirroring how Unity stamps the open project on its boot screen. Falls back to the
+        // branding, stamping the open project on the boot screen. Falls back to the
         // project folder name before the loaded project metadata is available.
         std::string projectName = ctx.state.currentProjectName;
         if (projectName.empty() && !m_Loading.projectRoot.empty())

@@ -6,6 +6,7 @@
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
+#include <array>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -122,6 +123,14 @@ namespace vultra_app
         // working; only the save target semantics and labelling differ.
         std::string           currentEditingPrefab;
         std::vector<VBuildScene> currentBuildScenes;
+        // Editor classification config mirrored from the loaded .vproject (edited in Project Settings):
+        // the tag names and the 32-slot layer index->name table.
+        std::vector<std::string>    currentTags;
+        std::array<std::string, 32> currentLayerNames {}; // rendering layers (MetaComponent::layer)
+        // Physics (Jolt) layers + the symmetric collision matrix that RigidBody.objectLayer uses.
+        // currentPhysicsCollision[a*32+b] == true => layers a and b collide (default: all collide).
+        std::array<std::string, 32>   currentPhysicsLayerNames {};
+        std::array<bool, 32 * 32>     currentPhysicsCollision {};
         std::string           currentEditingRenderGraph {"res://render/default.vrg.json"};
         std::string           currentEditingMaterialGraph {"res://materials/default.vmatgraph.json"};
         std::string           currentEditingAnimatorGraph {"res://animation/default.vanimgraph.json"};
@@ -178,6 +187,25 @@ namespace vultra_app
         SceneCameraAlignRequest sceneCameraAlignRequest;
         ScenePickingState     scenePicking;
     };
+
+    // Mirror a loaded project's editor classification config into AppState: tags, the rendering-layer
+    // name table (MetaComponent::layer), and the physics-layer names + collision matrix (RigidBody::
+    // objectLayer). Called from every project-open path so the inspector + Project Settings see them.
+    inline void applyProjectClassification(AppState& state, const VProject& project)
+    {
+        state.currentTags              = project.tags;
+        state.currentLayerNames        = project.layerNames;
+        state.currentPhysicsLayerNames = project.physicsLayerNames;
+        state.currentPhysicsCollision.fill(true);
+        for (const auto& pair : project.physicsCollisionDisabled)
+        {
+            if (pair[0] < 32u && pair[1] < 32u)
+            {
+                state.currentPhysicsCollision[pair[0] * 32u + pair[1]] = false;
+                state.currentPhysicsCollision[pair[1] * 32u + pair[0]] = false;
+            }
+        }
+    }
 
     // Default architecture for a target platform when no preset is saved yet.
     inline std::string defaultExportArch(const std::string& platform)

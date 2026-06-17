@@ -26,7 +26,7 @@ namespace vultra
         float    gravityFactor {1.0f};
         float    mass {70.0f};
         float    jumpSpeed {5.0f};
-        uint32_t objectLayer {1};
+        uint32_t objectLayer {0}; // physics layer index (collision-matrix); 0 = "Default"
 
         // Input (gameplay-controlled, consumed each step).
         glm::vec3 inputMove {0.0f}; // desired horizontal velocity (x, z used)

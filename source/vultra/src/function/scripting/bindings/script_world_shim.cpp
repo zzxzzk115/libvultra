@@ -27,7 +27,7 @@ namespace vultra
             auto& reg = world.registry();
             if (auto* name = reg.try_get<NameComponent>(entity))
                 return *name;
-            return reg.emplace<NameComponent>(entity);
+            return reg.get_or_emplace<MetaComponent>(entity);
         }
 
         bool hasPrefix(const std::string& value, const std::string& prefix)

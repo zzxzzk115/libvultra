@@ -9,6 +9,7 @@
 #include <vbase/core/uuid.hpp>
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/services/asset_service.hpp>
+#include <vultra/function/services/physics_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/animator_component.hpp>
@@ -56,6 +57,21 @@ namespace vultra_app
 {
     namespace
     {
+        // Push AppState's physics collision matrix into the live physics service (if available), so
+        // RigidBody.objectLayer pairs collide per the project's matrix. Symmetric, so set each pair once.
+        void applyPhysicsCollisionMatrix(EditorContext& ctx)
+        {
+            if (!ctx.services)
+                return;
+            auto* physics = ctx.services->tryGet<vultra::IPhysicsService>();
+            if (!physics)
+                return;
+            const auto& m = ctx.state.currentPhysicsCollision;
+            for (uint32_t a = 0; a < 32u; ++a)
+                for (uint32_t b = a; b < 32u; ++b)
+                    physics->setLayerCollision(a, b, m[a * 32u + b]);
+        }
+
         std::string lowerString(std::string value)
         {
             std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
@@ -253,9 +269,14 @@ namespace vultra_app
 
         void addCommonEntityComponents(vultra::World& world, const entt::entity entity, const std::string& name)
         {
-            auto& reg = world.registry();
-            reg.emplace_or_replace<vultra::NameComponent>(entity, vultra::NameComponent {name});
-            reg.emplace_or_replace<vultra::EntityStatusComponent>(entity, vultra::EntityStatusComponent {});
+            auto& reg  = world.registry();
+            auto& meta = reg.get_or_emplace<vultra::MetaComponent>(entity);
+            meta.name  = name;
+            // Reset status flags to defaults (the entity may be recycled); name/layer keep their values.
+            meta.active     = true;
+            meta.visible    = true;
+            meta.locked     = false;
+            meta.selectable = true;
         }
 
         entt::entity addDefaultCamera(vultra::World& world)
@@ -436,8 +457,12 @@ namespace vultra_app
         {
             auto kind = lowerString(stringArg(args, {"component_kind", "componentKind", "kind"}));
             std::replace(kind.begin(), kind.end(), '-', '_');
-            if (kind == "entitystatus" || kind == "status")
-                return "entity_status";
+            // Base metadata (name/layer/status/keepOnLoad) is one MetaComponent now; the former
+            // per-field component names all resolve to the single "meta" kind.
+            if (kind == "meta" || kind == "metacomponent" || kind == "name" || kind == "namecomponent" ||
+                kind == "entity_status" || kind == "entitystatus" || kind == "status" || kind == "layer" ||
+                kind == "layercomponent")
+                return "meta";
             if (kind == "rigidbody")
                 return "rigid_body";
             if (kind == "particleemitter" || kind == "particleemittercomponent" || kind == "particles")
@@ -489,8 +514,9 @@ namespace vultra_app
                 return "reflection_probe";
             if (kind == "navagent" || kind == "navagentcomponent" || kind == "agent")
                 return "nav_agent";
-            if (kind == "persistentcomponent" || kind == "dontdestroyonload" || kind == "keeponload")
-                return "persistent";
+            if (kind == "persistent" || kind == "persistentcomponent" || kind == "dontdestroyonload" ||
+                kind == "keeponload")
+                return "meta";
             if (kind == "uiinputfield" || kind == "uiinputfieldcomponent" || kind == "ui_input" || kind == "inputfield")
                 return "ui_input_field";
             if (kind == "uidropdown" || kind == "uidropdowncomponent" || kind == "dropdown")
@@ -568,15 +594,15 @@ namespace vultra_app
         nlohmann::json componentKindListJson()
         {
             return nlohmann::json::array({
-                "transform",        "name",           "entity_status",   "mesh",
-                "particle_emitter", "rigid_body",     "sphere_shape",    "box_shape",
-                "capsule_shape",    "cylinder_shape", "mesh_shape",      "character_controller",
-                "animator",         "camera",         "light",           "environment",
-                "xr_view",          "script",         "canvas",          "rect_transform",
-                "ui_panel",         "ui_image",       "ui_text",         "ui_button",
-                "ui_toggle",        "ui_slider",      "ui_progress_bar", "ui_layout",
-                "gaussian_splat",   "reflection_probe", "nav_agent",     "persistent",
-                "ui_input_field",   "ui_dropdown",    "ui_scroll_view",
+                "meta",             "transform",        "mesh",            "particle_emitter",
+                "rigid_body",       "sphere_shape",     "box_shape",       "capsule_shape",
+                "cylinder_shape",   "mesh_shape",       "character_controller", "animator",
+                "camera",           "light",            "environment",     "xr_view",
+                "script",           "canvas",           "rect_transform",  "ui_panel",
+                "ui_image",         "ui_text",          "ui_button",       "ui_toggle",
+                "ui_slider",        "ui_progress_bar",  "ui_layout",       "gaussian_splat",
+                "reflection_probe", "nav_agent",        "ui_input_field",  "ui_dropdown",
+                "ui_scroll_view",
             });
         }
 
@@ -628,18 +654,18 @@ namespace vultra_app
                     fieldJson("rotation", "quat", {}, {{"format", "array [w, x, y, z] or object {w,x,y,z}"}}));
                 fields.push_back(fieldJson("scale", "vec3"));
             }
-            else if (k == "name")
+            else if (k == "meta")
             {
-                out["cxxComponent"] = "NameComponent";
+                out["cxxComponent"] = "MetaComponent";
                 fields.push_back(fieldJson("name", "string"));
-            }
-            else if (k == "entity_status")
-            {
-                out["cxxComponent"] = "EntityStatusComponent";
+                fields.push_back(fieldJson("tag", "string"));
+                fields.push_back(fieldJson("layer", "uint32"));
                 fields.push_back(fieldJson("active", "bool"));
                 fields.push_back(fieldJson("visible", "bool"));
                 fields.push_back(fieldJson("locked", "bool"));
                 fields.push_back(fieldJson("selectable", "bool"));
+                fields.push_back(fieldJson("static", "bool"));
+                fields.push_back(fieldJson("keepOnLoad", "bool", {"keep_on_load"}));
             }
             else if (k == "mesh")
             {
@@ -970,11 +996,6 @@ namespace vultra_app
                 fields.push_back(fieldJson("targetPosition", "vec3", {"target_position"}));
                 fields.push_back(fieldJson("hasTarget", "bool", {"has_target"}));
                 fields.push_back(fieldJson("moving", "bool", {}, {{"readOnly", true}}));
-            }
-            else if (k == "persistent")
-            {
-                out["cxxComponent"] = "PersistentComponent";
-                fields.push_back(fieldJson("keepOnLoad", "bool", {"keep_on_load"}));
             }
             else if (k == "ui_input_field")
             {
@@ -1616,33 +1637,29 @@ namespace vultra_app
                 layout.cellSizePx = vec2Arg(args, "cellSizePx", vec2Arg(args, "cell_size_px", layout.cellSizePx));
                 return true;
             }
-            if (kind == "name")
+            if (kind == "meta")
             {
-                if (requireExisting && !reg.all_of<vultra::NameComponent>(entity))
-                {
-                    errorMessage = "entity does not have NameComponent";
-                    return false;
-                }
-                auto& name = reg.get_or_emplace<vultra::NameComponent>(entity);
-                name.name  = args.value("name", name.name);
-                return true;
-            }
-            if (kind == "entity_status")
-            {
-                if (requireExisting && !reg.all_of<vultra::EntityStatusComponent>(entity))
-                {
-                    errorMessage = "entity does not have EntityStatusComponent";
-                    return false;
-                }
-                auto& status = reg.get_or_emplace<vultra::EntityStatusComponent>(entity);
+                // Base per-entity metadata (formerly the Name/Layer/EntityStatus/Persistent
+                // components) lives in one MetaComponent. It is mandatory, so there is no
+                // requireExisting gate -- every entity has it.
+                auto& meta = reg.get_or_emplace<vultra::MetaComponent>(entity);
+                meta.name  = args.value("name", meta.name);
+                if (args.contains("tag"))
+                    meta.tag = args.value("tag", meta.tag);
+                if (args.contains("layer"))
+                    meta.layer = args.value("layer", meta.layer);
                 if (args.contains("active"))
-                    status.active = args.value("active", status.active);
+                    meta.active = args.value("active", meta.active);
                 if (args.contains("visible"))
-                    status.visible = args.value("visible", status.visible);
+                    meta.visible = args.value("visible", meta.visible);
                 if (args.contains("locked"))
-                    status.locked = args.value("locked", status.locked);
+                    meta.locked = args.value("locked", meta.locked);
                 if (args.contains("selectable"))
-                    status.selectable = args.value("selectable", status.selectable);
+                    meta.selectable = args.value("selectable", meta.selectable);
+                if (args.contains("static"))
+                    meta.isStatic = args.value("static", meta.isStatic);
+                if (args.contains("keepOnLoad") || args.contains("keep_on_load"))
+                    meta.keepOnLoad = args.value("keepOnLoad", args.value("keep_on_load", meta.keepOnLoad));
                 return true;
             }
             if (kind == "mesh")
@@ -1935,17 +1952,6 @@ namespace vultra_app
                 agent.hasTarget = args.value("hasTarget", args.value("has_target", agent.hasTarget));
                 return true;
             }
-            if (kind == "persistent")
-            {
-                if (requireExisting && !reg.all_of<vultra::PersistentComponent>(entity))
-                {
-                    errorMessage = "entity does not have PersistentComponent";
-                    return false;
-                }
-                auto& persistent      = reg.get_or_emplace<vultra::PersistentComponent>(entity);
-                persistent.keepOnLoad = args.value("keepOnLoad", args.value("keep_on_load", persistent.keepOnLoad));
-                return true;
-            }
             if (kind == "ui_input_field")
             {
                 if (requireExisting && !reg.all_of<vultra::UiInputFieldComponent>(entity))
@@ -2026,15 +2032,13 @@ namespace vultra_app
                              std::string&       errorMessage)
         {
             auto& reg = world.registry();
-            if (kind == "id" || kind == "transform")
+            // id/transform/meta are mandatory base components (MetaComponent holds name, layer,
+            // status and the keepOnLoad marker for every entity) -- they cannot be removed.
+            if (kind == "id" || kind == "transform" || kind == "meta")
             {
                 errorMessage = "cannot remove required component: " + kind;
                 return false;
             }
-            if (kind == "name")
-                return reg.remove<vultra::NameComponent>(entity) > 0u;
-            if (kind == "entity_status")
-                return reg.remove<vultra::EntityStatusComponent>(entity) > 0u;
             if (kind == "mesh")
                 return reg.remove<vultra::MeshComponent>(entity) > 0u;
             if (kind == "particle_emitter")
@@ -2091,8 +2095,6 @@ namespace vultra_app
                 return reg.remove<vultra::ReflectionProbeComponent>(entity) > 0u;
             if (kind == "nav_agent")
                 return reg.remove<vultra::NavAgentComponent>(entity) > 0u;
-            if (kind == "persistent")
-                return reg.remove<vultra::PersistentComponent>(entity) > 0u;
             if (kind == "ui_input_field")
                 return reg.remove<vultra::UiInputFieldComponent>(entity) > 0u;
             if (kind == "ui_dropdown")
@@ -2143,7 +2145,7 @@ namespace vultra_app
                     auto& canvas                 = reg.emplace_or_replace<vultra::CanvasComponent>(parent);
                     canvas.referenceResolutionPx = {1920.0f, 1080.0f};
                     canvas.scaleMode             = 1u;
-                    reg.emplace_or_replace<vultra::LayerComponent>(parent).mask = vultra::kRenderLayerUiMask;
+                    reg.get_or_emplace<vultra::MetaComponent>(parent).layer = vultra::kUiRenderLayer;
                     result.createdCanvas                                        = parent;
                 }
             }
@@ -2195,7 +2197,7 @@ namespace vultra_app
                 auto& rect       = reg.emplace_or_replace<vultra::RectTransformComponent>(entity);
                 rect.sizeDeltaPx = size;
                 rect.scale       = glm::vec2 {1.0f, 1.0f};
-                reg.emplace_or_replace<vultra::LayerComponent>(entity).mask = vultra::kRenderLayerUiMask;
+                reg.get_or_emplace<vultra::MetaComponent>(entity).layer = vultra::kUiRenderLayer;
                 return rect;
             };
 
@@ -2508,6 +2510,8 @@ namespace vultra_app
         ctx.state.currentDefaultScene = project.defaultScene;
         ctx.state.currentEditingPrefab.clear();
         ctx.state.currentBuildScenes          = project.buildScenes;
+        applyProjectClassification(ctx.state, project);
+        applyPhysicsCollisionMatrix(ctx);
         ctx.state.currentEditingRenderGraph   = project.editingRenderGraph;
         ctx.state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
         ctx.state.selectedSourceAsset.clear();

@@ -51,7 +51,7 @@ namespace vultra
         auto* world = ctx.world();
         if (!world || !ctx.isValid(entity.value))
             return;
-        world->registry().emplace_or_replace<PersistentComponent>(entity.value);
+        world->registry().get_or_emplace<MetaComponent>(entity.value).keepOnLoad = true;
     }
 
     bool sceneIsPersistent(ScriptContext& ctx, const ScriptEntity& entity)

@@ -12,7 +12,7 @@ namespace vultra
     struct RigidBodyComponent
     {
         uint32_t motionType {2};
-        uint32_t objectLayer {1};
+        uint32_t objectLayer {0}; // physics layer index (collision-matrix); 0 = "Default"
         bool     isSensor {false};
         uint32_t motionQuality {0};
         bool     allowSleeping {true};

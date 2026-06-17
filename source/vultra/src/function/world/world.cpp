@@ -3,6 +3,7 @@
 #include "vultra/core/base/uuid.hpp"
 #include "vultra/function/world/components/hierarchy_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
+#include "vultra/function/world/components/meta_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
 
 #include <algorithm>
@@ -90,8 +91,9 @@ namespace vultra
     entt::entity World::createEntity()
     {
         entt::entity e = m_Registry.create();
-        // Ensure stable identity + hierarchy links for scene/world workflows.
+        // Ensure stable identity + base metadata + hierarchy links for scene/world workflows.
         m_Registry.emplace<IDComponent>(e, IDComponent {CoreUUIDHelper::createStandardUUID()});
+        m_Registry.emplace<MetaComponent>(e);
         m_Registry.emplace<HierarchyComponent>(e);
         m_Registry.emplace<TransformComponent>(e);
         attachToParent(e, entt::null);

@@ -18,6 +18,7 @@
 #include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/particle_emitter_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
+#include "vultra/function/world/components/meta_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/nav_agent_component.hpp"
 #include "vultra/function/world/components/persistent_component.hpp"
@@ -64,16 +65,20 @@ namespace vultra
 
         entt::meta_factory<IDComponent>().type("IDComponent"_hs).data<&IDComponent::uuid>("uuid"_hs);
 
-        entt::meta_factory<NameComponent>().type("NameComponent"_hs).data<&NameComponent::name>("name"_hs);
-
-        entt::meta_factory<EntityStatusComponent>()
-            .type("EntityStatusComponent"_hs)
-            .data<&EntityStatusComponent::active>("active"_hs)
-            .data<&EntityStatusComponent::visible>("visible"_hs)
-            .data<&EntityStatusComponent::locked>("locked"_hs)
-            .data<&EntityStatusComponent::selectable>("selectable"_hs);
-
-        entt::meta_factory<LayerComponent>().type("LayerComponent"_hs).data<&LayerComponent::mask>("mask"_hs);
+        // Base per-entity metadata, merged from the former Name/EntityStatus/Layer/Persistent
+        // components. Field names are preserved so legacy .vscn entries (read via the registry's
+        // component-name aliases) deserialize straight into the matching MetaComponent field.
+        entt::meta_factory<MetaComponent>()
+            .type("MetaComponent"_hs)
+            .data<&MetaComponent::name>("name"_hs)
+            .data<&MetaComponent::tag>("tag"_hs)
+            .data<&MetaComponent::layer>("layer"_hs)
+            .data<&MetaComponent::active>("active"_hs)
+            .data<&MetaComponent::visible>("visible"_hs)
+            .data<&MetaComponent::locked>("locked"_hs)
+            .data<&MetaComponent::selectable>("selectable"_hs)
+            .data<&MetaComponent::isStatic>("static"_hs)
+            .data<&MetaComponent::keepOnLoad>("keepOnLoad"_hs);
 
         entt::meta_factory<TransformComponent>()
             .type("TransformComponent"_hs)
@@ -140,10 +145,6 @@ namespace vultra
             .data<&NavAgentComponent::targetPosition>("targetPosition"_hs)
             .data<&NavAgentComponent::hasTarget>("hasTarget"_hs)
             .data<&NavAgentComponent::moving>("moving"_hs);
-
-        entt::meta_factory<PersistentComponent>()
-            .type("PersistentComponent"_hs)
-            .data<&PersistentComponent::keepOnLoad>("keepOnLoad"_hs);
 
         entt::meta_factory<MeshComponent>()
             .type("MeshComponent"_hs)

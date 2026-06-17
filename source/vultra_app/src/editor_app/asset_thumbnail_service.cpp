@@ -362,7 +362,7 @@ namespace vultra_app::ui
             auto& reg = world.registry();
 
             auto light = world.createEntity();
-            reg.emplace<vultra::NameComponent>(light, vultra::NameComponent {"Thumbnail Light"});
+            reg.get_or_emplace<vultra::MetaComponent>(light).name = "Thumbnail Light";
             auto& lightTransform = reg.get<vultra::TransformComponent>(light);
             lightTransform.rotation =
                 glm::quatLookAt(glm::normalize(glm::vec3 {0.4f, -0.55f, 0.7f}), glm::vec3 {0.0f, 1.0f, 0.0f});
@@ -375,7 +375,7 @@ namespace vultra_app::ui
                                                 });
 
             auto env = world.createEntity();
-            reg.emplace<vultra::NameComponent>(env, vultra::NameComponent {"Thumbnail Environment"});
+            reg.get_or_emplace<vultra::MetaComponent>(env).name = "Thumbnail Environment";
             reg.emplace<vultra::EnvironmentComponent>(env,
                                                       vultra::EnvironmentComponent {
                                                           .ambientColor     = glm::vec3 {0.28f, 0.30f, 0.34f},
@@ -1459,7 +1459,7 @@ namespace vultra_app::ui
             addPreviewLighting(world);
             auto& reg    = world.registry();
             auto  sphere = world.createEntity();
-            reg.emplace<vultra::NameComponent>(sphere, vultra::NameComponent {"Material Preview Sphere"});
+            reg.get_or_emplace<vultra::MetaComponent>(sphere).name = "Material Preview Sphere";
             auto& transform = reg.get<vultra::TransformComponent>(sphere);
             transform.position = glm::vec3 {0.0f};
             transform.rotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
@@ -1490,7 +1490,7 @@ namespace vultra_app::ui
             }
             auto  meshEntity = world.createEntity();
             auto& reg        = world.registry();
-            reg.emplace<vultra::NameComponent>(meshEntity, vultra::NameComponent {"Thumbnail Mesh"});
+            reg.get_or_emplace<vultra::MetaComponent>(meshEntity).name = "Thumbnail Mesh";
             auto meshHandle = assetService->loadMeshAsync(meshUuid);
             if (meshHandle.cpu() && meshHandle.cpu()->hasDefaultTransform)
             {

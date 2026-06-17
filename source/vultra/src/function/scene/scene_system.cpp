@@ -664,10 +664,11 @@ namespace vultra
 
         // Register components that we want to support in .vscn.
         m_ComponentRegistry.registerComponent<IDComponent>("IDComponent", {"uuid"});
-        m_ComponentRegistry.registerComponent<NameComponent>("NameComponent", {"name"});
-        m_ComponentRegistry.registerComponent<EntityStatusComponent>("EntityStatusComponent",
-                                                                     {"active", "visible", "locked", "selectable"});
-        m_ComponentRegistry.registerComponent<LayerComponent>("LayerComponent", {"mask"});
+        // Base per-entity metadata (name/layer/status/keepOnLoad) lives in one MetaComponent,
+        // merged from the former Name/Layer/EntityStatus/Persistent components.
+        m_ComponentRegistry.registerComponent<MetaComponent>(
+            "MetaComponent",
+            {"name", "tag", "layer", "active", "visible", "locked", "selectable", "static", "keepOnLoad"});
         m_ComponentRegistry.registerComponent<TransformComponent>("TransformComponent",
                                                                   {"position", "rotation", "scale"});
         m_ComponentRegistry.registerComponent<RigidBodyComponent>("RigidBodyComponent",
@@ -1182,7 +1183,7 @@ namespace vultra
         if (!prefabNode.name.empty())
         {
             if (!reg.all_of<NameComponent>(e))
-                reg.emplace<NameComponent>(e, NameComponent {prefabNode.name});
+                reg.get_or_emplace<MetaComponent>(e).name = prefabNode.name;
             else if (reg.get<NameComponent>(e).name.empty())
                 reg.get<NameComponent>(e).name = prefabNode.name;
         }
@@ -1321,7 +1322,7 @@ namespace vultra
         if (!node.name.empty())
         {
             if (!reg.all_of<NameComponent>(e))
-                reg.emplace<NameComponent>(e, NameComponent {node.name});
+                reg.get_or_emplace<MetaComponent>(e).name = node.name;
             else if (reg.get<NameComponent>(e).name.empty())
                 reg.get<NameComponent>(e).name = node.name;
         }

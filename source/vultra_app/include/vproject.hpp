@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -39,6 +41,17 @@ namespace vultra_app
         std::string           defaultScene;
         std::vector<VBuildScene> buildScenes;
         std::string           editingRenderGraph {"res://render/default.vrg.json"};
+
+        // Editor classification config: the tag names and the 32-slot layer
+        // index->name table. Entities reference a tag by name and a layer by its mask bit.
+        std::vector<std::string>    tags;
+        std::array<std::string, 32> layerNames {};
+
+        // Physics (Jolt object) layers: the 32-slot index->name table that RigidBody.objectLayer
+        // references, plus the layer pairs whose collision is DISABLED. Collision defaults to on for
+        // every pair, so only the disabled pairs are stored (the collision matrix).
+        std::array<std::string, 32>            physicsLayerNames {};
+        std::vector<std::array<uint32_t, 2>>   physicsCollisionDisabled;
         // Ids of plugins enabled for this project (plugins are off by default). Plugins live under
         // <asset-root>/plugins; see the Plugins tab in Project Settings.
         std::vector<std::string> enabledPlugins;
@@ -67,6 +80,11 @@ namespace vultra_app
 
     [[nodiscard]] std::filesystem::path vprojectFileFor(const std::filesystem::path& projectDir,
                                                         const std::string&           projectName);
+    // Built-in editor classification defaults (layer 0 = Default, layer 5 = UI; one "Untagged" tag).
+    [[nodiscard]] std::array<std::string, 32> defaultLayerNames();
+    [[nodiscard]] std::vector<std::string>    defaultTags();
+    [[nodiscard]] std::array<std::string, 32> defaultPhysicsLayerNames();
+
     [[nodiscard]] std::optional<VProject> loadVProject(const std::filesystem::path& path);
     [[nodiscard]] bool                    loadProjectEnvFile(const std::filesystem::path& projectDir,
                                                              std::string* errorMessage = nullptr);

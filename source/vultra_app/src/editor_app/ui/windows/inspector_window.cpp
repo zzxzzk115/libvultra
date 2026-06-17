@@ -1687,7 +1687,7 @@ namespace vultra_app
         {
             auto& reg      = world.registry();
             auto  keyLight = world.createEntity();
-            reg.emplace<vultra::NameComponent>(keyLight, vultra::NameComponent {"Preview Key Light"});
+            reg.get_or_emplace<vultra::MetaComponent>(keyLight).name = "Preview Key Light";
             reg.emplace<vultra::LightComponent>(keyLight,
                                                 vultra::LightComponent {
                                                     .kind        = 0u,
@@ -1697,7 +1697,7 @@ namespace vultra_app
                                                 });
 
             auto env = world.createEntity();
-            reg.emplace<vultra::NameComponent>(env, vultra::NameComponent {"Preview Environment"});
+            reg.get_or_emplace<vultra::MetaComponent>(env).name = "Preview Environment";
             reg.emplace<vultra::EnvironmentComponent>(env,
                                                       vultra::EnvironmentComponent {
                                                           .ambientColor     = glm::vec3 {0.28f, 0.30f, 0.34f},
@@ -3812,7 +3812,6 @@ namespace vultra_app
                 {"motionType",
                  {"inspector.enum.motionType.static", "inspector.enum.motionType.kinematic",
                   "inspector.enum.motionType.dynamic"}},
-                {"objectLayer", {"inspector.enum.objectLayer.nonMoving", "inspector.enum.objectLayer.moving"}},
                 {"motionQuality", {"inspector.enum.motionQuality.discrete", "inspector.enum.motionQuality.linearCast"}},
                 {"scaleMode", {"inspector.enum.scaleMode.constantPixels", "inspector.enum.scaleMode.scaleWithScreen"}},
                 {"fitMode",
@@ -3867,8 +3866,38 @@ namespace vultra_app
 
             if (auto* v = value.try_cast<uint32_t>())
             {
-                if (std::strcmp(fieldName, "mask") == 0 || std::strcmp(fieldName, "cullingMask") == 0)
+                if (std::strcmp(fieldName, "cullingMask") == 0)
                     return drawRenderLayerMaskField(label, *v);
+
+                // RigidBody/CharacterController.objectLayer is the physics layer (the collision-matrix
+                // index, 0-31) -- NOT the moving/non-moving broad-phase bit. Pick it by name from the
+                // project's physics-layer table.
+                if (std::strcmp(fieldName, "objectLayer") == 0 && ctx != nullptr)
+                {
+                    const auto& names      = ctx->state.currentPhysicsLayerNames;
+                    const auto  layerLabel = [&](uint32_t i) -> std::string {
+                        std::string nm = i < names.size() ? names[i] : std::string {};
+                        if (nm.empty())
+                            nm = i == 0u ? "Default" : "Layer " + std::to_string(i);
+                        return std::to_string(i) + ": " + nm;
+                    };
+                    if (ImGui::BeginCombo(label, layerLabel(*v).c_str()))
+                    {
+                        for (uint32_t i = 0; i < 32u; ++i)
+                        {
+                            const bool named = i < names.size() && !names[i].empty();
+                            if (i != 0u && i != *v && !named) // index 0, named layers, and the current value
+                                continue;
+                            if (ImGui::Selectable(layerLabel(i).c_str(), *v == i))
+                            {
+                                *v      = i;
+                                changed = true;
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+                    return changed;
+                }
 
                 if (std::strcmp(fieldName, "builtinGeometry") == 0)
                 {
@@ -3971,6 +4000,13 @@ namespace vultra_app
             if (std::strcmp(fieldName, "mesh") == 0)
                 return mesh.builtinGeometry == UINT32_MAX;
             return std::strcmp(fieldName, "materialOverrides") != 0;
+        }
+
+        template<>
+        bool shouldDrawMetaField(const vultra::MetaComponent&, const char* fieldName)
+        {
+            // The entity header draws the name prominently above the metadata block; don't repeat it.
+            return std::strcmp(fieldName, "name") != 0;
         }
 
         template<>
@@ -4132,7 +4168,7 @@ namespace vultra_app
                 std::strcmp(fieldName, "scriptUri") == 0)
                 return true;
             if (value.try_cast<uint32_t>() != nullptr && fieldName != nullptr &&
-                (std::strcmp(fieldName, "mask") == 0 || std::strcmp(fieldName, "cullingMask") == 0))
+                std::strcmp(fieldName, "cullingMask") == 0)
                 return true;
             return false;
         }
@@ -4577,7 +4613,6 @@ namespace vultra_app
         {
             static const std::vector<AddComponentDescriptor> descriptors {
                 addComponentDescriptor<vultra::TransformComponent>("Transform", "Transform", "Core"),
-                addComponentDescriptor<vultra::LayerComponent>("Layer", "Layer", "Core"),
                 addComponentDescriptor<vultra::RectTransformComponent>("RectTransform", "Rect Transform", "UI"),
                 addUiComponentDescriptor<vultra::CanvasComponent>("Canvas", "Canvas"),
                 addUiComponentDescriptor<vultra::UiPanelComponent>("UiPanel", "UI Panel"),
@@ -4611,7 +4646,6 @@ namespace vultra_app
                 addComponentDescriptor<vultra::CharacterControllerComponent>(
                     "CharacterController", "Character Controller", "Physics"),
                 addComponentDescriptor<vultra::NavAgentComponent>("NavAgent", "Nav Agent", "Navigation"),
-                addComponentDescriptor<vultra::PersistentComponent>("Persistent", "Persistent", "Core"),
                 addComponentDescriptor<vultra::CameraComponent>("Camera", "Camera", "Camera"),
                 addComponentDescriptor<vultra::XRViewComponent>("XRView", "XR View", "Camera"),
                 addComponentDescriptor<vultra::ScriptComponent>("Script", "Script", "Scripting"),
@@ -4626,7 +4660,6 @@ namespace vultra_app
             static const std::vector<const char*> order {
                 "RectTransform",
                 "Transform",
-                "Layer",
                 "Canvas",
                 "UiPanel",
                 "UiImage",
@@ -4657,7 +4690,6 @@ namespace vultra_app
                 "Script",
                 "AudioSource",
                 "AudioListener",
-                "Persistent",
                 "Prefab",
             };
             return order;
@@ -4704,7 +4736,6 @@ namespace vultra_app
                     },
                     [](entt::registry& reg, entt::entity entity) { reg.remove<vultra::TransformComponent>(entity); },
                 },
-                orderedComponentMeta<vultra::LayerComponent>("Layer", "inspector.component.layer"),
                 orderedComponentMeta<vultra::CanvasComponent>("Canvas", "inspector.component.canvas"),
                 orderedComponentMeta<vultra::UiPanelComponent>("UiPanel", "inspector.component.uiPanel"),
                 orderedComponentMeta<vultra::UiImageComponent>("UiImage", "inspector.component.uiImage"),
@@ -4738,7 +4769,6 @@ namespace vultra_app
                 orderedComponentMeta<vultra::CharacterControllerComponent>("CharacterController",
                                                                            "inspector.component.characterController"),
                 orderedComponentMeta<vultra::NavAgentComponent>("NavAgent", "inspector.component.navAgent"),
-                orderedComponentMeta<vultra::PersistentComponent>("Persistent", "inspector.component.persistent"),
                 // Removing the Camera also removes its dependent XRView.
                 OrderedComponentMeta {
                     "Camera",
@@ -5124,35 +5154,112 @@ namespace vultra_app
         if (auto* id = reg.try_get<vultra::IDComponent>(e))
             ImGui::TextWrapped("%s", vultra::trf("inspector.entity.uuid", id->uuid.toString()).c_str());
 
-        auto& name = reg.get_or_emplace<vultra::NameComponent>(e, vultra::NameComponent {"Entity"});
+        // MetaComponent holds the entity's base metadata. It is a fixed component on every entity,
+        // drawn as one header block (active toggle + name, then Tag/Layer dropdowns,
+        // then the remaining status flags) rather than as a removable component. The tag and layer
+        // name tables come from Project Settings (ctx.state.currentTags / currentLayerNames).
+        auto& meta = reg.get_or_emplace<vultra::MetaComponent>(e);
         if (m_NameEditEntity != Selection::lastId())
         {
             m_NameEditEntity = Selection::lastId();
-            copyName(m_NameBuffer, name.name);
+            copyName(m_NameBuffer, meta.name);
         }
-        ui::beginPropertyRow(vultra::tr("common.name"));
-        const bool nameChanged = ImGui::InputText("##Name", m_NameBuffer.data(), m_NameBuffer.size());
-        ui::endPropertyRow();
-        if (nameChanged)
+
+        bool metaChanged = false;
+        bool nameChanged = false;
+
+        // Row 1: active toggle + name field (fills the remaining width).
+        if (ImGui::Checkbox("##Active", &meta.active))
+            metaChanged = true;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", displayFieldName("active").c_str());
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::InputText("##Name", m_NameBuffer.data(), m_NameBuffer.size()))
         {
-            name.name            = m_NameBuffer.data();
+            meta.name   = m_NameBuffer.data();
+            nameChanged = true;
+        }
+
+        // Row 2: Tag dropdown (names from Project Settings; falls back to a lone "Untagged").
+        ui::beginPropertyRow(displayFieldName("tag").c_str());
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::BeginCombo("##Tag", meta.tag.empty() ? "Untagged" : meta.tag.c_str()))
+        {
+            const auto& tags = ctx.state.currentTags;
+            if (tags.empty())
+            {
+                if (ImGui::Selectable("Untagged", meta.tag == "Untagged"))
+                {
+                    meta.tag    = "Untagged";
+                    metaChanged = true;
+                }
+            }
+            for (const auto& t : tags)
+            {
+                if (ImGui::Selectable(t.c_str(), meta.tag == t))
+                {
+                    meta.tag    = t;
+                    metaChanged = true;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ui::endPropertyRow();
+
+        // Row 3: Layer dropdown -- the entity's single render layer (an index). Only layer slots
+        // that have a name (plus the built-in Default/UI) are offered.
+        const uint32_t currentLayer = meta.layer;
+        const auto      layerLabel   = [&ctx](uint32_t index) -> std::string {
+            std::string nm = index < ctx.state.currentLayerNames.size() ? ctx.state.currentLayerNames[index]
+                                                                             : std::string {};
+            if (nm.empty())
+                nm = index == 0u ? "Default" : (index == 5u ? "UI" : "Layer " + std::to_string(index));
+            return std::to_string(index) + ": " + nm;
+        };
+        ui::beginPropertyRow(displayFieldName("layer").c_str());
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::BeginCombo("##Layer", layerLabel(currentLayer).c_str()))
+        {
+            for (uint32_t i = 0; i < 32u; ++i)
+            {
+                const bool named = i < ctx.state.currentLayerNames.size() && !ctx.state.currentLayerNames[i].empty();
+                if (i != 0u && i != 5u && !named)
+                    continue;
+                if (ImGui::Selectable(layerLabel(i).c_str(), currentLayer == i))
+                {
+                    meta.layer  = i;
+                    metaChanged = true;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ui::endPropertyRow();
+
+        // Row 4: remaining status flags, inline.
+        if (ImGui::Checkbox(displayFieldName("static").c_str(), &meta.isStatic))
+            metaChanged = true;
+        ImGui::SameLine();
+        if (ImGui::Checkbox(displayFieldName("visible").c_str(), &meta.visible))
+            metaChanged = true;
+        ImGui::SameLine();
+        if (ImGui::Checkbox(displayFieldName("locked").c_str(), &meta.locked))
+            metaChanged = true;
+        ImGui::SameLine();
+        if (ImGui::Checkbox(displayFieldName("selectable").c_str(), &meta.selectable))
+            metaChanged = true;
+        ImGui::SameLine();
+        if (ImGui::Checkbox(displayFieldName("keepOnLoad").c_str(), &meta.keepOnLoad))
+            metaChanged = true;
+
+        if (metaChanged || nameChanged)
+        {
             ctx.state.sceneDirty = true;
             if (ctx.history)
-                ctx.history->setNextLabel("Rename Entity");
+                ctx.history->setNextLabel(nameChanged ? "Rename Entity" : "Edit Entity Metadata");
         }
 
         drawPrefabSection(ctx, world, e);
-
-        auto& status = reg.get_or_emplace<vultra::EntityStatusComponent>(e);
-        if (ImGui::CollapsingHeader(vultra::tr("inspector.component.status"), ImGuiTreeNodeFlags_DefaultOpen))
-        {
-            if (drawMetaFields(&ctx, &m_TextureSelector, status))
-            {
-                ctx.state.sceneDirty = true;
-                if (ctx.history)
-                    ctx.history->setNextLabel("Edit Entity Status");
-            }
-        }
 
         if (componentHeader<vultra::HierarchyComponent>(world, e))
         {
@@ -5243,16 +5350,6 @@ namespace vultra_app
                             ctx.history->setNextLabel("Edit Transform");
                         }
                 }
-            }
-            else if (key == "Layer")
-            {
-                if (auto* layer = reg.try_get<vultra::LayerComponent>(e))
-                    if (drawMetaFields(&ctx, &m_TextureSelector, *layer))
-                    {
-                        ctx.state.sceneDirty = true;
-                        if (ctx.history)
-                            ctx.history->setNextLabel("Edit Layer");
-                    }
             }
             else if (key == "Canvas")
             {
@@ -5502,16 +5599,6 @@ namespace vultra_app
                         ctx.state.sceneDirty = true;
                         if (ctx.history)
                             ctx.history->setNextLabel("Edit Nav Agent");
-                    }
-            }
-            else if (key == "Persistent")
-            {
-                if (auto* persistent = reg.try_get<vultra::PersistentComponent>(e))
-                    if (drawMetaFields(&ctx, &m_TextureSelector, *persistent))
-                    {
-                        ctx.state.sceneDirty = true;
-                        if (ctx.history)
-                            ctx.history->setNextLabel("Edit Persistent");
                     }
             }
             else if (key == "Camera")
@@ -7279,11 +7366,11 @@ namespace vultra_app
 
         addPreviewLighting(m_ModelPreviewWorld);
         m_ModelPreviewRoot = m_ModelPreviewWorld.createEntity();
-        m_ModelPreviewWorld.registry().emplace<vultra::NameComponent>(m_ModelPreviewRoot,
-                                                                      vultra::NameComponent {"Preview Model Pivot"});
+        m_ModelPreviewWorld.registry().get_or_emplace<vultra::MetaComponent>(m_ModelPreviewRoot).name =
+            "Preview Model Pivot";
         m_ModelPreviewContentRoot = m_ModelPreviewWorld.createChild(m_ModelPreviewRoot);
-        m_ModelPreviewWorld.registry().emplace<vultra::NameComponent>(m_ModelPreviewContentRoot,
-                                                                      vultra::NameComponent {"Preview Model Content"});
+        m_ModelPreviewWorld.registry().get_or_emplace<vultra::MetaComponent>(m_ModelPreviewContentRoot).name =
+            "Preview Model Content";
         if (!ctx.services)
             return;
 
@@ -7343,14 +7430,14 @@ namespace vultra_app
 
         addPreviewLighting(m_ModelPreviewWorld);
         m_ModelPreviewRoot = m_ModelPreviewWorld.createEntity();
-        m_ModelPreviewWorld.registry().emplace<vultra::NameComponent>(m_ModelPreviewRoot,
-                                                                      vultra::NameComponent {"Preview Mesh Pivot"});
+        m_ModelPreviewWorld.registry().get_or_emplace<vultra::MetaComponent>(m_ModelPreviewRoot).name =
+            "Preview Mesh Pivot";
         m_ModelPreviewContentRoot = m_ModelPreviewWorld.createChild(m_ModelPreviewRoot);
-        m_ModelPreviewWorld.registry().emplace<vultra::NameComponent>(m_ModelPreviewContentRoot,
-                                                                      vultra::NameComponent {"Preview Mesh Content"});
+        m_ModelPreviewWorld.registry().get_or_emplace<vultra::MetaComponent>(m_ModelPreviewContentRoot).name =
+            "Preview Mesh Content";
         auto  entity = m_ModelPreviewWorld.createChild(m_ModelPreviewContentRoot);
         auto& reg    = m_ModelPreviewWorld.registry();
-        reg.emplace<vultra::NameComponent>(entity, vultra::NameComponent {name.empty() ? "Mesh Preview" : name});
+        reg.get_or_emplace<vultra::MetaComponent>(entity).name = name.empty() ? "Mesh Preview" : name;
         reg.emplace<vultra::MeshComponent>(entity, vultra::MeshComponent {.mesh = uuid});
         if (ctx.services)
         {
@@ -7386,11 +7473,11 @@ namespace vultra_app
 
         addPreviewLighting(m_ModelPreviewWorld);
         m_ModelPreviewRoot = m_ModelPreviewWorld.createEntity();
-        m_ModelPreviewWorld.registry().emplace<vultra::NameComponent>(m_ModelPreviewRoot,
-                                                                      vultra::NameComponent {"Preview Animation Pivot"});
+        m_ModelPreviewWorld.registry().get_or_emplace<vultra::MetaComponent>(m_ModelPreviewRoot).name =
+            "Preview Animation Pivot";
         m_ModelPreviewContentRoot = m_ModelPreviewWorld.createChild(m_ModelPreviewRoot);
-        m_ModelPreviewWorld.registry().emplace<vultra::NameComponent>(
-            m_ModelPreviewContentRoot, vultra::NameComponent {"Preview Animation Content"});
+        m_ModelPreviewWorld.registry().get_or_emplace<vultra::MetaComponent>(m_ModelPreviewContentRoot).name =
+            "Preview Animation Content";
         if (!ctx.services)
             return;
 
@@ -7448,7 +7535,7 @@ namespace vultra_app
         {
             auto entity = m_ModelPreviewWorld.createChild(m_ModelPreviewContentRoot);
             auto& reg   = m_ModelPreviewWorld.registry();
-            reg.emplace<vultra::NameComponent>(entity, vultra::NameComponent {"Animation Preview Mesh"});
+            reg.get_or_emplace<vultra::MetaComponent>(entity).name = "Animation Preview Mesh";
             reg.emplace<vultra::MeshComponent>(entity, vultra::MeshComponent {.mesh = meshUuid});
         }
 

@@ -230,7 +230,7 @@ namespace vultra
                                                const uint32_t        fallbackMask)
         {
             if (const auto* layer = reg.try_get<LayerComponent>(entity))
-                return layer->mask;
+                return renderLayerMask(layer->layer);
             return fallbackMask;
         }
 

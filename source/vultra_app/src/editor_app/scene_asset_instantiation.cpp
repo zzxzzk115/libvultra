@@ -141,7 +141,7 @@ namespace vultra_app
                                        findMeshSubAssetPlacement(ctx, uuid) :
                                        std::optional<MeshSubAssetPlacement> {};
             const auto name = placement && !placement->name.empty() ? placement->name : assetNameFromEntry(entry);
-            reg.emplace<vultra::NameComponent>(entity, vultra::NameComponent {name});
+            reg.get_or_emplace<vultra::MetaComponent>(entity).name = name;
             auto& transform = reg.get_or_emplace<vultra::TransformComponent>(entity);
             if (placement)
             {
