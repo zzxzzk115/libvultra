@@ -364,44 +364,6 @@ namespace vultra
             return invert ? !result : result;
         }
 
-        [[nodiscard]] bool renderGraphConditionMatches(std::string_view                condition,
-                                                       const RenderView&               view,
-                                                       const RenderGraphCapabilities& caps)
-        {
-            if (condition.empty())
-                return true;
-
-            const auto normalized = normalizeRenderGraphId(std::string(condition));
-            size_t     orBegin    = 0;
-            while (orBegin <= normalized.size())
-            {
-                const auto orEnd = normalized.find("||", orBegin);
-                const auto group =
-                    std::string_view(normalized)
-                        .substr(orBegin, orEnd == std::string::npos ? std::string::npos : orEnd - orBegin);
-
-                bool   groupMatches = true;
-                size_t andBegin     = 0;
-                while (andBegin <= group.size())
-                {
-                    const auto andEnd = group.find("&&", andBegin);
-                    const auto token  = group.substr(
-                        andBegin, andEnd == std::string_view::npos ? std::string_view::npos : andEnd - andBegin);
-                    groupMatches = groupMatches && renderGraphConditionTokenMatches(token, view, caps);
-                    if (andEnd == std::string_view::npos)
-                        break;
-                    andBegin = andEnd + 2;
-                }
-
-                if (groupMatches)
-                    return true;
-                if (orEnd == std::string::npos)
-                    break;
-                orBegin = orEnd + 2;
-            }
-            return false;
-        }
-
         [[nodiscard]] bool renderGraphViewModeMatches(std::string_view viewMode, const RenderView& view)
         {
             const auto normalized = normalizeRenderGraphId(std::string(viewMode));
@@ -1848,10 +1810,13 @@ namespace vultra
             m_PrefersExplicitPerEye = graphPrefersExplicitPerEye(m_Desc);
             m_LastValidationError.clear();
 
-            // Warn (non-fatal) if the graph is broken on any target capability profile, so authors catch
-            // web/android holes at load time rather than as a black frame on the target device.
-            if (std::string capError; !validateGraphAcrossCapabilities(capError))
-                VULTRA_CORE_WARN("[DeclarativeRenderer] Render graph '{}' is incomplete on {}", m_Uri, capError);
+            // Warn (non-fatal) if the graph is structurally incomplete. Branching is now explicit
+            // $-logic wiring, so a structurally-complete graph is complete on every capability profile;
+            // authors catch holes at load time rather than as a black frame on the target device.
+            vrendergraph::RenderGraphDesc check = m_Desc;
+            materializeRenderGraphDefaultOutputs(m_Registry, check);
+            if (std::string capError; !validateRenderGraphStructure(check, capError))
+                VULTRA_CORE_WARN("[DeclarativeRenderer] Render graph '{}' is incomplete: {}", m_Uri, capError);
         }
 
         void invalidateShaderPipelines()
@@ -1877,7 +1842,10 @@ namespace vultra
             // owner relays the renderer's resolved compat decision (e.g. --render-profile=compat).
             caps.tierHighend = !caps.platformAndroid && !caps.platformWeb && !m_Owner.m_ForceCompatTier;
 
-            vrendergraph::RenderGraphDesc activeDesc = makeActiveGraphWithPassthrough(m_Desc, ctx.view(), caps);
+            // Drop inactive passes (disabled / wrong viewMode) and pass through their consumers. The
+            // remaining graph - including its $-logic nodes - is handed to vrendergraph, which evaluates
+            // the value/logic DAG and culls unselected branches itself (see RenderGraph::build).
+            vrendergraph::RenderGraphDesc activeDesc = makeActiveGraphWithPassthrough(m_Desc, ctx.view());
             materializeRenderGraphDefaultOutputs(m_Registry, activeDesc);
             if (activeDesc.passes.empty())
                 return;
@@ -1894,7 +1862,7 @@ namespace vultra
             }
 
             std::string validationError;
-            if (!validateActiveGraph(activeDesc, collectGraphProducedResources(m_Desc), validationError))
+            if (!validateRenderGraphStructure(activeDesc, validationError))
             {
                 if (validationError != m_LastValidationError)
                 {
@@ -1918,20 +1886,29 @@ namespace vultra
                     return ctx.data.tryGet(resourceKeyFor(resourceName));
                 }};
 
+            // Resolve $value predicates (feature/platform/backend/XR tokens) from device + view.
+            const RenderView& view     = ctx.view();
+            const auto         resolver = [&view, &caps](std::string_view key) -> nlohmann::json {
+                return renderGraphConditionTokenMatches(key, view, caps);
+            };
+
             m_Owner.m_CurrentBuildContext = &ctx;
-            graph.build(ctx.fg, ctx.bb, activeDesc);
+            graph.build(ctx.fg, ctx.bb, activeDesc, resolver);
             m_Owner.m_CurrentBuildContext = nullptr;
         }
 
     private:
+        // Remove passes that are inactive for this frame and rewire their consumers to pass through.
+        // "Inactive" = disabled (the editor's per-pass enable toggle) or whose XR viewMode doesn't apply
+        // to the current view (e.g. a stereo-only synthesis pass in a mono view). This is the per-pass
+        // bypass toggle, orthogonal to capability/feature branching - that is now expressed with $-logic
+        // nodes and resolved (with liveness culling) inside vrendergraph::RenderGraph::build.
         vrendergraph::RenderGraphDesc makeActiveGraphWithPassthrough(const vrendergraph::RenderGraphDesc& desc,
-                                                                     const RenderView&                    view,
-                                                                     const RenderGraphCapabilities&       caps) const
+                                                                     const RenderView&                    view) const
         {
             auto       activeDesc   = desc;
-            const auto passIsActive = [&view, &caps](const vrendergraph::PassDecl& pass) {
-                return pass.enabled && renderGraphViewModeMatches(pass.viewMode, view) &&
-                       renderGraphConditionMatches(pass.when, view, caps);
+            const auto passIsActive = [&view](const vrendergraph::PassDecl& pass) {
+                return pass.enabled && renderGraphViewModeMatches(pass.viewMode, view);
             };
 
             bool changed = true;
@@ -1990,9 +1967,10 @@ namespace vultra
             return activeDesc;
         }
 
-        // Resources[] names that at least one pass writes (explicit output mapping) in the FULL desc.
-        // These are "graph-produced" (vs engine-imported data resources like camera/gpu-scene buffers,
-        // which no pass output-maps). Used by validateActiveGraph to require exactly one active writer.
+        // Resources[] names that at least one pass writes (explicit output mapping). These are
+        // "graph-produced" (vs engine-imported data resources like camera/gpu-scene buffers, which no
+        // pass output-maps). With $-logic routing, each such resource has exactly one writer in the
+        // full graph (the router, or a single pass) - validateRenderGraphStructure enforces that.
         [[nodiscard]] static std::unordered_set<std::string>
         collectGraphProducedResources(const vrendergraph::RenderGraphDesc& desc)
         {
@@ -2011,11 +1989,14 @@ namespace vultra
             return produced;
         }
 
-        bool validateActiveGraph(const vrendergraph::RenderGraphDesc&    desc,
-                                 const std::unordered_set<std::string>& producedResources,
-                                 std::string&                           error) const
+        // Structural validation over the FULL graph (profile-independent). Because branching is now
+        // explicit $-logic wiring, a structurally-complete graph is complete on every capability
+        // profile - so this single check replaces the old per-profile cross-capability simulation
+        // and the fragile "mutually exclusive when / exactly one active writer" rule.
+        bool validateRenderGraphStructure(const vrendergraph::RenderGraphDesc& desc, std::string& error) const
         {
-            std::unordered_set<std::string> resources;
+            const std::unordered_set<std::string> producedResources = collectGraphProducedResources(desc);
+            std::unordered_set<std::string>       resources;
             for (const auto& resource : desc.resources)
             {
                 if (resource.name.empty())
@@ -2043,7 +2024,7 @@ namespace vultra
                     error = "duplicate pass '" + pass.id + "'";
                     return false;
                 }
-                if (!m_Registry.contains(pass.type))
+                if (!vrendergraph::isLogicNodeType(pass.type) && !m_Registry.contains(pass.type))
                 {
                     error = "pass '" + pass.id + "' has unknown type '" + pass.type + "'";
                     return false;
@@ -2052,6 +2033,14 @@ namespace vultra
 
             for (const auto& pass : desc.passes)
             {
+                // $-logic nodes are not registry passes; validate their wiring separately.
+                if (vrendergraph::isLogicNodeType(pass.type))
+                {
+                    if (!validateLogicNode(pass, passes, resources, error))
+                        return false;
+                    continue;
+                }
+
                 const auto&                           def = m_Registry.get(pass.type);
                 const std::unordered_set<std::string> validInputs(def.inputs.begin(), def.inputs.end());
                 const std::unordered_set<std::string> validOutputs(def.outputs.begin(), def.outputs.end());
@@ -2118,10 +2107,11 @@ namespace vultra
                 }
             }
 
-            // --- Capability-branch integrity (the multi-tier safety net) ---
-            // Count active writers per declared resource (passes write a resource by mapping an output
-            // slot to its name). After capability pruning, each graph-produced resource must have
-            // exactly one active writer.
+            // --- Declared-resource integrity ---
+            // Each declared graph-produced resource must have exactly one writer in the full graph.
+            // Mutually-exclusive branches that used to both write a resource now feed a single
+            // $select/$switch whose `out` is that resource - so this stays a clean one-writer rule
+            // without any profile-specific reasoning.
             std::unordered_map<std::string, int> activeWriters;
             for (const auto& pass : desc.passes)
                 for (const auto& [slot, ref] : pass.outputs)
@@ -2137,14 +2127,13 @@ namespace vultra
                 const int  count = it == activeWriters.end() ? 0 : it->second;
                 if (count > 1)
                 {
-                    error = "resource '" + name + "' has " + std::to_string(count) +
-                            " active writers (expected 1) - check 'when' conditions are mutually exclusive";
+                    error = "declared resource '" + name + "' has " + std::to_string(count) +
+                            " writers (expected 1) - funnel mutually-exclusive producers through one $select/$switch";
                     return false;
                 }
             }
 
-            // A consumer of a graph-produced resource must have a producer on this profile; zero active
-            // writers means the active tier lost its only producer (a missing compatibility fallback).
+            // A consumer of a declared graph-produced resource must have a producer in the graph.
             for (const auto& pass : desc.passes)
                 for (const auto& [slot, ref] : pass.inputs)
                 {
@@ -2155,7 +2144,7 @@ namespace vultra
                     if (it == activeWriters.end() || it->second == 0)
                     {
                         error = "pass '" + pass.id + "' input '" + slot + "' reads resource '" + parsed->node +
-                                "' which has no active producer on this profile (missing compatibility fallback?)";
+                                "' which has no producer";
                         return false;
                     }
                 }
@@ -2187,63 +2176,74 @@ namespace vultra
             return true;
         }
 
-        // Author/load-time safety net: prove the graph resolves to a complete path on every target
-        // capability profile (desktop Vulkan highend, WebGPU compat, Android compat, +RT if used), so an
-        // author can't ship a graph that silently renders black on web/android. Non-fatal (warns).
-        [[nodiscard]] bool validateGraphAcrossCapabilities(std::string& error) const
+        // Validate one $-logic node's wiring (called from validateRenderGraphStructure). Ensures the
+        // selector/branch/operand inputs reference existing producers, so a router can always resolve.
+        bool validateLogicNode(const vrendergraph::PassDecl&                                          pass,
+                               const std::unordered_map<std::string, const vrendergraph::PassDecl*>& passes,
+                               const std::unordered_set<std::string>&                                resources,
+                               std::string&                                                          error) const
         {
-            struct Profile
-            {
-                const char*                            label;
-                rhi::RenderBackendApi                  backend;
-                rhi::RenderDeviceFeatureFlagBits       features;
-                rhi::RenderDeviceFeatureReportFlagBits featureReport;
-                bool                                   tierHighend;
-                bool                                   android;
-                bool                                   web;
+            const auto refExists = [&](const vrendergraph::ResourceRef& ref) {
+                if (ref.resource.empty())
+                    return false;
+                const auto parsed = parseRenderGraphResRef(ref.resource);
+                if (!parsed)
+                    return false;
+                return passes.contains(parsed->node) || resources.contains(parsed->node);
             };
-            using FF  = rhi::RenderDeviceFeatureFlagBits;
-            using FRF = rhi::RenderDeviceFeatureReportFlagBits;
-            std::vector<Profile> profiles {
-                {"desktop/vulkan/highend", rhi::RenderBackendApi::eVulkan, FF::eNormal, FRF::eDescriptorIndexing, true, false, false},
-                {"web/webgpu/compat", rhi::RenderBackendApi::eWebGPU, FF::eNormal, FRF::eNone, false, false, true},
-                {"android/vulkan/compat", rhi::RenderBackendApi::eVulkan, FF::eNormal, FRF::eNone, false, true, false},
-            };
-            // Only exercise a ray-tracing-enabled profile if the graph actually branches on it.
-            bool usesRayTracing = false;
-            for (const auto& pass : m_Desc.passes)
-                if (pass.when.find("feature_raytracing") != std::string::npos ||
-                    pass.when.find("feature_rayquery") != std::string::npos)
-                    usesRayTracing = true;
-            if (usesRayTracing)
-                profiles.push_back({"desktop/vulkan/raytracing", rhi::RenderBackendApi::eVulkan, FF::eAll,
-                                    FRF::eDescriptorIndexing, true, false, false});
-
-            const RenderView                       monoView {};
-            const std::unordered_set<std::string>  produced = collectGraphProducedResources(m_Desc);
-            for (const auto& profile : profiles)
-            {
-                RenderGraphCapabilities caps;
-                caps.backend         = profile.backend;
-                caps.features        = profile.features;
-                caps.featureReport   = profile.featureReport;
-                caps.tierHighend     = profile.tierHighend;
-                caps.platformAndroid = profile.android;
-                caps.platformWeb     = profile.web;
-
-                auto activeDesc = makeActiveGraphWithPassthrough(m_Desc, monoView, caps);
-                materializeRenderGraphDefaultOutputs(m_Registry, activeDesc);
-                if (activeDesc.passes.empty())
-                    continue; // an empty profile (e.g. a graph that intentionally renders nothing) is not a hole
-
-                std::string profileError;
-                if (!validateActiveGraph(activeDesc, produced, profileError))
+            const auto requireInput = [&](const char* slot) -> bool {
+                const auto it = pass.inputs.find(slot);
+                if (it == pass.inputs.end() || it->second.empty() || !refExists(it->second))
                 {
-                    error = std::string("profile '") + profile.label + "': " + profileError;
+                    error = std::string("logic node '") + pass.id + "' input '" + slot + "' is not connected";
                     return false;
                 }
+                return true;
+            };
+
+            switch (vrendergraph::logicNodeKind(pass.type))
+            {
+            case vrendergraph::LogicNodeKind::eValue:
+                if (pass.params.get<std::string>("key", std::string {}).empty())
+                {
+                    error = "value node '" + pass.id + "' has an empty 'key'";
+                    return false;
+                }
+                return true;
+            case vrendergraph::LogicNodeKind::eNot:
+                return requireInput("a");
+            case vrendergraph::LogicNodeKind::eAnd:
+            case vrendergraph::LogicNodeKind::eOr:
+                if (pass.inputs.empty())
+                {
+                    error = "logic node '" + pass.id + "' has no operands";
+                    return false;
+                }
+                for (const auto& [slot, ref] : pass.inputs)
+                    if (ref.empty() || !refExists(ref))
+                    {
+                        error = std::string("logic node '") + pass.id + "' operand '" + slot + "' is not connected";
+                        return false;
+                    }
+                return true;
+            case vrendergraph::LogicNodeKind::eSelect:
+                return requireInput("selector") && requireInput("whenTrue") && requireInput("whenFalse");
+            case vrendergraph::LogicNodeKind::eSwitch: {
+                if (!requireInput("selector"))
+                    return false;
+                // Every case slot plus the default slot must be wired.
+                const auto& raw = pass.params.raw();
+                if (raw.contains("cases") && raw.at("cases").is_object())
+                    for (auto it = raw.at("cases").begin(); it != raw.at("cases").end(); ++it)
+                        if (it.value().is_string() && !requireInput(it.value().get<std::string>().c_str()))
+                            return false;
+                const auto def = pass.params.get<std::string>("default", std::string {});
+                if (!def.empty() && !requireInput(def.c_str()))
+                    return false;
+                return true;
             }
-            return true;
+            default: return true;
+            }
         }
 
         // Drives one scripted pass's Lua setup/execute closures through the

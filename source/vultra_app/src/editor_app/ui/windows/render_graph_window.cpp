@@ -352,6 +352,69 @@ namespace vultra_app
             }
         }
 
+        // Synthesized ports for $-logic nodes (which are not in the registry).
+        struct LogicNodePorts
+        {
+            std::vector<std::string> inputs;
+            std::vector<std::string> outputs;
+        };
+
+        LogicNodePorts logicNodePorts(const vrendergraph::PassDecl& pass)
+        {
+            using K = vrendergraph::LogicNodeKind;
+            switch (vrendergraph::logicNodeKind(pass.type))
+            {
+                case K::eValue:
+                    return {{}, {"value"}};
+                case K::eNot:
+                    return {{"a"}, {"value"}};
+                case K::eAnd:
+                case K::eOr: {
+                    std::vector<std::string> ins;
+                    for (const auto& [slot, _] : pass.inputs)
+                    {
+                        static_cast<void>(_);
+                        ins.push_back(slot);
+                    }
+                    std::sort(ins.begin(), ins.end());
+                    if (ins.empty())
+                        ins = {"a", "b"};
+                    return {std::move(ins), {"value"}};
+                }
+                case K::eSelect:
+                    return {{"selector", "whenTrue", "whenFalse"}, {"out"}};
+                case K::eSwitch: {
+                    std::vector<std::string> ins {"selector"};
+                    for (const auto& [slot, _] : pass.inputs)
+                    {
+                        static_cast<void>(_);
+                        if (slot != "selector")
+                            ins.push_back(slot);
+                    }
+                    return {std::move(ins), {"out"}};
+                }
+                default:
+                    return {};
+            }
+        }
+
+        void ensureLogicSlots(vrendergraph::PassDecl& pass)
+        {
+            const auto ports = logicNodePorts(pass);
+            for (const auto& in : ports.inputs)
+                pass.inputs.try_emplace(in, "");
+            for (const auto& out : ports.outputs)
+                pass.outputs.try_emplace(out, pass.id + "." + out);
+            if (vrendergraph::logicNodeKind(pass.type) == vrendergraph::LogicNodeKind::eValue)
+            {
+                auto& raw = pass.params.raw();
+                if (!raw.contains("key"))
+                    raw["key"] = "";
+                if (!raw.contains("default"))
+                    raw["default"] = false;
+            }
+        }
+
         bool applyTopoOrder(vrendergraph::RenderGraphDesc& graph, std::string* error)
         {
             std::unordered_map<std::string, size_t> order;
@@ -500,6 +563,10 @@ namespace vultra_app
                     error = "Render graph has duplicate pass: " + pass.id;
                     return false;
                 }
+                // $-logic nodes ($value/$and/$or/$not/$if/$switch) are not registry passes; their
+                // wiring is validated by the node editor and resolved by vrendergraph at build time.
+                if (vrendergraph::isLogicNodeType(pass.type))
+                    continue;
                 if (!registry.contains(pass.type))
                 {
                     error = "Unknown pass type '" + pass.type + "' on pass '" + pass.id + "'.";
@@ -5383,16 +5450,21 @@ namespace vultra_app
             return;
 
         const auto createPass = [&](const std::string& type) {
-            const auto& def    = state.registry.get(type);
-            int         suffix = 1;
-            std::string id     = type;
+            const bool  isLogic = vrendergraph::isLogicNodeType(type);
+            int         suffix  = 1;
+            // Logic types start with '$'; use a clean base id for nicer node names.
+            std::string base = isLogic ? type.substr(1) : type;
+            std::string id   = base;
             while (findPass(state.graph, id))
-                id = type + "_" + std::to_string(suffix++);
+                id = base + "_" + std::to_string(suffix++);
 
             vrendergraph::PassDecl pass;
             pass.id   = std::move(id);
             pass.type = type;
-            ensureSlots(pass, def);
+            if (isLogic)
+                ensureLogicSlots(pass);
+            else
+                ensureSlots(pass, state.registry.get(type));
             const std::string newPassId = pass.id;
             state.graph.passes.push_back(std::move(pass));
             if (state.hasAddMenuScreenPos)
@@ -5474,6 +5546,17 @@ namespace vultra_app
                     continue;
                 addPassItem(type);
             }
+            ImGui::EndMenu();
+        }
+
+        // Branching/logic nodes ($value/$and/$or/$not/$if/$switch). These are not registry passes;
+        // vrendergraph evaluates them and culls unselected branches at build time.
+        if (state.editingFeatureInternals &&
+            ImGui::BeginMenu(vultra::trId("renderGraph.addMenu.logic", "Logic")))
+        {
+            static const char* const kLogicTypes[] = {"$value", "$and", "$or", "$not", "$if", "$switch"};
+            for (const char* const t : kLogicTypes)
+                addPassItem(t);
             ImGui::EndMenu();
         }
 
@@ -5739,6 +5822,92 @@ namespace vultra_app
             const EditorCpuScope nodesPerf {ctx, "Editor::RenderGraph/CanvasPassNodes"};
             for (auto& pass : state.graph.passes)
             {
+                // Branching/logic nodes ($value/$and/$or/$not/$if/$switch) are not registry passes;
+                // draw them with synthesized value/resource pins (triangle = value, circle = resource).
+                if (vrendergraph::isLogicNodeType(pass.type))
+                {
+                    ensureLogicSlots(pass);
+                    const auto          ports = logicNodePorts(pass);
+                    const auto          kind  = vrendergraph::logicNodeKind(pass.type);
+                    const int           id    = state.nodeId("pass", pass.id);
+                    const float         logicWidth = vultra::ui::dp(170.0f);
+                    const ImU32         title = vrgNodeColorFromType(pass.type, false);
+                    pushNodeTitlePalette(title);
+                    ImNodes::BeginNode(id);
+                    ImNodes::BeginNodeTitleBar();
+                    drawNodeTitleText(pass.id.c_str());
+                    ImNodes::EndNodeTitleBar();
+                    ImGui::TextDisabled("%s", pass.type.c_str());
+
+                    if (kind == vrendergraph::LogicNodeKind::eValue)
+                    {
+                        auto&             raw = pass.params.raw();
+                        std::string       key = raw.value("key", std::string {});
+                        std::vector<char> buf(std::max<size_t>(key.size() + 64, 128), '\0');
+                        std::copy(key.begin(), key.end(), buf.begin());
+                        ImGui::PushItemWidth(logicWidth);
+                        if (ImGui::InputText("##vkey", buf.data(), buf.size()))
+                        {
+                            raw["key"] = std::string(buf.data());
+                            state.markDirty();
+                        }
+                        bool defaultVal = raw.value("default", false);
+                        if (ImGui::Checkbox(vultra::trId("renderGraph.logic.default", "default"), &defaultVal))
+                        {
+                            raw["default"] = defaultVal;
+                            state.markDirty();
+                        }
+                        ImGui::PopItemWidth();
+                    }
+
+                    const bool valueOut = vrendergraph::isValueProducingKind(kind);
+                    if (!ports.inputs.empty())
+                        ImGui::Spacing();
+                    for (const auto& slot : ports.inputs)
+                    {
+                        const bool valuePin =
+                            vrendergraph::isValueProducingKind(kind) ||
+                            (vrendergraph::isRouterKind(kind) && slot == "selector");
+                        const int pin = state.pinId(pass.id, slot, true);
+                        ImNodes::BeginInputAttribute(
+                            pin, valuePin ? ImNodesPinShape_TriangleFilled : ImNodesPinShape_CircleFilled);
+                        ImGui::TextUnformatted(slot.c_str());
+                        ImNodes::EndInputAttribute();
+                    }
+                    if (!ports.outputs.empty())
+                        ImGui::Spacing();
+                    for (const auto& slot : ports.outputs)
+                    {
+                        const int pin = state.pinId(pass.id, slot, false);
+                        ImNodes::BeginOutputAttribute(
+                            pin, valueOut ? ImNodesPinShape_TriangleFilled : ImNodesPinShape_CircleFilled);
+                        ImGui::Indent(
+                            std::max(vultra::ui::dp(24.0f), logicWidth - textWidth(slot) - vultra::ui::dp(42.0f)));
+                        ImGui::TextUnformatted(slot.c_str());
+                        ImNodes::EndOutputAttribute();
+                    }
+
+                    ImNodes::EndNode();
+                    popNodeTitlePalette();
+
+                    if (state.applyPositions)
+                    {
+                        if (state.hasPendingPlacement && state.pendingPlacementNode == pass.id)
+                        {
+                            ImNodes::SetNodeScreenSpacePos(id, state.pendingPlacementScreenPos);
+                            state.storeNodePos(pass.id, id);
+                            state.pendingPlacementNode.clear();
+                            state.hasPendingPlacement = false;
+                        }
+                        else if (auto pos = state.readNodePos(pass.id))
+                            ImNodes::SetNodeGridSpacePos(id, *pos);
+                        else
+                            ImNodes::SetNodeGridSpacePos(
+                                id, ImVec2 {680.0f + static_cast<float>(passIndex) * 300.0f, 80.0f});
+                    }
+                    ++passIndex;
+                    continue;
+                }
                 if (!state.registry.contains(pass.type))
                     continue;
 

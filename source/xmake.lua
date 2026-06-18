@@ -115,7 +115,7 @@ end
 if not is_plat("wasm") then
     add_requires("openxr", {configs = {shared = false, debug = is_mode("debug")}})
 end
-add_requires("vrendergraph v0.3.0", {configs = { debug = is_mode("debug") }})
+add_requires("vrendergraph v0.4.0", {configs = { debug = is_mode("debug") }})
 add_requires("ozz-animation", {configs = {tools = false, fbx = false, gltf = false, data = false, debug = is_mode("debug")}})
 add_requires("recastnavigation v1.6.0") -- navmesh bake (Recast) + pathfinding (Detour)
 
