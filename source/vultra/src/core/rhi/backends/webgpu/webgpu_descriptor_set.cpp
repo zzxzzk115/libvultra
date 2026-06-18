@@ -9,6 +9,7 @@
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
 #include <webgpu/webgpu.h>
+#include <webgpu/wgpu.h> // WGPUBindGroupEntryExtras (bindless texture-array binding)
 #endif
 
 namespace vultra
@@ -163,6 +164,14 @@ namespace vultra
             std::vector<WGPUBindGroupEntry> entries;
             entries.reserve(layoutBindingsIt->second.size() * 2u);
 
+            // Stable backing storage for bindless texture-array entries: the WGPUBindGroupEntryExtras and
+            // its textureViews array must outlive the wgpuDeviceCreateBindGroup call below. Reserved so
+            // push_back never reallocates and the chained pointers stay valid.
+            std::vector<std::vector<WGPUTextureView>> arrayViewStorage;
+            std::vector<WGPUBindGroupEntryExtras>     arrayExtrasStorage;
+            arrayViewStorage.reserve(layoutBindingsIt->second.size());
+            arrayExtrasStorage.reserve(layoutBindingsIt->second.size());
+
             for (const auto& layoutBinding : layoutBindingsIt->second)
             {
                 const auto bindingIndex = layoutBinding.binding;
@@ -248,6 +257,76 @@ namespace vultra
                         break;
                     }
                     case DescriptorType::eSampledImage: {
+                        // Bindless texture array: the pass binds a CombinedImageSamplerArray (Vulkan combines
+                        // it; on WebGPU it reflects as a separate texture_2d[N] at b + sampler at b+1). Bind N
+                        // texture views via the extras chain, padded to the layout count (wgpu requires the
+                        // bind-group array length to match the layout exactly), plus the sampler at b+1.
+                        if (const auto* arr = std::get_if<bindings::CombinedImageSamplerArray>(&resourceBinding))
+                        {
+                            if (arr->textures.empty())
+                            {
+                                break;
+                            }
+                            const auto aspect = toImageAspectFlags(arr->imageAspect);
+                            std::vector<WGPUTextureView> views;
+                            views.reserve(layoutBinding.count);
+                            WGPUTextureView fallback = nullptr;
+                            for (const auto* tex : arr->textures)
+                            {
+                                WGPUTextureView v = nullptr;
+                                if (tex != nullptr)
+                                {
+                                    const auto h = tex->getImageView(aspect).getHandle();
+                                    if (h != 0)
+                                    {
+                                        v = reinterpret_cast<WGPUTextureView>(h);
+                                    }
+                                }
+                                if (fallback == nullptr)
+                                {
+                                    fallback = v;
+                                }
+                                views.push_back(v);
+                            }
+                            if (fallback == nullptr)
+                            {
+                                break; // no valid views at all
+                            }
+                            views.resize(layoutBinding.count, fallback);
+                            for (auto& v : views)
+                            {
+                                if (v == nullptr)
+                                {
+                                    v = fallback;
+                                }
+                            }
+
+                            const auto sampler = getOrCreateSamplerHandle(
+                                backend, arr->sampler.value_or(arr->textures.front()->getSampler()));
+                            if (!sampler)
+                            {
+                                break;
+                            }
+
+                            arrayViewStorage.push_back(std::move(views));
+                            arrayExtrasStorage.push_back(WGPUBindGroupEntryExtras {
+                                .chain = {.sType = static_cast<WGPUSType>(WGPUSType_BindGroupEntryExtras)},
+                                .textureViews     = arrayViewStorage.back().data(),
+                                .textureViewCount = arrayViewStorage.back().size(),
+                            });
+
+                            WGPUBindGroupEntry textureEntry {};
+                            textureEntry.binding     = bindingIndex;
+                            textureEntry.nextInChain = &arrayExtrasStorage.back().chain;
+                            entries.push_back(textureEntry);
+
+                            WGPUBindGroupEntry samplerEntry {};
+                            samplerEntry.binding = bindingIndex + 1u;
+                            samplerEntry.sampler = reinterpret_cast<WGPUSampler>(sampler.value);
+                            entries.push_back(samplerEntry);
+                            break;
+                        }
+
                         const auto* value = std::get_if<bindings::SampledImage>(&resourceBinding);
                         if (value == nullptr || value->texture == nullptr)
                         {
