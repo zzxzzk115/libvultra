@@ -27,8 +27,8 @@ layout(set = 1, binding = 0) uniform DrawParams
     mat4 model;
     vec4 baseColorFactor;
     uint materialIndex;
-    uint padding0;
-    uint padding1;
+    uint skinMatrixOffset; // 0xFFFFFFFF when the instance is not skinned
+    uint skinMatrixCount;
     uint padding2;
 } u_Draw;
 

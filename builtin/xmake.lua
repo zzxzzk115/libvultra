@@ -339,6 +339,14 @@
         end
         mark_result("builtin_compatibility.vshweblib", rebuild_webgpu_compatibility)
 
+        -- When any shader library was rebuilt, force builtin.vpk to re-cook by removing it: the pack
+        -- cook's mtime guard (xmake/builtin_pack_cook.lua) can race the freshly-written .vshlib/
+        -- .vshweblib and skip the repack, leaving the embedded pack with stale/missing shaders. Deleting
+        -- the pack here makes the builtin_pack rule's before_build cook unconditionally on the next build.
+        if shader_built > 0 then
+            os.tryrm(path.join(os.projectdir(), "builtin", "generated", "builtin.vpk"))
+        end
+
         -- No C-array header is generated anymore. The compiled .vshlib libraries ship in builtin.vpk
         -- (read via builtin::), and the GLSL include sources are read straight from
         -- builtin/shaders/include -- by the engine through the pack, and by the vasset-cli host tool

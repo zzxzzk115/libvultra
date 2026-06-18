@@ -8,12 +8,6 @@
             -442.0
           ]
         },
-        "CompatGaussianSplatComposite": {
-          "pos": [
-            4364.0,
-            1102.0
-          ]
-        },
         "CompatibilityBaseColor": {
           "pos": [
             3694.8154296875,
@@ -54,12 +48,6 @@
           "pos": [
             3873.0,
             149.0
-          ]
-        },
-        "GeneralGaussianSplatComposite": {
-          "pos": [
-            1520.0,
-            315.0
           ]
         },
         "Invert": {
@@ -169,6 +157,18 @@
             4063.0,
             1009.0
           ]
+        },
+        "GeneralGaussianSplatComposite": {
+          "pos": [
+            1520.0,
+            315.0
+          ]
+        },
+        "CompatGaussianSplatComposite": {
+          "pos": [
+            4364.0,
+            1102.0
+          ]
         }
       }
     }
@@ -265,10 +265,10 @@
     {
       "enabled": true,
       "id": "GeneralGaussianSplatComposite",
+      "type": "GeneralGaussianSplatComposite",
       "inputs": {
         "source": "DeferredLighting.color"
-      },
-      "type": "GeneralGaussianSplatComposite"
+      }
     },
     {
       "enabled": true,
@@ -415,10 +415,10 @@
     {
       "enabled": true,
       "id": "CompatGaussianSplatComposite",
+      "type": "GeneralGaussianSplatComposite",
       "inputs": {
         "source": "CompatibilityBaseColor.color"
-      },
-      "type": "GeneralGaussianSplatComposite"
+      }
     },
     {
       "enabled": true,

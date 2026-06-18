@@ -703,7 +703,13 @@ namespace vultra
             colorDesc.clearValue = clearColor;
 
             WGPURenderPassDepthStencilAttachment depthDesc {};
-            bool                                 allowDepthStencilAttachment = true;
+            // Whether to bind the framebuffer's depth-stencil attachment is gated on the pipeline that
+            // will run in this pass: a depth attachment must be present iff the pipeline uses depth, or
+            // WebGPU rejects the set-pipeline. For passes that bind their pipeline BEFORE beginRendering,
+            // m_BoundPipelineObject is that pipeline. For passes that bind AFTER beginRendering it is
+            // null here (endRendering() clears it so it never leaks the previous pass's pipeline) and we
+            // default to attaching the depth the framebuffer declares - those passes use a depth pipeline.
+            bool allowDepthStencilAttachment = true;
             if (m_BoundPipelineObject != nullptr &&
                 m_BoundPipelineObject->getBindPoint() == PipelineBindPoint::eGraphics)
             {
@@ -846,6 +852,11 @@ namespace vultra
             m_SkipCurrentRendering       = false;
             m_PipelineBoundInCurrentPass = false;
             m_PendingRenderBindGroups.fill(nullptr);
+            // A pipeline is bound per render pass (WebGPU requires set-pipeline inside each pass), so a
+            // pipeline never carries to the next pass. Clear it here so the next beginRendering() doesn't
+            // mistake the previous pass's pipeline for this pass's when deciding the depth attachment.
+            m_BoundPipelineObject = nullptr;
+            m_BoundPipeline       = nullptr;
             return *this;
         }
 

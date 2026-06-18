@@ -21,7 +21,7 @@ struct UiDrawItem
     mat4 worldMatrix;
 };
 
-layout(set = 1, binding = 31, std430) readonly buffer UiDrawItems
+layout(set = 2, binding = 0, std430) readonly buffer UiDrawItems
 {
     UiDrawItem items[];
 } u_Ui;
@@ -94,6 +94,12 @@ void main()
 
     vec2 ndc = vec2((px.x / max(targetResolutionPx.x, 1.0)) * 2.0 - 1.0,
                     (px.y / max(targetResolutionPx.y, 1.0)) * 2.0 - 1.0);
+#if PLATFORM_WEBGPU
+    // Screen-space UI builds clip-space NDC directly (no projection matrix). WebGPU clip space is Y-up
+    // while Vulkan is Y-down, so flip Y to keep the top-left pixel origin. (The world-space UI path
+    // above goes through viewProjection, which already encodes the backend Y convention.)
+    ndc.y = -ndc.y;
+#endif
     gl_Position = vec4(ndc, 0.0, 1.0);
 }
 
@@ -115,7 +121,7 @@ struct UiDrawItem
     mat4 worldMatrix;
 };
 
-layout(set = 1, binding = 31, std430) readonly buffer UiDrawItems
+layout(set = 2, binding = 0, std430) readonly buffer UiDrawItems
 {
     UiDrawItem items[];
 } u_Ui;

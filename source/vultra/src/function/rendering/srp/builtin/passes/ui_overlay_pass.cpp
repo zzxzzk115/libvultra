@@ -204,8 +204,12 @@ namespace vultra
                             texture = fallbackTexture;
 
                         pc.itemIndex = i;
-                        rc.resourceSet[1] = {
-                            {31, rhi::bindings::StorageBuffer {.buffer = drawBuffer}},
+                        // Keep the draw-item buffer in its own set: on WebGPU set 1 is reserved for
+                        // emulated push constants (kWebGPUPushConstantsSet/Binding = 1/31), and the
+                        // push-constant UBO is injected as a set-1-only bind group. Mixing a user
+                        // binding into set 1 breaks both the pipeline layout and the bind group.
+                        rc.resourceSet[2] = {
+                            {0, rhi::bindings::StorageBuffer {.buffer = drawBuffer}},
                         };
                         rc.resourceSet[3] = {
                             {4,

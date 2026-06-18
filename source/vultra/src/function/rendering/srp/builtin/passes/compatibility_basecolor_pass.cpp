@@ -31,8 +31,8 @@ namespace vultra
             glm::mat4 model {1.0f};
             glm::vec4 baseColorFactor {1.0f};
             uint32_t  materialIndex {0};
-            uint32_t  padding0 {0};
-            uint32_t  padding1 {0};
+            uint32_t  skinMatrixOffset {0xFFFFFFFFu}; // 0xFFFFFFFF == not skinned
+            uint32_t  skinMatrixCount {0};
             uint32_t  padding2 {0};
         };
 
@@ -212,6 +212,12 @@ namespace vultra
                 rc.cb.beginRendering(framebufferInfo);
 
                 uint64_t drawParamIndex = 0u;
+                // Two phases: all non-skinned meshes first (skinPhase 0), then skinned (skinPhase 1).
+                // This guarantees no skinned->non-skinned pipeline switch within the pass, so the skin
+                // bind group (set 2) never lingers on the WebGPU encoder onto a non-skin pipeline that
+                // has no set 2 (a fatal bind-group/layout incompatibility, since WebGPU keeps a set
+                // bound until it is overwritten).
+                for (int skinPhase = 0; skinPhase < 2; ++skinPhase)
                 for (const auto& instance : renderWorld->instances)
                 {
                     if (!renderLayerVisible(rc.view().camera, instance.layerMask))
@@ -228,12 +234,16 @@ namespace vultra
                     const auto layout = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
                     if (!layout.hasPosition())
                         continue;
+                    if (layout.hasSkinning() != (skinPhase == 1))
+                        continue; // draw non-skinned in phase 0, skinned in phase 1 (see above)
                     const auto*    pipeline =
                         getPipeline(colorFormat,
                                     webgpu,
                                     layout.attributeMask,
                                     layout.texCoord0OffsetBytes,
                                     layout.positionOffsetBytes,
+                                    layout.jointIndicesOffsetBytes,
+                                    layout.jointWeightsOffsetBytes,
                                     mesh.vertexStrideBytes,
                                     framebufferInfo.viewMask);
                     if (!pipeline)
@@ -248,6 +258,11 @@ namespace vultra
                         if (instance.hasBaseColorOverride)
                             drawParams.baseColorFactor = instance.baseColorOverride;
                         drawParams.materialIndex = subMesh.materialIndex;
+                        if (layout.hasSkinning())
+                        {
+                            drawParams.skinMatrixOffset = instance.skinMatrixOffset;
+                            drawParams.skinMatrixCount  = instance.skinMatrixCount;
+                        }
                         rc.rd.uploadS(retainedDrawParamsBuffer,
                                       drawParamOffset,
                                       sizeof(CompatDrawParams),
@@ -280,6 +295,25 @@ namespace vultra
                                  .range  = sizeof(CompatDrawParams),
                              }},
                         };
+
+                        // Skinned meshes: bind the read-only skin palette in its own set (set 2 b0).
+                        // Always (re)assign the set so a previous skinned draw's binding never leaks
+                        // onto a following non-skinned pipeline (which has no set 2) -> bind-group/layout
+                        // incompatibility on WebGPU.
+                        if (layout.hasSkinning() && gpuSceneDatabase->skinMatrixBuffer)
+                        {
+                            rc.resourceSet[2] = {
+                                {0,
+                                 rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->skinMatrixBuffer.get()}},
+                            };
+                        }
+                        else
+                        {
+                            // Remove the set entirely (not just clear it): bindDescriptorSets builds a
+                            // descriptor set for every key present in resourceSet, so an empty-but-present
+                            // set 2 would still be built against a non-skin pipeline that has no set 2.
+                            rc.resourceSet.erase(2);
+                        }
 
                         rc.bindDescriptorSets(*pipeline);
                         rc.cb.draw(rhi::GeometryInfo {
@@ -339,6 +373,8 @@ namespace vultra
                                                                      const uint32_t         vertexAttributeMask,
                                                                      const uint32_t         texCoord0Offset,
                                                                      const uint32_t         positionOffset,
+                                                                     const uint32_t         jointIndicesOffset,
+                                                                     const uint32_t         jointWeightsOffset,
                                                                      const uint32_t         vertexStride,
                                                                      const uint32_t         viewMask) const
     {
@@ -346,12 +382,16 @@ namespace vultra
         constexpr const char* kFragmentShaderId = "basecolor_cpu";
 
         const resource::GpuVertexLayout layout {
-            .attributeMask = vertexAttributeMask,
-            .positionOffsetBytes = positionOffset,
-            .texCoord0OffsetBytes = texCoord0Offset,
+            .attributeMask         = vertexAttributeMask,
+            .positionOffsetBytes   = positionOffset,
+            .texCoord0OffsetBytes  = texCoord0Offset,
+            .jointIndicesOffsetBytes = jointIndicesOffset,
+            .jointWeightsOffsetBytes = jointWeightsOffset,
         };
-        const auto keywords =
-            rhi::ShaderLibraryRuntime::KeywordValues {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1u : 0u}};
+        const auto keywords = rhi::ShaderLibraryRuntime::KeywordValues {
+            {"VTX_HAS_UV0", layout.hasTexCoord0() ? 1u : 0u},
+            {"VTX_HAS_SKIN", layout.hasSkinning() ? 1u : 0u},
+        };
 
         auto vertexShader = loadCompatibilityShader(kVertexShaderId, vshadersystem::ShaderStage::eVert, keywords);
         if (!vertexShader)
@@ -371,7 +411,8 @@ namespace vultra
                 .setColorFormats({colorFormat})
                 .setDepthFormat(rhi::PixelFormat::eDepth32F)
                 .setViewMask(viewMask)
-                .setInputAssembly(resource::buildInputAssemblyVertexAttributes(layout, false, true, false))
+                .setInputAssembly(
+                    resource::buildInputAssemblyVertexAttributes(layout, false, true, layout.hasSkinning()))
                 .setVertexStride(vertexStride)
                 .addShader(rhi::ShaderType::eVertex,
                            {.code = vertexShader->wgsl, .reflection = vertexShader->reflection})
