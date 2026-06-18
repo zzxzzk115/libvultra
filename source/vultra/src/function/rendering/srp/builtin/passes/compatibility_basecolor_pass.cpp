@@ -261,7 +261,12 @@ namespace vultra
                     const auto* camera        = rc.view().camera;
                     auto*       skyboxCubemap  = renderWorld->environment.active ? renderWorld->environment.skybox
                                                                                 : nullptr;
-                    const bool  wantSkybox    = skyboxCubemap != nullptr && (camera == nullptr || !camera->suppressSkybox);
+                    // The samplerCube binding needs a Cube view dimension in the bind-group layout, but the
+                    // WebGPU layout builder currently hardcodes 2D (the texture view dimension is not yet
+                    // carried through the shader reflection). Until that lands, skip the skybox on WebGPU so
+                    // the pipeline doesn't fail validation; Vulkan does not need the dimension in the layout.
+                    const bool  wantSkybox    = !webgpu && skyboxCubemap != nullptr &&
+                                              (camera == nullptr || !camera->suppressSkybox);
                     if (wantSkybox)
                     {
                         if (const auto* skyboxPipeline = getSkyboxPipeline(colorFormat, webgpu, framebufferInfo.viewMask))

@@ -81,8 +81,10 @@ void main()
 #if VTX_HAS_UV0
     color *= texture(u_CompatBaseColorTexture, v_TexCoord0);
 #endif
+    FragColor = color;
     // Alpha masking: discard fully cut-out texels (alphaMode 1 == MASK), matching the deferred path.
+    // Keep discard as the LAST statement: the GLSL->WGSL path lowers it to an early return, and any
+    // instruction after it makes naga reject the module ("instructions after return").
     if (u_Draw.alphaMode == 1u && color.a < u_Draw.alphaCutoff)
         discard;
-    FragColor = color;
 }
