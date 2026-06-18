@@ -45,6 +45,7 @@
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
 #include <webgpu/webgpu.h>
+#include <webgpu/wgpu.h> // WGPUBindGroupLayoutEntryExtras (bindless binding arrays)
 #endif
 
 namespace vultra
@@ -292,12 +293,19 @@ namespace vultra
                     }
                 };
 
+                // Stable storage for the binding-array "extras" chained onto entries (wgpu-native bindless).
+                // Reserved so push_back never reallocates and the chained pointers stay valid until create.
+                std::vector<WGPUBindGroupLayoutEntryExtras> arrayExtras;
+                arrayExtras.reserve(bindings.size());
+
                 for (const auto& binding : bindings)
                 {
-                    if (binding.count != 1)
+                    // count > 1 is a binding array. Only sampled-image arrays (the bindless material textures)
+                    // are supported via the wgpu-native TextureBindingArray feature; other array types are not.
+                    if (binding.count != 1 && binding.type != DescriptorType::eSampledImage)
                     {
-                        VULTRA_CORE_ERROR("[RenderDevice] WebGPU descriptor array is not supported yet (binding={}, "
-                                          "type={}, count={})",
+                        VULTRA_CORE_ERROR("[RenderDevice] WebGPU descriptor array is not supported for this type "
+                                          "(binding={}, type={}, count={})",
                                           binding.binding,
                                           static_cast<int>(binding.type),
                                           binding.count);
@@ -336,6 +344,16 @@ namespace vultra
                             entry.texture.sampleType    = WGPUTextureSampleType_Float;
                             entry.texture.viewDimension = wgpuViewDimension(binding.textureType);
                             entry.texture.multisampled  = false;
+                            if (binding.count > 1)
+                            {
+                                // Bindless texture array (binding_array<texture_2d, N>): declare the array
+                                // size via the wgpu-native extras chain.
+                                arrayExtras.push_back(WGPUBindGroupLayoutEntryExtras {
+                                    .chain = {.sType = static_cast<WGPUSType>(WGPUSType_BindGroupLayoutEntryExtras)},
+                                    .count = binding.count,
+                                });
+                                entry.nextInChain = &arrayExtras.back().chain;
+                            }
                             entries.push_back(entry);
                             break;
                         }
