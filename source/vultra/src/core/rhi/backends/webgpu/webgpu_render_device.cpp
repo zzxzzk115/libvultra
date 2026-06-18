@@ -1,6 +1,9 @@
 #include "vultra/core/rhi/backends/webgpu/webgpu_render_device.hpp"
 #include "vultra/core/base/common_context.hpp"
 
+// wgpu-native extensions: native feature enums (TextureBindingArray, nonuniform indexing) for bindless.
+#include <webgpu/wgpu.h>
+
 #include <algorithm>
 #include <cstring>
 #include <format>
@@ -312,6 +315,23 @@ namespace vultra
                 requiredFeatures.push_back(WGPUFeatureName_Float32Filterable);
             }
 
+            // Bindless: wgpu-native binding arrays (binding_array<texture_2d>) + nonuniform indexing.
+            // Required for the unified deferred GBuffer's bindless material textures. Gated on adapter
+            // support so device creation still succeeds on adapters that lack them.
+            const auto kTextureBindingArray =
+                static_cast<WGPUFeatureName>(WGPUNativeFeature_TextureBindingArray);
+            const auto kArrayNonUniformIndexing =
+                static_cast<WGPUFeatureName>(WGPUNativeFeature_SampledTextureAndStorageBufferArrayNonUniformIndexing);
+            if (wgpuAdapterHasFeature(m_Adapter, kTextureBindingArray))
+            {
+                requiredFeatures.push_back(kTextureBindingArray);
+                m_SupportsTextureBindingArray = true;
+                if (wgpuAdapterHasFeature(m_Adapter, kArrayNonUniformIndexing))
+                {
+                    requiredFeatures.push_back(kArrayNonUniformIndexing);
+                }
+            }
+
             // Builtin WebGPU GPU timing is disabled on this backend/runtime path. Even when the
             // adapter reports TimestampQuery support, creating query resources has proven unstable
             // and can invalidate the device before swapchain setup completes.
@@ -329,12 +349,19 @@ namespace vultra
                     "[RenderDevice] WebGPU timestamp query feature unavailable; GPU frame time will be N/A.");
             }
 
+            // Request the adapter's reported limits so the device gets the maximum (e.g.
+            // maxSampledTexturesPerShaderStage), which the bindless binding_array needs to exceed the
+            // tiny default. The adapter always supports its own reported limits, so this is safe.
+            WGPULimits requestedLimits {};
+            const bool haveRequestedLimits =
+                m_SupportsTextureBindingArray && wgpuAdapterGetLimits(m_Adapter, &requestedLimits) == WGPUStatus_Success;
+
             WGPUDeviceDescriptor deviceDesc {};
             deviceDesc.label.data                       = m_AppName.c_str();
             deviceDesc.label.length                     = WGPU_STRLEN;
             deviceDesc.requiredFeatureCount             = static_cast<size_t>(requiredFeatures.size());
             deviceDesc.requiredFeatures                 = requiredFeatures.empty() ? nullptr : requiredFeatures.data();
-            deviceDesc.requiredLimits                   = nullptr;
+            deviceDesc.requiredLimits                   = haveRequestedLimits ? &requestedLimits : nullptr;
             deviceDesc.defaultQueue.label.data          = m_AppName.c_str();
             deviceDesc.defaultQueue.label.length        = WGPU_STRLEN;
             deviceDesc.deviceLostCallbackInfo.mode      = WGPUCallbackMode_AllowProcessEvents;

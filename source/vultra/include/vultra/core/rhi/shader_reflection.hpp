@@ -32,6 +32,9 @@ namespace vultra
                 uint32_t                      count {1};
                 ShaderStages                  stageFlags {ShaderStages::eNone};
                 uint32_t                      flags {0};
+                // Texture view dimension for image descriptors (needed by WebGPU bind-group layouts to
+                // declare samplerCube/2DArray/3D). eUnknown for non-image descriptors -> treated as 2D.
+                vshadersystem::TextureType    textureType {vshadersystem::TextureType::eUnknown};
             };
             // Key = binding
             // layout(binding = index)

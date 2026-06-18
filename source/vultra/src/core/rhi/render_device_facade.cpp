@@ -276,6 +276,22 @@ namespace vultra
 
                 std::vector<WGPUBindGroupLayoutEntry> entries;
                 entries.reserve(bindings.size() * 2u);
+
+                // Texture view dimension from the shader reflection (samplerCube/2DArray/3D); eUnknown -> 2D.
+                const auto wgpuViewDimension = [](vshadersystem::TextureType tt) {
+                    switch (tt)
+                    {
+                        case vshadersystem::TextureType::eTexCube:
+                            return WGPUTextureViewDimension_Cube;
+                        case vshadersystem::TextureType::eTex2DArray:
+                            return WGPUTextureViewDimension_2DArray;
+                        case vshadersystem::TextureType::eTex3D:
+                            return WGPUTextureViewDimension_3D;
+                        default:
+                            return WGPUTextureViewDimension_2D;
+                    }
+                };
+
                 for (const auto& binding : bindings)
                 {
                     if (binding.count != 1)
@@ -318,7 +334,7 @@ namespace vultra
                             entry.binding               = binding.binding;
                             entry.visibility            = visibility;
                             entry.texture.sampleType    = WGPUTextureSampleType_Float;
-                            entry.texture.viewDimension = WGPUTextureViewDimension_2D;
+                            entry.texture.viewDimension = wgpuViewDimension(binding.textureType);
                             entry.texture.multisampled  = false;
                             entries.push_back(entry);
                             break;
@@ -336,7 +352,7 @@ namespace vultra
                             textureEntry.binding               = binding.binding;
                             textureEntry.visibility            = visibility;
                             textureEntry.texture.sampleType    = WGPUTextureSampleType_Float;
-                            textureEntry.texture.viewDimension = WGPUTextureViewDimension_2D;
+                            textureEntry.texture.viewDimension = wgpuViewDimension(binding.textureType);
                             textureEntry.texture.multisampled  = false;
                             entries.push_back(textureEntry);
 

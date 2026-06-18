@@ -170,6 +170,7 @@ namespace vultra
             WGPUDevice   m_Device {nullptr};
             WGPUQueue    m_Queue {nullptr};
             bool         m_SupportsTextureCompressionBC {false};
+            bool         m_SupportsTextureBindingArray {false}; // wgpu-native bindless (binding_array)
             bool         m_SupportsTimestampQuery {false};
             bool         m_SupportsScopeTimestampQuery {false};
             bool         m_SupportsTimestampQueryInsideEncoders {false};

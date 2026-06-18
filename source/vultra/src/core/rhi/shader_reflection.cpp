@@ -89,7 +89,8 @@ namespace vultra
                     out.access = d.access;
                     out.count  = d.count;
                 }
-                out.access = d.access;
+                out.access      = d.access;
+                out.textureType = d.textureType;
                 out.stageFlags |= toStages(d.stageFlags);
 
                 if (d.runtimeSized)

@@ -34,6 +34,8 @@ namespace vultra
             uint32_t                    count {1};
             ShaderStages                stageFlags {ShaderStages::eNone};
             uint32_t                    flags {0};
+            // Texture view dimension for image bindings (WebGPU bind-group layout). eUnknown -> 2D.
+            vshadersystem::TextureType  textureType {vshadersystem::TextureType::eUnknown};
         };
 
         struct PushConstantRange
