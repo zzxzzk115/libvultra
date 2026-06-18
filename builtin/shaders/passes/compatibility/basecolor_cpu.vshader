@@ -77,8 +77,12 @@ layout(set = 3, binding = 4) uniform sampler2D u_CompatBaseColorTexture;
 
 void main()
 {
-    FragColor = u_Draw.baseColorFactor;
+    vec4 color = u_Draw.baseColorFactor;
 #if VTX_HAS_UV0
-    FragColor *= texture(u_CompatBaseColorTexture, v_TexCoord0);
+    color *= texture(u_CompatBaseColorTexture, v_TexCoord0);
 #endif
+    // Alpha masking: discard fully cut-out texels (alphaMode 1 == MASK), matching the deferred path.
+    if (u_Draw.alphaMode == 1u && color.a < u_Draw.alphaCutoff)
+        discard;
+    FragColor = color;
 }

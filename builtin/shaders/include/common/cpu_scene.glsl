@@ -29,6 +29,10 @@ layout(set = 1, binding = 0) uniform DrawParams
     uint materialIndex;
     uint skinMatrixOffset; // 0xFFFFFFFF when the instance is not skinned
     uint skinMatrixCount;
+    uint alphaMode;        // 0 = opaque, 1 = mask
+    float alphaCutoff;
+    uint padding0;
+    uint padding1;
     uint padding2;
 } u_Draw;
 

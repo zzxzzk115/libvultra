@@ -16,13 +16,108 @@
 #include <tinyexr.h>
 
 #include <algorithm>
+#include <cstring>
 #include <magic_enum.hpp>
 #include <utility>
+#include <vector>
 
 namespace vultra::resource
 {
     namespace
     {
+        // WebGPU has no runtime GPU mipmap generation (no blit/generateMipmaps), so to get a mip chain
+        // on that backend we downsample on the CPU at load time and upload every level. Both the LDR
+        // (RGBA8) and HDR (RGBA32F) paths are 4-channel; T is the per-component type.
+        template<typename T>
+        void boxDownsample(const T* src, uint32_t sw, uint32_t sh, T* dst, uint32_t dw, uint32_t dh)
+        {
+            for (uint32_t y = 0; y < dh; ++y)
+            {
+                const uint32_t y0 = std::min(y * 2u, sh - 1u);
+                const uint32_t y1 = std::min(y * 2u + 1u, sh - 1u);
+                for (uint32_t x = 0; x < dw; ++x)
+                {
+                    const uint32_t x0 = std::min(x * 2u, sw - 1u);
+                    const uint32_t x1 = std::min(x * 2u + 1u, sw - 1u);
+                    for (uint32_t c = 0; c < 4u; ++c)
+                    {
+                        const double sum = double(src[(y0 * sw + x0) * 4u + c]) +
+                                           double(src[(y0 * sw + x1) * 4u + c]) +
+                                           double(src[(y1 * sw + x0) * 4u + c]) +
+                                           double(src[(y1 * sw + x1) * 4u + c]);
+                        dst[(y * dw + x) * 4u + c] = static_cast<T>(sum * 0.25);
+                    }
+                }
+            }
+        }
+
+        // Packs the base level plus CPU-generated mips into one buffer and uploads every level. Used on
+        // WebGPU in place of the GPU generateMipmaps() the other backends use.
+        void uploadCpuMipChain(rhi::RenderDevice& rd,
+                               rhi::Texture&      tex,
+                               const void*        basePixels,
+                               rhi::Extent2D      extent,
+                               bool               isFloat,
+                               uint32_t           mipLevels)
+        {
+            const uint32_t bytesPerPixel = isFloat ? 16u : 4u; // RGBA32F or RGBA8
+
+            size_t total = 0;
+            for (uint32_t m = 0, w = extent.width, h = extent.height; m < mipLevels; ++m)
+            {
+                total += static_cast<size_t>(w) * h * bytesPerPixel;
+                w = std::max(1u, w >> 1);
+                h = std::max(1u, h >> 1);
+            }
+
+            std::vector<std::byte>            data(total);
+            std::vector<rhi::BufferImageCopy> regions;
+            regions.reserve(mipLevels);
+
+            uint32_t w = extent.width, h = extent.height;
+            std::memcpy(data.data(), basePixels, static_cast<size_t>(w) * h * bytesPerPixel);
+            regions.push_back(rhi::BufferImageCopy {
+                .aspectMask = rhi::ImageAspectFlags::eColor,
+                .mipLevel   = 0u,
+                .imageExtentWidth  = w,
+                .imageExtentHeight = h,
+                .imageExtentDepth  = 1u,
+            });
+
+            size_t   prevOff = 0, off = static_cast<size_t>(w) * h * bytesPerPixel;
+            uint32_t pw = w, ph = h;
+            for (uint32_t m = 1; m < mipLevels; ++m)
+            {
+                w = std::max(1u, pw >> 1);
+                h = std::max(1u, ph >> 1);
+                if (isFloat)
+                    boxDownsample<float>(reinterpret_cast<const float*>(data.data() + prevOff),
+                                         pw, ph,
+                                         reinterpret_cast<float*>(data.data() + off),
+                                         w, h);
+                else
+                    boxDownsample<uint8_t>(reinterpret_cast<const uint8_t*>(data.data() + prevOff),
+                                           pw, ph,
+                                           reinterpret_cast<uint8_t*>(data.data() + off),
+                                           w, h);
+                regions.push_back(rhi::BufferImageCopy {
+                    .bufferOffset      = off,
+                    .aspectMask        = rhi::ImageAspectFlags::eColor,
+                    .mipLevel          = m,
+                    .imageExtentWidth  = w,
+                    .imageExtentHeight = h,
+                    .imageExtentDepth  = 1u,
+                });
+                prevOff = off;
+                off += static_cast<size_t>(w) * h * bytesPerPixel;
+                pw = w;
+                ph = h;
+            }
+
+            auto staging = rd.createStagingBuffer(data.size(), data.data());
+            rhi::upload(rd, staging, regions, tex, false);
+        }
+
         // ============================================================
         // DDS / KTX
         // ============================================================
@@ -237,12 +332,8 @@ namespace vultra::resource
 
             const rhi::Extent2D extent {static_cast<uint32_t>(w), static_cast<uint32_t>(h)};
 
-            auto mip = rhi::calcMipLevels(extent);
-            if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
-            {
-                // WebGPU runtime mip generation is not implemented yet.
-                mip = 1u;
-            }
+            const bool webgpu = rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
+            const auto mip    = rhi::calcMipLevels(extent);
 
             auto format = hdr ? rhi::PixelFormat::eRGBA32F : rhi::PixelFormat::eRGBA8_UNorm;
 
@@ -250,19 +341,25 @@ namespace vultra::resource
                            .setExtent(extent)
                            .setPixelFormat(format)
                            .setNumMipLevels(mip)
+                           // Vulkan blits to generate mips (needs TransferSrc); WebGPU uploads CPU-made mips.
                            .setUsageFlags(rhi::ImageUsage::eTransferDst | rhi::ImageUsage::eSampled |
-                                          (mip > 1 ? rhi::ImageUsage::eTransferSrc : rhi::ImageUsage {}))
+                                          (mip > 1 && !webgpu ? rhi::ImageUsage::eTransferSrc : rhi::ImageUsage {}))
                            .setupOptimalSampler(true)
                            .build(rd);
 
             if (!tex)
                 return vbase::Result<rhi::Texture, std::string>::err("Texture create failed");
 
-            size_t size = w * h * 4 * (hdr ? sizeof(float) : 1);
-
-            auto staging = rd.createStagingBuffer(size, pixels);
-
-            rhi::upload(rd, staging, {}, tex, mip > 1);
+            if (webgpu && mip > 1)
+            {
+                uploadCpuMipChain(rd, tex, pixels, extent, hdr, mip);
+            }
+            else
+            {
+                size_t size    = w * h * 4 * (hdr ? sizeof(float) : 1);
+                auto   staging = rd.createStagingBuffer(size, pixels);
+                rhi::upload(rd, staging, {}, tex, mip > 1);
+            }
 
             return vbase::Result<rhi::Texture, std::string>::ok(std::move(tex));
         }
@@ -288,24 +385,28 @@ namespace vultra::resource
 
             const rhi::Extent2D extent {static_cast<uint32_t>(w), static_cast<uint32_t>(h)};
 
-            auto mip = rhi::calcMipLevels(extent);
-            if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
-            {
-                // WebGPU runtime mip generation is not implemented yet.
-                mip = 1u;
-            }
+            const bool webgpu = rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
+            const auto mip    = rhi::calcMipLevels(extent);
 
             auto tex = rhi::Texture::Builder {}
                            .setExtent(extent)
                            .setPixelFormat(rhi::PixelFormat::eRGBA32F)
                            .setNumMipLevels(mip)
-                           .setUsageFlags(rhi::ImageUsage::eTransferDst | rhi::ImageUsage::eSampled)
+                           // Vulkan blits to generate mips (needs TransferSrc); WebGPU uploads CPU-made mips.
+                           .setUsageFlags(rhi::ImageUsage::eTransferDst | rhi::ImageUsage::eSampled |
+                                          (mip > 1 && !webgpu ? rhi::ImageUsage::eTransferSrc : rhi::ImageUsage {}))
                            .setupOptimalSampler(true)
                            .build(rd);
 
-            auto staging = rd.createStagingBuffer(w * h * 4 * sizeof(float), pixels);
-
-            rhi::upload(rd, staging, {}, tex, mip > 1);
+            if (webgpu && mip > 1)
+            {
+                uploadCpuMipChain(rd, tex, pixels, extent, true, mip);
+            }
+            else
+            {
+                auto staging = rd.createStagingBuffer(w * h * 4 * sizeof(float), pixels);
+                rhi::upload(rd, staging, {}, tex, mip > 1);
+            }
 
             return vbase::Result<rhi::Texture, std::string>::ok(std::move(tex));
         }

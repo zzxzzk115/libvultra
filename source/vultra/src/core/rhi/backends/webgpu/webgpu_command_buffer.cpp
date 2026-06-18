@@ -1167,8 +1167,12 @@ namespace vultra
                 dstCopy.origin.z = region.baseArrayLayer + static_cast<uint32_t>(std::max(0, region.imageOffsetZ));
                 dstCopy.aspect   = webgpu::toWgpuTextureAspect(region.aspectMask);
 
+                // Apply the buffer offset to the data pointer (not srcLayout.offset): wgpuQueueWriteTexture
+                // validates srcLayout.offset + copySize <= dataSize, and dataSize below is only this
+                // region's size, so a non-zero layout offset (e.g. uploading mip levels packed back-to-back)
+                // would fail validation.
                 WGPUTexelCopyBufferLayout srcLayout {};
-                srcLayout.offset       = region.bufferOffset;
+                srcLayout.offset       = 0;
                 srcLayout.bytesPerRow  = bytesPerRow;
                 srcLayout.rowsPerImage = rowsPerImage;
 
@@ -1177,7 +1181,7 @@ namespace vultra
                 writeExtent.height             = height;
                 writeExtent.depthOrArrayLayers = depthOrLayers;
 
-                wgpuQueueWriteTexture(m_Queue, &dstCopy, srcData, dataSize, &srcLayout, &writeExtent);
+                wgpuQueueWriteTexture(m_Queue, &dstCopy, srcData + region.bufferOffset, dataSize, &srcLayout, &writeExtent);
             }
 
             return *this;

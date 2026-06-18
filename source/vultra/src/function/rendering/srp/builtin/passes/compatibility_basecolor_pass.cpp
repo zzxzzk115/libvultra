@@ -33,6 +33,10 @@ namespace vultra
             uint32_t  materialIndex {0};
             uint32_t  skinMatrixOffset {0xFFFFFFFFu}; // 0xFFFFFFFF == not skinned
             uint32_t  skinMatrixCount {0};
+            uint32_t  alphaMode {0}; // 0 = opaque, 1 = mask (matches the deferred GBuffer convention)
+            float     alphaCutoff {0.5f};
+            uint32_t  padding0 {0};
+            uint32_t  padding1 {0};
             uint32_t  padding2 {0};
         };
 
@@ -104,6 +108,44 @@ namespace vultra
                 default:
                     return glm::vec4(1.0f);
             }
+        }
+
+        // Per-instance material overrides remap a mesh-local material slot to a different material.
+        // Same logic the deferred DirectGBuffer path uses, so the compat (WebGPU) path honours them too.
+        [[nodiscard]] uint32_t remapMaterialIndex(const RenderInstance&     instance,
+                                                  const resource::GpuMesh&  mesh,
+                                                  const uint32_t            materialIndex)
+        {
+            if (materialIndex < mesh.materialOffset)
+                return materialIndex;
+            const uint32_t localSlot = materialIndex - mesh.materialOffset;
+            if (localSlot >= mesh.materialCount)
+                return materialIndex;
+            for (const auto& override : instance.materialOverrides)
+                if (override.slot == localSlot)
+                    return override.materialIndex;
+            return materialIndex;
+        }
+
+        struct MaterialAlpha
+        {
+            uint32_t mode {0}; // 0 = opaque, 1 = mask
+            float    cutoff {0.5f};
+        };
+
+        // Only metallic-roughness carries an alpha mode/cutoff in the cooked material params; the other
+        // models are treated as opaque (no alpha test on the compat path).
+        [[nodiscard]] MaterialAlpha resolveMaterialAlpha(const resource::GpuResourcePool& resources,
+                                                         const uint32_t                   materialIndex)
+        {
+            if (materialIndex >= resources.materials.size())
+                return {};
+            const auto& material = resources.materials[materialIndex];
+            if (material.model != resource::GpuMaterialModel::ePBRMetallicRoughness)
+                return {};
+            const auto params = loadMaterialParams<MaterialParamsPBRMR>(resources.materialParams,
+                                                                        material.blockOffsetBytes);
+            return {params.alphaMode, params.alphaCutoff};
         }
 
         [[nodiscard]] constexpr uint64_t alignUp(const uint64_t value, const uint64_t alignment)
@@ -251,13 +293,19 @@ namespace vultra
 
                     const auto drawSubMesh = [&](const resource::GpuSubMesh& subMesh) {
                         const uint64_t   drawParamOffset = drawParamIndex * drawParamStride;
+                        // Honour per-instance material overrides (same remap as the deferred path).
+                        const uint32_t   materialIndex =
+                            remapMaterialIndex(instance, mesh, subMesh.materialIndex);
                         CompatDrawParams drawParams {};
                         drawParams.model           = instance.worldMatrix;
                         drawParams.baseColorFactor =
-                            resolveMaterialBaseColorFactor(*gpuSceneDatabase->resources, subMesh.materialIndex);
+                            resolveMaterialBaseColorFactor(*gpuSceneDatabase->resources, materialIndex);
                         if (instance.hasBaseColorOverride)
                             drawParams.baseColorFactor = instance.baseColorOverride;
-                        drawParams.materialIndex = subMesh.materialIndex;
+                        drawParams.materialIndex = materialIndex;
+                        const auto alpha         = resolveMaterialAlpha(*gpuSceneDatabase->resources, materialIndex);
+                        drawParams.alphaMode     = alpha.mode;
+                        drawParams.alphaCutoff   = alpha.cutoff;
                         if (layout.hasSkinning())
                         {
                             drawParams.skinMatrixOffset = instance.skinMatrixOffset;
@@ -269,7 +317,7 @@ namespace vultra
                                       &drawParams);
 
                         const uint32_t textureIndex =
-                            resolveMaterialTextureIndex(*gpuSceneDatabase->resources, subMesh.materialIndex);
+                            resolveMaterialTextureIndex(*gpuSceneDatabase->resources, materialIndex);
                         const auto* boundTexture =
                             textureIndex < materialTextures.size() && materialTextures[textureIndex] ?
                                 materialTextures[textureIndex] :
