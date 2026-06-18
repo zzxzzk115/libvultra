@@ -2062,6 +2062,9 @@ namespace vultra
 
                 for (const auto& [slot, ref] : pass.inputs)
                 {
+                    // $enable is the reserved per-pass value gate (vrendergraph), valid on any pass.
+                    if (slot == vrendergraph::kEnableInputSlot)
+                        continue;
                     if (!validInputs.contains(slot))
                     {
                         error = "pass '" + pass.id + "' has unknown input slot '" + slot + "'";

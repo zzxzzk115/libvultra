@@ -191,7 +191,8 @@
       "enabled": true,
       "id": "MotionVectors",
       "inputs": {
-        "depth": "DirectGBuffer.depth"
+        "depth": "DirectGBuffer.depth",
+        "$enable": "useDeferred.value"
       },
       "params": {
         "enabled": true
