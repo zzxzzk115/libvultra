@@ -31,6 +31,14 @@ namespace vultra
                                              uint32_t              vertexStride,
                                              uint32_t              viewMask) const;
 
+        // Background skybox drawn first inside this pass (forward path has no separate skybox pass).
+        rhi::GraphicsPipeline        createSkyboxPipeline(rhi::PixelFormat colorFormat,
+                                                          bool             webgpu,
+                                                          uint32_t         viewMask) const;
+        const rhi::GraphicsPipeline* getSkyboxPipeline(rhi::PixelFormat colorFormat,
+                                                       bool             webgpu,
+                                                       uint32_t         viewMask);
+
         rhi::UniformBuffer& retainDrawParamBuffer(uint64_t frameIndex, rhi::UniformBuffer buffer);
 
         struct RetainedDrawParamBuffer
@@ -40,5 +48,8 @@ namespace vultra
         };
 
         std::vector<RetainedDrawParamBuffer> m_DrawParamBuffers;
+
+        std::unique_ptr<rhi::GraphicsPipeline> m_SkyboxPipeline;
+        std::size_t                            m_SkyboxPipelineKey {0};
     };
 } // namespace vultra

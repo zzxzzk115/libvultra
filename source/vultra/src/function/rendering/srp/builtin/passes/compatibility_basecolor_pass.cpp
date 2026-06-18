@@ -253,6 +253,35 @@ namespace vultra
 
                 rc.cb.beginRendering(framebufferInfo);
 
+                // Background skybox, drawn first: at this point the descriptor set is just the camera
+                // (set 0, auto-bound from the read), so adding the cubemap (set 3) exactly matches the
+                // skybox pipeline's {0,3} layout - no leftover geometry sets linger on the WebGPU encoder.
+                // It writes no depth, so the geometry below overwrites it wherever something is drawn.
+                {
+                    const auto* camera        = rc.view().camera;
+                    auto*       skyboxCubemap  = renderWorld->environment.active ? renderWorld->environment.skybox
+                                                                                : nullptr;
+                    const bool  wantSkybox    = skyboxCubemap != nullptr && (camera == nullptr || !camera->suppressSkybox);
+                    if (wantSkybox)
+                    {
+                        if (const auto* skyboxPipeline = getSkyboxPipeline(colorFormat, webgpu, framebufferInfo.viewMask))
+                        {
+                            rhi::prepareForReading(rc.cb, *skyboxCubemap);
+                            rc.cb.bindPipeline(*skyboxPipeline);
+                            rc.resourceSet[3] = {
+                                {0,
+                                 rhi::bindings::CombinedImageSampler {
+                                     .texture     = skyboxCubemap,
+                                     .imageAspect = rhi::ImageAspect::eColor,
+                                 }},
+                            };
+                            rc.bindDescriptorSets(*skyboxPipeline);
+                            rc.cb.drawFullScreenTriangle();
+                            rc.resourceSet.erase(3); // geometry below rebinds set 3 (its 2D base-color texture)
+                        }
+                    }
+                }
+
                 uint64_t drawParamIndex = 0u;
                 // Two phases: all non-skinned meshes first (skinPhase 0), then skinned (skinPhase 1).
                 // This guarantees no skinned->non-skinned pipeline switch within the pass, so the skin
@@ -498,5 +527,75 @@ namespace vultra
             })
             .setBlending(0, {.enabled = false})
             .build(getRenderDevice());
+    }
+
+    rhi::GraphicsPipeline CompatibilityBaseColorPass::createSkyboxPipeline(const rhi::PixelFormat colorFormat,
+                                                                          const bool             webgpu,
+                                                                          const uint32_t         viewMask) const
+    {
+        auto vertexShader   = loadCompatibilityShader("skybox", vshadersystem::ShaderStage::eVert);
+        auto fragmentShader = loadCompatibilityShader("skybox", vshadersystem::ShaderStage::eFrag);
+        if (!vertexShader || !fragmentShader)
+        {
+            return {};
+        }
+
+        // Fullscreen triangle (no vertex input). Depth-tested against the far plane but never written, so
+        // it only fills background pixels; geometry drawn afterwards in this pass overwrites it.
+        if (webgpu)
+        {
+            return rhi::GraphicsPipeline::Builder {}
+                .setColorFormats({colorFormat})
+                .setDepthFormat(rhi::PixelFormat::eDepth32F)
+                .setViewMask(viewMask)
+                .addShader(rhi::ShaderType::eVertex,
+                           {.code = vertexShader->wgsl, .reflection = vertexShader->reflection})
+                .addShader(rhi::ShaderType::eFragment,
+                           {.code = fragmentShader->wgsl, .reflection = fragmentShader->reflection})
+                .setDepthStencil({
+                    .depthTest      = true,
+                    .depthWrite     = false,
+                    .depthCompareOp = rhi::CompareOp::eLessOrEqual,
+                })
+                .setRasterizer({
+                    .polygonMode = rhi::PolygonMode::eFill,
+                    .cullMode    = rhi::CullMode::eNone,
+                })
+                .setBlending(0, {.enabled = false})
+                .build(getRenderDevice());
+        }
+
+        return rhi::GraphicsPipeline::Builder {}
+            .setColorFormats({colorFormat})
+            .setDepthFormat(rhi::PixelFormat::eDepth32F)
+            .setViewMask(viewMask)
+            .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
+            .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
+            .setDepthStencil({
+                .depthTest      = true,
+                .depthWrite     = false,
+                .depthCompareOp = rhi::CompareOp::eLessOrEqual,
+            })
+            .setRasterizer({
+                .polygonMode = rhi::PolygonMode::eFill,
+                .cullMode    = rhi::CullMode::eNone,
+            })
+            .setBlending(0, {.enabled = false})
+            .build(getRenderDevice());
+    }
+
+    const rhi::GraphicsPipeline* CompatibilityBaseColorPass::getSkyboxPipeline(const rhi::PixelFormat colorFormat,
+                                                                              const bool             webgpu,
+                                                                              const uint32_t         viewMask)
+    {
+        std::size_t key = 0;
+        hashCombine(key, static_cast<uint32_t>(colorFormat), webgpu, viewMask);
+        if (!m_SkyboxPipeline || key != m_SkyboxPipelineKey)
+        {
+            auto pipeline       = createSkyboxPipeline(colorFormat, webgpu, viewMask);
+            m_SkyboxPipeline    = pipeline ? std::make_unique<rhi::GraphicsPipeline>(std::move(pipeline)) : nullptr;
+            m_SkyboxPipelineKey = key;
+        }
+        return m_SkyboxPipeline.get();
     }
 } // namespace vultra
