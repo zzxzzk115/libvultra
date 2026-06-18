@@ -505,7 +505,12 @@
   "addMenu": {
     "projectPass": "Project Pass",
     "pluginPass": "Plugin Pass",
-    "builtinPass": "Builtin Pass"
+    "builtinPass": "Builtin Pass",
+    "logic": "Logic"
+  },
+  "logic": {
+    "default": "default",
+    "key": "Value"
   },
   "menu": {
     "editInternals": "Edit Internals",

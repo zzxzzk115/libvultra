@@ -668,7 +668,12 @@
     "addMenu": {
       "projectPass": "プロジェクトパス",
       "pluginPass": "プラグインパス",
-      "builtinPass": "組み込みパス"
+      "builtinPass": "組み込みパス",
+      "logic": "ロジック"
+    },
+    "logic": {
+      "default": "デフォルト",
+      "key": "値"
     },
     "menu": {
       "editInternals": "内部を編集",

@@ -9,7 +9,9 @@
 #include <vrendergraph/vrendergraph.hpp>
 
 #include <memory>
+#include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -19,6 +21,12 @@ namespace vultra
     class BuiltinPassHost;
 
     void registerBuiltinRenderGraphPasses(vrendergraph::RenderGraphRegistry& registry);
+
+    // The predicate keys a render-graph $value node can resolve (device / platform / backend / feature
+    // tier / XR). The editor offers these in the $value node's key picker; the runtime resolver in
+    // declarative_renderer.cpp (renderGraphConditionTokenMatches) evaluates them per frame. Keep the
+    // two in sync - this list is the authoring-facing vocabulary.
+    [[nodiscard]] std::span<const std::string_view> renderGraphValueKeys();
 
     class DeclarativeRenderer final : public Renderer
     {

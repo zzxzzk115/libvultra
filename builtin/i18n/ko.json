@@ -668,7 +668,12 @@
     "addMenu": {
       "projectPass": "프로젝트 패스",
       "pluginPass": "플러그인 패스",
-      "builtinPass": "내장 패스"
+      "builtinPass": "내장 패스",
+      "logic": "로직"
+    },
+    "logic": {
+      "default": "기본값",
+      "key": "값"
     },
     "menu": {
       "editInternals": "내부 편집",

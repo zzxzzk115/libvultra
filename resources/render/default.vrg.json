@@ -2,38 +2,177 @@
   "meta": {
     "editor": {
       "nodes": {
-        "Bloom": { "pos": [2523.0, -442.0] },
-        "DebugDraw": { "pos": [4569.0, 618.0] },
-        "DeferredLighting": { "pos": [1134.0, -94.0] },
-        "DirectDepthPre": { "pos": [-30.0, 80.0] },
-        "DirectGBuffer": { "pos": [260.0, 80.0] },
-        "MotionVectors": { "pos": [538.0, 89.0] },
-        "FinalComposition": { "pos": [5321.0, 551.0] },
-        "Fxaa": { "pos": [3873.0, 149.0] },
-        "GeneralGaussianSplatComposite": { "pos": [1520.0, 315.0] },
-        "Invert": { "pos": [3283.0, -110.0] },
-        "ParticleRender": { "pos": [1803.0, -23.0] },
-        "Pixelate": { "pos": [2935.0, -316.0] },
-        "SelectionOutline": { "pos": [4191.0, 191.0] },
-        "ShadowMap": { "pos": [559.0, 366.0] },
-        "Ssao": { "pos": [708.0, -251.0] },
-        "Ssr": { "pos": [1925.0, 433.0] },
-        "SsrComposite": { "pos": [2219.0, -99.0] },
-        "ToneMapping": { "pos": [3584.0, 33.0] },
-        "CompatibilityBaseColor": { "pos": [260.0, 980.0] },
-        "CompatGaussianSplatComposite": { "pos": [620.0, 980.0] },
-        "feat_bindless": { "pos": [4180.0, 900.0] },
-        "plat_desktop": { "pos": [4180.0, 1000.0] },
-        "useDeferred": { "pos": [4440.0, 950.0] },
-        "sceneColorSelect": { "pos": [4760.0, 820.0] },
-        "UiOverlay": { "pos": [4907.0, 572.0] }
+        "Bloom": {
+          "pos": [
+            2523.0,
+            -442.0
+          ]
+        },
+        "CompatGaussianSplatComposite": {
+          "pos": [
+            4364.0,
+            1102.0
+          ]
+        },
+        "CompatibilityBaseColor": {
+          "pos": [
+            3694.8154296875,
+            1044.212646484375
+          ]
+        },
+        "DebugDraw": {
+          "pos": [
+            4602.0,
+            602.0
+          ]
+        },
+        "DeferredLighting": {
+          "pos": [
+            1134.0,
+            -94.0
+          ]
+        },
+        "DirectDepthPre": {
+          "pos": [
+            -14.0,
+            363.0
+          ]
+        },
+        "DirectGBuffer": {
+          "pos": [
+            260.0,
+            80.0
+          ]
+        },
+        "FinalComposition": {
+          "pos": [
+            5488.0,
+            272.0
+          ]
+        },
+        "Fxaa": {
+          "pos": [
+            3873.0,
+            149.0
+          ]
+        },
+        "GeneralGaussianSplatComposite": {
+          "pos": [
+            1520.0,
+            315.0
+          ]
+        },
+        "Invert": {
+          "pos": [
+            3283.0,
+            -110.0
+          ]
+        },
+        "MotionVectors": {
+          "pos": [
+            1289.0,
+            -369.0
+          ]
+        },
+        "ParticleRender": {
+          "pos": [
+            1803.0,
+            -23.0
+          ]
+        },
+        "Pixelate": {
+          "pos": [
+            2935.0,
+            -316.0
+          ]
+        },
+        "SelectionOutline": {
+          "pos": [
+            4191.0,
+            191.0
+          ]
+        },
+        "ShadowMap": {
+          "pos": [
+            559.0,
+            366.0
+          ]
+        },
+        "Ssao": {
+          "pos": [
+            708.0,
+            -251.0
+          ]
+        },
+        "Ssr": {
+          "pos": [
+            1925.0,
+            433.0
+          ]
+        },
+        "SsrComposite": {
+          "pos": [
+            2219.0,
+            -99.0
+          ]
+        },
+        "ToneMapping": {
+          "pos": [
+            3584.0,
+            33.0
+          ]
+        },
+        "UiOverlay": {
+          "pos": [
+            5080.0,
+            247.0
+          ]
+        },
+        "feat_bindless": {
+          "pos": [
+            4039.0,
+            696.0
+          ]
+        },
+        "plat_desktop": {
+          "pos": [
+            4048.0,
+            899.0
+          ]
+        },
+        "resource:backbuffer": {
+          "pos": [
+            20094.9140625,
+            null
+          ]
+        },
+        "resource:sceneColor": {
+          "pos": [
+            4759.0,
+            200.0
+          ]
+        },
+        "sceneColorSelect": {
+          "pos": [
+            4869.0,
+            906.0
+          ]
+        },
+        "useDeferred": {
+          "pos": [
+            4461.0,
+            885.0
+          ]
+        },
+        "value": {
+          "pos": [
+            4063.0,
+            1009.0
+          ]
+        }
       }
     }
   },
-  "resources": [
-    { "name": "backbuffer" },
-    { "name": "sceneColor" }
-  ],
   "passes": [
     {
       "enabled": true,
@@ -283,42 +422,48 @@
     {
       "enabled": true,
       "id": "feat_bindless",
-      "type": "$value",
-      "params": { "key": "feature_bindless", "default": false }
+      "params": {
+        "default": false,
+        "key": "feature_bindless"
+      },
+      "type": "$value"
     },
     {
       "enabled": true,
       "id": "plat_desktop",
-      "type": "$value",
-      "params": { "key": "platform_desktop", "default": false }
+      "params": {
+        "default": false,
+        "key": "platform_desktop"
+      },
+      "type": "$value"
     },
     {
       "enabled": true,
       "id": "useDeferred",
-      "type": "$and",
       "inputs": {
         "a": "feat_bindless.value",
         "b": "plat_desktop.value"
-      }
+      },
+      "type": "$and"
     },
     {
       "enabled": true,
       "id": "sceneColorSelect",
-      "type": "$select",
       "inputs": {
         "selector": "useDeferred.value",
-        "whenTrue": "DebugDraw.color",
-        "whenFalse": "CompatGaussianSplatComposite.color"
+        "whenFalse": "CompatGaussianSplatComposite.color",
+        "whenTrue": "DebugDraw.color"
       },
       "outputs": {
-        "out": "sceneColor"
-      }
+        "out": "sceneColorSelect.out"
+      },
+      "type": "$select"
     },
     {
       "enabled": true,
       "id": "UiOverlay",
       "inputs": {
-        "source": "sceneColor"
+        "source": "sceneColorSelect.out"
       },
       "params": {
         "enabled": true
@@ -337,5 +482,11 @@
       "type": "FinalComposition"
     }
   ],
+  "resources": {
+    "backbuffer": {
+      "imported": true,
+      "name": "backbuffer"
+    }
+  },
   "version": 4
 }

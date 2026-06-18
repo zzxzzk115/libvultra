@@ -2087,6 +2087,11 @@ namespace vultra
                         continue;
                     }
 
+                    // Logic-node sources ($value/$select/...) synthesize their outputs; they are not
+                    // registry passes, so skip the registry output-slot check for them.
+                    if (vrendergraph::isLogicNodeType(srcPass->second->type))
+                        continue;
+
                     const auto& srcDef = m_Registry.get(srcPass->second->type);
                     if (std::find(srcDef.outputs.begin(), srcDef.outputs.end(), parsed->slot) == srcDef.outputs.end())
                     {
@@ -2689,6 +2694,33 @@ namespace vultra
             outPass.reflectCompute  = getString(st, "compute");
         }
         return true;
+    }
+
+    // Authoring-facing vocabulary for $value nodes. MUST stay in sync with the runtime evaluator
+    // renderGraphConditionTokenMatches() above (which maps each key to a device/view capability).
+    std::span<const std::string_view> renderGraphValueKeys()
+    {
+        static constexpr std::string_view kKeys[] = {
+            "feature_bindless",
+            "platform_desktop",
+            "platform_web",
+            "platform_android",
+            "backend_vulkan",
+            "backend_webgpu",
+            "tier_highend",
+            "tier_compat",
+            "feature_raytracing",
+            "feature_rayquery",
+            "feature_raytracing_pipeline",
+            "feature_meshshader",
+            "feature_xr",
+            "xr",
+            "mono",
+            "xr_eye_targets",
+            "always",
+            "never",
+        };
+        return kKeys;
     }
 
 } // namespace vultra

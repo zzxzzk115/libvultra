@@ -505,7 +505,12 @@
   "addMenu": {
     "projectPass": "项目通道",
     "pluginPass": "插件通道",
-    "builtinPass": "内置通道"
+    "builtinPass": "内置通道",
+    "logic": "逻辑"
+  },
+  "logic": {
+    "default": "默认",
+    "key": "值"
   },
   "menu": {
     "editInternals": "编辑内部",

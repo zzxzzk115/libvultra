@@ -5841,15 +5841,25 @@ namespace vultra_app
 
                     if (kind == vrendergraph::LogicNodeKind::eValue)
                     {
-                        auto&             raw = pass.params.raw();
-                        std::string       key = raw.value("key", std::string {});
-                        std::vector<char> buf(std::max<size_t>(key.size() + 64, 128), '\0');
-                        std::copy(key.begin(), key.end(), buf.begin());
+                        auto&             raw     = pass.params.raw();
+                        const std::string current = raw.value("key", std::string {});
                         ImGui::PushItemWidth(logicWidth);
-                        if (ImGui::InputText("##vkey", buf.data(), buf.size()))
+                        // Engine-registered predicate keys (feature/platform/backend/XR); pick one.
+                        if (ImGui::BeginCombo("##vkey", current.empty() ? "<select>" : current.c_str()))
                         {
-                            raw["key"] = std::string(buf.data());
-                            state.markDirty();
+                            for (const auto keyView : vultra::renderGraphValueKeys())
+                            {
+                                const std::string key {keyView};
+                                const bool        selected = current == key;
+                                if (ImGui::Selectable(key.c_str(), selected))
+                                {
+                                    raw["key"] = key;
+                                    state.markDirty();
+                                }
+                                if (selected)
+                                    ImGui::SetItemDefaultFocus();
+                            }
+                            ImGui::EndCombo();
                         }
                         bool defaultVal = raw.value("default", false);
                         if (ImGui::Checkbox(vultra::trId("renderGraph.logic.default", "default"), &defaultVal))
