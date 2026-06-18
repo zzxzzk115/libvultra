@@ -200,8 +200,11 @@ void main()
 #endif
 
     // Alpha masking: discard fully cut-out texels (alphaMode 1 == MASK), matching the deferred path.
-    // Keep discard as the LAST statement: the GLSL->WGSL path lowers it to an early return, and any
-    // instruction after it makes naga reject the module ("instructions after return").
+    // Only on non-WebGPU: the GLSL->WGSL (Tint) path emits `discard;` followed by the function's
+    // trailing `return;`, and naga treats discard as terminating, so it rejects the module
+    // ("instructions after return"). No statement ordering avoids it, so alpha test is Vulkan-only here.
+#if !PLATFORM_WEBGPU
     if (u_Draw.alphaMode == 1u && FragColor.a < u_Draw.alphaCutoff)
         discard;
+#endif
 }
