@@ -82,6 +82,10 @@
         local webgpu_compatibility_shader_patterns = {
             "passes/compatibility/**.vshader",
             "passes/general/**.vshader",
+            -- Deferred shaders for the unified WebGPU path (bindless via naga binding_array). Add the
+            -- web-safe deferred subset here; NOT the BDA/GPU-driven ones (meshlet/visibility_buffer/raytracing).
+            "passes/highend/direct_gbuffer.vert.vshader",
+            "passes/highend/direct_gbuffer.frag.vshader",
         }
 
         ------------------------------------------------
