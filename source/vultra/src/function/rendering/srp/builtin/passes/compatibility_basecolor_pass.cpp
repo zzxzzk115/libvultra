@@ -35,9 +35,24 @@ namespace vultra
             uint32_t  skinMatrixCount {0};
             uint32_t  alphaMode {0}; // 0 = opaque, 1 = mask (matches the deferred GBuffer convention)
             float     alphaCutoff {0.5f};
-            uint32_t  padding0 {0};
-            uint32_t  padding1 {0};
+            float     metallicFactor {1.0f};
+            float     roughnessFactor {1.0f};
             uint32_t  padding2 {0};
+        };
+
+        // CPU mirror of the forward Lighting UBO (set 0 b1) consumed by basecolor_cpu. std140-compatible.
+        struct alignas(16) CompatLightGpu
+        {
+            glm::vec4 positionRange {0.0f};  // xyz position, w range
+            glm::vec4 directionKind {0.0f};  // xyz direction, w kind (0 = directional, 1 = point)
+            glm::vec4 colorIntensity {0.0f}; // rgb color, w intensity
+        };
+        constexpr uint32_t kCompatMaxLights = 16u;
+        struct alignas(16) CompatLightingBlock
+        {
+            glm::vec4      ambient {0.0f}; // rgb color, w intensity
+            glm::uvec4     counts {0u};    // x = active light count
+            CompatLightGpu lights[kCompatMaxLights] {};
         };
 
         // The material parameter buffer is packed once with the canonical byte layouts in
@@ -146,6 +161,27 @@ namespace vultra
             const auto params = loadMaterialParams<MaterialParamsPBRMR>(resources.materialParams,
                                                                         material.blockOffsetBytes);
             return {params.alphaMode, params.alphaCutoff};
+        }
+
+        struct MaterialMetallicRoughness
+        {
+            float metallic {0.0f};
+            float roughness {1.0f};
+        };
+
+        // Metallic-roughness factors for the forward PBR shading; non-MR models fall back to a matte
+        // dielectric (metallic 0, roughness 1) so they still receive lighting.
+        [[nodiscard]] MaterialMetallicRoughness resolveMaterialMetallicRoughness(
+            const resource::GpuResourcePool& resources, const uint32_t materialIndex)
+        {
+            if (materialIndex >= resources.materials.size())
+                return {};
+            const auto& material = resources.materials[materialIndex];
+            if (material.model != resource::GpuMaterialModel::ePBRMetallicRoughness)
+                return {};
+            const auto params = loadMaterialParams<MaterialParamsPBRMR>(resources.materialParams,
+                                                                        material.blockOffsetBytes);
+            return {params.metallicFactor, params.roughnessFactor};
         }
 
         [[nodiscard]] constexpr uint64_t alignUp(const uint64_t value, const uint64_t alignment)
@@ -287,6 +323,39 @@ namespace vultra
                     }
                 }
 
+                // Forward lighting (set 0 b1): scene directional/point lights + ambient, filled once and
+                // reused by every lit (normal-bearing) geometry draw below.
+                CompatLightingBlock lighting {};
+                if (renderWorld->environment.active)
+                {
+                    lighting.ambient = glm::vec4(renderWorld->environment.ambientColor,
+                                                 renderWorld->environment.ambientIntensity);
+                }
+                else
+                {
+                    lighting.ambient = glm::vec4(glm::vec3(1.0f), 0.03f); // tiny default so nothing is pure black
+                }
+                uint32_t lightCount = 0u;
+                for (const auto& light : renderWorld->lights)
+                {
+                    if (lightCount >= kCompatMaxLights)
+                        break;
+                    const bool isPoint = light.kind != RenderLightKind::eDirectional;
+                    const float dirLen = glm::length(light.direction);
+                    auto&       dst    = lighting.lights[lightCount];
+                    dst.positionRange  = glm::vec4(light.position, light.range);
+                    dst.directionKind  = glm::vec4(dirLen > 1e-4f ? light.direction / dirLen : glm::vec3(0, -1, 0),
+                                                  isPoint ? 1.0f : 0.0f);
+                    dst.colorIntensity = glm::vec4(light.color, light.intensity);
+                    ++lightCount;
+                }
+                lighting.counts.x = lightCount;
+
+                auto lightingBuffer = rc.rd.createUniformBuffer(sizeof(CompatLightingBlock),
+                                                                rhi::AllocationHints::eSequentialWrite);
+                rc.rd.uploadS(lightingBuffer, 0, sizeof(CompatLightingBlock), &lighting);
+                auto* const lightingBufferPtr = &retainDrawParamBuffer(rc.frame.frameIndex, std::move(lightingBuffer));
+
                 uint64_t drawParamIndex = 0u;
                 // Two phases: all non-skinned meshes first (skinPhase 0), then skinned (skinPhase 1).
                 // This guarantees no skinned->non-skinned pipeline switch within the pass, so the skin
@@ -318,6 +387,7 @@ namespace vultra
                                     layout.attributeMask,
                                     layout.texCoord0OffsetBytes,
                                     layout.positionOffsetBytes,
+                                    layout.normalOffsetBytes,
                                     layout.jointIndicesOffsetBytes,
                                     layout.jointWeightsOffsetBytes,
                                     mesh.vertexStrideBytes,
@@ -340,6 +410,10 @@ namespace vultra
                         const auto alpha         = resolveMaterialAlpha(*gpuSceneDatabase->resources, materialIndex);
                         drawParams.alphaMode     = alpha.mode;
                         drawParams.alphaCutoff   = alpha.cutoff;
+                        const auto mr            =
+                            resolveMaterialMetallicRoughness(*gpuSceneDatabase->resources, materialIndex);
+                        drawParams.metallicFactor  = mr.metallic;
+                        drawParams.roughnessFactor = mr.roughness;
                         if (layout.hasSkinning())
                         {
                             drawParams.skinMatrixOffset = instance.skinMatrixOffset;
@@ -377,6 +451,22 @@ namespace vultra
                                  .range  = sizeof(CompatDrawParams),
                              }},
                         };
+
+                        // Lighting UBO (set 0 b1) is only declared by the lit (VTX_HAS_NORMAL) frag variant,
+                        // so bind it only for normal-bearing meshes; erase it otherwise so the unlit pipeline
+                        // (set 0 = camera only) isn't handed a binding its layout doesn't have on WebGPU.
+                        if (layout.hasNormal())
+                        {
+                            rc.resourceSet[0][1] = rhi::bindings::UniformBuffer {
+                                .buffer = lightingBufferPtr,
+                                .offset = 0,
+                                .range  = sizeof(CompatLightingBlock),
+                            };
+                        }
+                        else
+                        {
+                            rc.resourceSet[0].erase(1);
+                        }
 
                         // Skinned meshes: bind the read-only skin palette in its own set (set 2 b0).
                         // Always (re)assign the set so a previous skinned draw's binding never leaks
@@ -455,6 +545,7 @@ namespace vultra
                                                                      const uint32_t         vertexAttributeMask,
                                                                      const uint32_t         texCoord0Offset,
                                                                      const uint32_t         positionOffset,
+                                                                     const uint32_t         normalOffset,
                                                                      const uint32_t         jointIndicesOffset,
                                                                      const uint32_t         jointWeightsOffset,
                                                                      const uint32_t         vertexStride,
@@ -466,12 +557,14 @@ namespace vultra
         const resource::GpuVertexLayout layout {
             .attributeMask         = vertexAttributeMask,
             .positionOffsetBytes   = positionOffset,
+            .normalOffsetBytes     = normalOffset,
             .texCoord0OffsetBytes  = texCoord0Offset,
             .jointIndicesOffsetBytes = jointIndicesOffset,
             .jointWeightsOffsetBytes = jointWeightsOffset,
         };
         const auto keywords = rhi::ShaderLibraryRuntime::KeywordValues {
             {"VTX_HAS_UV0", layout.hasTexCoord0() ? 1u : 0u},
+            {"VTX_HAS_NORMAL", layout.hasNormal() ? 1u : 0u},
             {"VTX_HAS_SKIN", layout.hasSkinning() ? 1u : 0u},
         };
 
@@ -494,7 +587,7 @@ namespace vultra
                 .setDepthFormat(rhi::PixelFormat::eDepth32F)
                 .setViewMask(viewMask)
                 .setInputAssembly(
-                    resource::buildInputAssemblyVertexAttributes(layout, false, true, layout.hasSkinning()))
+                    resource::buildInputAssemblyVertexAttributes(layout, layout.hasNormal(), true, false))
                 .setVertexStride(vertexStride)
                 .addShader(rhi::ShaderType::eVertex,
                            {.code = vertexShader->wgsl, .reflection = vertexShader->reflection})
@@ -517,7 +610,7 @@ namespace vultra
             .setColorFormats({colorFormat})
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
             .setViewMask(viewMask)
-            .setInputAssembly(resource::buildInputAssemblyVertexAttributes(layout, false, true, false))
+            .setInputAssembly(resource::buildInputAssemblyVertexAttributes(layout, layout.hasNormal(), true, false))
             .setVertexStride(vertexStride)
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)

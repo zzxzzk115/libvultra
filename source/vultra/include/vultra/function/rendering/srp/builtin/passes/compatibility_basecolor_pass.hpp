@@ -26,6 +26,7 @@ namespace vultra
                                              uint32_t              vertexAttributeMask,
                                              uint32_t              texCoord0Offset,
                                              uint32_t              positionOffset,
+                                             uint32_t              normalOffset,
                                              uint32_t              jointIndicesOffset,
                                              uint32_t              jointWeightsOffset,
                                              uint32_t              vertexStride,

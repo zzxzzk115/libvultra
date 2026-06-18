@@ -31,8 +31,8 @@ layout(set = 1, binding = 0) uniform DrawParams
     uint skinMatrixCount;
     uint alphaMode;        // 0 = opaque, 1 = mask
     float alphaCutoff;
-    uint padding0;
-    uint padding1;
+    float metallicFactor;
+    float roughnessFactor;
     uint padding2;
 } u_Draw;
 
