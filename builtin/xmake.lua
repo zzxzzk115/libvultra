@@ -368,8 +368,8 @@ if is_plat("android") then
     add_requires("vshadersystem v0.6.2", { configs = vshadersystem_configs })
     add_requires("vshadersystem~host v0.6.2", { host = true, kind = "binary", configs = vshadersystem_configs })
 else
-    add_requires("vshadersystem v0.11.2", { configs = vshadersystem_configs })
-    add_requires("vshadersystem~host v0.11.2", { host = true, kind = "binary", configs = vshadersystem_configs })
+    add_requires("vshadersystem v0.11.3", { configs = vshadersystem_configs })
+    add_requires("vshadersystem~host v0.11.3", { host = true, kind = "binary", configs = vshadersystem_configs })
 end
 
 target("vultra_builtin_assets")
