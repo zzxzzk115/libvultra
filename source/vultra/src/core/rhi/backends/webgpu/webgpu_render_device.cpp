@@ -426,6 +426,17 @@ namespace vultra
             m_FeatureReport.apiMinor = 0;
             m_FeatureReport.apiPatch = 0;
 
+            // WebGPU supports bindless via wgpu-native binding arrays (binding_array). Report descriptor
+            // indexing so the unified deferred graph's feature_bindless gate selects the bindless GBuffer
+            // path (the same route as Vulkan), instead of falling back to the forward path.
+            if (m_SupportsTextureBindingArray)
+            {
+                using FlagsUnderlying = std::underlying_type_t<RenderDeviceFeatureReportFlagBits>;
+                m_FeatureReport.flags = static_cast<RenderDeviceFeatureReportFlagBits>(
+                    static_cast<FlagsUnderlying>(m_FeatureReport.flags) |
+                    static_cast<FlagsUnderlying>(RenderDeviceFeatureReportFlagBits::eDescriptorIndexing));
+            }
+
             if (m_SupportsTimestampQuery)
             {
                 constexpr uint32_t kFrameSlotCount = 8u;

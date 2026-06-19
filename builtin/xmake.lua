@@ -61,8 +61,10 @@
         local vshlib_compatibility =
             path.join(lib_root, "builtin_compatibility.vshlib")
 
-        local vshweblib_compatibility =
-            path.join(lib_root, "builtin_compatibility.vshweblib")
+        -- WebGPU now runs the unified DEFERRED path, so the web lib is the highend deferred set (bindless
+        -- via naga binding_array; combined samplers split by the vshadersystem cook).
+        local vshweblib_highend =
+            path.join(lib_root, "builtin_highend.vshweblib")
 
         os.mkdir(lib_root)
 
@@ -79,13 +81,25 @@
             "passes/common/**.vshader",
             "passes/shared/**.vshader",
         }
-        local webgpu_compatibility_shader_patterns = {
-            "passes/compatibility/**.vshader",
+        -- The web-safe DIRECT deferred subset (the graph's typed passes resolve these from the highend lib).
+        -- EXCLUDES BDA/GPU-driven shaders (meshlet*, visibility_buffer, thin_gbuffer, mesh.vert, depth_pre,
+        -- *_cull, build_indirect, drawset_build, hzb_generate, raytracing/**) and the IBL precompute computes
+        -- (cubemap_convert, generate_irradiance_map, prefilter_envmap) which write storage CUBES (unsupported
+        -- in WGSL); IBL bake stays Vulkan-only for now. general/** carries the shared post passes.
+        local webgpu_highend_shader_patterns = {
             "passes/general/**.vshader",
-            -- Deferred shaders for the unified WebGPU path (bindless via naga binding_array). Add the
-            -- web-safe deferred subset here; NOT the BDA/GPU-driven ones (meshlet/visibility_buffer/raytracing).
             "passes/highend/direct_gbuffer.vert.vshader",
             "passes/highend/direct_gbuffer.frag.vshader",
+            "passes/highend/direct_depth_pre.frag.vshader",
+            "passes/highend/deferred_lighting.frag.vshader",
+            "passes/highend/shadow_map.vshader",
+            "passes/highend/ssao.frag.vshader",
+            "passes/highend/ssr.frag.vshader",
+            "passes/highend/skybox.vshader",
+            "passes/highend/selection_outline.frag.vshader",
+            "passes/highend/particle_billboard.vshader",
+            "passes/highend/fullscreen_triangle.vert.vshader",
+            "passes/highend/generate_brdf.comp.vshader",
         }
 
         ------------------------------------------------
@@ -134,8 +148,8 @@
                           collect_input_files(shader_root_common, highend_shader_patterns, keywords_common))
         local rebuild_compatibility =
             needs_rebuild(vshlib_compatibility, collect_input_files(shader_root_common, compatibility_shader_patterns, keywords_common))
-        local rebuild_webgpu_compatibility =
-            needs_rebuild(vshweblib_compatibility, collect_input_files(shader_root_common, webgpu_compatibility_shader_patterns, keywords_common))
+        local rebuild_webgpu_highend =
+            needs_rebuild(vshweblib_highend, collect_input_files(shader_root_common, webgpu_highend_shader_patterns, keywords_common))
 
         local shader_built = 0
         local shader_skipped = 0
@@ -326,22 +340,22 @@
         end
         mark_result("builtin_compatibility.vshlib", rebuild_compatibility)
 
-        if rebuild_webgpu_compatibility then
-            local ok = build_webgpu_library("builtin_compatibility.vshweblib",
+        if rebuild_webgpu_highend then
+            local ok = build_webgpu_library("builtin_highend.vshweblib",
                                             shader_root_common,
-                                            webgpu_compatibility_shader_patterns,
+                                            webgpu_highend_shader_patterns,
                                             keywords_webgpu,
-                                            vshweblib_compatibility)
+                                            vshweblib_highend)
             if not ok then
-                if os.exists(vshweblib_compatibility) then
-                    cprint("${yellow}[WARN]${clear} keep existing builtin_compatibility.vshweblib and continue")
+                if os.exists(vshweblib_highend) then
+                    cprint("${yellow}[WARN]${clear} keep existing builtin_highend.vshweblib and continue")
                 else
-                    cprint("${yellow}[WARN]${clear} builtin_compatibility.vshweblib missing, fallback to builtin_compatibility.vshlib")
-                    os.cp(vshlib_compatibility, vshweblib_compatibility)
+                    cprint("${yellow}[WARN]${clear} builtin_highend.vshweblib missing, fallback to builtin_highend.vshlib")
+                    os.cp(vshlib_highend, vshweblib_highend)
                 end
             end
         end
-        mark_result("builtin_compatibility.vshweblib", rebuild_webgpu_compatibility)
+        mark_result("builtin_highend.vshweblib", rebuild_webgpu_highend)
 
         -- When any shader library was rebuilt, force builtin.vpk to re-cook by removing it: the pack
         -- cook's mtime guard (xmake/builtin_pack_cook.lua) can race the freshly-written .vshlib/

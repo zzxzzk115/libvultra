@@ -31,7 +31,13 @@ USE_MULTIVIEW : bool permute
 #define VULTRA_ACTIVE_CAMERA u_StereoCameraBlock.cameras[vultra_eye_index()]
 #else
 #define VULTRA_GBUFFER_TEXTURE sampler2D
+// WebGPU/WGSL forbids implicit-LOD sampling in non-uniform control flow (loops/branches below). The
+// G-buffer is full-res with no mips, so explicit LOD 0 is identical to the implicit sample on Vulkan.
+#if PLATFORM_WEBGPU
+#define VULTRA_GBUFFER_SAMPLE(tex, uv) textureLod(tex, uv, 0.0)
+#else
 #define VULTRA_GBUFFER_SAMPLE(tex, uv) texture(tex, uv)
+#endif
 
 struct CameraData
 {
@@ -149,7 +155,13 @@ uint decodeMaterialModel(float encoded)
 
 float shadowDepth(vec2 uv)
 {
+    // Called from PCF loops (non-uniform control flow); use explicit LOD for WebGPU. Shadow map is
+    // mip-less so this matches the implicit sample on Vulkan.
+#if PLATFORM_WEBGPU
+    return textureLod(u_ShadowMap, uv, 0.0).r;
+#else
     return texture(u_ShadowMap, uv).r;
+#endif
 }
 
 vec2 atlasShadowUv(uint cascade, vec2 localUv);

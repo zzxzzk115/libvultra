@@ -938,8 +938,10 @@ namespace vultra
         constexpr bool kForceCompatibilityFeature = false;
 #endif
         const bool forceCompatibilityByCli = m_RenderProfile == RenderProfile::eCompatibility;
-        const bool useCompatibilityFeature =
-            kForceCompatibilityFeature || forceCompatibilityByCli || backendApi == rhi::RenderBackendApi::eWebGPU;
+        // WebGPU now runs the unified DEFERRED path (bindless via naga binding_array + cube support), same
+        // route as Vulkan. Only the explicit CLI/Android compat opt-in still selects the forward graph.
+        const bool useCompatibilityFeature = kForceCompatibilityFeature || forceCompatibilityByCli;
+        (void)backendApi;
 
         const char* graphUri = useCompatibilityFeature ? "builtin://render/universal_compat.vrg.json" :
                                                         "builtin://render/universal.vrg.json";

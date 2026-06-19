@@ -62,12 +62,15 @@ namespace vultra
 
         if (useWebGpuLibrary)
         {
-            if (!loadBuiltinShaderLib(m_BuiltinCompatibilityShaderLibrary, "shaders/builtin_compatibility.vshweblib"))
+            // WebGPU runs the unified DEFERRED path, so it loads the highend web lib (deferred passes +
+            // shared general passes). eHighend resolves the deferred shaders; eGeneral/default resolve the
+            // shared post shaders from the same lib.
+            if (!loadBuiltinShaderLib(m_BuiltinHighendShaderLibrary, "shaders/builtin_highend.vshweblib"))
             {
-                VULTRA_CORE_ERROR("[ShaderSystem] Failed to load WebGPU compatibility builtin shader library");
+                VULTRA_CORE_ERROR("[ShaderSystem] Failed to load WebGPU highend builtin shader library");
                 return false;
             }
-            m_DefaultBuiltinShaderLibrary = &m_BuiltinCompatibilityShaderLibrary;
+            m_DefaultBuiltinShaderLibrary = &m_BuiltinHighendShaderLibrary;
         }
         else
         {

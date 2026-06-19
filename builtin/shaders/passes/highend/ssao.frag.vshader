@@ -22,7 +22,13 @@ USE_MULTIVIEW : bool permute
 #define VULTRA_FETCH(tex, pixel, lod) texelFetch(tex, ivec3((pixel), int(gl_ViewIndex)), lod)
 #else
 #define VULTRA_SOURCE_TEXTURE sampler2D
+// WebGPU forbids implicit-LOD sampling in non-uniform control flow (the AO sample loop). Depth/normal are
+// mip-less, so explicit LOD 0 matches the implicit sample on Vulkan.
+#if PLATFORM_WEBGPU
+#define VULTRA_SAMPLE(tex, uv) textureLod(tex, uv, 0.0)
+#else
 #define VULTRA_SAMPLE(tex, uv) texture(tex, uv)
+#endif
 #define VULTRA_FETCH(tex, pixel, lod) texelFetch(tex, pixel, lod)
 #endif
 

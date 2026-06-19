@@ -549,6 +549,12 @@ namespace vultra
         if (!source)
             return false;
 
+        // WebGPU can't run the IBL precompute (cubemap_convert/irradiance/prefilter write storage CUBES,
+        // unsupported in WGSL; those compute shaders are excluded from the web shader lib). Use the neutral
+        // fallback IBL textures - the skybox still renders from the raw environment cubemap.
+        if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+            return ensureFallbackIblTextures(cb, rd, lightingSettings);
+
         if (m_EnvironmentSource == source && m_EnvironmentBrdfLut && m_EnvironmentCubemap &&
             m_EnvironmentIrradianceMap && m_EnvironmentPrefilteredEnvMap)
             return true;
