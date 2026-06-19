@@ -13,7 +13,6 @@
 #include "vultra/function/rendering/srp/builtin/builtin_pass_host.hpp"
 #include "vultra/function/rendering/srp/builtin/builtin_render_graph_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/features/builtin_screen_space_feature.hpp"
-#include "vultra/function/rendering/srp/builtin/features/compatibility_basecolor_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/direct_gbuffer_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/general_gaussian_splat_feature.hpp"
@@ -444,8 +443,6 @@ namespace vultra
                                                                         IRenderService*  renderService)
         {
             const auto normalized = normalizeRenderGraphId(std::string(id));
-            if (normalized == "compatibility_basecolor" || normalized == "basecolor" || normalized == "compatibility")
-                return std::make_unique<CompatibilityBaseColorFeature>();
             if (normalized == "direct_gbuffer" || normalized == "gbuffer" || normalized == "deferred")
                 return renderService ? std::make_unique<DirectGBufferFeature>(*renderService) : nullptr;
             if (normalized == "meshlet")

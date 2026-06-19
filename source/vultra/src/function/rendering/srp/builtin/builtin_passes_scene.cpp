@@ -9,7 +9,6 @@
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/builtin/builtin_pass_host.hpp"
-#include "vultra/function/rendering/srp/builtin/passes/compatibility_basecolor_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/deferred_lighting_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/depth_pre_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/direct_gbuffer_pass.hpp"
@@ -111,34 +110,6 @@ namespace vultra
                 ctx->data.set(kResKey_FinalCompositionSource, data.color);
                 passCtx.setOutput("color", data.color);
             }
-        };
-
-        class CompatibilityBaseColorBuiltin final : public IBuiltinRenderGraphPass
-        {
-        public:
-            std::vector<BuiltinPassSpec> specs() const override
-            {
-                return {{"CompatibilityBaseColor", {}, {"color"}, {}}};
-            }
-
-            void build(BuiltinPassHost& host,
-                       std::string_view,
-                       const vrendergraph::ParamBlock&,
-                       vrendergraph::PassBuildContext& passCtx) override
-            {
-                auto* ctx = host.currentBuildContext();
-                if (!ctx)
-                    return;
-                auto color = m_Pass.addPass(*ctx);
-                if (color)
-                {
-                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                    passCtx.setOutput("color", color);
-                }
-            }
-
-        private:
-            CompatibilityBaseColorPass m_Pass;
         };
 
         // One object backs three node types: the full gbuffer pass and the two
@@ -491,7 +462,6 @@ namespace vultra
     void appendSceneBuiltinRenderGraphPasses(std::vector<std::unique_ptr<IBuiltinRenderGraphPass>>& passes)
     {
         passes.push_back(std::make_unique<CameraClearBuiltin>());
-        passes.push_back(std::make_unique<CompatibilityBaseColorBuiltin>());
         passes.push_back(std::make_unique<DirectGBufferBuiltin>());
         passes.push_back(std::make_unique<ShadowMapBuiltin>());
         passes.push_back(std::make_unique<DeferredLightingBuiltin>());

@@ -54,48 +54,30 @@ namespace vultra
     {
         VULTRA_CORE_INFO("[ShaderSystem] Initializing...");
 
-        const auto backendApi           = ctx().config.render.backendApi;
-        const auto builtinShaderLibrary = ctx().config.render.builtinShaderLibrary;
-        const bool useWebGpuLibrary     = backendApi == rhi::RenderBackendApi::eWebGPU;
-        const bool useCompatibilityLibrary =
-            builtinShaderLibrary == EngineContext::Config::RenderConfig::BuiltinShaderLibrary::eCompatibility;
+        const auto backendApi       = ctx().config.render.backendApi;
+        const bool useWebGpuLibrary = backendApi == rhi::RenderBackendApi::eWebGPU;
 
+        // Unified DEFERRED path on all backends -> the highend lib. The forward base-color "compatibility"
+        // lib was test scaffolding and has been removed. WebGPU loads the web-cooked variant; native
+        // backends (desktop + Android) load the SPIR-V variant. eHighend resolves the deferred shaders;
+        // eGeneral/default resolve the shared post shaders from the same lib.
         if (useWebGpuLibrary)
         {
-            // WebGPU runs the unified DEFERRED path, so it loads the highend web lib (deferred passes +
-            // shared general passes). eHighend resolves the deferred shaders; eGeneral/default resolve the
-            // shared post shaders from the same lib.
             if (!loadBuiltinShaderLib(m_BuiltinHighendShaderLibrary, "shaders/builtin_highend.vshweblib"))
             {
                 VULTRA_CORE_ERROR("[ShaderSystem] Failed to load WebGPU highend builtin shader library");
                 return false;
             }
-            m_DefaultBuiltinShaderLibrary = &m_BuiltinHighendShaderLibrary;
         }
         else
         {
-#if defined(__ANDROID__)
-            if (!loadBuiltinShaderLib(m_BuiltinCompatibilityShaderLibrary, "shaders/builtin_compatibility.vshlib"))
-            {
-                VULTRA_CORE_ERROR("[ShaderSystem] Failed to load Android compatibility builtin shader library");
-                return false;
-            }
-            m_DefaultBuiltinShaderLibrary = &m_BuiltinCompatibilityShaderLibrary;
-#else
             if (!loadBuiltinShaderLib(m_BuiltinHighendShaderLibrary, "shaders/builtin_highend.vshlib"))
             {
                 VULTRA_CORE_ERROR("[ShaderSystem] Failed to load highend builtin shader library");
                 return false;
             }
-            if (!loadBuiltinShaderLib(m_BuiltinCompatibilityShaderLibrary, "shaders/builtin_compatibility.vshlib"))
-            {
-                VULTRA_CORE_ERROR("[ShaderSystem] Failed to load compatibility builtin shader library");
-                return false;
-            }
-            m_DefaultBuiltinShaderLibrary =
-                useCompatibilityLibrary ? &m_BuiltinCompatibilityShaderLibrary : &m_BuiltinHighendShaderLibrary;
-#endif
         }
+        m_DefaultBuiltinShaderLibrary = &m_BuiltinHighendShaderLibrary;
 
         VULTRA_CORE_TRACE("[ShaderSystem] Providing IShaderService");
         ctx().services.provide<IShaderService>(this);

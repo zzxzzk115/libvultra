@@ -58,9 +58,6 @@
         local vshlib_highend =
             path.join(lib_root, "builtin_highend.vshlib")
 
-        local vshlib_compatibility =
-            path.join(lib_root, "builtin_compatibility.vshlib")
-
         -- WebGPU now runs the unified DEFERRED path, so the web lib is the highend deferred set (bindless
         -- via naga binding_array; combined samplers split by the vshadersystem cook).
         local vshweblib_highend =
@@ -70,13 +67,6 @@
 
         local highend_shader_patterns = {
             "passes/highend/**.vshader",
-            "passes/compatibility/basecolor_cpu.vshader",
-            "passes/general/**.vshader",
-            "passes/common/**.vshader",
-            "passes/shared/**.vshader",
-        }
-        local compatibility_shader_patterns = {
-            "passes/compatibility/**.vshader",
             "passes/general/**.vshader",
             "passes/common/**.vshader",
             "passes/shared/**.vshader",
@@ -146,8 +136,6 @@
         local rebuild_highend =
             needs_rebuild(vshlib_highend,
                           collect_input_files(shader_root_common, highend_shader_patterns, keywords_common))
-        local rebuild_compatibility =
-            needs_rebuild(vshlib_compatibility, collect_input_files(shader_root_common, compatibility_shader_patterns, keywords_common))
         local rebuild_webgpu_highend =
             needs_rebuild(vshweblib_highend, collect_input_files(shader_root_common, webgpu_highend_shader_patterns, keywords_common))
 
@@ -330,15 +318,6 @@
                                  vshlib_highend)
         end
         mark_result("builtin_highend.vshlib", rebuild_highend)
-
-        if rebuild_compatibility then
-            build_vulkan_library("builtin_compatibility.vshlib",
-                                 shader_root_common,
-                                 compatibility_shader_patterns,
-                                 keywords_vulkan,
-                                 vshlib_compatibility)
-        end
-        mark_result("builtin_compatibility.vshlib", rebuild_compatibility)
 
         if rebuild_webgpu_highend then
             local ok = build_webgpu_library("builtin_highend.vshweblib",

@@ -3,7 +3,6 @@
 #include "vultra/function/rendering/runtime_profiler.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/builtin/features/builtin_screen_space_feature.hpp"
-#include "vultra/function/rendering/srp/builtin/features/compatibility_basecolor_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/direct_gbuffer_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/general_gaussian_splat_feature.hpp"
@@ -931,21 +930,10 @@ namespace vultra
         if (!services)
             return;
 
-        const auto backendApi = services->require<IRenderBackendService>().renderDevice().getBackendApi();
-#if defined(__ANDROID__)
-        constexpr bool kForceCompatibilityFeature = true;
-#else
-        constexpr bool kForceCompatibilityFeature = false;
-#endif
-        const bool forceCompatibilityByCli = m_RenderProfile == RenderProfile::eCompatibility;
-        // WebGPU now runs the unified DEFERRED path (bindless via naga binding_array + cube support), same
-        // route as Vulkan. Only the explicit CLI/Android compat opt-in still selects the forward graph.
-        const bool useCompatibilityFeature = kForceCompatibilityFeature || forceCompatibilityByCli;
-        (void)backendApi;
-
-        const char* graphUri = useCompatibilityFeature ? "builtin://render/universal_compat.vrg.json" :
-                                                        "builtin://render/universal.vrg.json";
-        m_GraphRenderer = createScope<DeclarativeRenderer>(graphUri, "universal");
+        // Unified DEFERRED path on all backends (Vulkan, WebGPU, Android). The forward base-color
+        // "compatibility" graph was test scaffolding and has been removed; WebGPU runs deferred via bindless
+        // (naga binding_array) + cube support, same route as Vulkan.
+        m_GraphRenderer = createScope<DeclarativeRenderer>("builtin://render/universal.vrg.json", "universal");
         m_GraphRenderer->setupServices(*services);
         m_GraphRenderer->init();
     }
