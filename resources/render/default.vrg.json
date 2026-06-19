@@ -191,8 +191,7 @@
       "enabled": true,
       "id": "MotionVectors",
       "inputs": {
-        "depth": "DirectGBuffer.depth",
-        "$enable": "useDeferred.value"
+        "depth": "DirectGBuffer.depth"
       },
       "params": {
         "enabled": true
@@ -409,62 +408,9 @@
     },
     {
       "enabled": true,
-      "id": "CompatibilityBaseColor",
-      "type": "CompatibilityBaseColor"
-    },
-    {
-      "enabled": true,
-      "id": "CompatGaussianSplatComposite",
-      "type": "GeneralGaussianSplatComposite",
-      "inputs": {
-        "source": "CompatibilityBaseColor.color"
-      }
-    },
-    {
-      "enabled": true,
-      "id": "feat_bindless",
-      "params": {
-        "default": false,
-        "key": "feature_bindless"
-      },
-      "type": "$value"
-    },
-    {
-      "enabled": true,
-      "id": "plat_desktop",
-      "params": {
-        "default": false,
-        "key": "platform_desktop"
-      },
-      "type": "$value"
-    },
-    {
-      "enabled": true,
-      "id": "useDeferred",
-      "inputs": {
-        "a": "feat_bindless.value",
-        "b": "plat_desktop.value"
-      },
-      "type": "$and"
-    },
-    {
-      "enabled": true,
-      "id": "sceneColorSelect",
-      "inputs": {
-        "selector": "useDeferred.value",
-        "whenFalse": "CompatGaussianSplatComposite.color",
-        "whenTrue": "DebugDraw.color"
-      },
-      "outputs": {
-        "out": "sceneColorSelect.out"
-      },
-      "type": "$select"
-    },
-    {
-      "enabled": true,
       "id": "UiOverlay",
       "inputs": {
-        "source": "sceneColorSelect.out"
+        "source": "DebugDraw.color"
       },
       "params": {
         "enabled": true
