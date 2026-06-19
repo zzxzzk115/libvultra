@@ -305,6 +305,12 @@ if not is_plat("android") and not is_plat("wasm") then
         add_packages("cpp-httplib") -- in-process static HTTP server for web Export & Run (editor only)
         if is_plat("windows") then
             add_syslinks("ws2_32", "winhttp")
+            -- The editor links two independent Rust staticlibs - wgpu-native (the WebGPU backend) and naga
+            -- (the vshadersystem WGSL cook, via spirv_to_wgsl). Each bundles the Rust std, so their identical
+            -- runtime symbols (rust_eh_personality, std cgus, ...) collide at link time. They are the same
+            -- Rust toolchain, so allow the duplicates; the linker keeps one copy. Standard practice for
+            -- linking multiple Rust staticlibs into one binary.
+            add_ldflags("/FORCE:MULTIPLE", {force = true})
             -- Merge a UTF-8 active-code-page manifest so std::filesystem / ImGuiFileDialog path
             -- conversions (WideCharToMultiByte(CP_ACP)) never fail on non-ASCII names under a
             -- non-UTF-8 system code page (e.g. GBK). See vultra_app/resources/vultra.manifest.
