@@ -534,6 +534,17 @@ namespace vultra
                 case PixelFormat::eRGBA16F:
                 case PixelFormat::eRGBA32F:
                     return kTransferSrc | kTransferDst | kSampledImage | kStorageImage | kColorAttachment;
+                case PixelFormat::eR8_UNorm:
+                case PixelFormat::eRG8_UNorm:
+                case PixelFormat::eR16F:
+                case PixelFormat::eRG16F:
+                    // 1-2 channel render targets (AO, motion vectors, packed normals). Filterable;
+                    // not storage-capable in core WebGPU.
+                    return kTransferSrc | kTransferDst | kSampledImage | kSampledLinear | kColorAttachment;
+                case PixelFormat::eR32F:
+                case PixelFormat::eRG32F:
+                    // 32F: render-target + storage capable (sampling is non-filterable without float32-filterable).
+                    return kTransferSrc | kTransferDst | kSampledImage | kStorageImage | kColorAttachment;
                 default:
                     return kTransferSrc | kTransferDst | kSampledImage;
             }
