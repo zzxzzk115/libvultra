@@ -735,13 +735,16 @@ namespace vultra
                 if (m_DepthView != nullptr)
                 {
                     depthDesc.view          = m_DepthView;
-                    depthDesc.depthReadOnly = framebufferInfo.depthReadOnly;
+                    // Read-only depth would normally use depthReadOnly + Undefined load/store ops, but this
+                    // wgpu-native build has no LoadOp::Undefined (it maps 0 -> Load and then rejects a
+                    // read-only attachment that carries a load op -> "Read-only attachment with load"). Bind
+                    // the depth as a normal preserved attachment instead: the pipeline has depth-write
+                    // disabled for these passes, so loading + storing leaves the depth unchanged.
+                    depthDesc.depthReadOnly = false;
                     if (framebufferInfo.depthReadOnly)
                     {
-                        // WebGPU rejects a read-only depth attachment that also has load/store ops
-                        // ("Read-only attachment with load") - they must be Undefined.
-                        depthDesc.depthLoadOp     = WGPULoadOp_Undefined;
-                        depthDesc.depthStoreOp    = WGPUStoreOp_Undefined;
+                        depthDesc.depthLoadOp     = WGPULoadOp_Load;
+                        depthDesc.depthStoreOp    = WGPUStoreOp_Store;
                         depthDesc.depthClearValue = 0.0f;
                     }
                     else
