@@ -375,6 +375,19 @@ namespace vultra
             return stagingBuffer;
         }
 
+        Buffer RenderDevice::createReadbackBuffer(const vk::DeviceSize size) const
+        {
+            assert(m_MemoryAllocator);
+
+            return Buffer {
+                m_MemoryAllocator,
+                size,
+                vk::BufferUsageFlagBits::eTransferDst,
+                makeAllocationFlags(AllocationHints::eRandomAccess),
+                vma::MemoryUsage::eAutoPreferHost,
+            };
+        }
+
         VertexBuffer RenderDevice::createVertexBuffer(const Buffer::Stride  stride,
                                                       const vk::DeviceSize  capacity,
                                                       const AllocationHints allocationHint) const

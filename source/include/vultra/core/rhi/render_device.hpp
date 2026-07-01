@@ -126,6 +126,10 @@ namespace vultra
 
             [[nodiscard]] Buffer createStagingBuffer(vk::DeviceSize size, const void* data = nullptr) const;
 
+            // Host-visible, host-readable buffer usable as a copy destination (eTransferDst). Intended
+            // for reading GPU-produced values back to the CPU (e.g. indirect dispatch counts).
+            [[nodiscard]] Buffer createReadbackBuffer(vk::DeviceSize size) const;
+
             [[nodiscard]] VertexBuffer
             createVertexBuffer(Buffer::Stride, vk::DeviceSize capacity, AllocationHints = AllocationHints::eNone) const;
 
