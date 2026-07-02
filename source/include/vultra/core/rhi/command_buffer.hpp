@@ -93,6 +93,7 @@ namespace vultra
 
             CommandBuffer& dispatch(const ComputePipeline&, const glm::uvec3&);
             CommandBuffer& dispatch(const glm::uvec3&);
+            CommandBuffer& dispatchIndirect(const Buffer& indirectBuffer, vk::DeviceSize offset = 0);
 
             CommandBuffer& traceRays(const ShaderBindingTable& sbt, const glm::uvec3& extent);
 

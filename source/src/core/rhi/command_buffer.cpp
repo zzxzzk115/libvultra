@@ -245,6 +245,17 @@ namespace vultra
             return *this;
         }
 
+        CommandBuffer& CommandBuffer::dispatchIndirect(const Buffer& indirectBuffer, vk::DeviceSize offset)
+        {
+            assert(invariant(State::eRecording, InvariantFlags::eValidComputePipeline));
+
+            TRACY_GPU_ZONE2_("DispatchIndirect");
+            flushBarriers();
+            m_Handle.dispatchIndirect(indirectBuffer.getHandle(), offset);
+
+            return *this;
+        }
+
         CommandBuffer& CommandBuffer::traceRays(const ShaderBindingTable& sbt, const glm::uvec3& extent)
         {
             assert(invariant(State::eRecording, InvariantFlags::eValidRayTracingPipeline));
