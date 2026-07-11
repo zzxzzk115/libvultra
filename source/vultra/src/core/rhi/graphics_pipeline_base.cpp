@@ -95,7 +95,22 @@ namespace vultra
         GraphicsPipeline::Builder::addBuiltinShader(const ShaderType                          type,
                                                     const ShaderLibraryRuntime::LoadedShader& shader)
         {
-            return addBuiltinShader(type, shader.spirv, &shader.reflection);
+            // Carry both the SPIR-V (Vulkan) and the cooked WGSL (WebGPU); each backend's builder picks the
+            // blob it can consume. Dropping the WGSL here is what previously left WebGPU pipelines stage-less.
+            m_BuiltinShaderStages.emplace(type,
+                                          BuiltinShaderStage {
+                                              .spirv      = shader.spirv,
+                                              .wgsl       = shader.wgsl,
+                                              .reflection = std::make_optional(shader.reflection),
+                                          });
+            return *this;
+        }
+
+        GraphicsPipeline::Builder&
+        GraphicsPipeline::Builder::markDepthSampledBindings(const std::vector<std::pair<uint32_t, uint32_t>>& bindings)
+        {
+            m_DepthSampledBindings.insert(m_DepthSampledBindings.end(), bindings.begin(), bindings.end());
+            return *this;
         }
 
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setDepthStencil(const DepthStencilState& desc)

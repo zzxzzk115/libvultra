@@ -36,6 +36,10 @@ namespace vultra
             uint32_t                    flags {0};
             // Texture view dimension for image bindings (WebGPU bind-group layout). eUnknown -> 2D.
             vshadersystem::TextureType  textureType {vshadersystem::TextureType::eUnknown};
+            // This combined-image-sampler slot samples a depth texture. WebGPU forbids binding a depth view
+            // to a filterable-float binding, so the layout must declare it unfilterable-float + a non-filtering
+            // sampler. The cook can't tell a depth sampler2D from a colour one, so passes flag it explicitly.
+            bool                        depthSampled {false};
         };
 
         struct PushConstantRange

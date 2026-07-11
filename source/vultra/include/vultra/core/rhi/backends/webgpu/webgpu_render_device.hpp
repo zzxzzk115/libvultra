@@ -55,6 +55,15 @@ namespace vultra
 {
     namespace rhi
     {
+        // Emulated push constants: the web shader cook rewrites every `push_constant` block to a
+        // uniform buffer at set 1 / binding 31, bound with a dynamic offset that selects a 256-byte
+        // slice per push. Shared by the command buffer (slice writes) and the descriptor-set path
+        // (the b31 entry must live inside the regular set-1 bind group - WebGPU groups are complete
+        // units, one per set index).
+        inline constexpr uint32_t kWebGPUPushConstantsSetIndex   = 1u;
+        inline constexpr uint32_t kWebGPUPushConstantsBindingIdx = 31u;
+        inline constexpr uint64_t kWebGPUPushConstantSliceBytes  = 256u;
+
         class WebGPURenderDevice final : public IRenderDevice
         {
         public:

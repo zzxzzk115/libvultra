@@ -1680,6 +1680,14 @@ namespace vultra
                                              const std::string&     filePath,
                                              const rhi::ImageAspect imageAspect)
         {
+            // Texture readback to a file isn't supported on WebGPU yet (copyImage is a no-op there); this body
+            // is Vulkan-specific and would dereference Vulkan backend state. Bail out so callers (e.g. the
+            // editor thumbnail service) get a clean failure instead of crashing on the WebGPU backend.
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                return false;
+            }
+
             auto cb = createCommandBuffer();
             cb.begin();
 

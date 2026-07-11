@@ -209,6 +209,19 @@ namespace vultra
                     uint32_t            numMipLevels,
                     IRenderDevice*      renderDevice = nullptr);
 
+            // Owned cubemap (currently the WebGPU path): 6 faces stored as array layers, typed eTextureCube so
+            // its sampled view is created with the Cube view dimension. usageFlags is preserved (unlike the
+            // generic owned-image ctors, which assume swapchain defaults).
+            Texture(RenderBackendApi    api,
+                    TextureDeviceHandle device,
+                    TextureImageHandle  image,
+                    Extent2D            extent,
+                    PixelFormat         pixelFormat,
+                    uint32_t            numLayers,
+                    uint32_t            numMipLevels,
+                    ImageUsage          usageFlags,
+                    IRenderDevice*      renderDevice);
+
             void destroy() noexcept;
 
             [[nodiscard]] std::uintptr_t getImageHandle() const;

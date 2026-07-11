@@ -89,9 +89,16 @@ namespace vultra
             void releaseRecordingResources() noexcept;
             void releaseFrameTransientResources() noexcept;
 
+            // Emulated push constants (set 1 / binding 31, dynamic-offset slices; see
+            // kWebGPUPushConstants* in webgpu_render_device.hpp).
+            [[nodiscard]] bool layoutHasPushConstantSlot(DescriptorSetLayoutKey) const;
+            [[nodiscard]] bool layoutIsPushConstantOnly(DescriptorSetLayoutKey) const;
+            [[nodiscard]] WGPUBuffer ensurePushConstantPage();
+
         public:
             [[nodiscard]] WGPURenderPassEncoder getCurrentRenderPassEncoder() const { return m_RenderPass; }
             [[nodiscard]] WGPUComputePassEncoder getCurrentComputePassEncoder() const { return m_ComputePass; }
+            [[nodiscard]] Extent2D getCurrentTargetExtent() const { return m_CurrentTargetExtent; }
             void closeActiveComputePassForProfilingBoundary();
 
         private:
@@ -127,6 +134,15 @@ namespace vultra
             std::vector<PushConstantPage> m_PushConstantPages;
             std::size_t                   m_PushConstantPageIndex {0};
             uint64_t                      m_PushConstantPageOffset {0};
+            // Last written push-constant slice (dynamic offset for the b31 entry) and the descriptor-set
+            // objects behind the pending bind groups (so a push after bind can rebuild the group when the
+            // slice page changes). Objects live in m_DescriptorSets, valid for this recording.
+            uint32_t                                                m_PushConstantCurrentOffset {0};
+            std::array<WebGPUDescriptorSet*, kMinNumDescriptorSets> m_PendingRenderDescriptorSetObjs {};
+            std::array<WebGPUDescriptorSet*, kMinNumDescriptorSets> m_PendingComputeDescriptorSetObjs {};
+            // Extent of the current pass's render target; viewport/scissor are clamped to it (WebGPU
+            // rejects rects that exceed the attachment, e.g. transiently during a window resize).
+            Extent2D                                                m_CurrentTargetExtent {};
             bool           m_Recording {false};
             bool           m_InsideRendering {false};
             bool           m_SkipCurrentRendering {false};

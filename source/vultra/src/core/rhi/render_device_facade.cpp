@@ -259,7 +259,9 @@ namespace vultra
                                 binding.access,
                                 binding.count,
                                 binding.stageFlags,
-                                binding.flags);
+                                binding.flags,
+                                binding.textureType,
+                                binding.depthSampled);
                 }
                 return hash;
             }
@@ -293,6 +295,28 @@ namespace vultra
                     }
                 };
 
+                // The WGSL cook splits every combined image sampler (sampler2D/samplerCube) into a texture +
+                // a sampler and then renumbers the WHOLE set to make room: each combined sampler pushes every
+                // higher binding in the set up by one (combimgsampsplitter's correct_decorate). So the WGSL
+                // binding of ANY slot is its reflected binding plus the number of combined samplers below it;
+                // a combined slot's texture sits at that shifted index and its sampler right after. Dense
+                // combined sets degenerate to the familiar 2b/2b+1; sparse ones (e.g. one sampler at b27) stay
+                // near their original index (27/28). Sets without combined samplers are untouched.
+                std::vector<uint32_t> combinedBindingsSorted;
+                for (const auto& binding : bindings)
+                {
+                    if (binding.type == DescriptorType::eCombinedImageSampler)
+                    {
+                        combinedBindingsSorted.push_back(binding.binding);
+                    }
+                }
+                std::sort(combinedBindingsSorted.begin(), combinedBindingsSorted.end());
+                const auto wgslBinding = [&combinedBindingsSorted](uint32_t b) {
+                    return b + static_cast<uint32_t>(
+                                   std::lower_bound(combinedBindingsSorted.begin(), combinedBindingsSorted.end(), b) -
+                                   combinedBindingsSorted.begin());
+                };
+
                 // Stable storage for the binding-array "extras" chained onto entries (wgpu-native bindless).
                 // Reserved so push_back never reallocates and the chained pointers stay valid until create.
                 std::vector<WGPUBindGroupLayoutEntryExtras> arrayExtras;
@@ -317,7 +341,7 @@ namespace vultra
                     {
                         case DescriptorType::eUniformBuffer: {
                             WGPUBindGroupLayoutEntry entry {};
-                            entry.binding                 = binding.binding;
+                            entry.binding                 = wgslBinding(binding.binding);
                             entry.visibility              = visibility;
                             entry.buffer.type             = WGPUBufferBindingType_Uniform;
                             entry.buffer.hasDynamicOffset = binding.binding == 31u;
@@ -328,7 +352,7 @@ namespace vultra
                         case DescriptorType::eStorageBuffer:
                         case DescriptorType::eStorageBufferDynamic: {
                             WGPUBindGroupLayoutEntry entry {};
-                            entry.binding               = binding.binding;
+                            entry.binding               = wgslBinding(binding.binding);
                             entry.visibility            = visibility;
                             entry.buffer.type           = binding.access == vshadersystem::ResourceAccess::eReadOnly ?
                                                               WGPUBufferBindingType_ReadOnlyStorage :
@@ -339,7 +363,7 @@ namespace vultra
                         }
                         case DescriptorType::eSampledImage: {
                             WGPUBindGroupLayoutEntry entry {};
-                            entry.binding               = binding.binding;
+                            entry.binding               = wgslBinding(binding.binding);
                             entry.visibility            = visibility;
                             entry.texture.sampleType    = WGPUTextureSampleType_Float;
                             entry.texture.viewDimension = wgpuViewDimension(binding.textureType);
@@ -359,31 +383,36 @@ namespace vultra
                         }
                         case DescriptorType::eSampler: {
                             WGPUBindGroupLayoutEntry entry {};
-                            entry.binding      = binding.binding;
+                            entry.binding      = wgslBinding(binding.binding);
                             entry.visibility   = visibility;
                             entry.sampler.type = WGPUSamplerBindingType_Filtering;
                             entries.push_back(entry);
                             break;
                         }
                         case DescriptorType::eCombinedImageSampler: {
+                            // Depth textures can't bind to a filterable-float slot in WebGPU; declare them
+                            // unfilterable-float + a non-filtering sampler (depth/shadow are point-sampled).
                             WGPUBindGroupLayoutEntry textureEntry {};
-                            textureEntry.binding               = binding.binding;
+                            textureEntry.binding               = wgslBinding(binding.binding);
                             textureEntry.visibility            = visibility;
-                            textureEntry.texture.sampleType    = WGPUTextureSampleType_Float;
+                            textureEntry.texture.sampleType    = binding.depthSampled ?
+                                                                     WGPUTextureSampleType_UnfilterableFloat :
+                                                                     WGPUTextureSampleType_Float;
                             textureEntry.texture.viewDimension = wgpuViewDimension(binding.textureType);
                             textureEntry.texture.multisampled  = false;
                             entries.push_back(textureEntry);
 
                             WGPUBindGroupLayoutEntry samplerEntry {};
-                            samplerEntry.binding      = binding.binding + 1u;
+                            samplerEntry.binding      = wgslBinding(binding.binding) + 1u;
                             samplerEntry.visibility   = visibility;
-                            samplerEntry.sampler.type = WGPUSamplerBindingType_Filtering;
+                            samplerEntry.sampler.type = binding.depthSampled ? WGPUSamplerBindingType_NonFiltering :
+                                                                               WGPUSamplerBindingType_Filtering;
                             entries.push_back(samplerEntry);
                             break;
                         }
                         case DescriptorType::eStorageImage: {
                             WGPUBindGroupLayoutEntry entry {};
-                            entry.binding    = binding.binding;
+                            entry.binding    = wgslBinding(binding.binding);
                             entry.visibility = visibility;
                             switch (binding.access)
                             {
@@ -1064,7 +1093,61 @@ namespace vultra
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
+#if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
+                (void)size;
+                (void)format;
+                (void)numMipLevels;
+                (void)numLayers;
+                (void)usageFlags;
                 return {};
+#else
+                const auto& backend = webgpuBackend(m_Backend);
+                if (backend.m_Device == nullptr || size == 0)
+                {
+                    return {};
+                }
+
+                const auto wgpuFormat = webgpu::toWgpuTextureFormat(format);
+                if (wgpuFormat == WGPUTextureFormat_Undefined)
+                {
+                    VULTRA_CORE_WARN("[RenderDevice] Unsupported WebGPU cubemap format: {}", toString(format));
+                    return {};
+                }
+
+                const uint32_t faceLayers = 6u * std::max(1u, numLayers);
+
+                // A WebGPU cube is a 2D texture with 6 array layers; the cube-ness lives in the view. The
+                // generic float formats carry a STORAGE usage in the format table, but storage textures can't
+                // be cube-viewed, so drop it here - cubemaps are only ever sampled / rendered / copied.
+                const auto cubeUsage = usageFlags & ~ImageUsage::eStorage;
+
+                WGPUTextureDescriptor descriptor {};
+                descriptor.usage                   = webgpu::toWgpuTextureUsage(cubeUsage);
+                descriptor.dimension               = WGPUTextureDimension_2D;
+                descriptor.size.width              = size;
+                descriptor.size.height             = size;
+                descriptor.size.depthOrArrayLayers = faceLayers;
+                descriptor.format                  = wgpuFormat;
+                const uint32_t resolvedMipLevels   = numMipLevels > 0 ? numMipLevels : calcMipLevels({size, size});
+                descriptor.mipLevelCount           = resolvedMipLevels;
+                descriptor.sampleCount             = 1u;
+
+                auto* const textureHandle = wgpuDeviceCreateTexture(backend.m_Device, &descriptor);
+                if (textureHandle == nullptr)
+                {
+                    return {};
+                }
+                return TextureAccess::fromOwnedCubemap(
+                    RenderBackendApi::eWebGPU,
+                    TextureDeviceHandle {reinterpret_cast<std::uintptr_t>(backend.m_Device)},
+                    TextureImageHandle {reinterpret_cast<std::uintptr_t>(textureHandle)},
+                    {size, size},
+                    format,
+                    std::max(1u, numLayers),
+                    resolvedMipLevels,
+                    cubeUsage,
+                    m_Backend.get());
+#endif
             }
 #if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
             return {};

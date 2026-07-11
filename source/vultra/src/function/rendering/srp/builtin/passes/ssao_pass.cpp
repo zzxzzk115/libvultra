@@ -97,6 +97,7 @@ namespace vultra
 
                 assert(rc.framebufferInfo().has_value());
                 const auto framebufferInfo = rc.framebufferInfo().value();
+                m_DepthSampledBindings = rc.collectDepthSampledBindings();
                 const auto* pipeline = getPipeline(rhi::getColorFormat(framebufferInfo, 0), framebufferInfo.viewMask);
                 if (!pipeline)
                     return;
@@ -152,6 +153,7 @@ namespace vultra
             .setInputAssembly({})
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
+            .markDepthSampledBindings(m_DepthSampledBindings)
             .setDepthStencil({
                 .depthTest  = false,
                 .depthWrite = false,

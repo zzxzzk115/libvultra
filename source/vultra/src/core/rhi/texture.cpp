@@ -815,6 +815,42 @@ namespace vultra
             }
         }
 
+        Texture::Texture(const RenderBackendApi    api,
+                         const TextureDeviceHandle device,
+                         const TextureImageHandle  image,
+                         Extent2D                  extent,
+                         PixelFormat               pixelFormat,
+                         uint32_t                  numLayers,
+                         uint32_t                  numMipLevels,
+                         ImageUsage                usageFlags,
+                         IRenderDevice*            renderDevice) :
+            m_DeviceOrAllocator(device), m_RenderDevice(renderDevice), m_Image(image.value), m_BackendApi(api),
+            m_OwnsImage(true), m_Type(TextureType::eTextureCube), m_Extent(extent), m_Format(pixelFormat),
+            m_NumMipLevels(std::max(numMipLevels, 1u)), m_NumLayers(std::max(numLayers, 1u)),
+            m_LayerFaces(6u * std::max(numLayers, 1u)), m_BaseArrayLayer(0u), m_UsageFlags(usageFlags)
+        {
+            // 6 faces are stored as array layers; m_Type == eTextureCube makes initImportedNativeAspects build
+            // the sampled view with the Cube view dimension (plus per-face 2D views for layered access).
+            if (api == RenderBackendApi::eWebGPU)
+            {
+                initImportedNativeAspects(image, pixelFormat);
+            }
+
+            if (m_OwnsImage && m_RenderDevice)
+            {
+                m_RenderDevice->onMemoryAllocated(RenderMemoryKind::eGpuDeviceLocal, getSize());
+                m_RenderDevice->onMemoryResourceAllocated(RenderMemoryResourceDesc {
+                    .id      = static_cast<uint64_t>(getImageHandle()),
+                    .type    = RenderMemoryResourceType::eTexture,
+                    .kind    = RenderMemoryKind::eGpuDeviceLocal,
+                    .bytes   = getSize(),
+                    .label   = std::format("{} 0x{:x}", textureTypeLabel(m_Type), getImageHandle()),
+                    .details = makeTextureMemoryDetails(
+                        m_Type, m_Extent, m_Depth, m_LayerFaces, m_NumMipLevels, m_Format, m_UsageFlags),
+                });
+            }
+        }
+
         void Texture::destroy() noexcept
         {
             if (!static_cast<bool>(*this))

@@ -217,7 +217,18 @@ namespace vultra::rhi
         auto* const renderPass = WebGPUCommandBufferAccess::getCurrentRenderPassEncoder(cb);
         if (renderPass != nullptr)
         {
-            ImGui_ImplWGPU_RenderDrawData(drawData, renderPass);
+            // The ImGui backend records a viewport sized to the io display size. During a window
+            // resize that can exceed the still-old backbuffer for one frame, which invalidates the
+            // encoder (and wgpu-native aborts on submitting it). Skip the UI for that frame.
+            const auto targetExtent = WebGPUCommandBufferAccess::getCurrentTargetExtent(cb);
+            const auto fbWidth      = static_cast<uint32_t>(drawData->DisplaySize.x * drawData->FramebufferScale.x);
+            const auto fbHeight     = static_cast<uint32_t>(drawData->DisplaySize.y * drawData->FramebufferScale.y);
+            const bool fitsTarget   = targetExtent.width == 0 ||
+                                    (fbWidth <= targetExtent.width && fbHeight <= targetExtent.height);
+            if (fitsTarget)
+            {
+                ImGui_ImplWGPU_RenderDrawData(drawData, renderPass);
+            }
         }
 #else
         (void)cb;

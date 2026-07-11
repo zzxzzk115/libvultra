@@ -1,5 +1,6 @@
 #include "vultra/core/rhi/backends/webgpu/webgpu_descriptor_set.hpp"
 
+#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/base/hash.hpp"
 #include "vultra/core/rhi/backends/webgpu/conversions.hpp"
 #include "vultra/core/rhi/buffer.hpp"
@@ -133,11 +134,13 @@ namespace vultra
         }
 
         WGPUBindGroup WebGPUDescriptorSet::getOrCreateBindGroup(const WebGPURenderDevice&    backend,
-                                                                const DescriptorSetLayoutKey expectedLayoutKey)
+                                                                const DescriptorSetLayoutKey expectedLayoutKey,
+                                                                WGPUBuffer                   pushConstantBuffer)
         {
 #if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
             (void)backend;
             (void)expectedLayoutKey;
+            (void)pushConstantBuffer;
             return nullptr;
 #else
             if (!expectedLayoutKey)
@@ -145,7 +148,12 @@ namespace vultra
                 return nullptr;
             }
 
-            if (const auto it = m_BindGroups.find(expectedLayoutKey.value); it != m_BindGroups.end())
+            // The push-constant page buffer participates in the group (b31 entry), so a page change
+            // must produce a distinct cached group.
+            std::size_t cacheKey = expectedLayoutKey.value;
+            hashCombine(cacheKey, reinterpret_cast<std::uintptr_t>(pushConstantBuffer));
+
+            if (const auto it = m_BindGroups.find(cacheKey); it != m_BindGroups.end())
             {
                 return it->second;
             }
@@ -172,12 +180,44 @@ namespace vultra
             arrayViewStorage.reserve(layoutBindingsIt->second.size());
             arrayExtrasStorage.reserve(layoutBindingsIt->second.size());
 
+            // Mirror the WGSL cook's set renumbering (see createWebGPUDescriptorSetLayout): every combined
+            // image sampler pushes all higher bindings in the set up by one, its texture sits at the shifted
+            // index and its sampler right after. Entries must land on the shifted indices or the group won't
+            // match the layout.
+            std::vector<uint32_t> combinedBindingsSorted;
+            for (const auto& layoutBinding : layoutBindingsIt->second)
+            {
+                if (layoutBinding.type == DescriptorType::eCombinedImageSampler)
+                {
+                    combinedBindingsSorted.push_back(layoutBinding.binding);
+                }
+            }
+            std::sort(combinedBindingsSorted.begin(), combinedBindingsSorted.end());
+            const auto wgslBinding = [&combinedBindingsSorted](uint32_t b) {
+                return b + static_cast<uint32_t>(
+                               std::lower_bound(combinedBindingsSorted.begin(), combinedBindingsSorted.end(), b) -
+                               combinedBindingsSorted.begin());
+            };
+
             for (const auto& layoutBinding : layoutBindingsIt->second)
             {
                 const auto bindingIndex = layoutBinding.binding;
+                const auto wgslIndex    = wgslBinding(bindingIndex);
                 const auto resourceIt   = m_Bindings.find(bindingIndex);
                 if (resourceIt == m_Bindings.end())
                 {
+                    // Emulated push-constant slot: not an engine-bound resource, backed by the command
+                    // buffer's slice page. The dynamic offset picks the slice at bind time.
+                    if (bindingIndex == kWebGPUPushConstantsBindingIdx &&
+                        layoutBinding.type == DescriptorType::eUniformBuffer && pushConstantBuffer != nullptr)
+                    {
+                        WGPUBindGroupEntry entry {};
+                        entry.binding = wgslIndex;
+                        entry.buffer  = pushConstantBuffer;
+                        entry.offset  = 0;
+                        entry.size    = kWebGPUPushConstantSliceBytes;
+                        entries.push_back(entry);
+                    }
                     continue;
                 }
                 const auto& resourceBinding = resourceIt->second;
@@ -196,7 +236,7 @@ namespace vultra
                             break;
                         }
                         WGPUBindGroupEntry entry {};
-                        entry.binding = bindingIndex;
+                        entry.binding = wgslIndex;
                         entry.buffer  = reinterpret_cast<WGPUBuffer>(value->buffer->getHandle());
                         entry.offset  = value->offset;
                         entry.size    = value->range.value_or(bufferSize - value->offset);
@@ -216,7 +256,7 @@ namespace vultra
                             break;
                         }
                         WGPUBindGroupEntry entry {};
-                        entry.binding = bindingIndex;
+                        entry.binding = wgslIndex;
                         entry.buffer  = reinterpret_cast<WGPUBuffer>(value->buffer->getHandle());
                         entry.offset  = value->offset;
                         entry.size    = value->range.value_or(bufferSize - value->offset);
@@ -238,20 +278,30 @@ namespace vultra
                             break;
                         }
 
-                        const auto sampler =
-                            getOrCreateSamplerHandle(backend, value->sampler.value_or(value->texture->getSampler()));
+                        auto samplerDesc = value->sampler.value_or(value->texture->getSampler());
+                        if (value->imageAspect == ImageAspect::eDepth)
+                        {
+                            // Depth slots use an unfilterable-float layout (see createWebGPUDescriptorSetLayout),
+                            // which requires a non-filtering sampler. Depth/shadow are point-sampled (manual
+                            // PCF), so force nearest to match the layout.
+                            auto& info      = samplerDesc.info();
+                            info.magFilter  = TexelFilter::eNearest;
+                            info.minFilter  = TexelFilter::eNearest;
+                            info.mipmapMode = MipmapMode::eNearest;
+                        }
+                        const auto sampler = getOrCreateSamplerHandle(backend, samplerDesc);
                         if (!sampler)
                         {
                             break;
                         }
 
                         WGPUBindGroupEntry textureEntry {};
-                        textureEntry.binding     = bindingIndex;
+                        textureEntry.binding     = wgslIndex;
                         textureEntry.textureView = reinterpret_cast<WGPUTextureView>(imageView);
                         entries.push_back(textureEntry);
 
                         WGPUBindGroupEntry samplerEntry {};
-                        samplerEntry.binding = bindingIndex + 1u;
+                        samplerEntry.binding = wgslIndex + 1u;
                         samplerEntry.sampler = reinterpret_cast<WGPUSampler>(sampler.value);
                         entries.push_back(samplerEntry);
                         break;
@@ -301,8 +351,26 @@ namespace vultra
                                 }
                             }
 
-                            const auto sampler = getOrCreateSamplerHandle(
-                                backend, arr->sampler.value_or(arr->textures.front()->getSampler()));
+                            // Source the sampler from the explicit override or the first non-null texture.
+                            // (value_or always evaluates its argument, so textures.front()->getSampler() would
+                            // dereference a null slot 0 even when an override sampler is present.)
+                            Sampler arraySampler {};
+                            if (arr->sampler.has_value())
+                            {
+                                arraySampler = *arr->sampler;
+                            }
+                            else
+                            {
+                                for (const auto* tex : arr->textures)
+                                {
+                                    if (tex != nullptr)
+                                    {
+                                        arraySampler = tex->getSampler();
+                                        break;
+                                    }
+                                }
+                            }
+                            const auto sampler = getOrCreateSamplerHandle(backend, arraySampler);
                             if (!sampler)
                             {
                                 break;
@@ -316,12 +384,12 @@ namespace vultra
                             });
 
                             WGPUBindGroupEntry textureEntry {};
-                            textureEntry.binding     = bindingIndex;
+                            textureEntry.binding     = wgslIndex;
                             textureEntry.nextInChain = &arrayExtrasStorage.back().chain;
                             entries.push_back(textureEntry);
 
                             WGPUBindGroupEntry samplerEntry {};
-                            samplerEntry.binding = bindingIndex + 1u;
+                            samplerEntry.binding = wgslIndex + 1u;
                             samplerEntry.sampler = reinterpret_cast<WGPUSampler>(sampler.value);
                             entries.push_back(samplerEntry);
                             break;
@@ -341,7 +409,7 @@ namespace vultra
                             break;
                         }
                         WGPUBindGroupEntry entry {};
-                        entry.binding     = bindingIndex;
+                        entry.binding     = wgslIndex;
                         entry.textureView = reinterpret_cast<WGPUTextureView>(imageView);
                         entries.push_back(entry);
                         break;
@@ -358,7 +426,7 @@ namespace vultra
                             break;
                         }
                         WGPUBindGroupEntry entry {};
-                        entry.binding = bindingIndex;
+                        entry.binding = wgslIndex;
                         entry.sampler = reinterpret_cast<WGPUSampler>(sampler.value);
                         entries.push_back(entry);
                         break;
@@ -379,7 +447,7 @@ namespace vultra
                             break;
                         }
                         WGPUBindGroupEntry entry {};
-                        entry.binding     = bindingIndex;
+                        entry.binding     = wgslIndex;
                         entry.textureView = reinterpret_cast<WGPUTextureView>(imageView);
                         entries.push_back(entry);
                         break;
@@ -395,6 +463,30 @@ namespace vultra
                 return nullptr;
             }
 
+            // A combined image sampler contributes two WGSL entries (texture + sampler); everything else one.
+            // If the produced entries don't match the layout (e.g. a resource bound with a type the shader
+            // doesn't expect), wgpuDeviceCreateBindGroup returns an *invalid* handle (not null) and setting it
+            // is a fatal encoder error. Detect the mismatch here and skip instead, so the pass renders nothing.
+            std::size_t expectedEntries = 0;
+            for (const auto& lb : layoutBindingsIt->second)
+            {
+                expectedEntries += lb.type == DescriptorType::eCombinedImageSampler ? 2u : 1u;
+            }
+            if (entries.size() != expectedEntries)
+            {
+                std::string types;
+                for (const auto& lb : layoutBindingsIt->second)
+                    types += " b" + std::to_string(lb.binding) + "(t" + std::to_string(static_cast<int>(lb.type)) +
+                             ",bound=" + (m_Bindings.count(lb.binding) ? "1" : "0") + ")";
+                VULTRA_CORE_WARN("[WebGPUDescriptorSet] Incomplete bind group (got {} entries, layout wants {}); "
+                                 "skipping. layoutKey={} layout:{}",
+                                 entries.size(),
+                                 expectedEntries,
+                                 expectedLayoutKey.value,
+                                 types);
+                return nullptr;
+            }
+
             WGPUBindGroupDescriptor descriptor {};
             descriptor.layout     = bindGroupLayoutIt->second;
             descriptor.entryCount = entries.size();
@@ -404,7 +496,7 @@ namespace vultra
             {
                 return nullptr;
             }
-            m_BindGroups.emplace(expectedLayoutKey.value, bindGroup);
+            m_BindGroups.emplace(cacheKey, bindGroup);
             return bindGroup;
 #endif
         }

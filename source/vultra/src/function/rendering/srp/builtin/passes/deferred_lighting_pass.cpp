@@ -295,6 +295,8 @@ namespace vultra
 
                 assert(rc.framebufferInfo().has_value());
                 const auto framebufferInfo = rc.framebufferInfo().value();
+                // Depth/shadow slots (declared eDepth in the framegraph reads) -> unfilterable-float on WebGPU.
+                m_DepthSampledBindings     = rc.collectDepthSampledBindings();
                 const auto* pipeline       = getPipeline(rhi::getColorFormat(framebufferInfo, 0),
                                                          framebufferInfo.viewMask);
                 if (!pipeline)
@@ -764,6 +766,7 @@ namespace vultra
             .setInputAssembly({})
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
+            .markDepthSampledBindings(m_DepthSampledBindings)
             .setDepthStencil({
                 .depthTest  = false,
                 .depthWrite = false,

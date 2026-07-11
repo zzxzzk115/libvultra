@@ -62,6 +62,13 @@ namespace vultra
             [this, cubemapOverride](const auto&, FrameGraphPassResources&, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
+                // The skybox samples a cubemap (samplerCube at set 3, binding 0). On WebGPU the environment
+                // cubemap is produced by the cubemap_convert compute pass, which isn't implemented on this
+                // backend yet, so the only available source is a 2D equirect whose view dimension mismatches
+                // the shader's Cube binding (a fatal wgpu validation error). Skip until WebGPU cubemap
+                // generation lands; deferred lighting already wrote the background color underneath.
+                if (rc.rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+                    return;
                 if (!rc.ext.builtinShaderLib)
                     return;
                 setShaderLib(*rc.ext.builtinShaderLibForProfile(getShaderProfile()));

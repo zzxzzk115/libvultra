@@ -53,6 +53,17 @@ namespace vultra
                                                         uint32_t            numLayers,
                                                         uint32_t            numMipLevels,
                                                         IRenderDevice*      renderDevice = nullptr);
+
+            // Owned cubemap (6 faces as array layers, eTextureCube views); usageFlags preserved.
+            [[nodiscard]] static Texture fromOwnedCubemap(RenderBackendApi    api,
+                                                          TextureDeviceHandle device,
+                                                          TextureImageHandle  image,
+                                                          Extent2D            extent,
+                                                          PixelFormat         format,
+                                                          uint32_t            numLayers,
+                                                          uint32_t            numMipLevels,
+                                                          ImageUsage          usageFlags,
+                                                          IRenderDevice*      renderDevice = nullptr);
         };
     } // namespace rhi
 } // namespace vultra

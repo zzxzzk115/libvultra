@@ -32,9 +32,9 @@ namespace vultra
     {
         namespace
         {
-            constexpr DescriptorSetIndex kWebGPUPushConstantsSet        = 1u;
-            constexpr BindingIndex       kWebGPUPushConstantsBinding    = 31u;
-            constexpr uint64_t           kWebGPUPushConstantBufferBytes = 256u;
+            constexpr DescriptorSetIndex kWebGPUPushConstantsSet        = kWebGPUPushConstantsSetIndex;
+            constexpr BindingIndex       kWebGPUPushConstantsBinding    = kWebGPUPushConstantsBindingIdx;
+            constexpr uint64_t           kWebGPUPushConstantBufferBytes = kWebGPUPushConstantSliceBytes;
             constexpr uint64_t           kWebGPUPushConstantPageBytes   = 64u * 1024u;
 
             class WebGPUDescriptorSetBuilder final : public IDescriptorSetBuilder
@@ -238,8 +238,11 @@ namespace vultra
             m_PendingComputeDynamicOffsets.fill(0);
             m_PendingRenderDynamicOffsetCounts.fill(0);
             m_PendingComputeDynamicOffsetCounts.fill(0);
-            m_PushConstantPageIndex  = 0;
-            m_PushConstantPageOffset = 0;
+            m_PendingRenderDescriptorSetObjs.fill(nullptr);
+            m_PendingComputeDescriptorSetObjs.fill(nullptr);
+            m_PushConstantPageIndex     = 0;
+            m_PushConstantPageOffset    = 0;
+            m_PushConstantCurrentOffset = 0;
             TRACKY_BIND_CMD_BUFFER(getHandle(), 0, 0);
             return *this;
         }
@@ -289,8 +292,11 @@ namespace vultra
             m_PendingComputeDynamicOffsets.fill(0);
             m_PendingRenderDynamicOffsetCounts.fill(0);
             m_PendingComputeDynamicOffsetCounts.fill(0);
-            m_PushConstantPageIndex  = 0;
-            m_PushConstantPageOffset = 0;
+            m_PendingRenderDescriptorSetObjs.fill(nullptr);
+            m_PendingComputeDescriptorSetObjs.fill(nullptr);
+            m_PushConstantPageIndex     = 0;
+            m_PushConstantPageOffset    = 0;
+            m_PushConstantCurrentOffset = 0;
             TRACKY_BIND_CMD_BUFFER(0, 0, 0);
             return *this;
         }
@@ -463,34 +469,120 @@ namespace vultra
                     expectedLayoutKey.value);
             }
 
-            auto* const bindGroup = setData->getOrCreateBindGroup(*m_Backend, expectedLayoutKey);
+            // Layouts carrying the emulated push-constant slot (b31) need the slice page inside THIS
+            // bind group and exactly one dynamic offset at every SetBindGroup (the slot is declared
+            // hasDynamicOffset). A push that already happened supplies the current slice; otherwise 0.
+            WGPUBuffer pushConstantBuffer = nullptr;
+            uint32_t   dynamicOffsetCount = 0;
+            if (layoutHasPushConstantSlot(expectedLayoutKey))
+            {
+                pushConstantBuffer = ensurePushConstantPage();
+                if (pushConstantBuffer == nullptr)
+                {
+                    return *this;
+                }
+                dynamicOffsetCount = 1;
+            }
+
+            auto* const bindGroup = setData->getOrCreateBindGroup(*m_Backend, expectedLayoutKey, pushConstantBuffer);
             if (bindGroup == nullptr)
             {
                 return *this;
             }
+            const uint32_t dynamicOffset = dynamicOffsetCount > 0 ? m_PushConstantCurrentOffset : 0u;
             if (m_BoundPipeline != nullptr)
             {
                 m_PendingRenderBindGroups[index]          = bindGroup;
-                m_PendingRenderDynamicOffsets[index]      = 0;
-                m_PendingRenderDynamicOffsetCounts[index] = 0;
+                m_PendingRenderDynamicOffsets[index]      = dynamicOffset;
+                m_PendingRenderDynamicOffsetCounts[index] = dynamicOffsetCount;
+                m_PendingRenderDescriptorSetObjs[index]   = setData;
                 if (m_RenderPass != nullptr)
                 {
-                    wgpuRenderPassEncoderSetBindGroup(m_RenderPass, index, bindGroup, 0, nullptr);
+                    wgpuRenderPassEncoderSetBindGroup(
+                        m_RenderPass, index, bindGroup, dynamicOffsetCount, dynamicOffsetCount ? &dynamicOffset : nullptr);
                 }
             }
             else if (m_BoundComputePipeline != nullptr)
             {
                 if (m_ComputePass != nullptr)
                 {
-                    wgpuComputePassEncoderSetBindGroup(m_ComputePass, index, bindGroup, 0, nullptr);
+                    wgpuComputePassEncoderSetBindGroup(
+                        m_ComputePass, index, bindGroup, dynamicOffsetCount, dynamicOffsetCount ? &dynamicOffset : nullptr);
                 }
                 m_PendingComputeBindGroups[index]          = bindGroup;
-                m_PendingComputeDynamicOffsets[index]      = 0;
-                m_PendingComputeDynamicOffsetCounts[index] = 0;
+                m_PendingComputeDynamicOffsets[index]      = dynamicOffset;
+                m_PendingComputeDynamicOffsetCounts[index] = dynamicOffsetCount;
+                m_PendingComputeDescriptorSetObjs[index]   = setData;
             }
             return *this;
 #endif
         }
+
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+        bool WebGPUCommandBuffer::layoutHasPushConstantSlot(const DescriptorSetLayoutKey layoutKey) const
+        {
+            if (!layoutKey || m_Backend == nullptr)
+            {
+                return false;
+            }
+            const auto it = m_Backend->m_DescriptorSetLayoutBindings.find(layoutKey.value);
+            if (it == m_Backend->m_DescriptorSetLayoutBindings.end())
+            {
+                return false;
+            }
+            for (const auto& binding : it->second)
+            {
+                if (binding.binding == kWebGPUPushConstantsBinding && binding.type == DescriptorType::eUniformBuffer)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        bool WebGPUCommandBuffer::layoutIsPushConstantOnly(const DescriptorSetLayoutKey layoutKey) const
+        {
+            if (!layoutKey || m_Backend == nullptr)
+            {
+                return false;
+            }
+            const auto it = m_Backend->m_DescriptorSetLayoutBindings.find(layoutKey.value);
+            if (it == m_Backend->m_DescriptorSetLayoutBindings.end() || it->second.size() != 1)
+            {
+                return false;
+            }
+            const auto& binding = it->second.front();
+            return binding.binding == kWebGPUPushConstantsBinding && binding.type == DescriptorType::eUniformBuffer;
+        }
+
+        WGPUBuffer WebGPUCommandBuffer::ensurePushConstantPage()
+        {
+            if (m_Device == nullptr)
+            {
+                return nullptr;
+            }
+            if (m_PushConstantPageIndex >= m_PushConstantPages.size())
+            {
+                auto& page = m_PushConstantPages.emplace_back();
+                page.size  = kWebGPUPushConstantPageBytes;
+
+                WGPUBufferDescriptor descriptor {};
+                descriptor.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform;
+                descriptor.size  = page.size;
+                page.buffer      = wgpuDeviceCreateBuffer(m_Device, &descriptor);
+                if (page.buffer == nullptr)
+                {
+                    m_PushConstantPages.pop_back();
+                    return nullptr;
+                }
+            }
+            return m_PushConstantPages[m_PushConstantPageIndex].buffer;
+        }
+#else
+        bool WebGPUCommandBuffer::layoutHasPushConstantSlot(const DescriptorSetLayoutKey) const { return false; }
+        bool WebGPUCommandBuffer::layoutIsPushConstantOnly(const DescriptorSetLayoutKey) const { return false; }
+        WGPUBuffer WebGPUCommandBuffer::ensurePushConstantPage() { return nullptr; }
+#endif
         WebGPUCommandBuffer&
         WebGPUCommandBuffer::pushConstants(ShaderStages stages, uint32_t offset, uint32_t size, const void* data)
         {
@@ -514,22 +606,7 @@ namespace vultra
                 return *this;
             }
 
-            const auto bindingIt = m_Backend->m_DescriptorSetLayoutBindings.find(layoutKey.value);
-            if (bindingIt == m_Backend->m_DescriptorSetLayoutBindings.end())
-            {
-                return *this;
-            }
-
-            bool hasPushConstantBinding = false;
-            for (const auto& binding : bindingIt->second)
-            {
-                if (binding.binding == kWebGPUPushConstantsBinding && binding.type == DescriptorType::eUniformBuffer)
-                {
-                    hasPushConstantBinding = true;
-                    break;
-                }
-            }
-            if (!hasPushConstantBinding)
+            if (!layoutHasPushConstantSlot(layoutKey))
             {
                 return *this;
             }
@@ -549,20 +626,9 @@ namespace vultra
                 }
                 m_PushConstantPageOffset = 0;
             }
-            if (m_PushConstantPageIndex >= m_PushConstantPages.size())
+            if (ensurePushConstantPage() == nullptr)
             {
-                auto& page = m_PushConstantPages.emplace_back();
-                page.size  = kWebGPUPushConstantPageBytes;
-
-                WGPUBufferDescriptor descriptor {};
-                descriptor.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform;
-                descriptor.size  = page.size;
-                page.buffer      = wgpuDeviceCreateBuffer(m_Device, &descriptor);
-                if (page.buffer == nullptr)
-                {
-                    page.size = 0;
-                    return *this;
-                }
+                return *this;
             }
             auto& page = m_PushConstantPages[m_PushConstantPageIndex];
             if (page.buffer == nullptr || m_PushConstantPageOffset + allocationSize > page.size)
@@ -574,46 +640,73 @@ namespace vultra
 
             // Each push gets a stable 256-byte-aligned slice so later pushes do not overwrite earlier draws.
             wgpuQueueWriteBuffer(m_Queue, page.buffer, bindingOffset + offset, data, size);
+            const auto dynamicOffset    = static_cast<uint32_t>(bindingOffset);
+            m_PushConstantCurrentOffset = dynamicOffset;
 
-            auto bindGroupIt = page.bindGroups.find(layoutKey.value);
-            if (bindGroupIt == page.bindGroups.end())
+            // Resolve the complete set-1 bind group for the current page. The slice buffer is one entry
+            // of that group, so when the layout also carries engine resources (e.g. a LightBlock at b0)
+            // the group must come from the bound descriptor set; a b31-only group would displace it.
+            const bool renderTarget = m_BoundPipeline != nullptr;
+            auto* const setObj      = renderTarget ? m_PendingRenderDescriptorSetObjs[kWebGPUPushConstantsSet] :
+                                                     m_PendingComputeDescriptorSetObjs[kWebGPUPushConstantsSet];
+
+            WGPUBindGroup bindGroup = nullptr;
+            if (setObj != nullptr)
             {
-                const auto layoutIt = m_Backend->m_DescriptorSetLayouts.find(layoutKey.value);
-                if (layoutIt == m_Backend->m_DescriptorSetLayouts.end())
-                {
-                    return *this;
-                }
-
-                WGPUBindGroupEntry entry {};
-                entry.binding = kWebGPUPushConstantsBinding;
-                entry.buffer  = page.buffer;
-                entry.offset  = 0;
-                entry.size    = kWebGPUPushConstantBufferBytes;
-
-                WGPUBindGroupDescriptor bindGroupDesc {};
-                bindGroupDesc.layout     = layoutIt->second;
-                bindGroupDesc.entryCount = 1;
-                bindGroupDesc.entries    = &entry;
-
-                auto* const bindGroup = wgpuDeviceCreateBindGroup(m_Device, &bindGroupDesc);
-                if (bindGroup == nullptr)
-                {
-                    return *this;
-                }
-                bindGroupIt = page.bindGroups.emplace(layoutKey.value, bindGroup).first;
+                bindGroup = setObj->getOrCreateBindGroup(*m_Backend, layoutKey, page.buffer);
             }
-            auto* const bindGroup     = bindGroupIt->second;
-            const auto  dynamicOffset = static_cast<uint32_t>(bindingOffset);
-
-            if (m_RenderPass != nullptr && m_BoundPipeline != nullptr)
+            else if (layoutIsPushConstantOnly(layoutKey))
             {
-                wgpuRenderPassEncoderSetBindGroup(m_RenderPass, kWebGPUPushConstantsSet, bindGroup, 1, &dynamicOffset);
+                auto bindGroupIt = page.bindGroups.find(layoutKey.value);
+                if (bindGroupIt == page.bindGroups.end())
+                {
+                    const auto layoutIt = m_Backend->m_DescriptorSetLayouts.find(layoutKey.value);
+                    if (layoutIt == m_Backend->m_DescriptorSetLayouts.end())
+                    {
+                        return *this;
+                    }
+
+                    WGPUBindGroupEntry entry {};
+                    entry.binding = kWebGPUPushConstantsBinding;
+                    entry.buffer  = page.buffer;
+                    entry.offset  = 0;
+                    entry.size    = kWebGPUPushConstantBufferBytes;
+
+                    WGPUBindGroupDescriptor bindGroupDesc {};
+                    bindGroupDesc.layout     = layoutIt->second;
+                    bindGroupDesc.entryCount = 1;
+                    bindGroupDesc.entries    = &entry;
+
+                    auto* const created = wgpuDeviceCreateBindGroup(m_Device, &bindGroupDesc);
+                    if (created == nullptr)
+                    {
+                        return *this;
+                    }
+                    bindGroupIt = page.bindGroups.emplace(layoutKey.value, created).first;
+                }
+                bindGroup = bindGroupIt->second;
             }
-            else if (m_BoundPipeline != nullptr)
+            else
+            {
+                // Set-1 resources not bound yet; bindDescriptorSet will build the group and pick up
+                // m_PushConstantCurrentOffset.
+                return *this;
+            }
+            if (bindGroup == nullptr)
+            {
+                return *this;
+            }
+
+            if (renderTarget)
             {
                 m_PendingRenderBindGroups[kWebGPUPushConstantsSet]          = bindGroup;
                 m_PendingRenderDynamicOffsets[kWebGPUPushConstantsSet]      = dynamicOffset;
                 m_PendingRenderDynamicOffsetCounts[kWebGPUPushConstantsSet] = 1;
+                if (m_RenderPass != nullptr)
+                {
+                    wgpuRenderPassEncoderSetBindGroup(
+                        m_RenderPass, kWebGPUPushConstantsSet, bindGroup, 1, &dynamicOffset);
+                }
             }
             else if (m_BoundComputePipeline != nullptr)
             {
@@ -648,11 +741,16 @@ namespace vultra
             }
 #endif
 
-            // WebGPU texture backend is still being completed.
-            // If the requested color target is unavailable (null/invalid handle), skip this pass safely.
-            if (framebufferInfo.colorAttachments.empty() ||
-                framebufferInfo.colorAttachments.front().target == nullptr ||
-                TextureAccess::getImageHandle(*framebufferInfo.colorAttachments.front().target) == 0)
+            // Skip only when there is nothing renderable at all: no usable color attachment AND no
+            // usable depth attachment. Depth-only passes (e.g. the direct depth prepass) are valid
+            // WebGPU render passes with zero color attachments.
+            const bool hasAnyColor = !framebufferInfo.colorAttachments.empty() &&
+                                     framebufferInfo.colorAttachments.front().target != nullptr &&
+                                     TextureAccess::getImageHandle(*framebufferInfo.colorAttachments.front().target) != 0;
+            const bool hasDepthTarget = framebufferInfo.depthAttachment &&
+                                        framebufferInfo.depthAttachment->target != nullptr &&
+                                        TextureAccess::getImageHandle(*framebufferInfo.depthAttachment->target) != 0;
+            if (!hasAnyColor && !hasDepthTarget)
             {
                 m_SkipCurrentRendering = true;
                 m_InsideRendering      = true;
@@ -660,47 +758,70 @@ namespace vultra
             }
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
-            const auto colorAttachment =
-                framebufferInfo.colorAttachments.empty() ? AttachmentInfo {} : framebufferInfo.colorAttachments.front();
-            const auto clearColor = toWgpuColor(colorAttachment.clearValue);
+            m_RenderView          = nullptr;
+            m_DepthView           = nullptr;
+            m_OwnsRenderView      = false;
+            m_OwnsDepthView       = false;
+            m_CurrentTargetExtent = {};
 
-            m_RenderView     = nullptr;
-            m_DepthView      = nullptr;
-            m_OwnsRenderView = false;
-            m_OwnsDepthView  = false;
-
-            if (colorAttachment.target != nullptr)
+            // All color attachments participate (MRT); the pipeline declares matching target formats.
+            std::vector<WGPURenderPassColorAttachment> colorDescs;
+            colorDescs.reserve(framebufferInfo.colorAttachments.size());
+            if (hasAnyColor)
             {
-                const auto colorViewHandle = colorAttachment.target->getImageView(ImageAspectFlags::eColor).getHandle();
-                m_RenderView               = reinterpret_cast<WGPUTextureView>(colorViewHandle);
-            }
-            if (m_RenderView == nullptr)
-            {
-                auto* const currentTexture = getCurrentWebGPUSwapchainTexture();
-                if (currentTexture == nullptr)
+                for (const auto& attachment : framebufferInfo.colorAttachments)
                 {
-                    throw std::runtime_error(
-                        "WebGPUCommandBuffer beginRendering failed: no acquired swapchain texture");
-                }
-                m_RenderView     = wgpuTextureCreateView(currentTexture, nullptr);
-                m_OwnsRenderView = true;
-            }
-            if (m_RenderView == nullptr)
-            {
-                throw std::runtime_error("WebGPUCommandBuffer beginRendering failed: cannot create texture view");
-            }
+                    WGPUTextureView view = nullptr;
+                    if (attachment.target != nullptr)
+                    {
+                        view = reinterpret_cast<WGPUTextureView>(
+                            attachment.target->getImageView(ImageAspectFlags::eColor).getHandle());
+                        if (view != nullptr && colorDescs.empty())
+                        {
+                            m_CurrentTargetExtent = attachment.target->getExtent();
+                        }
+                    }
+                    if (view == nullptr && colorDescs.empty())
+                    {
+                        // Backbuffer fallback for the primary attachment.
+                        auto* const currentTexture = getCurrentWebGPUSwapchainTexture();
+                        if (currentTexture == nullptr)
+                        {
+                            throw std::runtime_error(
+                                "WebGPUCommandBuffer beginRendering failed: no acquired swapchain texture");
+                        }
+                        view             = wgpuTextureCreateView(currentTexture, nullptr);
+                        m_OwnsRenderView = true;
+                        m_CurrentTargetExtent = {wgpuTextureGetWidth(currentTexture),
+                                                 wgpuTextureGetHeight(currentTexture)};
+                    }
+                    if (view == nullptr)
+                    {
+                        continue;
+                    }
+                    if (colorDescs.empty())
+                    {
+                        m_RenderView = view;
+                    }
 
-            WGPURenderPassColorAttachment colorDesc {};
-            colorDesc.view       = m_RenderView;
-            colorDesc.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-            // WebGPU has no DontCare load op: a used color attachment must be Clear or Load
-            // (WGPULoadOp_Undefined is rejected by wgpu-native). Treat DontCare as Load.
-            colorDesc.loadOp =
-                colorAttachment.clearValue.has_value() || colorAttachment.loadOp == AttachmentLoadOp::eClear ?
-                    WGPULoadOp_Clear :
-                    WGPULoadOp_Load;
-            colorDesc.storeOp    = WGPUStoreOp_Store;
-            colorDesc.clearValue = clearColor;
+                    WGPURenderPassColorAttachment colorDesc {};
+                    colorDesc.view       = view;
+                    colorDesc.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+                    // WebGPU has no DontCare load op: a used color attachment must be Clear or Load
+                    // (WGPULoadOp_Undefined is rejected by wgpu-native). Treat DontCare as Load.
+                    colorDesc.loadOp =
+                        attachment.clearValue.has_value() || attachment.loadOp == AttachmentLoadOp::eClear ?
+                            WGPULoadOp_Clear :
+                            WGPULoadOp_Load;
+                    colorDesc.storeOp    = WGPUStoreOp_Store;
+                    colorDesc.clearValue = toWgpuColor(attachment.clearValue);
+                    colorDescs.push_back(colorDesc);
+                }
+                if (colorDescs.empty())
+                {
+                    throw std::runtime_error("WebGPUCommandBuffer beginRendering failed: cannot create texture view");
+                }
+            }
 
             WGPURenderPassDepthStencilAttachment depthDesc {};
             // Whether to bind the framebuffer's depth-stencil attachment is gated on the pipeline that
@@ -724,6 +845,10 @@ namespace vultra
             if (allowDepthStencilAttachment && framebufferInfo.depthAttachment &&
                 framebufferInfo.depthAttachment->target != nullptr)
             {
+                if (m_CurrentTargetExtent.width == 0)
+                {
+                    m_CurrentTargetExtent = framebufferInfo.depthAttachment->target->getExtent();
+                }
                 const auto depthFormat     = framebufferInfo.depthAttachment->target->getPixelFormat();
                 const auto depthAspects    = getAspectMask(depthFormat);
                 const bool hasStencil      = HasFlagValues(depthAspects, ImageAspectFlags::eStencil);
@@ -778,8 +903,8 @@ namespace vultra
             }
 
             WGPURenderPassDescriptor passDesc {};
-            passDesc.colorAttachmentCount   = 1;
-            passDesc.colorAttachments       = &colorDesc;
+            passDesc.colorAttachmentCount   = colorDescs.size();
+            passDesc.colorAttachments       = colorDescs.empty() ? nullptr : colorDescs.data();
             passDesc.depthStencilAttachment = m_DepthView != nullptr ? &depthDesc : nullptr;
 
 #if defined(__EMSCRIPTEN__)
@@ -855,6 +980,10 @@ namespace vultra
             m_SkipCurrentRendering       = false;
             m_PipelineBoundInCurrentPass = false;
             m_PendingRenderBindGroups.fill(nullptr);
+            m_PendingRenderDynamicOffsets.fill(0);
+            m_PendingRenderDynamicOffsetCounts.fill(0);
+            m_PendingRenderDescriptorSetObjs.fill(nullptr);
+            m_CurrentTargetExtent = {};
             // A pipeline is bound per render pass (WebGPU requires set-pipeline inside each pass), so a
             // pipeline never carries to the next pass. Clear it here so the next beginRendering() doesn't
             // mistake the previous pass's pipeline for this pass's when deciding the depth attachment.
@@ -868,11 +997,29 @@ namespace vultra
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
             if (m_RenderPass != nullptr)
             {
+                // Clamp to the pass's render target: WebGPU rejects (and wgpu-native panics on) a
+                // viewport that exceeds the attachment, which can happen transiently during a window
+                // resize when the framebuffer area updates before the swapchain does.
+                auto x = rect.offset.x > 0 ? static_cast<uint32_t>(rect.offset.x) : 0u;
+                auto y = rect.offset.y > 0 ? static_cast<uint32_t>(rect.offset.y) : 0u;
+                auto w = rect.extent.width;
+                auto h = rect.extent.height;
+                if (m_CurrentTargetExtent.width > 0 && m_CurrentTargetExtent.height > 0)
+                {
+                    x = std::min(x, m_CurrentTargetExtent.width - 1u);
+                    y = std::min(y, m_CurrentTargetExtent.height - 1u);
+                    w = std::min(w, m_CurrentTargetExtent.width - x);
+                    h = std::min(h, m_CurrentTargetExtent.height - y);
+                }
+                if (w == 0 || h == 0)
+                {
+                    return *this;
+                }
                 wgpuRenderPassEncoderSetViewport(m_RenderPass,
-                                                 static_cast<float>(rect.offset.x),
-                                                 static_cast<float>(rect.offset.y),
-                                                 static_cast<float>(rect.extent.width),
-                                                 static_cast<float>(rect.extent.height),
+                                                 static_cast<float>(x),
+                                                 static_cast<float>(y),
+                                                 static_cast<float>(w),
+                                                 static_cast<float>(h),
                                                  0.0f,
                                                  1.0f);
             }
@@ -887,9 +1034,18 @@ namespace vultra
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
             if (m_RenderPass != nullptr)
             {
-                const auto x = rect.offset.x > 0 ? static_cast<uint32_t>(rect.offset.x) : 0u;
-                const auto y = rect.offset.y > 0 ? static_cast<uint32_t>(rect.offset.y) : 0u;
-                wgpuRenderPassEncoderSetScissorRect(m_RenderPass, x, y, rect.extent.width, rect.extent.height);
+                auto x = rect.offset.x > 0 ? static_cast<uint32_t>(rect.offset.x) : 0u;
+                auto y = rect.offset.y > 0 ? static_cast<uint32_t>(rect.offset.y) : 0u;
+                auto w = rect.extent.width;
+                auto h = rect.extent.height;
+                if (m_CurrentTargetExtent.width > 0 && m_CurrentTargetExtent.height > 0)
+                {
+                    x = std::min(x, m_CurrentTargetExtent.width);
+                    y = std::min(y, m_CurrentTargetExtent.height);
+                    w = std::min(w, m_CurrentTargetExtent.width - x);
+                    h = std::min(h, m_CurrentTargetExtent.height - y);
+                }
+                wgpuRenderPassEncoderSetScissorRect(m_RenderPass, x, y, w, h);
             }
 #else
             (void)rect;
@@ -908,7 +1064,13 @@ namespace vultra
             {
                 throw std::runtime_error("WebGPUCommandBuffer draw failed: not inside render pass");
             }
-            if (!m_PipelineBoundInCurrentPass && m_BoundPipeline != nullptr)
+            // No valid graphics pipeline bound (e.g. a pass whose pipeline failed to build) -> a draw would be
+            // a fatal "Render pipeline must be set". Skip instead of taking down the frame.
+            if (m_BoundPipeline == nullptr)
+            {
+                return *this;
+            }
+            if (!m_PipelineBoundInCurrentPass)
             {
                 wgpuRenderPassEncoderSetPipeline(m_RenderPass, m_BoundPipeline);
                 m_PipelineBoundInCurrentPass = true;
@@ -964,6 +1126,26 @@ namespace vultra
 
                     wgpuRenderPassEncoderSetBindGroup(m_RenderPass, set, emptyIt->second, 0, nullptr);
                 }
+
+                // Safety net: a draw with a required (non-empty) bind group still unset is a fatal wgpu error
+                // that invalidates the encoder and kills the whole queue submit. Skip the draw instead so a
+                // pass whose descriptor set failed to build just renders nothing, rather than taking down the
+                // frame. (The main passes bind everything; this only catches still-incomplete WebGPU passes.)
+                for (DescriptorSetIndex set = 0; set < kMinNumDescriptorSets; ++set)
+                {
+                    const auto key = m_BoundPipelineObject->getDescriptorSetLayout(set);
+                    if (!key || m_PendingRenderBindGroups[set] != nullptr)
+                    {
+                        continue;
+                    }
+                    const auto bindingsIt = m_Backend->m_DescriptorSetLayoutBindings.find(key.value);
+                    const bool emptyLayout =
+                        bindingsIt != m_Backend->m_DescriptorSetLayoutBindings.end() && bindingsIt->second.empty();
+                    if (!emptyLayout)
+                    {
+                        return *this; // required bind group missing -> skip this draw
+                    }
+                }
             }
 
             if (geometryInfo.vertexBuffer != nullptr && geometryInfo.vertexBuffer->getHandle() != 0)
@@ -1018,7 +1200,12 @@ namespace vultra
             {
                 return *this;
             }
-            if (!m_PipelineBoundInCurrentPass && m_BoundPipeline != nullptr)
+            // No valid graphics pipeline bound -> skip (a draw without one is a fatal queue error).
+            if (m_BoundPipeline == nullptr)
+            {
+                return *this;
+            }
+            if (!m_PipelineBoundInCurrentPass)
             {
                 wgpuRenderPassEncoderSetPipeline(m_RenderPass, m_BoundPipeline);
                 m_PipelineBoundInCurrentPass = true;
@@ -1031,6 +1218,25 @@ namespace vultra
                     const auto* dynamicOffsets = dynamicOffsetCount > 0 ? &m_PendingRenderDynamicOffsets[set] : nullptr;
                     wgpuRenderPassEncoderSetBindGroup(
                         m_RenderPass, set, m_PendingRenderBindGroups[set], dynamicOffsetCount, dynamicOffsets);
+                }
+            }
+            // Skip if a required (non-empty) bind group is still unset (see draw() for rationale).
+            if (m_BoundPipelineObject != nullptr && m_Backend != nullptr)
+            {
+                for (DescriptorSetIndex set = 0; set < kMinNumDescriptorSets; ++set)
+                {
+                    const auto key = m_BoundPipelineObject->getDescriptorSetLayout(set);
+                    if (!key || m_PendingRenderBindGroups[set] != nullptr)
+                    {
+                        continue;
+                    }
+                    const auto bindingsIt = m_Backend->m_DescriptorSetLayoutBindings.find(key.value);
+                    const bool emptyLayout =
+                        bindingsIt != m_Backend->m_DescriptorSetLayoutBindings.end() && bindingsIt->second.empty();
+                    if (!emptyLayout)
+                    {
+                        return *this;
+                    }
                 }
             }
             wgpuRenderPassEncoderDrawIndirect(m_RenderPass,
@@ -1192,7 +1398,9 @@ namespace vultra
         }
         WebGPUCommandBuffer& WebGPUCommandBuffer::copyImage(const Texture&, const Buffer&, const rhi::ImageAspect)
         {
-            unsupported("copyImage");
+            // Texture->buffer readback (e.g. editor entity-id picking) is not implemented on WebGPU yet. Make
+            // it a no-op rather than throwing: throwing aborts the whole app on the first frame that picks.
+            return *this;
         }
         WebGPUCommandBuffer&
         WebGPUCommandBuffer::update(Buffer& dst, const uint64_t offset, const uint64_t size, const void* data)
@@ -1269,11 +1477,13 @@ namespace vultra
         WebGPUCommandBuffer&
         WebGPUCommandBuffer::blit(Texture&, Texture&, TexelFilter, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)
         {
-            unsupported("blit");
+            // Not implemented on WebGPU yet; no-op instead of throwing so a blit doesn't abort the app.
+            return *this;
         }
         WebGPUCommandBuffer& WebGPUCommandBuffer::generateMipmaps(Texture&, TexelFilter)
         {
-            unsupported("generateMipmaps");
+            // Not implemented on WebGPU yet; no-op instead of throwing (mips stay undefined, no crash).
+            return *this;
         }
 
         WebGPUCommandBuffer& WebGPUCommandBuffer::flushBarriers()
@@ -1415,6 +1625,9 @@ namespace vultra
             m_PendingRenderDynamicOffsets.fill(0);
             m_PendingComputeDynamicOffsetCounts.fill(0);
             m_PendingRenderDynamicOffsetCounts.fill(0);
+            m_PendingRenderDescriptorSetObjs.fill(nullptr);
+            m_PendingComputeDescriptorSetObjs.fill(nullptr);
+            m_PushConstantCurrentOffset = 0;
         }
 
         void WebGPUCommandBuffer::releaseFrameTransientResources() noexcept

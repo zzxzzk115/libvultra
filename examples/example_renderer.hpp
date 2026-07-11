@@ -3,7 +3,6 @@
 #include <vultra/core/rhi/structs/render_backend_api.hpp>
 #include <vultra/function/framegraph/framegraph_import.hpp>
 #include <vultra/function/rendering/srp/builtin/features/builtin_screen_space_feature.hpp>
-#include <vultra/function/rendering/srp/builtin/features/compatibility_basecolor_feature.hpp>
 #include <vultra/function/rendering/srp/builtin/features/direct_gbuffer_feature.hpp>
 #include <vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp>
 #include <vultra/function/rendering/srp/builtin/features/general_gaussian_splat_feature.hpp>
@@ -315,16 +314,6 @@ namespace vultra::examples
                 return;
 
             auto& renderService = services->require<IRenderService>();
-            const auto backendApi = services->require<IRenderBackendService>().renderDevice().getBackendApi();
-            if (backendApi == rhi::RenderBackendApi::eWebGPU)
-            {
-                emplaceFeature<CompatibilityBaseColorFeature>();
-                emplaceFeature<GeneralGaussianSplatFeature>();
-                emplaceFeature<BuiltinScreenSpaceFeature>(renderService);
-                emplaceFeature<FinalCompositionFeature>();
-                return;
-            }
-
             emplaceFeature<DirectGBufferFeature>(renderService);
             emplaceFeature<GeneralGaussianSplatFeature>();
             emplaceFeature<BuiltinScreenSpaceFeature>(renderService);

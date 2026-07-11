@@ -68,6 +68,11 @@ namespace vultra
                 Builder& addBuiltinShader(const ShaderType, const SPIRV&, const ShaderReflection* = nullptr);
                 Builder& addBuiltinShader(const ShaderType, const ShaderLibraryRuntime::LoadedShader&);
 
+                // Flag combined-image-sampler slots that sample a depth texture (WebGPU only): their reflected
+                // layout entries become unfilterable-float + a non-filtering sampler. The (set,binding) list is
+                // derived by the pass from the framegraph's eDepth reads, not hardcoded. No-op on Vulkan.
+                Builder& markDepthSampledBindings(const std::vector<std::pair<uint32_t, uint32_t>>& bindings);
+
                 Builder& setDepthStencil(const DepthStencilState&);
                 Builder& setRasterizer(const RasterizerState&);
                 Builder& setBlending(const AttachmentIndex, const BlendState&);
@@ -92,10 +97,13 @@ namespace vultra
                 struct BuiltinShaderStage
                 {
                     SPIRV                           spirv;
+                    std::string                     wgsl; // cooked WGSL (WebGPU); empty on Vulkan-only libs
                     std::optional<ShaderReflection> reflection;
                 };
 
                 std::unordered_map<ShaderType, BuiltinShaderStage> m_BuiltinShaderStages;
+                // (set, binding) combined-sampler slots that sample a depth texture (WebGPU layout hint).
+                std::vector<std::pair<uint32_t, uint32_t>>      m_DepthSampledBindings;
                 PipelineLayout                                  m_PipelineLayout;
 
                 DepthStencilState         m_DepthStencilState {};

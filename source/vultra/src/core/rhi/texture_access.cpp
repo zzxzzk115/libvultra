@@ -63,5 +63,18 @@ namespace vultra
             return Texture::fromOwnedImage(
                 api, device, image, extent, format, baseLayer, numLayers, numMipLevels, renderDevice);
         }
+
+        Texture TextureAccess::fromOwnedCubemap(const RenderBackendApi    api,
+                                                const TextureDeviceHandle device,
+                                                const TextureImageHandle  image,
+                                                const Extent2D            extent,
+                                                const PixelFormat         format,
+                                                const uint32_t            numLayers,
+                                                const uint32_t            numMipLevels,
+                                                const ImageUsage          usageFlags,
+                                                IRenderDevice*            renderDevice)
+        {
+            return Texture {api, device, image, extent, format, numLayers, numMipLevels, usageFlags, renderDevice};
+        }
     } // namespace rhi
 } // namespace vultra

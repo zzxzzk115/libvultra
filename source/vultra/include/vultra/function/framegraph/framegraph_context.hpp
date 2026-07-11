@@ -12,6 +12,10 @@
 #include <fg/FrameGraph.hpp>
 #include <vbase/core/scope_exit.hpp>
 
+#include <utility>
+#include <variant>
+#include <vector>
+
 namespace vultra
 {
     class RenderFrameResources;
@@ -82,6 +86,27 @@ namespace vultra
         {
             for (const auto& [set, _] : resourceSet)
                 bindDescriptorSet(pipeline, set);
+        }
+
+        // (set, binding) combined-image-sampler slots that bind a depth texture this frame, taken from the
+        // framegraph's eDepth reads already materialized into resourceSet. A pass passes this to its pipeline
+        // builder so WebGPU declares those slots unfilterable-float (a depth view can't bind to filterable
+        // float). Single source of truth is the read's imageAspect - no per-pass hardcoded binding numbers.
+        [[nodiscard]] std::vector<std::pair<uint32_t, uint32_t>> collectDepthSampledBindings() const
+        {
+            std::vector<std::pair<uint32_t, uint32_t>> result;
+            for (const auto& [set, bindings] : resourceSet)
+            {
+                for (const auto& [binding, info] : bindings)
+                {
+                    if (const auto* cis = std::get_if<rhi::bindings::CombinedImageSampler>(&info);
+                        cis && cis->imageAspect == rhi::ImageAspect::eDepth)
+                    {
+                        result.emplace_back(static_cast<uint32_t>(set), static_cast<uint32_t>(binding));
+                    }
+                }
+            }
+            return result;
         }
 
         void clear()

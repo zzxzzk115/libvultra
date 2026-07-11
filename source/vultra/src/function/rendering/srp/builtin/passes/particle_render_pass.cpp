@@ -96,6 +96,7 @@ namespace vultra
                     framebufferInfo.colorAttachments[0].clearValue = std::nullopt;
                     framebufferInfo.colorAttachments[0].loadOp     = rhi::AttachmentLoadOp::eLoad;
 
+                    m_DepthSampledBindings = rc.collectDepthSampledBindings();
                     const auto* pipeline = getPipeline(rhi::getColorFormat(framebufferInfo, 0));
                     if (!pipeline)
                         return;
@@ -156,6 +157,7 @@ namespace vultra
                          })
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
+            .markDepthSampledBindings(m_DepthSampledBindings)
             .build(getRenderDevice());
     }
 } // namespace vultra

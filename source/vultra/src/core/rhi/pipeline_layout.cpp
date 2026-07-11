@@ -62,7 +62,10 @@ namespace vultra
 
         DescriptorSetLayoutKey PipelineLayout::getDescriptorSet(const DescriptorSetIndex index) const
         {
-            assert(m_Impl);
+            // An empty pipeline (failed build) has no layout impl; return a null key instead of dereferencing
+            // it, so callers that probe a bound-but-invalid pipeline (e.g. pushConstants) bail out safely.
+            if (!m_Impl)
+                return {};
             return m_Impl->getDescriptorSet(index);
         }
 
@@ -192,6 +195,7 @@ namespace vultra
                     desc.stageFlags = resource.stageFlags;
                     desc.flags      = resource.flags;
                     desc.textureType = resource.textureType;
+                    desc.depthSampled = resource.depthSampled;
                     builder.addResource(static_cast<DescriptorSetIndex>(set), desc);
                 }
             }

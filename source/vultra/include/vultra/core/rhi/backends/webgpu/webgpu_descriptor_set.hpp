@@ -24,8 +24,14 @@ namespace vultra
 
             [[nodiscard]] DescriptorSetLayoutKey layoutKey() const { return m_LayoutKey; }
 
+            // pushConstantBuffer backs the emulated push-constant slot (binding 31): when the layout
+            // declares b31 and the engine bound no resource there, the entry points at this buffer
+            // (bound with a dynamic offset selecting the current 256-byte slice). WebGPU bind groups
+            // are complete units, so the slot must be part of THIS group - a second group on the same
+            // set index would displace it.
             [[nodiscard]] WGPUBindGroup getOrCreateBindGroup(const WebGPURenderDevice& backend,
-                                                             DescriptorSetLayoutKey   expectedLayoutKey);
+                                                             DescriptorSetLayoutKey   expectedLayoutKey,
+                                                             WGPUBuffer               pushConstantBuffer = nullptr);
 
         private:
             DescriptorSetLayoutKey                              m_LayoutKey {};

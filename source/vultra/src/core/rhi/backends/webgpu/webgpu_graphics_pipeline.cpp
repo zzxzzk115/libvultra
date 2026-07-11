@@ -85,6 +85,23 @@ namespace vultra
                 return std::nullopt;
             }
 
+            // WebGPU consumes WGSL. Builtin (cooked) stages carry their WGSL alongside the SPIR-V the Vulkan
+            // builder uses; fold them into the WGSL stage map so the shared path below is backend-agnostic.
+            // Passes feed shaders via addBuiltinShader(LoadedShader); without this they would be stage-less.
+            for (auto& [stage, builtin] : m_BuiltinShaderStages)
+            {
+                if (builtin.wgsl.empty() || m_ShaderStages.count(stage) > 0)
+                {
+                    continue;
+                }
+                ShaderStageInfo info {};
+                info.code           = builtin.wgsl;
+                info.entryPointName = "main";
+                info.reflection     = builtin.reflection;
+                m_ShaderStages.emplace(stage, std::move(info));
+            }
+
+
             const auto vertexIt = m_ShaderStages.find(ShaderType::eVertex);
             const auto fragIt   = m_ShaderStages.find(ShaderType::eFragment);
             if (vertexIt == m_ShaderStages.end() || fragIt == m_ShaderStages.end())
@@ -93,8 +110,16 @@ namespace vultra
                 for (const auto& [stage, info] : m_ShaderStages)
                     present += " stage" + std::to_string(static_cast<int>(stage)) + "(code=" +
                                std::to_string(info.code.size()) + ")";
-                VULTRA_CORE_ERROR("[GraphicsPipeline] WebGPU requires vertex + fragment shader stages; present:{}",
-                                  present.empty() ? " <none>" : present.c_str());
+                for (const auto& [stage, b] : m_BuiltinShaderStages)
+                    present += " builtin-stage" + std::to_string(static_cast<int>(stage)) + "(wgsl=" +
+                               std::to_string(b.wgsl.size()) + ",spirv=" + std::to_string(b.spirv.size()) + ")";
+                std::string vsnip;
+                if (vertexIt != m_ShaderStages.end())
+                    vsnip = vertexIt->second.code.substr(0, std::min<size_t>(160, vertexIt->second.code.size()));
+                VULTRA_CORE_ERROR(
+                    "[GraphicsPipeline] WebGPU requires vertex + fragment shader stages; present:{} || vtx-snippet: {}",
+                    present.empty() ? " <none>" : present.c_str(),
+                    vsnip);
                 return std::nullopt;
             }
 
@@ -166,33 +191,47 @@ namespace vultra
                 vertexState.buffers     = &vertexBufferLayout;
             }
 
-            const auto           colorFormat = !m_ColorAttachmentFormats.empty() ?
-                                                   webgpu::toWgpuTextureFormat(m_ColorAttachmentFormats.front()) :
-                                                   WGPUTextureFormat_BGRA8UnormSrgb;
-            WGPUColorTargetState colorTarget {};
-            colorTarget.format    = colorFormat;
-            colorTarget.writeMask = WGPUColorWriteMask_All;
-
-            WGPUBlendState blendState {};
-            const bool     hasBlendState = !m_BlendStates.empty() && m_BlendStates.front().enabled;
-            if (hasBlendState)
+            // One color target per declared attachment format (MRT must match the render pass). No
+            // formats + a depth format = a depth-only pipeline (zero targets); no formats and no depth
+            // keeps the legacy single-backbuffer default.
+            std::vector<PixelFormat> targetFormats = m_ColorAttachmentFormats;
+            if (targetFormats.empty() && m_DepthFormat == PixelFormat::eUndefined &&
+                m_StencilFormat == PixelFormat::eUndefined)
             {
-                const auto& blend          = m_BlendStates.front();
-                blendState.color.operation = webgpu::toWgpuBlendOperation(blend.colorOp);
-                blendState.color.srcFactor = webgpu::toWgpuBlendFactor(blend.srcColor);
-                blendState.color.dstFactor = webgpu::toWgpuBlendFactor(blend.dstColor);
-                blendState.alpha.operation = webgpu::toWgpuBlendOperation(blend.alphaOp);
-                blendState.alpha.srcFactor = webgpu::toWgpuBlendFactor(blend.srcAlpha);
-                blendState.alpha.dstFactor = webgpu::toWgpuBlendFactor(blend.dstAlpha);
-                colorTarget.blend          = &blendState;
+                targetFormats.push_back(PixelFormat::eBGRA8_sRGB);
+            }
+
+            std::vector<WGPUColorTargetState> colorTargets;
+            std::vector<WGPUBlendState>       blendStorage;
+            colorTargets.reserve(targetFormats.size());
+            blendStorage.reserve(targetFormats.size());
+            for (size_t i = 0; i < targetFormats.size(); ++i)
+            {
+                WGPUColorTargetState colorTarget {};
+                colorTarget.format    = webgpu::toWgpuTextureFormat(targetFormats[i]);
+                colorTarget.writeMask = WGPUColorWriteMask_All;
+                if (i < m_BlendStates.size() && m_BlendStates[i].enabled)
+                {
+                    const auto&    blend = m_BlendStates[i];
+                    WGPUBlendState blendState {};
+                    blendState.color.operation = webgpu::toWgpuBlendOperation(blend.colorOp);
+                    blendState.color.srcFactor = webgpu::toWgpuBlendFactor(blend.srcColor);
+                    blendState.color.dstFactor = webgpu::toWgpuBlendFactor(blend.dstColor);
+                    blendState.alpha.operation = webgpu::toWgpuBlendOperation(blend.alphaOp);
+                    blendState.alpha.srcFactor = webgpu::toWgpuBlendFactor(blend.srcAlpha);
+                    blendState.alpha.dstFactor = webgpu::toWgpuBlendFactor(blend.dstAlpha);
+                    blendStorage.push_back(blendState);
+                    colorTarget.blend = &blendStorage.back();
+                }
+                colorTargets.push_back(colorTarget);
             }
 
             WGPUFragmentState fragmentState {};
             fragmentState.module      = wgpuFragmentModule;
             fragmentState.entryPoint  = WGPUStringView {.data   = fragIt->second.entryPointName.data(),
                                                         .length = fragIt->second.entryPointName.size()};
-            fragmentState.targetCount = 1;
-            fragmentState.targets     = &colorTarget;
+            fragmentState.targetCount = colorTargets.size();
+            fragmentState.targets     = colorTargets.empty() ? nullptr : colorTargets.data();
 
             WGPUPipelineLayout wgpuLayout {nullptr};
             if (m_PipelineLayout)
@@ -201,8 +240,21 @@ namespace vultra
             }
             else
             {
-                const auto mergedReflection =
+                auto mergedReflection =
                     mergeReflections(vertexModule.getReflection(), fragmentModule.getReflection());
+                // Apply pass-declared depth-sampled slots so their layout becomes unfilterable-float (a depth
+                // view can't bind to a filterable-float slot in WebGPU, and the cook can't flag it).
+                for (const auto& [set, binding] : m_DepthSampledBindings)
+                {
+                    if (set < mergedReflection.descriptorSets.size())
+                    {
+                        auto& bindings = mergedReflection.descriptorSets[set];
+                        if (const auto it = bindings.find(binding); it != bindings.end())
+                        {
+                            it->second.depthSampled = true;
+                        }
+                    }
+                }
                 m_PipelineLayout = reflectPipelineLayout(rd, mergedReflection);
                 if (m_PipelineLayout)
                 {
@@ -214,7 +266,11 @@ namespace vultra
             descriptor.layout                             = wgpuLayout;
             descriptor.vertex                             = vertexState;
             descriptor.primitive.topology                 = webgpu::toWgpuPrimitiveTopology(m_PrimitiveTopology);
-            descriptor.primitive.frontFace                = WGPUFrontFace_CCW;
+            // The shared vertex data is authored for the Vulkan pipeline (Y-flipped projection + CCW).
+            // WebGPU skips the projection flip (its NDC is already Y-up), which mirrors the screen-space
+            // winding once - so the same triangles arrive CW here. Culling must match or every
+            // single-sided draw is rejected.
+            descriptor.primitive.frontFace                = WGPUFrontFace_CW;
             descriptor.primitive.cullMode                 = webgpu::toWgpuCullMode(m_RasterizerState.cullMode);
             descriptor.multisample.count                  = 1;
             descriptor.multisample.mask                   = ~0u;

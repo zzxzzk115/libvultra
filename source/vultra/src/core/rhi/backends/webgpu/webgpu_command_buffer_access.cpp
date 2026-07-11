@@ -21,6 +21,15 @@ namespace vultra
             return nullptr;
         }
 
+        Extent2D WebGPUCommandBufferAccess::getCurrentTargetExtent(const CommandBuffer& cb)
+        {
+            if (const auto* webgpuCb = dynamic_cast<const WebGPUCommandBuffer*>(cb.m_Impl.get()); webgpuCb)
+            {
+                return webgpuCb->getCurrentTargetExtent();
+            }
+            return {};
+        }
+
         void WebGPUCommandBufferAccess::closeActiveComputePassForProfilingBoundary(CommandBuffer& cb)
         {
             if (auto* webgpuCb = dynamic_cast<WebGPUCommandBuffer*>(cb.m_Impl.get()); webgpuCb)

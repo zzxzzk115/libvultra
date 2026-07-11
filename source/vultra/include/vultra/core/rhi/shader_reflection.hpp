@@ -35,6 +35,9 @@ namespace vultra
                 // Texture view dimension for image descriptors (needed by WebGPU bind-group layouts to
                 // declare samplerCube/2DArray/3D). eUnknown for non-image descriptors -> treated as 2D.
                 vshadersystem::TextureType    textureType {vshadersystem::TextureType::eUnknown};
+                // Combined-image-sampler slot that samples a depth texture (flagged by the pass, since the
+                // cook can't distinguish a depth sampler2D from a colour one). Drives WebGPU unfilterable-float.
+                bool                          depthSampled {false};
             };
             // Key = binding
             // layout(binding = index)

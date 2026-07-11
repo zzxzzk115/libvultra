@@ -18,8 +18,12 @@ namespace vultra
         m_RenderDevice = &renderDevice;
         m_ColorFormat  = colorFormat;
         m_VertexBuffer = renderDevice.createVertexBuffer(sizeof(DrawVertex), 4 * 1024 * 1024 / sizeof(DrawVertex));
+        // WebGPU needs the WGSL-cooked web library; Vulkan needs the SPIR-V one. The pipeline builder picks
+        // the matching blob from the LoadedShader, so just load the right library per backend here.
+        const bool  webgpu      = renderDevice.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
+        const char* shaderLibId = webgpu ? "shaders/builtin_highend.vshweblib" : "shaders/builtin_highend.vshlib";
         std::vector<std::byte> shaderBytes;
-        if (builtin::read("shaders/builtin_highend.vshlib", shaderBytes) && !shaderBytes.empty())
+        if (builtin::read(shaderLibId, shaderBytes) && !shaderBytes.empty())
             m_ShaderLibrary.loadFromMemory(reinterpret_cast<const uint8_t*>(shaderBytes.data()), shaderBytes.size());
         else
             VULTRA_CORE_WARN("[DebugDraw] builtin highend shader library missing from builtin pack");
@@ -96,8 +100,8 @@ namespace vultra
                                          return attrs;
                                      }())
                                      .setVertexStride(sizeof(DrawVertex))
-                                     .addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)
-                                     .addBuiltinShader(rhi::ShaderType::eFragment, fragmentShader->spirv)
+                                     .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
+                                     .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
                                      .setBlending(0, {.enabled = false})
                                      .setTopology(rhi::PrimitiveTopology::eLineList)
                                      .build(*m_RenderDevice);
@@ -146,7 +150,7 @@ namespace vultra
 
     void DebugDrawInterface::drawLineList(const DrawVertex* lines, int count, bool depthEnabled)
     {
-        if (count == 0)
+        if (count == 0 || !m_LineGraphicsPipeline || !m_CurrentCommandBuffer)
             return;
 
         const size_t dataSize = count * sizeof(DrawVertex);

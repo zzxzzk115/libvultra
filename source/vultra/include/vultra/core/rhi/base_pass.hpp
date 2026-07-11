@@ -9,6 +9,8 @@
 #include <memory>
 #include <typeinfo>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace vultra
 {
@@ -256,6 +258,10 @@ namespace vultra
             RenderDevice*         m_RenderDevice {nullptr};
             ShaderLibraryRuntime* m_ShaderLib {nullptr};
             ShaderProfile         m_ShaderProfile {ShaderProfile::eUnspecified};
+            // Combined-image-sampler (set, binding) slots that sample a depth texture this pass, derived from
+            // the framegraph's eDepth reads (see FrameGraphExecContext::collectDepthSampledBindings) and fed to
+            // the WebGPU pipeline layout so depth views bind as unfilterable-float. Empty on Vulkan.
+            std::vector<std::pair<uint32_t, uint32_t>> m_DepthSampledBindings;
 
         private:
             // Key = Hashed args passed to _createPipeline.
