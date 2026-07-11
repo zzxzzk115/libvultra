@@ -10,7 +10,9 @@
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
 #include <webgpu/webgpu.h>
-#include <webgpu/wgpu.h> // WGPUBindGroupEntryExtras (bindless texture-array binding)
+#if !defined(__EMSCRIPTEN__)
+#include <webgpu/wgpu.h> // WGPUBindGroupEntryExtras (bindless texture-array binding; wgpu-native only)
+#endif
 #endif
 
 namespace vultra
@@ -175,10 +177,14 @@ namespace vultra
             // Stable backing storage for bindless texture-array entries: the WGPUBindGroupEntryExtras and
             // its textureViews array must outlive the wgpuDeviceCreateBindGroup call below. Reserved so
             // push_back never reallocates and the chained pointers stay valid.
+            // Emscripten targets the browser's WebGPU API, which has no binding arrays; the bindless
+            // array entry cannot be expressed there (the device never enables bindless either).
+#if !defined(__EMSCRIPTEN__)
             std::vector<std::vector<WGPUTextureView>> arrayViewStorage;
             std::vector<WGPUBindGroupEntryExtras>     arrayExtrasStorage;
             arrayViewStorage.reserve(layoutBindingsIt->second.size());
             arrayExtrasStorage.reserve(layoutBindingsIt->second.size());
+#endif
 
             // Mirror the WGSL cook's set renumbering (see createWebGPUDescriptorSetLayout): every combined
             // image sampler pushes all higher bindings in the set up by one, its texture sits at the shifted
@@ -376,6 +382,9 @@ namespace vultra
                                 break;
                             }
 
+#if defined(__EMSCRIPTEN__)
+                            break; // binding arrays are unavailable in the browser's WebGPU API
+#else
                             arrayViewStorage.push_back(std::move(views));
                             arrayExtrasStorage.push_back(WGPUBindGroupEntryExtras {
                                 .chain = {.sType = static_cast<WGPUSType>(WGPUSType_BindGroupEntryExtras)},
@@ -393,6 +402,7 @@ namespace vultra
                             samplerEntry.sampler = reinterpret_cast<WGPUSampler>(sampler.value);
                             entries.push_back(samplerEntry);
                             break;
+#endif
                         }
 
                         const auto* value = std::get_if<bindings::SampledImage>(&resourceBinding);

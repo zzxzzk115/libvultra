@@ -45,7 +45,9 @@
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
 #include <webgpu/webgpu.h>
-#include <webgpu/wgpu.h> // WGPUBindGroupLayoutEntryExtras (bindless binding arrays)
+#if !defined(__EMSCRIPTEN__)
+#include <webgpu/wgpu.h> // WGPUBindGroupLayoutEntryExtras (bindless binding arrays; wgpu-native only)
+#endif
 #endif
 
 namespace vultra
@@ -319,8 +321,12 @@ namespace vultra
 
                 // Stable storage for the binding-array "extras" chained onto entries (wgpu-native bindless).
                 // Reserved so push_back never reallocates and the chained pointers stay valid until create.
+                // Emscripten targets the browser's WebGPU API, which has no binding arrays - the entry is
+                // emitted without the extras chain there (bindless is disabled at the device level anyway).
+#if !defined(__EMSCRIPTEN__)
                 std::vector<WGPUBindGroupLayoutEntryExtras> arrayExtras;
                 arrayExtras.reserve(bindings.size());
+#endif
 
                 for (const auto& binding : bindings)
                 {
@@ -368,6 +374,7 @@ namespace vultra
                             entry.texture.sampleType    = WGPUTextureSampleType_Float;
                             entry.texture.viewDimension = wgpuViewDimension(binding.textureType);
                             entry.texture.multisampled  = false;
+#if !defined(__EMSCRIPTEN__)
                             if (binding.count > 1)
                             {
                                 // Bindless texture array (binding_array<texture_2d, N>): declare the array
@@ -378,6 +385,7 @@ namespace vultra
                                 });
                                 entry.nextInChain = &arrayExtras.back().chain;
                             }
+#endif
                             entries.push_back(entry);
                             break;
                         }

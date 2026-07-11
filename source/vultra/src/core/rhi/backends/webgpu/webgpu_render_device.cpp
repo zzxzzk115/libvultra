@@ -2,7 +2,11 @@
 #include "vultra/core/base/common_context.hpp"
 
 // wgpu-native extensions: native feature enums (TextureBindingArray, nonuniform indexing) for bindless.
+// Not available on Emscripten (emdawnwebgpu targets the browser's WebGPU API, which has no binding
+// arrays yet) - the bindless path stays disabled there.
+#if !defined(__EMSCRIPTEN__)
 #include <webgpu/wgpu.h>
+#endif
 
 #include <algorithm>
 #include <cstring>
@@ -317,7 +321,9 @@ namespace vultra
 
             // Bindless: wgpu-native binding arrays (binding_array<texture_2d>) + nonuniform indexing.
             // Required for the unified deferred GBuffer's bindless material textures. Gated on adapter
-            // support so device creation still succeeds on adapters that lack them.
+            // support so device creation still succeeds on adapters that lack them. Browsers expose no
+            // binding arrays, so the Emscripten build never requests them.
+#if !defined(__EMSCRIPTEN__)
             const auto kTextureBindingArray =
                 static_cast<WGPUFeatureName>(WGPUNativeFeature_TextureBindingArray);
             const auto kArrayNonUniformIndexing =
@@ -331,6 +337,7 @@ namespace vultra
                     requiredFeatures.push_back(kArrayNonUniformIndexing);
                 }
             }
+#endif
 
             // Builtin WebGPU GPU timing is disabled on this backend/runtime path. Even when the
             // adapter reports TimestampQuery support, creating query resources has proven unstable

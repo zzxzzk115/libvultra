@@ -61,6 +61,11 @@ local function _apply_wasm_memory_policy(target)
     target:add("ldflags", "-sALLOW_MEMORY_GROWTH=1", {force = true})
     target:add("ldflags", "-sINITIAL_MEMORY=" .. tostring(initial_mb * 1024 * 1024), {force = true})
     target:add("ldflags", "-sMAXIMUM_MEMORY=" .. tostring(maximum_mb * 1024 * 1024), {force = true})
+    -- Emscripten 6 backs a growable heap with a resizable ArrayBuffer by default, and
+    -- TextDecoder.decode() rejects views over those on browsers that predate resizable-buffer
+    -- support -- every wasm->JS string then throws and the engine dies silently. Keep the
+    -- classic realloc-on-grow heap for portability.
+    target:add("ldflags", "-sGROWABLE_ARRAYBUFFERS=0", {force = true})
 end
 
 local function _resolve_vpk_paths(target)
