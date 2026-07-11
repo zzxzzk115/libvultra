@@ -1,8 +1,17 @@
 name: Deploy Examples Pages
 
+# Publishes the website: a landing page plus ONE shared web export of the in-repo example project
+# (runtime shell + vultra-runtime.js/.wasm + resources.vpk) with per-scene entry pages under
+# /example/<slug>/ that select their scene via the shell's ?scene= query parameter.
+# One-time repo setting: Settings -> Pages -> Source = "GitHub Actions".
+
+# NOTE: manual-only for now. In-browser rendering of the deferred scene is still blocked: browsers cap
+# maxSampledTexturesPerShaderStage at ~16-48, so the bindless GBuffer (binding_array of 256) cannot run
+# there yet - the web path needs the per-draw material-texture GBuffer variant first. Add
+#   push:
+#     branches: [dev-next]
+# once that lands, so every push republishes the site.
 on:
-  push:
-    branches: [webgpu]
   workflow_dispatch:
 
 permissions:
@@ -15,14 +24,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: macos-latest
+  # The engine-only wasm runtime (index.html + vultra-runtime.js/.wasm), same recipe as the
+  # export-templates release. Runs in parallel with the native build below.
+  build-web-template:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
-          ref: webgpu
 
       - name: Sync submodules
         run: git submodule update --init --recursive
@@ -30,89 +40,164 @@ jobs:
       - uses: xmake-io/github-action-setup-xmake@v1
         with:
           xmake-version: latest
-          actions-cache-folder: ".xmake-cache"
+          actions-cache-folder: '.xmake-cache-wasm'
           build-cache: true
+
+      - name: Install Linux build deps
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake git clang ninja-build pkg-config
 
       - name: Setup Emscripten SDK
         uses: mymindstorm/setup-emsdk@v14
         with:
           version: latest
 
-      - name: Install dependencies
-        run: brew install ninja pkg-config
+      - name: Configure (wasm)
+        run: xmake f -p wasm -m release --policies=build.ccache:y --vultra_build_examples=n --vultra_build_tests=n -y
 
-      - name: Bootstrap host vasset-cli
-        run: sh scripts/bootstrap_vasset_cli.sh "$GITHUB_WORKSPACE"
+      - name: Build vultra-runtime (web template)
+        run: xmake repo -u && xmake build -y vultra-runtime
 
-      - name: Configure WASM Build
-        run: xmake f -p wasm --policies=build.ccache:y --vultra_build_examples=y --vultra_build_tests=n -y
+      - name: Check template
+        run: test -f build/web-template/index.html && test -f build/web-template/vultra-runtime.wasm
 
-      - name: Reset generated WASM assets
-        run: |
-          rm -rf resources/imported
-          rm -rf build/.generated/wasm_resources
-          rm -rf build/wasm/wasm32/release/example-demo-app
-          rm -rf build/wasm/wasm32/release/example-gaussian-splatting
-
-      - name: Build WASM examples
-        run: xmake repo -u && xmake build -y example-demo-app && xmake build -y example-gaussian-splatting
-
-      - name: Prepare pages site
-        run: |
-          mkdir -p site
-          cp web/index.html site/index.html
-
-          prepare_example() {
-            local source_dir="$1"
-            local page_title="$2"
-            local html_name="$3"
-            local slug="${html_name%.html}"
-
-            mkdir -p "site/${slug}"
-            rsync -av --delete "${source_dir}/" "site/${slug}/"
-            if [ -f "site/${slug}/${html_name}" ]; then
-              mv "site/${slug}/${html_name}" "site/${slug}/index.html"
-              PAGE_TITLE="${page_title}" perl -0pi -e 'my $title = $ENV{PAGE_TITLE}; s{<title>VultraEngine</title>}{<title>${title} | VultraEngine</title>}g' "site/${slug}/index.html"
-            fi
-          }
-
-          prepare_example "build/wasm/wasm32/release/example-demo-app" "Demo App" "example-demo-app.html"
-          prepare_example "build/wasm/wasm32/release/example-gaussian-splatting" "Gaussian Splatting" "example-gaussian-splatting.html"
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
-          path: site
+          name: web-template
+          path: |
+            build/web-template/index.html
+            build/web-template/vultra-runtime.js
+            build/web-template/vultra-runtime.wasm
 
       - name: Collect failure logs
         if: failure()
         run: |
           mkdir -p ci-logs
-          LOG_FILE="ci-logs/install_logs.txt"
-          touch "$LOG_FILE"
           while IFS= read -r f; do
-            echo "==== $f ====" >> "$LOG_FILE"
-            cat "$f" >> "$LOG_FILE"
-            echo "" >> "$LOG_FILE"
+            echo "==== $f ====" >> ci-logs/install_logs.txt
+            cat "$f" >> ci-logs/install_logs.txt
+            echo "" >> ci-logs/install_logs.txt
           done < <(find "$HOME/.xmake/cache" -name install.txt 2>/dev/null)
 
       - name: Upload failure logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-logs-pages-build-${{ github.run_id }}
+          name: ci-logs-web-template-${{ github.run_id }}
           path: ci-logs
           if-no-files-found: ignore
+
+  # Native editor binary: `vultra --export` packs the project's resources.vpk headlessly (no GPU).
+  build-linux-vultra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Sync submodules
+        run: git submodule update --init --recursive
+
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+          actions-cache-folder: '.xmake-cache-linux'
+          build-cache: true
+
+      - name: Install Linux build deps
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake git clang ninja-build pkg-config libx11-dev libxrandr-dev libxrender-dev libglvnd-dev libxinerama-dev libxcursor-dev libxi-dev
+
+      - name: Prepare Vulkan SDK
+        uses: humbletim/setup-vulkan-sdk@v1.2.1
+        with:
+          vulkan-query-version: 1.4.304.1
+          vulkan-components: Vulkan-Headers, Vulkan-Loader
+          vulkan-use-cache: true
+
+      - name: Configure (linux)
+        run: xmake f -m release --policies=build.ccache:y --vultra_build_examples=n --vultra_build_tests=n -y
+
+      - name: Build vultra
+        run: xmake repo -u && xmake build -y vultra-app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vultra-linux
+          path: build/linux/*/release/vultra-app/
+
+      - name: Collect failure logs
+        if: failure()
+        run: |
+          mkdir -p ci-logs
+          while IFS= read -r f; do
+            echo "==== $f ====" >> ci-logs/install_logs.txt
+            cat "$f" >> ci-logs/install_logs.txt
+            echo "" >> ci-logs/install_logs.txt
+          done < <(find "$HOME/.xmake/cache" -name install.txt 2>/dev/null)
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-linux-vultra-${{ github.run_id }}
+          path: ci-logs
+          if-no-files-found: ignore
+
+  # Headless export (packs resources.vpk, copies the template) + site assembly.
+  export-site:
+    runs-on: ubuntu-latest
+    needs: [build-web-template, build-linux-vultra]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Sync submodules
+        run: git submodule update --init --recursive
+
+      - name: Install runtime deps
+        run: sudo apt-get update && sudo apt-get install -y libx11-6 libxrandr2 libxrender1 libglvnd0 libxinerama1 libxcursor1 libxi6
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-template
+          path: web-template
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vultra-linux
+          path: vultra-bin
+
+      - name: Locate vultra binary
+        id: vultra
+        run: |
+          bin="$(find vultra-bin -name vultra -type f | head -n 1)"
+          test -n "$bin" || { echo "vultra binary not found in artifact"; exit 1; }
+          chmod +x "$bin"
+          echo "bin=$bin" >> "$GITHUB_OUTPUT"
+
+      - name: Export web build (packs resources.vpk)
+        run: |
+          "${{ steps.vultra.outputs.bin }}" --export --project "$GITHUB_WORKSPACE" \
+            --export-platform web --export-template "$GITHUB_WORKSPACE/web-template" \
+            --export-output "$GITHUB_WORKSPACE/export-web"
+
+      - name: Assemble site
+        run: bash scripts/assemble_pages_site.sh "$GITHUB_WORKSPACE/export-web" "$GITHUB_WORKSPACE/site"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
 
   deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    needs: build
+    needs: export-site
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
