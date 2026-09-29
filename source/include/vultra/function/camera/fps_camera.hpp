@@ -1,58 +1,27 @@
 #pragma once
 
-#include "vultra/core/base/base.hpp"
-
-#include <glm/glm.hpp>
+#include <vultra/core/input/input.hpp>
+#include <vultra/core/math/extent.hpp>
+#include <vultra/function/camera/camera.hpp>
 
 namespace vultra
 {
-    struct CameraComponent;
-    struct TransformComponent;
-
-    class FirstPersonShooterCamera
+    // Right drag looks; WASD moves along the view/right axes, QE along world Y; Shift accelerates.
+    struct FpsCamera
     {
-    public:
-        FirstPersonShooterCamera(TransformComponent*);
-        FirstPersonShooterCamera(const glm::vec3& position, const glm::vec3& rotationEuler);
-        ~FirstPersonShooterCamera() = default;
+        glm::vec3 position {8, 1.5f, -0.5f};
+        float     yaw             = glm::radians(-90.0f);
+        float     pitch           = 0;
+        float     speed           = 3;
+        float     lookSensitivity = 0.004f;
+        float     fastMultiplier  = 3;
+        float     verticalFov     = glm::radians(60.0f);
+        float     nearPlane       = 0.05f;
+        float     farPlane        = 100;
 
-        void onUpdate(const fsec dt);
-        void onImGui();
-
-        void reset();
-
-        void enableCameraControl(bool enable) { m_EnableCameraControl = enable; }
-        bool isCameraControlEnabled() const { return m_EnableCameraControl; }
-
-        [[nodiscard]] float getMovementSpeed() const { return m_MovementSpeed; }
-        void                setMovementSpeed(float speed) { m_MovementSpeed = speed; }
-
-        [[nodiscard]] float getMouseSensitivity() const { return m_MouseSensitivity; }
-        void                setMouseSensitivity(float sensitivity) { m_MouseSensitivity = sensitivity; }
-
-        [[nodiscard]] glm::vec3 getPosition() const;
-        [[nodiscard]] glm::vec3 getRotationEuler() const;
-
-        [[nodiscard]] glm::vec3 forward() const;
-        [[nodiscard]] glm::vec3 right() const;
-        [[nodiscard]] glm::vec3 up() const;
-
-    private:
-        TransformComponent* m_TransformComponent {nullptr};
-
-        float m_MovementSpeed {5.0f};
-        float m_MouseSensitivity {0.1f};
-
-        bool  m_FirstMouse {true};
-        float m_LastX {0.0f};
-        float m_LastY {0.0f};
-
-        glm::vec3 m_BackupPosition;
-        glm::vec3 m_BackupRotationEuler;
-
-        glm::vec3 m_Position;
-        glm::vec3 m_RotationEuler;
-
-        bool m_EnableCameraControl {true};
+        void         update(const Input& input, float seconds, InputCapture capture = {});
+        glm::vec3    forward() const;
+        glm::mat4    view() const;
+        RenderCamera camera(Extent size, float minimumFar = 0) const;
     };
 } // namespace vultra

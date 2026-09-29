@@ -1,75 +1,58 @@
-#include "vultra/core/base/logger.hpp"
+#include <vultra/core/base/logger.hpp>
 
-#include <magic_enum/magic_enum.hpp>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
+#include <vector>
+
 namespace vultra
 {
-    Logger::Logger(Logger&& other) noexcept : emitter {std::move(other)}, m_Level(other.m_Level) {}
-
-    Logger::~Logger()
+    namespace
     {
-        clear();
-        spdlog::shutdown();
-    }
-
-    Logger& Logger::operator=(Logger&& rhs) noexcept
-    {
-        if (this != &rhs)
+        struct Loggers
         {
-            emitter::operator=(std::move(rhs));
-            m_Level = rhs.m_Level;
+            std::shared_ptr<spdlog::sinks::stderr_color_sink_mt> console =
+                std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+            spdlog::logger core {"Vultra", console};
+            spdlog::logger app {"App", console};
+        };
+
+        Loggers& loggers()
+        {
+            static Loggers instance;
+            return instance;
         }
+    } // namespace
 
-        return *this;
+    void Logger::configure(spdlog::level::level_enum level, const std::filesystem::path& file)
+    {
+        // Configure on the main thread before starting devices or worker threads.
+        auto&                         state = loggers();
+        std::vector<spdlog::sink_ptr> sinks {state.console};
+        if (!file.empty())
+        {
+            if (!file.parent_path().empty())
+            {
+                std::filesystem::create_directories(file.parent_path());
+            }
+            sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(file.string(), false));
+        }
+        for (auto* logger : {&state.core, &state.app})
+        {
+            logger->sinks() = sinks;
+            logger->set_pattern("[%H:%M:%S.%e] [%n] [%^%l%$] %v");
+            logger->set_level(level);
+            logger->flush_on(spdlog::level::warn);
+        }
     }
 
-    Logger& Logger::setLevel(Level level)
+    spdlog::logger& Logger::core()
     {
-        m_Level = level;
-        return *this;
+        return loggers().core;
     }
 
-    Logger::Builder& Logger::Builder::setLevel(Level level)
+    spdlog::logger& Logger::app()
     {
-        m_Level = level;
-        return *this;
-    }
-
-    Logger Logger::Builder::build() const { return Logger {m_Level}; }
-
-    std::string Logger::LogEvent::toString() const
-    {
-        return fmt::format(
-            "Level: {}, Region: {}, Message: {}", magic_enum::enum_name(level), magic_enum::enum_name(region), msg);
-    }
-
-    Logger::Logger(const Level level)
-    {
-        m_Level = level;
-
-        std::vector<spdlog::sink_ptr> logSinks;
-
-        logSinks.emplace_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
-        logSinks.emplace_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>("Vultra.log", true));
-
-        logSinks[0]->set_pattern("%^[%Y-%m-%d %H:%M:%S:%f] %n: %v%$");
-        logSinks[1]->set_pattern("[%Y-%m-%d %H:%M:%S:%f] [%l] %n: %v");
-
-        m_CoreLogger = std::make_shared<spdlog::logger>("VULTRA_CORE", begin(logSinks), end(logSinks));
-        spdlog::register_logger(m_CoreLogger);
-        m_CoreLogger->set_level(spdlog::level::trace);
-        m_CoreLogger->flush_on(spdlog::level::trace);
-
-        m_ClientLogger = std::make_shared<spdlog::logger>("VULTRA_CLIENT", begin(logSinks), end(logSinks));
-        spdlog::register_logger(m_ClientLogger);
-        m_ClientLogger->set_level(spdlog::level::trace);
-        m_ClientLogger->flush_on(spdlog::level::trace);
-    }
-
-    void Logger::triggerLogEvent(Region region, Level level, std::string_view msg)
-    {
-        publish<LogEvent>({region, level, msg.data()});
+        return loggers().app;
     }
 } // namespace vultra

@@ -1,0 +1,19 @@
+#pragma once
+
+#include "lib/space.slangh"
+
+// Right-handed view, forward Z depth in [0, 1]. These functions do not use reversed Z.
+float linearizeDepth(float nearPlane, float farPlane, float sampledDepth)
+{
+    return nearPlane * farPlane / (farPlane + sampledDepth * (nearPlane - farPlane));
+}
+
+float viewDepth(float3 worldPosition, float4x4 view)
+{
+    return -mul(view, float4(worldPosition, 1)).z;
+}
+
+float3 viewPositionFromDepth(float depth, float2 uv, float4x4 inverseProjection)
+{
+    return unproject(uv, depth, inverseProjection);
+}

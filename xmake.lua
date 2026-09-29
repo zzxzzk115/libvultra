@@ -11,27 +11,29 @@ set_languages("cxx23")
 local is_root = (os.projectdir() == os.scriptdir())
 set_config("root", is_root)
 set_config("project_dir", os.scriptdir())
+if is_root then
+    -- Running an example first checks its build and shared asset preparation dependencies.
+    set_policy("run.autobuild", true)
+end
 
 -- global options
+option("libvultra_with_openxr")
+    set_default(true)
+    set_showmenu(true)
+    set_description("Build the OpenXR module and example")
+option_end()
+
 option("libvultra_build_examples") -- build examples?
     set_default(true)
     set_showmenu(true)
-    set_description("Enable libvultra examples")
+    set_description("Enable vultra examples")
 option_end()
 
 option("libvultra_build_tests") -- build tests?
     set_default(true)
     set_showmenu(true)
-    set_description("Enable libvultra tests")
+    set_description("Enable vultra tests")
 option_end()
-
-if is_plat("linux") then
-    option("wayland") -- use wayland (Linux only)
-        set_default(false)
-        set_showmenu(true)
-        set_description("Enable Wayland support")
-    option_end()
-end
 
 -- if build on windows
 if is_plat("windows") then
@@ -39,29 +41,27 @@ if is_plat("windows") then
     add_cxxflags("/bigobj") -- avoid big obj
     add_cxxflags("-D_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING")
     add_cxxflags("/EHsc")
-    if is_mode("debug") then
-        set_runtimes("MDd")
-        add_links("ucrtd")
-    else
-        set_runtimes("MD")
-    end
+
+    -- MSVC runtime: static (MT/MTd) by default, to match the VRI / libvultra
+    -- package ecosystem. Those packages are built MT; mixing runtimes fails at
+    -- link time with LNK2038. Change this one variable if a project genuinely
+    -- needs the dynamic runtime (and make sure its packages are MD too).
+    local msvc_runtime = is_mode("debug") and "MTd" or "MT"
+    set_runtimes(msvc_runtime)
+
+    -- Propagate that runtime to every resolved package.
+    --
+    -- This is the half that is easy to forget: set_runtimes() only configures the
+    -- project's own targets. Without the line below, packages build with their own
+    -- default (usually MD) and then refuse to link into an MT target -- the same
+    -- LNK2038, now with a confusing cause because set_runtimes() *looks* like it
+    -- should have covered it.
+    add_requireconfs("**", {configs = {runtimes = msvc_runtime}})
 else
     add_cxxflags("-fexceptions")
 end
 
 -- add rules
-rule("linux.sdl.driver")
-    before_run(function (target)
-        if is_plat("linux") then
-            if has_config("wayland") then
-                os.setenv("SDL_VIDEODRIVER", "wayland")
-            else
-                os.setenv("SDL_VIDEODRIVER", "x11")
-            end
-        end
-    end)
-rule_end()
-
 rule("clangd.config")
     on_config(function (target)
         if is_host("windows") then
@@ -72,37 +72,10 @@ rule("clangd.config")
     end)
 rule_end()
 
-rule("imguiconfig")
-    set_extensions(".ini")
-
-    on_build_file(function (target, sourcefile, opt) end)
-
-    after_build_file(function (target, sourcefile, opt)
-        if path.basename(sourcefile) ~= "imgui" then
-            return
-        end
-        local output_path = path.join(target:targetdir(), path.filename(sourcefile))
-        os.cp(sourcefile, output_path)
-        print("Copying imgui config: " .. sourcefile .. " -> " .. output_path)
-    end)
-rule_end()
-
-rule("vfg")
-    set_extensions(".vfg")
-
-    on_build_file(function (target, sourcefile, opt) end)
-
-    after_build_file(function (target, sourcefile, opt)
-        local output_path = path.join(target:targetdir(), path.filename(sourcefile))
-        os.cp(sourcefile, output_path)
-        print("Copying vfg data: " .. sourcefile .. " -> " .. output_path)
-    end)
-rule_end()
-
 add_rules("mode.debug", "mode.release")
 add_rules("plugin.vsxmake.autoupdate")
 add_rules("plugin.compile_commands.autoupdate", {outputdir = ".vscode", lsp = "clangd"})
-add_rules("clangd.config", "linux.sdl.driver", "imguiconfig")
+add_rules("clangd.config")
 
 -- add repositories
 add_repositories("my-xmake-repo https://github.com/zzxzzk115/xmake-repo.git backup")
@@ -110,11 +83,9 @@ add_repositories("my-xmake-repo https://github.com/zzxzzk115/xmake-repo.git back
 -- include external libraries
 includes("external")
 
--- bulitin tasks and targets
-includes("builtin")
-
 -- include source
 includes("source")
+includes("tools")
 
 -- include tests
 if has_config("libvultra_build_tests") then
@@ -125,29 +96,3 @@ end
 if has_config("libvultra_build_examples") then
     includes("examples")
 end
-
--- global task for running standard examples
-task("examples")
-    set_menu {
-        usage = "xmake examples",
-        description = "Run standard examples, without modern features (ray tracing, mesh shaders, etc.).",
-        options = {}
-    }
-    on_run(function ()
-        local examples = {
-            "window",
-            "rhi-triangle",
-            "imgui",
-            "framegraph-triangle",
-            "openxr-triangle",
-            "openxr-sponza",
-            "gltf-viewer",
-            "rendergraph",
-            "debugdraw",
-            "gaussian-splatting",
-        }
-        for _, example in ipairs(examples) do
-            os.execv("xmake", {"run", "example-" .. example})
-        end
-    end)
-task_end()

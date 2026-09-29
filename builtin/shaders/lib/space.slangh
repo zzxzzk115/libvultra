@@ -1,0 +1,20 @@
+#pragma once
+
+float3 toWorld(float3 local, float3 normal)
+{
+    float3 up      = abs(normal.y) < 0.999 ? float3(0, 1, 0) : float3(0, 0, 1);
+    float3 tangent = normalize(cross(up, normal));
+    return local.x * tangent + local.y * cross(normal, tangent) + local.z * normal;
+}
+
+// Vulkan depth is [0, 1]; texture UV has a top-left origin.
+float2 clipToUv(float2 clip)
+{
+    return clip * float2(0.5, -0.5) + 0.5;
+}
+
+float3 unproject(float2 uv, float depth, float4x4 inverseViewProjection)
+{
+    float4 position = mul(inverseViewProjection, float4(uv * float2(2, -2) + float2(-1, 1), depth, 1));
+    return position.xyz / position.w;
+}

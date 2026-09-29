@@ -1,60 +1,49 @@
-#include "vultra/function/app/imgui_app.hpp"
-#include "vultra/function/renderer/imgui_renderer.hpp"
+#include <vultra/function/app/imgui_app.hpp>
 
 namespace vultra
 {
-    ImGuiApp::ImGuiApp(std::span<char*>         args,
-                       const AppConfig&         appConfig,
-                       const ImGuiConfig&       imguiConfig,
-                       std::optional<glm::vec4> clearColor) : BaseApp {args, appConfig}, m_ClearColor(clearColor)
+    ImGuiApp::ImGuiApp(const DesktopAppConfig& config, const GuiConfig& guiConfig) :
+        DesktopApp(config),
+        m_Gui(getDevice(), getWindow(), getSwapchain().format(), guiConfig)
     {
-        imgui::ImGuiRenderer::initImGui(*m_RenderDevice,
-                                        m_Swapchain,
-                                        m_Window,
-                                        imguiConfig.enableMultiviewport,
-                                        imguiConfig.enableDocking,
-                                        imguiConfig.imguiIniFile,
-                                        imguiConfig.setDockSpace);
-    }
-
-    ImGuiApp::~ImGuiApp() { imgui::ImGuiRenderer::shutdown(); }
-
-    void ImGuiApp::onGeneralWindowEvent(const os::GeneralWindowEvent& event)
-    {
-        imgui::ImGuiRenderer::processEvent(event);
-        BaseApp::onGeneralWindowEvent(event);
-    }
-
-    void ImGuiApp::drawGui(rhi::CommandBuffer& cb, const rhi::RenderTargetView rtv)
-    {
-        const auto& [frameIndex, target] = rtv;
-        rhi::prepareForAttachment(cb, target, false);
-
-        imgui::ImGuiRenderer::render(cb,
-                                     {.area             = {.extent = target.getExtent()},
-                                      .colorAttachments = {
-                                          {.target = &target, .clearValue = std::move(m_ClearColor)},
-                                      }});
-    }
-
-    void ImGuiApp::onPostUpdate(const fsec dt)
-    {
-        auto& io     = ImGui::GetIO();
-        io.DeltaTime = dt.count();
     }
 
     void ImGuiApp::onPreRender()
     {
-        imgui::ImGuiRenderer::begin();
+        m_Gui.begin();
         onImGui();
-        imgui::ImGuiRenderer::end();
+        m_Gui.upload(getSwapchain().size());
     }
 
-    void ImGuiApp::onRender(rhi::CommandBuffer& cb, const rhi::RenderTargetView rtv, const fsec)
+    void ImGuiApp::onImGui()
     {
-        ZoneScopedN("ImGuiApp::onRender");
-        drawGui(cb, rtv);
     }
 
-    void ImGuiApp::onPostRender() { imgui::ImGuiRenderer::postRender(); }
+    void ImGuiApp::onRenderSkipped()
+    {
+        if (ImGui::GetPlatformIO().Viewports.Size > 1)
+        {
+            m_Gui.begin();
+            onImGui();
+            m_Gui.upload({}); // No main framebuffer; platform windows keep their own draw data.
+            m_Gui.renderPlatformWindows();
+        }
+    }
+
+    void ImGuiApp::onPostPresent()
+    {
+        m_Gui.renderPlatformWindows();
+    }
+
+    void ImGuiApp::drawGui(VriCommandBuffer* cmd, Texture& target)
+    {
+        m_Gui.copy(cmd);
+        target.transition(cmd,
+                          {VriAccess_ColorAttachmentRead | VriAccess_ColorAttachmentWrite,
+                           VriLayout_ColorAttachment,
+                           VriPipelineStage_ColorAttachmentOutput});
+        beginColorPass(getDevice(), cmd, target.view(), {target.desc.width, target.desc.height});
+        m_Gui.draw(cmd);
+        getDevice().core.CmdEndRendering(cmd);
+    }
 } // namespace vultra

@@ -1,0 +1,19 @@
+#pragma once
+
+#include "lib/math.slangh"
+#include "lib/space.slangh"
+
+float3 sampleGgx(float2 xi, float roughness, float3 normal)
+{
+    float alpha  = max(square(roughness), 0.001);
+    float cosine = sqrt((1 - xi.y) / (1 + (alpha * alpha - 1) * xi.y));
+    float sine   = sqrt(max(1 - cosine * cosine, 0));
+    return toWorld(float3(cos(2 * pi * xi.x) * sine, sin(2 * pi * xi.x) * sine, cosine), normal);
+}
+
+float2 diskOffset(uint index, uint count)
+{
+    float radius = sqrt((float(index) + 0.5) / count);
+    float angle  = float(index) * 2.39996323;
+    return radius * float2(cos(angle), sin(angle));
+}

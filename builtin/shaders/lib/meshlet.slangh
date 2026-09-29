@@ -1,0 +1,25 @@
+#pragma once
+
+bool meshletInsideFrustum(float4 sphere, float4x4 viewProjection)
+{
+    // Vulkan clip volume: -w <= x,y <= w and 0 <= z <= w.
+    float4 planes[6] = {viewProjection[3] + viewProjection[0], viewProjection[3] - viewProjection[0],
+                        viewProjection[3] + viewProjection[1], viewProjection[3] - viewProjection[1],
+                        viewProjection[2], viewProjection[3] - viewProjection[2]};
+    for (uint i = 0; i < 6; ++i)
+    {
+        float radius = (sphere.w + 1e-4) * length(planes[i].xyz);
+        if (dot(planes[i], float4(sphere.xyz, 1)) < -radius)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+float3 meshletDebugColor(uint index)
+{
+    // Same display palette as dev's hashColor; IDs are local to each primitive.
+    uint hash = index * 1664525u + 1013904223u;
+    return float3(hash & 255u, (hash >> 8) & 255u, (hash >> 16) & 255u) / 255.0;
+}

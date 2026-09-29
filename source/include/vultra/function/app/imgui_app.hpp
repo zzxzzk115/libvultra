@@ -1,44 +1,33 @@
 #pragma once
 
-#include "vultra/function/app/base_app.hpp"
-
-#include <functional>
-
-using ImGuiDockNodeFlags = int;
+#include <vultra/function/app/desktop_app.hpp>
+#include <vultra/function/renderer/gui.hpp>
 
 namespace vultra
 {
-    struct ImGuiConfig
-    {
-        bool                                    enableMultiviewport {true};
-        bool                                    enableDocking {true};
-        const char*                             imguiIniFile {"imgui.ini"};
-        std::function<void(ImGuiDockNodeFlags)> setDockSpace {nullptr};
-    };
-
-    class ImGuiApp : public BaseApp
+    // Owns the GUI frame. Scene rendering and the position of the GUI pass remain explicit.
+    class ImGuiApp : public DesktopApp
     {
     public:
-        ImGuiApp(std::span<char*>         args,
-                 const AppConfig&         appConfig,
-                 const ImGuiConfig&       imguiConfig = {.enableMultiviewport = true, .enableDocking = true},
-                 std::optional<glm::vec4> clearColor  = {std::nullopt});
-        ~ImGuiApp() override;
+        explicit ImGuiApp(const DesktopAppConfig& config = {}, const GuiConfig& guiConfig = {});
 
     protected:
-        void onPostUpdate(const fsec dt) override;
+        // Call the base first to finalize UI capture; raw input comes from getWindow().input().
+        void         onPreRender() override;
+        virtual void onImGui();
 
-        void onPreRender() override;
-        void onRender(rhi::CommandBuffer&, const rhi::RenderTargetView, const fsec dt) override;
-        void onPostRender() override;
+        // Overlay an already rendered target, outside any active rendering pass.
+        void drawGui(VriCommandBuffer* cmd, Texture& target);
 
-        virtual void onImGui() {}
+        // For an explicit RenderGraph pass: copy() outside, draw() inside its rendering pass.
+        Gui& getGui()
+        {
+            return m_Gui;
+        }
 
-        virtual void onGeneralWindowEvent(const os::GeneralWindowEvent& event) override;
-
-        void drawGui(rhi::CommandBuffer&, const rhi::RenderTargetView);
-
-    protected:
-        std::optional<glm::vec4> m_ClearColor;
+    private:
+        void onPostPresent() final;
+        void onRenderSkipped() final;
+        Gui  m_Gui;
     };
 } // namespace vultra

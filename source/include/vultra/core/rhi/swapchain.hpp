@@ -1,87 +1,42 @@
 #pragma once
+#include <vultra/core/rhi/resources.hpp>
 
-#include "vultra/core/rhi/rect2d.hpp"
-#include "vultra/core/rhi/texture.hpp"
+#include <memory>
+#include <vector>
 
 namespace vultra
 {
-    namespace os
+    class Swapchain
     {
-        class Window;
-    }
+    public:
+        // sRGB attachments accept linear shader/clear colors. UNORM accepts display-encoded output.
+        Swapchain(Device& device, Window& window, VriFormat format = VriFormat_BGRA8_SRGB);
+        ~Swapchain();
+        Swapchain(const Swapchain&)            = delete;
+        Swapchain& operator=(const Swapchain&) = delete;
+        // nullptr means minimized or temporarily out of date. Retry on the next iteration.
+        Texture* acquire();
+        void     present();
 
-    namespace rhi
-    {
-        enum class VerticalSync
+        Extent size() const
         {
-            eDisabled,
-            eEnabled,
-            eAdaptive
-        };
+            return m_Extent;
+        }
 
-        class Swapchain final
+        VriFormat format() const
         {
-            friend class RenderDevice;
+            return m_Format;
+        }
 
-        public:
-            Swapchain()                 = default;
-            Swapchain(const Swapchain&) = delete;
-            Swapchain(Swapchain&&) noexcept;
-            ~Swapchain();
-
-            Swapchain& operator=(const Swapchain&) = delete;
-            Swapchain& operator=(Swapchain&&) noexcept;
-
-            [[nodiscard]] explicit operator bool() const;
-
-            enum class Format
-            {
-                eLinear,
-                esRGB
-            };
-
-            [[nodiscard]] Format      getFormat() const;
-            [[nodiscard]] PixelFormat getPixelFormat() const;
-            [[nodiscard]] Extent2D    getExtent() const;
-
-            [[nodiscard]] std::size_t getNumBuffers() const;
-
-            [[nodiscard]] const std::vector<Texture>& getBuffers() const;
-            [[nodiscard]] const Texture&              getBuffer(uint32_t) const;
-
-            [[nodiscard]] uint32_t getCurrentBufferIndex() const;
-            [[nodiscard]] Texture& getCurrentBuffer();
-
-            void recreate(std::optional<VerticalSync> = std::nullopt);
-
-            bool acquireNextImage(vk::Semaphore imageAcquired = nullptr);
-
-        private:
-            Swapchain(vk::Instance, vk::PhysicalDevice, vk::Device, os::Window*, Format, VerticalSync);
-
-            void createSurface();
-
-            void create(Format, VerticalSync);
-            void buildBuffers(Extent2D, PixelFormat);
-            void destroy();
-
-        private:
-            os::Window* m_Window {nullptr};
-
-            vk::Instance       m_Instance {nullptr};
-            vk::PhysicalDevice m_PhysicalDevice {nullptr};
-            vk::Device         m_Device {nullptr};
-
-            vk::SurfaceKHR   m_Surface {nullptr};
-            vk::SwapchainKHR m_Handle {nullptr};
-
-            Format       m_Format {Format::eLinear};
-            VerticalSync m_VerticalSync {VerticalSync::eEnabled};
-
-            std::vector<Texture> m_Buffers;
-            uint32_t             m_CurrentImageIndex {0};
-        };
-
-        [[nodiscard]] Rect2D getRenderArea(const Swapchain&);
-    } // namespace rhi
+    private:
+        void                                  refresh();
+        Device&                               m_Device;
+        Window&                               m_Window;
+        VriSwapChain*                         m_Handle = nullptr;
+        VriFormat                             m_Format;
+        Extent                                m_Extent {};
+        Extent                                m_Requested {};
+        bool                                  m_Rebuild = false;
+        std::vector<std::unique_ptr<Texture>> m_Images;
+    };
 } // namespace vultra

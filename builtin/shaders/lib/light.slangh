@@ -1,0 +1,16 @@
+#pragma once
+
+#include "lib/openpbr.slangh"
+
+struct DirectionalLight
+{
+    float3 directionToLight;
+    float3 radiance;
+};
+
+float3 evaluateDirectionalLight(OpenPBR_PreparedBsdf bsdf, DirectionalLight light, float visibility)
+{
+    // Upstream eval returns BSDF times the incident cosine.
+    OpenPBR_DiffuseSpecular response = openpbr_eval(bsdf, light.directionToLight);
+    return openpbr_get_sum_of_diffuse_specular(response) * light.radiance * visibility;
+}

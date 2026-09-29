@@ -1,0 +1,15 @@
+#pragma once
+
+#include "lib/math.slangh"
+
+float2 environmentUv(float3 direction)
+{
+    return float2(atan2(direction.z, direction.x) / (2 * pi) + 0.5, acos(clamp(direction.y, -1, 1)) / pi);
+}
+
+float3 environmentDirection(float2 uv)
+{
+    float phi   = (uv.x - 0.5) * 2 * pi;
+    float theta = uv.y * pi;
+    return float3(cos(phi) * sin(theta), cos(theta), sin(phi) * sin(theta));
+}

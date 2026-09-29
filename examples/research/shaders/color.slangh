@@ -1,0 +1,5 @@
+// Edit this file while the example runs. Imported files are watched too.
+float3 experimentColor(float3 vertexColor)
+{
+    return vertexColor;
+}

@@ -1,0 +1,6 @@
+#pragma once
+
+float2 hammersley(uint index, uint count)
+{
+    return float2(float(index) / count, float(reversebits(index)) * 2.3283064365386963e-10);
+}

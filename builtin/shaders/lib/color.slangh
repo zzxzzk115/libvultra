@@ -1,0 +1,16 @@
+#pragma once
+
+float3 srgbToLinear(float3 color)
+{
+    return select(color <= 0.04045, color / 12.92, pow((color + 0.055) / 1.055, 2.4));
+}
+
+float3 linearToSrgb(float3 color)
+{
+    return select(color <= 0.0031308, color * 12.92, 1.055 * pow(color, 1.0 / 2.4) - 0.055);
+}
+
+float3 toneMapAces(float3 color)
+{
+    return saturate((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14));
+}

@@ -1,78 +1,49 @@
-#include <vultra/core/base/common_context.hpp>
-#include <vultra/core/os/window.hpp>
-#include <vultra/core/rhi/frame_controller.hpp>
-#include <vultra/core/rhi/render_device.hpp>
+#include "../common/sample.hpp"
 
-using namespace vultra;
-
-int main()
+class WindowApp final : public vultra::DesktopApp
 {
-    auto window = os::Window::Builder {}.setTitle("Empty Vultra Window").setExtent({1024, 768}).build();
-
-    // Event callback
-    window.on<os::GeneralWindowEvent>([](const os::GeneralWindowEvent& event, os::Window& wd) {
-        if (event.type == SDL_EVENT_KEY_DOWN)
-        {
-            // Press ESC to close the window
-            if (event.internalEvent.key.key == SDLK_ESCAPE)
-            {
-                wd.close();
-            }
-        }
-    });
-
-    rhi::RenderDevice renderDevice(rhi::RenderDeviceFeatureFlagBits::eNormal);
-
-    VULTRA_CLIENT_INFO("RenderDevice Name: {}", renderDevice.getName());
-    VULTRA_CLIENT_INFO("RenderDevice PhysicalDeviceInfo: {}", renderDevice.getPhysicalDeviceInfo().toString());
-
-    VULTRA_CLIENT_WARN("Press ESC to close the window");
-
-    window.setTitle(std::format("Empty Window ({})", renderDevice.getName()));
-
-    // Create swapchain
-    rhi::Swapchain swapchain = renderDevice.createSwapchain(window);
-
-    // Create frame controller
-    rhi::FrameController frameController {renderDevice, swapchain, 2};
-
-    while (!window.shouldClose())
+public:
+    explicit WindowApp(const sample::Options& options) :
+        vultra::DesktopApp(
+            {.title = "Vultra | Window - Clear", .size = {1024, 768}, .swapchainFormat = VriFormat_BGRA8_SRGB}),
+        m_Options(options)
     {
-        window.pollEvents();
-
-        if (!swapchain)
-            continue;
-
-        auto& backBuffer        = frameController.getCurrentTarget().texture;
-        bool  acquiredNextFrame = frameController.acquireNextFrame();
-        if (!acquiredNextFrame)
-        {
-            continue;
-        }
-
-        auto& cb = frameController.beginFrame();
-
-        rhi::prepareForAttachment(cb, backBuffer, false);
-
-        const rhi::FramebufferInfo framebufferInfo {
-            .area             = rhi::Rect2D {.extent = backBuffer.getExtent()},
-            .colorAttachments = {{
-                .target     = &backBuffer,
-                .clearValue = glm::vec4 {0.2f, 0.3f, 0.3f, 1.0f},
-            }},
-        };
-
-        {
-            RHI_GPU_ZONE(cb, "Empty Window");
-            cb.beginRendering(framebufferInfo).endRendering();
-        }
-
-        frameController.endFrame();
-        frameController.present();
     }
 
-    // Remember to wait idle explicitly before any destructors.
-    renderDevice.waitIdle();
+private:
+    void onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
+    {
+        target.transition(
+            cmd,
+            {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
+        const float clear[4] {0.2f, 0.3f, 0.3f, 1};
+        vultra::beginColorPass(getDevice(), cmd, target.view(), getSwapchain().size(), clear);
+        getDevice().core.CmdEndRendering(cmd);
+    }
 
+    void onPostRender(vultra::Texture& target) override
+    {
+        sample::captureFrame(m_Options, frameCount(), getDevice(), target);
+    }
+
+    sample::Options m_Options;
+};
+
+int main(int argc, char** argv)
+try
+{
+    const auto options = sample::readOptions(argc, argv);
+    if (!options)
+    {
+        return 0;
+    }
+    WindowApp app(*options);
+    app.run(options->frames);
+    vultra::Logger::app().info("Window: {} frames", app.frameCount());
     return 0;
+}
+catch (const std::exception& error)
+{
+    vultra::Logger::app().error("{}", error.what());
+    return 1;
 }

@@ -1,859 +1,569 @@
-#include "vultra/function/renderer/builtin/builtin_renderer.hpp"
-#include "vultra/core/color/color.hpp"
-#include "vultra/core/rhi/command_buffer.hpp"
-#include "vultra/core/rhi/render_device.hpp"
-#include "vultra/core/rhi/swapchain.hpp"
-#include "vultra/function/debug_draw/debug_draw_interface.hpp"
-#include "vultra/function/framegraph/framegraph_import.hpp"
-#include "vultra/function/renderer/area_light.hpp"
-#include "vultra/function/renderer/builtin/passes/blit_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/color_blend_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/debug_draw_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/deferred_lighting_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/depth_pre_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/final_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/fxaa_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/gamma_correction_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/gbuffer_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/meshlet_depth_pre_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/meshlet_gbuffer_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/simple_raytracing_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/skybox_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/tonemapping_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/ui_pass.hpp"
-#include "vultra/function/renderer/builtin/resources/debug_draw_data.hpp"
-#include "vultra/function/renderer/builtin/resources/ibl_data.hpp"
-#include "vultra/function/renderer/builtin/resources/scene_color_data.hpp"
-#include "vultra/function/renderer/renderer_render_context.hpp"
-#include "vultra/function/scenegraph/component_utils.hpp"
-#include "vultra/function/scenegraph/entity.hpp"
-#include "vultra/function/scenegraph/logic_scene.hpp"
+#include "openpbr_luts.hpp"
 
-#include <fg/Blackboard.hpp>
-#include <fg/FrameGraph.hpp>
+#include <vultra/function/renderer/builtin/builtin_renderer.hpp>
 
-#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 
-#include <imgui.h>
-
-#if _DEBUG
-#include <fstream>
-#endif
+#include <algorithm>
+#include <cstddef>
+#include <cstring>
 
 namespace vultra
 {
-    namespace gfx
+    namespace
     {
-        BuiltinRenderer::BuiltinRenderer(rhi::RenderDevice& rd, rhi::Swapchain::Format swapChainFormat) :
-            BaseRenderer(rd), m_SwapChainFormat(swapChainFormat), m_TransientResources(rd), m_CubemapConverter(rd),
-            m_IBLDataGenerator(rd)
+        // Keep this layout in sync with builtin/shaders/resources/frame_block.slangh.
+        struct FrameData
         {
-            // Initialize debug draw interface and library
-            m_DebugDrawInterface.initialize(rd,
-                                            swapChainFormat == rhi::Swapchain::Format::eLinear ?
-                                                rhi::PixelFormat::eRGBA8_UNorm :
-                                                rhi::PixelFormat::eRGBA8_sRGB);
-            dd::initialize(&m_DebugDrawInterface);
+            glm::mat4                viewProjection;
+            glm::mat4                inverseViewProjection;
+            glm::mat4                view;
+            std::array<glm::mat4, 4> lightViewProjection;
+            glm::vec4                cameraPosition;
+            glm::vec4                lightDirection;
+            glm::vec4                lightColor;
+            glm::vec4                cascadeSplits;
+            glm::vec4                cascadeWidths;
+            glm::vec4                cascadeDepthRanges;
+            glm::vec4                shadowParameters;
+            glm::vec4                options;
+            glm::vec4                cameraClip;
+            glm::vec4                overrides;
+        };
 
-            m_DepthPrePass         = new DepthPrePass(rd);
-            m_GBufferPass          = new GBufferPass(rd);
-            m_DeferredLightingPass = new DeferredLightingPass(rd);
-            m_SkyboxPass           = new SkyboxPass(rd);
-            m_ToneMappingPass      = new ToneMappingPass(rd);
-            m_GammaCorrectionPass  = new GammaCorrectionPass(rd);
-            m_FXAAPass             = new FXAAPass(rd);
-            m_FinalPass            = new FinalPass(rd);
-            m_BlitPass             = new BlitPass(rd);
-            m_DebugDrawPass        = new DebugDrawPass(rd, m_DebugDrawInterface);
-            m_ColorBlendPass       = new ColorBlendPass(rd);
+        struct MaterialData
+        {
+            glm::vec4  baseColor;
+            glm::vec4  surface;
+            glm::vec4  emission;
+            glm::vec4  coat;
+            glm::vec4  specular;
+            glm::vec4  flags;
+            glm::uvec4 meshlets; // First meshlet, count, frustum culling, debug colors.
+        };
 
-            m_UIPass = new UIPass(rd);
+        static_assert(sizeof(FrameData) == 608);
+        static_assert(sizeof(MaterialData) == 112);
+        static_assert(sizeof(SceneVertex) == 64 && offsetof(SceneVertex, tangent) == 48);
 
-            m_SimpleRaytracingPass = new SimpleRaytracingPass(rd);
-
-            m_MeshletDepthPrePass = new MeshletDepthPrePass(rd);
-            m_MeshletGBufferPass  = new MeshletGBufferPass(rd);
-
-            setupSamplers();
-
-            // Ensure BRDF LUT is generated at least once
-            if (!m_IBLDataGenerator.isBrdfLUTPresent())
+        VriPipeline* createPipeline(Device&                        device,
+                                    VriPipelineLayout*             layout,
+                                    std::span<const VriShaderDesc> shaders,
+                                    VriFormat                      format,
+                                    bool                           mesh,
+                                    bool                           depth)
+        {
+            VriVertexStreamDesc    stream {sizeof(SceneVertex), 0, VriVertexStepRate_PerVertex};
+            VriVertexAttributeDesc attributes[5] {};
+            attributes[0].format = VriFormat_RGB32_SFLOAT;
+            attributes[0].offset = offsetof(SceneVertex, position);
+            attributes[1].format = VriFormat_RGB32_SFLOAT;
+            attributes[1].offset = offsetof(SceneVertex, normal);
+            attributes[2].format = VriFormat_RG32_SFLOAT;
+            attributes[2].offset = offsetof(SceneVertex, uv);
+            attributes[3].format = VriFormat_RGBA32_SFLOAT;
+            attributes[3].offset = offsetof(SceneVertex, color);
+            attributes[4].format = VriFormat_RGBA32_SFLOAT;
+            attributes[4].offset = offsetof(SceneVertex, tangent);
+            VriColorAttachmentDesc color {};
+            color.format         = format;
+            color.colorWriteMask = VriColorWrite_RGBA;
+            VriGraphicsPipelineDesc desc {};
+            desc.pipelineLayout = layout;
+            desc.shaders        = shaders.data();
+            desc.shaderNum      = uint32_t(shaders.size());
+            if (mesh)
             {
-                m_RenderDevice.execute(
-                    [&](rhi::CommandBuffer& cb) { m_BrdfLUT = m_IBLDataGenerator.generateBrdfLUT(cb); });
+                desc.vertexInput = {attributes, 5, &stream, 1};
             }
-
-            // Set default cubemap, irradiance and prefiltered environment maps
-            m_Cubemap           = rhi::createDefaultTexture(255, 255, 255, 255, rd);
-            m_IrradianceMap     = rhi::createDefaultTexture(255, 255, 255, 255, rd);
-            m_PrefilteredEnvMap = rhi::createDefaultTexture(255, 255, 255, 255, rd);
-        }
-
-        BuiltinRenderer::~BuiltinRenderer()
-        {
-            delete m_DepthPrePass;
-            delete m_GBufferPass;
-            delete m_DeferredLightingPass;
-            delete m_SkyboxPass;
-            delete m_ToneMappingPass;
-            delete m_GammaCorrectionPass;
-            delete m_FXAAPass;
-            delete m_FinalPass;
-            delete m_BlitPass;
-            delete m_DebugDrawPass;
-            delete m_ColorBlendPass;
-
-            delete m_UIPass;
-
-            delete m_SimpleRaytracingPass;
-
-            delete m_MeshletDepthPrePass;
-            delete m_MeshletGBufferPass;
-
-            // Shutdown debug draw library
-            dd::shutdown();
-        }
-
-        void BuiltinRenderer::onImGui()
-        {
-            if (m_LogicScene == nullptr)
-                return;
-
-            auto& settings = m_Settings;
-
-            if (ImGui::CollapsingHeader("Output Mode", ImGuiTreeNodeFlags_DefaultOpen))
+            desc.inputAssembly.topology  = VriPrimitiveTopology_TriangleList;
+            desc.rasterization.cullMode  = VriCullMode_None;
+            desc.rasterization.lineWidth = 1;
+            desc.multisample.sampleNum   = 1;
+            if (format != VriFormat_Unknown)
             {
-                ImGui::Indent(5.0f);
-                // Output mode
-                int outputMode = static_cast<int>(settings.outputMode);
-                ImGui::RadioButton("Albedo", &outputMode, static_cast<int>(gfx::PassOutputMode::Albedo));
-                ImGui::RadioButton("Normal", &outputMode, static_cast<int>(gfx::PassOutputMode::Normal));
-                ImGui::RadioButton("Emissive", &outputMode, static_cast<int>(gfx::PassOutputMode::Emissive));
-                ImGui::RadioButton("Metallic", &outputMode, static_cast<int>(gfx::PassOutputMode::Metallic));
-                ImGui::RadioButton("Roughness", &outputMode, static_cast<int>(gfx::PassOutputMode::Roughness));
-                ImGui::RadioButton(
-                    "Ambient Occlusion", &outputMode, static_cast<int>(gfx::PassOutputMode::AmbientOcclusion));
-                ImGui::RadioButton("Depth", &outputMode, static_cast<int>(gfx::PassOutputMode::Depth));
-                ImGui::RadioButton(
-                    "Texture LOD Debug", &outputMode, static_cast<int>(gfx::PassOutputMode::TextureLodDebug));
-                if (settings.rendererType == RendererType::eMeshShading)
-                {
-                    ImGui::RadioButton(
-                        "Meshlet Debug", &outputMode, static_cast<int>(gfx::PassOutputMode::MeshletDebug));
-                    ImGui::DragInt("Meshlet Debug Mode", &m_Settings.meshletDebugMode, 1, 0, 1);
-                }
-                // ImGui::RadioButton("SceneColor (HDR)", &outputMode,
-                // static_cast<int>(gfx::PassOutputMode::SceneColor_HDR)); ImGui::RadioButton("SceneColor (LDR)",
-                // &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_LDR));
-                ImGui::RadioButton("Final", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_AntiAliased));
-                settings.outputMode = static_cast<gfx::PassOutputMode>(outputMode);
-                ImGui::Unindent(5.0f);
+                desc.outputMerger.colors   = &color;
+                desc.outputMerger.colorNum = 1;
             }
-
-            if (ImGui::CollapsingHeader("Rendering Options", ImGuiTreeNodeFlags_DefaultOpen))
+            if (depth)
             {
-                ImGui::Indent(5.0f);
-                ImGui::Checkbox("Enable Normal Mapping", &settings.enableNormalMapping);
-                ImGui::Checkbox("Enable IBL", &settings.enableIBL);
-                ImGui::Checkbox("Enable Area Lights", &settings.enableAreaLights);
+                desc.depthStencil.depthTest          = VRI_TRUE;
+                desc.depthStencil.depthWrite         = VRI_TRUE;
+                desc.depthStencil.depthCompareOp     = VriCompareOp_Less;
+                desc.outputMerger.depthStencilFormat = VriFormat_D32_SFLOAT;
+            }
+            VriPipeline* result = nullptr;
+            check(device.core.CreateGraphicsPipeline(device.handle, &desc, &result),
+                  "Create built-in graphics pipeline");
+            return result;
+        }
 
-                bool showSkybox = m_LogicScene->getMainCamera().getComponent<CameraComponent>().clearFlags ==
-                                  CameraClearFlags::eSkybox;
-                ImGui::Checkbox("Show Skybox", &showSkybox);
-                m_LogicScene->getMainCamera().getComponent<CameraComponent>().clearFlags =
-                    showSkybox ? CameraClearFlags::eSkybox : CameraClearFlags::eColor;
+        void setViewport(Device& device, VriCommandBuffer* cmd, Extent size)
+        {
+            const VriViewport viewport {0, 0, float(size.width), float(size.height), 0, 1};
+            const VriRect     scissor {0, 0, size.width, size.height};
+            device.core.CmdSetViewports(cmd, &viewport, 1);
+            device.core.CmdSetScissors(cmd, &scissor, 1);
+        }
+    } // namespace
 
-                if (!showSkybox)
+    BuiltinRenderer::BuiltinRenderer(Device&      device,
+                                     GpuScene&    scene,
+                                     Environment& environment,
+                                     VriFormat    outputFormat) :
+        m_Device(device),
+        m_Scene(scene),
+        m_Environment(environment),
+        m_OutputFormat(outputFormat)
+    {
+        if (outputFormat != VriFormat_RGBA8_UNORM && outputFormat != VriFormat_BGRA8_UNORM &&
+            outputFormat != VriFormat_RGBA16_SFLOAT)
+        {
+            throw std::invalid_argument("Tone mapping output must be display UNORM or linear RGBA16_SFLOAT");
+        }
+        try
+        {
+            const VriShaderStageFlags geometryStages =
+                VriShaderStage_Vertex | (scene.meshlets ? VriShaderStage_Task | VriShaderStage_Mesh : 0);
+            if (scene.meshlets)
+            {
+                check(vriGetInterface(device.handle, VRI_INTERFACE_MESHSHADER, sizeof(m_MeshApi), &m_MeshApi),
+                      "Get meshlet draw interface (requires VriFeature_MeshShader)");
+            }
+            m_OpenPbrLuts = createOpenPbrLuts(device);
+            m_FrameBuffer = std::make_unique<Buffer>(
+                device,
+                VriBufferDesc {sizeof(FrameData), 0, VriBufferUsage_ConstantBuffer, VriMemoryLocation_HostUpload});
+            const VriBufferViewDesc bufferView {m_FrameBuffer->handle,
+                                                VriDescriptorType_ConstantBuffer,
+                                                VriFormat_Unknown,
+                                                0,
+                                                sizeof(FrameData)};
+            check(device.core.CreateBufferView(device.handle, &bufferView, &m_FrameView), "Create frame uniform view");
+            VriDescriptorRangeDesc frameRanges[12] {};
+            for (uint32_t i = 0; i < 12; ++i)
+            {
+                frameRanges[i] = {i, 1, VriDescriptorType_Texture, geometryStages | VriShaderStage_Fragment};
+            }
+            frameRanges[0].descriptorType  = VriDescriptorType_ConstantBuffer;
+            frameRanges[10].descriptorType = VriDescriptorType_Sampler;
+            VriDescriptorRangeDesc materialRanges[kMaterialTextureCount + 1] {};
+            for (uint32_t i = 0; i <= kMaterialTextureCount; ++i)
+            {
+                materialRanges[i] = {i, 1, VriDescriptorType_Texture, VriShaderStage_Fragment};
+            }
+            materialRanges[kMaterialTextureCount].descriptorType = VriDescriptorType_Sampler;
+            VriDescriptorRangeDesc meshletRanges[4] {};
+            for (uint32_t i = 0; i < 4; ++i)
+            {
+                meshletRanges[i] = {i,
+                                    1,
+                                    VriDescriptorType_StructuredBuffer,
+                                    VriShaderStage_Task | VriShaderStage_Mesh};
+            }
+            VriDescriptorSetDesc  sets[3] {{0, frameRanges, 12},
+                                           {1, materialRanges, kMaterialTextureCount + 1},
+                                           {2, meshletRanges, 4}};
+            VriPushConstantDesc   push {0, sizeof(MaterialData), geometryStages | VriShaderStage_Fragment};
+            VriPipelineLayoutDesc layout {};
+            layout.descriptorSets   = sets;
+            layout.descriptorSetNum = scene.meshlets ? 3 : 2;
+            layout.pushConstants    = &push;
+            layout.pushConstantNum  = 1;
+            layout.shaderStages     = push.shaderStages;
+            check(device.core.CreatePipelineLayout(device.handle, &layout, &m_Layout), "Create built-in layout");
+
+            VriSamplerDesc sampler {};
+            sampler.minFilter    = VriFilter_Linear;
+            sampler.magFilter    = VriFilter_Linear;
+            sampler.mipmapMode   = VriMipmapMode_Linear;
+            sampler.addressModeU = VriAddressMode_Repeat;
+            sampler.addressModeV = VriAddressMode_Repeat;
+            sampler.addressModeW = VriAddressMode_Repeat;
+            sampler.maxLod       = 32;
+            check(device.core.CreateSampler(device.handle, &sampler, &m_MaterialSampler), "Create material sampler");
+            sampler.addressModeV = VriAddressMode_ClampToEdge;
+            sampler.addressModeW = VriAddressMode_ClampToEdge;
+            check(device.core.CreateSampler(device.handle, &sampler, &m_EnvironmentSampler),
+                  "Create environment sampler");
+            const auto            count = uint32_t(scene.materials.size());
+            VriDescriptorPoolDesc pool {};
+            pool.descriptorSetMaxNum    = count + (scene.meshlets ? 2 : 1);
+            pool.textureMaxNum          = count * kMaterialTextureCount + 10;
+            pool.samplerMaxNum          = count + 1;
+            pool.constantBufferMaxNum   = 1;
+            pool.structuredBufferMaxNum = scene.meshlets ? 4 : 0;
+            check(device.core.CreateDescriptorPool(device.handle, &pool, &m_Pool), "Create built-in descriptor pool");
+            check(device.core.AllocateDescriptorSets(m_Pool, m_Layout, 0, &m_FrameSet, 1), "Allocate frame set");
+            if (scene.meshlets)
+            {
+                check(device.core.AllocateDescriptorSets(m_Pool, m_Layout, 2, &m_MeshletSet, 1),
+                      "Allocate meshlet set");
+                VriDescriptorRangeUpdateDesc updates[4] {};
+                const VriDescriptor*         views[4] {};
+                for (uint32_t i = 0; i < 4; ++i)
                 {
-                    ImGui::ColorEdit3(
-                        "Clear Color",
-                        glm::value_ptr(m_LogicScene->getMainCamera().getComponent<CameraComponent>().clearColor));
+                    views[i]   = scene.meshlets->views[i];
+                    updates[i] = {&views[i], 1};
                 }
-
-                if (ImGui::CollapsingHeader("Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen))
+                device.core.UpdateDescriptorRanges(m_MeshletSet, 0, 4, updates);
+            }
+            m_MaterialSets.resize(count);
+            check(device.core.AllocateDescriptorSets(m_Pool, m_Layout, 1, m_MaterialSets.data(), count),
+                  "Allocate material sets");
+            for (uint32_t material = 0; material < count; ++material)
+            {
+                const VriDescriptor*         descriptors[kMaterialTextureCount + 1] {};
+                VriDescriptorRangeUpdateDesc updates[kMaterialTextureCount + 1] {};
+                for (uint32_t slot = 0; slot <= kMaterialTextureCount; ++slot)
                 {
-                    ImGui::Indent(5.0f);
-                    // Tone-mapping
-                    ImGui::DragFloat("Exposure", &settings.exposure, 0.1f, 0.1f, 10.0f, "%.1f");
-                    int toneMappingMethod = static_cast<int>(settings.toneMappingMethod);
-                    ImGui::RadioButton("Khronos PBR Neutral", &toneMappingMethod, 0);
-                    ImGui::RadioButton("ACES", &toneMappingMethod, 1);
-                    ImGui::RadioButton("Reinhard", &toneMappingMethod, 2);
-                    settings.toneMappingMethod = static_cast<gfx::ToneMappingMethod>(toneMappingMethod);
-                    ImGui::Unindent(5.0f);
+                    descriptors[slot] = slot < kMaterialTextureCount ? scene.materialTextures[material][slot]->view() :
+                                                                       m_MaterialSampler;
+                    updates[slot].descriptors   = &descriptors[slot];
+                    updates[slot].descriptorNum = 1;
                 }
+                device.core.UpdateDescriptorRanges(m_MaterialSets[material], 0, kMaterialTextureCount + 1, updates);
+            }
+            auto pipeline = [&](const char* file, bool mesh, bool depth, VriFormat format)
+            {
+                return std::make_unique<ShaderPipeline>(
+                    device,
+                    std::filesystem::path("builtin/shaders/passes") / file,
+                    std::vector<ShaderEntry> {{mesh ? "vertexMain" : "screenVertex", VriShaderStage_Vertex},
+                                              {"fragmentMain", VriShaderStage_Fragment}},
+                    [this, mesh, depth, format](std::span<const VriShaderDesc> shaders)
+                    {
+                        return createPipeline(m_Device, m_Layout, shaders, format, mesh, depth);
+                    },
+                    "builtin/shaders",
+                    std::vector<std::filesystem::path> {"builtin/shaders", "external"});
+            };
+            m_Shadow  = pipeline("shadow.slang", true, true, VriFormat_Unknown);
+            m_Forward = pipeline("forward.slang", true, true, VriFormat_RGBA16_SFLOAT);
+            if (scene.meshlets)
+            {
+                m_MeshForward = std::make_unique<ShaderPipeline>(
+                    device,
+                    "builtin/shaders/passes/meshlet_forward.slang",
+                    std::vector<ShaderEntry> {{"taskMain", VriShaderStage_Task},
+                                              {"meshMain", VriShaderStage_Mesh},
+                                              {"fragmentMain", VriShaderStage_Fragment}},
+                    [this](std::span<const VriShaderDesc> shaders)
+                    {
+                        return createPipeline(m_Device, m_Layout, shaders, VriFormat_RGBA16_SFLOAT, false, true);
+                    },
+                    "builtin/shaders",
+                    std::vector<std::filesystem::path> {"builtin/shaders", "external"});
+            }
+            m_Skybox      = pipeline("skybox.slang", false, false, VriFormat_RGBA16_SFLOAT);
+            m_ToneMapping = pipeline("tone_mapping.slang", false, false, m_OutputFormat);
+        }
+        catch (...)
+        {
+            release();
+            throw;
+        }
+    }
 
-                switch (settings.rendererType)
-                {
-                    case RendererType::eRasterization:
-                        onImGuiRasterization();
-                        break;
+    BuiltinRenderer::~BuiltinRenderer()
+    {
+        m_Device.waitIdle();
+        release();
+    }
 
-                    case RendererType::eRayTracing:
-                        onImGuiRayTracing();
-                        break;
-
-                    case RendererType::eMeshShading:
-                        onImGuiMeshShading();
-                        break;
-
-                    default:
-                        break;
-                }
-
-                ImGui::Unindent(5.0f);
+    void BuiltinRenderer::release()
+    {
+        m_Shadow.reset();
+        m_Forward.reset();
+        m_MeshForward.reset();
+        m_Skybox.reset();
+        m_ToneMapping.reset();
+        if (m_Pool)
+        {
+            m_Device.core.DestroyDescriptorPool(m_Pool);
+        }
+        for (auto* descriptor : {m_FrameView, m_MaterialSampler, m_EnvironmentSampler})
+        {
+            if (descriptor)
+            {
+                m_Device.core.DestroyDescriptor(descriptor);
             }
         }
-
-        void BuiltinRenderer::onUpdate(const fsec dt)
+        if (m_Layout)
         {
-            m_FrameInfo.deltaTime = dt.count();
-            m_FrameInfo.time += m_FrameInfo.deltaTime;
+            m_Device.core.DestroyPipelineLayout(m_Layout);
         }
+    }
 
-        void BuiltinRenderer::render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
+    void BuiltinRenderer::drawScene(VriCommandBuffer* cmd, bool shadow, uint32_t cascade)
+    {
+        const bool meshShading = settings.meshShading && !shadow;
+        m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
+        auto* pipeline = shadow ? m_Shadow->handle() : m_Forward->handle();
+        if (meshShading)
         {
-            if (m_LogicScene == nullptr)
-                return;
-
-            switch (m_Settings.rendererType)
+            pipeline = m_MeshForward->handle();
+            m_Device.core.CmdSetDescriptorSet(cmd, 2, m_MeshletSet);
+        }
+        m_Device.core.CmdSetPipeline(cmd, pipeline);
+        m_Device.core.CmdSetDescriptorSet(cmd, 0, m_FrameSet);
+        if (!meshShading)
+        {
+            const VriVertexBufferBinding vertices {m_Scene.vertices->handle, 0};
+            m_Device.core.CmdSetVertexBuffers(cmd, 0, &vertices, 1);
+            m_Device.core.CmdSetIndexBuffer(cmd, m_Scene.indices->handle, 0, VriIndexType_UInt32);
+        }
+        for (size_t i = 0; i < m_Scene.primitives.size(); ++i)
+        {
+            const auto& primitive  = m_Scene.primitives[i];
+            const auto& material   = m_Scene.materials.at(primitive.material);
+            float       normalMode = 0;
+            if (material.normalImage >= 0)
             {
-                case RendererType::eRasterization:
-                    renderRasterization(cb, renderTarget, dt);
-                    break;
-
-                case RendererType::eRayTracing:
-                    renderRayTracing(cb, renderTarget, dt);
-                    break;
-
-                case RendererType::eMeshShading:
-                    renderMeshShading(cb, renderTarget, dt);
-                    break;
-
-                default:
-                    VULTRA_CLIENT_ERROR("Unknown renderer type");
-                    return;
+                const auto format = m_Scene.materialTextures[primitive.material][2]->desc.format;
+                normalMode        = format == VriFormat_BC5_UNORM || format == VriFormat_RG8_UNORM ? 2.0f : 1.0f;
             }
-        }
-
-        void BuiltinRenderer::renderXR(rhi::CommandBuffer& cb,
-                                       rhi::Texture*       leftEyeRenderTarget,
-                                       rhi::Texture*       rightEyeRenderTarget,
-                                       const fsec          dt)
-        {
-            m_CameraInfo = m_XrCameraLeft;
-            render(cb, leftEyeRenderTarget, dt);
-
-            m_CameraInfo = m_XrCameraRight;
-            render(cb, rightEyeRenderTarget, dt);
-        }
-
-        void BuiltinRenderer::beginFrame(rhi::CommandBuffer& cb)
-        {
-            BaseRenderer::beginFrame(cb);
-            clearUIDrawList();
-        }
-
-        void BuiltinRenderer::endFrame()
-        {
-            assert(m_ActiveCommandBuffer && "No active command buffer. Did you call beginFrame()?");
-            renderUIDrawList(*m_ActiveCommandBuffer);
-            BaseRenderer::endFrame();
-        }
-
-        void BuiltinRenderer::drawCircleFilled(rhi::Texture*    target,
-                                               const glm::vec2& position,
-                                               float            radius,
-                                               const glm::vec4& fillColor,
-                                               const glm::vec4& outlineColor,
-                                               float            outlineThickness)
-        {
-            m_UIDrawList.addCircleFilled(target, position, radius, fillColor, outlineColor, outlineThickness);
-        }
-
-        void BuiltinRenderer::setScene(LogicScene* scene)
-        {
-            m_LogicScene = scene;
-
-            if (scene)
+            MaterialData parameters {
+                material.baseColor,
+                {material.baseMetalness, material.specularRoughness, material.specularIor, material.normalScale},
+                {material.emissionColor * material.emissionLuminance, material.occlusionStrength},
+                {material.coatWeight, material.coatRoughness, material.coatIor, material.specularWeight},
+                {material.specularColor, material.baseDiffuseRoughness},
+                {material.alphaCutoff, material.baseWeight, float(cascade), normalMode},
+                {0, 0, 0, 0}};
+            if (meshShading)
             {
-                // Cameras
-                auto mainCamera = scene->getRenderTargetCamera();
-                if (mainCamera)
+                const auto range    = m_Scene.meshlets->primitives[i];
+                parameters.meshlets = {range.first,
+                                       range.count,
+                                       settings.meshletCulling ? 1u : 0u,
+                                       settings.meshletColors ? 1u : 0u};
+            }
+            m_Device.core.CmdSetConstants(cmd, 0, &parameters, sizeof(parameters));
+            m_Device.core.CmdSetDescriptorSet(cmd, 1, m_MaterialSets[primitive.material]);
+            if (meshShading)
+            {
+                if (parameters.meshlets.y != 0)
                 {
-                    auto& camTransform = mainCamera.getComponent<TransformComponent>();
-                    auto& camComponent = mainCamera.getComponent<CameraComponent>();
-
-                    m_CameraInfo.view       = getCameraViewMatrix(camTransform);
-                    m_CameraInfo.projection = getCameraProjectionMatrix(camComponent);
-
-                    m_CameraInfo.zNear                     = camComponent.zNear;
-                    m_CameraInfo.zFar                      = camComponent.zFar;
-                    m_CameraInfo.fovY                      = glm::radians(camComponent.fov);
-                    m_CameraInfo.viewProjection            = m_CameraInfo.projection * m_CameraInfo.view;
-                    m_CameraInfo.inverseOriginalProjection = glm::inverse(m_CameraInfo.projection);
-
-                    m_ReferenceViewProjectionMatrix = m_CameraInfo.viewProjection;
-
-                    // Extract frustum planes
-                    const auto frustumPlanes = vultra::math::extractFrustumPlanes(m_CameraInfo.viewProjection);
-                    for (int i = 0; i < 6; ++i)
-                    {
-                        const auto& plane             = frustumPlanes[i];
-                        m_CameraInfo.frustumPlanes[i] = glm::vec4(plane.normal, plane.d);
-                    }
-
-                    m_ClearColor = camComponent.clearColor;
-
-                    // Environment map
-                    if (camComponent.clearFlags == CameraClearFlags::eSkybox)
-                    {
-                        m_EnableSkybox = true;
-
-                        // Load environment map if not already
-                        if (!camComponent.environmentMap)
-                        {
-                            if (!camComponent.environmentMapPath.empty())
-                            {
-                                camComponent.environmentMap =
-                                    resource::loadResource<gfx::TextureManager>(camComponent.environmentMapPath);
-                            }
-                            else
-                            {
-                                m_Settings.enableIBL = false;
-                            }
-
-                            VULTRA_CORE_ASSERT(camComponent.environmentMap, "Failed to load environment map");
-
-                            // Generate IBL data if not already
-                            m_RenderDevice.execute([&](rhi::CommandBuffer& cb) {
-                                m_Cubemap       = m_CubemapConverter.convertToCubemap(cb, *camComponent.environmentMap);
-                                m_IrradianceMap = m_IBLDataGenerator.generateIrradianceMap(cb, *m_Cubemap);
-                                m_PrefilteredEnvMap = m_IBLDataGenerator.generatePrefilterEnvMap(cb, *m_Cubemap);
-                            });
-                        }
-                    }
-                    else
-                    {
-                        m_EnableSkybox = false;
-                    }
+                    m_MeshApi.CmdDrawMeshTasks(cmd,
+                                               (parameters.meshlets.y + kMeshletTaskSize - 1) / kMeshletTaskSize,
+                                               1,
+                                               1);
                 }
-                else
-                {
-                    m_EnableSkybox = false;
-                    m_CameraInfo   = CameraInfo {};
-                }
-
-                // XR Cameras
-                auto leftEyeCamera = scene->getXrCamera(true);
-                if (leftEyeCamera)
-                {
-                    auto& camTransform = leftEyeCamera.getComponent<TransformComponent>();
-                    auto& camComponent = leftEyeCamera.getComponent<XrCameraComponent>();
-
-                    m_XrCameraLeft.view = camComponent.viewMatrix;
-                    XrFovf fov          = {camComponent.fovAngleLeft,
-                                           camComponent.fovAngleRight,
-                                           camComponent.fovAngleUp,
-                                           camComponent.fovAngleDown};
-                    m_XrCameraLeft.projection =
-                        xrutils::createProjectionMatrix(fov, camComponent.zNear, camComponent.zFar);
-                    m_XrCameraLeft.inverseOriginalProjection = glm::inverse(m_XrCameraLeft.projection);
-                    m_XrCameraLeft.viewProjection            = m_XrCameraLeft.projection * m_XrCameraLeft.view;
-                    m_XrCameraLeft.zNear                     = camComponent.zNear;
-                    m_XrCameraLeft.zFar                      = camComponent.zFar;
-                    m_XrCameraLeft.fovY                      = glm::radians(camComponent.fovAngleUp);
-
-                    m_ReferenceViewProjectionMatrix = m_XrCameraLeft.viewProjection;
-
-                    // Extract frustum planes
-                    const auto frustumPlanes = vultra::math::extractFrustumPlanes(m_XrCameraLeft.viewProjection);
-                    for (int i = 0; i < 6; ++i)
-                    {
-                        const auto& plane               = frustumPlanes[i];
-                        m_XrCameraLeft.frustumPlanes[i] = glm::vec4(plane.normal, plane.d);
-                    }
-                }
-                else
-                {
-                    m_XrCameraLeft = CameraInfo {};
-                }
-
-                auto rightEyeCamera = scene->getXrCamera(false);
-                if (rightEyeCamera)
-                {
-                    auto& camTransform = rightEyeCamera.getComponent<TransformComponent>();
-                    auto& camComponent = rightEyeCamera.getComponent<XrCameraComponent>();
-
-                    m_XrCameraRight.view = camComponent.viewMatrix;
-                    XrFovf fov           = {camComponent.fovAngleLeft,
-                                            camComponent.fovAngleRight,
-                                            camComponent.fovAngleUp,
-                                            camComponent.fovAngleDown};
-                    m_XrCameraRight.projection =
-                        xrutils::createProjectionMatrix(fov, camComponent.zNear, camComponent.zFar);
-                    m_XrCameraRight.inverseOriginalProjection = glm::inverse(m_XrCameraRight.projection);
-                    m_XrCameraRight.viewProjection            = m_XrCameraRight.projection * m_XrCameraRight.view;
-                    m_XrCameraRight.zNear                     = camComponent.zNear;
-                    m_XrCameraRight.zFar                      = camComponent.zFar;
-                    m_XrCameraRight.fovY                      = glm::radians(camComponent.fovAngleUp);
-
-                    m_ReferenceViewProjectionMatrix = m_XrCameraRight.viewProjection;
-
-                    // Extract frustum planes
-                    const auto frustumPlanes = vultra::math::extractFrustumPlanes(m_XrCameraRight.viewProjection);
-                    for (int i = 0; i < 6; ++i)
-                    {
-                        const auto& plane                = frustumPlanes[i];
-                        m_XrCameraRight.frustumPlanes[i] = glm::vec4(plane.normal, plane.d);
-                    }
-                }
-                else
-                {
-                    m_XrCameraRight = CameraInfo {};
-                }
-
-                // Lights
-                m_LightInfo = LightInfo {};
-
-                // Directional light
-                auto directionalLight = scene->getDirectionalLight();
-                if (directionalLight)
-                {
-                    auto& lightComponent                   = directionalLight.getComponent<DirectionalLightComponent>();
-                    m_LightInfo.useDirectionalLight        = 1;
-                    m_LightInfo.directionalLight.direction = glm::normalize(lightComponent.direction);
-                    m_LightInfo.directionalLight.color     = lightComponent.color;
-                    m_LightInfo.directionalLight.intensity = lightComponent.intensity;
-                }
-
-                // Point lights
-                auto pointLights            = scene->getPointLights();
-                m_LightInfo.pointLightCount = static_cast<int>(pointLights.size());
-                for (size_t i = 0; i < pointLights.size() && i < LIGHTINFO_MAX_POINT_LIGHTS; ++i)
-                {
-                    auto& lightComponent                 = pointLights[i].getComponent<PointLightComponent>();
-                    auto& lightTransform                 = pointLights[i].getComponent<TransformComponent>();
-                    m_LightInfo.pointLights[i].position  = lightTransform.position;
-                    m_LightInfo.pointLights[i].intensity = lightComponent.intensity;
-                    m_LightInfo.pointLights[i].color     = lightComponent.color;
-                    m_LightInfo.pointLights[i].radius    = lightComponent.radius;
-                }
-
-                // Area lights
-                auto areaLights            = scene->getAreaLights();
-                m_LightInfo.areaLightCount = static_cast<int>(areaLights.size());
-                m_AreaLightMeshes.resize(areaLights.size());
-                for (size_t i = 0; i < areaLights.size() && i < LIGHTINFO_MAX_AREA_LIGHTS; ++i)
-                {
-                    auto& lightComponent               = areaLights[i].getComponent<AreaLightComponent>();
-                    auto& lightTransform               = areaLights[i].getComponent<TransformComponent>();
-                    m_LightInfo.areaLights[i].position = lightTransform.position;
-                    m_LightInfo.areaLights[i].width    = lightComponent.width;
-                    m_LightInfo.areaLights[i].height   = lightComponent.height;
-                    m_LightInfo.areaLights[i].rotY = lightTransform.getRotationEuler().y / 360.0f; // Normalize to [0,1]
-                    m_LightInfo.areaLights[i].rotZ = lightTransform.getRotationEuler().z / 360.0f; // Normalize to [0,1]
-                    m_LightInfo.areaLights[i].color     = lightComponent.color;
-                    m_LightInfo.areaLights[i].intensity = lightComponent.intensity;
-                    m_LightInfo.areaLights[i].twoSided  = lightComponent.twoSided;
-
-                    // For raytracing
-                    if (i < areaLights.size() && m_AreaLightMeshes[i] == nullptr)
-                    {
-                        auto areaLightMesh   = gfx::createAreaLightMesh(m_RenderDevice, lightComponent, lightTransform);
-                        m_AreaLightMeshes[i] = areaLightMesh;
-                    }
-                }
-
-                // Renderables
-                auto renderables = scene->cookRenderables();
-                if (m_Settings.enableAreaLights)
-                {
-                    for (auto& areaLightMesh : m_AreaLightMeshes)
-                    {
-                        renderables.push_back({.mesh = areaLightMesh, .modelMatrix = glm::mat4(1.0f)});
-                    }
-                }
-                setRenderables(renderables);
-                sortRenderables(m_ReferenceViewProjectionMatrix);
             }
             else
             {
-                m_RenderPrimitiveGroup.clear();
-                m_RenderableGroup.clear();
+                const VriDrawIndexedDesc draw {primitive.indexCount, 1, primitive.firstIndex, 0, 0};
+                m_Device.core.CmdDrawIndexed(cmd, &draw);
             }
         }
+    }
 
-        void BuiltinRenderer::setupSamplers()
+    void BuiltinRenderer::drawFullscreen(VriCommandBuffer* cmd, VriPipeline* pipeline)
+    {
+        m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
+        m_Device.core.CmdSetPipeline(cmd, pipeline);
+        m_Device.core.CmdSetDescriptorSet(cmd, 0, m_FrameSet);
+        const VriDrawDesc draw {3, 1, 0, 0};
+        m_Device.core.CmdDraw(cmd, &draw);
+    }
+
+    BuiltinRenderer::ShadowMaps BuiltinRenderer::addShadowPasses(RenderGraph& graph)
+    {
+        ShadowMaps   maps;
+        const Extent size {settings.shadowResolution, settings.shadowResolution};
+        for (uint32_t cascade = 0; cascade < 4; ++cascade)
         {
-            m_Samplers["point"]      = m_RenderDevice.getSampler({
-                     .magFilter  = rhi::TexelFilter::eNearest,
-                     .minFilter  = rhi::TexelFilter::eNearest,
-                     .mipmapMode = rhi::MipmapMode::eNearest,
-
-                     .addressModeS = rhi::SamplerAddressMode::eClampToBorder,
-                     .addressModeT = rhi::SamplerAddressMode::eClampToBorder,
-                     .addressModeR = rhi::SamplerAddressMode::eClampToBorder,
-
-                     .borderColor = rhi::BorderColor::eTransparentBlack,
-            });
-            m_Samplers["bilinear"]   = m_RenderDevice.getSampler({
-                  .magFilter  = rhi::TexelFilter::eLinear,
-                  .minFilter  = rhi::TexelFilter::eLinear,
-                  .mipmapMode = rhi::MipmapMode::eNearest,
-
-                  .addressModeS = rhi::SamplerAddressMode::eClampToEdge,
-                  .addressModeT = rhi::SamplerAddressMode::eClampToEdge,
-                  .addressModeR = rhi::SamplerAddressMode::eClampToEdge,
-            });
-            m_Samplers["depth"]      = m_RenderDevice.getSampler({
-                     .magFilter  = rhi::TexelFilter::eNearest,
-                     .minFilter  = rhi::TexelFilter::eNearest,
-                     .mipmapMode = rhi::MipmapMode::eNearest,
-
-                     .addressModeS = rhi::SamplerAddressMode::eClampToBorder,
-                     .addressModeT = rhi::SamplerAddressMode::eClampToBorder,
-                     .addressModeR = rhi::SamplerAddressMode::eClampToBorder,
-
-                     .borderColor = rhi::BorderColor::eOpaqueWhite,
-            });
-            m_Samplers["shadow_map"] = m_RenderDevice.getSampler({
-                .magFilter  = rhi::TexelFilter::eLinear,
-                .minFilter  = rhi::TexelFilter::eLinear,
-                .mipmapMode = rhi::MipmapMode::eNearest,
-
-                .addressModeS = rhi::SamplerAddressMode::eClampToBorder,
-                .addressModeT = rhi::SamplerAddressMode::eClampToBorder,
-                .addressModeR = rhi::SamplerAddressMode::eClampToBorder,
-
-                .borderColor = rhi::BorderColor::eOpaqueWhite,
-            });
+            maps[cascade] = graph.createTexture("shadow_" + std::to_string(cascade), depthTexture(size));
+            graph.addPass("Shadow " + std::to_string(cascade),
+                          {{maps[cascade], Usage::eDepthWrite}},
+                          [this, cascade, resource = maps[cascade], size](auto* cmd, auto& resources)
+                          {
+                              VriAttachmentDesc depth {};
+                              depth.view                          = resources.getTexture(resource).view();
+                              depth.loadOp                        = VriAttachmentLoadOp_Clear;
+                              depth.storeOp                       = VriAttachmentStoreOp_Store;
+                              depth.clearValue.depthStencil.depth = 1;
+                              VriAttachmentsDesc attachments {};
+                              attachments.depth      = &depth;
+                              attachments.renderArea = {0, 0, size.width, size.height};
+                              attachments.layerNum   = 1;
+                              m_Device.core.CmdBeginRendering(cmd, &attachments);
+                              setViewport(m_Device, cmd, size);
+                              if (settings.shadowFilter != ShadowFilter::eDisabled)
+                              {
+                                  drawScene(cmd, true, cascade);
+                              }
+                              m_Device.core.CmdEndRendering(cmd);
+                          });
         }
+        return maps;
+    }
 
-        void BuiltinRenderer::onImGuiRasterization() {}
+    void BuiltinRenderer::addSkyboxPass(RenderGraph& graph, RenderGraph::Resource hdr)
+    {
+        graph.addPass("Skybox",
+                      {{hdr, Usage::eColorWrite}},
+                      [this, hdr](auto* cmd, auto& resources)
+                      {
+                          auto&       target = resources.getTexture(hdr);
+                          const float clear[4] {0, 0, 0, 1};
+                          beginColorPass(m_Device, cmd, target.view(), {target.desc.width, target.desc.height}, clear);
+                          drawFullscreen(cmd, m_Skybox->handle());
+                          m_Device.core.CmdEndRendering(cmd);
+                      });
+    }
 
-        void BuiltinRenderer::onImGuiRayTracing() {}
+    void BuiltinRenderer::addForwardPass(RenderGraph&          graph,
+                                         RenderGraph::Resource hdr,
+                                         RenderGraph::Resource depth,
+                                         ShadowMaps            shadows)
+    {
+        graph.addPass("Forward OpenPBR",
+                      {{hdr, Usage::eColorReadWrite},
+                       {depth, Usage::eDepthWrite},
+                       {shadows[0], Usage::eSampled},
+                       {shadows[1], Usage::eSampled},
+                       {shadows[2], Usage::eSampled},
+                       {shadows[3], Usage::eSampled}},
+                      [this, hdr, depth](auto* cmd, auto& resources)
+                      {
+                          auto&             target = resources.getTexture(hdr);
+                          const Extent      size {target.desc.width, target.desc.height};
+                          VriAttachmentDesc colorAttachment {};
+                          colorAttachment.view    = target.view();
+                          colorAttachment.loadOp  = VriAttachmentLoadOp_Load;
+                          colorAttachment.storeOp = VriAttachmentStoreOp_Store;
+                          VriAttachmentDesc depthAttachment {};
+                          depthAttachment.view                          = resources.getTexture(depth).view();
+                          depthAttachment.loadOp                        = VriAttachmentLoadOp_Clear;
+                          depthAttachment.storeOp                       = VriAttachmentStoreOp_Store;
+                          depthAttachment.clearValue.depthStencil.depth = 1;
+                          VriAttachmentsDesc attachments {};
+                          attachments.colors     = &colorAttachment;
+                          attachments.colorNum   = 1;
+                          attachments.depth      = &depthAttachment;
+                          attachments.renderArea = {0, 0, size.width, size.height};
+                          attachments.layerNum   = 1;
+                          m_Device.core.CmdBeginRendering(cmd, &attachments);
+                          setViewport(m_Device, cmd, size);
+                          drawScene(cmd, false);
+                          m_Device.core.CmdEndRendering(cmd);
+                      });
+    }
 
-        void BuiltinRenderer::onImGuiMeshShading() {}
+    RenderGraph::Resource
+    BuiltinRenderer::addToneMappingPass(RenderGraph& graph, RenderGraph::Resource hdr, Extent size)
+    {
+        const auto color = graph.createTexture("display_color", colorTexture(size, m_OutputFormat));
+        graph.addPass("Tone mapping",
+                      {{hdr, Usage::eSampled}, {color, Usage::eColorWrite}},
+                      [this, color, size](auto* cmd, auto& resources)
+                      {
+                          const float clear[4] {0, 0, 0, 1};
+                          beginColorPass(m_Device, cmd, resources.getTexture(color).view(), size, clear);
+                          drawFullscreen(cmd, m_ToneMapping->handle());
+                          m_Device.core.CmdEndRendering(cmd);
+                      });
+        return color;
+    }
 
-        void BuiltinRenderer::renderRasterization(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
+    BuiltinRenderer::Outputs BuiltinRenderer::addPasses(RenderGraph& graph, Extent size)
+    {
+        Outputs outputs;
+        outputs.shadows = addShadowPasses(graph);
+        outputs.hdr     = graph.createTexture("scene_hdr", colorTexture(size, VriFormat_RGBA16_SFLOAT));
+        outputs.depth   = graph.createTexture("scene_depth", depthTexture(size));
+        addSkyboxPass(graph, outputs.hdr);
+        addForwardPass(graph, outputs.hdr, outputs.depth, outputs.shadows);
+        outputs.color = addToneMappingPass(graph, outputs.hdr, size);
+        return outputs;
+    }
+
+    void BuiltinRenderer::prepare(const RenderCamera& camera, RenderGraph& graph, const Outputs& outputs)
+    {
+        if (settings.meshShading && !m_MeshForward)
         {
-            {
-                ZoneScopedN("Prepare Attachments");
-
-                rhi::prepareForAttachment(cb, *renderTarget, false);
-            }
-
-            {
-                ZoneScopedN("BultinRenderer");
-
-                FrameGraph fg;
-                {
-                    FrameGraphBlackboard blackboard;
-
-                    ZoneScopedN("Setup");
-
-                    const auto backBuffer = framegraph::importTexture(fg, "Backbuffer", renderTarget);
-
-                    // Import skybox cubemap
-                    const auto skyboxCubemap = framegraph::importTexture(fg, "Skybox Cubemap", m_Cubemap.get());
-
-                    // Import IBL textures
-                    const auto brdfLUT       = framegraph::importTexture(fg, "BRDF LUT", m_BrdfLUT.get());
-                    const auto irradianceMap = framegraph::importTexture(fg, "Irradiance Map", m_IrradianceMap.get());
-                    const auto prefilteredEnvMap =
-                        framegraph::importTexture(fg, "Prefiltered Env Map", m_PrefilteredEnvMap.get());
-                    auto& iblData             = blackboard.add<IBLData>();
-                    iblData.brdfLUT           = brdfLUT;
-                    iblData.irradianceMap     = irradianceMap;
-                    iblData.prefilteredEnvMap = prefilteredEnvMap;
-
-                    uploadCameraBlock(fg, blackboard, renderTarget->getExtent(), m_CameraInfo);
-                    uploadFrameBlock(fg, blackboard, m_FrameInfo);
-                    uploadLightBlock(fg, blackboard, m_LightInfo);
-
-                    // Depth pre-pass
-                    m_DepthPrePass->addPass(fg, blackboard, renderTarget->getExtent(), m_RenderPrimitiveGroup);
-
-                    // G-Buffer
-                    m_GBufferPass->addPass(fg,
-                                           blackboard,
-                                           renderTarget->getExtent(),
-                                           m_RenderPrimitiveGroup,
-                                           m_Settings.enableAreaLights,
-                                           m_Settings.enableNormalMapping);
-
-                    // Deferred lighting
-                    m_DeferredLightingPass->addPass(fg,
-                                                    blackboard,
-                                                    m_Settings.enableAreaLights,
-                                                    m_Settings.enableIBL,
-                                                    color::sRGBToLinear(m_ClearColor));
-                    auto& sceneColor = blackboard.get<SceneColorData>();
-
-                    if (m_EnableSkybox)
-                    {
-                        // Skybox
-                        sceneColor.hdr = m_SkyboxPass->addPass(fg, blackboard, skyboxCubemap, sceneColor.hdr);
-                    }
-
-                    // Tone mapping
-                    sceneColor.hdr = m_ToneMappingPass->addPass(
-                        fg, sceneColor.hdr, m_Settings.exposure, m_Settings.toneMappingMethod);
-
-                    // Gamma correction if swapchain is not in sRGB format
-                    if (m_SwapChainFormat != rhi::Swapchain::Format::esRGB)
-                    {
-                        sceneColor.ldr = m_GammaCorrectionPass->addPass(
-                            fg, sceneColor.hdr, GammaCorrectionPass::GammaCorrectionMode::eGamma);
-                    }
-                    else
-                    {
-                        sceneColor.ldr = sceneColor.hdr;
-                    }
-
-                    // FXAA
-                    sceneColor.aa = m_FXAAPass->aa(fg, sceneColor.ldr);
-
-                    if (dd::hasPendingDraws())
-                    {
-                        // Debug draw
-                        m_DebugDrawPass->addPass(fg, blackboard, dt, m_CameraInfo.viewProjection);
-                        auto& debugDrawData = blackboard.get<DebugDrawData>();
-
-                        // Color blend
-                        sceneColor.aa = m_ColorBlendPass->blend(
-                            fg, debugDrawData.debugDraw, sceneColor.aa, BlendType::eAdditive, ColorRange::eLDR);
-                    }
-
-                    // Final composition
-                    m_FinalPass->compose(fg, blackboard, m_Settings.outputMode, backBuffer);
-                }
-
-                {
-                    ZoneScopedN("FrameGraph::Compile");
-                    fg.compile();
-                }
-
-                {
-                    gfx::RendererRenderContext rc {cb, m_Samplers};
-                    FG_GPU_ZONE(rc.commandBuffer);
-                    fg.execute(&rc, &m_TransientResources);
-                }
-
-#if _DEBUG
-                {
-                    std::ofstream ofs {"framegraph.dot"};
-                    ofs << fg;
-                }
-#endif
-
-                m_TransientResources.update();
-            }
+            throw std::logic_error("Mesh shading requires a GpuScene created with meshlets");
         }
-
-        void BuiltinRenderer::renderRayTracing(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec /*dt*/)
+        const auto& shadowDesc = graph.getTexture(outputs.shadows[0]).desc;
+        const auto  cascades   = calculateCascades(camera,
+                                                settings.directionToLight,
+                                                m_Scene.center,
+                                                m_Scene.radius,
+                                                shadowDesc.width,
+                                                settings.splitLambda);
+        FrameData   data {};
+        data.viewProjection        = camera.projection * camera.view;
+        data.inverseViewProjection = glm::inverse(data.viewProjection);
+        data.view                  = camera.view;
+        data.lightViewProjection   = cascades.viewProjection;
+        data.cameraPosition        = glm::inverse(camera.view)[3];
+        data.lightDirection        = {glm::normalize(settings.directionToLight), settings.lightIntensity};
+        data.lightColor            = {settings.lightColor, settings.environmentIntensity};
+        data.cascadeSplits         = cascades.splits;
+        data.cascadeWidths         = cascades.worldWidths;
+        data.cascadeDepthRanges    = cascades.depthRanges;
+        data.shadowParameters      = {settings.shadowBias,
+                                      settings.normalBias,
+                                      settings.sunAngularRadius,
+                                      float(settings.shadowFilter)};
+        data.options               = {settings.ibl ? 1.0f : 0.0f,
+                        settings.skybox ? 1.0f : 0.0f,
+                        settings.exposure,
+                        float(m_Environment.specular->desc.mipNum - 1)};
+        data.cameraClip = {camera.nearPlane,
+                           camera.farPlane,
+                           std::clamp(settings.cascadeBlend, 0.0f, 0.15f),
+                           float(settings.debugMode)};
+        data.overrides  = {settings.roughnessOverride,
+                           settings.metalnessOverride,
+                          m_OutputFormat == VriFormat_RGBA16_SFLOAT ? 0.0f : 1.0f,
+                          settings.meshShading && settings.meshletColors ? 1.0f : 0.0f};
+        auto* mapped    = m_Device.core.MapBuffer(m_FrameBuffer->handle, 0, sizeof(data));
+        if (!mapped)
         {
-            {
-                ZoneScopedN("Prepare Attachments");
-
-                rhi::prepareForAttachment(cb, *renderTarget, false);
-            }
-
-            {
-                ZoneScopedN("BultinRenderer");
-
-                FrameGraph fg;
-                {
-                    FrameGraphBlackboard blackboard;
-
-                    ZoneScopedN("Setup");
-
-                    const auto backBuffer = framegraph::importTexture(fg, "Backbuffer", renderTarget);
-
-                    // Import skybox cubemap
-                    const auto skyboxCubemap = framegraph::importTexture(fg, "Skybox Cubemap", m_Cubemap.get());
-
-                    // Import IBL textures
-                    const auto brdfLUT       = framegraph::importTexture(fg, "BRDF LUT", m_BrdfLUT.get());
-                    const auto irradianceMap = framegraph::importTexture(fg, "Irradiance Map", m_IrradianceMap.get());
-                    const auto prefilteredEnvMap =
-                        framegraph::importTexture(fg, "Prefiltered Env Map", m_PrefilteredEnvMap.get());
-                    auto& iblData             = blackboard.add<IBLData>();
-                    iblData.brdfLUT           = brdfLUT;
-                    iblData.irradianceMap     = irradianceMap;
-                    iblData.prefilteredEnvMap = prefilteredEnvMap;
-
-                    uploadCameraBlock(fg, blackboard, renderTarget->getExtent(), m_CameraInfo);
-                    uploadFrameBlock(fg, blackboard, m_FrameInfo);
-                    uploadLightBlock(fg, blackboard, m_LightInfo);
-
-                    // Ray Tracing Pass
-                    auto raytracedResult = m_SimpleRaytracingPass->addPass(fg,
-                                                                           blackboard,
-                                                                           renderTarget->getExtent(),
-                                                                           m_RenderableGroup,
-                                                                           m_Settings.maxRayRecursionDepth,
-                                                                           m_ClearColor,
-                                                                           static_cast<uint32_t>(m_Settings.outputMode),
-                                                                           m_Settings.enableNormalMapping,
-                                                                           m_Settings.enableAreaLights,
-                                                                           m_Settings.enableIBL,
-                                                                           m_Settings.exposure,
-                                                                           m_Settings.toneMappingMethod);
-
-                    auto aaResult = m_FXAAPass->aa(fg, raytracedResult);
-
-                    m_BlitPass->blit(fg, aaResult, backBuffer);
-                }
-
-                {
-                    ZoneScopedN("FrameGraph::Compile");
-                    fg.compile();
-                }
-
-                {
-                    gfx::RendererRenderContext rc {cb, m_Samplers};
-                    FG_GPU_ZONE(rc.commandBuffer);
-                    fg.execute(&rc, &m_TransientResources);
-                }
-
-#if _DEBUG
-                {
-                    std::ofstream ofs {"framegraph.dot"};
-                    ofs << fg;
-                }
-#endif
-
-                m_TransientResources.update();
-            }
+            throw std::runtime_error("Map renderer frame data");
         }
-
-        void BuiltinRenderer::renderMeshShading(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
+        std::memcpy(mapped, &data, sizeof(data));
+        m_Device.core.UnmapBuffer(m_FrameBuffer->handle);
+        const VriDescriptor*         descriptors[12] {m_FrameView,
+                                                      graph.getTexture(outputs.shadows[0]).view(),
+                                                      graph.getTexture(outputs.shadows[1]).view(),
+                                                      graph.getTexture(outputs.shadows[2]).view(),
+                                                      graph.getTexture(outputs.shadows[3]).view(),
+                                                      m_Environment.radiance->view(),
+                                                      m_Environment.diffuse->view(),
+                                                      m_Environment.specular->view(),
+                                                      m_Environment.brdfLut->view(),
+                                                      graph.getTexture(outputs.hdr).view(),
+                                                      m_EnvironmentSampler,
+                                                      m_OpenPbrLuts->view()};
+        VriDescriptorRangeUpdateDesc updates[12] {};
+        for (uint32_t i = 0; i < 12; ++i)
         {
-            {
-                ZoneScopedN("Prepare Attachments");
-
-                rhi::prepareForAttachment(cb, *renderTarget, false);
-            }
-
-            {
-                ZoneScopedN("BultinRenderer");
-
-                FrameGraph fg;
-                {
-                    FrameGraphBlackboard blackboard;
-
-                    ZoneScopedN("Setup");
-
-                    const auto backBuffer = framegraph::importTexture(fg, "Backbuffer", renderTarget);
-
-                    // Import skybox cubemap
-                    const auto skyboxCubemap = framegraph::importTexture(fg, "Skybox Cubemap", m_Cubemap.get());
-
-                    // Import IBL textures
-                    const auto brdfLUT       = framegraph::importTexture(fg, "BRDF LUT", m_BrdfLUT.get());
-                    const auto irradianceMap = framegraph::importTexture(fg, "Irradiance Map", m_IrradianceMap.get());
-                    const auto prefilteredEnvMap =
-                        framegraph::importTexture(fg, "Prefiltered Env Map", m_PrefilteredEnvMap.get());
-                    auto& iblData             = blackboard.add<IBLData>();
-                    iblData.brdfLUT           = brdfLUT;
-                    iblData.irradianceMap     = irradianceMap;
-                    iblData.prefilteredEnvMap = prefilteredEnvMap;
-
-                    uploadCameraBlock(fg, blackboard, renderTarget->getExtent(), m_CameraInfo);
-                    uploadFrameBlock(fg, blackboard, m_FrameInfo);
-                    uploadLightBlock(fg, blackboard, m_LightInfo);
-
-                    // Meshlet Depth Pre-pass
-                    m_MeshletDepthPrePass->addPass(fg, blackboard, renderTarget->getExtent(), m_RenderableGroup);
-
-                    // Meshlet GBuffer Pass
-                    m_MeshletGBufferPass->addPass(fg,
-                                                  blackboard,
-                                                  renderTarget->getExtent(),
-                                                  m_RenderableGroup,
-                                                  m_Settings.enableNormalMapping,
-                                                  m_Settings.meshletDebugMode);
-
-                    // Deferred lighting
-                    m_DeferredLightingPass->addPass(fg,
-                                                    blackboard,
-                                                    m_Settings.enableAreaLights,
-                                                    m_Settings.enableIBL,
-                                                    color::sRGBToLinear(m_ClearColor));
-                    auto& sceneColor = blackboard.get<SceneColorData>();
-
-                    if (m_EnableSkybox)
-                    {
-                        // Skybox
-                        sceneColor.hdr = m_SkyboxPass->addPass(fg, blackboard, skyboxCubemap, sceneColor.hdr);
-                    }
-
-                    // Tone mapping
-                    sceneColor.hdr = m_ToneMappingPass->addPass(
-                        fg, sceneColor.hdr, m_Settings.exposure, m_Settings.toneMappingMethod);
-
-                    // Gamma correction if swapchain is not in sRGB format
-                    if (m_SwapChainFormat != rhi::Swapchain::Format::esRGB)
-                    {
-                        sceneColor.ldr = m_GammaCorrectionPass->addPass(
-                            fg, sceneColor.hdr, GammaCorrectionPass::GammaCorrectionMode::eGamma);
-                    }
-                    else
-                    {
-                        sceneColor.ldr = sceneColor.hdr;
-                    }
-
-                    // FXAA
-                    sceneColor.aa = m_FXAAPass->aa(fg, sceneColor.ldr);
-
-                    if (dd::hasPendingDraws())
-                    {
-                        // Debug draw
-                        m_DebugDrawPass->addPass(fg, blackboard, dt, m_CameraInfo.viewProjection);
-                        auto& debugDrawData = blackboard.get<DebugDrawData>();
-
-                        // Color blend
-                        sceneColor.aa = m_ColorBlendPass->blend(
-                            fg, debugDrawData.debugDraw, sceneColor.aa, BlendType::eAdditive, ColorRange::eLDR);
-                    }
-
-                    // Final composition
-                    m_FinalPass->compose(fg, blackboard, m_Settings.outputMode, backBuffer);
-                }
-
-                {
-                    ZoneScopedN("FrameGraph::Compile");
-                    fg.compile();
-                }
-
-                {
-                    gfx::RendererRenderContext rc {cb, m_Samplers};
-                    FG_GPU_ZONE(rc.commandBuffer);
-                    fg.execute(&rc, &m_TransientResources);
-                }
-
-#if _DEBUG
-                {
-                    std::ofstream ofs {"framegraph.dot"};
-                    ofs << fg;
-                }
-#endif
-
-                m_TransientResources.update();
-            }
+            updates[i].descriptors   = &descriptors[i];
+            updates[i].descriptorNum = 1;
         }
+        m_Device.core.UpdateDescriptorRanges(m_FrameSet, 0, 12, updates);
+    }
 
-        void BuiltinRenderer::clearUIDrawList() { m_UIDrawList.commands.clear(); }
-
-        void BuiltinRenderer::renderUIDrawList(rhi::CommandBuffer& cb)
+    void BuiltinRenderer::pollShaders()
+    {
+        m_Shadow->poll();
+        m_Forward->poll();
+        if (m_MeshForward)
         {
-            if (m_UIDrawList.commands.empty())
-                return;
-
-            // UI Pass
-            m_UIPass->draw(cb, m_UIDrawList.commands);
+            m_MeshForward->poll();
         }
-    } // namespace gfx
+        m_Skybox->poll();
+        m_ToneMapping->poll();
+    }
+
+    std::string BuiltinRenderer::diagnostics() const
+    {
+        return m_Shadow->diagnostics() + m_Forward->diagnostics() +
+               (m_MeshForward ? m_MeshForward->diagnostics() : "") + m_Skybox->diagnostics() +
+               m_ToneMapping->diagnostics();
+    }
 } // namespace vultra

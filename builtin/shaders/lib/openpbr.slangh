@@ -1,0 +1,44 @@
+#pragma once
+
+#include "resources/openpbr_luts.slangh"
+
+// Public OpenPBR implementation; upstream sources and Apache-2.0 license in external/openpbr.
+#define OPENPBR_LANGUAGE_TARGET_SLANG 1
+#define OPENPBR_USE_TEXTURE_LUTS 1
+#define OPENPBR_SAMPLE_2D_TEXTURE(id, uv) sampleOpenPbrLut2D(id, uv)
+#define OPENPBR_SAMPLE_3D_TEXTURE(id, uvw) sampleOpenPbrLut3D(id, uvw)
+#include <openpbr/openpbr.h>
+
+struct OpenPbrSurface
+{
+    float3 baseColor;
+    float  baseWeight;
+    float  baseMetalness;
+    float  specularRoughness;
+    float  baseDiffuseRoughness;
+    float  specularWeight;
+    float  specularIor;
+    float3 specularColor;
+    float  coatWeight;
+    float  coatRoughness;
+    float  coatIor;
+};
+
+OpenPBR_PreparedBsdf prepareOpenPbr(OpenPbrSurface surface, float3 normal, float3 view)
+{
+    OpenPBR_ResolvedInputs inputs = openpbr_make_default_resolved_inputs();
+    inputs.base_color             = surface.baseColor;
+    inputs.base_weight            = surface.baseWeight;
+    inputs.base_metalness         = surface.baseMetalness;
+    inputs.base_diffuse_roughness = surface.baseDiffuseRoughness;
+    inputs.specular_weight        = surface.specularWeight;
+    inputs.specular_color         = surface.specularColor;
+    inputs.specular_roughness     = surface.specularRoughness;
+    inputs.specular_ior           = surface.specularIor;
+    inputs.coat_weight            = surface.coatWeight;
+    inputs.coat_roughness         = surface.coatRoughness;
+    inputs.coat_ior               = surface.coatIor;
+    inputs.geometry_basis         = openpbr_make_basis(normal);
+    inputs.geometry_coat_basis    = inputs.geometry_basis;
+    return openpbr_prepare(inputs, float3(1), OpenPBR_BaseRgbWavelengths_nm, OpenPBR_VacuumIor, view);
+}

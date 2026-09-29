@@ -1,169 +1,107 @@
 #pragma once
 
-#include "vultra/function/debug_draw/debug_draw_interface.hpp"
-#include "vultra/function/framegraph/render_context.hpp"
-#include "vultra/function/framegraph/transient_resources.hpp"
-#include "vultra/function/renderer/base_renderer.hpp"
-#include "vultra/function/renderer/builtin/pass_output_mode.hpp"
-#include "vultra/function/renderer/builtin/tonemapping_method.hpp"
-#include "vultra/function/renderer/builtin/tool/cubemap_converter.hpp"
-#include "vultra/function/renderer/builtin/tool/ibl_data_generator.hpp"
-#include "vultra/function/renderer/builtin/ui_structs.hpp"
-#include "vultra/function/renderer/builtin/upload_resources.hpp"
+#include <vultra/core/rhi/shader_pipeline.hpp>
+#include <vultra/function/renderer/builtin/environment.hpp>
+#include <vultra/function/renderer/builtin/shadow_cascades.hpp>
+#include <vultra/function/renderer/scene.hpp>
+#include <vultra/function/rendergraph/render_graph.hpp>
+
+#include <vri/ext/vri_ext_meshshader.h>
 
 namespace vultra
 {
-    namespace gfx
+    enum class ShadowFilter
     {
-        class DepthPrePass;
-        class GBufferPass;
-        class DeferredLightingPass;
-        class SkyboxPass;
-        class ToneMappingPass;
-        class GammaCorrectionPass;
-        class FXAAPass;
-        class FinalPass;
-        class BlitPass;
-        class DebugDrawPass;
-        class ColorBlendPass;
+        eDisabled,
+        eHard,
+        ePcf,
+        ePcss
+    };
 
-        class UIPass;
+    struct RenderSettings
+    {
+        glm::vec3    directionToLight {-0.5f, 0.8f, 0.4f};
+        glm::vec3    lightColor {1, 0.95f, 0.85f};
+        float        lightIntensity       = 3;
+        float        environmentIntensity = 1;
+        float        exposure             = 0;
+        bool         ibl                  = true;
+        bool         skybox               = true;
+        bool         meshShading          = false; // Requires GpuScene meshlets and VriFeature_MeshShader.
+        bool         meshletCulling       = true;
+        bool         meshletColors        = false;
+        ShadowFilter shadowFilter         = ShadowFilter::ePcf;
+        uint32_t     shadowResolution     = 1024; // Change before assembling the graph.
+        float        splitLambda          = 0.7f;
+        float        shadowBias           = 0.0005f; // normalized cascade depth
+        float        normalBias           = 0.5f;    // shadow texels in world space
+        float        sunAngularRadius     = 0.02f;   // radians; PCSS penumbra control
+        float        cascadeBlend         = 0.1f;
+        float        roughnessOverride    = -1;
+        float        metalnessOverride    = -1;
+        uint32_t     debugMode            = 0; // 0 lit, 1 base color, 2 normals, 3 cascades, 4 visibility, 5 emission
+    };
 
-        class SimpleRaytracingPass;
+    class BuiltinRenderer
+    {
+    public:
+        using ShadowMaps = std::array<RenderGraph::Resource, 4>;
 
-        class MeshletDepthPrePass;
-        class MeshletGBufferPass;
-
-        enum class RendererType
+        struct Outputs
         {
-            eRasterization = 0,
-            eRayTracing,
-            eMeshShading,
+            ShadowMaps            shadows;
+            RenderGraph::Resource hdr;
+            RenderGraph::Resource depth;
+            RenderGraph::Resource color;
         };
 
-        struct BuiltinRenderSettings
-        {
-            // Rasterization or Ray Tracing
-            RendererType rendererType {RendererType::eRasterization};
+        // UNORM output is display encoded; RGBA16_SFLOAT is tone mapped but linear (for XR).
+        BuiltinRenderer(Device&      device,
+                        GpuScene&    scene,
+                        Environment& environment,
+                        VriFormat    outputFormat = VriFormat_RGBA8_UNORM);
+        ~BuiltinRenderer();
+        BuiltinRenderer(const BuiltinRenderer&)            = delete;
+        BuiltinRenderer& operator=(const BuiltinRenderer&) = delete;
 
-            // Rasterization settings
-            PassOutputMode    outputMode {PassOutputMode::SceneColor_AntiAliased};
-            bool              enableAreaLights {true};
-            bool              enableNormalMapping {true};
-            bool              enableIBL {true};
-            float             exposure {1.0f};
-            ToneMappingMethod toneMappingMethod {ToneMappingMethod::KhronosPBRNeutral};
+        // C++ composition entry points. Resources returned here can feed custom research passes.
+        ShadowMaps addShadowPasses(RenderGraph& graph);
+        void       addSkyboxPass(RenderGraph& graph, RenderGraph::Resource hdr);
+        void
+        addForwardPass(RenderGraph& graph, RenderGraph::Resource hdr, RenderGraph::Resource depth, ShadowMaps shadows);
 
-            // Ray Tracing settings
-            uint32_t maxRayRecursionDepth {2};
+        RenderGraph::Resource addToneMappingPass(RenderGraph& graph, RenderGraph::Resource hdr, Extent size);
+        Outputs               addPasses(RenderGraph& graph, Extent size);
 
-            // Mesh Shading settings
-            int meshletDebugMode {0};
-        };
+        // After graph.compile(), before recording. Previous frame must have completed.
+        void           prepare(const RenderCamera& camera, RenderGraph& graph, const Outputs& outputs);
+        void           pollShaders();
+        std::string    diagnostics() const;
+        RenderSettings settings;
 
-        class BuiltinRenderer : public BaseRenderer
-        {
-        public:
-            BuiltinRenderer(rhi::RenderDevice& rd, rhi::Swapchain::Format swapChainFormat);
-            ~BuiltinRenderer() override;
-
-            virtual void onImGui() override;
-
-            virtual void onUpdate(const fsec dt) override;
-
-            virtual void render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt) override final;
-
-            void renderXR(rhi::CommandBuffer& cb,
-                          rhi::Texture*       leftEyeRenderTarget,
-                          rhi::Texture*       rightEyeRenderTarget,
-                          const fsec          dt);
-
-            void beginFrame(rhi::CommandBuffer& cb) override;
-            void endFrame() override;
-
-            void drawCircleFilled(rhi::Texture*    target,
-                                  const glm::vec2& position,
-                                  float            radius,
-                                  const glm::vec4& fillColor,
-                                  const glm::vec4& outlineColor     = glm::vec4(0.0f),
-                                  float            outlineThickness = 0.0f);
-
-            CameraInfo& getCameraInfo() { return m_CameraInfo; }
-            LightInfo&  getLightInfo() { return m_LightInfo; }
-
-            void setScene(LogicScene* scene) override;
-
-            void                   setSettings(const BuiltinRenderSettings& settings) { m_Settings = settings; }
-            BuiltinRenderSettings& getSettings() { return m_Settings; }
-
-        private:
-            void setupSamplers();
-
-            void onImGuiRasterization();
-            void onImGuiRayTracing();
-            void onImGuiMeshShading();
-
-            void renderRasterization(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt);
-            void renderRayTracing(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt);
-            void renderMeshShading(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt);
-
-            void clearUIDrawList();
-            void renderUIDrawList(rhi::CommandBuffer& cb);
-
-        private:
-            framegraph::Samplers           m_Samplers;
-            framegraph::TransientResources m_TransientResources;
-
-            LogicScene* m_LogicScene {nullptr};
-
-            rhi::Swapchain::Format m_SwapChainFormat;
-
-            CameraInfo m_CameraInfo {};
-            FrameInfo  m_FrameInfo {};
-            LightInfo  m_LightInfo {};
-
-            CameraInfo m_XrCameraLeft {};
-            CameraInfo m_XrCameraRight {};
-
-            glm::mat4 m_ReferenceViewProjectionMatrix {1.0f};
-
-            DepthPrePass*         m_DepthPrePass {nullptr};
-            GBufferPass*          m_GBufferPass {nullptr};
-            DeferredLightingPass* m_DeferredLightingPass {nullptr};
-            SkyboxPass*           m_SkyboxPass {nullptr};
-            ToneMappingPass*      m_ToneMappingPass {nullptr};
-            GammaCorrectionPass*  m_GammaCorrectionPass {nullptr};
-            FXAAPass*             m_FXAAPass {nullptr};
-            FinalPass*            m_FinalPass {nullptr};
-            BlitPass*             m_BlitPass {nullptr};
-            DebugDrawPass*        m_DebugDrawPass {nullptr};
-            ColorBlendPass*       m_ColorBlendPass {nullptr};
-
-            CubemapConverter  m_CubemapConverter;
-            Ref<rhi::Texture> m_Cubemap {nullptr};
-
-            IBLDataGenerator  m_IBLDataGenerator;
-            Ref<rhi::Texture> m_BrdfLUT {nullptr};
-            Ref<rhi::Texture> m_IrradianceMap {nullptr};
-            Ref<rhi::Texture> m_PrefilteredEnvMap {nullptr};
-
-            bool m_EnableSkybox {false};
-
-            BuiltinRenderSettings m_Settings {};
-
-            glm::vec4 m_ClearColor {0.0f, 0.0f, 0.0f, 1.0f};
-
-            UIDrawList m_UIDrawList;
-            UIPass*    m_UIPass {nullptr};
-
-            SimpleRaytracingPass* m_SimpleRaytracingPass {nullptr};
-
-            MeshletDepthPrePass* m_MeshletDepthPrePass {nullptr};
-            MeshletGBufferPass*  m_MeshletGBufferPass {nullptr};
-
-            std::vector<Ref<DefaultMesh>> m_AreaLightMeshes; // Keep alive for raytracing purposes
-
-            DebugDrawInterface m_DebugDrawInterface;
-        };
-    } // namespace gfx
+    private:
+        void                            release();
+        void                            drawScene(VriCommandBuffer* cmd, bool shadow, uint32_t cascade = 0);
+        void                            drawFullscreen(VriCommandBuffer* cmd, VriPipeline* pipeline);
+        Device&                         m_Device;
+        GpuScene&                       m_Scene;
+        Environment&                    m_Environment;
+        VriFormat                       m_OutputFormat;
+        std::unique_ptr<Texture>        m_OpenPbrLuts;
+        std::unique_ptr<Buffer>         m_FrameBuffer;
+        VriDescriptor*                  m_FrameView          = nullptr;
+        VriDescriptor*                  m_MaterialSampler    = nullptr;
+        VriDescriptor*                  m_EnvironmentSampler = nullptr;
+        VriDescriptorPool*              m_Pool               = nullptr;
+        VriPipelineLayout*              m_Layout             = nullptr;
+        VriDescriptorSet*               m_FrameSet           = nullptr;
+        VriDescriptorSet*               m_MeshletSet         = nullptr;
+        VriMeshShaderInterface          m_MeshApi {};
+        std::vector<VriDescriptorSet*>  m_MaterialSets;
+        std::unique_ptr<ShaderPipeline> m_Shadow;
+        std::unique_ptr<ShaderPipeline> m_Forward;
+        std::unique_ptr<ShaderPipeline> m_MeshForward;
+        std::unique_ptr<ShaderPipeline> m_Skybox;
+        std::unique_ptr<ShaderPipeline> m_ToneMapping;
+    };
 } // namespace vultra

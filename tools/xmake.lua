@@ -1,0 +1,7 @@
+target("vultra-import")
+    set_kind("binary")
+    set_default(false)
+    add_deps("vultra-renderer")
+    add_files("import_asset.cpp")
+    set_rundir("$(projectdir)")
+target_end()

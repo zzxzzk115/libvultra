@@ -1,0 +1,45 @@
+#pragma once
+
+#include "lib/openpbr.slangh"
+#include "lib/pbr.slangh"
+#include "lib/texture.slangh"
+
+float2 lookupBrdf(Texture2D<float4> brdfLut, SamplerState environmentSampler, float ndv, float roughness)
+{
+    return brdfLut.SampleLevel(environmentSampler, clamp(float2(ndv, roughness), 0.5 / 128, 1 - 0.5 / 128), 0).rg;
+}
+
+// Split-sum real-time approximation; separate from the direct OpenPBR BRDF.
+float3 evaluateIbl(OpenPbrSurface    surface,
+                   float3            normal,
+                   float3            view,
+                   Texture2D<float4> diffuseMap,
+                   Texture2D<float4> specularMap,
+                   Texture2D<float4> brdfLut,
+                   SamplerState      environmentSampler,
+                   float             maxMip)
+{
+    float3 baseColor = surface.baseColor * surface.baseWeight;
+    float  metallic  = surface.baseMetalness;
+    float  roughness = surface.specularRoughness;
+    float  ndv       = max(dot(normal, view), 0.001);
+    float3 f0 =
+        lerp(f0FromIor(surface.specularIor) * surface.specularColor * surface.specularWeight, baseColor, metallic);
+    float  coatF0      = f0FromIor(surface.coatIor);
+    float  coatView    = fresnelSchlick(coatF0.xxx, ndv).x * surface.coatWeight;
+    float3 reflection  = reflect(-view, normal);
+    float3 irradiance  = diffuseMap.SampleLevel(environmentSampler, environmentUv(normal), 0).rgb;
+    float3 prefiltered = specularMap.SampleLevel(environmentSampler, environmentUv(reflection), roughness * maxMip).rgb;
+    float2 integrated  = lookupBrdf(brdfLut, environmentSampler, ndv, roughness);
+    float3 energy      = f0 * integrated.x + integrated.y;
+    float3 compensation = 1 + f0 * (1 / max(integrated.x + integrated.y, 0.05) - 1);
+    float3 ibl          = irradiance * baseColor * (1 - metallic) * (1 - saturate(energy * compensation));
+    ibl += prefiltered * energy * compensation;
+    float2 coatIntegrated = lookupBrdf(brdfLut, environmentSampler, ndv, max(surface.coatRoughness, 0.03));
+    float3 coatEnvironment =
+        specularMap.SampleLevel(environmentSampler, environmentUv(reflection), surface.coatRoughness * maxMip).rgb;
+    ibl = ibl * (1 - coatView) * (1 - coatView) +
+          coatEnvironment * (coatF0 * coatIntegrated.x + coatIntegrated.y) * surface.coatWeight;
+
+    return ibl;
+}

@@ -1,0 +1,124 @@
+#pragma once
+
+#include "lib/importance_sampling.slangh"
+#include "resources/frame_block.slangh"
+
+uint shadowCascade(float depth)
+{
+    return min(uint(depth > frame.cascadeSplits.x) + uint(depth > frame.cascadeSplits.y) +
+                   uint(depth > frame.cascadeSplits.z),
+               3u);
+}
+
+float shadowDepth(uint cascade, int2 pixel)
+{
+    switch (cascade)
+    {
+        case 0:
+            return shadow0.Load(int3(pixel, 0));
+        case 1:
+            return shadow1.Load(int3(pixel, 0));
+        case 2:
+            return shadow2.Load(int3(pixel, 0));
+        default:
+            return shadow3.Load(int3(pixel, 0));
+    }
+}
+
+float sampleShadowDepth(uint cascade, float2 uv, uint resolution)
+{
+    if (any(uv < 0) || any(uv >= 1))
+    {
+        return 1;
+    }
+    return shadowDepth(cascade, int2(uv * resolution));
+}
+
+float cascadeVisibility(uint cascade, float3 position, float3 normal)
+{
+    uint resolution;
+    uint height;
+    shadow0.GetDimensions(resolution, height);
+    float texelWorld = frame.cascadeWidths[cascade] / resolution;
+    position += normal * frame.shadowParameters.y * texelWorld;
+    float4 projected   = mul(frame.lightViewProjection[cascade], float4(position, 1));
+    float3 coordinates = projected.xyz / projected.w;
+    float2 uv          = clipToUv(coordinates.xy);
+    if (any(uv < 0) || any(uv > 1) || coordinates.z < 0 || coordinates.z > 1)
+    {
+        return 1;
+    }
+    float bias     = frame.shadowParameters.x * (1 + 2 * (1 - saturate(dot(normal, frame.lightDirection.xyz))));
+    float receiver = coordinates.z - bias;
+    // Receiver-plane correction prevents wide filters from shadowing a sloped surface with itself.
+    float3 light       = frame.lightDirection.xyz;
+    float3 up          = abs(light.y) < 0.99 ? float3(0, 1, 0) : float3(0, 0, 1);
+    float3 right       = normalize(cross(up, light));
+    float3 vertical    = cross(light, right);
+    float  normalLight = dot(normal, light);
+    float2 gradient    = 0;
+    if (abs(normalLight) > 0.05)
+    {
+        gradient = float2(dot(normal, right), -dot(normal, vertical)) * frame.cascadeWidths[cascade] /
+                   (frame.cascadeDepthRanges[cascade] * normalLight);
+    }
+    uint mode = uint(frame.shadowParameters.w);
+    if (mode == 1)
+    {
+        return receiver <= sampleShadowDepth(cascade, uv, resolution) ? 1 : 0;
+    }
+    float filterRadius = 2.0 / resolution;
+    if (mode == 3)
+    {
+        // Directional-light PCSS: convert normalized depth separation to world-space penumbra.
+        float scale = frame.shadowParameters.z * frame.cascadeDepthRanges[cascade] / frame.cascadeWidths[cascade];
+        float searchRadius = min(max(scale * coordinates.z, 2.0 / resolution), 0.25);
+        float blockerSum   = 0;
+        uint  blockers     = 0;
+        for (uint i = 0; i < 32; ++i)
+        {
+            float2 offset = diskOffset(i, 32) * searchRadius;
+            float  depth  = sampleShadowDepth(cascade, uv + offset, resolution) - dot(gradient, offset);
+            if (depth < receiver)
+            {
+                blockerSum += depth;
+                ++blockers;
+            }
+        }
+        if (blockers == 0)
+        {
+            return 1;
+        }
+        float blocker = blockerSum / blockers;
+        filterRadius  = clamp((receiver - blocker) * scale, 0.5 / resolution, 0.25);
+    }
+    float visibility = 0;
+    for (uint i = 0; i < 32; ++i)
+    {
+        float2 offset = diskOffset(i, 32) * filterRadius;
+        float  depth  = sampleShadowDepth(cascade, uv + offset, resolution);
+        visibility += receiver + dot(gradient, offset) <= depth ? 1 : 0;
+    }
+    return visibility / 32;
+}
+
+float shadowVisibility(float3 position, float3 normal, float viewDepth)
+{
+    if (frame.shadowParameters.w < 0.5 || viewDepth > frame.cascadeSplits.w)
+    {
+        return 1;
+    }
+    uint  cascade    = shadowCascade(viewDepth);
+    float visibility = cascadeVisibility(cascade, position, normal);
+    if (cascade < 3)
+    {
+        float start = cascade == 0 ? frame.cameraClip.x : frame.cascadeSplits[cascade - 1];
+        float width = max((frame.cascadeSplits[cascade] - start) * frame.cameraClip.z, 1e-5);
+        float blend = saturate((viewDepth - frame.cascadeSplits[cascade] + width) / width);
+        if (blend > 0)
+        {
+            visibility = lerp(visibility, cascadeVisibility(cascade + 1, position, normal), blend);
+        }
+    }
+    return visibility;
+}

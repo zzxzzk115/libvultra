@@ -1,0 +1,62 @@
+#pragma once
+
+#include "resources/mesh_vertex.slangh"
+
+struct MaterialData
+{
+    float4 baseColor;
+    float4 surface;
+    float4 emission;
+    float4 coat;
+    float4 specular;
+    float4 flags;
+    uint4 meshlets;
+};
+
+[[vk::push_constant]] ConstantBuffer<MaterialData> material;
+[[vk::binding(0, 1)]] Texture2D<float4>            baseColorTexture;
+[[vk::binding(1, 1)]] Texture2D<float4>            metallicRoughnessTexture;
+[[vk::binding(2, 1)]] Texture2D<float4>            normalTexture;
+[[vk::binding(3, 1)]] Texture2D<float4>            occlusionTexture;
+[[vk::binding(4, 1)]] Texture2D<float4>            emissionTexture;
+[[vk::binding(5, 1)]] Texture2D<float4>            specularTexture;
+[[vk::binding(6, 1)]] Texture2D<float4>            specularColorTexture;
+[[vk::binding(7, 1)]] SamplerState                 materialSampler;
+
+float4 readBaseColor(float2 uv, float4 color)
+{
+    float4 result = baseColorTexture.Sample(materialSampler, uv) * material.baseColor * color;
+    if (result.a < material.flags.x)
+    {
+        discard;
+    }
+    return result;
+}
+
+float3 surfaceNormal(SurfaceVertex input, float3 view)
+{
+    float3 normal = normalize(input.normal);
+    if (dot(normal, view) < 0)
+    {
+        normal = -normal;
+    }
+    if (material.flags.w < 0.5)
+    {
+        return normal;
+    }
+    float3 tangent       = input.tangent.xyz - normal * dot(input.tangent.xyz, normal);
+    float  tangentLength = dot(tangent, tangent);
+    if (tangentLength < 1e-12)
+    {
+        return normal;
+    }
+    tangent *= rsqrt(tangentLength);
+    float3 bitangent = input.tangent.w * cross(normal, tangent);
+    float3 mapped    = normalTexture.Sample(materialSampler, input.uv).xyz * 2 - 1;
+    if (material.flags.w > 1.5)
+    {
+        mapped.z = sqrt(saturate(1 - dot(mapped.xy, mapped.xy))); // BC5 stores only X and Y.
+    }
+    mapped.xy *= material.surface.w;
+    return normalize(tangent * mapped.x + bitangent * mapped.y + normal * mapped.z);
+}

@@ -1,0 +1,21 @@
+#pragma once
+
+static const float pi      = 3.141592653589793;
+static const float twoPi   = 2 * pi;
+static const float halfPi  = 0.5 * pi;
+static const float epsilon = 1e-5;
+
+float square(float value)
+{
+    return value * value;
+}
+
+float max3(float3 value)
+{
+    return max(max(value.x, value.y), value.z);
+}
+
+bool isApproximatelyEqual(float a, float b)
+{
+    return abs(a - b) <= max(max(abs(a), abs(b)), 1.0) * epsilon;
+}

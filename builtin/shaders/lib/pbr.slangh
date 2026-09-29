@@ -1,0 +1,23 @@
+#pragma once
+
+#include "lib/math.slangh"
+
+// Schlick Fresnel and Smith GGX masking for split-sum IBL, not the OpenPBR evaluator.
+float3 fresnelSchlick(float3 f0, float cosine)
+{
+    float grazing = 1 - saturate(cosine);
+    float weight  = square(square(grazing)) * grazing;
+    return lerp(f0, float3(1), weight);
+}
+
+float f0FromIor(float ior)
+{
+    return square((ior - 1) / (ior + 1));
+}
+
+float smithG1(float cosine, float alpha)
+{
+    float cosine2 = square(cosine);
+    float root    = sqrt(cosine2 + square(alpha) * (1 - cosine2));
+    return (2 * cosine) / max(cosine + root, 1e-6);
+}

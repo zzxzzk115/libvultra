@@ -1,0 +1,42 @@
+#pragma once
+
+// Atlas uploaded by openpbr_luts.cpp; row 0 contains {offset, width, height, depth} per LUT ID.
+[[vk::binding(11, 0)]] Texture2D<float4> openPbrLuts;
+
+float4 loadOpenPbrLut(uint4 table, uint3 position)
+{
+    uint index = table.x + (position.z * table.z + position.y) * table.y + position.x;
+    return openPbrLuts.Load(int3(index % 32, index / 32, 0));
+}
+
+float4 sampleOpenPbrLutSlice(uint4 table, float2 uv, uint slice)
+{
+    float2 pixel    = clamp(uv * float2(table.yz) - 0.5, 0, float2(table.yz) - 1);
+    uint2  lower    = uint2(pixel);
+    uint2  upper    = min(lower + 1, table.yz - 1);
+    float2 fraction = pixel - float2(lower);
+    float4 row0     = lerp(loadOpenPbrLut(table, uint3(lower, slice)),
+                       loadOpenPbrLut(table, uint3(upper.x, lower.y, slice)),
+                       fraction.x);
+    float4 row1     = lerp(loadOpenPbrLut(table, uint3(lower.x, upper.y, slice)),
+                       loadOpenPbrLut(table, uint3(upper, slice)),
+                       fraction.x);
+    return lerp(row0, row1, fraction.y);
+}
+
+float4 sampleOpenPbrLut2D(int id, float2 uv)
+{
+    uint4 table = uint4(openPbrLuts.Load(int3(id, 0, 0)));
+    return sampleOpenPbrLutSlice(table, uv, 0);
+}
+
+float4 sampleOpenPbrLut3D(int id, float3 uvw)
+{
+    uint4 table = uint4(openPbrLuts.Load(int3(id, 0, 0)));
+    float slice = clamp(uvw.z * table.w - 0.5, 0, float(table.w - 1));
+    uint  lower = uint(slice);
+    uint  upper = min(lower + 1, table.w - 1);
+    return lerp(sampleOpenPbrLutSlice(table, uvw.xy, lower),
+                sampleOpenPbrLutSlice(table, uvw.xy, upper),
+                slice - lower);
+}
