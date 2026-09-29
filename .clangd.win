@@ -1,6 +1,6 @@
-# https://github.com/clangd/clangd/discussions/1984
-If:                               # Apply this config conditionally
-  PathMatch: source/.*               # only for files under source/
-  PathExclude: external/.*        # but not for files under external/
+If:
+  PathMatch: (source|examples|tests)/.*
 CompileFlags:
-  Add: ['-std:c++latest']
+  # Older clangd versions can drop /std:c++latest when borrowing a header's command.
+  # https://github.com/clangd/clangd/issues/1850
+  Add: ['/clang:-std=c++23']

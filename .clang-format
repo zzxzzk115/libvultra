@@ -8,10 +8,13 @@ AlignConsecutiveDeclarations: true
 AlignEscapedNewlines: DontAlign
 AlignOperands: Align
 AlignTrailingComments: true
+AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortBlocksOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: false
-AllowShortFunctionsOnASingleLine: All
+AllowShortFunctionsOnASingleLine: None
+AllowShortLambdasOnASingleLine: None
+AllowShortEnumsOnASingleLine: false
 AllowShortIfStatementsOnASingleLine: false
 AllowShortLoopsOnASingleLine: false
 AlwaysBreakAfterDefinitionReturnType: None
@@ -32,8 +35,9 @@ BraceWrapping:
   AfterExternBlock: true
   BeforeCatch: true
   BeforeElse: true
+  BeforeLambdaBody: true
   IndentBraces: false
-  SplitEmptyFunction: false
+  SplitEmptyFunction: true
   SplitEmptyRecord: false
   SplitEmptyNamespace: false
 BreakBeforeBinaryOperators: None
@@ -47,7 +51,7 @@ BreakStringLiterals: true
 ColumnLimit: 120
 CommentPragmas: "^ IWYU pragma:"
 CompactNamespaces: false
-ConstructorInitializerAllOnOneLineOrOnePerLine: false
+PackConstructorInitializers: Never
 ConstructorInitializerIndentWidth: 4
 ContinuationIndentWidth: 4
 Cpp11BracedListStyle: true
@@ -57,7 +61,21 @@ ExperimentalAutoDetectBinPacking: false
 FixNamespaceComments: true
 ForEachMacros:
   - foreach
-IncludeBlocks: Preserve
+IncludeBlocks: Regroup
+# Do not promote a matching main header outside the explicit groups below.
+IncludeIsMainRegex: 'a^'
+IncludeCategories:
+  # Relative/project-local includes, then the public Vultra headers.
+  - Regex: '^"'
+    Priority: 1
+  - Regex: '^<vultra/'
+    Priority: 2
+  # Standard C++ headers (no extension), C headers and OS headers.
+  - Regex: '^<([^./]+|(assert|ctype|errno|fenv|float|inttypes|iso646|limits|locale|math|setjmp|signal|stdalign|stdarg|stdbool|stddef|stdint|stdio|stdlib|stdnoreturn|string|tgmath|threads|time|uchar|wchar|wctype|windows|windowsx|winnt|windef|winbase|winsock2|ws2tcpip|unistd|fcntl|pthread|dlfcn)\.h|(sys|arpa|netinet)/[^>]+)>$'
+    Priority: 4
+  # Remaining headers belong to third-party libraries.
+  - Regex: '.*'
+    Priority: 3
 IndentCaseLabels: true
 IndentWidth: 4
 IndentExternBlock: AfterExternBlock
@@ -83,6 +101,7 @@ PenaltyReturnTypeOnItsOwnLine: 60
 PointerAlignment: Left
 ReflowComments: true
 SortIncludes: true
+SeparateDefinitionBlocks: Always
 SortUsingDeclarations: true
 SpaceAfterCStyleCast: false
 SpaceAfterLogicalNot: false
@@ -104,7 +123,7 @@ SpacesInContainerLiterals: true
 SpacesInCStyleCastParentheses: false
 SpacesInParentheses: false
 SpacesInSquareBrackets: false
-Standard: c++20
+Standard: Latest
 TabWidth: 4
 UseTab: Never
 ---

@@ -13,7 +13,7 @@ cmake-build*/
 .vs/
 out/
 
-# Engine
+# Log files
 *.log
 
 # CMake
@@ -26,6 +26,7 @@ vsxmake*/
 # clangd
 *.clangd
 
-# imported files
-imported/
-*.vmeta
+# Runtime artifacts
+.vultra/
+imgui.ini
+captures/
