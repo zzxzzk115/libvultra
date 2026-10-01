@@ -9,14 +9,15 @@ An explicit user request may change a corresponding constraint. An agent must no
 - Solve the current task only. Do not perform incidental repository-wide refactoring, bulk renaming, directory moves, unrelated example rewrites or toolchain upgrades. Preserve unrelated user changes.
 - Do not add interfaces, configuration switches, compatibility layers, fallback implementations, empty modules or TODO scaffolding for hypothetical future needs. Do not remove existing functionality under the label of simplification.
 - Use one clear implementation path. Do not retain old and new implementations together unless the current migration requires it; state what remains before the old path can be removed.
+- Before the first public release, keep every serialized-data and file-format version at `1`. Make format changes as deliberate breaking changes: update writers, readers, examples and tests together; do not add migration paths, compatibility readers or version bumps.
 - Do not commit, push, publish, reset or clean the workspace without authorization. Do not make an AI runtime, knowledge base, delegation protocol or maintenance harness a prerequisite for working on this project.
 
 ## 2. Architecture Boundaries
 
-- Follow the existing `core / function / platform` hierarchy in `source/include/vultra` and `source/src`. The directory reference is libvultra's old `dev` branch; do not expand Vultra to follow its later branches.
+- Follow the `source/{core,platform,drivers,assets,servers,scene,ui,main,api}` hierarchy, with `scripting` as an optional implemented module. Each module owns `include/vultra/<module>` and `src`; create future runtime or editor directories only when implemented.
 - VRI is the rendering abstraction boundary. Use its descriptors and commands directly; do not add another general RHI, resource object hierarchy or backend dispatch layer above it. Keep native interop within the existing platform or XR boundaries.
-- Preserve the dependency direction from `vultra-renderer` to the `vultra` infrastructure. Basic drawing examples must not require scene loading or the complete renderer.
-- Keep the explicit, code-driven RenderGraph. Unless required by the current task, do not introduce an external fg library, Python/Lua bindings, reflection, plugin registries or a second graph executor.
+- Keep one public `vultra` static library. Basic drawing examples must remain able to use VRI and RenderGraph directly, without constructing a scene tree, importing assets or using the built-in renderer.
+- Keep the explicit, code-driven RenderGraph and the checked-in generated API from annotated C++ declarations. Do not add an external fg library, a second graph executor, a global plugin registry or a separate binding pipeline.
 - Follow the BaseApp / DesktopApp / ImGuiApp lifecycle. Keep logic updates, UI construction, command recording, submission and presentation in their respective phases. Do not construct UI in `onUpdate()`.
 
 ## 3. C++ and Ownership

@@ -5,20 +5,21 @@ Source assets and derived data have separate lifetimes. Importing never rewrites
 ## Runtime Entry Point
 
 ```cpp
-#include <vultra/function/asset/asset_pipeline.hpp>
+#include <vultra/assets/asset_pipeline.hpp>
+#include <vultra/servers/rendering/scene.hpp>
 
 vultra::AssetImportOptions options;
 auto asset = vultra::importAsset("resources/models/Sponza/Sponza.gltf", options);
 vultra::GpuScene gpu(device, asset);
 ```
 
-`ImportedAsset::scene` owns static geometry and materials. `textures` owns upload-ready mip chains and seven texture indices per material: base color, metallic/roughness, normal, occlusion, emission, specular weight and specular color. Decoded source images are released after preparation. `GpuScene` uploads those prepared bytes without regenerating mips or recompressing them. Procedural callers can continue constructing `GpuScene` directly from `Scene`.
+`ImportedAsset::scene` owns static geometry and materials. `textures` owns upload-ready mip chains and seven texture indices per material: base color, metallic/roughness, normal, occlusion, emission, specular weight and specular color. Decoded source images are released after preparation. `GpuScene` uploads those prepared bytes without regenerating mips or recompressing them. Procedural callers can continue constructing `GpuScene` directly from `SceneData`.
 
 The entry point is synchronous: it returns after its internal `vtask` jobs have joined. It has no registry, asset handles or import plugins. Scene replacement happens between frames; the viewer builds new GPU resources before replacing its current model. A failed model load keeps the previous scene visible.
 
 ## Build-Time Preparation
 
-Building a model example first builds the CPU-only `vultra-import` tool and prepares its default source in the repository's `.vultra/assets/` cache. `asset-damaged-helmet` is shared by Debug Draw and glTF Viewer; `asset-sponza` is shared by desktop, mesh-shading and OpenXR Sponza. Ray Query and Cornell Box use `asset-rayquery` and `asset-cornell-box`. The shared dependencies run once per build, and simple examples do not import unrelated models. `xmake build example-assets` prepares all four sources explicitly. Import progress remains visible during the build.
+Building a model category first builds the CPU-only `vultra-import` tool and verifies its declared default assets in the repository's `.vultra/assets/` cache. `example-scene` prepares Damaged Helmet and Sponza, `example-ray` prepares the ray-query scene and Cornell Box, and `example-xr` prepares Sponza. Dependencies run once per build; a category prepares both assets even when only one mode will run. `xmake build example-assets` prepares all four sources explicitly. Import progress remains visible during the build.
 
 An unchanged build checks the archive checksum, import recipe and dependency content hashes without parsing geometry, decoding images or baking textures again. Cache deletion, corruption, source changes and recipe changes trigger preparation. Build-time cache publication failure fails the build, so a successful asset step means the cache is usable. `vultra-import --reimport` still forces regeneration.
 
@@ -38,11 +39,11 @@ Dependencies include external `.bin`, PNG/JPEG, DDS, FBX texture and MTL files, 
 
 Cache identity includes the canonical source path, pipeline version, mip option, compression mode and encoder recipe. The payload contains **only generated mip levels, newly encoded BC7 blocks and their texture-slot/source metadata**. Geometry, materials, source image base levels and all authored DDS mips are read from the original files on every load. Even DDS color-space expansion is repeated from the source rather than persisted as another full texture. A model with no generated texture data leaves only a small metadata record.
 
-This avoids duplicating existing assets on disk. A warm load still parses geometry and decodes source images; it skips generated mip filtering and BC7 encoding. Generated geometry attributes are currently rebuilt along with the mesh. The cache is local derived data, not a portable distribution format. Moving a checkout creates a new cache identity.
+This avoids duplicating existing assets on disk. A warm load still parses geometry and decodes source images; it skips generated mip filtering and BC7 encoding. Generated geometry attributes are currently rebuilt along with the mesh. The cache is local derived data, not a portable distribution format. Moving a checkout creates a new cache identity. The separate project VPK packages source assets and scene metadata for `vultra-runtime`; it does not serialize this machine-local derived cache.
 
 Corrupt, outdated or stale caches are logged and rebuilt. Import errors remain errors and leave the previous cache intact. A cache write failure is logged while the successfully imported in-memory asset remains usable. Concurrent writers publish complete files through temporary files and atomic replacement.
 
-Increment `kPipelineVersion` in `asset_pipeline.cpp` whenever importer output, layouts, mip filtering, dependency handling or compression behavior changes. Old entries can be removed manually; automatic eviction and package archives are outside the current scope.
+Before the first public release, the cache format stays at version 1. Importer or layout changes are breaking changes: remove old local `.vultra/assets` entries when needed; there is no migration or compatibility reader. Project VPKs are described in the [development guide](guide.md#project-package-and-runtime).
 
 ## Texture Policy
 
@@ -89,13 +90,13 @@ Cache serialization reserves its final size and writes the header, metadata and 
 
 ```powershell
 xmake build example-assets
-xmake build example-sponza
+xmake build example-scene
 xmake build vultra-import
 xmake run vultra-import resources/models/Sponza/Sponza.gltf
 xmake run vultra-import resources/models/Sponza/Sponza.gltf --reimport
 xmake run vultra-import resources/models/Sponza/Sponza.gltf --reimport --import-jobs 1
-xmake run example-sponza --cache-dir .vultra/assets --compression bc7-linear
-xmake run example-gltf-viewer --no-cache --compression none
+xmake run example-scene sponza --cache-dir .vultra/assets --compression bc7-linear
+xmake run example-scene helmet --no-cache --compression none
 ```
 
 `vultra-import` prepares models without creating a GPU device and skips loading when its cache is already current. The default run set contains examples; the importer and asset dependencies are not run as examples. Model examples share `--cache-dir`, `--reimport`, `--no-cache`, `--no-mipmaps`, `--import-jobs N` and `--compression none|bc7-linear`.

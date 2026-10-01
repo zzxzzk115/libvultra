@@ -4,34 +4,35 @@
   A small rendering research framework built on VRI, with readable C++ and Slang code you can adapt to your own experiments.
 </h4>
 
-The `dev-VRI` branch is a small VRI-based rendering research framework within libvultra. It is under early development. The current target is **Windows x64 + Vulkan**.
+The `dev-VRI` branch is a small VRI-based rendering research framework within libvultra. It is under early development. The build targets are **Windows x64 and Linux x86_64 + Vulkan**; the current migration has been exercised on Linux, while Win64 validation is the next step.
 
 ## Features
 
-- VRI device and resource access, with GLFW desktop windows
+- VRI device and resource access, with selectable GLFW or SDL3 desktop windows
 - BaseApp, DesktopApp and ImGuiApp application lifecycles
 - Window-owned keyboard/mouse input and reusable Orbit/FPS camera controllers
 - An explicit, code-driven RenderGraph
 - Slang shaders with FileWatch hot reload
-- ImGui docking and multiple native viewports, per-application layouts and an Unreal-style default theme
-- A built-in renderer with skybox, an opaque OpenPBR material subset, HDR IBL and cascaded shadows with Hard/PCF/PCSS filtering
+- ImGui docking and multiple native viewports on Windows/X11, per-application layouts and an Unreal-style default theme
+- Optional RmlUi-based VGui with an embedded PNG skin for common game UI controls
+- A built-in renderer with naive deferred and forward paths, an opaque OpenPBR subset, HDR IBL and cascaded shadows
 - A lightweight asset pipeline that caches generated mip levels and BC7 data textures without duplicating source assets
 - Hardware ray-query, ray-tracing and task/mesh shader examples
 - A static glTF/GLB viewer with model selection and Damaged Helmet as the default model
 - OpenXR stereo rendering with a desktop mirror
-- PNG capture, frame dumps, SSIM/PSNR and CPU/GPU profiling
+- PNG capture, frame dumps, SSIM/PSNR, benchmark reports and CPU/GPU profiling
 
-This branch keeps the `core / function / platform` organization of `dev` and the xmake-template build setup. Experiments can use VRI directly or build on the included passes.
+The source is organized by `core`, `platform`, `drivers`, `assets`, `servers`, `scene`, `ui`, `main` and `api`, with optional `scripting`. A single public `vultra` static library supports direct VRI experiments; `vultra-scripting` adds native, Lua and C# project modules. See the [early engine architecture](docs/architecture.md).
 
 ## Showcase
 
-[Example: glTF Viewer](examples/gltf_viewer/main.cpp)
+[Example: glTF Viewer](examples/scene/helmet.cpp)
 
 ![Damaged Helmet rendered in the Vultra glTF Viewer](media/images/example_gltf_viewer.png)
 
-[Example: ImGui and Render Target Viewer](examples/imgui/main.cpp)
+[Example: UI Showcase](examples/ui/main.cpp)
 
-![ImGui demo, offscreen triangle and texture preview](media/images/example_imgui.png)
+![Raw ImGui, EditorGui and VGui controls](media/images/example_ui.png)
 
 The Damaged Helmet model retains its upstream [attribution and asset licenses](resources/models/DamagedHelmet/README.vultra.md).
 
@@ -39,24 +40,39 @@ The Damaged Helmet model retains its upstream [attribution and asset licenses](r
 
 Prerequisites:
 
-- Visual Studio 2022 with the C++ toolchain
+- Windows: Visual Studio 2022 with the C++ toolchain
+- Linux: a C++23 compiler, CMake, pkg-config, Python 3, Vulkan loader/development files, X11/Wayland development libraries, wayland-protocols and xkbcommon
+- .NET 10 SDK when building `example-scripting` or every target with `xmake build --all`; the packaged C# runtime also needs an installed .NET 10 runtime
 - [xmake](https://xmake.io/guide/quick-start.html#installation) on PATH
 - A Vulkan 1.3 capable GPU and driver
-- An active OpenXR runtime and a compatible headset to run the XR example
+- An active OpenXR runtime with a compatible headset or simulated device to run XR examples
 
 From the repository root on the `dev-VRI` branch:
 
 ```powershell
 xmake f -m release -y
 xmake build -y --all
-xmake run
+xmake run example-basics window --frames 60
 ```
 
-xmake resolves dependencies through the configured `xmake-repo` `backup` branch. Slang uses a prebuilt package. See [external/xmake.lua](external/xmake.lua) for dependency versions.
+xmake resolves dependencies through the configured repositories. Slang 2026.11 and the Linux OpenXR 1.1.49 loader are built from pinned source as static libraries; the initial Slang build takes longer than the former prebuilt package. See [external/xmake.lua](external/xmake.lua) for dependency versions, [local static package recipes](external/packages/packages) and the [local VRI patch](external/vri/README.md) for validation-layer resize handling.
 
 Model example builds prepare their default asset caches before launch. Unchanged assets are verified and reused; missing or stale caches are rebuilt. Run `xmake build example-assets` to prepare all default model caches explicitly. Runtime-selected models retain on-demand import. See [build-time asset preparation](docs/asset_pipeline.md#build-time-preparation) for scope and cache behavior.
 
-The project explicitly enables `run.autobuild`: `xmake run <example>` first builds that example and checks its asset dependencies. `xmake run` builds and then runs all enabled examples in sequence; close the current example to continue. Tests are separate and run with `xmake test`. Use `xmake run` to provide the package DLL search paths; all examples use the repository root as their working directory.
+The project explicitly enables `run.autobuild`: `xmake run <target>` first builds that target and checks its asset dependencies. Run a named category and mode; category targets without a mode print their mode list. Tests are separate and run with `xmake test`. Use `xmake run` to provide the package DLL search paths; all examples use the repository root as their working directory.
+
+On Linux, both **GLFW (default) and SDL3** support X11/XWayland and native Wayland. Select the backend at build time and the window system at launch:
+
+```sh
+xmake f -m release --libvultra_window_backend=sdl3 -y
+xmake build -y --all
+VULTRA_WINDOW_SYSTEM=wayland xmake run example-ui --frames 60
+VULTRA_WINDOW_SYSTEM=x11 xmake run example-ui --frames 60
+```
+
+Use `--libvultra_window_backend=glfw` to restore GLFW. Without `VULTRA_WINDOW_SYSTEM`, the selected library chooses its available window system. Wayland retains in-window docking; detached ImGui viewports require Windows or X11 because the pinned upstream ImGui backends do not support them on Wayland. See [desktop platform contracts](docs/guide.md#desktop-platforms) and [Linux test requirements](docs/guide.md#verification).
+
+The Linux model picker uses Native File Dialog Extended with D-Bus and `xdg-desktop-portal`; install a portal backend for your desktop. It has an X11 parent; on Wayland it opens without a parent and logs that NFD 1.3 limitation. The OpenXR loader is linked into the executable on Linux. An active OpenXR runtime/device is needed only for XR execution; [Monado simulated-device setup](docs/monado.md) provides a local development runtime without a physical headset.
 
 For desktop development without OpenXR:
 
@@ -67,52 +83,61 @@ xmake build -y --all
 
 The `libvultra_build_examples`, `libvultra_build_tests` and `libvultra_with_openxr` options are enabled by default. Set `--libvultra_with_openxr=y` to restore XR support.
 
-## Examples
+The packaged player supports either `vultra-runtime` plus a project VPK or a single executable with the project VPK appended. Built-in Slang shaders are already embedded in the runtime. The sample package includes a RmlUi HUD; the ImGui debugger remains optional with `--debug-ui`. After building the tools, export and launch use their executables directly; xmake is not needed on the target machine:
 
-Run an individual example with `xmake run <target>`:
-
-| Target | Description |
-| --- | --- |
-| `example-window` | Minimal DesktopApp and a clear pass |
-| `example-rhi-triangle` | Indexed drawing and explicit VRI barriers |
-| `example-rendergraph-triangle` | RenderGraph setup, pass culling and timing |
-| `example-imgui` | Docking, detached windows, offscreen rendering and PNG export |
-| `example-debugdraw` | Damaged Helmet with model bounds, grid, axes and sphere wireframes |
-| `example-gltf-viewer` | Model selection, OpenPBR, IBL and cascaded shadows |
-| `example-sponza` | Original Sponza and HDR assets, first-person controls, OpenPBR and cascaded shadows |
-| `example-rayquery` | Original shadow scene with fragment-stage hardware ray queries |
-| `example-raytracing-triangle` | Raygen, miss, closest-hit and shader binding table |
-| `example-raytracing-cornell-box` | Original OBJ/MTL with primary and shadow rays |
-| `example-meshshading-triangle` | Task + mesh shader pipeline |
-| `example-meshshading-sponza` | Original Sponza, meshoptimizer meshlets, task-stage frustum culling and meshlet colors |
-| `example-openxr-sponza` | Per-eye Sponza rendering, tracked pose and desktop mirror |
-| `example-research` | Shader reload, image metrics, capture and frame dumps |
-| `example-openxr-triangle` | Stereo triangle and a side-by-side desktop mirror |
-
-```powershell
-xmake run example-gltf-viewer
-xmake run example-imgui
-xmake run example-gltf-viewer examples/gltf_viewer/box.gltf --frames 3
-xmake run example-gltf-viewer --materials --shadows pcss --frames 3 --capture captures/materials.png
-xmake run example-research --frames 60 --dump captures/run01
-xmake run example-openxr-triangle --frames 60
+```sh
+xmake build vultra-pack vultra-runtime
+./build/linux/x86_64/release/vultra-pack resources/research.vproject build/.tmp/research.vpk
+./build/linux/x86_64/release/vultra-pack --embed ./build/linux/x86_64/release/vultra-runtime build/.tmp/research.vpk build/.tmp/research-game
+./build/.tmp/research-game --frames 60
 ```
 
-Use `--help` for each example's options. Common options include `--frames`, `--log-level` and `--log-file`. Close the desktop window or press Esc to exit. In the glTF Viewer and Debug Draw examples, left-drag outside the UI to orbit, middle/right-drag to pan and scroll to zoom. First-person examples use WASD to move, QE to descend/ascend, right-drag to look and Shift to accelerate. These controllers live in `function/camera` and use the window's input; see [input and camera controls](docs/guide.md#input-and-camera-controls).
+The unmodified runtime still accepts an external VPK path. Add `--debug-ui` to either launch form for the ImGui renderer/RenderGraph panel; F1 toggles it. `VpkArchive::packProject()` and `VpkArchive::embedProject()` also expose the two export steps to a future editor without invoking xmake. The player bakes static mesh nodes from the scene tree and loads independent native extensions plus node-attached C++, Lua 5.4 and C# scripts through one C ABI. Lua is linked statically; C# projects need an installed .NET 10 runtime. `example-scripting` renders a small arena driven by a native extension and C++ movement, Lua pickup rules and C# throttle control, with development hot reload. The separate C-only plugin demonstrates the ABI in `example-ui`. Linux still requires the system Vulkan loader, graphics driver and display stack. See [project package and runtime](docs/guide.md#project-package-and-runtime) for the format and delivery limits.
+
+## Examples
+
+Run a category with `xmake run <target> <mode> [options]`. With no mode, a category lists its modes. `xmake run <target> --help` shows the same list; `xmake run <target> <mode> --help` shows that mode's options.
+
+| Target | Modes and focus |
+| --- | --- |
+| `example-basics` | `window` swapchain clear; `vri` indexed draw; `graph` RenderGraph; `mesh-shading` task/mesh shader |
+| `example-ui` | One scene controlled by raw ImGui, C++ EditorGui and VGui; built-in and Kenney PNG skins appear side by side |
+| `example-scene` | `helmet` glTF viewer; `debug` wireframes; `sponza` first-person renderer; `sponza-mesh-shading` indexed/mesh comparison |
+| `example-ray` | `triangle` ray tracing; `cornell` primary/shadow rays; `query` rasterized ray-query shadows |
+| `example-xr` | `triangle` stereo mirror; `sponza` per-eye scene rendering (requires an OpenXR runtime) |
+| `example-research` | Deferred/forward renderer, RenderGraph observer, intermediate captures and benchmarks |
+
+```powershell
+xmake run example-basics graph --frames 3
+xmake run example-basics mesh-shading --frames 3
+xmake run example-ui --frames 60
+xmake run example-scene helmet examples/scene/box.gltf --frames 3
+xmake run example-scene sponza --frames 3
+xmake run example-scene sponza-mesh-shading --meshlet-colors --frames 3
+xmake run example-ray query --frames 3
+xmake run example-research --frames 60 --dump captures/run01
+xmake run example-xr triangle --frames 60
+```
+
+Use `--help` for each example's options. Common options include `--frames`, `--log-level` and `--log-file`. Close the desktop window or press Esc to exit. In the glTF Viewer and Debug Draw examples, left-drag outside the UI to orbit, middle/right-drag to pan and scroll to zoom. First-person examples use WASD to move, QE to descend/ascend, right-drag to look and Shift to accelerate. These controllers live in `scene/camera` and use the window's input; see [input and camera controls](docs/guide.md#input-and-camera-controls).
 
 Sponza and ray-query controls use WASD/QE to move, right-drag to look and Shift to move faster. Advanced examples require their corresponding Vulkan hardware features.
 
 The [asset pipeline](docs/asset_pipeline.md) keeps original files unchanged and stores derived data under `.vultra/assets/`. It accepts static glTF/GLB, OBJ and FBX models, including 2D DDS material textures. Image decoding, geometry processing, texture preparation and cache loading use `vtask` jobs with stage/progress logs. Use `--reimport` to rebuild, `--import-jobs N` to limit workers or `--compression none` for an uncompressed reference. `xmake run vultra-import <model>` imports without a GPU.
 
-ImGui layouts load and save automatically under `.vultra/<AppName>/imgui.ini`. AppName defaults to the executable name, so examples sharing the same working directory keep independent layouts. See [GUI configuration](docs/guide.md#imgui-and-layouts) to override or disable persistence.
+The [scripting examples](docs/guide.md#generated-api-and-scripting) use a versioned C ABI generated from annotated C++ declarations; C# layout bindings are generated from the same IR. Normal builds use checked-in output; Python, libclang and clang-format are needed only for `xmake codegen` and `xmake codegen --check`.
+
+ImGui layouts load and save automatically under `.vultra/<AppName>/imgui.ini`. AppName defaults to the executable name, so category targets keep separate layouts while modes within one category share a layout. See [GUI configuration](docs/guide.md#imgui-and-layouts) to override or disable persistence.
 
 ## Create Your Own Research Application
 
-Start with [the window example](examples/window/main.cpp), then read [the research example](examples/research/main.cpp) for explicit graph setup, hot reload and capture. Use `DesktopApp` for a desktop application or `ImGuiApp` for one with UI.
+Start with [the window example](examples/basics/window.cpp), then read [the research example](examples/research/main.cpp) for built-in pass composition, graph observation, hot reload and capture. Use `DesktopApp` for a desktop application or `ImGuiApp` for one with UI.
 
-Link `vultra` for the application, RenderGraph, GUI and research utilities. Add `vultra-renderer` when you need scene loading and the built-in rendering passes. VRI descriptors and commands remain available directly.
+Use `add_deps("vultra")` for direct VRI, RenderGraph, asset import, built-in passes and EditorGui. Add `vultra-vgui` only for authored RmlUi interfaces. `SceneData` is CPU-only; construct `GpuScene` directly or use a `RenderingServer`-owned `GpuSceneHandle` when lifetime-checked IDs are useful. The scene layer is optional for research applications.
 
 The [development guide](docs/guide.md) covers source layout, application callbacks, shader modules, the renderer, image metrics and OpenXR. Run `scripts/setup_vscode.ps1` on Windows, or `sh scripts/setup_vscode.sh` from a compatible shell, to configure clangd and Slang without replacing personal editor settings.
+
+For xmake target/option Tab completion, source `scripts/setup_xmake_completion.zsh` in zsh or dot-source `scripts/setup_xmake_completion.ps1` in PowerShell. See [shell completion setup](docs/guide.md#shell-completion) for persistent profile loading.
 
 ## Current Scope
 
@@ -120,7 +145,7 @@ The renderer exposes an **opaque OpenPBR subset**; its IBL uses a separate GGX s
 
 The RenderGraph currently uses one graphics queue. Data-driven or Python/Lua graph construction is a future extension. Gaussian Splatting and a graph editor are excluded. Ray tracing and mesh shading are available as focused examples. See the [example coverage table](docs/example_parity.md) for differences from `dev`, including lighting and renderer paths that are not yet ported.
 
-OpenXR requires an available headset. Offscreen color and mirror tests are covered; the real headset and runtime mirror path still need hardware validation.
+OpenXR requires an available runtime device. Offscreen color tests and Monado simulated-device eye/mirror rendering have been verified; physical-headset validation remains outstanding.
 
 ## Contributing
 
@@ -134,6 +159,8 @@ Run `xmake test -v` for the test suite. Follow the checked-in `.clang-format` an
 - [FileWatch](https://github.com/ThomasMonkman/filewatch): file-change notifications for shader hot reload
 - [VRI](https://github.com/zzxzzk115/VRI): rendering abstraction and Vulkan backend
 - [GLFW](https://github.com/glfw/glfw): desktop windows and input
+- [SDL3](https://github.com/libsdl-org/SDL/tree/release-3.4.0): optional desktop window/input backend (zlib license)
+- [Native File Dialog Extended](https://github.com/btzy/nativefiledialog-extended/tree/v1.3.0): Linux portal model picker (zlib license)
 - [Dear ImGui](https://github.com/ocornut/imgui): immediate-mode UI, docking and multiple viewports
 - [Slang](https://github.com/shader-slang/slang): shader compilation to SPIR-V
 - [argparse](https://github.com/p-ranav/argparse): command-line argument parsing
