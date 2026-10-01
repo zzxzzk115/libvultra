@@ -44,6 +44,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/inotify.h>
+#include <poll.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <dirent.h>
@@ -209,7 +210,7 @@ namespace filewatch {
 		}
 
 		// Const memeber varibles don't let me implent moves nicely, if moves are really wanted std::unique_ptr should be used and move that.
-		FileWatch<StringType>(FileWatch<StringType>&&) = delete;
+		FileWatch(FileWatch<StringType>&&) = delete;
 		FileWatch<StringType>& operator=(FileWatch<StringType>&&) & = delete;
 
 	private:
@@ -276,7 +277,7 @@ namespace filewatch {
 
 		FolderInfo  _directory;
 
-		const std::uint32_t _listen_filters = IN_MODIFY | IN_CREATE | IN_DELETE;
+		const std::uint32_t _listen_filters = IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO;
 
 		const static std::size_t event_size = (sizeof(struct inotify_event));
 #endif // __unix__
@@ -604,7 +605,7 @@ namespace filewatch {
 				}
 			}();
 
-			const auto watch = inotify_add_watch(folder, watch_path.c_str(), IN_MODIFY | IN_CREATE | IN_DELETE);
+			const auto watch = inotify_add_watch(folder, watch_path.c_str(), IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO);
 			if (watch < 0) 
 			{
 				throw std::system_error(errno, std::system_category());
@@ -619,6 +620,15 @@ namespace filewatch {
 			_running.set_value();
 			while (_destory == false) 
 			{
+				// A removed directory has no watch left to wake read() during destruction.
+				pollfd descriptor{_directory.folder, POLLIN, 0};
+				const auto ready = poll(&descriptor, 1, 100);
+				if (ready < 0 && errno != EINTR) {
+					throw std::system_error(errno, std::system_category());
+				}
+				if (ready <= 0 || _destory) {
+					continue;
+				}
 				const auto length = read(_directory.folder, static_cast<void*>(buffer.data()), buffer.size());
 				if (length > 0) 
 				{
@@ -639,6 +649,14 @@ namespace filewatch {
 								else if (event->mask & IN_DELETE) 
 								{
 									parsed_information.emplace_back(StringType{ changed_file }, Event::removed);
+								}
+								else if (event->mask & IN_MOVED_FROM)
+								{
+									parsed_information.emplace_back(StringType{ changed_file }, Event::renamed_old);
+								}
+								else if (event->mask & IN_MOVED_TO)
+								{
+									parsed_information.emplace_back(StringType{ changed_file }, Event::renamed_new);
 								}
 								else if (event->mask & IN_MODIFY) 
 								{

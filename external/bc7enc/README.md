@@ -8,3 +8,8 @@ Vultra builds SSE2 and AVX2 implementations with ISPC 1.28.2 and uses its runtim
 dispatch. The fast preset encodes linear RGBA directly to BC7; no UASTC intermediate
 is produced. The source has no local modifications. Generated objects and headers
 remain in the build directory.
+
+The `bc7enc` static target owns ISPC compilation and exports its generated header
+through `add_deps("bc7enc")`. Its local rule registers all three dispatch objects;
+xmake's generic ISPC rule only registers the main object. A build fence makes the
+header available before dependent C++ files compile.
