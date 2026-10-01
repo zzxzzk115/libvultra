@@ -234,8 +234,11 @@ namespace vultra
             return node->id();
         }
 
-        std::unique_ptr<ScriptInstance>
-        loadScript(const ScriptModule& module, const std::filesystem::path& path, SceneTree& scene, bool hotReload)
+        std::unique_ptr<ScriptInstance> loadScript(const ScriptModule&          module,
+                                                   const std::filesystem::path& path,
+                                                   SceneTree&                   scene,
+                                                   bool                         hotReload,
+                                                   const ScriptInstance*        previous = nullptr)
         {
             const auto node = scriptNode(module, scene);
             switch (module.language)
@@ -249,7 +252,7 @@ namespace vultra
                     {
                         throw std::invalid_argument("C# script requires a class name and scene node ID");
                     }
-                    return loadDotNetScript(path, scene, node, module.typeName);
+                    return loadDotNetScript(path, scene, node, module.typeName, previous);
                 }
             }
             throw std::invalid_argument("Unknown script language");
@@ -456,7 +459,8 @@ namespace vultra
             {
                 if (slot.module)
                 {
-                    auto replacement = loadScript(*slot.module, slot.path, m_Impl->scene, m_Impl->hotReload);
+                    auto replacement =
+                        loadScript(*slot.module, slot.path, m_Impl->scene, m_Impl->hotReload, slot.instance.get());
                     slot.instance->stop();
                     slot.instance = std::move(replacement);
                 }

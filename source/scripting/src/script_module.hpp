@@ -21,6 +21,9 @@ namespace vultra
     };
 
     std::unique_ptr<ScriptInstance> loadLuaScript(const std::filesystem::path& path, SceneTree& scene, ObjectId node);
-    std::unique_ptr<ScriptInstance>
-    loadDotNetScript(const std::filesystem::path& path, SceneTree& scene, ObjectId node, std::string_view typeName);
+    std::unique_ptr<ScriptInstance> loadDotNetScript(const std::filesystem::path& path,
+                                                     SceneTree&                   scene,
+                                                     ObjectId                     node,
+                                                     std::string_view             typeName,
+                                                     const ScriptInstance*        previous = nullptr);
 } // namespace vultra

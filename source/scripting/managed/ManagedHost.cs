@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Text;
+using System.Text.Json;
 using Vultra.Interop;
 using Vultra.Scripting;
 
@@ -18,6 +20,8 @@ internal unsafe struct ManagedLoadRequest
     public byte* TypeName;
     public ulong TypeNameSize;
     public ulong NodeId;
+    public void* Previous;
+    public void* Instance;
 }
 
 internal sealed class ScriptLoadContext(string path) : AssemblyLoadContext(isCollectible: true)
@@ -47,6 +51,62 @@ public static unsafe class Entry
         public bool Ready;
     }
 
+    private static IEnumerable<FieldInfo> ReloadFields(Type type)
+    {
+        for (Type? current = type; current != null && current != typeof(Node); current = current.BaseType)
+        {
+            foreach (var field in current.GetFields(BindingFlags.Instance | BindingFlags.Public |
+                                                    BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+            {
+                if (!field.IsInitOnly && !field.IsDefined(typeof(NonSerializedAttribute), false))
+                {
+                    yield return field;
+                }
+            }
+        }
+    }
+
+    private static string FieldKey(FieldInfo field) => $"{field.DeclaringType!.FullName}.{field.Name}";
+
+    private static Dictionary<string, string> SaveFields(Node script)
+    {
+        var values = new Dictionary<string, string>();
+        // A process-wide options cache would retain types from collectible script assemblies.
+        var options = new JsonSerializerOptions { IncludeFields = true };
+        foreach (var field in ReloadFields(script.GetType()))
+        {
+            try
+            {
+                values.Add(FieldKey(field), JsonSerializer.Serialize(field.GetValue(script), field.FieldType, options));
+            }
+            catch (Exception error)
+            {
+                Console.Error.WriteLine($"Save C# reload field {FieldKey(field)}: {error.Message}");
+            }
+        }
+        return values;
+    }
+
+    private static void RestoreFields(Node script, Dictionary<string, string> values)
+    {
+        var options = new JsonSerializerOptions { IncludeFields = true };
+        foreach (var field in ReloadFields(script.GetType()))
+        {
+            if (!values.TryGetValue(FieldKey(field), out var json))
+            {
+                continue;
+            }
+            try
+            {
+                field.SetValue(script, JsonSerializer.Deserialize(json, field.FieldType, options));
+            }
+            catch (Exception error)
+            {
+                Console.Error.WriteLine($"Restore C# reload field {FieldKey(field)}: {error.Message}");
+            }
+        }
+    }
+
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static int Initialize(void* hostData, void* pluginData)
     {
@@ -72,10 +132,10 @@ public static unsafe class Entry
         try
         {
             var path = Encoding.UTF8.GetString(new ReadOnlySpan<byte>(request->Path, (int)request->PathSize));
+            var typeName = Encoding.UTF8.GetString(new ReadOnlySpan<byte>(request->TypeName, (int)request->TypeNameSize));
             context = new ScriptLoadContext(path);
             using var source = new MemoryStream(File.ReadAllBytes(path));
             var assembly = context.LoadFromStream(source);
-            var typeName = Encoding.UTF8.GetString(new ReadOnlySpan<byte>(request->TypeName, (int)request->TypeNameSize));
             var type = assembly.GetType(typeName, throwOnError: true)!;
             if (!typeof(Node).IsAssignableFrom(type) || type.IsAbstract)
             {
@@ -84,11 +144,17 @@ public static unsafe class Entry
             var scene = new ScriptScene(host->Scene);
             var script = (Node)Activator.CreateInstance(type)!;
             script.Attach(scene, request->NodeId);
+            if (request->Previous != null)
+            {
+                var old = (State)GCHandle.FromIntPtr((nint)request->Previous).Target!;
+                RestoreFields(script, SaveFields(old.Script!));
+            }
             var state = new State { Context = context, Script = script, Scene = scene, Ui = host->Ui };
             plugin->UserData = (void*)GCHandle.ToIntPtr(GCHandle.Alloc(state));
             plugin->Update = &Update;
             plugin->OnGui = &OnGui;
             plugin->Stop = &Stop;
+            request->Instance = plugin->UserData;
             return (int)VultraStatus.Ok;
         }
         catch (Exception error)

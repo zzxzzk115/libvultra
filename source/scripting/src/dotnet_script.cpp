@@ -228,12 +228,18 @@ namespace vultra
             const char* typeName;
             uint64_t    typeNameSize;
             uint64_t    nodeId;
+            void*       previous;
+            void*       instance;
         };
 
         class DotNetScript final : public ScriptInstance
         {
         public:
-            DotNetScript(const std::filesystem::path& path, SceneTree& scene, ObjectId node, std::string_view typeName)
+            DotNetScript(const std::filesystem::path& path,
+                         SceneTree&                   scene,
+                         ObjectId                     node,
+                         std::string_view             typeName,
+                         const DotNetScript*          previous)
             {
                 const auto bridge = std::filesystem::absolute(path).parent_path() / "Vultra.ManagedHost.dll";
                 if (!std::filesystem::is_regular_file(bridge))
@@ -252,8 +258,11 @@ namespace vultra
                                             assembly.size(),
                                             typeName.data(),
                                             typeName.size(),
-                                            node.value};
+                                            node.value,
+                                            previous ? previous->m_State : nullptr,
+                                            nullptr};
                 m_Session = std::make_unique<PluginSession>(initialize, &scene, &request);
+                m_State   = request.instance;
             }
 
             void update(float deltaSeconds) override
@@ -273,12 +282,16 @@ namespace vultra
 
         private:
             std::unique_ptr<PluginSession> m_Session;
+            void*                          m_State = nullptr; // Borrowed handle owned by the managed session.
         };
     } // namespace
 
-    std::unique_ptr<ScriptInstance>
-    loadDotNetScript(const std::filesystem::path& path, SceneTree& scene, ObjectId node, std::string_view typeName)
+    std::unique_ptr<ScriptInstance> loadDotNetScript(const std::filesystem::path& path,
+                                                     SceneTree&                   scene,
+                                                     ObjectId                     node,
+                                                     std::string_view             typeName,
+                                                     const ScriptInstance*        previous)
     {
-        return std::make_unique<DotNetScript>(path, scene, node, typeName);
+        return std::make_unique<DotNetScript>(path, scene, node, typeName, static_cast<const DotNetScript*>(previous));
     }
 } // namespace vultra

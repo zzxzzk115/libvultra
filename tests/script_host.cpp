@@ -269,6 +269,17 @@ int main(int argc, char** argv)
                     managedCopy);
         managed.update(0.25f);
         {
+            vultra::ScriptHost independent(scene, true);
+            independent.add({vultra::ScriptModule::Language::eCSharp,
+                             {},
+                             "VultraScript.ThrottleController",
+                             throttle.idInScene().value},
+                            managedCopy);
+            independent.update(0.25f);
+            require(std::abs(throttle.localTransform()[3].x - 0.45f * std::sin(0.25f * 0.7f)) < 0.001f,
+                    "New C# instance inherited an unrelated script's state");
+        }
+        {
             std::ofstream output(managedCopy, std::ios::binary | std::ios::trunc);
             output << "invalid managed image";
         }
@@ -279,6 +290,8 @@ int main(int argc, char** argv)
         require(managed.reloadChanged() == 1 && managed.lastReloadError().empty(),
                 "Original C# module was not restored after an invalid replacement");
         managed.update(0.25f);
+        require(std::abs(throttle.localTransform()[3].x - 0.45f * std::sin(0.75f * 0.7f)) < 0.001f,
+                "C# reload reset a private script field");
         std::filesystem::copy_file(argv[2], managedCopy, std::filesystem::copy_options::overwrite_existing);
         require(managed.reloadChanged() == 1, "C# replacement was not loaded");
         bool replacementRan = false;
