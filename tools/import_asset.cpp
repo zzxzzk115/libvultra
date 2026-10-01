@@ -1,5 +1,5 @@
+#include <vultra/assets/asset_options.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/function/asset/asset_options.hpp>
 
 int main(int argc, char** argv)
 try

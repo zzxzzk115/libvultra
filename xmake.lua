@@ -17,6 +17,13 @@ if is_root then
 end
 
 -- global options
+option("libvultra_window_backend")
+    set_default("glfw")
+    set_values("glfw", "sdl3")
+    set_showmenu(true)
+    set_description("Desktop window and input backend")
+option_end()
+
 option("libvultra_with_openxr")
     set_default(true)
     set_showmenu(true)
@@ -42,20 +49,11 @@ if is_plat("windows") then
     add_cxxflags("-D_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING")
     add_cxxflags("/EHsc")
 
-    -- MSVC runtime: static (MT/MTd) by default, to match the VRI / libvultra
-    -- package ecosystem. Those packages are built MT; mixing runtimes fails at
-    -- link time with LNK2038. Change this one variable if a project genuinely
-    -- needs the dynamic runtime (and make sure its packages are MD too).
+    -- Targets and packages must use the same MSVC runtime to avoid LNK2038.
     local msvc_runtime = is_mode("debug") and "MTd" or "MT"
     set_runtimes(msvc_runtime)
 
-    -- Propagate that runtime to every resolved package.
-    --
-    -- This is the half that is easy to forget: set_runtimes() only configures the
-    -- project's own targets. Without the line below, packages build with their own
-    -- default (usually MD) and then refuse to link into an MT target -- the same
-    -- LNK2038, now with a confusing cause because set_runtimes() *looks* like it
-    -- should have covered it.
+    -- set_runtimes() covers project targets; packages need the matching requirement.
     add_requireconfs("**", {configs = {runtimes = msvc_runtime}})
 else
     add_cxxflags("-fexceptions")
@@ -78,6 +76,7 @@ add_rules("plugin.compile_commands.autoupdate", {outputdir = ".vscode", lsp = "c
 add_rules("clangd.config")
 
 -- add repositories
+add_repositories("vultra-packages " .. path.join(os.scriptdir(), "external", "packages"))
 add_repositories("my-xmake-repo https://github.com/zzxzzk115/xmake-repo.git backup")
 
 -- include external libraries
@@ -86,6 +85,7 @@ includes("external")
 -- include source
 includes("source")
 includes("tools")
+includes("runtime")
 
 -- include tests
 if has_config("libvultra_build_tests") then
@@ -96,3 +96,19 @@ end
 if has_config("libvultra_build_examples") then
     includes("examples")
 end
+
+-- Checked-in bindings keep normal builds independent of Python and libclang.
+task("codegen")
+    set_menu {
+        usage = "xmake codegen [options]",
+        options = {{"c", "check", "k", nil, "Check generated files without modifying them"}}
+    }
+    on_run(function ()
+        import("core.base.option")
+        local args = {path.join(os.projectdir(), "scripts", "codegen.py")}
+        if option.get("check") then
+            table.insert(args, "--check")
+        end
+        os.execv("python3", args)
+    end)
+task_end()

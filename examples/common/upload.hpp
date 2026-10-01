@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vultra/core/rhi/resources.hpp>
+#include <vultra/drivers/rhi/resources.hpp>
 
 #include <cstring>
 #include <memory>

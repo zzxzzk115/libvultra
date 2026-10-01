@@ -1,7 +1,8 @@
-#include <vultra/function/asset/asset_pipeline.hpp>
-#include <vultra/function/renderer/builtin/builtin_renderer.hpp>
-#include <vultra/function/renderer/texture_blit.hpp>
-#include <vultra/function/research/capture.hpp>
+#include <vultra/assets/asset_pipeline.hpp>
+#include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
+#include <vultra/servers/rendering/rendering_server.hpp>
+#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/servers/rendering/texture_blit.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
@@ -30,6 +31,43 @@ namespace
         {
             require(std::isfinite(channel) && channel >= 0, "Non-finite or negative renderer output");
         }
+    }
+
+    void passBoundaryCapture(vultra::Device& device)
+    {
+        using namespace vultra;
+        RenderGraph captureGraph(device);
+        const auto  mutableColor = captureGraph.createTexture("mutable", colorTexture({8, 8}));
+        captureGraph.addPass("First color",
+                             {{mutableColor, Usage::eColorWrite}},
+                             [&](auto* cmd, auto& g)
+                             {
+                                 const float red[4] {1, 0, 0, 1};
+                                 beginColorPass(device, cmd, g.getTexture(mutableColor).view(), {8, 8}, red);
+                                 device.core.CmdEndRendering(cmd);
+                             });
+        captureGraph.addPass("Second color",
+                             {{mutableColor, Usage::eColorWrite}},
+                             [&](auto* cmd, auto& g)
+                             {
+                                 const float blue[4] {0, 0, 1, 1};
+                                 beginColorPass(device, cmd, g.getTexture(mutableColor).view(), {8, 8}, blue);
+                                 device.core.CmdEndRendering(cmd);
+                             });
+        const auto firstColor = captureGraph.captureAfterPass("First color", mutableColor, "first_color");
+        captureGraph.exportResource(mutableColor);
+        captureGraph.compile();
+        require(captureGraph.activePasses() ==
+                    std::vector<std::string> {"First color", "Capture after First color", "Second color"},
+                "Capture did not preserve pass order");
+        Frame captureFrame(device);
+        captureGraph.execute(captureFrame.begin());
+        captureFrame.submitAndWait();
+        const auto capturedColor = readback(device, captureGraph.getTexture(firstColor));
+        const auto finalColor    = readback(device, captureGraph.getTexture(mutableColor));
+        require(capturedColor.rgba[0] > 0.99f && capturedColor.rgba[2] < 0.01f && finalColor.rgba[0] < 0.01f &&
+                    finalColor.rgba[2] > 0.99f,
+                "Pass-boundary capture must preserve the earlier color after a later overwrite");
     }
 
     void constantEnvironment(vultra::Device& device, vultra::Environment& environment)
@@ -95,9 +133,62 @@ namespace
                material.emissionColor * material.emissionLuminance;
     }
 
+    void renderingServerIds(vultra::Device& device)
+    {
+        vultra::SceneData scene;
+        scene.vertices   = {{{0, 0, 0}, {0, 0, 1}, {0, 0}},
+                            {{1, 0, 0}, {0, 0, 1}, {1, 0}},
+                            {{0, 1, 0}, {0, 0, 1}, {0, 1}}};
+        scene.indices    = {0, 1, 2};
+        scene.primitives = {{0, 3, 0}};
+        scene.materials.emplace_back();
+        vultra::RenderingServer first(device);
+        vultra::RenderingServer second(device);
+        auto                    firstScene  = first.uploadScene(scene);
+        auto                    secondScene = second.uploadScene(scene);
+        const auto              rid         = firstScene.rid();
+        require(rid.value != 0 && rid != secondScene.rid(), "GPU scene IDs must be unique");
+        require(first.alive(rid) && !second.alive(rid), "GPU scene RID escaped its context");
+        bool wrongContextRejected = false;
+        try
+        {
+            second.scene(rid);
+        }
+        catch (const std::invalid_argument&)
+        {
+            wrongContextRejected = true;
+        }
+        require(wrongContextRejected, "Foreign GPU scene RID was accepted");
+        const vultra::GpuSceneRid wrongType {(rid.value & ((uint64_t(1) << 56) - 1)) | (uint64_t(2) << 56)};
+        require(!first.alive(wrongType) && !first.release(wrongType), "Wrong GPU resource type was accepted");
+        bool wrongTypeRejected = false;
+        try
+        {
+            first.scene(wrongType);
+        }
+        catch (const std::invalid_argument&)
+        {
+            wrongTypeRejected = true;
+        }
+        require(wrongTypeRejected, "Wrong GPU resource type was resolved as a scene");
+        require(first.release(rid), "First GPU scene release failed");
+        require(!first.release(rid) && !first.alive(rid), "Released GPU scene RID remained live");
+        bool staleRejected = false;
+        try
+        {
+            firstScene.get();
+        }
+        catch (const std::invalid_argument&)
+        {
+            staleRejected = true;
+        }
+        require(staleRejected, "Stale GPU scene handle remained usable");
+        first.collectCompletedFrame();
+    }
+
     void materialReference(vultra::Device& device, vultra::Environment& environment)
     {
-        vultra::Scene scene;
+        vultra::SceneData scene;
         scene.vertices   = {{{-2, -2, 0}, {0, 0, 1}, {0, 0}},
                             {{2, -2, 0}, {0, 0, 1}, {1, 0}},
                             {{2, 2, 0}, {0, 0, 1}, {1, 1}},
@@ -108,6 +199,7 @@ namespace
         scene.radius = 3;
         vultra::GpuScene        gpu(device, scene);
         vultra::BuiltinRenderer renderer(device, gpu, environment);
+        renderer.settings.path             = vultra::RenderPath::eNaiveForward;
         renderer.settings.ibl              = false;
         renderer.settings.shadowFilter     = vultra::ShadowFilter::eDisabled;
         renderer.settings.lightIntensity   = 1;
@@ -191,6 +283,47 @@ namespace
         compare({0, 0, 1});
         std::cout << "OpenPBR Slang/C++: " << caseCount << " cases, max error=" << maxError << '\n';
 
+        gpu.materials[0].baseColor         = {0.6f, 0.2f, 0.1f, 1};
+        gpu.materials[0].baseMetalness     = 0.4f;
+        gpu.materials[0].baseWeight        = 0.7f;
+        gpu.materials[0].specularColor     = {0.7f, 1, 0.6f};
+        gpu.materials[0].coatWeight        = 0.5f;
+        gpu.materials[0].coatIor           = 1.8f;
+        gpu.materials[0].emissionColor     = {0.1f, 0.03f, 0.02f};
+        renderer.settings.directionToLight = {0.4f, 0.6f, 1};
+        vultra::BuiltinRenderer deferredRenderer(device, gpu, environment);
+        deferredRenderer.settings      = renderer.settings;
+        deferredRenderer.settings.path = vultra::RenderPath::eNaiveDeferred;
+        vultra::RenderGraph deferredGraph(device);
+        const auto          deferredOutputs = deferredRenderer.addPasses(deferredGraph, {65, 65});
+        deferredGraph.exportResource(deferredOutputs.color);
+        deferredGraph.compile();
+        const auto deferredPasses = deferredGraph.activePasses();
+        require(
+            deferredPasses.size() == 9 &&
+                std::find(deferredPasses.begin(), deferredPasses.end(), "G-buffer geometry") != deferredPasses.end() &&
+                std::find(deferredPasses.begin(), deferredPasses.end(), "G-buffer material") != deferredPasses.end() &&
+                std::find(deferredPasses.begin(), deferredPasses.end(), "Deferred OpenPBR") != deferredPasses.end(),
+            "NaiveDeferred did not compile geometry, material and lighting passes");
+        const auto   forwardImage  = render(device, renderer, graph, outputs, camera);
+        const auto   deferredImage = render(device, deferredRenderer, deferredGraph, deferredOutputs, camera);
+        const auto   sceneDepth    = readback(device, deferredGraph.getTexture(deferredOutputs.depth));
+        const size_t centerDepth   = (32 * 65 + 32) * 4;
+        require(sceneDepth.rgba[centerDepth] > 0 && sceneDepth.rgba[centerDepth] < 1 &&
+                    sceneDepth.rgba[centerDepth] == sceneDepth.rgba[centerDepth + 1] &&
+                    sceneDepth.rgba[centerDepth] == sceneDepth.rgba[centerDepth + 2] &&
+                    sceneDepth.rgba[centerDepth + 3] == 1,
+                "D32 readback did not preserve scene depth as grayscale");
+        const auto shadowDepth = readback(device, deferredGraph.getTexture(deferredOutputs.shadows[0]));
+        require(shadowDepth.rgba[0] == 1, "Disabled shadow map must read back its cleared depth");
+        float maxPathError = 0;
+        for (size_t i = 0; i < forwardImage.rgba.size(); ++i)
+        {
+            maxPathError = std::max(maxPathError, std::abs(forwardImage.rgba[i] - deferredImage.rgba[i]));
+        }
+        require(maxPathError < 0.02f, "Deferred OpenPBR differs from forward on the same material and camera");
+        gpu.materials[0] = {};
+
         vultra::BuiltinRenderer linearRenderer(device, gpu, environment, VriFormat_RGBA16_SFLOAT);
         linearRenderer.settings = renderer.settings;
         vultra::RenderGraph linearGraph(device);
@@ -223,7 +356,7 @@ namespace
         std::cout << "Linear XR tone mapping and display-encoded mirror match desktop output\n";
     }
 
-    void materialTextures(vultra::Device& device, vultra::Environment& environment, VriFormat normalFormat)
+    void materialTextures(vultra::Device& device, vultra::Environment& environment, vultra::TextureFormat normalFormat)
     {
         vultra::ImportedAsset asset;
         auto&                 scene = asset.scene;
@@ -235,19 +368,19 @@ namespace
         scene.primitives            = {{0, 6, 0}};
         scene.materials.emplace_back();
         scene.images.push_back({1, 1, {64, 128, 192, 102}});
-        auto& material              = scene.materials[0];
-        material.baseColor          = {0.6f, 0.2f, 0.1f, 1};
-        material.specularWeight     = 0.8f;
-        material.specularColor      = {0.9f, 0.7f, 0.5f};
-        material.specularImage      = 0;
-        material.specularColorImage = 0;
-        scene.radius                = 3;
+        auto& material                      = scene.materials[0];
+        material.baseColor                  = {0.6f, 0.2f, 0.1f, 1};
+        material.specularWeight             = 0.8f;
+        material.specularColor              = {0.9f, 0.7f, 0.5f};
+        material.specularTexture.image      = 0;
+        material.specularColorTexture.image = 0;
+        scene.radius                        = 3;
         asset.textures = vultra::prepareTextures(scene, {.compression = vultra::TextureCompression::eNone});
         // A constant BC5 block with X=Y=128/255; Z must be reconstructed by the shader.
         std::vector<std::byte> block(16);
         block[0] = block[1] = block[8] = block[9] = std::byte(128);
         const auto normalSlot                     = uint32_t(asset.textures.images.size());
-        if (normalFormat == VriFormat_RG8_UNORM)
+        if (normalFormat == vultra::TextureFormat::eRg8Unorm)
         {
             block.assign(4 * 4 * 2, std::byte(128));
         }
@@ -255,6 +388,7 @@ namespace
         asset.textures.materials[0][2] = normalSlot;
         vultra::GpuScene        gpu(device, asset);
         vultra::BuiltinRenderer renderer(device, gpu, environment);
+        renderer.settings.path             = vultra::RenderPath::eNaiveForward;
         renderer.settings.ibl              = false;
         renderer.settings.skybox           = false;
         renderer.settings.shadowFilter     = vultra::ShadowFilter::eDisabled;
@@ -281,9 +415,9 @@ namespace
             require(std::abs(image.rgba[center + c] - expected[c]) < 0.003f + std::abs(expected[c]) * 0.002f,
                     "Specular textures must use linear alpha weight and sRGB color");
         }
-        gpu.materials[0].normalImage = 0;
-        renderer.settings.debugMode  = 2;
-        image                        = render(device, renderer, graph, outputs, camera);
+        gpu.materials[0].normalTexture.image = 0;
+        renderer.settings.debugMode          = 2;
+        image                                = render(device, renderer, graph, outputs, camera);
         require(std::abs(image.rgba[center] - 0.5f) < 0.003f && std::abs(image.rgba[center + 1] - 0.5f) < 0.003f &&
                     image.rgba[center + 2] > 0.999f,
                 "BC5 normal texture lost its positive reconstructed Z component");
@@ -303,7 +437,7 @@ namespace
     {
         for (uint32_t tangentCase : {0u, 1u, 2u})
         {
-            vultra::Scene scene;
+            vultra::SceneData scene;
             // Rotated, mirrored UVs: +U points along world +Y, +V along world +X.
             scene.vertices   = {{{-2, -2, 0}, {0, 0, 1}, {0, 0}},
                                 {{2, -2, 0}, {0, 0, 1}, {0, 1}},
@@ -312,11 +446,11 @@ namespace
             scene.indices    = {0, 1, 2, 0, 2, 3};
             scene.primitives = {{0, 6, 0}};
             scene.materials.emplace_back();
-            scene.radius                     = 3;
-            scene.images                     = {{1, 1, {204, 128, 230, 255}}, {1, 1, {64, 128, 192, 255}}};
-            scene.materials[0].normalImage   = 0;
-            scene.materials[0].emissionImage = 1;
-            scene.materials[0].emissionColor = {0.25f, 0.5f, 0.75f};
+            scene.radius                             = 3;
+            scene.images                             = {{1, 1, {204, 128, 230, 255}}, {1, 1, {64, 128, 192, 255}}};
+            scene.materials[0].normalTexture.image   = 0;
+            scene.materials[0].emissionTexture.image = 1;
+            scene.materials[0].emissionColor         = {0.25f, 0.5f, 0.75f};
             if (tangentCase != 0)
             {
                 for (auto& vertex : scene.vertices)
@@ -326,6 +460,7 @@ namespace
             }
             vultra::GpuScene        gpu(device, scene);
             vultra::BuiltinRenderer renderer(device, gpu, environment);
+            renderer.settings.path             = vultra::RenderPath::eNaiveForward;
             renderer.settings.ibl              = false;
             renderer.settings.skybox           = false;
             renderer.settings.lightIntensity   = 0;
@@ -394,7 +529,7 @@ namespace
 
     void shadows(vultra::Device& device, vultra::Environment& environment)
     {
-        vultra::Scene scene;
+        vultra::SceneData scene;
         scene.vertices   = {{{-5, 0, -5}, {0, 1, 0}, {0, 0}},
                             {{5, 0, -5}, {0, 1, 0}, {1, 0}},
                             {{5, 0, 5}, {0, 1, 0}, {1, 1}},
@@ -409,6 +544,7 @@ namespace
         scene.radius = 8;
         vultra::GpuScene        gpu(device, scene);
         vultra::BuiltinRenderer renderer(device, gpu, environment);
+        renderer.settings.path             = vultra::RenderPath::eNaiveForward;
         renderer.settings.skybox           = false;
         renderer.settings.debugMode        = 4;
         renderer.settings.shadowResolution = 512;
@@ -419,11 +555,11 @@ namespace
                                      0.1f,
                                      25};
         const auto           cascades = vultra::calculateCascades(camera,
-                                                        renderer.settings.directionToLight,
-                                                        scene.center,
-                                                        scene.radius,
-                                                        512,
-                                                        0.7f);
+                                                                  renderer.settings.directionToLight,
+                                                                  scene.center,
+                                                                  scene.radius,
+                                                                  512,
+                                                                  0.7f);
         require(cascades.splits.x > camera.nearPlane && cascades.splits.y > cascades.splits.x &&
                     cascades.splits.z > cascades.splits.y && std::abs(cascades.splits.w - camera.farPlane) < 0.001f,
                 "Invalid CSM splits");
@@ -492,12 +628,13 @@ try
         file.write(reinterpret_cast<const char*>(pixel), 4);
     }
     file.close();
-    vultra::Device      device;
+    vultra::Device device;
+    renderingServerIds(device);
     vultra::Environment environment(device, hdr);
     constantEnvironment(device, environment);
     materialReference(device, environment);
-    materialTextures(device, environment, VriFormat_BC5_UNORM);
-    materialTextures(device, environment, VriFormat_RG8_UNORM);
+    materialTextures(device, environment, vultra::TextureFormat::eBc5Unorm);
+    materialTextures(device, environment, vultra::TextureFormat::eRg8Unorm);
     tangentFramesAndEmission(device, environment);
     shadows(device, environment);
     std::cout

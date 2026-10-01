@@ -2,7 +2,7 @@
 
 #include "lib/space.slangh"
 
-// Right-handed view, forward Z depth in [0, 1]. These functions do not use reversed Z.
+// VRI camera projections here are right-handed with forward depth in [0, 1], not reversed Z.
 float linearizeDepth(float nearPlane, float farPlane, float sampledDepth)
 {
     return nearPlane * farPlane / (farPlane + sampledDepth * (nearPlane - farPlane));

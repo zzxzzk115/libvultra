@@ -4,13 +4,13 @@
 #include "material_scene.hpp"
 #include "sample.hpp"
 
-#include <vultra/core/os/file_dialog.hpp>
-#include <vultra/core/profiling/profiler.hpp>
-#include <vultra/function/app/imgui_app.hpp>
-#include <vultra/function/asset/asset_options.hpp>
-#include <vultra/function/camera/fps_camera.hpp>
-#include <vultra/function/camera/orbit_camera.hpp>
-#include <vultra/function/renderer/builtin/builtin_renderer.hpp>
+#include <vultra/assets/asset_options.hpp>
+#include <vultra/drivers/profiling/profiler.hpp>
+#include <vultra/main/app/imgui_app.hpp>
+#include <vultra/platform/os/file_dialog.hpp>
+#include <vultra/scene/camera/fps_camera.hpp>
+#include <vultra/scene/camera/orbit_camera.hpp>
+#include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -107,22 +107,23 @@ private:
 
     void onImGui() override
     {
+        auto ui = getEditorGui().frame();
         if (m_ShowUi)
         {
-            const auto origin = ImGui::GetMainViewport()->Pos;
-            ImGui::SetNextWindowPos({origin.x + 16, origin.y + 16}, ImGuiCond_FirstUseEver);
-            ImGui::SetNextWindowSize({370, 690}, ImGuiCond_FirstUseEver);
-            ImGui::Begin(m_Title.c_str());
+            const auto origin = ui.mainViewportPos();
+            ui.setNextWindowPos({origin.x + 16, origin.y + 16}, ImGuiCond_FirstUseEver);
+            ui.setNextWindowSize({370, 690}, ImGuiCond_FirstUseEver);
+            ui.beginWindow(m_Title.c_str());
             if (m_Walkthrough)
             {
-                ImGui::TextUnformatted("WASD / QE: move; RMB: look; Shift: faster");
-                ImGui::SliderFloat("Camera speed", &m_FpsCamera.speed, 0.1f, 20);
+                ui.textUnformatted("WASD / QE: move; RMB: look; Shift: faster");
+                ui.sliderFloat("Camera speed", &m_FpsCamera.speed, 0.1f, 20);
             }
             else
             {
-                ImGui::TextUnformatted("LMB: orbit; MMB / RMB: pan; wheel: zoom");
+                ui.textUnformatted("LMB: orbit; MMB / RMB: pan; wheel: zoom");
             }
-            if (ImGui::Button("Open model..."))
+            if (ui.button("Open model..."))
             {
                 try
                 {
@@ -133,76 +134,76 @@ private:
                     m_LoadError = error.what();
                 }
             }
-            ImGui::SameLine();
-            if (ImGui::Button("Reload"))
+            ui.sameLine();
+            if (ui.button("Reload"))
             {
                 m_PendingModel = m_ModelPath;
             }
-            ImGui::SameLine();
-            if (ImGui::Button("Reimport"))
+            ui.sameLine();
+            if (ui.button("Reimport"))
             {
                 m_ImportOptions.reimport = true;
                 m_PendingModel           = m_ModelPath;
             }
-            if (ImGui::Button("Material spheres"))
+            if (ui.button("Material spheres"))
             {
                 m_PendingModel = std::filesystem::path();
             }
-            ImGui::TextWrapped("%s", m_ModelName.c_str());
-            ImGui::Text("%zu draws", m_GpuScene->primitives.size());
+            ui.textWrapped("%s", m_ModelName.c_str());
+            ui.text("%zu draws", m_GpuScene->primitives.size());
             if (m_GpuScene->meshlets)
             {
-                ImGui::Text("%u meshlets (64 vertices / 124 triangles max)", m_GpuScene->meshlets->count);
-                ImGui::Checkbox("Mesh shading", &m_Renderer->settings.meshShading);
-                ImGui::Checkbox("Meshlet frustum culling", &m_Renderer->settings.meshletCulling);
-                ImGui::Checkbox("Meshlet colors", &m_Renderer->settings.meshletColors);
+                ui.text("%u meshlets (64 vertices / 124 triangles max)", m_GpuScene->meshlets->count);
+                ui.checkbox("Mesh shading", &m_Renderer->settings.meshShading);
+                ui.checkbox("Meshlet frustum culling", &m_Renderer->settings.meshletCulling);
+                ui.checkbox("Meshlet colors", &m_Renderer->settings.meshletColors);
             }
             if (!m_LoadError.empty())
             {
-                ImGui::TextWrapped("Load failed (current model kept): %s", m_LoadError.c_str());
+                ui.textWrapped("Load failed (current model kept): %s", m_LoadError.c_str());
             }
-            ImGui::Separator();
-            ImGui::PushItemWidth(160);
+            ui.separator();
+            ui.pushItemWidth(160);
             auto& settings = m_Renderer->settings;
-            ImGui::TextUnformatted("OpenPBR opaque subset / HDR IBL / CSM");
-            ImGui::Checkbox("Debug bounds / grid / axes / sphere", &m_DebugDraw);
-            ImGui::Checkbox("Skybox", &settings.skybox);
-            ImGui::Checkbox("IBL", &settings.ibl);
-            ImGui::SliderFloat("Environment", &settings.environmentIntensity, 0, 3);
-            ImGui::SliderFloat("Exposure (EV)", &settings.exposure, -4, 4);
-            ImGui::SliderFloat("Sun intensity", &settings.lightIntensity, 0, 10);
-            ImGui::SliderFloat3("To sun", glm::value_ptr(settings.directionToLight), -1, 1);
+            ui.textUnformatted("OpenPBR opaque subset / HDR IBL / CSM");
+            ui.checkbox("Debug bounds / grid / axes / sphere", &m_DebugDraw);
+            ui.checkbox("Skybox", &settings.skybox);
+            ui.checkbox("IBL", &settings.ibl);
+            ui.sliderFloat("Environment", &settings.environmentIntensity, 0, 3);
+            ui.sliderFloat("Exposure (EV)", &settings.exposure, -4, 4);
+            ui.sliderFloat("Sun intensity", &settings.lightIntensity, 0, 10);
+            ui.sliderFloat3("To sun", glm::value_ptr(settings.directionToLight), -1, 1);
             if (glm::length(settings.directionToLight) < 0.01f)
             {
                 settings.directionToLight = {0, 1, 0};
             }
             int shadowMode = int(settings.shadowFilter);
-            ImGui::Combo("Shadows", &shadowMode, "Off\0Hard\0PCF\0PCSS\0");
+            ui.combo("Shadows", &shadowMode, "Off\0Hard\0PCF\0PCSS\0");
             settings.shadowFilter = vultra::ShadowFilter(shadowMode);
-            ImGui::SliderFloat("Split lambda", &settings.splitLambda, 0, 1);
-            ImGui::SliderFloat("Depth bias", &settings.shadowBias, 0, 0.003f, "%.5f");
-            ImGui::SliderFloat("Normal bias", &settings.normalBias, 0, 3);
-            ImGui::SliderFloat("Sun radius", &settings.sunAngularRadius, 0, 0.1f);
-            ImGui::SliderFloat("Roughness override", &settings.roughnessOverride, -1, 1);
-            ImGui::SliderFloat("Metalness override", &settings.metalnessOverride, -1, 1);
+            ui.sliderFloat("Split lambda", &settings.splitLambda, 0, 1);
+            ui.sliderFloat("Depth bias", &settings.shadowBias, 0, 0.003f, "%.5f");
+            ui.sliderFloat("Normal bias", &settings.normalBias, 0, 3);
+            ui.sliderFloat("Sun radius", &settings.sunAngularRadius, 0, 0.1f);
+            ui.sliderFloat("Roughness override", &settings.roughnessOverride, -1, 1);
+            ui.sliderFloat("Metalness override", &settings.metalnessOverride, -1, 1);
             int debugMode = int(settings.debugMode);
-            ImGui::Combo("View", &debugMode, "Lit\0Base color\0Normals\0Cascades\0Shadow visibility\0Emission\0");
+            ui.combo("View", &debugMode, "Lit\0Base color\0Normals\0Cascades\0Shadow visibility\0Emission\0");
             settings.debugMode = uint32_t(debugMode);
-            if (ImGui::Button("Rebuild IBL"))
+            if (ui.button("Rebuild IBL"))
             {
                 m_Environment = vultra::Environment(getDevice(), m_EnvironmentFile);
             }
             for (const auto& timing : m_Profiler.timings())
             {
-                ImGui::Text("%s: GPU %.3f ms", timing.name.c_str(), timing.gpuMs);
+                ui.text("%s: GPU %.3f ms", timing.name.c_str(), timing.gpuMs);
             }
             const auto diagnostics = m_Renderer->diagnostics();
-            if (!diagnostics.empty() && ImGui::CollapsingHeader("Shader diagnostics"))
+            if (!diagnostics.empty() && ui.collapsingHeader("Shader diagnostics"))
             {
-                ImGui::TextWrapped("%s", diagnostics.c_str());
+                ui.textWrapped("%s", diagnostics.c_str());
             }
-            ImGui::PopItemWidth();
-            ImGui::End();
+            ui.popItemWidth();
+            ui.endWindow();
         }
     }
 
@@ -211,11 +212,11 @@ private:
         ImGuiApp::onPreRender();
         if (m_Walkthrough)
         {
-            m_FpsCamera.update(getWindow().input(), m_DeltaSeconds, getGui().inputCapture());
+            m_FpsCamera.update(getWindow().input(), m_DeltaSeconds, getEditorGui().inputCapture());
         }
         else
         {
-            m_Camera.update(getWindow().input(), getWindow().size(), getGui().inputCapture());
+            m_Camera.update(getWindow().input(), getWindow().size(), getEditorGui().inputCapture());
         }
     }
 
@@ -260,9 +261,9 @@ private:
                 {{m_Backbuffer, vultra::Usage::eColorReadWrite}},
                 [this](auto* cmd, auto& resources)
                 {
-                    getGui().copy(cmd);
+                    getEditorGui().copy(cmd);
                     vultra::beginColorPass(getDevice(), cmd, resources.getTexture(m_Backbuffer).view(), m_GraphSize);
-                    getGui().draw(cmd);
+                    getEditorGui().draw(cmd);
                     getDevice().core.CmdEndRendering(cmd);
                 });
             m_Graph->addPass(
@@ -321,13 +322,17 @@ private:
         {
             renderer->settings = m_Renderer->settings;
         }
+        else
+        {
+            renderer->settings.path = vultra::RenderPath::eNaiveForward;
+        }
         const auto lines      = sample::makeDebugLines(scene);
         auto       debugLines = std::make_unique<sample::ColoredMesh>(getDevice(),
-                                                                getSwapchain().format(),
-                                                                lines.vertices,
-                                                                lines.indices,
-                                                                VriPrimitiveTopology_LineList,
-                                                                true);
+                                                                      getSwapchain().format(),
+                                                                      lines.vertices,
+                                                                      lines.indices,
+                                                                      VriPrimitiveTopology_LineList,
+                                                                      true);
         // Build all new GPU resources first. A failed load leaves the current model intact.
         m_Graph.reset();
         m_Renderer          = std::move(renderer);

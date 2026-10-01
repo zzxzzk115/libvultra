@@ -10,7 +10,7 @@ struct MaterialData
     float4 coat;
     float4 specular;
     float4 flags;
-    uint4 meshlets;
+    uint4  meshlets;
 };
 
 [[vk::push_constant]] ConstantBuffer<MaterialData> material;
@@ -21,11 +21,11 @@ struct MaterialData
 [[vk::binding(4, 1)]] Texture2D<float4>            emissionTexture;
 [[vk::binding(5, 1)]] Texture2D<float4>            specularTexture;
 [[vk::binding(6, 1)]] Texture2D<float4>            specularColorTexture;
-[[vk::binding(7, 1)]] SamplerState                 materialSampler;
+[[vk::binding(7, 1)]] SamplerState                 materialSamplers[7];
 
 float4 readBaseColor(float2 uv, float4 color)
 {
-    float4 result = baseColorTexture.Sample(materialSampler, uv) * material.baseColor * color;
+    float4 result = baseColorTexture.Sample(materialSamplers[0], uv) * material.baseColor * color;
     if (result.a < material.flags.x)
     {
         discard;
@@ -33,13 +33,9 @@ float4 readBaseColor(float2 uv, float4 color)
     return result;
 }
 
-float3 surfaceNormal(SurfaceVertex input, float3 view)
+float3 surfaceNormal(SurfaceVertex input)
 {
     float3 normal = normalize(input.normal);
-    if (dot(normal, view) < 0)
-    {
-        normal = -normal;
-    }
     if (material.flags.w < 0.5)
     {
         return normal;
@@ -52,7 +48,7 @@ float3 surfaceNormal(SurfaceVertex input, float3 view)
     }
     tangent *= rsqrt(tangentLength);
     float3 bitangent = input.tangent.w * cross(normal, tangent);
-    float3 mapped    = normalTexture.Sample(materialSampler, input.uv).xyz * 2 - 1;
+    float3 mapped    = normalTexture.Sample(materialSamplers[2], input.uv).xyz * 2 - 1;
     if (material.flags.w > 1.5)
     {
         mapped.z = sqrt(saturate(1 - dot(mapped.xy, mapped.xy))); // BC5 stores only X and Y.

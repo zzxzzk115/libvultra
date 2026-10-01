@@ -1,0 +1,54 @@
+{
+  "format": "vultra.scene",
+  "version": 1,
+  "root": {
+    "id": "4f9bb271-bf54-4748-ac7d-53735871cd3d",
+    "name": "Research",
+    "type": "Node",
+    "transform": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "children": [
+      {
+        "id": "9b94d20a-154f-43ba-b985-558caf4dd187",
+        "name": "Damaged Helmet",
+        "type": "MeshInstance",
+        "model": "8fc32ebe-cf5e-45b6-b93f-05c1ae8f165b",
+        "transform": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "children": []
+      }
+    ]
+  }
+}

@@ -30,3 +30,13 @@ vsxmake*/
 .vultra/
 imgui.ini
 captures/
+
+# .NET scripting examples and bridge intermediates
+source/scripting/managed/bin/
+source/scripting/managed/obj/
+examples/scripting/csharp/bin/
+examples/scripting/csharp/obj/
+tests/managed_reload/bin/
+tests/managed_reload/obj/
+tests/managed_control/bin/
+tests/managed_control/obj/

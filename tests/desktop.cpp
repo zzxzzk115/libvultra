@@ -1,8 +1,6 @@
 #include <vultra/core/base/logger.hpp>
-#include <vultra/function/app/imgui_app.hpp>
-#include <vultra/function/research/capture.hpp>
-
-#include <GLFW/glfw3.h>
+#include <vultra/main/app/imgui_app.hpp>
+#include <vultra/servers/rendering/research/capture.hpp>
 
 #include <cmath>
 #include <string>
@@ -62,12 +60,12 @@ namespace
             require(completed == frameCount(), "Update happened before previous frame completion");
             require(guiFrames == completed, "GUI frame started during logic update");
             m_Updated = true;
-            if (glfwGetWindowAttrib(getWindow().handle(), GLFW_ICONIFIED))
+            if (getWindow().minimized())
             {
                 ++minimizedTicks;
                 if (minimizedTicks == 2)
                 {
-                    glfwRestoreWindow(getWindow().handle());
+                    getWindow().restore();
                 }
             }
         }
@@ -81,7 +79,7 @@ namespace
         void onPreRender() override
         {
             require(m_PostUpdated, "Render preparation happened before PostUpdate");
-            require(!glfwGetWindowAttrib(getWindow().handle(), GLFW_ICONIFIED), "Rendering while minimized");
+            require(!getWindow().minimized(), "Rendering while minimized");
             ImGuiApp::onPreRender();
             require(ImGui::GetDrawData() && ImGui::GetDrawData()->Valid, "GUI draw data is not finalized");
         }
@@ -133,11 +131,11 @@ namespace
             ++completed;
             if (frameCount() == 0)
             {
-                glfwSetWindowSize(getWindow().handle(), 480, 320);
+                getWindow().setSize({480, 320});
             }
             if (frameCount() == 1)
             {
-                glfwIconifyWindow(getWindow().handle());
+                getWindow().minimize();
             }
         }
 
@@ -185,14 +183,13 @@ try
         require(app.frameCount() >= 3 && app.frameCount() < 20, "close() did not stop the application");
         require(app.frameCount() == app.completed && app.completed == app.guiFrames,
                 "Frame counter differs from completed render/GUI frames");
-        const std::string title = glfwGetWindowTitle(app.getWindow().handle());
+        const std::string title = app.getWindow().title();
         const auto        stats = title.find(" | FPS: ");
         require(title.starts_with("Vultra - application test") && stats != std::string::npos &&
                     title.find(" | CPU: ") != std::string::npos && title.find(" | GPU: ") != std::string::npos,
                 "Desktop title did not retain the example name and frame statistics");
         app.getWindow().setTitle("Vultra - renamed model");
-        require(std::string(glfwGetWindowTitle(app.getWindow().handle())) ==
-                    "Vultra - renamed model" + title.substr(stats),
+        require(app.getWindow().title() == "Vultra - renamed model" + title.substr(stats),
                 "Changing model title lost or duplicated the statistics suffix");
     }
     {

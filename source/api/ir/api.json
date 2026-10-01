@@ -1,0 +1,122 @@
+{
+  "scene_functions": [
+    {
+      "arguments": [
+        {
+          "name": "parent",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneChildCount",
+      "return": "uint64_t",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [
+        {
+          "name": "parent",
+          "type": "ObjectId"
+        },
+        {
+          "name": "index",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "sceneChildId",
+      "return": "ObjectId",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneNodeName",
+      "return": "std::string_view",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneNodeTranslation",
+      "return": "SceneTranslation",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [],
+      "name": "sceneRootId",
+      "return": "ObjectId",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        },
+        {
+          "name": "translation",
+          "type": "SceneTranslation"
+        }
+      ],
+      "name": "sceneSetNodeTranslation",
+      "return": "void",
+      "scene_mutable": true
+    }
+  ],
+  "types": [
+    {
+      "fields": [
+        {
+          "label": "Path",
+          "name": "path",
+          "options": "NaiveDeferred|NaiveForward",
+          "type": "RenderPath"
+        },
+        {
+          "label": "Sun intensity",
+          "max": "10",
+          "min": "0",
+          "name": "lightIntensity",
+          "type": "float"
+        },
+        {
+          "label": "Exposure (EV)",
+          "max": "4",
+          "min": "-4",
+          "name": "exposure",
+          "type": "float"
+        },
+        {
+          "label": "IBL",
+          "name": "ibl",
+          "type": "bool"
+        },
+        {
+          "label": "Skybox",
+          "name": "skybox",
+          "type": "bool"
+        }
+      ],
+      "name": "RenderSettings"
+    }
+  ],
+  "ui_functions": [
+    {
+      "argument": "label",
+      "name": "guiButton",
+      "return": "bool"
+    },
+    {
+      "argument": "text",
+      "name": "guiText",
+      "return": "void"
+    }
+  ]
+}

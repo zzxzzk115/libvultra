@@ -1,6 +1,7 @@
+#include <vultra/api/ui_bridge.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/core/os/process.hpp>
-#include <vultra/function/renderer/gui.hpp>
+#include <vultra/platform/os/process.hpp>
+#include <vultra/ui/editor_gui.hpp>
 
 #include <chrono>
 #include <cmath>
@@ -28,7 +29,7 @@ namespace
     {
         std::filesystem::path original = std::filesystem::current_path();
         std::filesystem::path root     = original / "build/.tmp/gui-settings" /
-                                     std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+                                         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
 
         RunDirectory()
         {
@@ -43,18 +44,19 @@ namespace
     };
 
     // Both apps intentionally have the same title and panel name. Only AppName differs.
-    void layoutSession(vultra::Device&          device,
-                       vultra::Window&          window,
-                       const vultra::GuiConfig& config,
-                       ImVec2                   position,
-                       bool                     restore,
-                       bool                     dock = false)
+    void layoutSession(vultra::Device&                device,
+                       vultra::Window&                window,
+                       const vultra::EditorGuiConfig& config,
+                       ImVec2                         position,
+                       bool                           restore,
+                       bool                           dock = false)
     {
-        vultra::Gui gui(device, window, VriFormat_BGRA8_UNORM, config);
+        vultra::EditorGui gui(device, window, VriFormat_BGRA8_UNORM, config);
         for (int frame = 0; frame < 3; ++frame)
         {
             window.poll();
             gui.begin();
+            const auto uiFrame = vultra::makeUiFrame(gui);
             if (!dock)
             {
                 ImGui::SetNextWindowPos(restore ? ImVec2(5, 5) : position,
@@ -81,6 +83,8 @@ namespace
             ImGui::TextUnformatted("Persist this panel");
             ImGui::End();
             gui.upload(window.framebufferSize());
+            require(vultra::uiApi().text(uiFrame, "stale", 5) == VULTRA_STATUS_INVALID_FRAME,
+                    "UI ABI accepted a frame after upload");
         }
         // Destruction must save even though the normal ImGui autosave interval has not elapsed.
     }
@@ -89,10 +93,10 @@ namespace
 int main()
 try
 {
-    RunDirectory      directory;
-    vultra::Window    window("Shared application title", {640, 480});
-    vultra::Device    device;
-    vultra::GuiConfig config;
+    RunDirectory            directory;
+    vultra::Window          window("Shared application title", {640, 480});
+    vultra::Device          device;
+    vultra::EditorGuiConfig config;
     config.multiViewport = false;
     config.appName       = "app-a";
     const auto fileA     = directory.root / ".vultra/app-a/imgui.ini";
@@ -129,7 +133,7 @@ try
     require(readFile(customFile) == customSaved, "Disabled persistence overwrote the custom layout");
     config.iniFile = "disabled/layout.ini";
     {
-        vultra::Gui gui(device, window, VriFormat_BGRA8_UNORM, config);
+        vultra::EditorGui gui(device, window, VriFormat_BGRA8_UNORM, config);
         require(ImGui::GetIO().IniFilename == nullptr, "Disabled persistence still enables loading/saving");
     }
     require(!std::filesystem::exists("disabled"), "Disabled persistence created a directory");
@@ -140,7 +144,7 @@ try
     bool rejected  = false;
     try
     {
-        vultra::Gui gui(device, window, VriFormat_BGRA8_UNORM, config);
+        vultra::EditorGui gui(device, window, VriFormat_BGRA8_UNORM, config);
     }
     catch (const std::invalid_argument&)
     {
@@ -154,22 +158,22 @@ try
             "Unicode AppName did not save its layout");
     layoutSession(device, window, config, {45, 56}, true);
     {
-        vultra::Gui gui(device, window, VriFormat_BGRA8_UNORM, {.multiViewport = false, .persistLayout = false});
-        require(gui.theme() == vultra::GuiTheme::eUnreal, "Default GUI theme is not Unreal");
+        vultra::EditorGui gui(device, window, VriFormat_BGRA8_UNORM, {.multiViewport = false, .persistLayout = false});
+        require(gui.theme() == vultra::EditorGuiTheme::eUnreal, "Default GUI theme is not Unreal");
         require(std::abs(ImGui::GetStyle().Colors[ImGuiCol_WindowBg].x - 0.082f) < 0.001f,
                 "Unreal palette was not applied");
         ImGui::GetStyle().FramePadding = {11, 13};
-        gui.setTheme(vultra::GuiTheme::eLight);
-        gui.setTheme(vultra::GuiTheme::eUnreal);
-        gui.setTheme(vultra::GuiTheme::eDark);
+        gui.setTheme(vultra::EditorGuiTheme::eLight);
+        gui.setTheme(vultra::EditorGuiTheme::eUnreal);
+        gui.setTheme(vultra::EditorGuiTheme::eDark);
         require(ImGui::GetStyle().FramePadding.x == 11 && ImGui::GetStyle().FramePadding.y == 13,
                 "Theme switching reset custom layout spacing");
         require(ImGui::GetStyle().WindowRounding == ImGuiStyle().WindowRounding,
                 "Stock theme retained editor-theme rounding");
     }
     {
-        vultra::Gui gui(device, window, VriFormat_BGRA8_UNORM, {.persistLayout = false});
-        gui.setTheme(vultra::GuiTheme::eGodot);
+        vultra::EditorGui gui(device, window, VriFormat_BGRA8_UNORM, {.persistLayout = false});
+        gui.setTheme(vultra::EditorGuiTheme::eGodot);
         require(ImGui::GetStyle().WindowRounding == 0 && ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w == 1,
                 "Theme switching broke platform viewport styling");
     }

@@ -10,6 +10,6 @@ if ! command -v xmake >/dev/null 2>&1; then
     exit 1
 fi
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 project_dir=${1:-"$script_dir/.."}
 exec xmake lua "$script_dir/setup_vscode.lua" "$project_dir"

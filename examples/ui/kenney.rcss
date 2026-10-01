@@ -1,0 +1,198 @@
+#kenney-panel {
+    position: absolute;
+    top: 22px;
+    left: 50%;
+    margin-left: 354px;
+    width: 296px;
+    background-color: #1d2833ee;
+    border-color: #4b6a82;
+}
+#kenney-gallery {
+    height: 590px;
+    overflow-y: auto;
+}
+.kenney-section {
+    display: block;
+    margin: 14px 0 8px 0;
+    padding-top: 9px;
+    border-top: 1px #43586a;
+    color: #dce8f2;
+    font-size: 12px;
+}
+.kenney-actions {
+    height: 50px;
+}
+button.kenney-primary, button.kenney-round, button.kenney-square,
+button.kenney-success, button.kenney-disabled {
+    padding: 0;
+    color: #ffffff;
+    background-color: transparent;
+    border: 0;
+    font-size: 13px;
+    text-align: center;
+}
+button.kenney-primary {
+    width: 146px;
+    height: 49px;
+    line-height: 49px;
+    decorator: image("kenney/button_rectangle_flat.png");
+}
+button.kenney-round, button.kenney-square {
+    width: 48px;
+    height: 48px;
+    margin-left: 7px;
+    vertical-align: middle;
+}
+button.kenney-round {
+    decorator: image("kenney/arrow_basic_s_yellow.png" scale-none), image("kenney/button_round_flat.png");
+}
+button.kenney-square {
+    decorator: image("kenney/icon_checkmark.png" scale-none), image("kenney/button_square_flat.png");
+}
+.kenney-button-row {
+    height: 43px;
+    margin-top: 9px;
+}
+button.kenney-success, button.kenney-disabled {
+    width: 123px;
+    height: 41px;
+    line-height: 41px;
+}
+button.kenney-success {
+    decorator: image("kenney/button_rectangle_green.png");
+}
+button.kenney-disabled {
+    margin-left: 7px;
+    color: #596471;
+    decorator: image("kenney/button_rectangle_grey.png");
+}
+button.kenney-primary:hover, button.kenney-round:hover, button.kenney-square:hover,
+button.kenney-success:hover {
+    image-color: #d5ecff;
+}
+button.kenney-primary:active, button.kenney-round:active, button.kenney-square:active,
+button.kenney-success:active {
+    image-color: #a9cfe9;
+}
+.kenney-line {
+    display: block;
+    margin: 5px 0;
+    font-size: 12px;
+}
+.kenney-line span {
+    display: inline-block;
+    width: 215px;
+    vertical-align: middle;
+}
+input.checkbox.kenney-check, input.radio.kenney-radio {
+    width: 24px;
+    height: 24px;
+    background-color: transparent;
+    border: 0;
+    vertical-align: middle;
+}
+input.checkbox.kenney-check {
+    decorator: image("kenney/check_square_color.png");
+}
+input.checkbox.kenney-check:checked {
+    decorator: image("kenney/check_square_color_checkmark.png");
+}
+input.radio.kenney-radio {
+    decorator: image("kenney/check_round_color.png");
+}
+input.radio.kenney-radio:checked {
+    decorator: image("kenney/check_round_round_circle.png");
+}
+.kenney-subtitle, .kenney-label {
+    display: block;
+    margin: 9px 0 5px 0;
+    color: #b9d0e0;
+    font-size: 11px;
+}
+.kenney-choice {
+    display: inline-block;
+    width: 114px;
+    font-size: 12px;
+}
+input.range.kenney-range {
+    display: block;
+    width: 250px;
+    height: 20px;
+}
+input.range.kenney-range slidertrack {
+    height: 8px;
+    margin-top: 6px;
+    background-color: #4b6376;
+    border-radius: 4px;
+}
+/* RmlUi sizes progress to the knob's left edge; extend it beneath the knob. */
+input.range.kenney-range sliderprogress {
+    padding-right: 14px;
+    background-color: #24a4d6;
+    border-radius: 4px;
+}
+input.range.kenney-range sliderbar {
+    width: 14px;
+    height: 20px;
+    decorator: image("kenney/slide_hangle.png" contain);
+}
+select.kenney-select {
+    width: 250px;
+    background-color: #233544;
+    border-color: #61829a;
+}
+select.kenney-select selectvalue {
+    margin-right: 30px;
+}
+select.kenney-select selectarrow {
+    width: 30px;
+    height: 30px;
+    background-color: transparent;
+    border: 0;
+    decorator: image("kenney/arrow_basic_s_yellow_small.png" scale-none), image("kenney/button_square_flat.png");
+}
+select.kenney-select selectbox {
+    width: 248px;
+    background-color: #233544;
+    border-color: #61829a;
+}
+input.text.kenney-text {
+    width: 232px;
+    background-color: #233544;
+    border-color: #61829a;
+}
+progress.kenney-progress {
+    width: 250px;
+    height: 10px;
+    background-color: #4b6376;
+    border-radius: 5px;
+}
+progress.kenney-progress fill {
+    background-color: #24a4d6;
+    border-radius: 5px;
+}
+.kenney-stars {
+    display: block;
+    width: 250px;
+    height: 29px;
+    margin-top: 12px;
+}
+.kenney-stars img {
+    margin-right: 2px;
+    vertical-align: middle;
+}
+.kenney-stars span {
+    margin-left: 7px;
+    color: #b9d0e0;
+    font-size: 11px;
+    vertical-align: middle;
+}
+#kenney-status {
+    display: block;
+    margin-top: 9px;
+    padding: 7px 9px;
+    color: #dce8f2;
+    background-color: #283e50;
+    border-radius: 5px;
+    font-size: 11px;
+}

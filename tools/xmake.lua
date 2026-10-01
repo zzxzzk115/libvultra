@@ -1,7 +1,17 @@
 target("vultra-import")
     set_kind("binary")
     set_default(false)
-    add_deps("vultra-renderer")
+    add_deps("vultra")
     add_files("import_asset.cpp")
+    set_rundir("$(projectdir)")
+target_end()
+
+target("vultra-pack")
+    set_kind("binary")
+    -- Runtime embeds a pack in before_build, so this tool must finish first.
+    set_policy("build.fence", true)
+    set_default(false)
+    add_deps("vultra")
+    add_files("pack_project.cpp")
     set_rundir("$(projectdir)")
 target_end()

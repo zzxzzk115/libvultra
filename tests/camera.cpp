@@ -1,11 +1,11 @@
 #include "../examples/common/colored_mesh.hpp"
+#include "window_events.hpp"
 
-#include <vultra/function/app/imgui_app.hpp>
-#include <vultra/function/camera/fps_camera.hpp>
-#include <vultra/function/camera/orbit_camera.hpp>
-#include <vultra/function/research/capture.hpp>
+#include <vultra/main/app/imgui_app.hpp>
+#include <vultra/scene/camera/fps_camera.hpp>
+#include <vultra/scene/camera/orbit_camera.hpp>
+#include <vultra/servers/rendering/research/capture.hpp>
 
-#include <GLFW/glfw3.h>
 #include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
@@ -14,6 +14,9 @@
 
 namespace
 {
+    // Present initial frames before exact comparisons: Wayland negotiates surface size and scale asynchronously.
+    constexpr uint64_t kWarmupFrames = 4;
+
     void require(bool condition, const char* message)
     {
         if (!condition)
@@ -104,41 +107,34 @@ namespace
     {
     public:
         CameraApp() :
-            ImGuiApp({"Vultra - camera input test", {320, 240}}, {.persistLayout = false}),
-            m_Triangle(getDevice(), getSwapchain().format(), sample::kTriangleVertices, sample::kTriangleIndices)
+            ImGuiApp({"Vultra - camera input test", {640, 480}}, {.persistLayout = false}),
+            m_Triangle(getDevice(), getSwapchain().format(), sample::kTriangleVertices, sample::kTriangleIndices),
+            m_Events(getWindow())
         {
             m_Camera.yaw      = 0;
             m_Camera.pitch    = 0;
             m_Camera.distance = 3;
-            // Exercise the installed ImGui callback and its chain to Window, without OS input injection.
-            auto* handle = getWindow().handle();
-            m_Scroll     = glfwSetScrollCallback(handle, nullptr);
-            glfwSetScrollCallback(handle, m_Scroll);
-            // Script focus as well as input: other test windows may take the real desktop focus.
-            m_Focus = glfwSetWindowFocusCallback(handle, nullptr);
-            m_Focus(handle, GLFW_TRUE);
-            m_Key = glfwSetKeyCallback(handle, nullptr);
-            glfwSetKeyCallback(handle, m_Key);
+            m_Events.focus(true);
         }
 
     private:
         void onPreUpdate(float) override
         {
-            ImGui::SetNextFrameWantCaptureMouse(frameCount() == 3);
+            ImGui::SetNextFrameWantCaptureMouse(frameCount() == kWarmupFrames + 3);
         }
 
         void onPreRender() override
         {
             ImGuiApp::onPreRender();
             const auto& input = getWindow().input();
-            if (frameCount() == 1)
+            if (frameCount() == kWarmupFrames + 1)
             {
-                require(input.mouseScrollDelta().y == 2, "Window did not receive chained GLFW scroll events");
+                require(input.mouseScrollDelta().y == 2, "Window did not receive backend scroll events");
                 require(input.isKeyHeld(vultra::KeyCode::eW) && input.isKeyPressed(vultra::KeyCode::eW),
-                        "GLFW key translation or callback chaining failed");
+                        "Backend key translation or GUI event forwarding failed");
                 require(ImGui::GetIO().MouseWheel == 0, "Fixture must read after ImGui clears its wheel");
             }
-            m_Camera.update(input, getWindow().size(), getGui().inputCapture());
+            m_Camera.update(input, getWindow().size(), getEditorGui().inputCapture());
         }
 
         void onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
@@ -147,59 +143,65 @@ namespace
             const auto matrix = camera.projection * camera.view;
             std::copy_n(glm::value_ptr(matrix), 16, m_Triangle.parameters.transform.begin());
             const float clear[4] {0, 0, 0, 1};
+            target.transition(
+                cmd,
+                {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
             m_Triangle.draw(cmd, target, clear);
         }
 
         void onPostRender(vultra::Texture& target) override
         {
-            const auto image  = vultra::readback(getDevice(), target);
-            size_t     pixels = 0;
+            if (frameCount() < kWarmupFrames)
+            {
+                return;
+            }
+            const auto testFrame = frameCount() - kWarmupFrames;
+            const auto image     = vultra::readback(getDevice(), target);
+            size_t     pixels    = 0;
             for (size_t i = 0; i < image.rgba.size(); i += 4)
             {
                 pixels += image.rgba[i] + image.rgba[i + 1] + image.rgba[i + 2] > 0.1f;
             }
-            if (frameCount() == 0)
+            if (testFrame == 0)
             {
                 require(pixels > 100, "Camera fixture is not visible");
                 m_BaselinePixels = pixels;
-                m_Scroll(getWindow().handle(), 0, 0.5);
-                m_Scroll(getWindow().handle(), 0, 1.5);
-                m_Key(getWindow().handle(), GLFW_KEY_W, 0, GLFW_PRESS, 0);
+                m_Events.scroll(0.5f);
+                m_Events.scroll(1.5f);
+                m_Events.pressForward();
             }
-            else if (frameCount() == 1)
+            else if (testFrame == 1)
             {
                 require(pixels > m_BaselinePixels * 1.4f, "Wheel zoom did not enlarge the rendered model");
                 m_Zoomed = image;
             }
-            else if (frameCount() == 2)
+            else if (testFrame == 2)
             {
                 require(image.rgba == m_Zoomed.rgba, "Wheel input repeated without another event");
-                m_Scroll(getWindow().handle(), 0, -2);
+                m_Events.scroll(-2);
             }
-            else if (frameCount() == 3)
+            else if (testFrame == 3)
             {
                 require(image.rgba == m_Zoomed.rgba, "Captured UI scroll changed the rendered model");
-                m_Scroll(getWindow().handle(), 0, -2);
+                m_Events.scroll(-2);
             }
-            else if (frameCount() == 4)
+            else if (testFrame == 4)
             {
                 require(pixels == m_BaselinePixels, "Opposite wheel input did not restore the framing");
-                m_Focus(getWindow().handle(), GLFW_FALSE);
-                m_Scroll(getWindow().handle(), 0, 2);
+                m_Events.focus(false);
+                m_Events.scroll(2);
             }
-            else if (frameCount() == 5)
+            else if (testFrame == 5)
             {
                 require(!getWindow().input().focused() && getWindow().input().isKeyReleased(vultra::KeyCode::eW),
-                        "GLFW focus callback failed to release held keys");
+                        "Backend focus event failed to release held keys");
                 require(pixels == m_BaselinePixels, "An unfocused window moved the camera");
             }
         }
 
         vultra::OrbitCamera m_Camera;
         sample::ColoredMesh m_Triangle;
-        GLFWscrollfun       m_Scroll         = nullptr;
-        GLFWwindowfocusfun  m_Focus          = nullptr;
-        GLFWkeyfun          m_Key            = nullptr;
+        test::WindowEvents  m_Events;
         size_t              m_BaselinePixels = 0;
         vultra::Image       m_Zoomed;
     };
@@ -210,10 +212,10 @@ try
 {
     inputAndControllers();
     CameraApp app;
-    app.run(6);
-    require(app.frameCount() == 6, "Camera regression did not complete every frame");
-    std::cout
-        << "Camera tests passed: window input, GLFW/ImGui chaining, orbit/pan/zoom, FPS, focus, UI capture, GPU zoom\n";
+    app.run(kWarmupFrames + 6);
+    require(app.frameCount() == kWarmupFrames + 6, "Camera regression did not complete every frame");
+    std::cout << "Camera tests passed: window input, backend/ImGui event forwarding, orbit/pan/zoom, FPS, focus, UI "
+                 "capture, GPU zoom\n";
     return 0;
 }
 catch (const std::exception& error)

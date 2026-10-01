@@ -2,10 +2,8 @@
 
 #include <vultra/core/base/command_line.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/function/app/desktop_app.hpp>
-#include <vultra/function/research/capture.hpp>
-
-#include <GLFW/glfw3.h>
+#include <vultra/main/app/desktop_app.hpp>
+#include <vultra/servers/rendering/research/capture.hpp>
 
 #include <filesystem>
 #include <optional>

@@ -85,18 +85,19 @@ namespace sample
             auto*      desktopTarget = m_Desktop.acquire();
             const auto renderStart   = std::chrono::steady_clock::now();
             m_Gui.begin();
-            ImGui::SetNextWindowSize({370, 200}, ImGuiCond_FirstUseEver);
-            ImGui::Begin("OpenXR Mirror");
-            ImGui::Text("Runtime: %s", runtime.runtimeName);
-            ImGui::Text("Eye format: %s", srgb ? "sRGB (hardware encode)" : "UNORM (linear)");
-            ImGui::TextUnformatted("Left eye | Right eye; aspect ratio preserved");
-            ImGui::Text("Status: %s", frame.shouldRender ? "Rendering" : "Waiting for active views");
-            ImGui::Text("Submitted eye frames: %llu", static_cast<unsigned long long>(eyeFrames));
+            auto ui = m_Gui.frame();
+            ui.setNextWindowSize({370, 200}, ImGuiCond_FirstUseEver);
+            ui.beginWindow("OpenXR Mirror");
+            ui.text("Runtime: %s", runtime.runtimeName);
+            ui.text("Eye format: %s", srgb ? "sRGB (hardware encode)" : "UNORM (linear)");
+            ui.textUnformatted("Left eye | Right eye; aspect ratio preserved");
+            ui.text("Status: %s", frame.shouldRender ? "Rendering" : "Waiting for active views");
+            ui.text("Submitted eye frames: %llu", static_cast<unsigned long long>(eyeFrames));
             for (const auto& timing : m_Profiler.timings())
             {
-                ImGui::Text("%s: %.3f ms", timing.name.c_str(), timing.gpuMs);
+                ui.text("%s: %.3f ms", timing.name.c_str(), timing.gpuMs);
             }
-            ImGui::End();
+            ui.endWindow();
             onImGui();
             m_Gui.upload(m_Desktop.size());
             onPreRender();

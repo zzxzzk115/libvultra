@@ -1,7 +1,8 @@
+#include <vultra/assets/asset_pipeline.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/function/asset/asset_pipeline.hpp>
-#include <vultra/function/renderer/texture_blit.hpp>
-#include <vultra/function/research/capture.hpp>
+#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/servers/rendering/scene.hpp>
+#include <vultra/servers/rendering/texture_blit.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -200,10 +201,10 @@ Connections: {
         })");
         const auto parallel = vultra::loadGltf(root / "dds.gltf", {}, 4);
         const auto serial   = vultra::loadGltf(root / "dds.gltf", {}, 1);
-        require(parallel.images.size() == 2 && parallel.materials[0].baseColorImage == 1,
+        require(parallel.images.size() == 2 && parallel.materials[0].baseColorTexture.image == 1,
                 "Required MSFT_texture_dds source was not selected");
         const auto& material = parallel.materials[0];
-        require(material.specularImage == 1 && material.specularColorImage == 1 &&
+        require(material.specularTexture.image == 1 && material.specularColorTexture.image == 1 &&
                     material.specularColor == glm::vec3(0.2f, 0.4f, 0.8f) && material.specularWeight == 0.7f &&
                     material.alphaCutoff == 0.5f,
                 "Specular extension or documented opaque coverage mapping was lost");
@@ -212,13 +213,14 @@ Connections: {
         const auto cold        = vultra::importAsset(root / "dds.gltf", options);
         const auto warm        = vultra::importAsset(root / "dds.gltf", options);
         require(!cold.cacheHit && warm.cacheHit && cold.textures.materials == warm.textures.materials &&
-                    warm.scene.materials[0].specularImage == 1 && warm.scene.materials[0].specularColorImage == 1 &&
+                    warm.scene.materials[0].specularTexture.image == 1 &&
+                    warm.scene.materials[0].specularColorTexture.image == 1 &&
                     warm.scene.materials[0].alphaCutoff == 0.5f,
                 "Cache lost specular slots or alpha-mask coverage");
         const auto& slots = warm.textures.materials[0];
         require(slots[0] == slots[6] && slots[5] != slots[6] &&
-                    warm.textures.images[slots[5]].format == VriFormat_BC1_UNORM &&
-                    warm.textures.images[slots[6]].format == VriFormat_RGBA8_SRGB,
+                    warm.textures.images[slots[5]].format == vultra::TextureFormat::eBc1Unorm &&
+                    warm.textures.images[slots[6]].format == vultra::TextureFormat::eRgba8Srgb,
                 "Specular color/weight texture reuse ignored material color space");
         for (size_t i = 0; i < parallel.images.size(); ++i)
         {
@@ -256,7 +258,7 @@ Connections: {
         write(root / "color.dds", dds(true));
     }
 
-    void sameScene(const vultra::Scene& a, const vultra::Scene& b)
+    void sameScene(const vultra::SceneData& a, const vultra::SceneData& b)
     {
         require(a.vertices.size() == b.vertices.size() && a.indices == b.indices && a.center == b.center &&
                     a.radius == b.radius,
@@ -273,13 +275,13 @@ Connections: {
 int main()
 try
 {
-    const auto root = std::filesystem::path("build/.tmp/asset-formats") /
+    const auto root = std::filesystem::path("build/.tmp/asset-formats") / u8"assets é" /
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root);
     const auto colorPath = root / "color.dds";
     write(colorPath, dds(true));
     const auto color = vultra::loadDds(colorPath);
-    require(color.format == VriFormat_RGBA8_SRGB && color.levels.size() == 3 &&
+    require(color.format == vultra::TextureFormat::eRgba8Srgb && color.levels.size() == 3 &&
                 color.levels[2].size == vultra::Extent {1, 1},
             "sRGB DDS lost its authored mips or hardware sRGB format");
     sampleDds(color, true, 132.0f / 255);
@@ -294,11 +296,12 @@ try
     const auto sourceImage = vultra::loadSceneImage(colorPath);
     require(sourceImage.pixels.empty() && sourceImage.dds == dds(true), "DDS source bytes were decoded prematurely");
     const auto linear = vultra::prepareTexture(sourceImage, false);
-    require(linear.format == VriFormat_BC1_UNORM && linear.levels[0].bytes.size() == 8,
+    require(linear.format == vultra::TextureFormat::eBc1Unorm && linear.levels[0].bytes.size() == 8,
             "Linear DDS lost native blocks");
     sampleDds(linear, false, 132.0f / 255);
     const auto plain = vultra::prepareTexture(sourceImage, false, {.compression = vultra::TextureCompression::eNone});
-    require(plain.format == VriFormat_RGBA8_UNORM && plain.levels.size() == 3, "DDS ignored uncompressed import");
+    require(plain.format == vultra::TextureFormat::eRgba8Unorm && plain.levels.size() == 3,
+            "DDS ignored uncompressed import");
     auto           bc5       = dds(false);
     const uint32_t bc5Format = 83;
     std::memcpy(bc5.data() + 32 * sizeof(uint32_t), &bc5Format, sizeof(bc5Format));
@@ -312,7 +315,7 @@ try
     const auto normal = vultra::prepareTexture(vultra::loadSceneImage(root / "normal.dds"),
                                                false,
                                                {.compression = vultra::TextureCompression::eNone});
-    require(normal.format == VriFormat_RG8_UNORM && normal.levels.size() == 3 &&
+    require(normal.format == vultra::TextureFormat::eRg8Unorm && normal.levels.size() == 3 &&
                 normal.levels[0].bytes == std::vector<std::byte>(4 * 4 * 2, std::byte(128)),
             "Decompressed BC5 lost its two-channel normal representation");
     require(vultra::prepareTexture(sourceImage, true, {.mipmaps = false}).levels.size() == 1, "DDS ignored mip option");
@@ -344,7 +347,7 @@ try
     const auto embedded = vultra::loadFbx("tests/fixtures/embedded_dds.fbx", {}, 4);
     require(embedded.indices.size() == 3 && embedded.images.size() == 1 && !embedded.images[0].dds.empty(),
             "Binary FBX embedded DDS image was not loaded");
-    require(vultra::prepareTexture(embedded.images[0], true).format == VriFormat_RGBA8_SRGB,
+    require(vultra::prepareTexture(embedded.images[0], true).format == vultra::TextureFormat::eRgba8Srgb,
             "Embedded DDS lost its sRGB interpretation");
     const auto model = root / "model.fbx";
     writeText(model, kFbx);
@@ -357,7 +360,7 @@ try
     {
         require(vertex.normal == glm::vec3(0, 0, 1), "Mirrored FBX winding or generated normals are wrong");
     }
-    require(parallel.images.size() == 1 && parallel.materials[0].baseColorImage == 0,
+    require(parallel.images.size() == 1 && parallel.materials[0].baseColorTexture.image == 0,
             "FBX texture assignment was lost");
     vultra::AssetImportOptions options;
     options.cacheDirectory = root / "cache";

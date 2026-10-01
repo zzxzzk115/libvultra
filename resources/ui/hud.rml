@@ -1,0 +1,18 @@
+<rml>
+<head>
+    <title>Vultra Game UI</title>
+    <link type="text/rcss" href="hud.rcss" />
+</head>
+<body>
+    <div id="hud" class="vgui-panel">
+        <div class="vgui-title">Display</div>
+        <div class="panel-description">Damaged Helmet</div>
+        <label class="vgui-row control-row">
+            <span>Skybox</span>
+            <input id="toggle-skybox" type="checkbox" checked="true" />
+        </label>
+        <div id="status">Skybox enabled</div>
+        <div class="hint">Drag to orbit · Scroll to zoom<br/>F1 opens the debug overlay</div>
+    </div>
+</body>
+</rml>

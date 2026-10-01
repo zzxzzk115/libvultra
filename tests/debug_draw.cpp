@@ -1,9 +1,9 @@
 #include "../examples/common/debug_lines.hpp"
 
-#include <vultra/function/camera/fps_camera.hpp>
-#include <vultra/function/camera/orbit_camera.hpp>
-#include <vultra/function/renderer/builtin/builtin_renderer.hpp>
-#include <vultra/function/research/capture.hpp>
+#include <vultra/scene/camera/fps_camera.hpp>
+#include <vultra/scene/camera/orbit_camera.hpp>
+#include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
+#include <vultra/servers/rendering/research/capture.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -45,16 +45,16 @@ namespace
         return count;
     }
 
-    void verifyFarClipping(vultra::Device& device, const vultra::Scene& scene)
+    void verifyFarClipping(vultra::Device& device, const vultra::SceneData& scene)
     {
         const auto           lines  = sample::makeDebugLines(scene);
         const float          radius = lines.boundingRadius(scene.center);
         sample::ColoredMesh  debug(device,
-                                  VriFormat_RGBA8_UNORM,
-                                  lines.vertices,
-                                  lines.indices,
-                                  VriPrimitiveTopology_LineList,
-                                  true);
+                                   VriFormat_RGBA8_UNORM,
+                                   lines.vertices,
+                                   lines.indices,
+                                   VriPrimitiveTopology_LineList,
+                                   true);
         vultra::RenderGraph  graph(device);
         const vultra::Extent size {256, 192};
         const auto           color = graph.createTexture("color", vultra::colorTexture(size));
@@ -160,7 +160,7 @@ try
 {
     vultra::Device      device;
     vultra::Environment environment(device);
-    vultra::Scene       scene;
+    vultra::SceneData   scene;
     scene.vertices   = {{{-0.5f, -0.75f, -2}, {0, 0, 1}, {0, 0}},
                         {{0.5f, -0.75f, -2}, {0, 0, 1}, {1, 0}},
                         {{0.5f, 0.75f, -2}, {0, 0, 1}, {1, 1}},
@@ -172,6 +172,7 @@ try
     scene.radius = 1;
     vultra::GpuScene        gpu(device, scene);
     vultra::BuiltinRenderer renderer(device, gpu, environment);
+    renderer.settings.path             = vultra::RenderPath::eNaiveForward;
     renderer.settings.skybox           = false;
     renderer.settings.shadowResolution = 32;
     sample::Lines lines;
@@ -187,11 +188,11 @@ try
     sample::Lines       probeLine;
     probeLine.line({-0.9f, 0.4f, -1.5f}, {0.9f, 0.4f, -1.5f}, {1, 0, 1});
     sample::ColoredMesh        probe(device,
-                              VriFormat_RGBA8_UNORM,
-                              probeLine.vertices,
-                              probeLine.indices,
-                              VriPrimitiveTopology_LineList,
-                              true);
+                                     VriFormat_RGBA8_UNORM,
+                                     probeLine.vertices,
+                                     probeLine.indices,
+                                     VriPrimitiveTopology_LineList,
+                                     true);
     const vultra::RenderCamera camera {glm::mat4(1), glm::orthoRH_ZO(-1.0f, 1.0f, -1.0f, 1.0f, 0.1f, 10.0f), 0.1f, 10};
     std::copy_n(glm::value_ptr(camera.projection), 16, debug.parameters.transform.begin());
     probe.parameters = debug.parameters;

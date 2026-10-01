@@ -1,5 +1,5 @@
-#include <vultra/function/renderer/builtin/builtin_renderer.hpp>
-#include <vultra/function/research/capture.hpp>
+#include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
+#include <vultra/servers/rendering/research/capture.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
@@ -18,15 +18,15 @@ namespace
         }
     }
 
-    vultra::Scene makeScene()
+    vultra::SceneData makeScene()
     {
-        vultra::Scene scene;
+        vultra::SceneData scene;
         scene.materials.resize(2);
         scene.materials[0].baseColor = {0.8f, 0.2f, 0.1f, 1};
         scene.materials[1].baseColor = {0.1f, 0.3f, 0.8f, 1};
         scene.images = {{2, 2, {200, 128, 240, 255, 150, 180, 240, 255, 180, 100, 240, 255, 128, 128, 255, 255}}};
-        scene.materials[0].normalImage = 0;
-        scene.materials[1].normalImage = 0;
+        scene.materials[0].normalTexture.image = 0;
+        scene.materials[1].normalTexture.image = 0;
         for (uint32_t material = 0; material < 2; ++material)
         {
             const auto first = uint32_t(scene.indices.size());
@@ -59,7 +59,7 @@ namespace
         return triangle;
     }
 
-    void verifyClusters(const vultra::Scene& scene)
+    void verifyClusters(const vultra::SceneData& scene)
     {
         const auto parallel = vultra::buildMeshlets(scene, 4);
         const auto serial   = vultra::buildMeshlets(scene, 1);
@@ -119,7 +119,7 @@ namespace
 
     void verifyPalette(vultra::Device& device, vultra::Environment& environment)
     {
-        vultra::Scene scene;
+        vultra::SceneData scene;
         scene.materials.resize(2);
         for (uint32_t i = 0; i < 2; ++i)
         {
@@ -143,6 +143,7 @@ namespace
         for (const auto format : {VriFormat_RGBA8_UNORM, VriFormat_RGBA16_SFLOAT})
         {
             vultra::BuiltinRenderer renderer(device, gpu, environment, format);
+            renderer.settings.path             = vultra::RenderPath::eNaiveForward;
             renderer.settings.meshShading      = true;
             renderer.settings.meshletColors    = true;
             renderer.settings.shadowResolution = 64;
@@ -181,12 +182,13 @@ namespace
         }
     }
 
-    void verifyGpu(const vultra::Scene& scene)
+    void verifyGpu(const vultra::SceneData& scene)
     {
         vultra::Device          device(true, nullptr, VriFeature_MeshShader);
         vultra::Environment     environment(device);
         vultra::GpuScene        gpu(device, scene, true, 4);
         vultra::BuiltinRenderer renderer(device, gpu, environment);
+        renderer.settings.path             = vultra::RenderPath::eNaiveForward;
         renderer.settings.skybox           = false;
         renderer.settings.shadowResolution = 64;
         vultra::RenderGraph graph(device);

@@ -1,0 +1,111 @@
+<rml>
+<head>
+    <title>Vultra UI Showcase</title>
+    <link type="text/rcss" href="showcase.rcss" />
+    <link type="text/rcss" href="kenney.rcss" />
+</head>
+<body>
+    <div id="game-panel" class="vgui-panel">
+        <div class="vgui-title">VGui controls</div>
+        <div class="panel-description">Render settings</div>
+        <label class="vgui-row control-row">
+            <span>Show render target</span>
+            <input id="preview-toggle" type="checkbox" checked="true" />
+        </label>
+        <label class="vgui-row control-row">
+            <span>Warm tint</span>
+            <input id="tint-toggle" type="checkbox" />
+        </label>
+        <button id="save-image">Save render target PNG</button>
+        <div id="preview-state">Preview visible</div>
+        <div class="section-title">Controls</div>
+        <div id="component-gallery">
+            <div class="component-label">Building blocks</div>
+            <div class="graphic-strip">
+                <div class="vgui-surface graphic-surface">Panel</div>
+                <div class="vgui-disc"></div>
+                <div class="vgui-outline"></div>
+                <span class="vgui-badge">Active</span>
+                <button class="vgui-icon-button" title="Add"></button>
+            </div>
+            <div class="vgui-divider"></div>
+            <div class="component-label">Toggle and radio</div>
+            <label class="component-line"><input type="checkbox" checked="true" /> Enabled</label>
+            <label class="component-line"><input type="radio" name="quality" checked="true" /> Quality A</label>
+            <label class="component-line"><input type="radio" name="quality" /> Quality B</label>
+            <div class="component-label">Slider: <span id="sample-volume-value">64</span></div>
+            <input id="sample-volume" type="range" min="0" max="100" value="64" />
+            <div class="component-label">Dropdown: <span id="sample-quality-value">high</span></div>
+            <select id="sample-quality">
+                <option value="high" selected="true">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+            </select>
+            <div class="component-label">Text input</div>
+            <input type="text" value="Player One" />
+            <div class="component-label">Password</div>
+            <input type="password" value="sample" />
+            <div class="component-label">Text area</div>
+            <textarea>Field notes</textarea>
+            <div class="component-label">Progress</div>
+            <progress value="64" max="100" />
+            <div class="component-label">Button states</div>
+            <button disabled="true">Unavailable</button>
+        </div>
+    </div>
+    <div id="kenney-panel" class="vgui-panel">
+        <div class="vgui-title">Kenney game UI</div>
+        <div class="panel-description">Texture skin · interactive sample</div>
+        <div id="kenney-gallery">
+            <div class="kenney-section">Actions</div>
+            <div class="kenney-actions">
+                <button id="kenney-play" class="kenney-primary">Play</button>
+                <button id="kenney-next" class="kenney-round" title="Next"></button>
+                <button id="kenney-apply" class="kenney-square" title="Apply"></button>
+            </div>
+            <div class="kenney-button-row">
+                <button id="kenney-save" class="kenney-success">Save</button>
+                <button class="kenney-disabled" disabled="true">Locked</button>
+            </div>
+            <div class="kenney-section">Settings</div>
+            <label class="kenney-line">
+                <span>Music</span>
+                <input id="kenney-music" class="kenney-check" type="checkbox" checked="true" />
+            </label>
+            <label class="kenney-line">
+                <span>Effects</span>
+                <input id="kenney-effects" class="kenney-check" type="checkbox" />
+            </label>
+            <div class="kenney-subtitle">Difficulty</div>
+            <label class="kenney-choice">
+                <input id="kenney-normal" class="kenney-radio" type="radio" name="kenney-difficulty" checked="true" /> Normal
+            </label>
+            <label class="kenney-choice">
+                <input id="kenney-hard" class="kenney-radio" type="radio" name="kenney-difficulty" /> Hard
+            </label>
+            <div class="kenney-label">Volume <span id="kenney-volume-value">60</span></div>
+            <input id="kenney-volume" class="kenney-range" type="range" min="0" max="100" value="60" />
+            <div class="kenney-label">Resolution</div>
+            <select id="kenney-resolution" class="kenney-select">
+                <option value="1080p" selected="true">1920 x 1080</option>
+                <option value="1440p">2560 x 1440</option>
+                <option value="4k">3840 x 2160</option>
+            </select>
+            <div class="kenney-section">Profile</div>
+            <div class="kenney-label">Player name</div>
+            <input id="kenney-player" class="kenney-text" type="text" value="Player One" />
+            <div class="kenney-label">Level progress · 68%</div>
+            <progress class="kenney-progress" value="68" max="100"></progress>
+            <div class="kenney-stars">
+                <img src="kenney/star.png" width="26" height="24" />
+                <img src="kenney/star.png" width="26" height="24" />
+                <img src="kenney/star.png" width="26" height="24" />
+                <img src="kenney/star_outline.png" width="26" height="24" />
+                <img src="kenney/star_outline.png" width="26" height="24" />
+                <span>3 / 5 stars</span>
+            </div>
+        </div>
+        <div id="kenney-status">Ready to play</div>
+    </div>
+</body>
+</rml>

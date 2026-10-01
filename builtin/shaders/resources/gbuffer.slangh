@@ -1,0 +1,9 @@
+#pragma once
+
+[[vk::binding(12, 0)]] Texture2D<float4> gbufferPositionMetallic;
+[[vk::binding(13, 0)]] Texture2D<float4> gbufferNormalRoughness;
+[[vk::binding(14, 0)]] Texture2D<float4> gbufferAlbedoWeight;
+[[vk::binding(15, 0)]] Texture2D<float4> gbufferEmissionOcclusion;
+[[vk::binding(16, 0)]] Texture2D<float4> gbufferSpecular;
+[[vk::binding(17, 0)]] Texture2D<float4> gbufferGeometricNormalIor;
+[[vk::binding(18, 0)]] Texture2D<float4> gbufferCoat;

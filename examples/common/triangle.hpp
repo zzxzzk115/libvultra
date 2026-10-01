@@ -1,6 +1,6 @@
 #pragma once
-#include <vultra/core/rhi/resources.hpp>
-#include <vultra/core/rhi/shader_pipeline.hpp>
+#include <vultra/drivers/rhi/resources.hpp>
+#include <vultra/drivers/rhi/shader_pipeline.hpp>
 
 #include <array>
 
@@ -15,18 +15,19 @@ struct Triangle
     {
         std::array<float, 16> transform {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
         float                 tint[4] {1, 1, 1, 1};
-        // Example colors are authored in sRGB. XR attachments need linear shader output.
-        uint32_t decodeSrgb = 0;
+        // Encode linear colors for display UNORM; XR always leaves this disabled.
+        uint32_t encodeSrgb = 0;
         uint32_t padding[3] {};
     } parameters;
 
     Triangle(vultra::Device&                           d,
              VriFormat                                 format,
              const std::filesystem::path&              shader,
-             const std::filesystem::path&              watchDirectory     = {},
-             const std::vector<std::filesystem::path>& includeDirectories = {}) :
+             const std::filesystem::path&              watchDirectory     = "examples",
+             const std::vector<std::filesystem::path>& includeDirectories = {"builtin/shaders", "examples/common"}) :
         device(d)
     {
+        parameters.encodeSrgb = format == VriFormat_RGBA8_UNORM || format == VriFormat_BGRA8_UNORM ? 1u : 0u;
         VriPushConstantDesc   push {0, sizeof(Parameters), VriShaderStage_Vertex | VriShaderStage_Fragment};
         VriPipelineLayoutDesc ld {};
         ld.pushConstants   = &push;

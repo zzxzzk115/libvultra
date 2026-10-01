@@ -1,15 +1,15 @@
 #pragma once
 
-#include <vultra/function/renderer/scene.hpp>
+#include <vultra/servers/rendering/scene.hpp>
 
 #include <cmath>
 #include <numbers>
 
 namespace sample
 {
-    inline vultra::Scene makeMaterialScene()
+    inline vultra::SceneData makeMaterialScene()
     {
-        vultra::Scene           scene;
+        vultra::SceneData       scene;
         vultra::SurfaceMaterial ground;
         ground.baseColor         = {0.45f, 0.45f, 0.45f, 1};
         ground.specularRoughness = 0.65f;

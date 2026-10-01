@@ -2,7 +2,7 @@
 
 bool meshletInsideFrustum(float4 sphere, float4x4 viewProjection)
 {
-    // Vulkan clip volume: -w <= x,y <= w and 0 <= z <= w.
+    // VRI clip volume: -w <= x,y <= w and 0 <= z <= w (Y points up).
     float4 planes[6] = {viewProjection[3] + viewProjection[0], viewProjection[3] - viewProjection[0],
                         viewProjection[3] + viewProjection[1], viewProjection[3] - viewProjection[1],
                         viewProjection[2], viewProjection[3] - viewProjection[2]};

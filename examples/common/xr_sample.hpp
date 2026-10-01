@@ -2,10 +2,10 @@
 
 #include "sample.hpp"
 
-#include <vultra/core/profiling/profiler.hpp>
-#include <vultra/function/openxr/openxr.hpp>
-#include <vultra/function/renderer/gui.hpp>
-#include <vultra/function/renderer/texture_blit.hpp>
+#include <vultra/drivers/openxr/openxr.hpp>
+#include <vultra/drivers/profiling/profiler.hpp>
+#include <vultra/servers/rendering/texture_blit.hpp>
+#include <vultra/ui/editor_gui.hpp>
 
 namespace sample
 {
@@ -28,7 +28,7 @@ namespace sample
             return m_Window;
         }
 
-        vultra::Gui& gui()
+        vultra::EditorGui& gui()
         {
             return m_Gui;
         }
@@ -51,7 +51,7 @@ namespace sample
         vultra::Swapchain     m_Desktop;
         vultra::Frame         m_Commands;
         vultra::TextureBlit   m_Mirror;
-        vultra::Gui           m_Gui;
+        vultra::EditorGui     m_Gui;
         vultra::Profiler      m_Profiler;
         vultra::Profiler      m_FrameProfiler;
     };

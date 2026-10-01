@@ -31,8 +31,17 @@ target("example-research")
     set_kind("binary")
     set_default(true)
     add_deps("vultra")
+    add_deps("asset-damaged-helmet", {inherit = false})
     add_files("research/main.cpp")
     set_rundir("$(projectdir)")
+target_end()
+
+target("example-native-plugin")
+    set_kind("shared")
+    set_default(false)
+    set_languages("c11")
+    add_includedirs("../source/api/include")
+    add_files("ui/native_plugin.c")
 target_end()
 
 target("example-common")
@@ -42,34 +51,44 @@ target("example-common")
     add_files("common/colored_mesh.cpp")
 target_end()
 
-local samples = {
-    {"window", "window/main.cpp"},
-    {"rhi-triangle", "rhi/triangle/main.cpp"},
-    {"imgui", "imgui/main.cpp"},
-    {"rendergraph-triangle", "render_graph/triangle/main.cpp"},
-    {"debugdraw", "debug_draw/main.cpp"},
-    {"meshshading-triangle", "mesh_shading/triangle/main.cpp"}
-}
-for _, sample in ipairs(samples) do
-    target("example-" .. sample[1])
-        set_kind("binary")
-        set_default(true)
-        add_deps("example-common")
-        add_files(sample[2])
-        if sample[1] == "debugdraw" then
-            add_deps("vultra-renderer")
-            add_deps("asset-damaged-helmet", {inherit = false})
-        end
-        set_rundir("$(projectdir)")
-    target_end()
-end
-
-target("example-gltf-viewer")
+target("example-basics")
     set_kind("binary")
     set_default(true)
-    add_deps("vultra-renderer", "example-common")
-    add_deps("asset-damaged-helmet", {inherit = false})
-    add_files("gltf_viewer/main.cpp")
+    add_deps("example-common")
+    add_files("basics/*.cpp")
+    set_rundir("$(projectdir)")
+target_end()
+
+target("example-ui")
+    set_kind("binary")
+    set_default(true)
+    add_deps("example-common", "vultra-vgui")
+    add_files("ui/main.cpp")
+    set_rundir("$(projectdir)")
+target_end()
+
+target("example-scene")
+    set_kind("binary")
+    set_default(true)
+    add_deps("vultra", "example-common")
+    add_deps("asset-damaged-helmet", "asset-sponza", {inherit = false})
+    add_files("scene/*.cpp")
+    set_rundir("$(projectdir)")
+target_end()
+
+target("example-ray-common")
+    set_kind("static")
+    set_default(false)
+    add_deps("vultra", {public = true})
+    add_files("common/ray_scene.cpp", "common/ray_tracing_app.cpp")
+target_end()
+
+target("example-ray")
+    set_kind("binary")
+    set_default(true)
+    add_deps("example-ray-common")
+    add_deps("asset-rayquery", "asset-cornell-box", {inherit = false})
+    add_files("ray/*.cpp")
     set_rundir("$(projectdir)")
 target_end()
 
@@ -80,66 +99,37 @@ if has_config("libvultra_with_openxr") then
         add_deps("vultra", {public = true})
         add_files("common/xr_sample.cpp")
     target_end()
-    target("example-openxr-sponza")
+
+    target("example-xr")
         set_kind("binary")
         set_default(true)
-        add_deps("example-xr-common", "vultra-renderer")
+        add_deps("example-xr-common", "vultra")
         add_deps("asset-sponza", {inherit = false})
-        add_files("xr/sponza/main.cpp")
-        set_rundir("$(projectdir)")
-    target_end()
-    target("example-openxr-triangle")
-        set_kind("binary")
-        set_default(true)
-        add_deps("example-xr-common")
-        add_files("xr/main.cpp")
+        add_files("xr/*.cpp")
         set_rundir("$(projectdir)")
     target_end()
 end
 
-target("example-sponza")
-    set_kind("binary")
-    set_default(true)
-    add_deps("vultra-renderer", "example-common")
-    add_deps("asset-sponza", {inherit = false})
-    add_files("sponza/main.cpp")
-    set_rundir("$(projectdir)")
-target_end()
-
-target("example-meshshading-sponza")
-    set_kind("binary")
-    set_default(true)
-    add_deps("vultra-renderer", "example-common")
-    add_deps("asset-sponza", {inherit = false})
-    add_files("mesh_shading/sponza/main.cpp")
-    set_rundir("$(projectdir)")
-target_end()
-
-target("example-ray-common")
-    set_kind("static")
+target("example-native-cpp-plugin")
+    set_kind("shared")
     set_default(false)
-    add_deps("vultra-renderer", {public = true})
-    add_files("common/ray_scene.cpp", "common/ray_tracing_app.cpp")
+    add_includedirs("../source/api/include", "../source/scripting/include")
+    add_files("scripting/native_cpp.cpp")
 target_end()
 
-target("example-rayquery")
+target("example-scripting")
     set_kind("binary")
-    set_default(true)
-    add_deps("example-ray-common")
-    add_deps("asset-rayquery", {inherit = false})
-    add_files("ray_query/main.cpp")
+    set_default(false)
+    add_deps("example-common", "vultra-scripting")
+    add_deps("example-native-cpp-plugin", "example-native-plugin", {inherit = false})
+    add_files("scripting/main.cpp")
     set_rundir("$(projectdir)")
+    before_build(function ()
+        local output = path.join(os.projectdir(), "build", ".tmp", "scripting-managed")
+        os.mkdir(output)
+        os.execv("dotnet", {"build", path.join(os.projectdir(), "source", "scripting", "managed", "Vultra.ManagedHost.csproj"),
+            "-c", "Release", "-o", output})
+        os.execv("dotnet", {"build", path.join(os.projectdir(), "examples", "scripting", "csharp", "VultraScript.csproj"),
+            "-c", "Release", "-o", output})
+    end)
 target_end()
-
-for _, sample in ipairs({{"triangle", "triangle"}, {"cornell-box", "cornell_box"}}) do
-    target("example-raytracing-" .. sample[1])
-        set_kind("binary")
-        set_default(true)
-        add_deps("example-ray-common")
-        if sample[1] == "cornell-box" then
-            add_deps("asset-cornell-box", {inherit = false})
-        end
-        add_files("ray_tracing/" .. sample[2] .. "/main.cpp")
-        set_rundir("$(projectdir)")
-    target_end()
-end

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vultra/function/renderer/scene.hpp>
+#include <vultra/servers/rendering/scene.hpp>
 
 #include <vri/ext/vri_ext_raytracing.h>
 
@@ -21,7 +21,7 @@ namespace sample
     class RayScene
     {
     public:
-        RayScene(vultra::Device& device, const vultra::Scene& scene);
+        RayScene(vultra::Device& device, const vultra::SceneData& scene);
         ~RayScene();
         RayScene(const RayScene&)            = delete;
         RayScene& operator=(const RayScene&) = delete;

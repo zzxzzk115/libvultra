@@ -1,12 +1,12 @@
 #include "../examples/common/triangle.hpp"
 
-#include <vultra/core/profiling/profiler.hpp>
-#include <vultra/core/rhi/swapchain.hpp>
-#include <vultra/function/renderer/gui.hpp>
-#include <vultra/function/rendergraph/render_graph.hpp>
-#include <vultra/function/research/capture.hpp>
-
-#include <GLFW/glfw3.h>
+#include <vultra/drivers/profiling/profiler.hpp>
+#include <vultra/drivers/rhi/swapchain.hpp>
+#include <vultra/platform/os/file.hpp>
+#include <vultra/platform/window.hpp>
+#include <vultra/servers/rendering/graph/render_graph.hpp>
+#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/ui/editor_gui.hpp>
 
 #include <cmath>
 #include <fstream>
@@ -58,15 +58,20 @@ try
     const auto scratch = std::filesystem::path("build/.tmp/gpu-tests") /
                          std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(scratch / "passes");
-    std::filesystem::create_directories(scratch / "lib");
+    std::filesystem::create_directories(scratch / "reload");
     std::ifstream source("examples/research/shaders/triangle.slang");
     std::string   shader((std::istreambuf_iterator<char>(source)), std::istreambuf_iterator<char>());
     const auto    include = shader.find("color.slangh");
     require(include != std::string::npos, "Test shader include missing");
-    shader.replace(include, std::string("color.slangh").size(), "lib/color.slangh");
+    shader.replace(include, std::string("color.slangh").size(), "reload/color.slangh");
     write(scratch / "passes/triangle.slang", shader.c_str());
-    std::filesystem::copy_file("examples/research/shaders/color.slangh", scratch / "lib/color.slangh");
-    Triangle    triangle(device, VriFormat_BGRA8_UNORM, scratch / "passes/triangle.slang", scratch, {scratch});
+    std::filesystem::copy_file("examples/research/shaders/color.slangh", scratch / "reload/color.slangh");
+    Triangle triangle(device,
+                      VriFormat_BGRA8_UNORM,
+                      scratch / "passes/triangle.slang",
+                      scratch,
+                      {scratch, "builtin/shaders", "examples/common"});
+    require(triangle.pipeline->diagnostics().empty(), "Valid shader produced unexpected diagnostics");
     Profiler    profiler(device);
     RenderGraph graph(device);
     const auto  output        = graph.createTexture("output", colorTexture({129, 73}, VriFormat_BGRA8_UNORM));
@@ -88,6 +93,12 @@ try
     graph.exportResource(output);
     graph.compile();
     require(graph.activePasses() == std::vector<std::string> {"draw"}, "Dead pass culling");
+    const auto snapshot = graph.snapshot();
+    require(snapshot.passes.size() == 2 && !snapshot.passes[0].active && snapshot.passes[1].active,
+            "Graph inspector did not report culled and active passes");
+    require(snapshot.resources[output.index].active && snapshot.resources[output.index].exported &&
+                !snapshot.resources[unused.index].active && snapshot.passes[1].uses[0].resourceIndex == output.index,
+            "Graph inspector did not report resource use and export");
     auto render = [&]
     {
         graph.execute(frame.begin(), &profiler);
@@ -96,14 +107,26 @@ try
         return readback(device, graph.getTexture(output));
     };
     const auto original = render();
+    const auto channel  = [&](uint32_t x, uint32_t y, uint32_t color)
+    {
+        return original.rgba[(size_t(y) * original.size.width + x) * 4 + color];
+    };
+    require(channel(64, 22, 0) > 0.5f && channel(42, 48, 1) > 0.5f && channel(86, 48, 3) > 0.99f,
+            "VRI Y-up clip space must read back red above the green/blue edge");
     require(discardedRuns == 0, "Culled pass executed");
     require(std::abs(original.rgba[0] - 0.1f) < 0.005f && std::abs(original.rgba[2] - 0.7f) < 0.005f &&
                 std::abs(original.rgba[3] - 0.4f) < 0.005f,
             "BGRA order, row pitch, or alpha capture");
     require(!profiler.timings().empty() && profiler.timings()[0].cpuMs >= 0, "Profiler CPU result missing");
+    require(profiler.timings()[0].cpuBarrierMs >= 0 &&
+                profiler.timings()[0].cpuBarrierMs <= profiler.timings()[0].cpuMs,
+            "Profiler command boundary is missing");
     if (profiler.hasGpuTimings())
     {
         require(profiler.timings()[0].gpuMs > 0, "GPU timestamps not resolved");
+        require(profiler.timings()[0].gpuBarrierMs >= 0 &&
+                    profiler.timings()[0].gpuBarrierMs <= profiler.timings()[0].gpuMs,
+                "GPU barrier timestamp is outside the pass interval");
     }
     auto pollUntil = [&](auto predicate)
     {
@@ -118,7 +141,7 @@ try
     const auto generation  = triangle.pipeline->generation();
     const auto oldPipeline = triangle.pipeline->handle();
     std::cerr << "[Test] Expected shader error follows: checking that the previous pipeline survives.\n";
-    write(scratch / "lib/color.slangh", "this is an intentional syntax error;\n");
+    write(scratch / "reload/color.slangh", "this is an intentional syntax error;\n");
     pollUntil(
         [&]
         {
@@ -127,13 +150,43 @@ try
     require(triangle.pipeline->handle() == oldPipeline && triangle.pipeline->generation() == generation,
             "Bad shader replaced working pipeline");
     require(compare(original, render()).mse == 0, "Failed shader reload changed rendered pixels");
-    write(scratch / "lib/color.slangh", "float3 experimentColor(float3 c) { return float3(0.9,0.1,0.2); }\n");
+    const std::string replacement = "float3 experimentColor(float3 c) { return float3(0.9,0.1,0.2); }\n";
+    writeFileAtomically(scratch / "reload/color.slangh", std::as_bytes(std::span(replacement)));
     pollUntil(
         [&]
         {
             return triangle.pipeline->generation() > generation;
         });
     require(compare(original, render()).mse > 0.001, "Dependency hotreload did not change image");
+
+    // A new include directory must become watched, and removing it must release its watcher.
+    auto before = triangle.pipeline->generation();
+    std::filesystem::create_directory(scratch / "reload/nested");
+    write(scratch / "reload/nested/shade.slangh", "float3 nestedColor() { return float3(0.1,0.8,0.2); }\n");
+    write(scratch / "reload/color.slangh",
+          "#include \"nested/shade.slangh\"\nfloat3 experimentColor(float3 c) { return nestedColor(); }\n");
+    pollUntil(
+        [&]
+        {
+            return triangle.pipeline->generation() > before;
+        });
+    const auto nested = render();
+    before            = triangle.pipeline->generation();
+    write(scratch / "reload/nested/shade.slangh", "float3 nestedColor() { return float3(0.8,0.2,0.1); }\n");
+    pollUntil(
+        [&]
+        {
+            return triangle.pipeline->generation() > before;
+        });
+    require(compare(nested, render()).mse > 0.001, "New shader directory was not watched");
+    before = triangle.pipeline->generation();
+    writeFileAtomically(scratch / "reload/color.slangh", std::as_bytes(std::span(replacement)));
+    std::filesystem::remove_all(scratch / "reload/nested");
+    pollUntil(
+        [&]
+        {
+            return triangle.pipeline->generation() > before;
+        });
 
     RenderGraph bad(device);
     const auto  uninitialized = bad.createTexture("never written", colorTexture({16, 16}));
@@ -235,12 +288,12 @@ try
 
     Window    window("Vultra - verification", {640, 360});
     Swapchain swapchain(device, window, VriFormat_BGRA8_UNORM);
-    Gui       gui(device, window, swapchain.format(), {.persistLayout = false});
+    EditorGui gui(device, window, swapchain.format(), {.persistLayout = false});
     for (int i = 0; i < 4; ++i)
     {
         if (i == 2)
         {
-            glfwSetWindowSize(window.handle(), 800, 450);
+            window.setSize({800, 450});
         }
         window.poll();
         gui.begin();
@@ -276,9 +329,13 @@ try
         swapchain.present();
         gui.renderPlatformWindows();
     }
-    require(swapchain.size().width == 800 && swapchain.size().height == 450, "Resize was not applied");
+    require(swapchain.size() == window.framebufferSize(), "Swapchain did not track the negotiated framebuffer size");
+    if (platform::nativeWindow(window).type != VriWindowSystem_Wayland)
+    {
+        require(swapchain.size() == Extent {800, 450}, "Resize was not applied");
+    }
     std::cout << "GPU tests passed: draw/readback, graph culling/validation/buffers, profiler, FileWatch "
-                 "failure/recovery, HDR, ImGui, resize\n";
+                 "failure/recovery, HDR, ImGui, swapchain extent\n";
     return 0;
 }
 catch (const std::exception& e)

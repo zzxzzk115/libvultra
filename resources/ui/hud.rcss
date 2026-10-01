@@ -1,0 +1,38 @@
+body {
+    font-family: LatoLatin;
+}
+#hud {
+    position: absolute;
+    top: 24px;
+    left: 24px;
+    width: 280px;
+}
+.panel-description {
+    display: block;
+    margin: 3px 0 13px 0;
+    color: #a6adb5;
+    font-size: 12px;
+}
+.control-row span {
+    display: inline-block;
+    width: 230px;
+    vertical-align: middle;
+}
+.control-row input {
+    vertical-align: middle;
+}
+#status {
+    display: block;
+    margin-top: 12px;
+    color: #a6adb5;
+    font-size: 11px;
+}
+.hint {
+    display: block;
+    margin-top: 13px;
+    padding-top: 9px;
+    border-top: 1px #454b52;
+    color: #a6adb5;
+    font-size: 11px;
+    line-height: 17px;
+}

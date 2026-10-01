@@ -2,7 +2,7 @@
 
 #include "colored_mesh.hpp"
 
-#include <vultra/function/renderer/scene.hpp>
+#include <vultra/servers/rendering/scene.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -55,7 +55,7 @@ namespace sample
         }
     };
 
-    inline Lines makeDebugLines(const vultra::Scene& scene)
+    inline Lines makeDebugLines(const vultra::SceneData& scene)
     {
         Lines     lines;
         glm::vec3 low(std::numeric_limits<float>::max());

@@ -1,7 +1,8 @@
+#include <vultra/assets/asset_pipeline.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/function/asset/asset_pipeline.hpp>
-#include <vultra/function/renderer/texture_blit.hpp>
-#include <vultra/function/research/capture.hpp>
+#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/servers/rendering/scene.hpp>
+#include <vultra/servers/rendering/texture_blit.hpp>
 
 #include <chrono>
 #include <cmath>
@@ -151,7 +152,7 @@ namespace
 
     void testTextureReuse()
     {
-        vultra::Scene      scene;
+        vultra::SceneData  scene;
         vultra::SceneImage image {8, 4, std::vector<uint8_t>(8 * 4 * 4, 128)};
         scene.images           = {image, image, image};
         scene.images[2].width  = 4;
@@ -159,8 +160,8 @@ namespace
         scene.materials.resize(3);
         for (int i = 0; i < 3; ++i)
         {
-            scene.materials[i].baseColorImage = i;
-            scene.materials[i].normalImage    = i;
+            scene.materials[i].baseColorTexture.image = i;
+            scene.materials[i].normalTexture.image    = i;
         }
         const auto textures = vultra::prepareTextures(scene, {}, 4);
         require(textures.materials[0] == textures.materials[1], "Identical images were prepared more than once");
@@ -180,7 +181,7 @@ namespace
 
     void testParallelTextures()
     {
-        vultra::Scene scene;
+        vultra::SceneData scene;
         for (int i = 0; i < 8; ++i)
         {
             vultra::SceneImage image {33, 17, std::vector<uint8_t>(33 * 17 * 4)};
@@ -190,8 +191,8 @@ namespace
             }
             scene.images.push_back(std::move(image));
             vultra::SurfaceMaterial material;
-            material.baseColorImage = i;
-            material.normalImage    = i;
+            material.baseColorTexture.image = i;
+            material.normalTexture.image    = i;
             scene.materials.push_back(material);
         }
         vultra::TextureImportOptions options;
@@ -226,7 +227,7 @@ namespace
                 "Import did not recover after a worker failure");
     }
 
-    void sameGeometry(const vultra::Scene& a, const vultra::Scene& b)
+    void sameGeometry(const vultra::SceneData& a, const vultra::SceneData& b)
     {
         require(a.indices == b.indices && a.vertices.size() == b.vertices.size() &&
                     a.primitives.size() == b.primitives.size() && a.center == b.center && a.radius == b.radius,
@@ -271,7 +272,7 @@ namespace
                     glm::length(generated.vertices[3].tangent - glm::vec4(-1, 0, 0, -1)) < 0.00001f,
                 "Generated glTF tangent or reflected handedness is wrong");
         const auto& material = generated.materials[0];
-        require(material.normalScale == 0.4f && material.emissionImage == 0 &&
+        require(material.normalScale == 0.4f && material.emissionTexture.image == 0 &&
                     material.emissionColor == glm::vec3(0.2f, 0.3f, 0.4f) && material.emissionLuminance == 3,
                 "glTF normal scale or emissive texture/factor/strength was not imported");
         const auto  first = generated.primitives[1].firstIndex;
@@ -338,7 +339,7 @@ namespace
             {
                 const std::string message = error.what();
                 rejected                  = message.contains("invalid glTF tangent") && message.contains("vertex 0") &&
-                           message.contains(source.string());
+                                            message.contains(source.string());
             }
             require(rejected, "Invalid tangent values were not rejected with source/vertex context");
         }
@@ -433,8 +434,10 @@ try
     require(cold.scene.images.empty(), "Import retained decoded source images after preparation");
     const auto slots = cold.textures.materials.at(0);
     require(slots[0] != slots[2], "Color and linear uses of one image share an incorrect texture");
-    require(cold.textures.images.at(slots[0]).format == VriFormat_RGBA8_SRGB, "Color texture lost sRGB filtering");
-    require(cold.textures.images.at(slots[2]).format == VriFormat_BC7_UNORM, "Linear texture was not compressed");
+    require(cold.textures.images.at(slots[0]).format == vultra::TextureFormat::eRgba8Srgb,
+            "Color texture lost sRGB filtering");
+    require(cold.textures.images.at(slots[2]).format == vultra::TextureFormat::eBc7Unorm,
+            "Linear texture was not compressed");
     require(cold.textures.images.at(slots[2]).levels.size() == 3, "Odd-sized mip chain is incomplete");
     const auto warm = vultra::importAsset(source, options);
     require(warm.cacheHit, "Unchanged asset did not hit its cache");
@@ -471,7 +474,7 @@ try
     const auto uncompressed = vultra::importAsset(source, options);
     require(!uncompressed.cacheHit && uncompressed.cachePath != cold.cachePath,
             "Import options did not affect cache identity");
-    require(uncompressed.textures.images.at(slots[2]).format == VriFormat_RGBA8_UNORM,
+    require(uncompressed.textures.images.at(slots[2]).format == vultra::TextureFormat::eRgba8Unorm,
             "No-compression option was ignored");
     options.cache          = false;
     options.cacheDirectory = root / "disabled";

@@ -7,7 +7,7 @@
 namespace sample
 {
     RayTracingApp::RayTracingApp(const Options&               options,
-                                 const vultra::Scene&         scene,
+                                 const vultra::SceneData&     scene,
                                  const std::filesystem::path& shader,
                                  bool                         shadowRays,
                                  const std::string&           title) :
@@ -112,10 +112,10 @@ namespace sample
                 m_Scene.rt.GetShaderGroupHandles(pipeline, 0, uint32_t(groups.size()), handles.size(), handles.data()),
                 "Read RT shader group handles");
             auto  sbt    = std::make_unique<vultra::Buffer>(device,
-                                                        VriBufferDesc {groups.size() * stride,
-                                                                       0,
-                                                                       VriBufferUsage_ShaderBindingTable,
-                                                                       VriMemoryLocation_HostUpload});
+                                                            VriBufferDesc {groups.size() * stride,
+                                                                           0,
+                                                                           VriBufferUsage_ShaderBindingTable,
+                                                                           VriMemoryLocation_HostUpload});
             auto* mapped = static_cast<std::byte*>(device.core.MapBuffer(sbt->handle, 0, sbt->desc.size));
             if (!mapped)
             {
@@ -174,22 +174,23 @@ namespace sample
     void RayTracingApp::onPreRender()
     {
         ImGuiApp::onPreRender();
-        m_Camera.update(getWindow().input(), m_DeltaSeconds, getGui().inputCapture());
+        m_Camera.update(getWindow().input(), m_DeltaSeconds, getEditorGui().inputCapture());
     }
 
     void RayTracingApp::onImGui()
     {
-        ImGui::SetNextWindowSize({320, 170}, ImGuiCond_FirstUseEver);
-        ImGui::Begin("Ray tracing");
-        ImGui::TextUnformatted("VRI raygen / miss / closest hit / SBT");
-        ImGui::TextUnformatted("WASD / QE: move; RMB: look; Shift: faster");
-        ImGui::Text("%u triangles", m_Scene.vertexCount / 3);
-        ImGui::ColorEdit3("Miss color", glm::value_ptr(m_Parameters.missColor));
+        auto ui = getEditorGui().frame();
+        ui.setNextWindowSize({320, 170}, ImGuiCond_FirstUseEver);
+        ui.beginWindow("Ray tracing");
+        ui.textUnformatted("VRI raygen / miss / closest hit / SBT");
+        ui.textUnformatted("WASD / QE: move; RMB: look; Shift: faster");
+        ui.text("%u triangles", m_Scene.vertexCount / 3);
+        ui.colorEdit3("Miss color", glm::value_ptr(m_Parameters.missColor));
         if (!m_Pipeline->diagnostics().empty())
         {
-            ImGui::TextWrapped("%s", m_Pipeline->diagnostics().c_str());
+            ui.textWrapped("%s", m_Pipeline->diagnostics().c_str());
         }
-        ImGui::End();
+        ui.endWindow();
     }
 
     void RayTracingApp::onRender(VriCommandBuffer* cmd, vultra::Texture& target)

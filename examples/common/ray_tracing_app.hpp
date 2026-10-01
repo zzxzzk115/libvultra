@@ -3,10 +3,10 @@
 #include "ray_scene.hpp"
 #include "sample.hpp"
 
-#include <vultra/core/rhi/shader_pipeline.hpp>
-#include <vultra/function/app/imgui_app.hpp>
-#include <vultra/function/camera/fps_camera.hpp>
-#include <vultra/function/renderer/texture_blit.hpp>
+#include <vultra/drivers/rhi/shader_pipeline.hpp>
+#include <vultra/main/app/imgui_app.hpp>
+#include <vultra/scene/camera/fps_camera.hpp>
+#include <vultra/servers/rendering/texture_blit.hpp>
 
 namespace sample
 {
@@ -14,7 +14,7 @@ namespace sample
     {
     public:
         RayTracingApp(const Options&               options,
-                      const vultra::Scene&         scene,
+                      const vultra::SceneData&     scene,
                       const std::filesystem::path& shader,
                       bool                         shadowRays,
                       const std::string&           title);

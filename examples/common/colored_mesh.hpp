@@ -1,7 +1,7 @@
 #pragma once
 
-#include <vultra/core/rhi/resources.hpp>
-#include <vultra/core/rhi/shader_pipeline.hpp>
+#include <vultra/drivers/rhi/resources.hpp>
+#include <vultra/drivers/rhi/shader_pipeline.hpp>
 
 #include <array>
 #include <span>
@@ -43,6 +43,8 @@ namespace sample
         void draw(VriCommandBuffer* cmd, vultra::Texture& target, const float* clear, vultra::Texture* depth = nullptr);
     };
 
+    // CCW, linear RGB: top red, bottom-left green, bottom-right blue.
+    // Keep the shader-generated counterpart in triangle.slangh identical.
     inline constexpr std::array<ColoredVertex, 3> kTriangleVertices {{{{0.0f, 0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
                                                                       {{-0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
                                                                       {{0.5f, -0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}}};

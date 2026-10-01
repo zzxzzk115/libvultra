@@ -1,11 +1,9 @@
 #include "ray_scene.hpp"
 #include "upload.hpp"
 
-#include <cstring>
-
 namespace sample
 {
-    RayScene::RayScene(vultra::Device& device, const vultra::Scene& scene) :
+    RayScene::RayScene(vultra::Device& device, const vultra::SceneData& scene) :
         m_Device(device)
     {
         vultra::check(vriGetInterface(device.handle, VRI_INTERFACE_RAYTRACING, sizeof(rt), &rt),
@@ -19,7 +17,7 @@ namespace sample
         for (const auto& primitive : scene.primitives)
         {
             const auto& material = scene.materials.at(primitive.material);
-            if (material.alphaCutoff >= 0 || material.baseColorImage >= 0)
+            if (material.alphaCutoff >= 0 || material.baseColorTexture.image >= 0)
             {
                 throw std::invalid_argument("Ray examples require opaque, untextured materials");
             }
@@ -59,7 +57,7 @@ namespace sample
             std::as_bytes(std::span(data)),
             VriBufferUsage_VertexBuffer | VriBufferUsage_StorageBuffer | VriBufferUsage_AccelerationBuildInput,
             {VriAccess_AccelerationStructureRead | VriAccess_ShaderResourceRead | VriAccess_VertexBufferRead,
-                VriPipelineStage_AllCommands});
+             VriPipelineStage_AllCommands});
         try
         {
             VriBufferViewDesc vertexDesc {vertices->handle,

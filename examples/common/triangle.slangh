@@ -1,0 +1,5 @@
+#pragma once
+
+// Same CCW geometry and linear RGB colors as kTriangleVertices in colored_mesh.hpp.
+static const float3 kTrianglePositions[3] = {float3(0, 0.5, 0), float3(-0.5, -0.5, 0), float3(0.5, -0.5, 0)};
+static const float3 kTriangleColors[3] = {float3(1, 0, 0), float3(0, 1, 0), float3(0, 0, 1)};

@@ -1,0 +1,36 @@
+{
+  "format": "vultra.project",
+  "version": 1,
+  "main_scene": "scenes/research.vscene",
+  "assets": [
+    {
+      "id": "8fc32ebe-cf5e-45b6-b93f-05c1ae8f165b",
+      "path": "models/DamagedHelmet/DamagedHelmet.glb"
+    },
+    {
+      "id": "6ddad025-9e72-41d4-9d0e-e2fdc116ca27",
+      "path": "textures/environment_maps/citrus_orchard_puresky_1k.hdr"
+    },
+    {
+      "id": "9e49ec31-f455-414b-b913-1fa94e2857a8",
+      "path": "ui/hud.rml"
+    },
+    {
+      "id": "945e3242-1d48-4baf-a8ac-ecce59229c7f",
+      "path": "ui/hud.rcss"
+    },
+    {
+      "id": "98f985f0-a4fe-43f4-a4c0-8440ee624507",
+      "path": "ui/LatoLatin-Regular.ttf"
+    },
+    {
+      "id": "acf5d513-437b-4df7-a16d-9b04a7bdbeed",
+      "path": "ui/LICENSE.txt"
+    }
+  ],
+  "extensions": [],
+  "scripts": [],
+  "environment": "6ddad025-9e72-41d4-9d0e-e2fdc116ca27",
+  "ui_document": "9e49ec31-f455-414b-b913-1fa94e2857a8",
+  "ui_font": "98f985f0-a4fe-43f4-a4c0-8440ee624507"
+}

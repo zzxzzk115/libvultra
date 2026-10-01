@@ -1,0 +1,68 @@
+#pragma once
+
+#include "resources/frame_block.slangh"
+#include "resources/gpu_material.slangh"
+
+struct SurfaceData
+{
+    float3 worldPosition;
+    float3 normal;
+    float3 geometricNormal;
+    float3 baseColor;
+    float  baseWeight;
+    float  metallic;
+    float  roughness;
+    float3 emission;
+    float  occlusion;
+    float3 specularColor;
+    float  specularWeight;
+    float  specularIor;
+    float  coatWeight;
+    float  coatRoughness;
+    float  coatIor;
+    float  baseDiffuseRoughness;
+};
+
+SurfaceVertex transformSurfaceVertex(MeshVertex input)
+{
+    SurfaceVertex result;
+    result.position      = mul(frame.viewProjection, float4(input.position, 1));
+    result.worldPosition = input.position;
+    result.normal        = input.normal;
+    result.uv            = input.uv;
+    result.color         = input.color;
+    result.tangent       = input.tangent;
+    return result;
+}
+
+SurfaceData sampleSurface(SurfaceVertex input, bool frontFace, float3 baseColor)
+{
+    SurfaceData result;
+    float faceSign = frontFace ? 1 : -1;
+    float2 mr = metallicRoughnessTexture.Sample(materialSamplers[1], input.uv).bg;
+    result.worldPosition = input.worldPosition;
+    result.geometricNormal = normalize(input.normal) * faceSign;
+    result.normal = surfaceNormal(input) * faceSign;
+    result.baseColor = baseColor;
+    result.baseWeight = material.flags.y;
+    result.metallic = saturate(material.surface.x * mr.x);
+    result.roughness = clamp(material.surface.y * mr.y, 0.03, 1);
+    if (frame.overrides.x >= 0)
+    {
+        result.roughness = clamp(frame.overrides.x, 0.03, 1);
+    }
+    if (frame.overrides.y >= 0)
+    {
+        result.metallic = saturate(frame.overrides.y);
+    }
+    result.emission = emissionTexture.Sample(materialSamplers[4], input.uv).rgb * material.emission.rgb;
+    result.occlusion = lerp(1, occlusionTexture.Sample(materialSamplers[3], input.uv).r, material.emission.w);
+    result.specularColor = material.specular.rgb * specularColorTexture.Sample(materialSamplers[6], input.uv).rgb;
+    result.specularWeight = material.coat.w * specularTexture.Sample(materialSamplers[5], input.uv).a;
+    result.specularIor = material.surface.z;
+    result.coatWeight = material.coat.x;
+    result.coatRoughness = material.coat.y;
+    result.coatIor = material.coat.z;
+    result.baseDiffuseRoughness = material.specular.w;
+    return result;
+}
