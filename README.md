@@ -4,7 +4,7 @@
   A small rendering research framework built on VRI, with readable C++ and Slang code you can adapt to your own experiments.
 </h4>
 
-The `dev-VRI` branch is a small VRI-based rendering research framework within libvultra. It is under early development. The build targets are **Windows x64 and Linux x86_64 + Vulkan**; the current migration has been exercised on Linux, while Win64 validation is the next step.
+The `dev-VRI` branch is a small VRI-based rendering research framework within libvultra. It is under early development. The build targets are **Windows x64 and Linux x86_64 + Vulkan**. Both platforms have been exercised; see the [verification requirements and limits](docs/guide.md#verification).
 
 ## Features
 
