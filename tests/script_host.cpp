@@ -228,6 +228,7 @@ int main(int argc, char** argv)
     hot.stop();
     const auto extensionCopy = scratch / "extension.so";
     std::filesystem::copy_file(native, extensionCopy);
+    const auto         extensionTimestamp = std::filesystem::last_write_time(extensionCopy);
     vultra::ScriptHost hotExtension(scene, true);
     hotExtension.addExtension(extensionCopy);
     hotExtension.update(0.25f);
@@ -236,8 +237,10 @@ int main(int argc, char** argv)
             "Invalid extension replacement was accepted");
     hotExtension.update(0.25f);
     std::filesystem::copy_file(native, extensionCopy, std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::last_write_time(extensionCopy, extensionTimestamp);
     require(hotExtension.reloadChanged() == 1 && hotExtension.lastReloadError().empty(),
             "Valid extension replacement was not restored");
+    require(hotExtension.reloadChanged() == 0, "Restored extension reloaded without a change");
     hotExtension.stop();
     if (argc > 2)
     {

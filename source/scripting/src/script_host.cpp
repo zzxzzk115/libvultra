@@ -445,7 +445,9 @@ namespace vultra
                 continue;
             }
             const auto stamp = fileStamp(slot.path);
-            if (!stamp || *stamp == slot.loaded || (!retryFailed && slot.attempted && *stamp == *slot.attempted))
+            // Restoring the last good file can also restore its timestamp after a failed reload.
+            if (!stamp || (!slot.attempted && *stamp == slot.loaded) ||
+                (!retryFailed && slot.attempted && *stamp == *slot.attempted))
             {
                 continue;
             }
@@ -463,6 +465,7 @@ namespace vultra
                     m_Impl->replaceExtension(index, *stamp);
                 }
                 slot.loaded = *stamp;
+                slot.attempted.reset();
                 if (m_Impl->reloadErrorPath == slot.path)
                 {
                     m_Impl->reloadError.clear();
