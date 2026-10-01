@@ -218,7 +218,8 @@ namespace vultra
                     {
                         return false;
                     }
-                    observer(std::filesystem::path(filename), std::as_bytes(std::span(*bytes)));
+                    const std::filesystem::path sourcePath = std::u8string(filename.begin(), filename.end());
+                    observer(sourcePath, std::as_bytes(std::span(*bytes)));
                     return true;
                 },
                 tinygltf::WriteWholeFile,
@@ -244,9 +245,11 @@ namespace vultra
                 return true;
             },
             nullptr);
-        const bool loaded = path.extension() == ".glb" ?
-                                loader.LoadBinaryFromFile(&model, &error, &warning, path.string()) :
-                                loader.LoadASCIIFromFile(&model, &error, &warning, path.string());
+        // TinyGLTF uses UTF-8 filenames on every platform, including Windows.
+        const auto        utf8 = path.generic_u8string();
+        const std::string filename(utf8.begin(), utf8.end());
+        const bool loaded = path.extension() == ".glb" ? loader.LoadBinaryFromFile(&model, &error, &warning, filename) :
+                                                         loader.LoadASCIIFromFile(&model, &error, &warning, filename);
         if (!warning.empty())
         {
             Logger::core().warn("[glTF] {}", warning);

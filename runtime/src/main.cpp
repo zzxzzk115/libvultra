@@ -25,7 +25,6 @@
 #include <utility>
 
 #if defined(_WIN32)
-#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
 extern "C" const std::byte vultra_builtin_pack_start[];
@@ -40,7 +39,7 @@ namespace
     {
 #if defined(_WIN32)
         const auto  module   = GetModuleHandleW(nullptr);
-        const auto  resource = FindResourceW(module, MAKEINTRESOURCEW(101), RT_RCDATA);
+        const auto  resource = FindResourceW(module, MAKEINTRESOURCEW(101), MAKEINTRESOURCEW(10)); // RT_RCDATA
         const auto  loaded   = resource ? LoadResource(module, resource) : nullptr;
         const auto* data     = loaded ? static_cast<const std::byte*>(LockResource(loaded)) : nullptr;
         const auto  size     = resource ? SizeofResource(module, resource) : 0;
