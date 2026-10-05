@@ -59,11 +59,28 @@ namespace vultra
         if (!m_View)
         {
             VriTextureViewDesc vd {};
-            vd.texture  = handle;
-            vd.viewType = VriTextureViewType_2D;
+            vd.texture = handle;
+            switch (desc.type)
+            {
+                case VriTextureType_2DArray:
+                    vd.viewType = VriTextureViewType_2DArray;
+                    break;
+                case VriTextureType_3D:
+                    vd.viewType = VriTextureViewType_3D;
+                    break;
+                case VriTextureType_Cube:
+                    vd.viewType = VriTextureViewType_Cube;
+                    break;
+                case VriTextureType_CubeArray:
+                    vd.viewType = VriTextureViewType_CubeArray;
+                    break;
+                default:
+                    vd.viewType = VriTextureViewType_2D;
+                    break;
+            }
             vd.format   = desc.format;
             vd.aspect   = m_Aspect;
-            vd.layerNum = 1;
+            vd.layerNum = desc.layerNum;
             check(m_Device.core.CreateTextureView(m_Device.handle, &vd, &m_View), "Create texture view");
         }
         return m_View;
@@ -79,13 +96,30 @@ namespace vultra
         if (!m_MipViews[mip])
         {
             VriTextureViewDesc view {};
-            view.texture  = handle;
-            view.viewType = VriTextureViewType_2D;
+            view.texture = handle;
+            switch (desc.type)
+            {
+                case VriTextureType_2DArray:
+                    view.viewType = VriTextureViewType_2DArray;
+                    break;
+                case VriTextureType_3D:
+                    view.viewType = VriTextureViewType_3D;
+                    break;
+                case VriTextureType_Cube:
+                    view.viewType = VriTextureViewType_Cube;
+                    break;
+                case VriTextureType_CubeArray:
+                    view.viewType = VriTextureViewType_CubeArray;
+                    break;
+                default:
+                    view.viewType = VriTextureViewType_2D;
+                    break;
+            }
             view.format   = desc.format;
             view.aspect   = m_Aspect;
             view.baseMip  = mip;
             view.mipNum   = 1;
-            view.layerNum = 1;
+            view.layerNum = desc.layerNum;
             check(m_Device.core.CreateTextureView(m_Device.handle, &view, &m_MipViews[mip]), "Create mip view");
         }
         return m_MipViews[mip];

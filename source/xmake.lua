@@ -11,6 +11,7 @@ target("vultra")
         add_headerfiles(module .. "/include/(vultra/**.hpp)")
     end
     add_includedirs("assets/src")
+    add_includedirs("drivers/src")
     add_files("core/src/**.cpp", "drivers/src/rhi/**.cpp", "drivers/src/profiling/**.cpp", "assets/src/**.cpp")
     add_files("servers/src/**.cpp", "scene/src/**.cpp", "ui/src/editor_gui*.cpp", "main/src/**.cpp", "api/src/**.cpp")
     add_files("platform/src/input/**.cpp", "platform/src/os/**.cpp")
@@ -34,6 +35,29 @@ target("vultra")
     add_deps("filewatch", "renderdoc-api", "bc7enc", "openpbr")
     add_packages("vri", "imgui", "slang-static", "argparse", "spdlog", "glm", {public = true})
     add_packages("stb", "tinygltf", "tinyobjloader", "xxhash", "vtask", "openfbx", "directxtex", "meshoptimizer")
+    add_packages("antlr4-runtime")
+    add_includedirs("$(builddir)/generated/shaders")
+    before_build(function (target)
+        local inputs = os.files(path.join(os.projectdir(), "source/assets/src/shaders/*"))
+        table.join2(inputs, os.files(path.join(os.projectdir(), "source/assets/src/shaders/generated/*.cpp")))
+        table.join2(inputs, os.files(path.join(os.projectdir(), "source/assets/src/shaders/generated/*.h")))
+        table.join2(inputs, os.files(path.join(os.projectdir(), "source/drivers/src/rhi/shader*")))
+        table.join2(inputs, os.files(path.join(os.projectdir(), "source/assets/include/vultra/assets/shader_asset.hpp")))
+        table.join2(inputs, os.files(path.join(os.projectdir(), "source/drivers/include/vultra/drivers/rhi/shader_program.hpp")))
+        table.sort(inputs)
+        local hashes = {"antlr-4.13.2", "vultra-shader-language-1"}
+        for _, file in ipairs(inputs) do
+            table.insert(hashes, path.relative(file, os.projectdir()):gsub("\\", "/") .. ":" .. hash.sha256(file))
+        end
+        local output = path.join(os.projectdir(), get_config("builddir") or "build",
+                                 "generated/shaders/shader_toolchain_key.hpp")
+        -- Only the shader compiler includes this private header. Ordinary builds never run Java.
+        local contents = '#pragma once\ninline constexpr char kShaderToolchainKey[] = "' ..
+                         table.concat(hashes, ";") .. '";\n'
+        if not os.isfile(output) or io.readfile(output) ~= contents then
+            io.writefile(output, contents)
+        end
+    end)
 
     if has_config("libvultra_with_openxr") then
         add_defines("VULTRA_WITH_OPENXR", {public = true})

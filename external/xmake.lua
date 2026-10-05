@@ -21,6 +21,7 @@ add_requireconfs("imgui-node-editor.imgui", {
     configs = {glfw = window_backend == "glfw", sdl3 = window_backend == "sdl3"}
 })
 add_requires("slang-static 2026.11")
+add_requires("antlr4-runtime 4.13.2", {configs = {shared = false}, system = false})
 add_requires("rmlui 6.2", {configs = {shared = false, lua = false, svg = false, lottie = false}})
 add_requireconfs("rmlui.zlib", {system = false, configs = {shared = false}, override = true})
 add_requireconfs("rmlui.freetype.zlib", {system = false, configs = {shared = false}, override = true})

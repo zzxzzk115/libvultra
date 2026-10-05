@@ -4,7 +4,7 @@
 #include "lib/ibl.slangh"
 #include "lib/light.slangh"
 #include "lib/shadow.slangh"
-#include "lib/surface_data.slangh"
+#include "lib/surface_types.slangh"
 
 float3 shadeSurface(SurfaceData sample)
 {

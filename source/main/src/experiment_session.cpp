@@ -2,6 +2,7 @@
 #include <vultra/scene/camera/orbit_camera.hpp>
 #include <vultra/scene/scene_import.hpp>
 #include <vultra/scene/scene_render_state.hpp>
+#include <vultra/scene/scene_shader_materials.hpp>
 #include <vultra/servers/rendering/builtin/reference_path_tracer.hpp>
 #include <vultra/servers/rendering/rendering_server.hpp>
 #include <vultra/servers/rendering/research/capture.hpp>
@@ -196,7 +197,8 @@ namespace vultra
                 auto graph            = buildGraph(*replacement, *upload, definition);
                 // render() completes the previous frame. Drop its callbacks before retiring their owners.
                 active.graph.reset();
-                renderer  = std::move(replacement);
+                renderer = std::move(replacement);
+                shaderMaterials.reset();
                 gpuScene  = std::move(upload);
                 instances = std::move(ranges);
                 cache     = std::move(imported.cachePath);
@@ -205,31 +207,48 @@ namespace vultra
                 server.collectCompletedFrame();
             }
             gpuSync.update(*tree, instances, *gpuScene);
+            if (SceneShaderMaterials::containsShaders(*tree))
+            {
+                if (config.path == RenderPath::eReferencePathTracing)
+                {
+                    throw std::invalid_argument(
+                        "Game Surface materials require a raster render path; RayQuery uses raw Slang");
+                }
+                if (!shaderMaterials)
+                {
+                    shaderMaterials = std::make_unique<SceneShaderMaterials>(device, *manifest, root);
+                }
+            }
+            if (shaderMaterials)
+            {
+                shaderMaterials->update(*tree, instances, *renderer, *active.graph, active.outputs);
+            }
             sceneState.update(*tree, config.size);
         }
 
-        Device&                          device;
-        ExperimentConfig                 config;
-        std::filesystem::path            root;
-        std::filesystem::path            cache;
-        std::optional<ProjectManifest>   manifest;
-        std::optional<SceneTree>         tree;
-        RenderingServer                  server;
-        Environment                      environment;
-        std::vector<SceneMeshInstance>   instances;
-        SceneGpuSync                     gpuSync;
-        GpuSceneHandle                   gpuScene;
-        std::unique_ptr<BuiltinRenderer> renderer;
-        OrbitCamera                      fallback;
-        SceneRenderState                 sceneState;
-        PassCatalog                      catalog;
-        std::optional<GraphDefinition>   definition;
-        SessionGraph                     active;
-        Frame                            frame;
-        Profiler                         profiler;
-        RenderCamera                     renderCamera;
-        uint64_t                         frameIndex = 0;
-        bool                             rendered   = false;
+        Device&                               device;
+        ExperimentConfig                      config;
+        std::filesystem::path                 root;
+        std::filesystem::path                 cache;
+        std::optional<ProjectManifest>        manifest;
+        std::optional<SceneTree>              tree;
+        RenderingServer                       server;
+        Environment                           environment;
+        std::vector<SceneMeshInstance>        instances;
+        SceneGpuSync                          gpuSync;
+        GpuSceneHandle                        gpuScene;
+        std::unique_ptr<SceneShaderMaterials> shaderMaterials;
+        std::unique_ptr<BuiltinRenderer>      renderer;
+        OrbitCamera                           fallback;
+        SceneRenderState                      sceneState;
+        PassCatalog                           catalog;
+        std::optional<GraphDefinition>        definition;
+        SessionGraph                          active;
+        Frame                                 frame;
+        Profiler                              profiler;
+        RenderCamera                          renderCamera;
+        uint64_t                              frameIndex = 0;
+        bool                                  rendered   = false;
     };
 
     ExperimentSession::ExperimentSession(Device& device, const ExperimentConfig& config) :

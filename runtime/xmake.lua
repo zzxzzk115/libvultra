@@ -4,21 +4,30 @@ target("vultra-builtin-pack")
     set_policy("build.fence", true)
     add_deps("vultra-pack")
     on_build(function (target)
+        import("core.project.depend")
         local output = path.join(os.projectdir(), "build", ".tmp", "runtime-builtin.vpk")
-        local candidate = output .. ".new"
-        os.mkdir(path.directory(output))
-        os.tryrm(candidate)
         local pack = target:dep("vultra-pack")
-        os.execv(pack:targetfile(), {"--builtins", os.projectdir(), candidate})
-        local changed = not os.isfile(output) or io.readfile(output) ~= io.readfile(candidate)
-        if changed then
-            os.mv(candidate, output)
-            local embed = path.join(os.projectdir(), "runtime", "src", is_plat("windows") and "builtin_pack.rc" or "builtin_pack.S")
-            -- Recompile the .S/.rc source only when the embedded archive changes.
-            io.writefile(embed, io.readfile(embed))
-        else
+        local files = table.join(os.files(path.join(os.projectdir(), "builtin", "shaders", "**")),
+                                 os.files(path.join(os.projectdir(), "external", "openpbr", "**")),
+                                 {pack:targetfile()})
+        table.sort(files)
+        depend.on_changed(function ()
+            local candidate = output .. ".new"
+            os.mkdir(path.directory(output))
             os.tryrm(candidate)
-        end
+            os.execv(pack:targetfile(), {"--builtins", os.projectdir(), candidate})
+            local changed = not os.isfile(output) or io.readfile(output) ~= io.readfile(candidate)
+            if changed then
+                os.mv(candidate, output)
+                local embed = path.join(os.projectdir(), "runtime", "src", is_plat("windows") and "builtin_pack.rc" or "builtin_pack.S")
+                -- Recompile the .S/.rc source only when the embedded archive changes.
+                io.writefile(embed, io.readfile(embed))
+            else
+                os.tryrm(candidate)
+            end
+        end, {dependfile = target:dependfile(output), files = files,
+              values = {get_config("plat"), get_config("arch"), get_config("mode")},
+              changed = not os.isfile(output)})
     end)
 target_end()
 

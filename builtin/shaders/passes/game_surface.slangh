@@ -1,0 +1,89 @@
+// This template is appended after the user's surface function and its generated adapter.
+#if !defined(VULTRA_SURFACE_DEPTH) && !defined(VULTRA_SURFACE_SHADOW) && \
+    !defined(VULTRA_SURFACE_GBUFFER_BASE) && !defined(VULTRA_SURFACE_GBUFFER_MATERIAL)
+#include "lib/surface_lighting.slangh"
+#endif
+
+[shader("vertex")]
+SurfaceVertex vultraVertexMain(MeshVertex input)
+{
+    SurfaceVertex vertex = vultraTransformVertex(input);
+#ifdef VULTRA_SURFACE_SHADOW
+    vertex.position = mul(frame.lightViewProjection[vultraDraw.instance.y], float4(vertex.worldPosition, 1));
+#endif
+    return vertex;
+}
+
+SurfaceData vultraSampleSurface(SurfaceVertex vertex, bool frontFace)
+{
+    SurfaceInput input = vultraSurfaceInput(vertex, frontFace);
+    SurfaceOutput output = vultraEvaluateSurface(input);
+#ifdef VULTRA_SURFACE_ALPHA_MASK
+    if (output.opacity < output.alphaCutoff)
+    {
+        discard;
+    }
+#endif
+    return vultraSurfaceData(input, output);
+}
+
+#if defined(VULTRA_SURFACE_DEPTH) || defined(VULTRA_SURFACE_SHADOW)
+[shader("fragment")]
+void vultraFragmentMain(SurfaceVertex vertex, bool frontFace : SV_IsFrontFace)
+{
+    vultraSampleSurface(vertex, frontFace);
+}
+#elif defined(VULTRA_SURFACE_GBUFFER_BASE)
+struct VultraGBufferBase
+{
+    float4 positionMetallic : SV_Target0;
+    float4 normalRoughness : SV_Target1;
+    float4 albedoWeight : SV_Target2;
+    float4 emissionOcclusion : SV_Target3;
+};
+
+[shader("fragment")]
+VultraGBufferBase vultraFragmentMain(SurfaceVertex vertex, bool frontFace : SV_IsFrontFace)
+{
+    SurfaceData surface = vultraSampleSurface(vertex, frontFace);
+    VultraGBufferBase output;
+    output.positionMetallic = float4(surface.worldPosition, surface.metallic);
+    output.normalRoughness = float4(surface.normal, surface.roughness);
+    output.albedoWeight = float4(surface.baseColor, surface.baseWeight);
+    output.emissionOcclusion = float4(surface.emission, surface.occlusion);
+    return output;
+}
+#elif defined(VULTRA_SURFACE_GBUFFER_MATERIAL)
+struct VultraGBufferMaterial
+{
+    float4 specular : SV_Target0;
+    float4 geometricNormalIor : SV_Target1;
+    float4 coat : SV_Target2;
+};
+
+[shader("fragment")]
+VultraGBufferMaterial vultraFragmentMain(SurfaceVertex vertex, bool frontFace : SV_IsFrontFace)
+{
+    SurfaceData surface = vultraSampleSurface(vertex, frontFace);
+    VultraGBufferMaterial output;
+    output.specular = float4(surface.specularColor, surface.specularWeight);
+    output.geometricNormalIor = float4(surface.geometricNormal, surface.specularIor);
+    output.coat = float4(surface.coatWeight, surface.coatRoughness, surface.coatIor, surface.baseDiffuseRoughness);
+    return output;
+}
+#else
+[shader("fragment")]
+float4 vultraFragmentMain(SurfaceVertex vertex, bool frontFace : SV_IsFrontFace) : SV_Target
+{
+    return float4(shadeSurface(vultraSampleSurface(vertex, frontFace)), 1);
+}
+#endif
+
+#ifdef VULTRA_SURFACE_MESH
+uint4 meshletDrawParameters() { return vultraDraw.meshlets; }
+uint meshletInstanceIndex() { return vultraDraw.instance.x; }
+SurfaceVertex meshletSurfaceVertex(MeshVertex input) { return vultraTransformVertex(input); }
+#define VULTRA_TASK_ENTRY vultraTaskMain
+#define VULTRA_MESH_ENTRY vultraMeshMain
+#include "passes/meshlet_entries.slangh"
+#endif

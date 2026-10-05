@@ -1,3 +1,4 @@
+#include "lib/surface_data.slangh"
 #include "lib/surface_lighting.slangh"
 
 [shader("vertex")] SurfaceVertex vertexMain(MeshVertex input)

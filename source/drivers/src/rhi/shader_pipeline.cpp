@@ -9,8 +9,6 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-#include <slang-com-ptr.h>
-#include <slang.h>
 
 #include <atomic>
 #include <chrono>
@@ -25,20 +23,32 @@ namespace vultra
         uint64_t                              observed = 0;
         bool                                  pending  = false;
         std::chrono::steady_clock::time_point changed {};
-        std::filesystem::path                 root;
+        std::set<std::filesystem::path>       roots;
         // Destroy first: FileWatch joins its threads before callback state is destroyed.
         std::map<std::filesystem::path, std::unique_ptr<filewatch::FileWatch<std::string>>> watchers;
 
         void refreshDirectories()
         {
-            std::set<std::filesystem::path> directories {root};
+            std::set<std::filesystem::path> directories = roots;
 #if defined(__linux__)
             // inotify watches one directory; FileWatch's Windows backend already watches subtrees.
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(root))
+            for (const auto& root : roots)
             {
-                if (entry.is_directory())
+                for (auto entry = std::filesystem::recursive_directory_iterator(root);
+                     entry != std::filesystem::recursive_directory_iterator();
+                     ++entry)
                 {
-                    directories.insert(entry.path());
+                    if (!entry->is_directory())
+                    {
+                        continue;
+                    }
+                    const auto name = entry->path().filename();
+                    if (name == "build" || name == ".git" || name == ".vultra")
+                    {
+                        entry.disable_recursion_pending();
+                        continue;
+                    }
+                    directories.insert(entry->path());
                 }
             }
 #endif
@@ -53,8 +63,16 @@ namespace vultra
                 {
                     auto watcher = std::make_unique<filewatch::FileWatch<std::string>>(
                         directory.string(),
-                        [this](const std::string&, filewatch::Event)
+                        [this](const std::string& path, filewatch::Event)
                         {
+                            const std::filesystem::path changed(path);
+                            for (const auto& part : changed)
+                            {
+                                if (part == "build" || part == ".git" || part == ".vultra")
+                                {
+                                    return;
+                                }
+                            }
                             revision.fetch_add(1, std::memory_order_relaxed);
                         });
                     watchers.emplace(directory, std::move(watcher));
@@ -69,29 +87,72 @@ namespace vultra
                                    Builder                            builder,
                                    std::filesystem::path              watchDirectory,
                                    std::vector<std::filesystem::path> includeDirectories) :
+        ShaderPipeline(
+            device,
+            std::move(file),
+            [&]
+            {
+                ShaderCompileOptions options;
+                options.entries            = std::move(entries);
+                options.includeDirectories = std::move(includeDirectories);
+                options.rayQuery           = device.core.GetDeviceDesc(device.handle)->hasRayQuery;
+                return options;
+            }(),
+            std::move(builder),
+            std::move(watchDirectory))
+    {
+    }
+
+    ShaderPipeline::ShaderPipeline(Device&               device,
+                                   std::filesystem::path file,
+                                   ShaderCompileOptions  options,
+                                   Builder               builder,
+                                   std::filesystem::path watchDirectory) :
         m_Device(device),
         m_File(std::filesystem::absolute(file)),
-        m_Entries(std::move(entries)),
-        m_Builder(std::move(builder)),
-        m_Watch(std::make_unique<Watch>())
+        m_CompileOptions(std::move(options)),
+        m_Builder(std::move(builder))
     {
-        if (m_Entries.empty())
+        if (m_CompileOptions.entries.empty())
         {
             throw std::invalid_argument("Shader entry points cannot be empty");
         }
-        m_SearchPaths.push_back(m_File.parent_path().string());
-        for (const auto& directory : includeDirectories)
+        if (m_File.extension() == ".slang" && !std::filesystem::exists(m_File))
         {
-            m_SearchPaths.push_back(std::filesystem::absolute(directory).lexically_normal().string());
+            m_File.replace_extension(".vshaderc");
+        }
+        if (m_File.extension() != ".slang" && m_File.extension() != ".vshaderc")
+        {
+            throw std::invalid_argument("ShaderPipeline requires a .slang source or .vshaderc program");
+        }
+        for (auto& directory : m_CompileOptions.includeDirectories)
+        {
+            directory = std::filesystem::absolute(directory).lexically_normal();
         }
         if (!reload())
         {
             throw std::runtime_error(m_Diagnostics);
         }
+        if (m_File.extension() == ".vshaderc")
+        {
+            return;
+        }
         // Watch the shader directory tree, including includes and imported modules.
         try
         {
-            m_Watch->root = watchDirectory.empty() ? m_File.parent_path() : std::filesystem::absolute(watchDirectory);
+            m_Watch = std::make_unique<Watch>();
+            m_Watch->roots.insert(watchDirectory.empty() ? m_File.parent_path() :
+                                                           std::filesystem::absolute(watchDirectory));
+            for (const auto& root : m_CompileOptions.includeDirectories)
+            {
+                m_Watch->roots.insert(root);
+            }
+            for (const auto& module : m_CompileOptions.linkModules)
+            {
+                m_Watch->roots.insert(
+                    std::filesystem::absolute(module.is_absolute() ? module : m_File.parent_path() / module)
+                        .parent_path());
+            }
             m_Watch->refreshDirectories();
         }
         catch (...)
@@ -113,6 +174,10 @@ namespace vultra
 
     bool ShaderPipeline::poll()
     {
+        if (!m_Watch)
+        {
+            return false;
+        }
         const auto revision = m_Watch->revision.load(std::memory_order_relaxed);
         const auto now      = std::chrono::steady_clock::now();
         if (revision != m_Watch->observed)
@@ -132,100 +197,22 @@ namespace vultra
 
     bool ShaderPipeline::reload()
     {
-        using Slang::ComPtr;
         m_Diagnostics.clear();
-        auto diagnose = [&](SlangResult result, const ComPtr<slang::IBlob>& blob, const char* operation)
-        {
-            if (blob)
-            {
-                m_Diagnostics += static_cast<const char*>(blob->getBufferPointer());
-            }
-            if (SLANG_FAILED(result))
-            {
-                throw std::runtime_error(operation);
-            }
-        };
         try
         {
-            ComPtr<slang::IGlobalSession> global;
-            diagnose(slang::createGlobalSession(global.writeRef()), {}, "Create Slang global session");
-            slang::TargetDesc target {};
-            target.format  = SLANG_SPIRV;
-            target.profile = global->findProfile("spirv_1_5");
-            std::vector<slang::CompilerOptionEntry> options(2);
-            options[0].name = slang::CompilerOptionName::VulkanUseEntryPointName;
-            options[1].name = slang::CompilerOptionName::EmitSpirvDirectly;
-            for (auto& option : options)
+            const auto& desc = *m_Device.core.GetDeviceDesc(m_Device.handle);
+            if (desc.graphicsAPI != VriGraphicsAPI_Vulkan)
             {
-                option.value.kind      = slang::CompilerOptionValueKind::Int;
-                option.value.intValue0 = 1;
+                throw std::invalid_argument("SPIR-V shader programs require a Vulkan device");
             }
-#ifndef NDEBUG
-            slang::CompilerOptionEntry debugInfo {};
-            debugInfo.name            = slang::CompilerOptionName::DebugInformation;
-            debugInfo.value.kind      = slang::CompilerOptionValueKind::Int;
-            debugInfo.value.intValue0 = SLANG_DEBUG_INFO_LEVEL_STANDARD;
-            options.push_back(debugInfo);
-#endif
-            if (m_Device.core.GetDeviceDesc(m_Device.handle)->hasRayQuery)
+            const auto program = m_File.extension() == ".vshaderc" ? ShaderProgram::load(m_File) :
+                                                                     ShaderProgram::compile(m_File, m_CompileOptions);
+            m_Diagnostics      = program.diagnostics;
+            if (program.rayQuery && !desc.hasRayQuery)
             {
-                slang::CompilerOptionEntry capability {};
-                capability.name            = slang::CompilerOptionName::Capability;
-                capability.value.kind      = slang::CompilerOptionValueKind::Int;
-                capability.value.intValue0 = global->findCapability("spvRayQueryKHR");
-                options.push_back(capability);
+                throw std::invalid_argument("Shader program requires ray query: " + m_File.string());
             }
-            std::vector<const char*> searchPaths;
-            for (const auto& directory : m_SearchPaths)
-            {
-                searchPaths.push_back(directory.c_str());
-            }
-            slang::SessionDesc sd {};
-            sd.targets                  = &target;
-            sd.targetCount              = 1;
-            sd.searchPaths              = searchPaths.data();
-            sd.searchPathCount          = SlangInt(searchPaths.size());
-            sd.defaultMatrixLayoutMode  = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR;
-            sd.compilerOptionEntries    = options.data();
-            sd.compilerOptionEntryCount = uint32_t(options.size());
-            // A new session discards Slang's cached modules on every reload.
-            ComPtr<slang::ISession> session;
-            diagnose(global->createSession(sd, session.writeRef()), {}, "Create Slang session");
-            ComPtr<slang::IBlob> diagnostics;
-            auto*                module = session->loadModule(m_File.stem().string().c_str(), diagnostics.writeRef());
-            diagnose(module ? SLANG_OK : SLANG_FAIL, diagnostics, "Load shader module");
-            std::vector<ComPtr<slang::IEntryPoint>> entries(m_Entries.size());
-            std::vector<slang::IComponentType*>     components {module};
-            for (size_t i = 0; i < entries.size(); ++i)
-            {
-                diagnose(module->findEntryPointByName(m_Entries[i].name.c_str(), entries[i].writeRef()),
-                         {},
-                         "Find shader entry point");
-                components.push_back(entries[i]);
-            }
-            ComPtr<slang::IComponentType> composed;
-            ComPtr<slang::IComponentType> linked;
-            diagnostics.setNull();
-            auto result = session->createCompositeComponentType(components.data(),
-                                                                SlangInt(components.size()),
-                                                                composed.writeRef(),
-                                                                diagnostics.writeRef());
-            diagnose(result, diagnostics, "Compose shader");
-            diagnostics.setNull();
-            result = composed->link(linked.writeRef(), diagnostics.writeRef());
-            diagnose(result, diagnostics, "Link shader");
-            std::vector<ComPtr<slang::IBlob>> code(entries.size());
-            std::vector<VriShaderDesc>        shaders(entries.size());
-            for (size_t i = 0; i < entries.size(); ++i)
-            {
-                diagnostics.setNull();
-                result = linked->getEntryPointCode(SlangInt(i), 0, code[i].writeRef(), diagnostics.writeRef());
-                diagnose(result, diagnostics, "Emit SPIR-V");
-                shaders[i].stage          = m_Entries[i].stage;
-                shaders[i].entryPointName = m_Entries[i].name.c_str();
-                shaders[i].bytecode       = code[i]->getBufferPointer();
-                shaders[i].bytecodeSize   = code[i]->getBufferSize();
-            }
+            const auto   shaders     = program.descriptors(m_CompileOptions.entries);
             VriPipeline* replacement = m_Builder(shaders);
             if (!replacement)
             {

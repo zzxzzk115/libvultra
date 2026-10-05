@@ -1,3 +1,5 @@
+#include <vultra/assets/vpk_archive.hpp>
+#include <vultra/main/packaged_resources.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
 #include <vultra/servers/rendering/research/capture.hpp>
 
@@ -5,8 +7,11 @@
 #include <glm/ext/matrix_transform.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <iostream>
+#include <optional>
+#include <string_view>
 
 namespace
 {
@@ -293,11 +298,27 @@ namespace
     }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 try
 {
+    const bool cooked = argc == 2 && std::string_view(argv[1]) == "--cooked";
+    if (argc != 1 && !cooked)
+    {
+        throw std::invalid_argument("Usage: test-meshlets [--cooked]");
+    }
     const auto scene = makeScene();
     verifyClusters(scene);
+    std::optional<vultra::ScopedWorkingDirectory> directory;
+    if (cooked)
+    {
+        const auto root =
+            std::filesystem::absolute(std::filesystem::path("build/.tmp/meshlets-cooked") /
+                                      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        vultra::VpkArchive("build/.tmp/runtime-builtin.vpk").extractTo(root);
+        require(!std::filesystem::exists(root / "builtin/shaders/passes/meshlet_forward.slang"),
+                "Cooked meshlet test still has shader source");
+        directory.emplace(root);
+    }
     verifyGpu(scene);
     std::cout
         << "Meshlet tests passed: triangle/material preservation, bounds, vtask determinism, partial task groups, "

@@ -1,5 +1,7 @@
 #include "image_decode.hpp"
 
+#include <vultra/assets/texture_asset.hpp>
+
 #include <DirectXTex.h>
 
 #include <cstring>
@@ -76,6 +78,44 @@ namespace vultra
                     throw std::runtime_error(std::format("Unsupported DDS DXGI format {}", int(format)));
             }
         }
+
+        DXGI_FORMAT normalizeDds(DirectX::ScratchImage& image, std::optional<bool> srgb, bool decompress)
+        {
+            const bool color  = srgb.value_or(DirectX::IsSRGB(image.GetMetadata().format));
+            auto       format = DirectX::MakeLinear(image.GetMetadata().format);
+            static_cast<void>(ddsFormat(format)); // Reject unsupported signed/integer formats before conversion.
+            if (color && DirectX::MakeSRGB(format) == format)
+            {
+                throw std::runtime_error("DDS format has no sRGB interpretation for a color material slot");
+            }
+            // Material semantics choose the transfer function. Reinterpret encoded values without gamma conversion.
+            image.OverrideFormat(format);
+            if (DirectX::IsCompressed(format) && (color || decompress))
+            {
+                DirectX::ScratchImage decoded;
+                auto                  output = DXGI_FORMAT_R8G8B8A8_UNORM;
+                if (format == DXGI_FORMAT_BC6H_UF16)
+                {
+                    output = DXGI_FORMAT_R16G16B16A16_FLOAT;
+                }
+                else if (format == DXGI_FORMAT_BC5_UNORM)
+                {
+                    // Preserve two-channel normal semantics in the uncompressed reference path.
+                    output = DXGI_FORMAT_R8G8_UNORM;
+                }
+                checkDds(
+                    DirectX::Decompress(image.GetImages(), image.GetImageCount(), image.GetMetadata(), output, decoded),
+                    "Decompress DDS for hardware sRGB sampling or uncompressed import");
+                image  = std::move(decoded);
+                format = output;
+            }
+            if (color)
+            {
+                format = DirectX::MakeSRGB(format);
+            }
+            image.OverrideFormat(format);
+            return format;
+        }
     } // namespace
 
     SceneImage asset_detail::retainDds(std::span<const std::byte> bytes)
@@ -94,38 +134,7 @@ namespace vultra
         checkDds(DirectX::LoadFromDDSMemory(bytes.data(), bytes.size(), DirectX::DDS_FLAGS_NONE, &metadata, image),
                  "Load DDS mip chain");
         validateDds(metadata);
-        const bool color  = srgb.value_or(DirectX::IsSRGB(metadata.format));
-        auto       format = DirectX::MakeLinear(metadata.format);
-        static_cast<void>(ddsFormat(format)); // Reject unsupported signed/integer formats before conversion.
-        if (color && DirectX::MakeSRGB(format) == format)
-        {
-            throw std::runtime_error("DDS format has no sRGB interpretation for a color material slot");
-        }
-        // Material semantics choose the transfer function. Reinterpret encoded values without gamma conversion.
-        image.OverrideFormat(format);
-        if (DirectX::IsCompressed(format) && (color || decompress))
-        {
-            DirectX::ScratchImage decoded;
-            auto                  output = DXGI_FORMAT_R8G8B8A8_UNORM;
-            if (format == DXGI_FORMAT_BC6H_UF16)
-            {
-                output = DXGI_FORMAT_R16G16B16A16_FLOAT;
-            }
-            else if (format == DXGI_FORMAT_BC5_UNORM)
-            {
-                // Preserve two-channel normal semantics in the uncompressed reference path.
-                output = DXGI_FORMAT_R8G8_UNORM;
-            }
-            checkDds(
-                DirectX::Decompress(image.GetImages(), image.GetImageCount(), image.GetMetadata(), output, decoded),
-                "Decompress DDS for hardware sRGB sampling or uncompressed import");
-            image  = std::move(decoded);
-            format = output;
-        }
-        if (color)
-        {
-            format = DirectX::MakeSRGB(format);
-        }
+        auto        format = normalizeDds(image, srgb, decompress);
         TextureData result;
         result.format = ddsFormat(format);
         for (size_t mip = 0; mip < metadata.mipLevels; ++mip)
@@ -148,5 +157,93 @@ namespace vultra
     TextureData loadDds(const std::filesystem::path& path, const SourceObserver& observer)
     {
         return asset_detail::decodeDds(readSourceFile(path, observer), std::nullopt, false);
+    }
+
+    TextureAssetData loadTextureAsset(const std::filesystem::path& path, bool srgb, const SourceObserver& observer)
+    {
+        const auto       bytes = readSourceFile(path, observer);
+        TextureAssetData result;
+        if (bytes.size() < 4 || std::memcmp(bytes.data(), "DDS ", 4) != 0)
+        {
+            const auto texture = prepareTexture(loadSceneImage(path, observer), srgb);
+            result.format      = texture.format;
+            result.mips        = uint32_t(texture.levels.size());
+            for (uint32_t mip = 0; mip < result.mips; ++mip)
+            {
+                const auto& level = texture.levels[mip];
+                result.subresources.push_back({level.size, 1, mip, 0, level.bytes});
+            }
+            return result;
+        }
+        DirectX::ScratchImage image;
+        DirectX::TexMetadata  metadata;
+        checkDds(DirectX::LoadFromDDSMemory(bytes.data(), bytes.size(), DirectX::DDS_FLAGS_NONE, &metadata, image),
+                 "Load shader DDS texture");
+        if (metadata.width == 0 || metadata.height == 0 || metadata.depth == 0 || metadata.arraySize == 0 ||
+            metadata.width > UINT32_MAX || metadata.height > UINT32_MAX || metadata.depth > UINT32_MAX ||
+            metadata.arraySize > 65536 || metadata.mipLevels == 0 || metadata.mipLevels > 32 ||
+            metadata.GetAlphaMode() == DirectX::TEX_ALPHA_MODE_PREMULTIPLIED)
+        {
+            throw std::invalid_argument("Invalid shader DDS dimensions, mip count or premultiplied alpha");
+        }
+        if (metadata.dimension == DirectX::TEX_DIMENSION_TEXTURE3D)
+        {
+            result.dimension = TextureDimension::e3D;
+        }
+        else if (metadata.dimension != DirectX::TEX_DIMENSION_TEXTURE2D)
+        {
+            throw std::invalid_argument("Shader textures require a 2D, array, cube or 3D DDS");
+        }
+        else if (metadata.IsCubemap())
+        {
+            result.dimension = metadata.arraySize == 6 ? TextureDimension::eCube : TextureDimension::eCubeArray;
+        }
+        else if (metadata.arraySize > 1)
+        {
+            result.dimension = TextureDimension::e2DArray;
+        }
+        const auto format = normalizeDds(image, srgb, false);
+        result.format     = ddsFormat(format);
+        result.layers     = uint32_t(metadata.arraySize);
+        result.mips       = uint32_t(metadata.mipLevels);
+        for (uint32_t layer = 0; layer < result.layers; ++layer)
+        {
+            for (uint32_t mip = 0; mip < result.mips; ++mip)
+            {
+                const auto  depth  = result.dimension == TextureDimension::e3D ?
+                                         uint32_t(std::max(metadata.depth >> mip, size_t(1))) :
+                                         1u;
+                const auto* source = image.GetImage(mip, layer, 0);
+                if (!source)
+                {
+                    throw std::invalid_argument("DDS is missing an authored subresource");
+                }
+                size_t rowBytes   = 0;
+                size_t sliceBytes = 0;
+                checkDds(DirectX::ComputePitch(format, source->width, source->height, rowBytes, sliceBytes),
+                         "Shader DDS pitch");
+                TextureSubresource resource {{uint32_t(source->width), uint32_t(source->height)},
+                                             depth,
+                                             mip,
+                                             layer,
+                                             std::vector<std::byte>(sliceBytes * depth)};
+                for (uint32_t z = 0; z < depth; ++z)
+                {
+                    const auto* slice = image.GetImage(mip, layer, z);
+                    if (!slice)
+                    {
+                        throw std::invalid_argument("DDS is missing a volume slice");
+                    }
+                    for (size_t row = 0; row < DirectX::ComputeScanlines(format, slice->height); ++row)
+                    {
+                        std::memcpy(resource.bytes.data() + z * sliceBytes + row * rowBytes,
+                                    slice->pixels + row * slice->rowPitch,
+                                    rowBytes);
+                    }
+                }
+                result.subresources.push_back(std::move(resource));
+            }
+        }
+        return result;
     }
 } // namespace vultra

@@ -3,25 +3,8 @@
 #include "resources/frame_block.slangh"
 #include "resources/primitive_transform.slangh"
 
-struct SurfaceData
-{
-    float3 worldPosition;
-    float3 normal;
-    float3 geometricNormal;
-    float3 baseColor;
-    float  baseWeight;
-    float  metallic;
-    float  roughness;
-    float3 emission;
-    float  occlusion;
-    float3 specularColor;
-    float  specularWeight;
-    float  specularIor;
-    float  coatWeight;
-    float  coatRoughness;
-    float  coatIor;
-    float  baseDiffuseRoughness;
-};
+#include "lib/surface_types.slangh"
+#include "resources/gpu_material.slangh"
 
 SurfaceVertex transformSurfaceVertex(MeshVertex input)
 {

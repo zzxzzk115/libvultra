@@ -24,8 +24,9 @@ namespace vultra
         Device& operator=(const Device&) = delete;
         void    waitIdle() const;
 
-        VriDevice*            handle = nullptr;
-        VriQueue*             queue  = nullptr;
+        VriDevice*            handle   = nullptr;
+        uint64_t              features = 0;
+        VriQueue*             queue    = nullptr;
         VriCoreInterface      core {};
         VriSwapChainInterface swap {};
     };

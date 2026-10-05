@@ -1,0 +1,146 @@
+#pragma once
+
+#include "lib/surface_types.slangh"
+#include "resources/frame_block.slangh"
+#include "resources/mesh_vertex.slangh"
+#include "resources/primitive_transform.slangh"
+
+// Inputs use world space, except the tangent-space normal written by the author.
+struct SurfaceInput
+{
+    float3 worldPosition;
+    float3 geometricNormal;
+    float4 tangent;
+    float2 uv;
+    float4 color;
+    bool frontFace;
+};
+
+struct SurfaceOutput
+{
+    float3 baseColor;
+    float baseWeight;
+    float metalness;
+    float specularRoughness;
+    float baseDiffuseRoughness;
+    float3 specularColor;
+    float specularWeight;
+    float specularIor;
+    float coatWeight;
+    float coatRoughness;
+    float coatIor;
+    float3 emission;
+    float occlusion;
+    float3 tangentSpaceNormal;
+    float opacity;
+    float alphaCutoff;
+};
+
+SurfaceOutput defaultSurfaceOutput()
+{
+    SurfaceOutput output;
+    output.baseColor = float3(1);
+    output.baseWeight = 1;
+    output.metalness = 0;
+    output.specularRoughness = 0.5;
+    output.baseDiffuseRoughness = 0;
+    output.specularColor = float3(1);
+    output.specularWeight = 1;
+    output.specularIor = 1.5;
+    output.coatWeight = 0;
+    output.coatRoughness = 0.03;
+    output.coatIor = 1.5;
+    output.emission = float3(0);
+    output.occlusion = 1;
+    output.tangentSpaceNormal = float3(0, 0, 1);
+    output.opacity = 1;
+    output.alphaCutoff = 0.5;
+    return output;
+}
+
+float3 decodeSurfaceNormal(float4 sample, uint encoding = 0)
+{
+    float3 normal = sample.xyz * 2 - 1;
+    if (encoding == 1)
+    {
+        normal.z = sqrt(saturate(1 - dot(normal.xy, normal.xy))); // BC5 stores XY.
+    }
+    return normal;
+}
+
+struct GameDrawData
+{
+    uint4 instance; // Transform index, shadow cascade, reserved.
+    uint4 meshlets; // First, count, frustum culling, debug colors.
+};
+
+[[vk::push_constant]] ConstantBuffer<GameDrawData> vultraDraw;
+
+SurfaceVertex vultraTransformVertex(MeshVertex input)
+{
+    PrimitiveTransform transform = primitiveTransforms[vultraDraw.instance.x];
+    SurfaceVertex output;
+    output.worldPosition = mul(transform.model, float4(input.position, 1)).xyz;
+    output.position = mul(frame.viewProjection, float4(output.worldPosition, 1));
+    output.normal = mul(transform.normal, float4(input.normal, 0)).xyz;
+    output.tangent = float4(mul(transform.model, float4(input.tangent.xyz, 0)).xyz,
+                            input.tangent.w * transform.properties.x);
+    output.uv = input.uv;
+    output.color = input.color;
+    return output;
+}
+
+SurfaceInput vultraSurfaceInput(SurfaceVertex vertex, bool frontFace)
+{
+    SurfaceInput input;
+    input.worldPosition = vertex.worldPosition;
+    input.geometricNormal = normalize(vertex.normal);
+    input.tangent = vertex.tangent;
+    input.uv = vertex.uv;
+    input.color = vertex.color;
+    input.frontFace = frontFace;
+    return input;
+}
+
+SurfaceData vultraSurfaceData(SurfaceInput input, SurfaceOutput output)
+{
+    float faceSign = input.frontFace ? 1 : -1;
+    float3 normal = input.geometricNormal;
+    float3 tangent = input.tangent.xyz - normal * dot(input.tangent.xyz, normal);
+    float tangentLength = dot(tangent, tangent);
+    float3 mappedNormal = normal;
+    if (tangentLength > 1e-12)
+    {
+        tangent *= rsqrt(tangentLength);
+        float3 bitangent = cross(normal, tangent) * input.tangent.w;
+        mappedNormal = normalize(tangent * output.tangentSpaceNormal.x +
+                                  bitangent * output.tangentSpaceNormal.y +
+                                  normal * output.tangentSpaceNormal.z);
+    }
+    SurfaceData surface;
+    surface.worldPosition = input.worldPosition;
+    surface.geometricNormal = normal * faceSign;
+    surface.normal = mappedNormal * faceSign;
+    surface.baseColor = output.baseColor;
+    surface.baseWeight = output.baseWeight;
+    surface.metallic = saturate(output.metalness);
+    surface.roughness = clamp(output.specularRoughness, 0.03, 1);
+    if (frame.overrides.x >= 0)
+    {
+        surface.roughness = clamp(frame.overrides.x, 0.03, 1);
+    }
+    if (frame.overrides.y >= 0)
+    {
+        surface.metallic = saturate(frame.overrides.y);
+    }
+    surface.baseDiffuseRoughness = output.baseDiffuseRoughness;
+    surface.specularColor = output.specularColor;
+    surface.specularWeight = output.specularWeight;
+    surface.specularIor = output.specularIor;
+    surface.coatWeight = output.coatWeight;
+    surface.coatRoughness = output.coatRoughness;
+    surface.coatIor = output.coatIor;
+    surface.emission = output.emission;
+    surface.occlusion = output.occlusion;
+    return surface;
+}

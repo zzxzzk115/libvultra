@@ -139,8 +139,12 @@ try
     const auto builtinOutput = root / "builtin.vpk";
     vultra::VpkArchive::packBuiltins(".", builtinOutput);
     vultra::VpkArchive builtins(builtinOutput);
-    require(builtins.contains("builtin/shaders/passes/forward.slang") &&
-                builtins.contains("external/openpbr/LICENSE") && !builtins.contains("project.vproject"),
+    require(builtins.contains("builtin/shaders/passes/forward.vshaderc") &&
+                builtins.contains("builtin/shaders/passes/path_trace.vshaderc") &&
+                builtins.contains("builtin/shaders/passes/meshlet_forward.vshaderc") &&
+                !builtins.contains("builtin/shaders/passes/forward.slang") &&
+                !builtins.contains("external/openpbr/openpbr.h") && builtins.contains("external/openpbr/LICENSE") &&
+                !builtins.contains("project.vproject"),
             "Builtin VPK content is incorrect");
 
     const auto stub = root / "runtime-stub";

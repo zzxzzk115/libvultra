@@ -8,6 +8,7 @@
 #include <vultra/servers/rendering/builtin/tone_mapping_pass.hpp>
 #include <vultra/servers/rendering/graph/render_graph.hpp>
 #include <vultra/servers/rendering/scene.hpp>
+#include <vultra/servers/rendering/shader_material.hpp>
 
 #include <vri/ext/vri_ext_meshshader.h>
 
@@ -109,6 +110,13 @@ namespace vultra
                      std::optional<std::span<const RenderLight>> lights               = std::nullopt,
                      float                                       environmentIntensity = 1);
         void pollShaders();
+        // Borrowed material must outlive the renderer. Null restores the imported OpenPBR material.
+        void setShaderMaterial(uint32_t slot, ShaderMaterial* material);
+        // Prepare an isolated reload candidate against the current graph without replacing any live material.
+        std::array<VriPipeline*, 10>
+        prepareShaderMaterial(ShaderMaterial& material, RenderGraph& graph, const Outputs& outputs);
+        // Returns an empty reason for a SubShader that meets the built-in raster ABI.
+        static std::string shaderSubshaderCompatibility(const ShaderSubshader& subshader);
         // Prepare only the tone-mapping stage when an external/reference renderer supplies scene color.
         void           prepareToneMapping(RenderGraph& graph, RenderGraph::Resource hdr);
         std::string    diagnostics() const;
@@ -142,7 +150,9 @@ namespace vultra
         VriDescriptorSet*              m_MeshletSet         = nullptr;
         VriMeshShaderInterface         m_MeshApi {};
         std::vector<VriDescriptorSet*> m_MaterialSets;
-        std::vector<VriDescriptor*>    m_MaterialSamplers;
+        std::vector<ShaderMaterial*>   m_ShaderMaterials;
+        std::vector<std::array<VriPipeline*, 10>> m_ShaderPipelines;
+        std::vector<VriDescriptor*>               m_MaterialSamplers;
         // Geometry pipelines are indexed by sidedness and reflected front face.
         std::array<std::unique_ptr<ShaderPipeline>, 4> m_Shadow;
         std::array<std::unique_ptr<ShaderPipeline>, 4> m_Forward;

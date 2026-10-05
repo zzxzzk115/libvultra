@@ -1,5 +1,9 @@
 #include <vultra/assets/project_manifest.hpp>
+#include <vultra/assets/shader_asset.hpp>
 #include <vultra/assets/vpk_archive.hpp>
+#include <vultra/core/base/logger.hpp>
+#include <vultra/core/base/stable_id.hpp>
+#include <vultra/drivers/rhi/shader_program.hpp>
 #include <vultra/platform/os/file.hpp>
 #include <vultra/scene/scene_tree.hpp>
 
@@ -238,10 +242,10 @@ namespace vultra
     {
         const auto normalized = archivePath(path);
         const auto found      = std::ranges::find_if(m_Entries,
-                                                     [&](const Entry& candidate)
-                                                     {
+                                                [&](const Entry& candidate)
+                                                {
                                                     return candidate.path == normalized;
-                                                     });
+                                                });
         if (found == m_Entries.end())
         {
             throw std::invalid_argument("VPK entry not found: " + normalized);
@@ -411,19 +415,64 @@ namespace vultra
         }
     } // namespace
 
-    void VpkArchive::packProject(const std::filesystem::path& projectFile, const std::filesystem::path& output)
+    void VpkArchive::packProject(const std::filesystem::path& projectFile,
+                                 const std::filesystem::path& output,
+                                 const ShaderCompileOptions&  shaders)
     {
-        const auto project = ProjectManifest::load(projectFile);
+        auto       project = ProjectManifest::load(projectFile);
         const auto root    = std::filesystem::canonical(projectFile.parent_path().empty() ? std::filesystem::path(".") :
-                                                                                            projectFile.parent_path());
+                                                                                         projectFile.parent_path());
         auto       scene   = SceneTree::load(sourceFile(root, pathText(project.mainScene)));
         scene.validateAssets(project);
         std::vector<std::pair<std::string, std::filesystem::path>> files;
-        files.emplace_back("project.vproject", std::filesystem::canonical(projectFile));
+
+        struct CookDirectory
+        {
+            std::filesystem::path path;
+
+            ~CookDirectory()
+            {
+                std::error_code ignored;
+                std::filesystem::remove_all(path, ignored);
+            }
+        } cooked {std::filesystem::temp_directory_path() /
+                  ("vultra-project-shaders-" + StableId::generate().toString())};
+
+        std::filesystem::create_directory(cooked.path);
+        // Cook only explicit shader assets. Native include libraries are not project material entrypoints.
+        const auto assets = project.assets();
+        for (const auto& asset : assets)
+        {
+            if (asset.path.extension() == ".vshader" || asset.path.extension() == ".slang")
+            {
+                auto relative = asset.path;
+                relative.replace_extension(".vshaderc");
+                auto options = shaders;
+                options.includeDirectories.insert(options.includeDirectories.begin(), root);
+                const auto cached = root / ".vultra/shaders" / (asset.id.value.toString() + ".vshaderc");
+                if (asset.path.extension() == ".vshader")
+                {
+                    ShaderAsset::cook(sourceFile(root, pathText(asset.path)), cached, options);
+                }
+                else
+                {
+                    ShaderProgram::cook(sourceFile(root, pathText(asset.path)), cached, options);
+                }
+                std::filesystem::create_directories((cooked.path / relative).parent_path());
+                std::filesystem::copy_file(cached, cooked.path / relative);
+                project.renameAsset(asset.id, relative);
+            }
+        }
+        const auto manifest = cooked.path / "project.vproject";
+        project.save(manifest);
+        files.emplace_back("project.vproject", manifest);
         files.emplace_back(archivePath(pathText(project.mainScene)), sourceFile(root, pathText(project.mainScene)));
         for (const auto& asset : project.assets())
         {
-            files.emplace_back(archivePath(pathText(asset.path)), sourceFile(root, pathText(asset.path)));
+            const auto artifact = cooked.path / asset.path;
+            files.emplace_back(archivePath(pathText(asset.path)),
+                               std::filesystem::is_regular_file(artifact) ? artifact :
+                                                                            sourceFile(root, pathText(asset.path)));
         }
         for (const auto& extension : project.extensions)
         {
@@ -559,23 +608,60 @@ namespace vultra
 
     void VpkArchive::packBuiltins(const std::filesystem::path& engineRoot, const std::filesystem::path& output)
     {
-        std::vector<std::pair<std::string, std::filesystem::path>> files;
-        const auto                                                 engine = std::filesystem::canonical(engineRoot);
-        for (const auto* directory : {"builtin/shaders", "external/openpbr"})
+        const auto engine = std::filesystem::canonical(engineRoot);
+        const auto passes = engine / "builtin/shaders/passes";
+        if (!std::filesystem::is_directory(passes))
         {
-            const auto sourceDirectory = engine / directory;
-            if (!std::filesystem::is_directory(sourceDirectory))
+            throw std::invalid_argument("Engine shader directory is missing: " + passes.string());
+        }
+
+        // The cook directory belongs to this invocation and is removed after the archive is finalized.
+        struct CookDirectory
+        {
+            std::filesystem::path path;
+
+            ~CookDirectory()
             {
-                throw std::invalid_argument("Engine shader directory is missing: " + sourceDirectory.string());
+                std::error_code ignored;
+                std::filesystem::remove_all(path, ignored);
             }
-            for (const auto& item : std::filesystem::recursive_directory_iterator(sourceDirectory))
+        } cooked {std::filesystem::temp_directory_path() / ("vultra-shaders-" + StableId::generate().toString())};
+
+        std::filesystem::create_directory(cooked.path);
+        const std::array                   includes {engine / "builtin/shaders", engine / "external"};
+        std::vector<std::filesystem::path> sources;
+        for (const auto& item : std::filesystem::recursive_directory_iterator(passes))
+        {
+            if (item.is_regular_file() && item.path().extension() == ".slang")
             {
-                if (item.is_regular_file())
-                {
-                    const auto name = archivePath(pathText(item.path().lexically_relative(engine)));
-                    files.emplace_back(name, sourceFile(engine, name));
-                }
+                sources.push_back(item.path());
             }
+        }
+        std::ranges::sort(sources);
+        if (sources.empty())
+        {
+            throw std::invalid_argument("No built-in shader passes to cook");
+        }
+        std::vector<std::pair<std::string, std::filesystem::path>> files;
+        for (const auto& source : sources)
+        {
+            Logger::core().info("Cooking built-in shader {}", source.filename().string());
+            const auto program = ShaderProgram::compile(source, {}, includes, source.filename() == "path_trace.slang");
+            if (!program.diagnostics.empty())
+            {
+                Logger::core().warn("{}", program.diagnostics);
+            }
+            auto relative = source.lexically_relative(engine);
+            relative.replace_extension(".vshaderc");
+            const auto outputFile = cooked.path / relative;
+            program.save(outputFile);
+            files.emplace_back(archivePath(pathText(relative)), outputFile);
+        }
+        // Ship upstream attribution with the compiled implementation, without compiler inputs.
+        for (const auto* name : {"LICENSE", "README.vultra.md"})
+        {
+            const auto relative = std::string("external/openpbr/") + name;
+            files.emplace_back(relative, sourceFile(engine, relative));
         }
         packFiles(files, output);
     }

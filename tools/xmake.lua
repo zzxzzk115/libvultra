@@ -51,3 +51,12 @@ target("vultra-research")
     end
     set_rundir("$(projectdir)")
 target_end()
+
+target("vultra-shader")
+    set_kind("binary")
+    set_default(false)
+    add_deps("vultra")
+    add_packages("nlohmann_json")
+    add_files("cook_shader.cpp")
+    set_rundir("$(projectdir)")
+target_end()

@@ -1,3 +1,4 @@
+#include "resources/gpu_material.slangh"
 #include "resources/frame_block.slangh"
 #include "resources/primitive_transform.slangh"
 

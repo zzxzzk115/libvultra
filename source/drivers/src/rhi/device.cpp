@@ -22,6 +22,7 @@ namespace vultra
 
     Device::Device(bool validation, const void* nativeCreateInfo, uint64_t features)
     {
+        this->features = features;
         static const VriCallbackInterface callbacks {.MessageCallback = log};
         VriDeviceCreationDesc             desc {};
         desc.graphicsAPI       = VriGraphicsAPI_Vulkan;

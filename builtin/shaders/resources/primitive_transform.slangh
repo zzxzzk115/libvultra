@@ -1,7 +1,5 @@
 #pragma once
 
-#include "resources/gpu_material.slangh"
-
 // Keep this layout consistent with GpuScene's per-primitive host buffer.
 struct PrimitiveTransform
 {

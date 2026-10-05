@@ -59,13 +59,13 @@ namespace vultra
                                                       std::numeric_limits<uint32_t>::max(),
                                                       "materials");
             const auto imageOffset    = checkedOffset(destination.images.size(),
-                                                      source.images.size(),
-                                                      std::numeric_limits<int>::max(),
-                                                      "images");
+                                                   source.images.size(),
+                                                   std::numeric_limits<int>::max(),
+                                                   "images");
             const auto samplerOffset  = checkedOffset(destination.samplers.size(),
-                                                      source.samplers.size(),
-                                                      std::numeric_limits<int>::max(),
-                                                      "samplers");
+                                                     source.samplers.size(),
+                                                     std::numeric_limits<int>::max(),
+                                                     "samplers");
             const auto preparedOffset = checkedOffset(result.textures.images.size(),
                                                       model.textures.images.size(),
                                                       std::numeric_limits<uint32_t>::max(),
@@ -124,13 +124,13 @@ namespace vultra
             const glm::mat3 normalTransform = glm::transpose(glm::inverse(linear));
             const auto&     source          = model.asset.scene;
             const auto      vertexOffset    = checkedOffset(destination.vertices.size(),
-                                                            source.vertices.size(),
-                                                            std::numeric_limits<uint32_t>::max(),
-                                                            "vertices");
+                                                    source.vertices.size(),
+                                                    std::numeric_limits<uint32_t>::max(),
+                                                    "vertices");
             const auto      indexOffset     = checkedOffset(destination.indices.size(),
-                                                            source.indices.size(),
-                                                            std::numeric_limits<uint32_t>::max(),
-                                                            "indices");
+                                                   source.indices.size(),
+                                                   std::numeric_limits<uint32_t>::max(),
+                                                   "indices");
             for (auto vertex : source.vertices)
             {
                 vertex.position   = glm::vec3(transform * glm::vec4(vertex.position, 1));
@@ -201,10 +201,10 @@ namespace vultra
                 const auto& mesh  = static_cast<const MeshInstanceNode&>(node);
                 const auto  id    = mesh.model();
                 auto        model = std::ranges::find_if(models,
-                                                         [id](const ImportedModel& entry)
-                                                         {
+                                                  [id](const ImportedModel& entry)
+                                                  {
                                                       return entry.id == id;
-                                                         });
+                                                  });
                 if (model == models.end())
                 {
                     models.push_back({id, importAsset(projectRoot / project.asset(id).path, options), 0});
@@ -244,9 +244,11 @@ namespace vultra
                     {
                         throw std::invalid_argument(mesh.name() + ": material slot exceeds the imported model");
                     }
-                    tree.findMaterial(entry.material)
-                        ->parameters()
-                        .applyTo(result.scene.materials[materialOffset + entry.slot]);
+                    const auto& resource = *tree.findMaterial(entry.material);
+                    if (resource.kind() == MaterialResource::Kind::eOpenPbr)
+                    {
+                        resource.parameters().applyTo(result.scene.materials[materialOffset + entry.slot]);
+                    }
                 }
                 appendInstance(result.scene, *model, transform, materialOffset);
                 importedInstances.push_back({node.idInScene(),
@@ -353,9 +355,11 @@ namespace vultra
             {
                 const auto found =
                     std::ranges::find(mesh.materialOverrides(), uint32_t(slot), &MeshMaterialOverride::slot);
-                const auto& parameters = found == mesh.materialOverrides().end() ?
+                const auto* resource =
+                    found == mesh.materialOverrides().end() ? nullptr : tree.findMaterial(found->material);
+                const auto& parameters = !resource || resource->kind() == MaterialResource::Kind::eShader ?
                                              instance.importedMaterials[slot] :
-                                             tree.findMaterial(found->material)->parameters();
+                                             resource->parameters();
                 auto&       material   = gpu.materials[instance.firstMaterial + slot];
                 if (MaterialParameters::fromMaterial(material) != parameters)
                 {

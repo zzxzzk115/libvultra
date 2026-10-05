@@ -458,10 +458,10 @@ namespace vultra
         destination.reserve(destination.size() + 1);
         auto&      source = node.parent()->m_Children;
         const auto it     = std::ranges::find_if(source,
-                                                 [&](const auto& child)
-                                                 {
+                                             [&](const auto& child)
+                                             {
                                                  return child.get() == &node;
-                                                 });
+                                             });
         auto       moved  = std::move(*it);
         source.erase(it);
         moved->m_Parent = &newParent;
@@ -477,10 +477,10 @@ namespace vultra
         }
         auto&      children = node.parent()->m_Children;
         const auto it       = std::ranges::find_if(children,
-                                                   [&](const auto& child)
-                                                   {
+                                             [&](const auto& child)
+                                             {
                                                  return child.get() == &node;
-                                                   });
+                                             });
         auto       result   = std::move(*it);
         children.erase(it);
         result->m_Parent = nullptr;
@@ -564,6 +564,27 @@ namespace vultra
     {
         validateNodeAssets(*m_Root, project);
         validateMaterials();
+        for (const auto& material : m_Materials)
+        {
+            if (material->kind() == MaterialResource::Kind::eShader)
+            {
+                const auto& instance  = material->shaderMaterial();
+                const auto  extension = project.asset(instance.shader).path.extension();
+                if (extension != ".vshader" && extension != ".vshaderc")
+                {
+                    throw std::invalid_argument("Game material requires a .vshader/.vshaderc asset: " +
+                                                material->name());
+                }
+                for (const auto& [name, value] : instance.overrides())
+                {
+                    if (const auto* texture = std::get_if<ShaderTextureValue>(&value);
+                        texture && texture->asset.value.valid())
+                    {
+                        project.asset(texture->asset);
+                    }
+                }
+            }
+        }
     }
 
     MaterialResource& SceneTree::addMaterial(std::unique_ptr<MaterialResource> material)
@@ -678,9 +699,16 @@ namespace vultra
                        {"materials", Json::array()}};
         for (const auto& material : m_Materials)
         {
-            document["materials"].push_back({{"id", material->assetId().value.toString()},
-                                             {"name", material->name()},
-                                             {"parameters", writeParameters(material->parameters())}});
+            Json entry {{"id", material->assetId().value.toString()}, {"name", material->name()}};
+            if (material->kind() == MaterialResource::Kind::eShader)
+            {
+                entry["shader_material"] = Json::parse(material->shaderMaterial().serialize());
+            }
+            else
+            {
+                entry["parameters"] = writeParameters(material->parameters());
+            }
+            document["materials"].push_back(std::move(entry));
         }
         if (m_CurrentCamera.value.valid())
         {
@@ -713,7 +741,18 @@ namespace vultra
             {
                 auto material = std::make_unique<MaterialResource>(entry.at("name").get<std::string>(),
                                                                    parseAssetId(entry.at("id").get<std::string>()));
-                material->setParameters(readParameters(entry.at("parameters")));
+                if (entry.contains("parameters") == entry.contains("shader_material"))
+                {
+                    throw std::invalid_argument("Material requires exactly one data category");
+                }
+                if (entry.contains("shader_material"))
+                {
+                    material->setShaderMaterial(MaterialInstance::parse(entry.at("shader_material").dump()));
+                }
+                else
+                {
+                    material->setParameters(readParameters(entry.at("parameters")));
+                }
                 tree.addMaterial(std::move(material));
             }
             tree.validateMaterials();

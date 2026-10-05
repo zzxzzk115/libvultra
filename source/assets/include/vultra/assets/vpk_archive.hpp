@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vultra/drivers/rhi/shader_program.hpp>
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -20,7 +22,9 @@ namespace vultra
         std::vector<std::byte> read(std::string_view path) const;
         void                   extractTo(const std::filesystem::path& directory) const;
 
-        static void packProject(const std::filesystem::path& projectFile, const std::filesystem::path& output);
+        static void packProject(const std::filesystem::path& projectFile,
+                                const std::filesystem::path& output,
+                                const ShaderCompileOptions&  shaders = {});
         static void packBuiltins(const std::filesystem::path& engineRoot, const std::filesystem::path& output);
         static void embedProject(const std::filesystem::path& executable,
                                  const std::filesystem::path& projectPack,
