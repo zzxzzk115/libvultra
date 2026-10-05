@@ -12,7 +12,7 @@ The `dev-VRI` branch is a small VRI-based rendering research framework within li
 - BaseApp, DesktopApp and ImGuiApp application lifecycles
 - Window-owned keyboard/mouse input and reusable Orbit/FPS camera controllers
 - An explicit RenderGraph with context-owned pass definitions and version-1 JSON graph definitions
-- Slang shaders with FileWatch hot reload
+- Game `.vshader` materials and native `.slang` programs, with cooking and hot reload
 - ImGui docking and multiple native viewports on Windows/X11, per-application layouts and an Unreal-style default theme
 - Optional RmlUi-based VGui with an embedded PNG skin for common game UI controls
 - A built-in renderer with naive deferred and forward paths, an opaque OpenPBR subset, HDR IBL and cascaded shadows
@@ -62,6 +62,8 @@ xmake run example-basics window --frames 60
 
 xmake resolves dependencies through the configured repositories. Slang 2026.11 and the Linux OpenXR 1.1.49 loader are built from pinned source as static libraries; the initial Slang build takes longer than the former prebuilt package. See [external/xmake.lua](external/xmake.lua) for dependency versions, [local static package recipes](external/packages/packages) and the [local VRI patch](external/vri/README.md) for validation-layer resize handling.
 
+Game `.vshader` materials and native `.slang` research programs share checked `.vshaderc` cooking. See the [shader system guide](docs/shader_system.md) for syntax, reflected bindings, transactional reload, source-free packaging and VS Code services. `xmake run example-shader --frames 60` cooks its dependencies before launch; add `--edit`, `--deferred` or `--meshlets` to exercise the other paths. Ordinary builds use the checked-in ANTLR 4.13.2 parser and do not need Java.
+
 Model example builds prepare their default asset caches before launch. Unchanged assets are verified and reused; missing or stale caches are rebuilt. Run `xmake build example-assets` to prepare all default model caches explicitly. Runtime-selected models retain on-demand import. See [build-time asset preparation](docs/asset_pipeline.md#build-time-preparation) for scope and cache behavior.
 
 The project explicitly enables `run.autobuild`: `xmake run <target>` first builds that target and checks its asset dependencies. Run a named category and mode; category targets without a mode print their mode list. Tests are separate and run with `xmake test`. Use `xmake run` to provide the package DLL search paths; all examples use the repository root as their working directory.
@@ -88,7 +90,7 @@ xmake build -y --all
 
 The `libvultra_build_examples`, `libvultra_build_tests` and `libvultra_with_openxr` options are enabled by default. Set `--libvultra_with_openxr=y` to restore XR support.
 
-The packaged player supports either `vultra-runtime` plus a project VPK or a single executable with the project VPK appended. Built-in Slang shaders are already embedded in the runtime. The sample package includes a RmlUi HUD; the ImGui debugger remains optional with `--debug-ui`. After building the tools, export and launch use their executables directly; xmake is not needed on the target machine:
+The packaged player supports either `vultra-runtime` plus a project VPK or a single executable with the project VPK appended. Built-in Slang shaders are cooked to SPIR-V during the build and embedded in the runtime. The sample package includes a RmlUi HUD; the ImGui debugger remains optional with `--debug-ui`. After building the tools, export and launch use their executables directly; xmake is not needed on the target machine:
 
 ```sh
 xmake build vultra-pack vultra-runtime
@@ -169,6 +171,7 @@ Run `xmake test -v` for the test suite. Follow the checked-in `.clang-format` an
 - [Dear ImGui](https://github.com/ocornut/imgui): immediate-mode UI, docking and multiple viewports
 - [imgui-node-editor](https://github.com/thedmd/imgui-node-editor): optional research editor node canvas (MIT)
 - [Slang](https://github.com/shader-slang/slang): shader compilation to SPIR-V
+- [ANTLR](https://github.com/antlr/antlr4/tree/4.13.2): private game shader parser and checked-in generated C++ (BSD-3-Clause)
 - [argparse](https://github.com/p-ranav/argparse): command-line argument parsing
 - [spdlog](https://github.com/gabime/spdlog): console and file logging
 - [stb](https://github.com/nothings/stb): image loading, SIMD mip filtering and PNG writing

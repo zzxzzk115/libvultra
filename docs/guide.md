@@ -90,7 +90,7 @@ GetChild(0).SetMaterial(0, paint);
 
 `resources/research_lighting.vproject` demonstrates an authored camera, three light kinds, an HDR environment node and the helmet's shared material. The workbench Scene inspector selects nodes and material resources, edits local transforms and typed settings, assigns material slots and chooses the current camera/environment. Camera, light, environment and material property descriptions/drawing functions now come from the same libclang IR as RenderSettings. Node selection, transform editing and asset references remain explicit editor code; C++26 reflection is not used.
 
-`vultra-pack` writes an uncompressed VPK with the manifest, scene, declared assets and script modules. A C# module also packs the sibling safe API `Vultra.Scripting.dll`, internal `Vultra.ManagedHost.dll`, its required `.runtimeconfig.json`, and any `.deps.json` files. Declare other managed dependency DLLs as project assets. The project VPK contains no engine shaders. The `vultra-runtime` binary embeds a separate checked VPK of built-in Slang shader sources and OpenPBR includes at build time. A project VPK can stay external or be appended to a copy of the runtime. The appended archive has a versioned, checksummed footer; the runtime reads it from its own executable when no package path is supplied. An explicit package path selects an external VPK. Both forms extract the project and built-ins to a temporary directory for the current file-based importer and shader compiler, then remove it after shutdown. VPK entries have XXH3 checksums and reject corrupt data and traversal paths.
+`vultra-pack` writes an uncompressed VPK with the manifest, scene, declared assets and script modules. A C# module also packs the sibling safe API `Vultra.Scripting.dll`, internal `Vultra.ManagedHost.dll`, its required `.runtimeconfig.json`, and any `.deps.json` files. Declare other managed dependency DLLs as project assets. The project VPK contains no engine shaders. The `vultra-runtime` binary embeds a separate checked VPK of cooked built-in SPIR-V programs and OpenPBR attribution at build time. A project VPK can stay external or be appended to a copy of the runtime. The appended archive has a versioned, checksummed footer; the runtime reads it from its own executable when no package path is supplied. An explicit package path selects an external VPK. Both forms extract the project and built-ins to a temporary directory for the current file-based importer and bytecode loader, then remove it after shutdown. VPK entries have XXH3 checksums and reject corrupt data and traversal paths.
 
 Build the tools once, then use the standalone packer directly. Exporting and running do not invoke xmake:
 
@@ -435,11 +435,47 @@ The built-in renderer supplies `builtin/shaders` and `external` as include roots
 
 ShaderPipeline's `includeDirectories` adds search roots. The entry's directory is searched first, then the supplied directories in order. Relative paths become absolute at pipeline creation and are reused on reload. Same-directory experiment shaders can still include `"color.slangh"`. Upstream OpenPBR includes stay unchanged.
 
-FileWatch events are debounced for 150 ms. Each compilation uses a new Slang session. A failed reload preserves the previous pipeline and reports diagnostics; a later successful save replaces it. Built-in runtime pipelines watch `builtin/shaders`, covering sibling `lib` and `resources` directories. Other pipelines can set a shared `watchDirectory`; the default is the entry directory's tree.
+FileWatch events are debounced for 150 ms. Each compilation uses a new Slang session. A failed reload preserves the previous pipeline and reports diagnostics; a later successful save replaces it. Source-based built-in pipelines watch `builtin/shaders`, covering sibling `lib` and `resources` directories. Packaged built-ins load cooked programs and do not create watchers. Other pipelines can set a shared `watchDirectory`; the default is the entry directory's tree.
 
 Environment shaders execute when constructing Environment; use **Rebuild IBL** after changing them. Binding or shared-layout changes still require corresponding C++ changes and a rebuild. Vendored OpenPBR is outside the watched tree and requires a rebuild/restart after updates. Vultra's own adapter remains hot-reloadable.
 
 FileWatch is vendored at commit `a59891baf375b73ff28144973a6fafd3fe40aa21`, with its MIT license and attribution preserved in `external/FileWatch`. The [local Linux patch](../external/FileWatch/README.vultra.md) covers rename notifications and shutdown after directory removal. Linux uses one retained watcher per directory, reconciled after debounced changes.
+
+### Shader cooking
+
+`ShaderProgram::compile()` is shared by source hot reload and the CPU-only `vultra-shader` tool. Cooking discovers
+all annotated entries in the module, including included fullscreen vertices, and records their reflected VRI
+stages. A version-1 `.vshaderc` contains aligned SPIR-V bytecode compiled with the `spirv_1_5` profile, entry
+names/stages and an explicit ray-query requirement. Its CBOR payload has an XXH3 checksum; unsupported
+versions/targets, malformed entries and corrupt files fail before pipeline creation. This format currently
+supports raster, compute and mesh/task shaders on little-endian hosts. DXIL cooking and D3D12 remain unimplemented.
+
+```sh
+xmake build -y vultra-shader
+./build/linux/x86_64/release/vultra-shader examples/research/shaders/triangle.slang \
+    --include builtin/shaders --include examples/common --output build/.tmp/triangle.vshaderc
+```
+
+Use the Windows x64 build directory and `.exe` suffix on Windows. Repeat `--include` to add search roots; use
+`--ray-query` for a shader that requires ray query. Cooking needs no graphics device or display. A successful cook
+atomically replaces the output; compilation or write failure retains the preceding artifact.
+
+Pass a `.vshaderc` path to the ordinary `ShaderPipeline` constructor with the entries needed by that pipeline.
+The builder still receives VRI descriptors, whose bytecode/name views belong to the loaded program during the
+builder call. If a requested `.slang` source is absent, the constructor loads its `.vshaderc` sibling. A present
+source always compiles and watches; an invalid cooked program never switches to source compilation. Cooked
+pipelines have no watcher and `poll()` returns false. Explicit `reload()` can replace a cooked file and retains
+the preceding GPU pipeline on failure.
+
+`vultra-pack --builtins` cooks all files under `builtin/shaders/passes` before publishing the archive. The archive
+contains `.vshaderc` files and OpenPBR license/integration notices, without Slang sources, includes or OpenPBR
+headers. The runtime, batch tool, workbench and optional research library embed this archive. Their xmake build
+tracks shader/include files, the packer and build configuration, skipping unchanged cooking; packaged shader
+changes require rebuilding the archive. Direct source-based examples retain FileWatch hot reload. The research
+sample's embedded color-gain source still compiles at runtime. Explicit game and research shader assets in a
+project manifest are cooked automatically when packing its VPK. Other project passes and native extensions must
+explicitly deliver sources or cooked programs; see [Vultra Shader](shader_system.md#cooking-caching-and-packaging).
+Slang remains statically linked for source editing and native project compilation.
 
 ## Research Utilities
 
@@ -488,7 +524,7 @@ The output directory contains the effective `experiment.vexperiment`, `graph_rep
 
 `savePfm()` exports IEEE float RGB without clamping, gamma or tone mapping; PFM does not carry alpha. It retains signed channels and HDR values, unlike the PNG preview. The writer follows the [PFM format's byte-order and row-order contract](https://www.pauldebevec.com/Research/HDR/PFM/). Marked outputs are raw channels, so normals or HDR may require visualization before displaying them as ordinary images.
 
-The executable embeds the built-in shader VPK and the sample compute shader. It extracts them into a temporary directory, shared with the packaged runtime's resource bootstrap, and removes that directory after GPU objects are released. A built `vultra-batch` can be copied beside a project VPK and graph definition and launched without xmake or the repository. System Vulkan/driver and the currently linked Linux platform libraries are still required; clean-machine and Windows delivery need separate validation.
+The executable embeds the built-in shader VPK and the sample compute shader. It extracts them into a temporary directory, shared with the packaged runtime's resource bootstrap, and removes that directory after GPU objects are released. A built `vultra-batch` can be copied beside a project VPK and graph definition and launched without xmake or the repository. System Vulkan/driver and the currently linked Linux platform libraries are still required. Copied Windows batch/VPK startup passes on the development machine; separate clean-machine delivery still needs validation.
 
 The standard-library-only integration regression exercises no-display/no-build-tool runs, C++/graph definition pixel parity, signed HDR output, invalid input and recovery, and a copied standalone executable with VPK input:
 
@@ -541,7 +577,7 @@ AI/QA can render the **same panel and widgets** offscreen:
 
 This path constructs no Window or Swapchain and does not initialize a GLFW/SDL platform backend. It uses a 1600x1000 GUI target with a fixed 1/60-second GUI time step and exports `workbench.png` in addition to scene/port images. Timings shown in the UI may vary; the scene, graph and camera outputs are reproducible. `EditorGui(Device&, format, config)` supplies this explicit offscreen context (`multiViewport = false`), followed by `begin(extent, deltaSeconds)`, widget construction, `upload`, command recording and GPU completion. Native window contexts keep the existing `begin()` lifecycle.
 
-`test-graph-editor` injects mouse events into the offscreen GUI to verify wiring, format rejection, rewiring, display selection, navigation, preview, node deletion/recreation, rename, add and saved node positions. It holds and moves a parameter slider, reads changed scene pixels before mouse release, and verifies graph/pass/texture reuse. `test-research-workspace` covers scene/workspace image round trips, invalid snapshot recovery, shared-resource reuse and graph/project/parameter failure recovery. `test-scene-inspector` checks tree/resource selection, held-drag GPU output, generated/custom drawers, small/signed scales and shear, rejected values, HDR failure/recovery, stale pending operations and saved-image parity. `test-gui-offscreen` covers default scalar/vector/text controls, checkbox and dropdown interaction plus GPU readback. These tests do not send input to the desktop. Native desktop/window integration and Windows still need separate validation.
+`test-graph-editor` injects mouse events into the offscreen GUI to verify wiring, format rejection, rewiring, display selection, navigation, preview, node deletion/recreation, rename, add and saved node positions. It holds and moves a parameter slider, reads changed scene pixels before mouse release, and verifies graph/pass/texture reuse. `test-research-workspace` covers scene/workspace image round trips, invalid snapshot recovery, shared-resource reuse and graph/project/parameter failure recovery. `test-scene-inspector` checks tree/resource selection, held-drag GPU output, generated/custom drawers, small/signed scales and shear, rejected values, HDR failure/recovery, stale pending operations and saved-image parity. `test-gui-offscreen` covers default scalar/vector/text controls, checkbox and dropdown interaction plus GPU readback. These tests do not send input to the desktop. Windows GLFW native startup and the offscreen workbench regressions pass; manual desktop UI interaction and current SDL3 acceptance remain separate checks.
 
 The standalone integration regression checks workbench/reopened/batch pixel parity, marked depth/normal output, the real UI screenshot and invalid CLI/graph definition inputs with no display connection or build tools:
 
@@ -613,6 +649,8 @@ The test targets cover independent window ownership/input and native GUI readbac
 
 Shader failure/recovery tests intentionally compile invalid input and label the expected error. A successful process exit alone does not establish correct rendering; inspect GPU diagnostics and relevant readback results. The OpenPBR test compares 49 Slang/C++ cases, but does not certify full material or glTF conformance. Hardware-independent checks cannot replace headset validation.
 
+As of 2026-10-05, the Windows x64 GLFW/release/Vulkan all-target build and 32-test suite pass on an RTX 4080 SUPER. Standalone batch/VPK, workbench persistence and Python/CLI regressions also pass, including exact same-device HDR readbacks and reference AOVs. A 30-frame native workbench run exports the same PNG/PFM pixels as its offscreen baseline. These checks cover the development machine, not manual editor interaction or a separate clean installation. Current SDL3, D3D12, physical XR and RenderDoc/Nsight acceptance remain separate.
+
 On Linux, run the complete suite with `VULTRA_WINDOW_SYSTEM=x11 xmake test -v`. Its detached-viewport and iconify tests require a window manager that honors application resize and iconify requests. An X11 stacking window manager such as Openbox provides that test environment; an isolated Xvfb display with Openbox can also be used. Choose an unused display number separate from the active desktop, and limit its `DISPLAY` environment variable to the test processes. Hyprland's tiling/minimize policy can invalidate exact-size and minimize assertions even though XWayland rendering works. Do not suppress these assertions or treat a bare Xvfb server without a running window manager as equivalent. Virtual-display results validate the code paths and GPU readbacks, not physical display or headset behavior.
 
 For native Wayland, run `VULTRA_WINDOW_SYSTEM=wayland xmake test -v 'test-window/*' 'test-camera/*'` and finite-frame examples with captures. `test-window` requires docking and correct GPU pixels while checking that unsupported detached viewports stay disabled. The full X11 suite retains its viewport/minimize assertions; running it under Wayland is not an equivalent acceptance environment. Use an isolated run directory for example layouts when comparing backends.
@@ -626,3 +664,7 @@ clang-tidy -p .vscode source/platform/src/os/window.cpp
 Regenerate the database after changing backends; a GLFW database cannot describe SDL3 platform sources. For code changes, use `.clang-format` and `.clang-tidy` and finite-frame runs of affected examples. Temporary verification data belongs under `build/.tmp/`. Keep personal layouts and experiment outputs out of source control.
 
 Use a complete LLVM installation for clang-tidy, including its matching `lib/clang/<version>/include` resource headers. A tidy-only installation can incorrectly pick up MSVC's SIMD headers and report narrowing errors inside `stb_image_resize2`. Run examples through `xmake run` for consistent working directories and prepared assets. Slang and the Linux OpenXR loader are linked statically.
+
+## Game shaders and native research shaders
+
+See [Vultra Shader](shader_system.md) for the two source paths, material properties, standard Surface passes, explicit VRI Pass contracts, cooking, packaging and editor services. The game example depends on build-time shader cooking; research code remains able to use native Slang and VRI directly. Regenerating the private ANTLR parser requires Java, but normal builds do not.
