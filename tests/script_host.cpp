@@ -1,3 +1,4 @@
+#include <vultra/assets/project_manifest.hpp>
 #include <vultra/scene/scene_tree.hpp>
 #include <vultra/scripting/script_host.hpp>
 
@@ -110,6 +111,111 @@ int main(int argc, char** argv)
         stoppedRejected = true;
     }
     require(stoppedRejected, "Stopped script host accepted update");
+
+    const auto structuralScript = root / "build/.tmp/script-host-structure.lua";
+    std::filesystem::create_directories(structuralScript.parent_path());
+    {
+        vultra::SceneTree       structuralScene(std::make_unique<vultra::Node>("Root"));
+        const vultra::AssetId   firstModel {vultra::StableId::generate()};
+        const vultra::AssetId   secondModel {vultra::StableId::generate()};
+        vultra::ProjectManifest project;
+        const auto              selectedModel = project.addAsset("models/selected.glb");
+        auto& firstMesh  = structuralScene.addChild(structuralScene.root(),
+                                                    std::make_unique<vultra::MeshInstanceNode>("First", firstModel));
+        auto& secondMesh = structuralScene.addChild(structuralScene.root(),
+                                                    std::make_unique<vultra::MeshInstanceNode>("Second", secondModel));
+        std::ofstream(structuralScript) << "return { _ready = function(self) "
+                                           "local root = self.scene:root(); "
+                                           "self.copy = root:get_child(0):duplicate_mesh(root); "
+                                           "root:get_child(1):copy_mesh_model(self.copy); "
+                                           "local ok = pcall(function() root:get_child(1):set_mesh_model('bad') end); "
+                                           "assert(not ok); "
+                                           "root:get_child(1):set_mesh_model('"
+                                        << selectedModel.value.toString()
+                                        << "') end, _process = function(self, dt) end }\n";
+        vultra::ScriptHost structuralHost(structuralScene, false, &project);
+        structuralHost.add({vultra::ScriptModule::Language::eLua, {}}, structuralScript);
+        structuralHost.update(0.01f);
+        require(structuralScene.root().children().size() == 3 &&
+                    static_cast<const vultra::MeshInstanceNode&>(*structuralScene.root().children()[2]).model() ==
+                        firstModel &&
+                    static_cast<const vultra::MeshInstanceNode&>(secondMesh).model() == selectedModel &&
+                    firstMesh.idInScene() != structuralScene.root().children()[2]->idInScene(),
+                "Lua scene edits did not duplicate a mesh and replace its model");
+        structuralHost.stop();
+    }
+
+    const auto compositionScript = root / "build/.tmp/script-host-compose.lua";
+    {
+        vultra::ProjectManifest project;
+        const auto              model = project.addAsset("models/created.obj");
+        vultra::SceneTree       composed(std::make_unique<vultra::Node>("Root"));
+        std::ofstream(compositionScript)
+            << "return { _ready = function(self) "
+               "local root = self.scene:root(); "
+               "local group = root:create_child('Group'); "
+               "group:set_position(1, 2, 0); "
+               "local failed = pcall(function() root:create_mesh_child('Bad', 'bad') end); "
+               "assert(not failed); "
+               "local mesh = root:create_mesh_child('Created', '"
+            << model.value.toString()
+            << "'); mesh:set_position(0, 0, 3); mesh:reparent(group) "
+               "end, _process = function(self, dt) end }\n";
+        vultra::ScriptHost compositionHost(composed, false, &project);
+        compositionHost.add({vultra::ScriptModule::Language::eLua, {}}, compositionScript);
+        compositionHost.update(0.01f);
+        require(composed.root().children().size() == 1 && composed.root().children()[0]->children().size() == 1,
+                "Lua scene composition left an invalid or misplaced node");
+        const auto& group = *composed.root().children()[0];
+        const auto& mesh  = static_cast<const vultra::MeshInstanceNode&>(*group.children()[0]);
+        require(mesh.model() == model && mesh.localTransform()[3].z == 3 && mesh.globalTransform()[3].x == 1 &&
+                    mesh.globalTransform()[3].y == 2,
+                "Lua scene composition lost model selection or parent transforms");
+        compositionHost.stop();
+    }
+
+    const auto removalScript = root / "build/.tmp/script-host-remove.lua";
+    {
+        vultra::SceneTree removalScene(std::make_unique<vultra::Node>("Root"));
+        auto&             group  = removalScene.addChild(removalScene.root(), std::make_unique<vultra::Node>("Group"));
+        auto&             target = removalScene.addChild(group, std::make_unique<vultra::Node>("Target"));
+        const auto        removedId = target.idInScene();
+        std::ofstream(removalScript) << "return { _process = function(self, dt) "
+                                        "self.tick = (self.tick or 0) + 1; "
+                                        "if self.tick == 2 then self.scene:root():get_child(0):remove() end end }\n";
+        const auto childScript = root / "build/.tmp/script-host-removed-child.lua";
+        const auto exitMarker  = root / "build/.tmp/script-host-removed-child.exit";
+        std::filesystem::remove(exitMarker);
+        std::ofstream(childScript) << "return { _process = function(self, dt) "
+                                      "self.tick = (self.tick or 0) + 1; "
+                                      "if self.tick > 1 then error('removed child was updated') end end, "
+                                      "_exit_tree = function(self) "
+                                      "local file = assert(io.open('build/.tmp/script-host-removed-child.exit', 'a')); "
+                                      "file:write('x'); file:close() end }\n";
+        vultra::ScriptHost removalHost(removalScene, true);
+        removalHost.add({vultra::ScriptModule::Language::eLua, {}}, removalScript);
+        removalHost.add({vultra::ScriptModule::Language::eLua, {}, {}, removedId.value}, childScript);
+        removalHost.update(0.01f);
+        require(removalScene.find(removedId), "Lua removed the child before its first update");
+        removalHost.update(0.01f);
+        require(!removalScene.find(removedId), "Lua did not remove the scripted subtree");
+        require(std::filesystem::file_size(exitMarker) == 1, "Removed child script did not receive its exit callback");
+        require(removalHost.reloadChanged() == 0, "Reload touched a detached script");
+        removalHost.stop();
+        require(std::filesystem::file_size(exitMarker) == 1, "Removed child script exited twice");
+    }
+    {
+        vultra::SceneTree removalScene(std::make_unique<vultra::Node>("Root"));
+        auto&             target = removalScene.addChild(removalScene.root(), std::make_unique<vultra::Node>("Self"));
+        const auto        removedId = target.idInScene();
+        std::ofstream(removalScript) << "return { _process = function(self, dt) self.node:remove() end }\n";
+        vultra::ScriptHost removalHost(removalScene);
+        removalHost.add({vultra::ScriptModule::Language::eLua, {}, {}, removedId.value}, removalScript);
+        removalHost.update(0.01f);
+        require(!removalScene.find(removedId), "Lua script did not remove its own node");
+        removalHost.update(0.01f);
+        removalHost.stop();
+    }
 
     const auto badScript = root / "build/.tmp/script-host-invalid.lua";
     std::filesystem::create_directories(badScript.parent_path());

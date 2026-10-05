@@ -1,0 +1,11 @@
+{
+  "format": "vultra.graph",
+  "version": 1,
+  "passes": [
+    { "id": "gain", "type": "research.color_gain", "parameters": { "gain": 0.5 } }
+  ],
+  "edges": [
+    { "from": "scene.hdr", "to": "gain.source" }
+  ],
+  "outputs": ["gain.color"]
+}

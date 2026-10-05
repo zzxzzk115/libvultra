@@ -5,10 +5,11 @@
 #include <vultra/core/base/command_line.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/main/app/imgui_app.hpp>
-#include <vultra/platform/os/file.hpp>
+#include <vultra/main/packaged_resources.hpp>
 #include <vultra/platform/os/process.hpp>
 #include <vultra/scene/camera/orbit_camera.hpp>
 #include <vultra/scene/scene_import.hpp>
+#include <vultra/scene/scene_render_state.hpp>
 #include <vultra/scene/scene_tree.hpp>
 #include <vultra/scripting/script_host.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
@@ -17,102 +18,19 @@
 #include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/ui/vgui.hpp>
 
+#include <glm/gtc/matrix_inverse.hpp>
+
 #include <filesystem>
 #include <memory>
 #include <optional>
-#include <span>
 #include <stdexcept>
 #include <utility>
-
-#if defined(_WIN32)
-#include <windows.h>
-#else
-extern "C" const std::byte vultra_builtin_pack_start[];
-extern "C" const std::byte vultra_builtin_pack_end[];
-#endif
+#include <vector>
 
 using namespace vultra;
 
 namespace
 {
-    std::span<const std::byte> builtinPack()
-    {
-#if defined(_WIN32)
-        const auto  module   = GetModuleHandleW(nullptr);
-        const auto  resource = FindResourceW(module, MAKEINTRESOURCEW(101), MAKEINTRESOURCEW(10)); // RT_RCDATA
-        const auto  loaded   = resource ? LoadResource(module, resource) : nullptr;
-        const auto* data     = loaded ? static_cast<const std::byte*>(LockResource(loaded)) : nullptr;
-        const auto  size     = resource ? SizeofResource(module, resource) : 0;
-        if (!data || size == 0)
-        {
-            throw std::runtime_error("Runtime builtin pack is missing");
-        }
-        return {data, size};
-#else
-        const auto* begin = &vultra_builtin_pack_start[0];
-        const auto* end   = &vultra_builtin_pack_end[0];
-        if (end <= begin)
-        {
-            throw std::runtime_error("Runtime builtin pack is empty");
-        }
-        return {begin, size_t(end - begin)};
-#endif
-    }
-
-    struct ExtractedProject
-    {
-        explicit ExtractedProject(const VpkArchive& archive) :
-            root(std::filesystem::temp_directory_path() / ("vultra-runtime-" + StableId::generate().toString())),
-            projectRoot(root / "project"),
-            engineRoot(root / "engine")
-        {
-            if (!archive.contains("project.vproject"))
-            {
-                throw std::invalid_argument("Project VPK has no project manifest");
-            }
-            std::filesystem::create_directories(root);
-            try
-            {
-                const auto builtinFile = root / "builtin.vpk";
-                writeFileAtomically(builtinFile, builtinPack());
-                VpkArchive(builtinFile).extractTo(engineRoot);
-                archive.extractTo(projectRoot);
-            }
-            catch (...)
-            {
-                std::filesystem::remove_all(root);
-                throw;
-            }
-        }
-
-        ~ExtractedProject()
-        {
-            std::error_code error;
-            std::filesystem::remove_all(root, error);
-        }
-
-        std::filesystem::path root;
-        std::filesystem::path projectRoot;
-        std::filesystem::path engineRoot;
-    };
-
-    struct WorkingDirectory
-    {
-        explicit WorkingDirectory(const std::filesystem::path& path) :
-            previous(std::filesystem::current_path())
-        {
-            std::filesystem::current_path(path);
-        }
-
-        ~WorkingDirectory()
-        {
-            std::error_code error;
-            std::filesystem::current_path(previous, error);
-        }
-
-        std::filesystem::path previous;
-    };
-
     struct RuntimeProject
     {
         ProjectManifest       manifest;
@@ -129,10 +47,7 @@ namespace
         auto scene    = SceneTree::load(root / manifest.mainScene);
         scene.validateAssets(manifest);
         RuntimeProject project {std::move(manifest), std::move(scene), root, {}, {}, {}};
-        if (project.manifest.environment)
-        {
-            project.environmentPath = root / project.manifest.asset(*project.manifest.environment).path;
-        }
+        project.environmentPath = sceneEnvironmentPath(project.scene, project.manifest, root);
         if (project.manifest.uiDocument)
         {
             project.uiDocumentPath = root / project.manifest.asset(*project.manifest.uiDocument).path;
@@ -152,10 +67,11 @@ namespace
                      {.multiViewport = false, .persistLayout = false}),
             m_Project(std::move(project)),
             m_Environment(getDevice(), m_Project.environmentPath),
-            m_GpuScene(
-                getRenderingServer().uploadScene(importScene(m_Project.scene, m_Project.manifest, m_Project.root))),
-            m_Renderer(getDevice(), *m_GpuScene, m_Environment, getSwapchain().format()),
-            m_Scripts(m_Project.scene),
+            m_GpuScene(getRenderingServer().uploadScene(
+                importScene(m_Project.scene, m_Project.manifest, m_Project.root, {}, &m_SceneInstances))),
+            m_Renderer(
+                std::make_unique<BuiltinRenderer>(getDevice(), *m_GpuScene, m_Environment, getSwapchain().format())),
+            m_Scripts(m_Project.scene, false, &m_Project.manifest),
             m_Capture(std::move(capture)),
             m_DebugUiEnabled(debugUi),
             m_DebugUiVisible(debugUi)
@@ -172,8 +88,8 @@ namespace
                     "toggle-skybox",
                     [this]()
                     {
-                        m_Renderer.settings.skybox = m_VGui->isChecked("toggle-skybox");
-                        m_VGui->setText("status", m_Renderer.settings.skybox ? "Skybox enabled" : "Skybox disabled");
+                        m_Renderer->settings.skybox = m_VGui->isChecked("toggle-skybox");
+                        m_VGui->setText("status", m_Renderer->settings.skybox ? "Skybox enabled" : "Skybox disabled");
                     });
             }
             m_Camera.center   = m_GpuScene->center;
@@ -210,8 +126,38 @@ namespace
             {
                 m_DebugUiVisible = !m_DebugUiVisible;
             }
-            m_Renderer.pollShaders();
+            m_Renderer->pollShaders();
             m_Scripts.update(deltaSeconds);
+            syncScene();
+        }
+
+        void syncScene()
+        {
+            if (m_GpuSync.environmentChanged(m_Project.scene))
+            {
+                m_Environment.setSource(sceneEnvironmentPath(m_Project.scene, m_Project.manifest, m_Project.root));
+            }
+            if (m_GpuSync.needsImport(m_Project.scene, m_SceneInstances))
+            {
+                std::vector<SceneMeshInstance> instances;
+                auto imported = importScene(m_Project.scene, m_Project.manifest, m_Project.root, {}, &instances);
+                auto gpuScene = getRenderingServer().uploadScene(imported);
+                auto renderer =
+                    std::make_unique<BuiltinRenderer>(getDevice(), *gpuScene, m_Environment, getSwapchain().format());
+                renderer->settings = m_Renderer->settings;
+
+                // The previous frame is complete before onUpdate; drop graph callbacks before the old renderer.
+                m_Graph.reset();
+                m_GraphSnapshot.reset();
+                m_Renderer       = std::move(renderer);
+                m_GpuScene       = std::move(gpuScene);
+                m_SceneInstances = std::move(instances);
+                m_GpuSync        = {};
+                Logger::app().info("Reloaded scene GPU geometry: {} mesh instances, {} draws",
+                                   m_SceneInstances.size(),
+                                   m_GpuScene->primitives.size());
+            }
+            m_GpuSync.update(m_Project.scene, m_SceneInstances, *m_GpuScene);
         }
 
         void onImGui() override
@@ -246,9 +192,9 @@ namespace
             }
             if (EditorGuiInspector inspector(getEditorGui(), "Render settings"); inspector)
             {
-                drawRenderSettings(inspector, m_Renderer.settings);
+                drawRenderSettings(inspector, m_Renderer->settings);
             }
-            const auto diagnostics = m_Renderer.diagnostics();
+            const auto diagnostics = m_Renderer->diagnostics();
             if (!diagnostics.empty())
             {
                 ui.textWrapped("%s", diagnostics.c_str());
@@ -275,7 +221,7 @@ namespace
             auto capture = getEditorGui().inputCapture();
             if (m_VGui)
             {
-                m_VGui->setChecked("toggle-skybox", m_Renderer.settings.skybox);
+                m_VGui->setChecked("toggle-skybox", m_Renderer->settings.skybox);
                 m_VGui->update(getWindow().input(), getSwapchain().size());
                 const auto gameCapture = m_VGui->inputCapture();
                 capture.mouse |= gameCapture.mouse;
@@ -286,12 +232,12 @@ namespace
 
         void onRender(VriCommandBuffer* cmd, Texture& target) override
         {
-            if (!m_Graph || m_Size != getSwapchain().size() || m_Outputs.path != m_Renderer.settings.path)
+            if (!m_Graph || m_Size != getSwapchain().size() || m_Outputs.path != m_Renderer->settings.path)
             {
                 m_Size  = getSwapchain().size();
                 m_Graph = std::make_unique<RenderGraph>(getDevice());
                 m_GraphSnapshot.reset();
-                m_Outputs    = m_Renderer.addPasses(*m_Graph, m_Size);
+                m_Outputs    = m_Renderer->addPasses(*m_Graph, m_Size);
                 m_SceneColor = m_Outputs.color;
                 m_Backbuffer = m_Graph->importResource("backbuffer", target, false);
                 m_Graph->addPass("Copy scene",
@@ -339,15 +285,23 @@ namespace
                 m_GraphSnapshot = m_Graph->snapshot();
             }
             m_Graph->bind(m_Backbuffer, target);
-            m_Renderer.prepare(m_Camera.camera(m_Size), *m_Graph, m_Outputs);
+            m_SceneRenderState.update(m_Project.scene, m_Size);
+            m_Renderer->prepare(m_SceneRenderState.camera.value_or(m_Camera.camera(m_Size)),
+                                *m_Graph,
+                                m_Outputs,
+                                m_SceneRenderState.lighting(),
+                                m_SceneRenderState.environmentIntensity);
             m_Graph->execute(cmd);
         }
 
         RuntimeProject                       m_Project;
         Environment                          m_Environment;
+        std::vector<SceneMeshInstance>       m_SceneInstances;
+        SceneGpuSync                         m_GpuSync;
         GpuSceneHandle                       m_GpuScene;
-        BuiltinRenderer                      m_Renderer;
+        std::unique_ptr<BuiltinRenderer>     m_Renderer;
         OrbitCamera                          m_Camera;
+        SceneRenderState                     m_SceneRenderState;
         std::unique_ptr<VGui>                m_VGui;
         ScriptHost                           m_Scripts;
         std::filesystem::path                m_Capture;
@@ -385,10 +339,10 @@ try
     {
         throw std::invalid_argument("No embedded project VPK; provide a package path");
     }
-    ExtractedProject extracted(*archive);
-    auto             project = loadProject(extracted.projectRoot);
-    WorkingDirectory cwd(extracted.engineRoot);
-    RuntimeApp       app(std::move(project), capturePath, cli.get<bool>("--debug-ui"));
+    PackagedResources      resources;
+    auto                   project = loadProject(resources.extractProject(*archive));
+    ScopedWorkingDirectory cwd(resources.engineRoot());
+    RuntimeApp             app(std::move(project), capturePath, cli.get<bool>("--debug-ui"));
     app.run(cli.present<uint64_t>("--frames").value_or(0));
     app.saveCapture();
     Logger::app().info("Runtime rendered {} frames", app.frameCount());

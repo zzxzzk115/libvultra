@@ -16,7 +16,15 @@ namespace vultra
 
     MeshletData buildMeshlets(const SceneData& scene, uint32_t workers)
     {
-        if (scene.vertices.empty() || scene.primitives.empty())
+        if (scene.primitives.empty())
+        {
+            if (!scene.vertices.empty() || !scene.indices.empty())
+            {
+                throw std::invalid_argument("Meshlet geometry requires a primitive");
+            }
+            return {};
+        }
+        if (scene.vertices.empty())
         {
             throw std::invalid_argument("Meshlets require nonempty scene geometry");
         }
@@ -158,9 +166,11 @@ namespace vultra
                                                                std::as_bytes(std::span(data.triangles))};
         try
         {
+            const std::array<std::byte, 64> emptyBuffer {};
             for (size_t i = 0; i < m_Buffers.size(); ++i)
             {
-                m_Buffers[i] = uploadBuffer(device, bytes[i], VriBufferUsage_StorageBuffer, ready);
+                const auto data = bytes[i].empty() ? std::span<const std::byte>(emptyBuffer) : bytes[i];
+                m_Buffers[i]    = uploadBuffer(device, data, VriBufferUsage_StorageBuffer, ready);
             }
             for (size_t i = 0; i < views.size(); ++i)
             {

@@ -31,6 +31,9 @@ namespace vultra
     Profiler::Profiler(Device& device) :
         m_Device(device)
     {
+        m_Records.reserve(kMaxPasses);
+        m_Results.reserve(kMaxPasses);
+        m_Stack.reserve(kMaxPasses);
         const auto* desc = device.core.GetDeviceDesc(device.handle);
         m_TickNs         = desc->timestampPeriodNanoseconds;
         if (!desc->hasTimestampQueries || m_TickNs <= 0)
@@ -59,10 +62,8 @@ namespace vultra
     void Profiler::beginFrame(VriCommandBuffer* cmd)
     {
         m_Records.clear();
-        m_SplitPasses.clear();
+        m_Stack.clear();
         m_QueryCount = 0;
-        m_Open       = false;
-        m_Split      = false;
         if (m_Pool)
         {
             m_Api.CmdResetQueries(cmd, m_Pool, 0, kMaxPasses * 3);
@@ -71,56 +72,62 @@ namespace vultra
 
     void Profiler::beginPass(VriCommandBuffer* cmd, const std::string& name)
     {
-        if (m_Open || m_Records.size() == kMaxPasses)
+        if (m_Records.size() == kMaxPasses)
         {
-            throw std::runtime_error("Profiler expects <=64 non-nested passes");
+            throw std::runtime_error("Profiler supports at most 64 events per frame");
         }
-        m_Open  = true;
-        m_Split = false;
+        Record record;
+        record.timing.name   = name;
+        record.timing.parent = m_Stack.empty() ? UINT32_MAX : m_Stack.back();
+        record.timing.depth  = uint32_t(m_Stack.size());
+        record.begin         = std::chrono::steady_clock::now();
+        record.firstQuery    = m_QueryCount;
+        m_Stack.push_back(uint32_t(m_Records.size()));
+        m_Records.push_back(std::move(record));
         if (m_Pool)
         {
             m_Api.CmdWriteTimestamp(cmd, m_Pool, m_QueryCount++);
         }
-        m_Records.push_back({name});
-        m_Begin = std::chrono::steady_clock::now();
     }
 
     void Profiler::beginCommands(VriCommandBuffer* cmd)
     {
-        if (!m_Open || m_Split)
+        if (m_Stack.empty() || m_Records[m_Stack.back()].commandQuery != UINT32_MAX)
         {
-            throw std::logic_error("Profiler expects one command boundary in an open pass");
+            throw std::logic_error("Profiler expects one command boundary in an open event");
         }
-        m_Records.back().cpuBarrierMs =
-            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_Begin).count();
+        auto& record = m_Records[m_Stack.back()];
+        record.timing.cpuBarrierMs =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - record.begin).count();
+        record.commandQuery = m_QueryCount;
         if (m_Pool)
         {
             m_Api.CmdWriteTimestamp(cmd, m_Pool, m_QueryCount++);
         }
-        m_Split = true;
     }
 
     void Profiler::endPass(VriCommandBuffer* cmd)
     {
-        if (!m_Open)
+        if (m_Stack.empty())
         {
-            throw std::logic_error("Unmatched profiler EndPass");
+            throw std::logic_error("Unmatched profiler end event");
         }
-        m_Records.back().cpuMs =
-            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_Begin).count();
+        auto& record = m_Records[m_Stack.back()];
+        record.timing.cpuMs =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - record.begin).count();
+        record.lastQuery = m_QueryCount;
         if (m_Pool)
         {
             m_Api.CmdWriteTimestamp(cmd, m_Pool, m_QueryCount++);
         }
-        m_SplitPasses.push_back(m_Split);
-        m_Open = false;
+        m_Stack.pop_back();
     }
 
     void Profiler::resolve(VriCommandBuffer* cmd)
     {
-        if (m_Open)
+        if (!m_Stack.empty())
         {
-            throw std::logic_error("Unclosed profiler pass");
+            throw std::logic_error("Unclosed profiler event");
         }
         if (m_Pool && !m_Records.empty())
         {
@@ -130,7 +137,15 @@ namespace vultra
 
     void Profiler::collect()
     {
-        m_Results = m_Records;
+        if (!m_Stack.empty())
+        {
+            throw std::logic_error("Complete profiler events before collecting");
+        }
+        m_Results.clear();
+        for (const auto& record : m_Records)
+        {
+            m_Results.push_back(record.timing);
+        }
         if (!m_Pool || m_Results.empty())
         {
             return;
@@ -140,18 +155,22 @@ namespace vultra
         {
             throw std::runtime_error("Map timestamp results failed");
         }
-        uint32_t query = 0;
+        const auto tick = [&](uint32_t query)
+        {
+            uint64_t result = 0;
+            std::memcpy(&result, static_cast<const char*>(data) + query * sizeof(uint64_t), sizeof(result));
+            return result;
+        };
+        // Nested timestamps interleave. Each event keeps its own query indices instead of assuming adjacency.
         for (size_t i = 0; i < m_Results.size(); ++i)
         {
-            uint64_t   ticks[3] {};
-            const auto count = m_SplitPasses[i] ? 3u : 2u;
-            std::memcpy(ticks, static_cast<const char*>(data) + query * sizeof(uint64_t), count * sizeof(uint64_t));
-            m_Results[i].gpuMs = double(ticks[count - 1] - ticks[0]) * m_TickNs / 1e6;
-            if (m_SplitPasses[i])
+            const auto& record = m_Records[i];
+            m_Results[i].gpuMs = double(tick(record.lastQuery) - tick(record.firstQuery)) * m_TickNs / 1e6;
+            if (record.commandQuery != UINT32_MAX)
             {
-                m_Results[i].gpuBarrierMs = double(ticks[1] - ticks[0]) * m_TickNs / 1e6;
+                m_Results[i].gpuBarrierMs =
+                    double(tick(record.commandQuery) - tick(record.firstQuery)) * m_TickNs / 1e6;
             }
-            query += count;
         }
         m_Device.core.UnmapBuffer(m_Readback->handle);
     }

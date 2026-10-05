@@ -47,8 +47,13 @@
           0.0,
           1.0
         ],
-        "children": []
+        "children": [],
+        "materials": []
       }
     ]
-  }
+  },
+  "current_camera": null,
+  "scene_lighting": false,
+  "materials": [],
+  "current_environment": null
 }

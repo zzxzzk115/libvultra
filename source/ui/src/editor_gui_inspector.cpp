@@ -2,6 +2,7 @@
 #include <vultra/ui/editor_gui_inspector.hpp>
 
 #include <imgui.h>
+#include <misc/cpp/imgui_stdlib.h>
 
 #include <cassert>
 #include <cfloat>
@@ -72,6 +73,42 @@ namespace vultra
         beginRow(property);
         PropertyIdScope id(property.id);
         return ImGui::Checkbox("##value", value);
+    }
+
+    bool EditorGuiInspector::textField(EditorGuiProperty property, std::string* value)
+    {
+        if (const auto custom = drawCustom(property, value))
+        {
+            return *custom;
+        }
+        beginRow(property);
+        PropertyIdScope id(property.id);
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        return ImGui::InputText("##value", value);
+    }
+
+    bool EditorGuiInspector::floatField(EditorGuiProperty property, float* value, float speed, float min, float max)
+    {
+        if (const auto custom = drawCustom(property, value))
+        {
+            return *custom;
+        }
+        beginRow(property);
+        PropertyIdScope id(property.id);
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        return ImGui::DragFloat("##value", value, speed, min, max);
+    }
+
+    bool EditorGuiInspector::float3Field(EditorGuiProperty property, float* value, float speed)
+    {
+        if (const auto custom = drawCustom(property, value))
+        {
+            return *custom;
+        }
+        beginRow(property);
+        PropertyIdScope id(property.id);
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        return ImGui::DragFloat3("##value", value, speed);
     }
 
     bool EditorGuiInspector::floatSlider(EditorGuiProperty property, float* value, float min, float max)

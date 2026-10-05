@@ -1,6 +1,8 @@
 #include <vultra/ui/editor_gui.hpp>
 #include <vultra/ui/editor_gui_frame.hpp>
 
+#include <misc/cpp/imgui_stdlib.h>
+
 #include <cfloat>
 #include <stdexcept>
 #include <string>
@@ -44,6 +46,16 @@ namespace vultra
     void EditorGuiFrame::endWindow()
     {
         ImGui::End();
+    }
+
+    bool EditorGuiFrame::beginChild(const char* id, ImVec2 size, ImGuiChildFlags flags)
+    {
+        return ImGui::BeginChild(id, size, flags);
+    }
+
+    void EditorGuiFrame::endChild()
+    {
+        ImGui::EndChild();
     }
 
     void EditorGuiFrame::text(const char* format, ...)
@@ -159,6 +171,28 @@ namespace vultra
         return changed;
     }
 
+    bool EditorGuiFrame::inputText(const char* label, std::string* value)
+    {
+        if (!EditorGuiLayout::beginProperty(label))
+        {
+            return false;
+        }
+        const bool changed = ImGui::InputText("##value", value);
+        EditorGuiLayout::endProperty();
+        return changed;
+    }
+
+    bool EditorGuiFrame::sliderDouble(const char* label, double* value, double min, double max)
+    {
+        if (!EditorGuiLayout::beginProperty(label))
+        {
+            return false;
+        }
+        const bool changed = ImGui::SliderScalar("##value", ImGuiDataType_Double, value, &min, &max, "%.4g");
+        EditorGuiLayout::endProperty();
+        return changed;
+    }
+
     bool EditorGuiFrame::sliderFloat3(const char* label, float* value, float min, float max)
     {
         if (!EditorGuiLayout::beginProperty(label))
@@ -199,12 +233,22 @@ namespace vultra
 
     bool EditorGuiFrame::beginCombo(const char* label, const char* preview)
     {
-        return ImGui::BeginCombo(label, preview);
+        if (!EditorGuiLayout::beginProperty(label))
+        {
+            return false;
+        }
+        if (ImGui::BeginCombo("##value", preview))
+        {
+            return true;
+        }
+        EditorGuiLayout::endProperty();
+        return false;
     }
 
     void EditorGuiFrame::endCombo()
     {
         ImGui::EndCombo();
+        EditorGuiLayout::endProperty();
     }
 
     bool EditorGuiFrame::selectable(const char* label, bool selected)
@@ -226,9 +270,19 @@ namespace vultra
         return open;
     }
 
+    bool EditorGuiFrame::isItemClicked() const
+    {
+        return ImGui::IsItemClicked();
+    }
+
     void EditorGuiFrame::treePop()
     {
         ImGui::TreePop();
+    }
+
+    void EditorGuiFrame::pushId(const char* id)
+    {
+        ImGui::PushID(id);
     }
 
     void EditorGuiFrame::pushId(int id)

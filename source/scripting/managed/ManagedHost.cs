@@ -113,12 +113,12 @@ public static unsafe class Entry
         var host = (VultraHostApi*)hostData;
         var plugin = (VultraPluginApi*)pluginData;
         if (host == null || plugin == null || plugin->UserData == null ||
-            host->Version != VultraAbi.Version || host->StructSize < sizeof(VultraHostApi) ||
+            host->Version != VultraAbi.Version || host->StructSize != sizeof(VultraHostApi) ||
             host->Ui == null || host->Ui->Version != VultraAbi.Version ||
-            host->Ui->StructSize < sizeof(VultraUiApi) ||
+            host->Ui->StructSize != sizeof(VultraUiApi) ||
             host->Scene == null || host->Scene->Version != VultraAbi.Version ||
-            host->Scene->StructSize < sizeof(VultraSceneApi) ||
-            plugin->Version != VultraAbi.Version || plugin->StructSize < sizeof(VultraPluginApi))
+            host->Scene->StructSize != sizeof(VultraSceneApi) ||
+            plugin->Version != VultraAbi.Version || plugin->StructSize != sizeof(VultraPluginApi))
         {
             return (int)VultraStatus.InvalidArgument;
         }

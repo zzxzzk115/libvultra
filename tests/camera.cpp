@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <string_view>
 
 namespace
 {
@@ -207,10 +208,20 @@ namespace
     };
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 try
 {
+    const bool offline = argc == 2 && std::string_view(argv[1]) == "--offline";
+    if (argc != 1 && !offline)
+    {
+        throw std::invalid_argument("Usage: test-camera [--offline]");
+    }
     inputAndControllers();
+    if (offline)
+    {
+        std::cout << "Offline camera tests passed: input state, orbit/pan/zoom, FPS, focus and UI capture\n";
+        return 0;
+    }
     CameraApp app;
     app.run(kWarmupFrames + 6);
     require(app.frameCount() == kWarmupFrames + 6, "Camera regression did not complete every frame");

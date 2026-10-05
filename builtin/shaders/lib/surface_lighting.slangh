@@ -28,6 +28,14 @@ float3 shadeSurface(SurfaceData sample)
     surface.coatIor = sample.coatIor;
     OpenPBR_PreparedBsdf bsdf = prepareOpenPbr(surface, sample.normal, view);
     float3 result = evaluateDirectionalLight(bsdf, light, visibility) + sample.emission;
+    for (uint i = 0; i < uint(frame.lightConfig.x); ++i)
+    {
+        // The first directional light uses the existing cascades; other lights are currently unshadowed.
+        if (int(i) != int(frame.lightConfig.y))
+        {
+            result += evaluateSceneLight(bsdf, frame.lights[i], sample.worldPosition);
+        }
+    }
     if (frame.options.x > 0.5)
     {
         float3 ibl = evaluateIbl(surface, sample.normal, view, diffuseMap, specularMap, brdfLut,

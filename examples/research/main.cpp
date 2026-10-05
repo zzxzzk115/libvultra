@@ -1,3 +1,5 @@
+#include "color_gain.hpp"
+
 #include <vultra/api/render_settings.generated.hpp>
 #include <vultra/assets/asset_pipeline.hpp>
 #include <vultra/core/base/command_line.hpp>
@@ -7,8 +9,10 @@
 #include <vultra/main/app/imgui_app.hpp>
 #include <vultra/scene/camera/orbit_camera.hpp>
 #include <vultra/scene/scene_import.hpp>
+#include <vultra/scene/scene_render_state.hpp>
 #include <vultra/scene/scene_tree.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
+#include <vultra/servers/rendering/graph/graph_definition.hpp>
 #include <vultra/servers/rendering/graph/render_graph.hpp>
 #include <vultra/servers/rendering/rendering_server.hpp>
 #include <vultra/servers/rendering/research/capture.hpp>
@@ -139,7 +143,7 @@ namespace
     std::string shaderHash()
     {
         std::vector<std::filesystem::path> files;
-        for (const auto* root : {"builtin/shaders", "external/openpbr"})
+        for (const auto* root : {"builtin/shaders", "external/openpbr", "examples/research/shaders"})
         {
             for (const auto& entry : std::filesystem::recursive_directory_iterator(root))
             {
@@ -196,8 +200,21 @@ public:
         m_SampleFrames(cli.present<uint64_t>("--samples").value_or(120)),
         m_ModelPath(cli.get<std::string>("--model")),
         m_EnvironmentPath(cli.get<std::string>("--environment")),
-        m_Profiler(getDevice())
+        m_Profiler(getDevice()),
+        m_FixedCamera(cli.get<bool>("--fixed-camera"))
     {
+        getPassCatalog().add(research::colorGainDefinition());
+        if (const auto definition = cli.present<std::string>("--graph"))
+        {
+            m_GraphDefinitionPath = *definition;
+            m_GraphDefinition     = GraphDefinition::load(m_GraphDefinitionPath);
+        }
+        else if (const auto gain = cli.present<double>("--color-gain"))
+        {
+            m_GraphDefinition = GraphDefinition {{{"gain", "research.color_gain", {{"gain", *gain}}}},
+                                                 {{"scene.hdr", "gain.source"}},
+                                                 {"gain.color"}};
+        }
         getEditorGui().setPropertyDrawer("path", {drawRenderPath, &getEditorGui()});
         if (const auto projectFile = cli.present<std::string>("--project"))
         {
@@ -205,14 +222,15 @@ public:
             m_Project     = ProjectManifest::load(m_ProjectPath);
             m_SceneTree   = SceneTree::load(m_ProjectPath.parent_path() / m_Project->mainScene);
             m_SceneTree->validateAssets(*m_Project);
-            if (m_Project->environment && !cli.is_used("--environment"))
+            if (!cli.is_used("--environment"))
             {
-                m_EnvironmentPath = m_ProjectPath.parent_path() / m_Project->asset(*m_Project->environment).path;
+                m_EnvironmentPath = sceneEnvironmentPath(*m_SceneTree, *m_Project, m_ProjectPath.parent_path());
             }
         }
         m_Environment = std::make_unique<Environment>(getDevice(), m_EnvironmentPath);
-        auto asset =
-            m_Project ? importScene(*m_SceneTree, *m_Project, m_ProjectPath.parent_path()) : importAsset(m_ModelPath);
+        auto asset    = m_Project ?
+                            importScene(*m_SceneTree, *m_Project, m_ProjectPath.parent_path(), {}, &m_SceneInstances) :
+                            importAsset(m_ModelPath);
         m_AssetCachePath = asset.cachePath;
         m_GpuScene       = getRenderingServer().uploadScene(asset);
         m_Renderer =
@@ -288,18 +306,23 @@ public:
             {
                 metadata.windowSystem += std::string("/") + requested;
             }
+            const auto eye =
+                m_SceneState.camera ? glm::vec3(glm::inverse(m_SceneState.camera->view)[3]) : m_Camera.position();
             metadata.parameters = {
                 {"path", m_Outputs.path == RenderPath::eNaiveDeferred ? "NaiveDeferred" : "NaiveForward"},
                 {"environment", m_EnvironmentPath.generic_string()},
                 {"environment_hash_fnv1a64", fileHash(m_EnvironmentPath)},
-                {"camera_eye",
-                 std::format("{:.6g},{:.6g},{:.6g}",
-                             m_Camera.position().x,
-                             m_Camera.position().y,
-                             m_Camera.position().z)},
+                {"camera_eye", std::format("{:.6g},{:.6g},{:.6g}", eye.x, eye.y, eye.z)},
                 {"exposure", std::format("{:.6g}", m_Renderer->settings.exposure)},
                 {"shadow_filter", std::to_string(int(m_Renderer->settings.shadowFilter))},
                 {"gui", "enabled"}};
+            if (m_GraphDefinition)
+            {
+                metadata.parameters.emplace_back("graph_definition", m_GraphDefinition->serialize());
+                metadata.parameters.emplace_back("graph_construction",
+                                                 m_GraphDefinitionPath.empty() ? "cpp" : "definition");
+            }
+            metadata.parameters.emplace_back("capture", m_CapturePath.generic_string());
             if (m_Project)
             {
                 metadata.parameters.emplace_back("project", m_ProjectPath.generic_string());
@@ -363,6 +386,14 @@ private:
                 if (m_SceneTree)
                 {
                     ui.text("Scene: %s", m_SceneTree->root().name().c_str());
+                    if (m_SceneTree->currentCamera().value != 0)
+                    {
+                        ui.textDisabled("Using the scene camera");
+                    }
+                    if (m_SceneTree->usesSceneLighting())
+                    {
+                        ui.textWrapped("Scene lights are active; the sun preset below is unused.");
+                    }
                 }
                 ui.beginDisabled(!m_BenchmarkDirectory.empty());
                 auto& settings = m_Renderer->settings;
@@ -500,7 +531,7 @@ private:
     void onPreRender() override
     {
         ImGuiApp::onPreRender();
-        if (m_BenchmarkDirectory.empty())
+        if (m_BenchmarkDirectory.empty() && !m_FixedCamera && (!m_SceneTree || m_SceneTree->currentCamera().value == 0))
         {
             m_Camera.update(getWindow().input(), getWindow().size(), getEditorGui().inputCapture());
         }
@@ -514,19 +545,53 @@ private:
         {
             forgetGraphTextures();
             m_GraphSnapshot.reset();
-            m_Graph     = std::make_unique<RenderGraph>(getDevice());
-            m_GraphSize = getSwapchain().size();
-            m_GraphPath = m_Renderer->settings.path;
-            m_Outputs   = m_Renderer->addPasses(*m_Graph, m_GraphSize);
+            m_Graph.reset();
+            m_GraphDefinitionState = {};
+            m_Graph                = std::make_unique<RenderGraph>(getDevice());
+            m_GraphSize            = getSwapchain().size();
+            m_GraphPath            = m_Renderer->settings.path;
+            m_Outputs              = m_Renderer->addScenePasses(*m_Graph, m_GraphSize);
             m_SkyboxCapture.reset();
             if (m_IntermediateRequested)
             {
                 m_SkyboxCapture = m_Graph->captureAfterPass("Skybox", m_Outputs.hdr, "skybox_only");
             }
-            m_GraphCapture = m_IntermediateRequested;
-            m_GraphPreview = m_PreviewEnabled;
-            m_Scene        = m_Outputs.color;
-            m_Backbuffer   = m_Graph->importResource("backbuffer", target, false);
+            if (m_GraphDefinition)
+            {
+                const std::array imports {GraphBinding {"scene.hdr", m_Outputs.hdr}};
+                if (m_GraphDefinitionPath.empty())
+                {
+                    const std::array inputs {m_Outputs.hdr};
+                    auto             pass = getPassCatalog().build(*m_Graph,
+                                                                   "research.color_gain",
+                                                                   "gain",
+                                                                   inputs,
+                                                                   m_GraphDefinition->passes.front().parameters);
+                    m_GraphDefinitionState.outputs.push_back({"gain.color", pass.outputs.front()});
+                    m_GraphDefinitionState.passes.push_back(std::move(pass));
+                }
+                else
+                {
+                    m_GraphDefinitionState = m_GraphDefinition->build(*m_Graph, getPassCatalog(), imports);
+                }
+                if (m_GraphDefinitionState.outputs.size() != 1)
+                {
+                    throw std::invalid_argument("Research requires one linear HDR graph output");
+                }
+                const auto output = m_GraphDefinitionState.outputs.front().resource;
+                const auto info   = m_Graph->resourceInfo(output);
+                if (!info.isTexture || info.textureDesc.format != VriFormat_RGBA16_SFLOAT ||
+                    info.textureDesc.width != m_GraphSize.width || info.textureDesc.height != m_GraphSize.height)
+                {
+                    throw std::invalid_argument("Research graph output must match the RGBA16_SFLOAT scene extent");
+                }
+                m_Outputs.hdr = output;
+            }
+            m_Outputs.color = m_Renderer->addToneMappingPass(*m_Graph, m_Outputs.hdr, m_GraphSize);
+            m_GraphCapture  = m_IntermediateRequested;
+            m_GraphPreview  = m_PreviewEnabled;
+            m_Scene         = m_Outputs.color;
+            m_Backbuffer    = m_Graph->importResource("backbuffer", target, false);
 
             m_Graph->addPass("Copy scene",
                              {{m_Scene, Usage::eCopySource}, {m_Backbuffer, Usage::eCopyDestination}},
@@ -595,7 +660,16 @@ private:
         }
 
         m_Graph->bind(m_Backbuffer, target);
-        m_Renderer->prepare(m_Camera.camera(m_GraphSize), *m_Graph, m_Outputs);
+        if (m_SceneTree)
+        {
+            m_GpuSync.update(*m_SceneTree, m_SceneInstances, *m_GpuScene);
+            m_SceneState.update(*m_SceneTree, m_GraphSize);
+        }
+        m_Renderer->prepare(m_SceneState.camera.value_or(m_Camera.camera(m_GraphSize)),
+                            *m_Graph,
+                            m_Outputs,
+                            m_SceneState.lighting(),
+                            m_SceneState.environmentIntensity);
         m_Graph->execute(cmd, &m_Profiler);
     }
 
@@ -711,11 +785,18 @@ private:
     std::filesystem::path                m_AssetCachePath;
     std::optional<ProjectManifest>       m_Project;
     std::optional<SceneTree>             m_SceneTree;
+    SceneRenderState                     m_SceneState;
+    SceneGpuSync                         m_GpuSync;
+    std::vector<SceneMeshInstance>       m_SceneInstances;
     Profiler                             m_Profiler;
     std::unique_ptr<Environment>         m_Environment;
     GpuSceneHandle                       m_GpuScene;
     std::unique_ptr<BuiltinRenderer>     m_Renderer;
     OrbitCamera                          m_Camera;
+    bool                                 m_FixedCamera;
+    std::filesystem::path                m_GraphDefinitionPath;
+    std::optional<GraphDefinition>       m_GraphDefinition;
+    GraphBuild                           m_GraphDefinitionState;
     std::unique_ptr<RenderGraph>         m_Graph;
     std::optional<RenderGraph::Snapshot> m_GraphSnapshot;
     std::optional<RenderGraph::Resource> m_SkyboxCapture;
@@ -750,6 +831,9 @@ try
         .default_value(std::string("deferred"))
         .choices("deferred", "forward")
         .help("BuiltinRenderer path (default: deferred)");
+    cli.add_argument("--graph").help("Append a version-1 .vgraph project pipeline before tone mapping");
+    cli.add_argument("--color-gain").scan<'g', double>().help("Build the HDR color gain pass directly in C++ (0..8)");
+    cli.add_argument("--fixed-camera").flag().help("Keep the initial camera for repeatable captures");
     cli.add_argument("--dump").help("Dump scene PNGs and timings.csv into a new directory");
     cli.add_argument("--dump-intermediates").help("Save one frame of G-buffer, depth, shadow and HDR PNGs");
     cli.add_argument("--preview-intermediates").flag().help("Open the color attachment preview at startup");
@@ -770,6 +854,10 @@ try
     if (cli.present<std::string>("--project") && cli.is_used("--model"))
     {
         throw std::invalid_argument("--project and --model select different scene sources");
+    }
+    if (cli.present<std::string>("--graph") && cli.present<double>("--color-gain"))
+    {
+        throw std::invalid_argument("Choose --graph or --color-gain");
     }
     const auto benchmark = cli.present<std::string>("--benchmark");
     const auto warmup    = cli.present<uint64_t>("--warmup").value_or(60);

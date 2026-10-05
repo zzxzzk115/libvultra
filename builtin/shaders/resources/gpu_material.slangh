@@ -11,6 +11,7 @@ struct MaterialData
     float4 specular;
     float4 flags;
     uint4  meshlets;
+    uint4  instance; // Transform buffer index; the remaining lanes are reserved.
 };
 
 [[vk::push_constant]] ConstantBuffer<MaterialData> material;

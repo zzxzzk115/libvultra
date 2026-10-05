@@ -117,7 +117,8 @@ namespace vultra
     inline std::unique_ptr<vultra::Buffer> uploadBuffer(vultra::Device&            device,
                                                         std::span<const std::byte> data,
                                                         VriBufferUsageFlags        usage,
-                                                        VriAccessStage             ready)
+                                                        VriAccessStage             ready,
+                                                        uint32_t                   structureStride = 0)
     {
         if (data.empty())
         {
@@ -133,9 +134,11 @@ namespace vultra
         std::memcpy(mapped, data.data(), data.size_bytes());
         device.core.UnmapBuffer(staging.handle);
 
-        auto result = std::make_unique<vultra::Buffer>(
-            device,
-            VriBufferDesc {data.size_bytes(), 0, usage | VriBufferUsage_TransferDst, VriMemoryLocation_Device});
+        auto          result = std::make_unique<vultra::Buffer>(device,
+                                                                VriBufferDesc {data.size_bytes(),
+                                                                               structureStride,
+                                                                               usage | VriBufferUsage_TransferDst,
+                                                                               VriMemoryLocation_Device});
         vultra::Frame frame(device);
         auto*         cmd = frame.begin();
         result->transition(cmd, {VriAccess_CopyDestinationWrite, VriPipelineStage_Transfer});

@@ -1,5 +1,413 @@
 {
+  "experiment_functions": [
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        }
+      ],
+      "host_mutable": true,
+      "name": "close",
+      "return": "void"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
+          "name": "output",
+          "type": "std::string_view"
+        }
+      ],
+      "host_mutable": true,
+      "name": "imageInfo",
+      "return": "ExperimentImageInfo"
+    },
+    {
+      "arguments": [],
+      "host_mutable": false,
+      "name": "lastError",
+      "return": "std::string_view"
+    },
+    {
+      "arguments": [
+        {
+          "name": "input",
+          "type": "std::string_view"
+        },
+        {
+          "name": "width",
+          "type": "uint32_t"
+        },
+        {
+          "name": "height",
+          "type": "uint32_t"
+        },
+        {
+          "name": "path",
+          "type": "uint32_t"
+        },
+        {
+          "name": "timeStep",
+          "type": "float"
+        },
+        {
+          "name": "environment",
+          "type": "std::string_view"
+        },
+        {
+          "name": "seed",
+          "type": "uint32_t"
+        }
+      ],
+      "host_mutable": true,
+      "name": "open",
+      "return": "uint64_t"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        }
+      ],
+      "host_mutable": false,
+      "name": "progress",
+      "return": "ExperimentProgress"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
+          "name": "output",
+          "type": "std::string_view"
+        },
+        {
+          "name": "pixels",
+          "type": "std::span<float>"
+        }
+      ],
+      "host_mutable": true,
+      "name": "readImage",
+      "return": "void"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        }
+      ],
+      "host_mutable": true,
+      "name": "reportSnapshot",
+      "return": "std::string_view"
+    },
+    {
+      "arguments": [
+        {
+          "name": "file",
+          "type": "std::string_view"
+        }
+      ],
+      "host_mutable": true,
+      "name": "runDescription",
+      "return": "uint64_t"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        }
+      ],
+      "host_mutable": true,
+      "name": "sceneSnapshot",
+      "return": "std::string_view"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
+          "name": "definition",
+          "type": "std::string_view"
+        }
+      ],
+      "host_mutable": true,
+      "name": "setGraph",
+      "return": "void"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
+          "name": "pass",
+          "type": "std::string_view"
+        },
+        {
+          "name": "parameter",
+          "type": "std::string_view"
+        },
+        {
+          "name": "value",
+          "type": "double"
+        }
+      ],
+      "host_mutable": true,
+      "name": "setParameter",
+      "return": "void"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
+          "name": "frames",
+          "type": "uint64_t"
+        }
+      ],
+      "host_mutable": true,
+      "name": "step",
+      "return": "void"
+    }
+  ],
+  "experiment_pods": [
+    {
+      "fields": [
+        {
+          "name": "width",
+          "type": "uint32_t"
+        },
+        {
+          "name": "height",
+          "type": "uint32_t"
+        },
+        {
+          "name": "floatCount",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "ExperimentImageInfo"
+    },
+    {
+      "fields": [
+        {
+          "name": "frames",
+          "type": "uint64_t"
+        },
+        {
+          "name": "seconds",
+          "type": "double"
+        },
+        {
+          "name": "timeStep",
+          "type": "float"
+        }
+      ],
+      "name": "ExperimentProgress"
+    }
+  ],
+  "pods": [
+    {
+      "fields": [
+        {
+          "name": "verticalFov",
+          "type": "float"
+        },
+        {
+          "name": "nearPlane",
+          "type": "float"
+        },
+        {
+          "name": "farPlane",
+          "type": "float"
+        }
+      ],
+      "name": "CameraSettings"
+    },
+    {
+      "fields": [
+        {
+          "name": "intensity",
+          "type": "float"
+        }
+      ],
+      "name": "EnvironmentSettings"
+    },
+    {
+      "fields": [
+        {
+          "name": "red",
+          "type": "float"
+        },
+        {
+          "name": "green",
+          "type": "float"
+        },
+        {
+          "name": "blue",
+          "type": "float"
+        },
+        {
+          "name": "intensity",
+          "type": "float"
+        },
+        {
+          "name": "range",
+          "type": "float"
+        },
+        {
+          "name": "innerCone",
+          "type": "float"
+        },
+        {
+          "name": "outerCone",
+          "type": "float"
+        }
+      ],
+      "name": "LightSettings"
+    },
+    {
+      "fields": [
+        {
+          "name": "baseRed",
+          "type": "float"
+        },
+        {
+          "name": "baseGreen",
+          "type": "float"
+        },
+        {
+          "name": "baseBlue",
+          "type": "float"
+        },
+        {
+          "name": "baseAlpha",
+          "type": "float"
+        },
+        {
+          "name": "baseWeight",
+          "type": "float"
+        },
+        {
+          "name": "baseMetalness",
+          "type": "float"
+        },
+        {
+          "name": "baseDiffuseRoughness",
+          "type": "float"
+        },
+        {
+          "name": "specularWeight",
+          "type": "float"
+        },
+        {
+          "name": "specularRed",
+          "type": "float"
+        },
+        {
+          "name": "specularGreen",
+          "type": "float"
+        },
+        {
+          "name": "specularBlue",
+          "type": "float"
+        },
+        {
+          "name": "specularRoughness",
+          "type": "float"
+        },
+        {
+          "name": "specularIor",
+          "type": "float"
+        },
+        {
+          "name": "coatWeight",
+          "type": "float"
+        },
+        {
+          "name": "coatRoughness",
+          "type": "float"
+        },
+        {
+          "name": "coatIor",
+          "type": "float"
+        },
+        {
+          "name": "emissionRed",
+          "type": "float"
+        },
+        {
+          "name": "emissionGreen",
+          "type": "float"
+        },
+        {
+          "name": "emissionBlue",
+          "type": "float"
+        },
+        {
+          "name": "emissionLuminance",
+          "type": "float"
+        },
+        {
+          "name": "normalScale",
+          "type": "float"
+        },
+        {
+          "name": "occlusionStrength",
+          "type": "float"
+        },
+        {
+          "name": "alphaCutoff",
+          "type": "float"
+        }
+      ],
+      "name": "MaterialParameters"
+    },
+    {
+      "fields": [
+        {
+          "name": "x",
+          "type": "float"
+        },
+        {
+          "name": "y",
+          "type": "float"
+        },
+        {
+          "name": "z",
+          "type": "float"
+        }
+      ],
+      "name": "SceneTranslation"
+    }
+  ],
   "scene_functions": [
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneCameraSettings",
+      "project_required": false,
+      "return": "CameraSettings",
+      "scene_mutable": false
+    },
     {
       "arguments": [
         {
@@ -8,6 +416,7 @@
         }
       ],
       "name": "sceneChildCount",
+      "project_required": false,
       "return": "uint64_t",
       "scene_mutable": false
     },
@@ -23,6 +432,229 @@
         }
       ],
       "name": "sceneChildId",
+      "project_required": false,
+      "return": "ObjectId",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [
+        {
+          "name": "target",
+          "type": "ObjectId"
+        },
+        {
+          "name": "source",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneCopyMeshModel",
+      "project_required": false,
+      "return": "void",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "parent",
+          "type": "ObjectId"
+        },
+        {
+          "name": "name",
+          "type": "std::string_view"
+        }
+      ],
+      "name": "sceneCreateCamera",
+      "project_required": false,
+      "return": "ObjectId",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "parent",
+          "type": "ObjectId"
+        },
+        {
+          "name": "name",
+          "type": "std::string_view"
+        }
+      ],
+      "name": "sceneCreateEnvironment",
+      "project_required": false,
+      "return": "ObjectId",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "parent",
+          "type": "ObjectId"
+        },
+        {
+          "name": "name",
+          "type": "std::string_view"
+        },
+        {
+          "name": "kind",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "sceneCreateLight",
+      "project_required": false,
+      "return": "ObjectId",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "name",
+          "type": "std::string_view"
+        }
+      ],
+      "name": "sceneCreateMaterial",
+      "project_required": false,
+      "return": "ObjectId",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "parent",
+          "type": "ObjectId"
+        },
+        {
+          "name": "name",
+          "type": "std::string_view"
+        },
+        {
+          "name": "assetId",
+          "type": "std::string_view"
+        }
+      ],
+      "name": "sceneCreateMesh",
+      "project_required": true,
+      "return": "ObjectId",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "parent",
+          "type": "ObjectId"
+        },
+        {
+          "name": "name",
+          "type": "std::string_view"
+        }
+      ],
+      "name": "sceneCreateNode",
+      "project_required": false,
+      "return": "ObjectId",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [],
+      "name": "sceneCurrentCamera",
+      "project_required": false,
+      "return": "ObjectId",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [],
+      "name": "sceneCurrentEnvironment",
+      "project_required": false,
+      "return": "ObjectId",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [
+        {
+          "name": "source",
+          "type": "ObjectId"
+        },
+        {
+          "name": "parent",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneDuplicateMesh",
+      "project_required": false,
+      "return": "ObjectId",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneEnvironmentSettings",
+      "project_required": false,
+      "return": "EnvironmentSettings",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneLightKind",
+      "project_required": false,
+      "return": "uint64_t",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneLightSettings",
+      "project_required": false,
+      "return": "LightSettings",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [
+        {
+          "name": "material",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneMaterialName",
+      "project_required": false,
+      "return": "std::string_view",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [
+        {
+          "name": "material",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneMaterialParameters",
+      "project_required": false,
+      "return": "MaterialParameters",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        },
+        {
+          "name": "slot",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "sceneMeshMaterial",
+      "project_required": false,
       "return": "ObjectId",
       "scene_mutable": false
     },
@@ -34,6 +666,7 @@
         }
       ],
       "name": "sceneNodeName",
+      "project_required": false,
       "return": "std::string_view",
       "scene_mutable": false
     },
@@ -45,14 +678,196 @@
         }
       ],
       "name": "sceneNodeTranslation",
+      "project_required": false,
       "return": "SceneTranslation",
       "scene_mutable": false
     },
     {
+      "arguments": [
+        {
+          "name": "material",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneRemoveMaterial",
+      "project_required": false,
+      "return": "void",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneRemoveNode",
+      "project_required": false,
+      "return": "void",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        },
+        {
+          "name": "newParent",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneReparentNode",
+      "project_required": false,
+      "return": "void",
+      "scene_mutable": true
+    },
+    {
       "arguments": [],
       "name": "sceneRootId",
+      "project_required": false,
       "return": "ObjectId",
       "scene_mutable": false
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        },
+        {
+          "name": "settings",
+          "type": "CameraSettings"
+        }
+      ],
+      "name": "sceneSetCameraSettings",
+      "project_required": false,
+      "return": "void",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneSetCurrentCamera",
+      "project_required": false,
+      "return": "void",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneSetCurrentEnvironment",
+      "project_required": false,
+      "return": "void",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        },
+        {
+          "name": "assetId",
+          "type": "std::string_view"
+        }
+      ],
+      "name": "sceneSetEnvironmentAsset",
+      "project_required": true,
+      "return": "void",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        },
+        {
+          "name": "settings",
+          "type": "EnvironmentSettings"
+        }
+      ],
+      "name": "sceneSetEnvironmentSettings",
+      "project_required": false,
+      "return": "void",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        },
+        {
+          "name": "settings",
+          "type": "LightSettings"
+        }
+      ],
+      "name": "sceneSetLightSettings",
+      "project_required": false,
+      "return": "void",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "material",
+          "type": "ObjectId"
+        },
+        {
+          "name": "parameters",
+          "type": "MaterialParameters"
+        }
+      ],
+      "name": "sceneSetMaterialParameters",
+      "project_required": false,
+      "return": "void",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "node",
+          "type": "ObjectId"
+        },
+        {
+          "name": "slot",
+          "type": "uint64_t"
+        },
+        {
+          "name": "material",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneSetMeshMaterial",
+      "project_required": false,
+      "return": "void",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "target",
+          "type": "ObjectId"
+        },
+        {
+          "name": "assetId",
+          "type": "std::string_view"
+        }
+      ],
+      "name": "sceneSetMeshModel",
+      "project_required": true,
+      "return": "void",
+      "scene_mutable": true
     },
     {
       "arguments": [
@@ -66,11 +881,282 @@
         }
       ],
       "name": "sceneSetNodeTranslation",
+      "project_required": false,
       "return": "void",
       "scene_mutable": true
     }
   ],
   "types": [
+    {
+      "fields": [
+        {
+          "label": "FOV (rad)",
+          "max": "3.13",
+          "min": "0.01",
+          "name": "verticalFov",
+          "type": "float"
+        },
+        {
+          "label": "Near plane",
+          "max": "1000000",
+          "min": "0.0001",
+          "name": "nearPlane",
+          "speed": "0.01",
+          "type": "float",
+          "widget": "drag"
+        },
+        {
+          "label": "Far plane",
+          "max": "1000000",
+          "min": "0.0001",
+          "name": "farPlane",
+          "speed": "0.1",
+          "type": "float",
+          "widget": "drag"
+        }
+      ],
+      "header": "vultra/scene/render_nodes.hpp",
+      "name": "CameraSettings"
+    },
+    {
+      "fields": [
+        {
+          "label": "Intensity",
+          "max": "4",
+          "min": "0",
+          "name": "intensity",
+          "type": "float"
+        }
+      ],
+      "header": "vultra/scene/render_nodes.hpp",
+      "name": "EnvironmentSettings"
+    },
+    {
+      "fields": [
+        {
+          "label": "Red",
+          "max": "4",
+          "min": "0",
+          "name": "red",
+          "type": "float"
+        },
+        {
+          "label": "Green",
+          "max": "4",
+          "min": "0",
+          "name": "green",
+          "type": "float"
+        },
+        {
+          "label": "Blue",
+          "max": "4",
+          "min": "0",
+          "name": "blue",
+          "type": "float"
+        },
+        {
+          "label": "Intensity",
+          "max": "100",
+          "min": "0",
+          "name": "intensity",
+          "speed": "0.1",
+          "type": "float",
+          "widget": "drag"
+        },
+        {
+          "label": "Range",
+          "max": "1000000",
+          "min": "0.001",
+          "name": "range",
+          "speed": "0.1",
+          "type": "float",
+          "widget": "drag"
+        },
+        {
+          "label": "Inner cone (rad)",
+          "max": "1.56",
+          "min": "0",
+          "name": "innerCone",
+          "type": "float"
+        },
+        {
+          "label": "Outer cone (rad)",
+          "max": "1.56",
+          "min": "0.001",
+          "name": "outerCone",
+          "type": "float"
+        }
+      ],
+      "header": "vultra/scene/render_nodes.hpp",
+      "name": "LightSettings"
+    },
+    {
+      "fields": [
+        {
+          "label": "Base red",
+          "max": "4",
+          "min": "0",
+          "name": "baseRed",
+          "type": "float"
+        },
+        {
+          "label": "Base green",
+          "max": "4",
+          "min": "0",
+          "name": "baseGreen",
+          "type": "float"
+        },
+        {
+          "label": "Base blue",
+          "max": "4",
+          "min": "0",
+          "name": "baseBlue",
+          "type": "float"
+        },
+        {
+          "label": "Base alpha",
+          "max": "1",
+          "min": "0",
+          "name": "baseAlpha",
+          "type": "float"
+        },
+        {
+          "label": "Base weight",
+          "max": "1",
+          "min": "0",
+          "name": "baseWeight",
+          "type": "float"
+        },
+        {
+          "label": "Metalness",
+          "max": "1",
+          "min": "0",
+          "name": "baseMetalness",
+          "type": "float"
+        },
+        {
+          "label": "Diffuse roughness",
+          "max": "1",
+          "min": "0",
+          "name": "baseDiffuseRoughness",
+          "type": "float"
+        },
+        {
+          "label": "Specular weight",
+          "max": "1",
+          "min": "0",
+          "name": "specularWeight",
+          "type": "float"
+        },
+        {
+          "label": "Specular red",
+          "max": "4",
+          "min": "0",
+          "name": "specularRed",
+          "type": "float"
+        },
+        {
+          "label": "Specular green",
+          "max": "4",
+          "min": "0",
+          "name": "specularGreen",
+          "type": "float"
+        },
+        {
+          "label": "Specular blue",
+          "max": "4",
+          "min": "0",
+          "name": "specularBlue",
+          "type": "float"
+        },
+        {
+          "label": "Roughness",
+          "max": "1",
+          "min": "0",
+          "name": "specularRoughness",
+          "type": "float"
+        },
+        {
+          "label": "Specular IOR",
+          "max": "3",
+          "min": "1",
+          "name": "specularIor",
+          "type": "float"
+        },
+        {
+          "label": "Coat weight",
+          "max": "1",
+          "min": "0",
+          "name": "coatWeight",
+          "type": "float"
+        },
+        {
+          "label": "Coat roughness",
+          "max": "1",
+          "min": "0",
+          "name": "coatRoughness",
+          "type": "float"
+        },
+        {
+          "label": "Coat IOR",
+          "max": "3",
+          "min": "1",
+          "name": "coatIor",
+          "type": "float"
+        },
+        {
+          "label": "Emission red",
+          "max": "4",
+          "min": "0",
+          "name": "emissionRed",
+          "type": "float"
+        },
+        {
+          "label": "Emission green",
+          "max": "4",
+          "min": "0",
+          "name": "emissionGreen",
+          "type": "float"
+        },
+        {
+          "label": "Emission blue",
+          "max": "4",
+          "min": "0",
+          "name": "emissionBlue",
+          "type": "float"
+        },
+        {
+          "label": "Emission luminance",
+          "max": "100",
+          "min": "0",
+          "name": "emissionLuminance",
+          "type": "float"
+        },
+        {
+          "label": "Normal scale",
+          "max": "4",
+          "min": "0",
+          "name": "normalScale",
+          "type": "float"
+        },
+        {
+          "label": "Occlusion strength",
+          "max": "1",
+          "min": "0",
+          "name": "occlusionStrength",
+          "type": "float"
+        },
+        {
+          "label": "Alpha cutoff",
+          "max": "1",
+          "min": "-1",
+          "name": "alphaCutoff",
+          "type": "float"
+        }
+      ],
+      "header": "vultra/assets/material_parameters.hpp",
+      "name": "MaterialParameters"
+    },
     {
       "fields": [
         {
@@ -104,6 +1190,7 @@
           "type": "bool"
         }
       ],
+      "header": "vultra/servers/rendering/builtin/builtin_renderer.hpp",
       "name": "RenderSettings"
     }
   ],

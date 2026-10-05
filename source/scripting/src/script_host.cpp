@@ -93,11 +93,12 @@ namespace vultra
                          SceneTree&                   scene,
                          bool                         hotReload,
                          ObjectId                     node,
-                         std::string_view             typeName) :
+                         std::string_view             typeName,
+                         const ProjectManifest*       project) :
                 m_Stage(path, hotReload),
                 m_TypeName(typeName),
                 m_NodeInit {node.value, m_TypeName.data(), m_TypeName.size()},
-                m_Plugin(m_Stage.path(), &scene, &m_NodeInit)
+                m_Plugin(m_Stage.path(), &scene, &m_NodeInit, nullptr, project)
             {
             }
 
@@ -126,10 +127,13 @@ namespace vultra
         class ExtensionInstance final : public ScriptInstance
         {
         public:
-            ExtensionInstance(const std::filesystem::path& path, SceneTree& scene, bool hotReload) :
+            ExtensionInstance(const std::filesystem::path& path,
+                              SceneTree&                   scene,
+                              bool                         hotReload,
+                              const ProjectManifest*       project) :
                 m_Stage(path, hotReload),
                 m_Registration {VULTRA_ABI_VERSION, sizeof(VultraScriptRegistrationApi), this, &registerClass},
-                m_Plugin(m_Stage.path(), &scene, nullptr, &m_Registration)
+                m_Plugin(m_Stage.path(), &scene, nullptr, &m_Registration, project)
             {
             }
 
@@ -196,10 +200,14 @@ namespace vultra
         class ProvidedNativeScript final : public ScriptInstance
         {
         public:
-            ProvidedNativeScript(VultraPluginInit entry, SceneTree& scene, ObjectId node, std::string_view typeName) :
+            ProvidedNativeScript(VultraPluginInit       entry,
+                                 SceneTree&             scene,
+                                 ObjectId               node,
+                                 std::string_view       typeName,
+                                 const ProjectManifest* project) :
                 m_TypeName(typeName),
                 m_NodeInit {node.value, m_TypeName.data(), m_TypeName.size()},
-                m_Session(entry, &scene, &m_NodeInit)
+                m_Session(entry, &scene, &m_NodeInit, nullptr, project)
             {
             }
 
@@ -238,21 +246,22 @@ namespace vultra
                                                    const std::filesystem::path& path,
                                                    SceneTree&                   scene,
                                                    bool                         hotReload,
+                                                   const ProjectManifest*       project,
                                                    const ScriptInstance*        previous = nullptr)
         {
             const auto node = scriptNode(module, scene);
             switch (module.language)
             {
                 case ScriptModule::Language::eNative:
-                    return std::make_unique<NativeScript>(path, scene, hotReload, node, module.typeName);
+                    return std::make_unique<NativeScript>(path, scene, hotReload, node, module.typeName, project);
                 case ScriptModule::Language::eLua:
-                    return loadLuaScript(path, scene, node);
+                    return loadLuaScript(path, scene, node, project);
                 case ScriptModule::Language::eCSharp: {
                     if (module.typeName.empty() || !module.node)
                     {
                         throw std::invalid_argument("C# script requires a class name and scene node ID");
                     }
-                    return loadDotNetScript(path, scene, node, module.typeName, previous);
+                    return loadDotNetScript(path, scene, node, module.typeName, previous, project);
                 }
             }
             throw std::invalid_argument("Unknown script language");
@@ -271,16 +280,31 @@ namespace vultra
             std::unique_ptr<ScriptInstance> instance;
         };
 
-        Impl(SceneTree& scene, bool hotReload) :
+        Impl(SceneTree& scene, bool hotReload, const ProjectManifest* project) :
             scene(scene),
+            project(project),
             hotReload(hotReload)
         {
+        }
+
+        void retireMissingNodes()
+        {
+            for (auto& slot : scripts)
+            {
+                if (!slot.instance || !slot.module || !slot.module->node || scene.find(NodeId {*slot.module->node}))
+                {
+                    continue;
+                }
+                slot.instance->stop();
+                slot.instance.reset();
+                Logger::app().info("Detached script from removed node: {}", slot.module->node->toString());
+            }
         }
 
         void replaceExtension(size_t index, const FileStamp& stamp)
         {
             auto& slot        = scripts[index];
-            auto  replacement = std::make_unique<ExtensionInstance>(slot.path, scene, hotReload);
+            auto  replacement = std::make_unique<ExtensionInstance>(slot.path, scene, hotReload, project);
             for (size_t otherIndex = 0; otherIndex < scripts.size(); ++otherIndex)
             {
                 const auto& other = scripts[otherIndex];
@@ -301,7 +325,7 @@ namespace vultra
             for (size_t childIndex = index + 1; childIndex < scripts.size(); ++childIndex)
             {
                 const auto& child = scripts[childIndex];
-                if (child.provider != index)
+                if (child.provider != index || !child.instance)
                 {
                     continue;
                 }
@@ -314,7 +338,8 @@ namespace vultra
                                         std::make_unique<ProvidedNativeScript>(replacement->entry(),
                                                                                scene,
                                                                                scriptNode(*child.module, scene),
-                                                                               child.module->typeName));
+                                                                               child.module->typeName,
+                                                                               project));
             }
 
             // Stage all new instances first; retire dependent callbacks before unloading their provider library.
@@ -335,16 +360,17 @@ namespace vultra
             }
         }
 
-        SceneTree&            scene;
-        std::vector<Slot>     scripts;
-        std::string           reloadError;
-        std::filesystem::path reloadErrorPath;
-        bool                  hotReload = false;
-        bool                  stopped   = false;
+        SceneTree&             scene;
+        const ProjectManifest* project = nullptr;
+        std::vector<Slot>      scripts;
+        std::string            reloadError;
+        std::filesystem::path  reloadErrorPath;
+        bool                   hotReload = false;
+        bool                   stopped   = false;
     };
 
-    ScriptHost::ScriptHost(SceneTree& scene, bool hotReload) :
-        m_Impl(std::make_unique<Impl>(scene, hotReload))
+    ScriptHost::ScriptHost(SceneTree& scene, bool hotReload, const ProjectManifest* project) :
+        m_Impl(std::make_unique<Impl>(scene, hotReload, project))
     {
     }
 
@@ -364,7 +390,7 @@ namespace vultra
         {
             throw std::runtime_error("Extension file is missing: " + path.string());
         }
-        auto instance = std::make_unique<ExtensionInstance>(path, m_Impl->scene, m_Impl->hotReload);
+        auto instance = std::make_unique<ExtensionInstance>(path, m_Impl->scene, m_Impl->hotReload, m_Impl->project);
         for (const auto& slot : m_Impl->scripts)
         {
             if (slot.module)
@@ -418,13 +444,14 @@ namespace vultra
                 instance = std::make_unique<ProvidedNativeScript>(extension.entry(),
                                                                   m_Impl->scene,
                                                                   scriptNode(module, m_Impl->scene),
-                                                                  module.typeName);
+                                                                  module.typeName,
+                                                                  m_Impl->project);
                 break;
             }
         }
         if (!instance)
         {
-            instance = loadScript(module, path, m_Impl->scene, m_Impl->hotReload);
+            instance = loadScript(module, path, m_Impl->scene, m_Impl->hotReload, m_Impl->project);
         }
         m_Impl->scripts.push_back({module, provider, path, *stamp, std::nullopt, std::move(instance)});
     }
@@ -439,11 +466,12 @@ namespace vultra
         {
             throw std::logic_error("Reload requires a hot-reload script host");
         }
+        m_Impl->retireMissingNodes();
         size_t count = 0;
         for (size_t index = 0; index < m_Impl->scripts.size(); ++index)
         {
             auto& slot = m_Impl->scripts[index];
-            if (slot.provider)
+            if (slot.provider || !slot.instance)
             {
                 continue;
             }
@@ -459,8 +487,12 @@ namespace vultra
             {
                 if (slot.module)
                 {
-                    auto replacement =
-                        loadScript(*slot.module, slot.path, m_Impl->scene, m_Impl->hotReload, slot.instance.get());
+                    auto replacement = loadScript(*slot.module,
+                                                  slot.path,
+                                                  m_Impl->scene,
+                                                  m_Impl->hotReload,
+                                                  m_Impl->project,
+                                                  slot.instance.get());
                     slot.instance->stop();
                     slot.instance = std::move(replacement);
                 }
@@ -499,13 +531,19 @@ namespace vultra
         {
             throw std::logic_error("Update stopped script host");
         }
+        m_Impl->retireMissingNodes();
         if (m_Impl->hotReload)
         {
             reloadChanged();
         }
-        for (const auto& slot : m_Impl->scripts)
+        for (auto& slot : m_Impl->scripts)
         {
+            if (!slot.instance)
+            {
+                continue;
+            }
             slot.instance->update(deltaSeconds);
+            m_Impl->retireMissingNodes();
         }
     }
 
@@ -515,9 +553,13 @@ namespace vultra
         {
             throw std::logic_error("Draw stopped script host");
         }
+        m_Impl->retireMissingNodes();
         for (const auto& slot : m_Impl->scripts)
         {
-            slot.instance->gui(gui);
+            if (slot.instance)
+            {
+                slot.instance->gui(gui);
+            }
         }
     }
 
@@ -530,7 +572,10 @@ namespace vultra
         m_Impl->stopped = true;
         for (auto it = m_Impl->scripts.rbegin(); it != m_Impl->scripts.rend(); ++it)
         {
-            it->instance->stop();
+            if (it->instance)
+            {
+                it->instance->stop();
+            }
         }
         m_Impl->scripts.clear();
     }

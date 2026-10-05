@@ -11,6 +11,7 @@ namespace vultra
     class Frame;
     class Profiler;
     class RenderingServer;
+    class PassCatalog;
 
     // Owns desktop services in construction order. The GPU is idle after each submitted frame.
     class RuntimeContext
@@ -27,6 +28,7 @@ namespace vultra
         Frame&           frame();
         Profiler&        profiler();
         RenderingServer& rendering();
+        PassCatalog&     passes();
 
     private:
         struct Impl;

@@ -186,6 +186,75 @@ namespace
         first.collectCompletedFrame();
     }
 
+    void emptyGpuScene(vultra::Device& device, vultra::Environment& environment)
+    {
+        using namespace vultra;
+        SceneData scene;
+        scene.materials.emplace_back();
+        GpuScene gpu(device, scene);
+        require(gpu.primitives.empty() && gpu.vertices && gpu.indices, "Empty scene GPU buffers are missing");
+        BuiltinRenderer renderer(device, gpu, environment);
+        renderer.settings.skybox       = false;
+        renderer.settings.ibl          = false;
+        renderer.settings.shadowFilter = ShadowFilter::eDisabled;
+        RenderGraph graph(device);
+        const auto  outputs = renderer.addPasses(graph, {32, 32});
+        graph.exportResource(outputs.hdr);
+        graph.compile();
+        render(device,
+               renderer,
+               graph,
+               outputs,
+               {glm::mat4(1), glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f), 0.1f, 10.0f});
+    }
+
+    void livePrimitiveTransform(vultra::Device& device, vultra::Environment& environment)
+    {
+        using namespace vultra;
+        SceneData scene;
+        scene.vertices   = {{{-0.7f, -0.7f, 0}, {0, 0, 1}, {0, 0}},
+                            {{0.7f, -0.7f, 0}, {0, 0, 1}, {1, 0}},
+                            {{0, 0.7f, 0}, {0, 0, 1}, {0.5f, 1}}};
+        scene.indices    = {0, 1, 2};
+        scene.primitives = {{0, 3, 0}};
+        scene.materials.emplace_back();
+        scene.materials[0].emissionColor     = {1, 0, 0};
+        scene.materials[0].emissionLuminance = 2;
+        scene.radius                         = 1;
+        GpuScene     gpu(device, scene);
+        RenderCamera camera {glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0)),
+                             glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
+                             0.1f,
+                             10};
+        for (const auto path : {RenderPath::eNaiveForward, RenderPath::eNaiveDeferred})
+        {
+            BuiltinRenderer renderer(device, gpu, environment);
+            renderer.settings.path         = path;
+            renderer.settings.skybox       = false;
+            renderer.settings.ibl          = false;
+            renderer.settings.shadowFilter = ShadowFilter::eDisabled;
+            RenderGraph graph(device);
+            const auto  outputs = renderer.addPasses(graph, {65, 65});
+            graph.exportResource(outputs.hdr);
+            graph.exportResource(outputs.color);
+            graph.compile();
+            gpu.setPrimitiveTransforms(0, 1, glm::mat4(1));
+            const auto stationary      = render(device, renderer, graph, outputs, camera);
+            const auto stationaryColor = readback(device, graph.getTexture(outputs.color));
+            gpu.setPrimitiveTransforms(0, 1, glm::translate(glm::mat4(1), {2, 0, 0}));
+            const auto   moved      = render(device, renderer, graph, outputs, camera);
+            const auto   movedColor = readback(device, graph.getTexture(outputs.color));
+            const size_t center     = (32 * 65 + 32) * 4;
+            require(stationary.rgba[center] > 0.5f && moved.rgba[center] < stationary.rgba[center] * 0.05f,
+                    "Primitive transform did not move rendered geometry");
+            require(stationaryColor.rgba[center] > movedColor.rgba[center] + 0.1f,
+                    "Primitive transform did not reach tone-mapped output");
+            gpu.setPrimitiveTransforms(0, 1, glm::scale(glm::mat4(1), {-1, 1, 1}));
+            const auto mirrored = render(device, renderer, graph, outputs, camera);
+            require(mirrored.rgba[center] > 0.5f, "Mirrored primitive was culled");
+        }
+    }
+
     void materialReference(vultra::Device& device, vultra::Environment& environment)
     {
         vultra::SceneData scene;
@@ -632,6 +701,8 @@ try
     renderingServerIds(device);
     vultra::Environment environment(device, hdr);
     constantEnvironment(device, environment);
+    emptyGpuScene(device, environment);
+    livePrimitiveTransform(device, environment);
     materialReference(device, environment);
     materialTextures(device, environment, vultra::TextureFormat::eBc5Unorm);
     materialTextures(device, environment, vultra::TextureFormat::eRg8Unorm);

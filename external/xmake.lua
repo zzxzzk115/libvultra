@@ -14,12 +14,20 @@ end
 add_requires("argparse v3.2")
 add_requires("spdlog v1.15.3", {configs = {header_only = true, std_format = true}})
 add_requires("imgui v1.92.5-docking", {configs = {glfw = window_backend == "glfw", sdl3 = window_backend == "sdl3"}})
+-- Editor-only canvas; the player and public vultra library do not link it.
+add_requires("imgui-node-editor 021aa0ea4da13fed864bafb2a92d4c5205076866")
+add_requireconfs("imgui-node-editor.imgui", {
+    version = "v1.92.5-docking", override = true,
+    configs = {glfw = window_backend == "glfw", sdl3 = window_backend == "sdl3"}
+})
 add_requires("slang-static 2026.11")
 add_requires("rmlui 6.2", {configs = {shared = false, lua = false, svg = false, lottie = false}})
 add_requireconfs("rmlui.zlib", {system = false, configs = {shared = false}, override = true})
 add_requireconfs("rmlui.freetype.zlib", {system = false, configs = {shared = false}, override = true})
 add_requires("stb 2025.03.14")
 add_requires("tinygltf v2.9.7", "glm 1.0.1")
+-- Reuse TinyGLTF's existing JSON dependency for research workspace persistence.
+add_requires("nlohmann_json v3.12.0")
 add_requires("tinyobjloader v2.0.0rc13")
 add_requireconfs("openfbx.libdeflate", {system = false, configs = {shared = false}, override = true})
 add_requires("openfbx v0.9")

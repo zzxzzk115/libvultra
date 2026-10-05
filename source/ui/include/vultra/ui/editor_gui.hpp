@@ -25,15 +25,18 @@ namespace vultra
         EditorGuiTheme        theme = EditorGuiTheme::eUnreal;
     };
 
-    // The selected desktop backend supplies native windows; VRI renders the main and detached viewports.
+    // VRI renders native viewports or an explicitly offscreen GUI target.
     class EditorGui
     {
     public:
         EditorGui(Device& device, Window& window, VriFormat targetFormat, const EditorGuiConfig& config = {});
+        // Offscreen rendering uses the same VRI renderer, with no window backend or detached viewports.
+        EditorGui(Device& device, VriFormat targetFormat, const EditorGuiConfig& config);
         ~EditorGui();
         EditorGui(const EditorGui&)            = delete;
         EditorGui& operator=(const EditorGui&) = delete;
         void       begin();
+        void       begin(Extent size, float deltaSeconds);
 
         EditorGuiFrame frame()
         {
@@ -76,6 +79,8 @@ namespace vultra
         void renderPlatformWindows();
 
     private:
+        EditorGui(Device& device, Window* window, VriFormat targetFormat, const EditorGuiConfig& config);
+        void beginFrame();
         struct Viewport;
 
         struct DrawData
@@ -92,7 +97,7 @@ namespace vultra
         void              beginPlatformFrame();
         static void*      viewportHandle(ImGuiViewport* viewport);
         void              installViewportCallbacks();
-        Window&           m_Window;
+        Window*           m_Window;
         Device&           m_Device;
         std::string       m_IniFile;
         VriImguiInterface m_Api {};

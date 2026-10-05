@@ -1,5 +1,9 @@
 target("vultra")
     set_kind("static")
+    if is_plat("linux", "macosx") then
+        -- The optional research shared library embeds this static core.
+        add_cxflags("-fPIC")
+    end
 
     -- One public library; the directories express dependency boundaries in source.
     for _, module in ipairs({"core", "platform", "drivers", "assets", "servers", "scene", "ui", "main", "api"}) do
@@ -38,6 +42,18 @@ target("vultra")
     end
 target_end()
 
+-- Compile the shared managed API once before either example or test script assemblies.
+target("vultra-managed-host")
+    set_kind("phony")
+    set_default(false)
+    set_policy("build.fence", true)
+    on_build(function ()
+        local output = path.join(os.projectdir(), "build", ".tmp", "scripting-managed")
+        os.execv("dotnet", {"build", path.join(os.projectdir(), "source", "scripting", "managed", "Vultra.ManagedHost.csproj"),
+                           "-c", "Release", "-o", output, "--nologo"})
+    end)
+target_end()
+
 -- Authored in-game UI is opt-in; applications that only use VRI keep one vultra dependency.
 target("vultra-vgui")
     set_kind("static")
@@ -54,9 +70,13 @@ target_end()
 target("vultra-scripting")
     set_kind("static")
     set_default(false)
+    if is_plat("linux", "macosx") then
+        add_cxflags("-fPIC")
+    end
     add_deps("vultra")
     add_includedirs("scripting/include", {public = true})
     add_headerfiles("scripting/include/(vultra/**.hpp)")
     add_files("scripting/src/**.cpp")
     add_packages("lua", {public = true})
+    add_packages("nlohmann_json")
 target_end()

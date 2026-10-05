@@ -12,10 +12,11 @@ namespace vultra
     class SceneTree;
 
     // Each module belongs to one project scene. Call update and gui in their respective frame phases.
+    // The optional project is borrowed for the host lifetime and enables model selection by asset ID.
     class ScriptHost
     {
     public:
-        explicit ScriptHost(SceneTree& scene, bool hotReload = false);
+        explicit ScriptHost(SceneTree& scene, bool hotReload = false, const ProjectManifest* project = nullptr);
         ~ScriptHost();
         ScriptHost(const ScriptHost&)            = delete;
         ScriptHost& operator=(const ScriptHost&) = delete;

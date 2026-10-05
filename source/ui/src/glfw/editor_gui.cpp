@@ -7,7 +7,7 @@ namespace vultra
 {
     bool EditorGui::initializePlatform()
     {
-        return ImGui_ImplGlfw_InitForVulkan(static_cast<GLFWwindow*>(m_Window.handle()), true);
+        return ImGui_ImplGlfw_InitForVulkan(static_cast<GLFWwindow*>(m_Window->handle()), true);
     }
 
     void EditorGui::shutdownPlatform()

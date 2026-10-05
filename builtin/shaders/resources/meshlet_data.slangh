@@ -17,15 +17,3 @@ struct Meshlet
 [[vk::binding(1, 2)]] StructuredBuffer<Meshlet> meshlets;
 [[vk::binding(2, 2)]] StructuredBuffer<uint> meshletVertices;
 [[vk::binding(3, 2)]] StructuredBuffer<uint> meshletTriangles;
-
-MeshVertex loadMeshletVertex(uint index)
-{
-    uint offset = index * 64;
-    MeshVertex vertex;
-    vertex.position = asfloat(sceneVertices.Load3(offset));
-    vertex.normal = asfloat(sceneVertices.Load3(offset + 12));
-    vertex.uv = asfloat(sceneVertices.Load2(offset + 24));
-    vertex.color = asfloat(sceneVertices.Load4(offset + 32));
-    vertex.tangent = asfloat(sceneVertices.Load4(offset + 48));
-    return vertex;
-}

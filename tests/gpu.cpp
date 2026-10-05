@@ -6,7 +6,10 @@
 #include <vultra/platform/window.hpp>
 #include <vultra/servers/rendering/graph/render_graph.hpp>
 #include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/servers/rendering/research/graph_report.hpp>
 #include <vultra/ui/editor_gui.hpp>
+
+#include <nlohmann/json.hpp>
 
 #include <cmath>
 #include <fstream>
@@ -49,10 +52,15 @@ namespace
         }
     }
 } // namespace
-int main()
+int main(int argc, char** argv)
 try
 {
     using namespace vultra;
+    const bool offline = argc == 2 && std::string_view(argv[1]) == "--offline";
+    if (argc != 1 && !offline)
+    {
+        throw std::invalid_argument("Usage: test-gpu [--offline]");
+    }
     Device     device;
     Frame      frame(device);
     const auto scratch = std::filesystem::path("build/.tmp/gpu-tests") /
@@ -128,6 +136,40 @@ try
                     profiler.timings()[0].gpuBarrierMs <= profiler.timings()[0].gpuMs,
                 "GPU barrier timestamp is outside the pass interval");
     }
+    auto* nestedCommands = frame.begin();
+    profiler.beginFrame(nestedCommands);
+    profiler.beginPass(nestedCommands, "draw");
+    auto& nestedTarget = graph.getTexture(output);
+    nestedTarget.transition(
+        nestedCommands,
+        {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
+    profiler.beginCommands(nestedCommands);
+    profiler.beginPass(nestedCommands, "geometry");
+    const float nestedClear[4] {0, 0, 0, 1};
+    triangle.draw(nestedCommands, nestedTarget, nestedClear);
+    profiler.endPass(nestedCommands);
+    profiler.beginPass(nestedCommands, "tail");
+    profiler.endPass(nestedCommands);
+    profiler.endPass(nestedCommands);
+    profiler.resolve(nestedCommands);
+    frame.submitAndWait();
+    profiler.collect();
+    const auto& events = profiler.timings();
+    require(events.size() == 3 && events[0].parent == UINT32_MAX && events[0].depth == 0 && events[1].parent == 0 &&
+                events[1].depth == 1 && events[2].parent == 0,
+            "Profiler nested event ownership is incorrect");
+    require(events[0].cpuMs >= events[1].cpuMs + events[2].cpuMs &&
+                events[0].gpuMs >= events[1].gpuMs + events[2].gpuMs,
+            "Inclusive event timings lost nested work");
+    const std::array images {GraphCapture {"final", "image.png", output}};
+    const auto       diagnostics = nlohmann::json::parse(graphReport(graph, events, images, "frame.rdc"));
+    require(diagnostics["version"] == 1 && diagnostics["images"][0]["producers"] == nlohmann::json::array({1}) &&
+                diagnostics["events"][0]["pass"] == 1 && diagnostics["events"][1]["parent"] == 0 &&
+                diagnostics["gpu_capture"] == "frame.rdc",
+            "Graph report lost image, event or GPU capture association");
+    require(diagnostics["resources"][output.index]["memory_bytes"].get<uint64_t>() >= 129 * 73 * 4 &&
+                diagnostics["graph_owned_bytes"] == diagnostics["resources"][output.index]["memory_bytes"],
+            "Graph report did not preserve VRI allocator measurements");
     auto pollUntil = [&](auto predicate)
     {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
@@ -286,53 +328,57 @@ try
     require(hdrImage.rgba[0] == 2 && hdrImage.rgba[1] == -0.5f && hdrImage.rgba[3] == 0.5f,
             "HDR readback was quantized or lost alpha");
 
-    Window    window("Vultra - verification", {640, 360});
-    Swapchain swapchain(device, window, VriFormat_BGRA8_UNORM);
-    EditorGui gui(device, window, swapchain.format(), {.persistLayout = false});
-    for (int i = 0; i < 4; ++i)
+    if (!offline)
     {
-        if (i == 2)
+        Window    window("Vultra - verification", {640, 360});
+        Swapchain swapchain(device, window, VriFormat_BGRA8_UNORM);
+        EditorGui gui(device, window, swapchain.format(), {.persistLayout = false});
+        for (int i = 0; i < 4; ++i)
         {
-            window.setSize({800, 450});
+            if (i == 2)
+            {
+                window.setSize({800, 450});
+            }
+            window.poll();
+            gui.begin();
+            ImGui::SetNextWindowSize(ImVec2(420, 220));
+            const auto guiOrigin = ImGui::GetMainViewport()->Pos;
+            ImGui::SetNextWindowPos(ImVec2(guiOrigin.x + 24, guiOrigin.y + 24));
+            ImGui::Begin("Vultra verification");
+            ImGui::TextUnformatted("VRI + ImGui + RenderGraph + Slang");
+            ImGui::Button("Research controls");
+            ImGui::End();
+            gui.upload(window.framebufferSize());
+            auto* target = swapchain.acquire();
+            if (!target)
+            {
+                --i;
+                continue;
+            }
+            cmd = frame.begin();
+            target->transition(
+                cmd,
+                {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
+            gui.copy(cmd);
+            const float bg[4] {0.05f, 0.07f, 0.1f, 1};
+            beginColorPass(device, cmd, target->view(), swapchain.size(), bg);
+            gui.draw(cmd);
+            device.core.CmdEndRendering(cmd);
+            target->transition(cmd, {VriAccess_None, VriLayout_Present, VriPipelineStage_AllCommands});
+            frame.submitAndWait();
+            if (i == 3)
+            {
+                savePng(readback(device, *target), "build/.tmp/gui-verification.png");
+            }
+            swapchain.present();
+            gui.renderPlatformWindows();
         }
-        window.poll();
-        gui.begin();
-        ImGui::SetNextWindowSize(ImVec2(420, 220));
-        const auto guiOrigin = ImGui::GetMainViewport()->Pos;
-        ImGui::SetNextWindowPos(ImVec2(guiOrigin.x + 24, guiOrigin.y + 24));
-        ImGui::Begin("Vultra verification");
-        ImGui::TextUnformatted("VRI + ImGui + RenderGraph + Slang");
-        ImGui::Button("Research controls");
-        ImGui::End();
-        gui.upload(window.framebufferSize());
-        auto* target = swapchain.acquire();
-        if (!target)
+        require(swapchain.size() == window.framebufferSize(),
+                "Swapchain did not track the negotiated framebuffer size");
+        if (platform::nativeWindow(window).type != VriWindowSystem_Wayland)
         {
-            --i;
-            continue;
+            require(swapchain.size() == Extent {800, 450}, "Resize was not applied");
         }
-        cmd = frame.begin();
-        target->transition(
-            cmd,
-            {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
-        gui.copy(cmd);
-        const float bg[4] {0.05f, 0.07f, 0.1f, 1};
-        beginColorPass(device, cmd, target->view(), swapchain.size(), bg);
-        gui.draw(cmd);
-        device.core.CmdEndRendering(cmd);
-        target->transition(cmd, {VriAccess_None, VriLayout_Present, VriPipelineStage_AllCommands});
-        frame.submitAndWait();
-        if (i == 3)
-        {
-            savePng(readback(device, *target), "build/.tmp/gui-verification.png");
-        }
-        swapchain.present();
-        gui.renderPlatformWindows();
-    }
-    require(swapchain.size() == window.framebufferSize(), "Swapchain did not track the negotiated framebuffer size");
-    if (platform::nativeWindow(window).type != VriWindowSystem_Wayland)
-    {
-        require(swapchain.size() == Extent {800, 450}, "Resize was not applied");
     }
     std::cout << "GPU tests passed: draw/readback, graph culling/validation/buffers, profiler, FileWatch "
                  "failure/recovery, HDR, ImGui, swapchain extent\n";

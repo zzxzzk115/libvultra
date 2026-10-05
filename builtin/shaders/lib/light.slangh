@@ -1,6 +1,7 @@
 #pragma once
 
 #include "lib/openpbr.slangh"
+#include "resources/frame_block.slangh"
 
 struct DirectionalLight
 {
@@ -13,4 +14,28 @@ float3 evaluateDirectionalLight(OpenPBR_PreparedBsdf bsdf, DirectionalLight ligh
     // Upstream eval returns BSDF times the incident cosine.
     OpenPBR_DiffuseSpecular response = openpbr_eval(bsdf, light.directionToLight);
     return openpbr_get_sum_of_diffuse_specular(response) * light.radiance * visibility;
+}
+
+// Point/spot intensity follows inverse-square falloff with a smooth finite-range cutoff.
+float3 evaluateSceneLight(OpenPBR_PreparedBsdf bsdf, LightData light, float3 position)
+{
+    float3 direction = light.directionKind.xyz;
+    float attenuation = 1;
+    uint kind = uint(light.directionKind.w);
+    if (kind != 0)
+    {
+        float3 delta = light.positionRange.xyz - position;
+        float distanceSquared = max(dot(delta, delta), 1e-6);
+        float distance = sqrt(distanceSquared);
+        direction = delta / distance;
+        float cutoff = saturate(1 - pow(distance / light.positionRange.w, 4));
+        attenuation = cutoff * cutoff / distanceSquared;
+        if (kind == 2)
+        {
+            attenuation *= smoothstep(light.cones.y, light.cones.x, dot(direction, light.directionKind.xyz));
+        }
+    }
+    OpenPBR_DiffuseSpecular response = openpbr_eval(bsdf, direction);
+    return openpbr_get_sum_of_diffuse_specular(response) * light.colorIntensity.rgb *
+           light.colorIntensity.w * attenuation;
 }

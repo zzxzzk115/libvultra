@@ -7,6 +7,7 @@ namespace vultra
 {
     class EditorGui;
     class SceneTree;
+    class ProjectManifest;
 
     // Owns callbacks from one module; the module itself must outlive this session.
     class PluginSession
@@ -16,7 +17,8 @@ namespace vultra
         PluginSession(VultraPluginInit                   initialize,
                       SceneTree*                         scene,
                       void*                              initData = nullptr,
-                      const VultraScriptRegistrationApi* scripts  = nullptr);
+                      const VultraScriptRegistrationApi* scripts  = nullptr,
+                      const ProjectManifest*             project  = nullptr);
         ~PluginSession();
         PluginSession(const PluginSession&)            = delete;
         PluginSession& operator=(const PluginSession&) = delete;

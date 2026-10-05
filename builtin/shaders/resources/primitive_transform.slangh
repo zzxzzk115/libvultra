@@ -1,0 +1,13 @@
+#pragma once
+
+#include "resources/gpu_material.slangh"
+
+// Keep this layout consistent with GpuScene's per-primitive host buffer.
+struct PrimitiveTransform
+{
+    float4x4 model;
+    float4x4 normal;
+    float4   properties; // Tangent handedness, conservative sphere scale.
+};
+
+[[vk::binding(19, 0)]] StructuredBuffer<PrimitiveTransform> primitiveTransforms;

@@ -9,6 +9,19 @@ struct MeshVertex
     float4 tangent : TANGENT;
 };
 
+// SceneVertex packs float3 fields at byte offsets 0 and 12; StructuredBuffer's std430 layout would add padding.
+MeshVertex loadMeshVertex(ByteAddressBuffer vertices, uint index)
+{
+    uint offset = index * 64;
+    MeshVertex vertex;
+    vertex.position = asfloat(vertices.Load3(offset));
+    vertex.normal = asfloat(vertices.Load3(offset + 12));
+    vertex.uv = asfloat(vertices.Load2(offset + 24));
+    vertex.color = asfloat(vertices.Load4(offset + 32));
+    vertex.tangent = asfloat(vertices.Load4(offset + 48));
+    return vertex;
+}
+
 struct SurfaceVertex
 {
     float4 position : SV_Position;

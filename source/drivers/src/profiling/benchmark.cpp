@@ -97,7 +97,7 @@ namespace vultra
         {
             throw std::runtime_error("Cannot create benchmark output files");
         }
-        manifest << "{\n  \"experiment\": " << jsonString(metadata.experiment)
+        manifest << "{\n  \"version\": 1,\n  \"experiment\": " << jsonString(metadata.experiment)
                  << ",\n  \"source_revision\": " << jsonString(metadata.sourceRevision)
                  << ",\n  \"shader_hash_fnv1a64\": " << jsonString(metadata.shaderHash)
                  << ",\n  \"window_system\": " << jsonString(metadata.windowSystem)
@@ -105,12 +105,14 @@ namespace vultra
                  << ",\n  \"validation\": " << (metadata.validation ? "true" : "false")
                  << ",\n  \"width\": " << metadata.width << ",\n  \"height\": " << metadata.height
                  << ",\n  \"warmup_frames\": " << metadata.warmupFrames
-                 << ",\n  \"measured_frames\": " << m_Samples.size() << ",\n  \"present_mode\": \"fifo\""
+                 << ",\n  \"measured_frames\": " << m_Samples.size()
+                 << ",\n  \"present_mode\": " << jsonString(metadata.presentMode)
                  << ",\n  \"adapter\": " << jsonString(device.adapter.name)
                  << ",\n  \"vendor_id\": " << device.adapter.vendorId
                  << ",\n  \"device_id\": " << device.adapter.deviceId
                  << ",\n  \"graphics_api\": " << int(device.graphicsAPI) << ",\n  \"api_version\": "
                  << jsonString(std::to_string(device.apiVersionMajor) + "." + std::to_string(device.apiVersionMinor))
+                 << ",\n  \"enabled_features\": " << device.enabledFeatures
                  << ",\n  \"gpu_timestamps\": " << (device.hasTimestampQueries ? "true" : "false")
                  << ",\n  \"parameters\": {\n";
         for (size_t i = 0; i < metadata.parameters.size(); ++i)
@@ -123,8 +125,8 @@ namespace vultra
 
         frames << "frame,total_ms,update_ms,acquire_ms,prepare_record_ms,submit_wait_ms,post_render_ms,present_ms,gpu_"
                   "ms\n";
-        passes
-            << "frame,pass,cpu_total_ms,cpu_barrier_ms,cpu_commands_ms,gpu_total_ms,gpu_barrier_ms,gpu_commands_ms\n";
+        passes << "frame,pass,cpu_total_ms,cpu_barrier_ms,cpu_commands_ms,gpu_total_ms,gpu_barrier_ms,gpu_commands_ms,"
+                  "event,parent,depth\n";
         summary << "metric,count,mean_ms,median_ms,p95_ms,min_ms,max_ms\n";
         frames << std::setprecision(10);
         passes << std::setprecision(10);
@@ -148,8 +150,9 @@ namespace vultra
             metrics["frame.submit_wait"].push_back(f.submitWaitMs);
             metrics["frame.post_render"].push_back(f.postRenderMs);
             metrics["frame.present"].push_back(f.presentMs);
-            for (const auto& pass : sample.passes)
+            for (size_t event = 0; event < sample.passes.size(); ++event)
             {
+                const auto& pass = sample.passes[event];
                 passes << f.frameIndex << ',' << csvString(pass.name) << ',' << pass.cpuMs << ',' << pass.cpuBarrierMs
                        << ',' << pass.cpuMs - pass.cpuBarrierMs << ',';
                 metrics["pass." + pass.name + ".cpu_total"].push_back(pass.cpuMs);
@@ -164,7 +167,12 @@ namespace vultra
                 {
                     passes << ",,";
                 }
-                passes << '\n';
+                passes << ',' << event << ',';
+                if (pass.parent != UINT32_MAX)
+                {
+                    passes << pass.parent;
+                }
+                passes << ',' << pass.depth << '\n';
             }
         }
         for (const auto& [name, values] : metrics)

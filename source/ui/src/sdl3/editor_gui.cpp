@@ -8,11 +8,11 @@ namespace vultra
 {
     bool EditorGui::initializePlatform()
     {
-        if (!ImGui_ImplSDL3_InitForVulkan(static_cast<SDL_Window*>(m_Window.handle())))
+        if (!ImGui_ImplSDL3_InitForVulkan(static_cast<SDL_Window*>(m_Window->handle())))
         {
             return false;
         }
-        m_Window.m_GuiEventHandler = [context = m_Context](const void* event)
+        m_Window->m_GuiEventHandler = [context = m_Context](const void* event)
         {
             auto* previous = ImGui::GetCurrentContext();
             ImGui::SetCurrentContext(context);
@@ -24,7 +24,7 @@ namespace vultra
 
     void EditorGui::shutdownPlatform()
     {
-        m_Window.m_GuiEventHandler = {};
+        m_Window->m_GuiEventHandler = {};
         ImGui_ImplSDL3_Shutdown();
     }
 

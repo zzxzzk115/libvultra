@@ -70,6 +70,22 @@ rule("clangd.config")
     end)
 rule_end()
 
+rule("vultra.linux.delivery")
+    on_config(function (target)
+        if not target:is_plat("linux") then
+            return
+        end
+        local links = {}
+        for _, name in ipairs({"links", "syslinks"}) do
+            for _, values in ipairs(target:get_from(name, "*") or {}) do
+                table.join2(links, table.wrap(values))
+            end
+        end
+        -- A trailing ldflag cannot remove unused desktop libraries. Apply it around the inherited links.
+        target:add("linkgroups", table.unique(links), {name = "vultra_delivery", group = true, as_needed = true})
+    end)
+rule_end()
+
 add_rules("mode.debug", "mode.release")
 add_rules("plugin.vsxmake.autoupdate")
 add_rules("plugin.compile_commands.autoupdate", {outputdir = ".vscode", lsp = "clangd"})
@@ -86,6 +102,7 @@ includes("external")
 includes("source")
 includes("tools")
 includes("runtime")
+includes("editor")
 
 -- include tests
 if has_config("libvultra_build_tests") then

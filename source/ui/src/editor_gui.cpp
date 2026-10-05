@@ -3,6 +3,7 @@
 #include <vultra/ui/editor_gui.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <utility>
 
@@ -89,10 +90,24 @@ namespace vultra
     } // namespace
 
     EditorGui::EditorGui(Device& device, Window& window, VriFormat targetFormat, const EditorGuiConfig& config) :
+        EditorGui(device, &window, targetFormat, config)
+    {
+    }
+
+    EditorGui::EditorGui(Device& device, VriFormat targetFormat, const EditorGuiConfig& config) :
+        EditorGui(device, nullptr, targetFormat, config)
+    {
+    }
+
+    EditorGui::EditorGui(Device& device, Window* window, VriFormat targetFormat, const EditorGuiConfig& config) :
         m_Window(window),
         m_Device(device),
         m_IniFile(layoutFilename(config))
     {
+        if (!window && config.multiViewport)
+        {
+            throw std::invalid_argument("Offscreen ImGui cannot create detached viewports");
+        }
         if (config.multiViewport && targetFormat != VriFormat_BGRA8_UNORM)
         {
             throw std::invalid_argument("ImGui platform windows require the desktop BGRA8_UNORM target format");
@@ -123,10 +138,13 @@ namespace vultra
             desc.fontHeight  = uint32_t(height);
             check(m_Api.CreateImgui(device.handle, &desc, &m_Renderer), "Create ImGui renderer");
             io.Fonts->SetTexID(reinterpret_cast<ImTextureID>(m_Api.GetImguiFontView(m_Renderer)));
-            platformReady = initializePlatform();
-            if (!platformReady)
+            if (window)
             {
-                throw std::runtime_error("Initialize ImGui window backend");
+                platformReady = initializePlatform();
+                if (!platformReady)
+                {
+                    throw std::runtime_error("Initialize ImGui window backend");
+                }
             }
             setTheme(config.theme);
             if (config.multiViewport)
@@ -164,7 +182,10 @@ namespace vultra
         ImGui::DestroyPlatformWindows();
         ImGui::GetPlatformIO().ClearRendererHandlers();
         ImGui::GetIO().BackendRendererUserData = nullptr;
-        shutdownPlatform();
+        if (m_Window)
+        {
+            shutdownPlatform();
+        }
         m_Api.DestroyImgui(m_Renderer);
         ImGui::DestroyContext(m_Context);
     }
@@ -183,7 +204,29 @@ namespace vultra
 
     void EditorGui::begin()
     {
+        if (!m_Window)
+        {
+            throw std::logic_error("Offscreen ImGui requires an explicit frame extent and time step");
+        }
         beginPlatformFrame();
+        beginFrame();
+    }
+
+    void EditorGui::begin(Extent size, float deltaSeconds)
+    {
+        if (m_Window || size.empty() || !std::isfinite(deltaSeconds) || deltaSeconds <= 0)
+        {
+            throw std::invalid_argument("Offscreen ImGui requires no window, positive extent and finite time step");
+        }
+        auto& io                   = ImGui::GetIO();
+        io.DisplaySize             = {float(size.width), float(size.height)};
+        io.DisplayFramebufferScale = {1, 1};
+        io.DeltaTime               = deltaSeconds;
+        beginFrame();
+    }
+
+    void EditorGui::beginFrame()
+    {
         ImGui::NewFrame();
         m_FrameActive = true;
         ++m_FrameSerial;

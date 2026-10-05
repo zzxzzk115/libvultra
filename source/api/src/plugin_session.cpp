@@ -10,13 +10,15 @@ namespace vultra
     PluginSession::PluginSession(VultraPluginInit                   initialize,
                                  SceneTree*                         scene,
                                  void*                              initData,
-                                 const VultraScriptRegistrationApi* scripts)
+                                 const VultraScriptRegistrationApi* scripts,
+                                 const ProjectManifest*             project)
     {
         if (!initialize)
         {
             throw std::invalid_argument("Plugin entry is missing");
         }
-        m_SceneAccess.scene = scene;
+        m_SceneAccess.scene   = scene;
+        m_SceneAccess.project = project;
         const VultraHostApi host {VULTRA_ABI_VERSION, sizeof(VultraHostApi), &uiApi(), &sceneApi(), scripts};
         m_Api.version     = VULTRA_ABI_VERSION;
         m_Api.user_data   = initData;

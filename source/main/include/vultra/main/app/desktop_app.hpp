@@ -46,6 +46,11 @@ namespace vultra
             return m_Context->rendering();
         }
 
+        PassCatalog& getPassCatalog()
+        {
+            return m_Context->passes();
+        }
+
         Swapchain& getSwapchain()
         {
             return m_Context->swapchain();

@@ -20,7 +20,7 @@ namespace vultra
     bool drawRenderSettings(EditorGuiInspector& inspector, RenderSettings& settings)
     {
         bool              changed   = false;
-        int               selected  = settings.path == RenderPath::eNaiveDeferred ? 0 : 1;
+        int               selected  = static_cast<int>(settings.path);
         const char* const options[] = {"NaiveDeferred", "NaiveForward"};
         if (inspector.choice({"path", "Path"}, &selected, options, 2))
         {

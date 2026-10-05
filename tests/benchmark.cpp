@@ -40,11 +40,13 @@ int main()
     VriDeviceDesc device {};
     device.adapter.vendorId    = 42;
     device.hasTimestampQueries = true;
+    device.enabledFeatures     = 17;
     vultra::BenchmarkMetadata metadata;
     metadata.experiment     = "test";
     metadata.sourceRevision = "test-revision";
     metadata.shaderHash     = "abcd";
     metadata.buildMode      = "test";
+    metadata.presentMode    = "none";
     metadata.width          = 320;
     metadata.height         = 200;
     metadata.warmupFrames   = 10;
@@ -52,13 +54,18 @@ int main()
     const auto directory = std::filesystem::path("build/.tmp") /
                            ("benchmark-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     capture.write(directory, metadata, device);
+    const auto manifest = read(directory / "manifest.json");
+    require(manifest.find("\"version\": 1") != std::string::npos &&
+                manifest.find("\"enabled_features\": 17") != std::string::npos &&
+                manifest.find("\"present_mode\": \"none\"") != std::string::npos,
+            "Benchmark lost its format version or enabled device capabilities");
     require(read(directory / "manifest.json").find("\"quoted\": \"a\\\"b\"") != std::string::npos,
             "Benchmark metadata was not escaped");
     require(read(directory / "summary.csv").find("\"frame.total\",4,25,25,40,10,40") != std::string::npos,
             "Benchmark percentile or median is wrong");
     require(read(directory / "summary.csv").find(R"("pass.tri,""angle.cpu_total")") != std::string::npos,
             "Summary metric name was not CSV-escaped");
-    require(read(directory / "passes.csv").find(R"("tri,""angle",1,0.25,0.75,2,0.5,1.5)") != std::string::npos,
+    require(read(directory / "passes.csv").find(R"("tri,""angle",1,0.25,0.75,2,0.5,1.5,0,,0)") != std::string::npos,
             "Pass barrier and command time were not separated");
     bool rejected = false;
     try

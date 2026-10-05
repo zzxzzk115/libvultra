@@ -11,7 +11,7 @@ namespace vultra
             swapchain(gui.m_Device, window, VriFormat_BGRA8_UNORM),
             frame(gui.m_Device)
         {
-            window.m_GuiEventHandler = gui.m_Window.m_GuiEventHandler;
+            window.m_GuiEventHandler = gui.m_Window->m_GuiEventHandler;
             geometry                 = owner.m_Api.CreateImguiViewport(owner.m_Renderer);
             if (!geometry)
             {

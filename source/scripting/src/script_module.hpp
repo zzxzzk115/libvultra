@@ -10,6 +10,7 @@ namespace vultra
 {
     class EditorGui;
     class SceneTree;
+    class ProjectManifest;
 
     class ScriptInstance
     {
@@ -20,10 +21,12 @@ namespace vultra
         virtual void stop() noexcept            = 0;
     };
 
-    std::unique_ptr<ScriptInstance> loadLuaScript(const std::filesystem::path& path, SceneTree& scene, ObjectId node);
+    std::unique_ptr<ScriptInstance>
+    loadLuaScript(const std::filesystem::path& path, SceneTree& scene, ObjectId node, const ProjectManifest* project);
     std::unique_ptr<ScriptInstance> loadDotNetScript(const std::filesystem::path& path,
                                                      SceneTree&                   scene,
                                                      ObjectId                     node,
                                                      std::string_view             typeName,
-                                                     const ScriptInstance*        previous = nullptr);
+                                                     const ScriptInstance*        previous = nullptr,
+                                                     const ProjectManifest*       project  = nullptr);
 } // namespace vultra

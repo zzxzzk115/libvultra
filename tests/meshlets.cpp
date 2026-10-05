@@ -184,8 +184,39 @@ namespace
 
     void verifyGpu(const vultra::SceneData& scene)
     {
-        vultra::Device          device(true, nullptr, VriFeature_MeshShader);
-        vultra::Environment     environment(device);
+        vultra::Device      device(true, nullptr, VriFeature_MeshShader);
+        vultra::Environment environment(device);
+        {
+            vultra::SceneData emptyScene;
+            emptyScene.materials.emplace_back();
+            vultra::GpuScene emptyGpu(device, emptyScene, true);
+            require(emptyGpu.meshlets && emptyGpu.meshlets->count == 0,
+                    "Empty mesh-shading scene did not retain valid bindings");
+            vultra::BuiltinRenderer emptyRenderer(device, emptyGpu, environment);
+            emptyRenderer.settings.path             = vultra::RenderPath::eNaiveForward;
+            emptyRenderer.settings.meshShading      = true;
+            emptyRenderer.settings.skybox           = false;
+            emptyRenderer.settings.shadowResolution = 64;
+            vultra::RenderGraph emptyGraph(device);
+            const auto          emptyOutput = emptyRenderer.addPasses(emptyGraph, {32, 32});
+            emptyGraph.exportResource(emptyOutput.color);
+            emptyGraph.compile();
+            const vultra::RenderCamera camera {glm::mat4(1),
+                                               glm::perspectiveRH_ZO(glm::radians(65.0f), 1.0f, 0.1f, 10.0f),
+                                               0.1f,
+                                               10};
+            emptyRenderer.prepare(camera, emptyGraph, emptyOutput);
+            vultra::Frame frame(device);
+            emptyGraph.execute(frame.begin());
+            frame.submitAndWait();
+            const auto image = vultra::readback(device, emptyGraph.getTexture(emptyOutput.color));
+            require(std::ranges::all_of(image.rgba,
+                                        [](float value)
+                                        {
+                                            return std::isfinite(value);
+                                        }),
+                    "Empty mesh-shading scene produced nonfinite pixels");
+        }
         vultra::GpuScene        gpu(device, scene, true, 4);
         vultra::BuiltinRenderer renderer(device, gpu, environment);
         renderer.settings.path             = vultra::RenderPath::eNaiveForward;
@@ -236,6 +267,27 @@ namespace
                 }
             }
         }
+        const vultra::RenderCamera movingCamera {
+            glm::lookAtRH(glm::vec3(0, 0, 2), glm::vec3(0, 0, -0.25f), glm::vec3(0, 1, 0)),
+            glm::perspectiveRH_ZO(glm::radians(65.0f), 1.0f, 0.1f, 10.0f),
+            0.1f,
+            10};
+        renderer.settings.debugMode   = 0;
+        renderer.settings.meshShading = false;
+        const auto stationary         = render(movingCamera);
+        gpu.setPrimitiveTransforms(0, uint32_t(scene.primitives.size()), glm::translate(glm::mat4(1), {0.7f, 0, 0}));
+        const auto movedIndexed          = render(movingCamera);
+        renderer.settings.meshShading    = true;
+        renderer.settings.meshletCulling = true;
+        const auto movedMesh             = render(movingCamera);
+        float      movedDifference       = 0;
+        for (size_t i = 0; i < movedMesh.rgba.size(); ++i)
+        {
+            movedDifference = std::max(movedDifference, std::abs(movedIndexed.rgba[i] - stationary.rgba[i]));
+            require(std::abs(movedMesh.rgba[i] - movedIndexed.rgba[i]) < 0.003f,
+                    "Transformed meshlet rendering differs from indexed geometry");
+        }
+        require(movedDifference > 0.1f, "Moving mesh primitives did not change the rendered image");
         std::cout << "Meshlet GPU/indexed HDR max error: " << maxError << '\n';
         verifyPalette(device, environment);
     }

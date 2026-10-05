@@ -3,6 +3,7 @@
 #include <renderdoc_app.h>
 
 #include <stdexcept>
+#include <vector>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -12,7 +13,7 @@
 
 namespace vultra
 {
-    RenderDocCapture::RenderDocCapture()
+    RenderDocCapture::RenderDocCapture(const std::filesystem::path& outputTemplate)
     {
 #if defined(_WIN32)
         m_Module     = GetModuleHandleA("renderdoc.dll");
@@ -41,6 +42,12 @@ namespace vultra
 #endif
             throw std::runtime_error("RenderDoc capture API 1.1.2 is unavailable");
         }
+        if (!outputTemplate.empty())
+        {
+            const auto utf8 = outputTemplate.u8string();
+            static_cast<RENDERDOC_API_1_1_2*>(m_Api)->SetCaptureFilePathTemplate(
+                reinterpret_cast<const char*>(utf8.c_str()));
+        }
     }
 
     RenderDocCapture::~RenderDocCapture()
@@ -63,6 +70,8 @@ namespace vultra
         {
             throw std::logic_error("RenderDoc capture already started");
         }
+        m_File.clear();
+        m_FirstCapture = static_cast<RENDERDOC_API_1_1_2*>(m_Api)->GetNumCaptures();
         static_cast<RENDERDOC_API_1_1_2*>(m_Api)->StartFrameCapture(nullptr, nullptr);
         m_Active = true;
     }
@@ -79,5 +88,23 @@ namespace vultra
         {
             throw std::runtime_error("RenderDoc could not save the frame capture");
         }
+        auto*      api   = static_cast<RENDERDOC_API_1_1_2*>(m_Api);
+        const auto count = api->GetNumCaptures();
+        uint32_t   bytes = 0;
+        if (count <= m_FirstCapture || !api->GetCapture(count - 1, nullptr, &bytes, nullptr) || bytes == 0)
+        {
+            throw std::runtime_error("RenderDoc saved no identifiable capture");
+        }
+        std::vector<char> name(bytes);
+        if (!api->GetCapture(count - 1, name.data(), &bytes, nullptr))
+        {
+            throw std::runtime_error("Read RenderDoc capture path failed");
+        }
+        m_File = std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(name.data())));
+    }
+
+    const std::filesystem::path& RenderDocCapture::file() const
+    {
+        return m_File;
     }
 } // namespace vultra

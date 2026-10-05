@@ -4,6 +4,7 @@
 #include <vultra/api/ui_bridge.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/scene/scene_tree.hpp>
+#include <vultra/scripting/lua_values.generated.hpp>
 #include <vultra/ui/editor_gui.hpp>
 
 extern "C"
@@ -25,11 +26,15 @@ namespace vultra
         class LuaScript final : public ScriptInstance
         {
         public:
-            LuaScript(const std::filesystem::path& path, SceneTree& scene, ObjectId node) :
+            LuaScript(const std::filesystem::path& path,
+                      SceneTree&                   scene,
+                      ObjectId                     node,
+                      const ProjectManifest*       project) :
                 m_NodeId(node.value)
             {
-                m_Access.scene = &scene;
-                m_State        = luaL_newstate();
+                m_Access.scene   = &scene;
+                m_Access.project = project;
+                m_State          = luaL_newstate();
                 if (!m_State)
                 {
                     throw std::runtime_error("Create Lua state");
@@ -44,6 +49,33 @@ namespace vultra
                     bind("node_name", nodeName);
                     bind("node_translation", nodeTranslation);
                     bind("set_node_translation", setNodeTranslation);
+                    bind("create_node", createNode);
+                    bind("create_mesh", createMesh);
+                    bind("reparent_node", reparentNode);
+                    bind("duplicate_mesh", duplicateMesh);
+                    bind("copy_mesh_model", copyMeshModel);
+                    bind("set_mesh_model", setMeshModel);
+                    bind("remove_node", removeNode);
+                    bind("create_camera", createCamera);
+                    bind("camera_settings", cameraSettings);
+                    bind("set_camera_settings", setCameraSettings);
+                    bind("set_current_camera", setCurrentCamera);
+                    bind("create_light", createLight);
+                    bind("create_environment", createEnvironment);
+                    bind("environment_settings", environmentSettings);
+                    bind("set_environment_settings", setEnvironmentSettings);
+                    bind("set_environment_asset", setEnvironmentAsset);
+                    bind("set_current_environment", setCurrentEnvironment);
+                    bind("light_kind", lightKind);
+                    bind("light_settings", lightSettings);
+                    bind("set_light_settings", setLightSettings);
+                    bind("create_material", createMaterial);
+                    bind("material_name", materialName);
+                    bind("material_parameters", materialParameters);
+                    bind("set_material_parameters", setMaterialParameters);
+                    bind("remove_material", removeMaterial);
+                    bind("mesh_material", meshMaterial);
+                    bind("set_mesh_material", setMeshMaterial);
                     lua_setglobal(m_State, "scene");
                     lua_newtable(m_State);
                     bind("text", uiText);
@@ -201,13 +233,13 @@ namespace vultra
                 return static_cast<LuaScript*>(lua_touserdata(state, lua_upvalueindex(1)));
             }
 
-            static int result(lua_State* state, VultraStatus status)
+            static int result(lua_State* state, VultraStatus status, int valueCount = 1)
             {
                 if (status != VULTRA_STATUS_OK)
                 {
                     return luaL_error(state, "Vultra API status %d", int(status));
                 }
-                return 1;
+                return valueCount;
             }
 
             static int rootId(lua_State* state)
@@ -299,6 +331,356 @@ namespace vultra
                 return 0;
             }
 
+            static int createNode(lua_State* state)
+            {
+                auto*       script = self(state);
+                const auto  parent = static_cast<uint64_t>(luaL_checkinteger(state, 1));
+                size_t      size   = 0;
+                const char* name   = luaL_checklstring(state, 2, &size);
+                uint64_t    value  = 0;
+                const auto  status = sceneApi().create_node(script->m_SceneFrame, parent, name, size, &value);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(value));
+                }
+                return result(state, status);
+            }
+
+            static int createMesh(lua_State* state)
+            {
+                auto*       script    = self(state);
+                const auto  parent    = static_cast<uint64_t>(luaL_checkinteger(state, 1));
+                size_t      nameSize  = 0;
+                const char* name      = luaL_checklstring(state, 2, &nameSize);
+                size_t      assetSize = 0;
+                const char* assetId   = luaL_checklstring(state, 3, &assetSize);
+                uint64_t    value     = 0;
+                const auto  status =
+                    sceneApi().create_mesh(script->m_SceneFrame, parent, name, nameSize, assetId, assetSize, &value);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(value));
+                }
+                return result(state, status);
+            }
+
+            static int reparentNode(lua_State* state)
+            {
+                auto*      script = self(state);
+                const auto status = sceneApi().reparent_node(script->m_SceneFrame,
+                                                             static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                             static_cast<uint64_t>(luaL_checkinteger(state, 2)));
+                if (status != VULTRA_STATUS_OK)
+                {
+                    return luaL_error(state, "Vultra API status %d", int(status));
+                }
+                return 0;
+            }
+
+            static int duplicateMesh(lua_State* state)
+            {
+                auto*      script = self(state);
+                uint64_t   value  = 0;
+                const auto status = sceneApi().duplicate_mesh(script->m_SceneFrame,
+                                                              static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                              static_cast<uint64_t>(luaL_checkinteger(state, 2)),
+                                                              &value);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(value));
+                }
+                return result(state, status);
+            }
+
+            static int copyMeshModel(lua_State* state)
+            {
+                auto*      script = self(state);
+                const auto status = sceneApi().copy_mesh_model(script->m_SceneFrame,
+                                                               static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                               static_cast<uint64_t>(luaL_checkinteger(state, 2)));
+                if (status != VULTRA_STATUS_OK)
+                {
+                    return luaL_error(state, "Vultra API status %d", int(status));
+                }
+                return 0;
+            }
+
+            static int setMeshModel(lua_State* state)
+            {
+                auto*       script = self(state);
+                const auto  node   = static_cast<uint64_t>(luaL_checkinteger(state, 1));
+                size_t      size   = 0;
+                const char* text   = luaL_checklstring(state, 2, &size);
+                const auto  status = sceneApi().set_mesh_model(script->m_SceneFrame, node, text, size);
+                if (status != VULTRA_STATUS_OK)
+                {
+                    return luaL_error(state, "Vultra API status %d", int(status));
+                }
+                return 0;
+            }
+
+            static int removeNode(lua_State* state)
+            {
+                auto*      script = self(state);
+                const auto status =
+                    sceneApi().remove_node(script->m_SceneFrame, static_cast<uint64_t>(luaL_checkinteger(state, 1)));
+                if (status != VULTRA_STATUS_OK)
+                {
+                    return luaL_error(state, "Vultra API status %d", int(status));
+                }
+                return 0;
+            }
+
+            static int createCamera(lua_State* state)
+            {
+                auto*       script = self(state);
+                size_t      size   = 0;
+                const auto* name   = luaL_checklstring(state, 2, &size);
+                uint64_t    id     = 0;
+                const auto  status = sceneApi().create_camera(script->m_SceneFrame,
+                                                              static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                              name,
+                                                              size,
+                                                              &id);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(id));
+                }
+                return result(state, status);
+            }
+
+            static int cameraSettings(lua_State* state)
+            {
+                VultraCameraSettings value {};
+                const auto status = sceneApi().camera_settings(self(state)->m_SceneFrame,
+                                                               static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                               &value);
+                if (status != VULTRA_STATUS_OK)
+                {
+                    return result(state, status);
+                }
+                scripting::detail::pushLuaValue(state, value);
+                return 1;
+            }
+
+            static int setCameraSettings(lua_State* state)
+            {
+                const auto value  = scripting::detail::readLuaCameraSettings(state, 2);
+                const auto status = sceneApi().set_camera_settings(self(state)->m_SceneFrame,
+                                                                   static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                                   value);
+                return result(state, status, 0);
+            }
+
+            static int setCurrentCamera(lua_State* state)
+            {
+                return result(state,
+                              sceneApi().set_current_camera(self(state)->m_SceneFrame,
+                                                            static_cast<uint64_t>(luaL_checkinteger(state, 1))),
+                              0);
+            }
+
+            static int createEnvironment(lua_State* state)
+            {
+                size_t      size   = 0;
+                const auto* name   = luaL_checklstring(state, 2, &size);
+                uint64_t    id     = 0;
+                const auto  status = sceneApi().create_environment(self(state)->m_SceneFrame,
+                                                                   static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                                   name,
+                                                                   size,
+                                                                   &id);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(id));
+                }
+                return result(state, status);
+            }
+
+            static int environmentSettings(lua_State* state)
+            {
+                VultraEnvironmentSettings value {};
+                const auto status = sceneApi().environment_settings(self(state)->m_SceneFrame,
+                                                                    static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                                    &value);
+                if (status != VULTRA_STATUS_OK)
+                {
+                    return result(state, status);
+                }
+                scripting::detail::pushLuaValue(state, value);
+                return 1;
+            }
+
+            static int setEnvironmentSettings(lua_State* state)
+            {
+                const auto value = scripting::detail::readLuaEnvironmentSettings(state, 2);
+                return result(state,
+                              sceneApi().set_environment_settings(self(state)->m_SceneFrame,
+                                                                  static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                                  value),
+                              0);
+            }
+
+            static int setEnvironmentAsset(lua_State* state)
+            {
+                size_t      size  = 0;
+                const auto* asset = luaL_checklstring(state, 2, &size);
+                return result(state,
+                              sceneApi().set_environment_asset(self(state)->m_SceneFrame,
+                                                               static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                               asset,
+                                                               size),
+                              0);
+            }
+
+            static int setCurrentEnvironment(lua_State* state)
+            {
+                return result(state,
+                              sceneApi().set_current_environment(self(state)->m_SceneFrame,
+                                                                 static_cast<uint64_t>(luaL_checkinteger(state, 1))),
+                              0);
+            }
+
+            static int createLight(lua_State* state)
+            {
+                auto*       script = self(state);
+                size_t      size   = 0;
+                const auto* name   = luaL_checklstring(state, 2, &size);
+                uint64_t    id     = 0;
+                const auto  status = sceneApi().create_light(script->m_SceneFrame,
+                                                             static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                             name,
+                                                             size,
+                                                             static_cast<uint64_t>(luaL_checkinteger(state, 3)),
+                                                             &id);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(id));
+                }
+                return result(state, status);
+            }
+
+            static int lightKind(lua_State* state)
+            {
+                uint64_t   kind   = 0;
+                const auto status = sceneApi().light_kind(self(state)->m_SceneFrame,
+                                                          static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                          &kind);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(kind));
+                }
+                return result(state, status);
+            }
+
+            static int lightSettings(lua_State* state)
+            {
+                VultraLightSettings value {};
+                const auto status = sceneApi().light_settings(self(state)->m_SceneFrame,
+                                                              static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                              &value);
+                if (status != VULTRA_STATUS_OK)
+                {
+                    return result(state, status);
+                }
+                scripting::detail::pushLuaValue(state, value);
+                return 1;
+            }
+
+            static int setLightSettings(lua_State* state)
+            {
+                const auto value = scripting::detail::readLuaLightSettings(state, 2);
+                return result(state,
+                              sceneApi().set_light_settings(self(state)->m_SceneFrame,
+                                                            static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                            value),
+                              0);
+            }
+
+            static int createMaterial(lua_State* state)
+            {
+                size_t      size   = 0;
+                const auto* name   = luaL_checklstring(state, 1, &size);
+                uint64_t    id     = 0;
+                const auto  status = sceneApi().create_material(self(state)->m_SceneFrame, name, size, &id);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(id));
+                }
+                return result(state, status);
+            }
+
+            static int materialName(lua_State* state)
+            {
+                const char* name   = nullptr;
+                uint64_t    size   = 0;
+                const auto  status = sceneApi().material_name(self(state)->m_SceneFrame,
+                                                              static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                              &name,
+                                                              &size);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushlstring(state, name, size);
+                }
+                return result(state, status);
+            }
+
+            static int materialParameters(lua_State* state)
+            {
+                VultraMaterialParameters value {};
+                const auto status = sceneApi().material_parameters(self(state)->m_SceneFrame,
+                                                                   static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                                   &value);
+                if (status != VULTRA_STATUS_OK)
+                {
+                    return result(state, status);
+                }
+                scripting::detail::pushLuaValue(state, value);
+                return 1;
+            }
+
+            static int setMaterialParameters(lua_State* state)
+            {
+                const auto value = scripting::detail::readLuaMaterialParameters(state, 2);
+                return result(state,
+                              sceneApi().set_material_parameters(self(state)->m_SceneFrame,
+                                                                 static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                                 value),
+                              0);
+            }
+
+            static int removeMaterial(lua_State* state)
+            {
+                return result(state,
+                              sceneApi().remove_material(self(state)->m_SceneFrame,
+                                                         static_cast<uint64_t>(luaL_checkinteger(state, 1))),
+                              0);
+            }
+
+            static int meshMaterial(lua_State* state)
+            {
+                uint64_t   id     = 0;
+                const auto status = sceneApi().mesh_material(self(state)->m_SceneFrame,
+                                                             static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                             static_cast<uint64_t>(luaL_checkinteger(state, 2)),
+                                                             &id);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(id));
+                }
+                return result(state, status);
+            }
+
+            static int setMeshMaterial(lua_State* state)
+            {
+                return result(state,
+                              sceneApi().set_mesh_material(self(state)->m_SceneFrame,
+                                                           static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                           static_cast<uint64_t>(luaL_checkinteger(state, 2)),
+                                                           static_cast<uint64_t>(luaL_checkinteger(state, 3))),
+                              0);
+            }
+
             static int uiText(lua_State* state)
             {
                 auto*       script = self(state);
@@ -335,8 +717,59 @@ function node:child_count() return scene_api.child_count(self.id) end
 function node:name() return scene_api.node_name(self.id) end
 function node:position() return scene_api.node_translation(self.id) end
 function node:set_position(x, y, z) return scene_api.set_node_translation(self.id, x, y, z) end
+function node:create_child(name)
+    return setmetatable({ id = scene_api.create_node(self.id, name) }, node)
+end
+function node:create_mesh_child(name, asset_id)
+    return setmetatable({ id = scene_api.create_mesh(self.id, name, asset_id) }, node)
+end
+function node:reparent(parent) return scene_api.reparent_node(self.id, parent.id) end
+function node:duplicate_mesh(parent)
+    return setmetatable({ id = scene_api.duplicate_mesh(self.id, parent.id) }, node)
+end
+function node:copy_mesh_model(source) return scene_api.copy_mesh_model(self.id, source.id) end
+function node:set_mesh_model(asset_id) return scene_api.set_mesh_model(self.id, asset_id) end
+function node:remove() return scene_api.remove_node(self.id) end
+function node:create_camera_child(name)
+    return setmetatable({ id = scene_api.create_camera(self.id, name) }, node)
+end
+local light_kinds = { directional = 0, point = 1, spot = 2 }
+function node:create_light_child(name, kind)
+    assert(light_kinds[kind] ~= nil, "Unknown light kind")
+    return setmetatable({ id = scene_api.create_light(self.id, name, light_kinds[kind]) }, node)
+end
+function node:camera_settings() return scene_api.camera_settings(self.id) end
+function node:set_camera_settings(settings) return scene_api.set_camera_settings(self.id, settings) end
+function node:make_current() return scene_api.set_current_camera(self.id) end
+function node:light_kind() return ({ "directional", "point", "spot" })[scene_api.light_kind(self.id) + 1] end
+function node:create_environment_child(name)
+    return setmetatable({ id = scene_api.create_environment(self.id, name) }, node)
+end
+function node:environment_settings() return scene_api.environment_settings(self.id) end
+function node:set_environment_settings(settings) return scene_api.set_environment_settings(self.id, settings) end
+function node:set_environment_asset(asset_id) return scene_api.set_environment_asset(self.id, asset_id or "") end
+function node:make_environment_current() return scene_api.set_current_environment(self.id) end
+function node:light_settings() return scene_api.light_settings(self.id) end
+function node:set_light_settings(settings) return scene_api.set_light_settings(self.id, settings) end
 local world = {}
+local material = {}
+material.__index = material
+function material:name() return scene_api.material_name(self.id) end
+function material:parameters() return scene_api.material_parameters(self.id) end
+function material:set_parameters(parameters) return scene_api.set_material_parameters(self.id, parameters) end
+function material:remove() return scene_api.remove_material(self.id) end
+function node:material(slot)
+    local id = scene_api.mesh_material(self.id, slot)
+    if id == 0 then return nil end
+    return setmetatable({ id = id }, material)
+end
+function node:set_material(slot, value) return scene_api.set_mesh_material(self.id, slot, value and value.id or 0) end
+function world:create_material(name)
+    return setmetatable({ id = scene_api.create_material(name) }, material)
+end
 function world:root() return setmetatable({ id = scene_api.root_id() }, node) end
+function world:clear_current_camera() return scene_api.set_current_camera(0) end
+function world:clear_current_environment() return scene_api.set_current_environment(0) end
 local editor = {}
 function editor:text(message) return gui_api.text(message) end
 function editor:button(label) return gui_api.button(label) end
@@ -358,8 +791,9 @@ scene, gui = nil, nil
         };
     } // namespace
 
-    std::unique_ptr<ScriptInstance> loadLuaScript(const std::filesystem::path& path, SceneTree& scene, ObjectId node)
+    std::unique_ptr<ScriptInstance>
+    loadLuaScript(const std::filesystem::path& path, SceneTree& scene, ObjectId node, const ProjectManifest* project)
     {
-        return std::make_unique<LuaScript>(path, scene, node);
+        return std::make_unique<LuaScript>(path, scene, node, project);
     }
 } // namespace vultra

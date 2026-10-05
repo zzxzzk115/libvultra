@@ -1,0 +1,23 @@
+{
+  "format": "vultra.experiment",
+  "version": 1,
+  "input": "research_lighting.vproject",
+  "width": 128,
+  "height": 96,
+  "path": "deferred",
+  "seed": 42,
+  "frames": 3,
+  "warmup": 1,
+  "time_step": 0.01666666753590107,
+  "environment": null,
+  "camera": null,
+  "graph": {
+    "format": "vultra.graph",
+    "version": 1,
+    "passes": [
+      {"id": "gain", "type": "research.color_gain", "parameters": {"gain": 0.75}}
+    ],
+    "edges": [{"from": "scene.hdr", "to": "gain.source"}],
+    "outputs": ["gain.color"]
+  }
+}

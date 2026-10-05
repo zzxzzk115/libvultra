@@ -191,7 +191,7 @@ private:
             settings.debugMode = uint32_t(debugMode);
             if (ui.button("Rebuild IBL"))
             {
-                m_Environment = vultra::Environment(getDevice(), m_EnvironmentFile);
+                m_Environment.rebuild();
             }
             for (const auto& timing : m_Profiler.timings())
             {

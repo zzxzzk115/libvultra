@@ -1,0 +1,63 @@
+#pragma once
+
+#include "resources/mesh_vertex.slangh"
+
+struct TraceMaterial
+{
+    float4 baseColor;
+    float4 surface;
+    float4 emission;
+    float4 coat;
+    float4 specular;
+    float4 flags;
+};
+
+struct TraceLight
+{
+    float4 positionRange;
+    float4 directionKind;
+    float4 colorIntensity;
+    float4 cones;
+};
+
+struct TraceTransform
+{
+    float4x4 model;
+    float4x4 normal;
+    float4 properties;
+};
+
+struct TraceFrame
+{
+    float4x4 viewProjection;
+    float4x4 inverseViewProjection;
+    float4x4 view;
+    float4x4 previousViewProjection;
+    float4 eye;
+    uint4 counts; // Completed samples, seed, analytic light count, emissive triangle count.
+    float4 options; // Environment multiplier and scene-scale ray epsilon.
+};
+
+[[vk::binding(0, 0)]] RaytracingAccelerationStructure traceScene;
+[[vk::binding(1, 0)]] ByteAddressBuffer traceVertices;
+[[vk::binding(2, 0)]] StructuredBuffer<uint> traceIndices;
+[[vk::binding(3, 0)]] StructuredBuffer<uint4> tracePrimitives;
+[[vk::binding(4, 0)]] StructuredBuffer<TraceTransform> traceTransforms;
+[[vk::binding(5, 0)]] StructuredBuffer<TraceTransform> tracePreviousTransforms;
+[[vk::binding(6, 0)]] StructuredBuffer<TraceMaterial> traceMaterials;
+[[vk::binding(7, 0)]] StructuredBuffer<TraceLight> traceLights;
+[[vk::binding(8, 0)]] StructuredBuffer<uint2> traceEmitters;
+[[vk::binding(9, 0)]] ConstantBuffer<TraceFrame> traceFrame;
+[[vk::binding(10, 0)]] Texture2D<float4> traceEnvironment;
+// Binding 11 is the shared OpenPBR LUT atlas.
+[[vk::binding(12, 0)]] SamplerState traceEnvironmentSampler;
+[[vk::binding(13, 0)]] RWTexture2D<float4> traceRadiance;
+[[vk::binding(14, 0)]] RWTexture2D<float4> traceHdr;
+[[vk::binding(15, 0)]] RWTexture2D<float4> traceAlbedo;
+[[vk::binding(16, 0)]] RWTexture2D<float4> traceNormal;
+[[vk::binding(17, 0)]] RWTexture2D<float4> traceDepth;
+[[vk::binding(18, 0)]] RWTexture2D<float4> traceMotion;
+[[vk::binding(19, 0)]] RWTexture2D<float4> traceSamples;
+[[vk::binding(20, 0)]] RWTexture2D<float4> traceRays;
+[[vk::binding(0, 1)]] Texture2D<float4> traceTextures[];
+[[vk::binding(0, 2)]] SamplerState traceSamplers[];

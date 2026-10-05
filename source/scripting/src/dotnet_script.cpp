@@ -239,7 +239,8 @@ namespace vultra
                          SceneTree&                   scene,
                          ObjectId                     node,
                          std::string_view             typeName,
-                         const DotNetScript*          previous)
+                         const DotNetScript*          previous,
+                         const ProjectManifest*       project)
             {
                 const auto bridge = std::filesystem::absolute(path).parent_path() / "Vultra.ManagedHost.dll";
                 if (!std::filesystem::is_regular_file(bridge))
@@ -261,7 +262,7 @@ namespace vultra
                                             node.value,
                                             previous ? previous->m_State : nullptr,
                                             nullptr};
-                m_Session = std::make_unique<PluginSession>(initialize, &scene, &request);
+                m_Session = std::make_unique<PluginSession>(initialize, &scene, &request, nullptr, project);
                 m_State   = request.instance;
             }
 
@@ -290,8 +291,14 @@ namespace vultra
                                                      SceneTree&                   scene,
                                                      ObjectId                     node,
                                                      std::string_view             typeName,
-                                                     const ScriptInstance*        previous)
+                                                     const ScriptInstance*        previous,
+                                                     const ProjectManifest*       project)
     {
-        return std::make_unique<DotNetScript>(path, scene, node, typeName, static_cast<const DotNetScript*>(previous));
+        return std::make_unique<DotNetScript>(path,
+                                              scene,
+                                              node,
+                                              typeName,
+                                              static_cast<const DotNetScript*>(previous),
+                                              project);
     }
 } // namespace vultra

@@ -7,6 +7,7 @@
 #include <stb_image_write.h>
 
 #include <algorithm>
+#include <bit>
 #include <climits>
 #include <cmath>
 #include <fstream>
@@ -132,6 +133,40 @@ namespace vultra
         if (!success || !output)
         {
             throw std::runtime_error("PNG write failed: " + path.string());
+        }
+    }
+
+    void savePfm(const Image& image, const std::filesystem::path& path)
+    {
+        static_assert(sizeof(float) == 4 && std::numeric_limits<float>::is_iec559);
+        validateImage(image);
+        if (!path.parent_path().empty())
+        {
+            std::filesystem::create_directories(path.parent_path());
+        }
+        std::ofstream output(path, std::ios::binary);
+        if (!output)
+        {
+            throw std::runtime_error("Cannot create PFM: " + path.string());
+        }
+        output << "PF\n"
+               << image.size.width << ' ' << image.size.height << '\n'
+               << (std::endian::native == std::endian::little ? "-1.0\n" : "1.0\n");
+        std::vector<float> row(size_t(image.size.width) * 3);
+        // PFM stores RGB from bottom to top; Image stores RGBA from top to bottom.
+        for (uint32_t y = image.size.height; y > 0; --y)
+        {
+            for (uint32_t x = 0; x < image.size.width; ++x)
+            {
+                const auto source = (size_t(y - 1) * image.size.width + x) * 4;
+                std::copy_n(image.rgba.data() + source, 3, row.data() + size_t(x) * 3);
+            }
+            output.write(reinterpret_cast<const char*>(row.data()), std::streamsize(row.size() * sizeof(float)));
+        }
+        output.flush();
+        if (!output)
+        {
+            throw std::runtime_error("PFM write failed: " + path.string());
         }
     }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <string>
 
 namespace vultra
 {
@@ -35,6 +36,9 @@ namespace vultra
         }
 
         bool boolField(EditorGuiProperty property, bool* value);
+        bool textField(EditorGuiProperty property, std::string* value);
+        bool floatField(EditorGuiProperty property, float* value, float speed, float min = 0, float max = 0);
+        bool float3Field(EditorGuiProperty property, float* value, float speed = 0.01f);
         bool floatSlider(EditorGuiProperty property, float* value, float min, float max);
         bool choice(EditorGuiProperty property, int* index, const char* const* items, int count);
         bool property(EditorGuiProperty property, void* value, EditorGuiPropertyDrawer drawer);

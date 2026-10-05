@@ -1,5 +1,6 @@
 #include <vultra/scene/node.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <utility>
@@ -32,7 +33,11 @@ namespace vultra
         {
             throw std::invalid_argument("Scene node name is empty");
         }
-        m_Name = std::move(name);
+        if (name != m_Name)
+        {
+            m_Name = std::move(name);
+            markChanged(SceneChange::eMetadata);
+        }
     }
 
     const glm::mat4& Node::localTransform() const
@@ -52,7 +57,11 @@ namespace vultra
                 }
             }
         }
-        m_Transform = transform;
+        if (transform != m_Transform)
+        {
+            m_Transform = transform;
+            markChanged(SceneChange::eTransform);
+        }
     }
 
     glm::mat4 Node::globalTransform() const
@@ -73,6 +82,14 @@ namespace vultra
     NodeKind Node::kind() const
     {
         return NodeKind::eGroup;
+    }
+
+    void Node::markChanged(SceneChange change)
+    {
+        if (m_Changes)
+        {
+            m_Changes->mark(change);
+        }
     }
 
     MeshInstanceNode::MeshInstanceNode(std::string name, AssetId model, NodeId id) :
@@ -101,6 +118,42 @@ namespace vultra
         {
             throw std::invalid_argument("Mesh instance model asset ID is empty");
         }
-        m_Model = model;
+        if (model != m_Model)
+        {
+            m_Model = model;
+            markChanged(SceneChange::eStructure);
+        }
+    }
+
+    const std::vector<MeshMaterialOverride>& MeshInstanceNode::materialOverrides() const
+    {
+        return m_MaterialOverrides;
+    }
+
+    void MeshInstanceNode::setMaterial(uint32_t slot, AssetId material)
+    {
+        const auto found = std::ranges::find(m_MaterialOverrides, slot, &MeshMaterialOverride::slot);
+        if (!material.value.valid())
+        {
+            if (found != m_MaterialOverrides.end())
+            {
+                m_MaterialOverrides.erase(found);
+                markChanged(SceneChange::eMaterial);
+            }
+        }
+        else if (found != m_MaterialOverrides.end())
+        {
+            if (found->material != material)
+            {
+                found->material = material;
+                markChanged(SceneChange::eMaterial);
+            }
+        }
+        else
+        {
+            m_MaterialOverrides.push_back({slot, material});
+            std::ranges::sort(m_MaterialOverrides, {}, &MeshMaterialOverride::slot);
+            markChanged(SceneChange::eMaterial);
+        }
     }
 } // namespace vultra

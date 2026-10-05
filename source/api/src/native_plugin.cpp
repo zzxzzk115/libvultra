@@ -55,7 +55,8 @@ namespace vultra
     NativePlugin::NativePlugin(const std::filesystem::path&       path,
                                SceneTree*                         scene,
                                void*                              initData,
-                               const VultraScriptRegistrationApi* scripts)
+                               const VultraScriptRegistrationApi* scripts,
+                               const ProjectManifest*             project)
     {
         void* module = openModule(path);
         if (!module)
@@ -69,7 +70,7 @@ namespace vultra
             {
                 throw std::runtime_error("Find vultra_plugin_init in " + path.string() + ": " + moduleError());
             }
-            m_Session = std::make_unique<PluginSession>(initialize, scene, initData, scripts);
+            m_Session = std::make_unique<PluginSession>(initialize, scene, initData, scripts, project);
             m_Module  = module;
             m_Entry   = initialize;
         }

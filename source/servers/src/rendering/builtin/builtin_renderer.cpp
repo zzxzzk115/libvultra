@@ -5,14 +5,24 @@
 #include <glm/gtc/matrix_inverse.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <numbers>
 
 namespace vultra
 {
     namespace
     {
-        // Keep this layout in sync with builtin/shaders/resources/frame_block.slangh.
+        struct LightData
+        {
+            glm::vec4 positionRange;
+            glm::vec4 directionKind;
+            glm::vec4 colorIntensity;
+            glm::vec4 cones;
+        };
+
+        // Keep these layouts in sync with builtin/shaders/resources/frame_block.slangh.
         struct FrameData
         {
             glm::mat4                viewProjection;
@@ -29,6 +39,8 @@ namespace vultra
             glm::vec4                options;
             glm::vec4                cameraClip;
             glm::vec4                overrides;
+            glm::vec4                lightConfig; // Count, shadow-casting directional index (-1 if absent).
+            std::array<LightData, kMaxRenderLights> lights;
         };
 
         struct MaterialData
@@ -40,10 +52,13 @@ namespace vultra
             glm::vec4  specular;
             glm::vec4  flags;
             glm::uvec4 meshlets; // First meshlet, count, frustum culling, debug colors.
+            glm::uvec4 instance; // Primitive transform index.
         };
 
-        static_assert(sizeof(FrameData) == 608);
-        static_assert(sizeof(MaterialData) == 112);
+        static_assert(sizeof(LightData) == 64);
+        static_assert(offsetof(FrameData, lightConfig) == 608 && offsetof(FrameData, lights) == 624);
+        static_assert(sizeof(FrameData) == 4720);
+        static_assert(sizeof(MaterialData) == 128);
         static_assert(sizeof(SceneVertex) == 64 && offsetof(SceneVertex, tangent) == 48);
 
         constexpr std::array<VriFormat, 7> kGBufferFormats {VriFormat_RGBA32_SFLOAT,
@@ -68,6 +83,7 @@ namespace vultra
                                     bool                           mesh,
                                     bool                           depth,
                                     bool                           doubleSided,
+                                    bool                           mirrored     = false,
                                     bool                           depthWrite   = true,
                                     VriCompareOp                   depthCompare = VriCompareOp_Less)
         {
@@ -103,7 +119,7 @@ namespace vultra
             }
             desc.inputAssembly.topology  = VriPrimitiveTopology_TriangleList;
             desc.rasterization.cullMode  = doubleSided ? VriCullMode_None : VriCullMode_Back;
-            desc.rasterization.frontFace = VriFrontFace_CounterClockwise;
+            desc.rasterization.frontFace = mirrored ? VriFrontFace_Clockwise : VriFrontFace_CounterClockwise;
             desc.rasterization.lineWidth = 1;
             desc.multisample.sampleNum   = 1;
             if (!formats.empty())
@@ -166,13 +182,21 @@ namespace vultra
                                                 0,
                                                 sizeof(FrameData)};
             check(device.core.CreateBufferView(device.handle, &bufferView, &m_FrameView), "Create frame uniform view");
-            VriDescriptorRangeDesc frameRanges[19] {};
-            for (uint32_t i = 0; i < 19; ++i)
+            const VriBufferViewDesc transformView {scene.transforms->handle,
+                                                   VriDescriptorType_StructuredBuffer,
+                                                   VriFormat_Unknown,
+                                                   0,
+                                                   scene.transforms->desc.size};
+            check(device.core.CreateBufferView(device.handle, &transformView, &m_TransformView),
+                  "Create primitive transform view");
+            VriDescriptorRangeDesc frameRanges[20] {};
+            for (uint32_t i = 0; i < 20; ++i)
             {
                 frameRanges[i] = {i, 1, VriDescriptorType_Texture, geometryStages | VriShaderStage_Fragment};
             }
             frameRanges[0].descriptorType  = VriDescriptorType_ConstantBuffer;
             frameRanges[10].descriptorType = VriDescriptorType_Sampler;
+            frameRanges[19]                = {19, 1, VriDescriptorType_StructuredBuffer, geometryStages};
             VriDescriptorRangeDesc materialRanges[kMaterialTextureCount + 1] {};
             for (uint32_t i = 0; i <= kMaterialTextureCount; ++i)
             {
@@ -188,7 +212,7 @@ namespace vultra
                                     VriDescriptorType_StructuredBuffer,
                                     VriShaderStage_Task | VriShaderStage_Mesh};
             }
-            VriDescriptorSetDesc  sets[3] {{0, frameRanges, 19},
+            VriDescriptorSetDesc  sets[3] {{0, frameRanges, 20},
                                            {1, materialRanges, kMaterialTextureCount + 1},
                                            {2, meshletRanges, 4}};
             VriPushConstantDesc   push {0, sizeof(MaterialData), geometryStages | VriShaderStage_Fragment};
@@ -225,7 +249,7 @@ namespace vultra
             pool.textureMaxNum          = count * kMaterialTextureCount + 17;
             pool.samplerMaxNum          = count * kMaterialTextureCount + 1;
             pool.constantBufferMaxNum   = 1;
-            pool.structuredBufferMaxNum = scene.meshlets ? 4 : 0;
+            pool.structuredBufferMaxNum = 1 + (scene.meshlets ? 4 : 0);
             check(device.core.CreateDescriptorPool(device.handle, &pool, &m_Pool), "Create built-in descriptor pool");
             check(device.core.AllocateDescriptorSets(m_Pool, m_Layout, 0, &m_FrameSet, 1), "Allocate frame set");
             if (scene.meshlets)
@@ -271,14 +295,15 @@ namespace vultra
                 updates[kMaterialTextureCount] = {samplers, kMaterialTextureCount};
                 device.core.UpdateDescriptorRanges(m_MaterialSets[material], 0, kMaterialTextureCount + 1, updates);
             }
-            auto pipeline = [&](const char* file, bool mesh, bool depth, VriFormat format, bool doubleSided)
+            auto pipeline =
+                [&](const char* file, bool mesh, bool depth, VriFormat format, bool doubleSided, bool mirrored = false)
             {
                 return std::make_unique<ShaderPipeline>(
                     device,
                     std::filesystem::path("builtin/shaders/passes") / file,
                     std::vector<ShaderEntry> {{mesh ? "vertexMain" : "screenVertex", VriShaderStage_Vertex},
                                               {"fragmentMain", VriShaderStage_Fragment}},
-                    [this, mesh, depth, format, doubleSided](std::span<const VriShaderDesc> shaders)
+                    [this, mesh, depth, format, doubleSided, mirrored](std::span<const VriShaderDesc> shaders)
                     {
                         const std::array singleFormat {format};
                         return createPipeline(m_Device,
@@ -288,26 +313,29 @@ namespace vultra
                                                                             std::span<const VriFormat> {singleFormat},
                                               mesh,
                                               depth,
-                                              doubleSided);
+                                              doubleSided,
+                                              mirrored);
                     },
                     "builtin/shaders",
                     std::vector<std::filesystem::path> {"builtin/shaders", "external"});
             };
-            for (uint32_t sided = 0; sided < 2; ++sided)
+            for (uint32_t variant = 0; variant < 4; ++variant)
             {
-                const bool doubleSided = sided != 0;
-                m_Shadow[sided]        = pipeline("shadow.slang", true, true, VriFormat_Unknown, doubleSided);
-                m_Forward[sided]       = pipeline("forward.slang", true, true, VriFormat_RGBA16_SFLOAT, doubleSided);
+                const bool doubleSided = (variant & 1) != 0;
+                const bool mirrored    = (variant & 2) != 0;
+                m_Shadow[variant]      = pipeline("shadow.slang", true, true, VriFormat_Unknown, doubleSided, mirrored);
+                m_Forward[variant] =
+                    pipeline("forward.slang", true, true, VriFormat_RGBA16_SFLOAT, doubleSided, mirrored);
                 for (uint32_t stage = 0; stage < 2; ++stage)
                 {
-                    auto& target = stage == 0 ? m_GBufferBase[sided] : m_GBufferMaterial[sided];
+                    auto& target = stage == 0 ? m_GBufferBase[variant] : m_GBufferMaterial[variant];
                     target       = std::make_unique<ShaderPipeline>(
                         device,
                         "builtin/shaders/passes/gbuffer.slang",
                         std::vector<ShaderEntry> {
                             {"vertexMain", VriShaderStage_Vertex},
                             {stage == 0 ? "fragmentBase" : "fragmentMaterial", VriShaderStage_Fragment}},
-                        [this, stage, doubleSided](std::span<const VriShaderDesc> shaders)
+                        [this, stage, doubleSided, mirrored](std::span<const VriShaderDesc> shaders)
                         {
                             const auto formats = stage == 0 ? std::span(kGBufferFormats).first(4) :
                                                               std::span(kGBufferFormats).subspan(4);
@@ -318,6 +346,7 @@ namespace vultra
                                                   true,
                                                   true,
                                                   doubleSided,
+                                                  mirrored,
                                                   stage == 0,
                                                   stage == 0 ? VriCompareOp_Less : VriCompareOp_Equal);
                         },
@@ -326,13 +355,13 @@ namespace vultra
                 }
                 if (scene.meshlets)
                 {
-                    m_MeshForward[sided] = std::make_unique<ShaderPipeline>(
+                    m_MeshForward[variant] = std::make_unique<ShaderPipeline>(
                         device,
                         "builtin/shaders/passes/meshlet_forward.slang",
                         std::vector<ShaderEntry> {{"taskMain", VriShaderStage_Task},
                                                   {"meshMain", VriShaderStage_Mesh},
                                                   {"fragmentMain", VriShaderStage_Fragment}},
-                        [this, doubleSided](std::span<const VriShaderDesc> shaders)
+                        [this, doubleSided, mirrored](std::span<const VriShaderDesc> shaders)
                         {
                             return createPipeline(m_Device,
                                                   m_Layout,
@@ -340,14 +369,15 @@ namespace vultra
                                                   std::array {VriFormat_RGBA16_SFLOAT},
                                                   false,
                                                   true,
-                                                  doubleSided);
+                                                  doubleSided,
+                                                  mirrored);
                         },
                         "builtin/shaders",
                         std::vector<std::filesystem::path> {"builtin/shaders", "external"});
                 }
             }
             m_Skybox           = pipeline("skybox.slang", false, false, VriFormat_RGBA16_SFLOAT, true);
-            m_ToneMapping      = pipeline("tone_mapping.slang", false, false, m_OutputFormat, true);
+            m_ToneMapping      = std::make_unique<ToneMappingPass>(device, m_OutputFormat);
             m_DeferredLighting = pipeline("deferred_lighting.slang", false, false, VriFormat_RGBA16_SFLOAT, true);
         }
         catch (...)
@@ -365,13 +395,13 @@ namespace vultra
 
     void BuiltinRenderer::release()
     {
-        for (uint32_t sided = 0; sided < 2; ++sided)
+        for (uint32_t variant = 0; variant < 4; ++variant)
         {
-            m_Shadow[sided].reset();
-            m_Forward[sided].reset();
-            m_MeshForward[sided].reset();
-            m_GBufferBase[sided].reset();
-            m_GBufferMaterial[sided].reset();
+            m_Shadow[variant].reset();
+            m_Forward[variant].reset();
+            m_MeshForward[variant].reset();
+            m_GBufferBase[variant].reset();
+            m_GBufferMaterial[variant].reset();
         }
         m_Skybox.reset();
         m_ToneMapping.reset();
@@ -387,7 +417,7 @@ namespace vultra
                 m_Device.core.DestroyDescriptor(sampler);
             }
         }
-        for (auto* descriptor : {m_FrameView, m_EnvironmentSampler})
+        for (auto* descriptor : {m_FrameView, m_TransformView, m_EnvironmentSampler})
         {
             if (descriptor)
             {
@@ -420,26 +450,27 @@ namespace vultra
         {
             const auto&    primitive = m_Scene.primitives[i];
             const auto&    material  = m_Scene.materials.at(primitive.material);
-            const uint32_t sided     = material.doubleSided ? 1u : 0u;
-            VriPipeline*   pipeline  = nullptr;
+            const uint32_t variant =
+                (material.doubleSided ? 1u : 0u) + (m_Scene.primitiveMirrored(uint32_t(i)) ? 2u : 0u);
+            VriPipeline* pipeline = nullptr;
             switch (pass)
             {
                 case GeometryPass::eShadow:
-                    pipeline = m_Shadow[sided]->handle();
+                    pipeline = m_Shadow[variant]->handle();
                     break;
                 case GeometryPass::eForward:
-                    pipeline = m_Forward[sided]->handle();
+                    pipeline = m_Forward[variant]->handle();
                     break;
                 case GeometryPass::eGBufferBase:
-                    pipeline = m_GBufferBase[sided]->handle();
+                    pipeline = m_GBufferBase[variant]->handle();
                     break;
                 case GeometryPass::eGBufferMaterial:
-                    pipeline = m_GBufferMaterial[sided]->handle();
+                    pipeline = m_GBufferMaterial[variant]->handle();
                     break;
             }
             if (meshShading)
             {
-                pipeline = m_MeshForward[sided]->handle();
+                pipeline = m_MeshForward[variant]->handle();
             }
             if (pipeline != activePipeline)
             {
@@ -459,7 +490,8 @@ namespace vultra
                 {material.coatWeight, material.coatRoughness, material.coatIor, material.specularWeight},
                 {material.specularColor, material.baseDiffuseRoughness},
                 {material.alphaCutoff, material.baseWeight, float(cascade), normalMode},
-                {0, 0, 0, 0}};
+                {0, 0, 0, 0},
+                {uint32_t(i), 0, 0, 0}};
             if (meshShading)
             {
                 const auto range    = m_Scene.meshlets->primitives[i];
@@ -677,21 +709,22 @@ namespace vultra
     RenderGraph::Resource
     BuiltinRenderer::addToneMappingPass(RenderGraph& graph, RenderGraph::Resource hdr, Extent size)
     {
-        const auto color = graph.createTexture("display_color", colorTexture(size, m_OutputFormat));
-        graph.addPass("Tone mapping",
-                      {{hdr, Usage::eSampled}, {color, Usage::eColorWrite}},
-                      [this, color, size](auto* cmd, auto& resources)
-                      {
-                          const float clear[4] {0, 0, 0, 1};
-                          beginColorPass(m_Device, cmd, resources.getTexture(color).view(), size, clear);
-                          drawFullscreen(cmd, m_ToneMapping->handle());
-                          m_Device.core.CmdEndRendering(cmd);
-                      });
-        return color;
+        const auto info = graph.resourceInfo(hdr);
+        if (info.textureDesc.width != size.width || info.textureDesc.height != size.height)
+        {
+            throw std::invalid_argument("Tone mapping extent differs from its input");
+        }
+        const std::array inputs {hdr};
+        return m_ToneMapping->addPasses(graph, "Tone mapping", inputs, m_ToneParameters).front();
     }
 
-    BuiltinRenderer::Outputs BuiltinRenderer::addPasses(RenderGraph& graph, Extent size)
+    BuiltinRenderer::Outputs BuiltinRenderer::addScenePasses(RenderGraph& graph, Extent size)
     {
+        if (settings.path == RenderPath::eReferencePathTracing)
+        {
+            throw std::invalid_argument("Use ReferencePathTracer to build reference scene outputs");
+        }
+
         Outputs outputs;
         outputs.path    = settings.path;
         outputs.shadows = addShadowPasses(graph);
@@ -715,31 +748,98 @@ namespace vultra
             default:
                 throw std::invalid_argument("Unsupported built-in render path");
         }
+        return outputs;
+    }
+
+    BuiltinRenderer::Outputs BuiltinRenderer::addPasses(RenderGraph& graph, Extent size)
+    {
+        auto outputs  = addScenePasses(graph, size);
         outputs.color = addToneMappingPass(graph, outputs.hdr, size);
         return outputs;
     }
 
-    void BuiltinRenderer::prepare(const RenderCamera& camera, RenderGraph& graph, const Outputs& outputs)
+    void BuiltinRenderer::prepare(const RenderCamera&                         camera,
+                                  RenderGraph&                                graph,
+                                  const Outputs&                              outputs,
+                                  std::optional<std::span<const RenderLight>> lights,
+                                  float                                       environmentIntensity)
     {
+        const auto effectiveEnvironmentIntensity = settings.environmentIntensity * environmentIntensity;
+        if (!std::isfinite(environmentIntensity) || environmentIntensity < 0 ||
+            !std::isfinite(effectiveEnvironmentIntensity) || effectiveEnvironmentIntensity < 0)
+        {
+            throw std::invalid_argument("Renderer environment intensity must be nonnegative and finite");
+        }
         if (settings.meshShading && !m_MeshForward[0])
         {
             throw std::logic_error("Mesh shading requires a GpuScene created with meshlets");
         }
-        const auto& shadowDesc = graph.getTexture(outputs.shadows[0]).desc;
-        const auto  cascades   = calculateCascades(camera,
-                                                   settings.directionToLight,
-                                                   m_Scene.center,
-                                                   m_Scene.radius,
-                                                   shadowDesc.width,
-                                                   settings.splitLambda);
-        FrameData   data {};
+        FrameData data {};
+        auto      directionToLight = settings.directionToLight;
+        auto      lightColor       = settings.lightColor;
+        auto      lightIntensity   = settings.lightIntensity;
+        data.lightConfig.y         = -1;
+        if (lights)
+        {
+            if (lights->size() > kMaxRenderLights)
+            {
+                throw std::invalid_argument("Renderer exceeds its 64-light limit");
+            }
+            lightIntensity     = 0;
+            data.lightConfig.x = float(lights->size());
+            for (size_t i = 0; i < lights->size(); ++i)
+            {
+                const auto& light  = (*lights)[i];
+                const auto  finite = [](glm::vec3 value)
+                {
+                    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+                };
+                if (light.kind > RenderLightKind::eSpot || !finite(light.position) || !finite(light.directionToLight) ||
+                    !finite(light.color) || glm::any(glm::lessThan(light.color, glm::vec3(0))) ||
+                    !std::isfinite(light.intensity) || light.intensity < 0 || !std::isfinite(light.range) ||
+                    light.range <= 0 || !std::isfinite(light.innerCone) || !std::isfinite(light.outerCone) ||
+                    light.innerCone < 0 || light.innerCone >= light.outerCone ||
+                    light.outerCone >= std::numbers::pi_v<float> * 0.5f)
+                {
+                    throw std::invalid_argument("Invalid render light at index " + std::to_string(i));
+                }
+                auto direction = glm::vec3(0, 0, 1);
+                if (light.kind != RenderLightKind::ePoint)
+                {
+                    const auto length = glm::length(light.directionToLight);
+                    if (!std::isfinite(length) || length == 0)
+                    {
+                        throw std::invalid_argument("Render light direction is singular at index " + std::to_string(i));
+                    }
+                    direction = light.directionToLight / length;
+                }
+                data.lights[i] = {{light.position, light.range},
+                                  {direction, float(light.kind)},
+                                  {light.color, light.intensity},
+                                  {std::cos(light.innerCone), std::cos(light.outerCone), 0, 0}};
+                if (light.kind == RenderLightKind::eDirectional && data.lightConfig.y < 0)
+                {
+                    data.lightConfig.y = float(i);
+                    directionToLight   = direction;
+                    lightColor         = light.color;
+                    lightIntensity     = light.intensity;
+                }
+            }
+        }
+        const auto& shadowDesc     = graph.getTexture(outputs.shadows[0]).desc;
+        const auto  cascades       = calculateCascades(camera,
+                                                       directionToLight,
+                                                       m_Scene.center,
+                                                       m_Scene.radius,
+                                                       shadowDesc.width,
+                                                       settings.splitLambda);
         data.viewProjection        = camera.projection * camera.view;
         data.inverseViewProjection = glm::inverse(data.viewProjection);
         data.view                  = camera.view;
         data.lightViewProjection   = cascades.viewProjection;
         data.cameraPosition        = glm::inverse(camera.view)[3];
-        data.lightDirection        = {glm::normalize(settings.directionToLight), settings.lightIntensity};
-        data.lightColor            = {settings.lightColor, settings.environmentIntensity};
+        data.lightDirection        = {glm::normalize(directionToLight), lightIntensity};
+        data.lightColor            = {lightColor, effectiveEnvironmentIntensity};
         data.cascadeSplits         = cascades.splits;
         data.cascadeWidths         = cascades.worldWidths;
         data.cascadeDepthRanges    = cascades.depthRanges;
@@ -755,6 +855,7 @@ namespace vultra
                                       camera.farPlane,
                                       std::clamp(settings.cascadeBlend, 0.0f, 0.15f),
                                       float(settings.debugMode)};
+        m_ToneParameters           = {settings.exposure, settings.meshShading && settings.meshletColors ? 1.0 : 0.0};
         data.overrides             = {settings.roughnessOverride,
                                       settings.metalnessOverride,
                                       m_OutputFormat == VriFormat_RGBA16_SFLOAT ? 0.0f : 1.0f,
@@ -766,7 +867,7 @@ namespace vultra
         }
         std::memcpy(mapped, &data, sizeof(data));
         m_Device.core.UnmapBuffer(m_FrameBuffer->handle);
-        const VriDescriptor* descriptors[19] {m_FrameView,
+        const VriDescriptor* descriptors[20] {m_FrameView,
                                               graph.getTexture(outputs.shadows[0]).view(),
                                               graph.getTexture(outputs.shadows[1]).view(),
                                               graph.getTexture(outputs.shadows[2]).view(),
@@ -784,43 +885,51 @@ namespace vultra
                                       graph.getTexture(outputs.gbuffer[i]).view() :
                                       graph.getTexture(outputs.hdr).view();
         }
-        VriDescriptorRangeUpdateDesc updates[19] {};
-        for (uint32_t i = 0; i < 19; ++i)
+        descriptors[19] = m_TransformView;
+        VriDescriptorRangeUpdateDesc updates[20] {};
+        for (uint32_t i = 0; i < 20; ++i)
         {
             updates[i].descriptors   = &descriptors[i];
             updates[i].descriptorNum = 1;
         }
-        m_Device.core.UpdateDescriptorRanges(m_FrameSet, 0, 19, updates);
+        m_Device.core.UpdateDescriptorRanges(m_FrameSet, 0, 20, updates);
+    }
+
+    void BuiltinRenderer::prepareToneMapping(RenderGraph& graph, RenderGraph::Resource hdr)
+    {
+        graph.getTexture(hdr);
+        m_ToneParameters = {settings.exposure, 0};
     }
 
     void BuiltinRenderer::pollShaders()
     {
-        for (uint32_t sided = 0; sided < 2; ++sided)
+        for (uint32_t variant = 0; variant < 4; ++variant)
         {
-            m_Shadow[sided]->poll();
-            m_Forward[sided]->poll();
-            m_GBufferBase[sided]->poll();
-            m_GBufferMaterial[sided]->poll();
-            if (m_MeshForward[sided])
+            m_Shadow[variant]->poll();
+            m_Forward[variant]->poll();
+            m_GBufferBase[variant]->poll();
+            m_GBufferMaterial[variant]->poll();
+            if (m_MeshForward[variant])
             {
-                m_MeshForward[sided]->poll();
+                m_MeshForward[variant]->poll();
             }
         }
         m_Skybox->poll();
-        m_ToneMapping->poll();
+        m_ToneMapping->shader().poll();
         m_DeferredLighting->poll();
     }
 
     std::string BuiltinRenderer::diagnostics() const
     {
-        auto result = m_Skybox->diagnostics() + m_ToneMapping->diagnostics() + m_DeferredLighting->diagnostics();
-        for (uint32_t sided = 0; sided < 2; ++sided)
+        auto result =
+            m_Skybox->diagnostics() + m_ToneMapping->shader().diagnostics() + m_DeferredLighting->diagnostics();
+        for (uint32_t variant = 0; variant < 4; ++variant)
         {
-            result += m_Shadow[sided]->diagnostics() + m_Forward[sided]->diagnostics() +
-                      m_GBufferBase[sided]->diagnostics() + m_GBufferMaterial[sided]->diagnostics();
-            if (m_MeshForward[sided])
+            result += m_Shadow[variant]->diagnostics() + m_Forward[variant]->diagnostics() +
+                      m_GBufferBase[variant]->diagnostics() + m_GBufferMaterial[variant]->diagnostics();
+            if (m_MeshForward[variant])
             {
-                result += m_MeshForward[sided]->diagnostics();
+                result += m_MeshForward[variant]->diagnostics();
             }
         }
         return result;

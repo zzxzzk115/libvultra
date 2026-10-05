@@ -1,0 +1,153 @@
+#pragma once
+
+#include "lib/openpbr.slangh"
+#include "resources/path_trace.slangh"
+
+struct RayHit
+{
+    uint primitive;
+    uint triangle;
+    float2 barycentrics;
+    bool frontFace;
+    float distance;
+    bool found;
+};
+
+struct RaySurface
+{
+    float3 position;
+    float3 objectPosition;
+    float3 geometricNormal;
+    float3 normal;
+    float3 albedo;
+    float3 emission;
+    float area;
+    OpenPbrSurface material;
+};
+
+float4 rayTexture(uint material, uint slot, float2 uv)
+{
+    uint index = NonUniformResourceIndex(material * 7 + slot);
+    // Reference materials are evaluated at mip zero: no screen-derivative or ray-cone approximation.
+    return traceTextures[index].SampleLevel(traceSamplers[index], uv, 0);
+}
+
+void rayTriangle(uint primitive, uint triangle, out MeshVertex a, out MeshVertex b, out MeshVertex c)
+{
+    uint first = tracePrimitives[primitive].x + triangle * 3;
+    a = loadMeshVertex(traceVertices, traceIndices[first]);
+    b = loadMeshVertex(traceVertices, traceIndices[first + 1]);
+    c = loadMeshVertex(traceVertices, traceIndices[first + 2]);
+}
+
+bool acceptRayCandidate(uint primitive, uint triangle, float2 barycentrics, bool frontFace)
+{
+    uint materialIndex = tracePrimitives[primitive].z;
+    TraceMaterial material = traceMaterials[materialIndex];
+    if (!frontFace && material.flags.z < 0.5)
+    {
+        return false;
+    }
+    if (material.flags.x < 0)
+    {
+        return true;
+    }
+    MeshVertex a;
+    MeshVertex b;
+    MeshVertex c;
+    rayTriangle(primitive, triangle, a, b, c);
+    float3 bary = float3(1 - barycentrics.x - barycentrics.y, barycentrics);
+    float2 uv = a.uv * bary.x + b.uv * bary.y + c.uv * bary.z;
+    float alpha = a.color.a * bary.x + b.color.a * bary.y + c.color.a * bary.z;
+    return rayTexture(materialIndex, 0, uv).a * material.baseColor.a * alpha >= material.flags.x;
+}
+
+RayHit traceRay(RayDesc ray, bool shadow)
+{
+    RayQuery<RAY_FLAG_NONE> query;
+    query.TraceRayInline(traceScene, RAY_FLAG_NONE, 255, ray);
+    while (query.Proceed())
+    {
+        if (query.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE &&
+            acceptRayCandidate(query.CandidateInstanceID(), query.CandidatePrimitiveIndex(),
+                               query.CandidateTriangleBarycentrics(), query.CandidateTriangleFrontFace()))
+        {
+            query.CommitNonOpaqueTriangleHit();
+            if (shadow)
+            {
+                query.Abort();
+            }
+        }
+    }
+    RayHit hit;
+    hit.found = query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+    if (hit.found)
+    {
+        hit.primitive = query.CommittedInstanceID();
+        hit.triangle = query.CommittedPrimitiveIndex();
+        hit.barycentrics = query.CommittedTriangleBarycentrics();
+        hit.frontFace = query.CommittedTriangleFrontFace();
+        hit.distance = query.CommittedRayT();
+    }
+    return hit;
+}
+
+RaySurface raySurface(RayHit hit)
+{
+    MeshVertex a;
+    MeshVertex b;
+    MeshVertex c;
+    rayTriangle(hit.primitive, hit.triangle, a, b, c);
+    float3 bary = float3(1 - hit.barycentrics.x - hit.barycentrics.y, hit.barycentrics);
+    TraceTransform transform = traceTransforms[hit.primitive];
+    uint materialIndex = tracePrimitives[hit.primitive].z;
+    TraceMaterial material = traceMaterials[materialIndex];
+    float2 uv = a.uv * bary.x + b.uv * bary.y + c.uv * bary.z;
+    float4 color = a.color * bary.x + b.color * bary.y + c.color * bary.z;
+    float3 normal = a.normal * bary.x + b.normal * bary.y + c.normal * bary.z;
+    float4 tangent = a.tangent * bary.x + b.tangent * bary.y + c.tangent * bary.z;
+    float sign = hit.frontFace ? 1 : -1;
+    RaySurface surface;
+    surface.objectPosition = a.position * bary.x + b.position * bary.y + c.position * bary.z;
+    surface.position = mul(transform.model, float4(surface.objectPosition, 1)).xyz;
+    float3 edge0 = mul(transform.model, float4(b.position - a.position, 0)).xyz;
+    float3 edge1 = mul(transform.model, float4(c.position - a.position, 0)).xyz;
+    float3 crossEdges = cross(edge0, edge1);
+    surface.area = length(crossEdges) * 0.5;
+    surface.geometricNormal = normalize(crossEdges) * transform.properties.x * sign;
+    surface.normal = normalize(mul(transform.normal, float4(normal, 0)).xyz);
+    if (material.flags.w > 0.5)
+    {
+        float3 worldTangent = mul(transform.model, float4(tangent.xyz, 0)).xyz;
+        worldTangent -= surface.normal * dot(worldTangent, surface.normal);
+        if (dot(worldTangent, worldTangent) > 1e-12)
+        {
+            worldTangent = normalize(worldTangent);
+            float3 bitangent = tangent.w * transform.properties.x * cross(surface.normal, worldTangent);
+            float3 mapped = rayTexture(materialIndex, 2, uv).xyz * 2 - 1;
+            if (material.flags.w > 1.5)
+            {
+                mapped.z = sqrt(saturate(1 - dot(mapped.xy, mapped.xy)));
+            }
+            mapped.xy *= material.surface.w;
+            surface.normal = normalize(worldTangent * mapped.x + bitangent * mapped.y + surface.normal * mapped.z);
+        }
+    }
+    surface.normal *= sign;
+    surface.albedo = rayTexture(materialIndex, 0, uv).rgb * material.baseColor.rgb * color.rgb;
+    surface.emission = rayTexture(materialIndex, 4, uv).rgb * material.emission.rgb;
+    float2 mr = rayTexture(materialIndex, 1, uv).bg;
+    surface.material.baseColor = surface.albedo;
+    surface.material.baseWeight = material.flags.y;
+    surface.material.baseMetalness = saturate(material.surface.x * mr.x);
+    surface.material.specularRoughness = clamp(material.surface.y * mr.y, 0.03, 1);
+    surface.material.baseDiffuseRoughness = material.specular.w;
+    surface.material.specularWeight = material.coat.w * rayTexture(materialIndex, 5, uv).a;
+    surface.material.specularIor = material.surface.z;
+    surface.material.specularColor = material.specular.rgb * rayTexture(materialIndex, 6, uv).rgb;
+    surface.material.coatWeight = material.coat.x;
+    surface.material.coatRoughness = max(material.coat.y, 0.03);
+    surface.material.coatIor = material.coat.z;
+    // Ambient occlusion is a raster approximation, not attenuation in the reference transport equation.
+    return surface;
+}

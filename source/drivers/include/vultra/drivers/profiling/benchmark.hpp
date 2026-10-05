@@ -16,6 +16,7 @@ namespace vultra
         std::string                                      sourceRevision;
         std::string                                      shaderHash;
         std::string                                      windowSystem;
+        std::string                                      presentMode = "fifo";
         std::string                                      buildMode;
         bool                                             validation   = true;
         uint32_t                                         width        = 0;

@@ -6,7 +6,7 @@
 extern "C"
 {
 #endif
-#define VULTRA_ABI_VERSION 3u
+#define VULTRA_ABI_VERSION 1u
 
     typedef enum VultraStatus
     {

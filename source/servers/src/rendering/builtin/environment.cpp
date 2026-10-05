@@ -29,7 +29,7 @@ namespace vultra
                 float* pixels     = stbi_loadf(path.string().c_str(), &width, &height, &components, 4);
                 if (!pixels)
                 {
-                    throw std::runtime_error("Load HDR environment: " + std::string(stbi_failure_reason()));
+                    throw std::runtime_error("Load HDR environment " + path.string() + ": " + stbi_failure_reason());
                 }
                 result.size = {uint32_t(width), uint32_t(height)};
                 result.bytes.resize(size_t(width) * height * 4 * sizeof(float));
@@ -66,7 +66,9 @@ namespace vultra
         }
     } // namespace
 
-    Environment::Environment(Device& device, const std::filesystem::path& hdr)
+    Environment::Environment(Device& device, const std::filesystem::path& hdr) :
+        m_Device(device),
+        m_Source(hdr)
     {
         radiance    = uploadTexture(device, TextureFormat::eRgba32Sfloat, 16, {environmentPixels(hdr)});
         diffuse     = std::make_unique<Texture>(device, colorTexture({64, 32}, VriFormat_RGBA16_SFLOAT));
@@ -198,5 +200,34 @@ namespace vultra
             throw;
         }
         release();
+    }
+
+    void Environment::setSource(const std::filesystem::path& hdr)
+    {
+        if (hdr == m_Source)
+        {
+            return;
+        }
+        replace(hdr);
+    }
+
+    void Environment::rebuild()
+    {
+        replace(m_Source);
+    }
+
+    void Environment::replace(const std::filesystem::path& hdr)
+    {
+        Environment replacement(m_Device, hdr);
+        radiance.swap(replacement.radiance);
+        diffuse.swap(replacement.diffuse);
+        specular.swap(replacement.specular);
+        brdfLut.swap(replacement.brdfLut);
+        m_Source.swap(replacement.m_Source);
+    }
+
+    const std::filesystem::path& Environment::source() const
+    {
+        return m_Source;
     }
 } // namespace vultra

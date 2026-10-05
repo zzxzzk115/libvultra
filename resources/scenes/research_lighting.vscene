@@ -1,0 +1,262 @@
+{
+  "format": "vultra.scene",
+  "version": 1,
+  "root": {
+    "id": "4f9bb271-bf54-4748-ac7d-53735871cd3d",
+    "name": "Research lighting",
+    "type": "Node",
+    "transform": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "children": [
+      {
+        "id": "9b94d20a-154f-43ba-b985-558caf4dd187",
+        "name": "Damaged Helmet",
+        "type": "MeshInstance",
+        "model": "8fc32ebe-cf5e-45b6-b93f-05c1ae8f165b",
+        "transform": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "children": [],
+        "materials": [
+          {
+            "slot": 0,
+            "resource": "e3835c7c-6d37-4b3a-b9f7-91f1d6b5a04c"
+          }
+        ]
+      },
+      {
+        "id": "41d8442c-0b34-4893-a64c-aec8ac28026e",
+        "name": "Camera",
+        "type": "Camera",
+        "transform": [
+          1.0,
+          0,
+          -0.0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0.0,
+          0,
+          1.0,
+          0,
+          0,
+          0.3,
+          3,
+          1
+        ],
+        "children": [],
+        "camera": {
+          "vertical_fov": 1.0471975511965976,
+          "near": 0.01,
+          "far": 100
+        }
+      },
+      {
+        "id": "91c7f6ec-2d3e-4083-9873-24a877fcfba1",
+        "name": "Sun",
+        "type": "DirectionalLight",
+        "transform": [
+          1.0,
+          0,
+          -0.0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0.0,
+          0,
+          1.0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "children": [],
+        "light": {
+          "color": [
+            1,
+            1,
+            1
+          ],
+          "intensity": 0.5,
+          "range": 8,
+          "inner_cone": 0.3,
+          "outer_cone": 0.6
+        }
+      },
+      {
+        "id": "c3dcb2d7-b95a-4e6c-a93b-4d15480db2ac",
+        "name": "Warm point",
+        "type": "PointLight",
+        "transform": [
+          1.0,
+          0,
+          -0.0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0.0,
+          0,
+          1.0,
+          0,
+          -1.5,
+          1.5,
+          2,
+          1
+        ],
+        "children": [],
+        "light": {
+          "color": [
+            1,
+            0.6,
+            0.3
+          ],
+          "intensity": 14,
+          "range": 8,
+          "inner_cone": 0.3,
+          "outer_cone": 0.6
+        }
+      },
+      {
+        "id": "a9271579-3d76-4f54-b8db-15f31324e0d7",
+        "name": "Cool spot",
+        "type": "SpotLight",
+        "transform": [
+          0.8,
+          0,
+          -0.6,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0.6,
+          0,
+          0.8,
+          0,
+          1.5,
+          0,
+          2,
+          1
+        ],
+        "children": [],
+        "light": {
+          "color": [
+            0.3,
+            0.6,
+            1
+          ],
+          "intensity": 18,
+          "range": 8,
+          "inner_cone": 0.3,
+          "outer_cone": 0.6
+        }
+      },
+      {
+        "id": "7fbba8ae-4914-460f-b37a-66c36fd1259e",
+        "name": "Orchard environment",
+        "type": "Environment",
+        "environment": {
+          "radiance": "6ddad025-9e72-41d4-9d0e-e2fdc116ca27",
+          "intensity": 1
+        },
+        "transform": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "children": []
+      }
+    ]
+  },
+  "scene_lighting": true,
+  "current_camera": "41d8442c-0b34-4893-a64c-aec8ac28026e",
+  "materials": [
+    {
+      "id": "e3835c7c-6d37-4b3a-b9f7-91f1d6b5a04c",
+      "name": "Helmet finish",
+      "parameters": {
+        "base_color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "base_weight": 1,
+        "metalness": 1,
+        "diffuse_roughness": 0,
+        "specular_weight": 1,
+        "specular_color": [
+          1,
+          1,
+          1
+        ],
+        "roughness": 0.5,
+        "specular_ior": 1.5,
+        "coat_weight": 0,
+        "coat_roughness": 0.1,
+        "coat_ior": 1.5,
+        "emission_color": [
+          1,
+          1,
+          1
+        ],
+        "emission_luminance": 1,
+        "normal_scale": 1,
+        "occlusion_strength": 1,
+        "alpha_cutoff": -1
+      }
+    }
+  ],
+  "current_environment": "7fbba8ae-4914-460f-b37a-66c36fd1259e"
+}

@@ -14,10 +14,10 @@ typedef struct PluginState
     char                  firstNode[64];
 } PluginState;
 
-static VultraStatus update(void* user_data, VultraSceneFrame frame, float delta_seconds)
+static VultraStatus update(void* userData, VultraSceneFrame frame, float deltaSeconds)
 {
-    PluginState* state = (PluginState*)user_data;
-    state->elapsed += delta_seconds;
+    PluginState* state = (PluginState*)userData;
+    state->elapsed += deltaSeconds;
     ++state->updates;
     if (!frame.context)
     {
@@ -53,9 +53,9 @@ static VultraStatus update(void* user_data, VultraSceneFrame frame, float delta_
     return VULTRA_STATUS_OK;
 }
 
-static VultraStatus on_gui(void* user_data, VultraUiFrame frame)
+static VultraStatus onGui(void* userData, VultraUiFrame frame)
 {
-    PluginState* state = (PluginState*)user_data;
+    PluginState* state = (PluginState*)userData;
     char         message[96];
     int size = snprintf(message, sizeof(message), "Native plugin: %u updates, %.2f s", state->updates, state->elapsed);
     if (size < 0 || size >= (int)sizeof(message))
@@ -93,9 +93,9 @@ static VultraStatus on_gui(void* user_data, VultraUiFrame frame)
     return status;
 }
 
-static VultraStatus stop(void* user_data)
+static VultraStatus stop(void* userData)
 {
-    free(user_data);
+    free(userData);
     return VULTRA_STATUS_OK;
 }
 
@@ -104,13 +104,14 @@ __declspec(dllexport)
 #else
 __attribute__((visibility("default")))
 #endif
+// NOLINTNEXTLINE(readability-identifier-naming): The native loader requires this exact C symbol.
 VultraStatus vultra_plugin_init(const VultraHostApi* host, VultraPluginApi* plugin)
 {
-    if (!host || !plugin || host->version != VULTRA_ABI_VERSION || host->struct_size < sizeof(VultraHostApi) ||
-        !host->ui || host->ui->version != VULTRA_ABI_VERSION || host->ui->struct_size < sizeof(VultraUiApi) ||
+    if (!host || !plugin || host->version != VULTRA_ABI_VERSION || host->struct_size != sizeof(VultraHostApi) ||
+        !host->ui || host->ui->version != VULTRA_ABI_VERSION || host->ui->struct_size != sizeof(VultraUiApi) ||
         !host->scene || host->scene->version != VULTRA_ABI_VERSION ||
-        host->scene->struct_size < sizeof(VultraSceneApi) || plugin->version != VULTRA_ABI_VERSION ||
-        plugin->struct_size < sizeof(VultraPluginApi))
+        host->scene->struct_size != sizeof(VultraSceneApi) || plugin->version != VULTRA_ABI_VERSION ||
+        plugin->struct_size != sizeof(VultraPluginApi))
     {
         return VULTRA_STATUS_INVALID_ARGUMENT;
     }
@@ -123,7 +124,7 @@ VultraStatus vultra_plugin_init(const VultraHostApi* host, VultraPluginApi* plug
     state->scene      = host->scene;
     plugin->user_data = state;
     plugin->update    = update;
-    plugin->on_gui    = on_gui;
+    plugin->on_gui    = onGui;
     plugin->stop      = stop;
     return VULTRA_STATUS_OK;
 }

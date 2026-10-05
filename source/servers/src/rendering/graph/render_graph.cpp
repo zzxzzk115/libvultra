@@ -2,6 +2,7 @@
 #include <vultra/servers/rendering/graph/render_graph.hpp>
 
 #include <algorithm>
+#include <cstring>
 #include <optional>
 
 namespace vultra
@@ -159,6 +160,14 @@ namespace vultra
         throw std::logic_error("Unknown graph usage");
     }
 
+    void RenderGraph::edit()
+    {
+        if (m_Aliased)
+        {
+            throw std::logic_error("Rebuild the graph to change an aliased resource plan");
+        }
+    }
+
     RenderGraph::Entry& RenderGraph::lookup(Resource resource)
     {
         if (resource.graph != this || resource.index >= m_Resources.size())
@@ -170,6 +179,7 @@ namespace vultra
 
     RenderGraph::Resource RenderGraph::importResource(std::string name, Texture& texture, bool initialized)
     {
+        edit();
         validateTexture(texture.desc);
         for (const auto& entry : m_Resources)
         {
@@ -192,6 +202,7 @@ namespace vultra
 
     RenderGraph::Resource RenderGraph::importResource(std::string name, Buffer& buffer, bool initialized)
     {
+        edit();
         for (const auto& entry : m_Resources)
         {
             if (entry.buffer && entry.buffer->handle == buffer.handle)
@@ -214,6 +225,7 @@ namespace vultra
 
     RenderGraph::Resource RenderGraph::createTexture(std::string name, const VriTextureDesc& desc)
     {
+        edit();
         validateTexture(desc);
         Entry entry;
         entry.name        = std::move(name);
@@ -225,6 +237,7 @@ namespace vultra
 
     RenderGraph::Resource RenderGraph::createBuffer(std::string name, const VriBufferDesc& desc)
     {
+        edit();
         Entry entry;
         entry.name       = std::move(name);
         entry.isTexture  = false;
@@ -236,6 +249,12 @@ namespace vultra
 
     void RenderGraph::addPass(std::string name, std::initializer_list<Use> uses, ExecutePass execute, bool sideEffect)
     {
+        addPass(std::move(name), std::span(uses.begin(), uses.size()), std::move(execute), sideEffect);
+    }
+
+    void RenderGraph::addPass(std::string name, std::span<const Use> uses, ExecutePass execute, bool sideEffect)
+    {
+        edit();
         if (!execute)
         {
             throw std::invalid_argument("Pass needs an execute function");
@@ -244,12 +263,13 @@ namespace vultra
         {
             lookup(use.resource);
         }
-        m_Passes.push_back({std::move(name), uses, std::move(execute), sideEffect});
+        m_Passes.push_back({std::move(name), {uses.begin(), uses.end()}, std::move(execute), sideEffect});
         m_Compiled = false;
     }
 
     void RenderGraph::exportResource(Resource resource)
     {
+        edit();
         lookup(resource);
         m_Exports.push_back(resource);
         m_Compiled = false;
@@ -257,6 +277,7 @@ namespace vultra
 
     RenderGraph::Resource RenderGraph::captureAfterPass(const std::string& passName, Resource source, std::string name)
     {
+        edit();
         const auto& entry = lookup(source);
         if (!entry.isTexture || !(entry.textureDesc.usage & VriTextureUsage_TransferSrc))
         {
@@ -305,8 +326,57 @@ namespace vultra
         return captured;
     }
 
-    void RenderGraph::compile()
+    RenderGraph::Resource
+    RenderGraph::createHistoryTexture(std::string name, const VriTextureDesc& desc, VriClearColor initial)
     {
+        if (!(desc.usage & VriTextureUsage_TransferDst) || !(desc.usage & VriTextureUsage_ShaderResourceStorage) ||
+            desc.sampleNum != 1 || !m_Device.core.GetDeviceDesc(m_Device.handle)->hasClearStorageTexture)
+        {
+            throw std::invalid_argument(
+                "History textures require storage/transfer-destination usage and VRI clear support");
+        }
+        const auto resource = createTexture(std::move(name), desc);
+        auto&      entry    = lookup(resource);
+        entry.history       = true;
+        entry.initialized   = true;
+        entry.initial       = initial;
+        m_ResetHistory      = true;
+        return resource;
+    }
+
+    void RenderGraph::resetHistory()
+    {
+        if (m_HistoryEpoch == UINT64_MAX)
+        {
+            throw std::overflow_error("Graph history epoch exhausted");
+        }
+        ++m_HistoryEpoch;
+        m_ResetHistory = true;
+    }
+
+    uint64_t RenderGraph::historyEpoch() const
+    {
+        return m_HistoryEpoch;
+    }
+
+    void RenderGraph::compile(bool aliasTransients)
+    {
+        if (m_Aliased)
+        {
+            if (!aliasTransients)
+            {
+                throw std::logic_error("An aliased graph must keep its allocation plan");
+            }
+            return;
+        }
+        if (aliasTransients && std::ranges::any_of(m_Resources,
+                                                   [](const Entry& entry)
+                                                   {
+                                                       return entry.ownedTexture || entry.ownedBuffer;
+                                                   }))
+        {
+            throw std::logic_error("Choose transient aliasing before the first graph compilation");
+        }
         m_Compiled = false;
         std::vector<std::optional<size_t>> writer(m_Resources.size());
         std::vector<std::vector<size_t>>   readers(m_Resources.size());
@@ -354,7 +424,12 @@ namespace vultra
         std::vector<size_t> pending;
         for (size_t p = 0; p < m_Passes.size(); ++p)
         {
-            if (m_Passes[p].sideEffect)
+            if (m_Passes[p].sideEffect || std::ranges::any_of(m_Passes[p].uses,
+                                                              [this](const Use& use)
+                                                              {
+                                                                  return lookup(use.resource).history &&
+                                                                         writes(use.usage);
+                                                              }))
             {
                 pending.push_back(p);
             }
@@ -381,37 +456,113 @@ namespace vultra
             pass.live = true;
             pending.insert(pending.end(), pass.dependencies.begin(), pass.dependencies.end());
         }
-        // Declaration order is already a valid topological order: dependencies only point backward.
-        // Texture/buffer allocations persist with the graph. Descriptor views are created lazily.
-        for (const auto& pass : m_Passes)
+        // Declaration order is topological. Imports, exports and history never share an allocation.
+        for (auto& entry : m_Resources)
         {
-            if (pass.live)
+            entry.firstUse = UINT32_MAX;
+            entry.lastUse  = UINT32_MAX;
+        }
+        for (size_t p = 0; p < m_Passes.size(); ++p)
+        {
+            if (m_Passes[p].live)
             {
-                for (const auto& use : pass.uses)
+                for (const auto& use : m_Passes[p].uses)
                 {
-                    auto& entry = lookup(use.resource);
-                    if (!entry.imported && !entry.texture && !entry.buffer)
-                    {
-                        if (entry.isTexture)
-                        {
-                            const auto aspect = entry.textureDesc.format == VriFormat_D32_SFLOAT ?
-                                                    VriImageAspect_Depth :
-                                                    VriImageAspect_Color;
-                            entry.ownedTexture =
-                                std::make_unique<Texture>(m_Device, entry.textureDesc, nullptr, aspect);
-                            entry.texture = entry.ownedTexture.get();
-                            m_Device.core.SetDebugName(entry.texture->handle, entry.name.c_str());
-                        }
-                        else
-                        {
-                            entry.ownedBuffer = std::make_unique<Buffer>(m_Device, entry.bufferDesc);
-                            entry.buffer      = entry.ownedBuffer.get();
-                            m_Device.core.SetDebugName(entry.buffer->handle, entry.name.c_str());
-                        }
-                    }
+                    auto& entry    = lookup(use.resource);
+                    entry.firstUse = std::min(entry.firstUse, uint32_t(p));
+                    entry.lastUse  = uint32_t(p);
                 }
             }
         }
+        const auto exported = [this](size_t index)
+        {
+            return std::ranges::any_of(m_Exports,
+                                       [index](Resource value)
+                                       {
+                                           return value.index == index;
+                                       });
+        };
+        std::vector<uint32_t> order;
+        for (uint32_t i = 0; i < m_Resources.size(); ++i)
+        {
+            // An exported, read-only history/import is live even without a pass.
+            if (m_Resources[i].firstUse != UINT32_MAX || exported(i))
+            {
+                order.push_back(i);
+            }
+        }
+        std::ranges::stable_sort(order,
+                                 [this](uint32_t a, uint32_t b)
+                                 {
+                                     return m_Resources[a].firstUse < m_Resources[b].firstUse;
+                                 });
+        std::vector<uint32_t> allocations;
+        std::vector<uint32_t> ends(m_Resources.size(), UINT32_MAX);
+        for (const auto index : order)
+        {
+            auto& entry      = m_Resources[index];
+            entry.allocation = index;
+            if (entry.imported)
+            {
+                continue;
+            }
+            if (aliasTransients && !entry.history && !exported(index))
+            {
+                for (const auto owner : allocations)
+                {
+                    const auto& candidate = m_Resources[owner];
+                    if (ends[owner] >= entry.firstUse || candidate.history || exported(owner) ||
+                        candidate.isTexture != entry.isTexture)
+                    {
+                        continue;
+                    }
+                    const auto& a = candidate.textureDesc;
+                    const auto& b = entry.textureDesc;
+                    const auto& c = candidate.bufferDesc;
+                    const auto& d = entry.bufferDesc;
+                    // Compare fields, not struct padding. Clear hints also belong to the physical texture.
+                    const bool same = entry.isTexture ?
+                                          a.type == b.type && a.format == b.format && a.width == b.width &&
+                                              a.height == b.height && a.depth == b.depth && a.mipNum == b.mipNum &&
+                                              a.layerNum == b.layerNum && a.sampleNum == b.sampleNum &&
+                                              a.usage == b.usage && a.memoryLocation == b.memoryLocation &&
+                                              std::memcmp(&a.clearValue, &b.clearValue, sizeof(VriClearValue)) == 0 :
+                                          c.size == d.size && c.structureStride == d.structureStride &&
+                                              c.usage == d.usage && c.memoryLocation == d.memoryLocation;
+                    if (same)
+                    {
+                        entry.texture    = candidate.texture;
+                        entry.buffer     = candidate.buffer;
+                        entry.allocation = owner;
+                        ends[owner]      = entry.lastUse;
+                        break;
+                    }
+                }
+            }
+            if (!entry.texture && !entry.buffer)
+            {
+                if (entry.isTexture)
+                {
+                    const auto aspect =
+                        entry.textureDesc.format == VriFormat_D32_SFLOAT ? VriImageAspect_Depth : VriImageAspect_Color;
+                    entry.ownedTexture = std::make_unique<Texture>(m_Device, entry.textureDesc, nullptr, aspect);
+                    entry.texture      = entry.ownedTexture.get();
+                    m_Device.core.SetDebugName(entry.texture->handle, entry.name.c_str());
+                }
+                else
+                {
+                    entry.ownedBuffer = std::make_unique<Buffer>(m_Device, entry.bufferDesc);
+                    entry.buffer      = entry.ownedBuffer.get();
+                    m_Device.core.SetDebugName(entry.buffer->handle, entry.name.c_str());
+                }
+            }
+            if (entry.allocation == index)
+            {
+                allocations.push_back(index);
+                ends[index] = entry.lastUse;
+            }
+        }
+        m_Aliased  = aliasTransients;
         m_Compiled = true;
     }
 
@@ -424,6 +575,20 @@ namespace vultra
         if (profiler)
         {
             profiler->beginFrame(cmd);
+        }
+        if (m_ResetHistory)
+        {
+            m_Device.core.CmdBeginDebugGroup(cmd, "Reset graph history");
+            for (auto& entry : m_Resources)
+            {
+                if (entry.history && entry.texture)
+                {
+                    entry.texture->transition(cmd, stateForUsage(Usage::eCopyDestination));
+                    m_Device.core.CmdClearStorageTexture(cmd, entry.texture->handle, &entry.initial);
+                }
+            }
+            m_Device.core.CmdEndDebugGroup(cmd);
+            m_ResetHistory = false;
         }
         for (const auto& pass : m_Passes)
         {
@@ -524,8 +689,17 @@ namespace vultra
                                                {
                                                   return resource.index == i;
                                                });
-            result.resources.push_back(
-                {entry.name, entry.imported, exported, exported, entry.isTexture, entry.textureDesc, entry.bufferDesc});
+            result.resources.push_back({entry.name,
+                                        entry.imported,
+                                        exported,
+                                        exported,
+                                        entry.isTexture,
+                                        entry.textureDesc,
+                                        entry.bufferDesc,
+                                        entry.history,
+                                        entry.firstUse,
+                                        entry.lastUse,
+                                        entry.allocation});
         }
         for (const auto& pass : m_Passes)
         {
@@ -540,7 +714,87 @@ namespace vultra
             }
             result.passes.push_back(std::move(info));
         }
+        uint32_t   objectCount = 0;
+        const auto enumerated  = m_Device.core.EnumerateObjects ?
+                                     m_Device.core.EnumerateObjects(m_Device.handle, &objectCount, nullptr) :
+                                     VriResult_Unsupported;
+        if (enumerated != VriResult_Unsupported)
+        {
+            check(enumerated, "Count graph device allocations");
+            std::vector<VriObjectInfo> objects(objectCount);
+            if (objectCount != 0)
+            {
+                check(m_Device.core.EnumerateObjects(m_Device.handle, &objectCount, objects.data()),
+                      "Inspect graph device allocations");
+                objects.resize(objectCount);
+            }
+            for (size_t i = 0; i < m_Resources.size(); ++i)
+            {
+                const auto& entry  = m_Resources[i];
+                const void* handle = nullptr;
+                if (entry.isTexture && entry.texture)
+                {
+                    handle = entry.texture->handle;
+                }
+                else if (!entry.isTexture && entry.buffer)
+                {
+                    handle = entry.buffer->handle;
+                }
+                const auto object = std::ranges::find(objects, handle, &VriObjectInfo::handle);
+                if (handle && object != objects.end())
+                {
+                    result.resources[i].memoryBytes = object->memoryBytes;
+                    result.resources[i].memoryKnown = true;
+                }
+            }
+        }
         return result;
+    }
+
+    Device& RenderGraph::device() const
+    {
+        return m_Device;
+    }
+
+    RenderGraph::ResourceInfo RenderGraph::resourceInfo(Resource resource) const
+    {
+        if (resource.graph != this || resource.index >= m_Resources.size())
+        {
+            throw std::invalid_argument("Resource belongs to another graph");
+        }
+        const auto& entry    = m_Resources[resource.index];
+        const bool  exported = std::ranges::any_of(m_Exports,
+                                                   [resource](Resource value)
+                                                   {
+                                                      return value.index == resource.index;
+                                                   });
+        bool        active   = m_Compiled && exported;
+        if (m_Compiled && !active)
+        {
+            for (const auto& pass : m_Passes)
+            {
+                if (pass.live && std::ranges::any_of(pass.uses,
+                                                     [resource](const Use& use)
+                                                     {
+                                                         return use.resource.index == resource.index;
+                                                     }))
+                {
+                    active = true;
+                    break;
+                }
+            }
+        }
+        return {entry.name,
+                entry.imported,
+                exported,
+                active,
+                entry.isTexture,
+                entry.textureDesc,
+                entry.bufferDesc,
+                entry.history,
+                entry.firstUse,
+                entry.lastUse,
+                entry.allocation};
     }
 
     std::vector<std::string> RenderGraph::activePasses() const

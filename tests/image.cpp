@@ -1,6 +1,10 @@
 #include <vultra/core/image/image.hpp>
 
+#include <array>
+#include <bit>
+#include <chrono>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -95,6 +99,24 @@ try
         a.rgba[i] = float((i * 17) % 101) / 100;
         b.rgba[i] = a.rgba[i] * 0.7f + 0.1f;
     }
+    const Image hdr {{2, 2}, {3, -0.5f, 0.25f, 0.1f, 0, 1, 2, 0.2f, 4, 5, 6, 0.3f, -7, 8, 9, 0.4f}};
+    const auto  pfmPath =
+        std::filesystem::path("build/.tmp") /
+        ("float-image-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".pfm");
+    savePfm(hdr, pfmPath);
+    std::ifstream pfm(pfmPath, std::ios::binary);
+    std::string   header;
+    std::getline(pfm, header);
+    require(header == "PF", "PFM is not RGB");
+    std::getline(pfm, header);
+    require(header == "2 2", "PFM dimensions changed");
+    std::getline(pfm, header);
+    require(header == (std::endian::native == std::endian::little ? "-1.0" : "1.0"), "PFM byte order is wrong");
+    std::array<float, 12> pixels {};
+    pfm.read(reinterpret_cast<char*>(pixels.data()), sizeof(pixels));
+    require(bool(pfm) && pfm.peek() == std::char_traits<char>::eof(), "PFM payload size is wrong");
+    require(pixels == std::array<float, 12> {4, 5, 6, -7, 8, 9, 3, -0.5f, 0.25f, 0, 1, 2},
+            "PFM lost signed HDR values, included alpha or changed row order");
     require(std::abs(compare(a, b).ssim - directSsim(a, b)) < 1e-10, "SSIM differs from direct 2D reference");
     b = a;
     for (size_t i = 3; i < b.rgba.size(); i += 4)
@@ -139,7 +161,7 @@ try
     {
         require(std::abs(loaded.rgba[i] - a.rgba[i]) <= 0.5f / 255 + 1e-7, "PNG quantization/alpha");
     }
-    std::cout << "Image tests passed: analytic metrics, direct SSIM reference, invalid inputs, RGBA PNG roundtrip\n";
+    std::cout << "Image tests passed: analytic metrics, SSIM reference, invalid inputs, PNG and signed HDR PFM\n";
     return 0;
 }
 catch (const std::exception& e)

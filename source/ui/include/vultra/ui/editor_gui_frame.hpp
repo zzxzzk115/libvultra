@@ -5,6 +5,7 @@
 #include <imgui.h>
 
 #include <cstdarg>
+#include <string>
 #include <string_view>
 
 namespace vultra
@@ -24,6 +25,8 @@ namespace vultra
 
         bool beginWindow(const char* title, bool* open = nullptr, ImGuiWindowFlags flags = 0);
         void endWindow();
+        bool beginChild(const char* id, ImVec2 size, ImGuiChildFlags flags = 0);
+        void endChild();
         void text(const char* format, ...) IM_FMTARGS(2);
         void textWrapped(const char* format, ...) IM_FMTARGS(2);
         void textDisabled(const char* format, ...) IM_FMTARGS(2);
@@ -37,6 +40,8 @@ namespace vultra
         void showDemoWindow(bool* open);
 
         bool checkbox(const char* label, bool* value);
+        bool inputText(const char* label, std::string* value);
+        bool sliderDouble(const char* label, double* value, double min, double max);
         bool sliderFloat(const char* label, float* value, float min, float max, const char* format = "%.3f");
         bool sliderFloat3(const char* label, float* value, float min, float max);
         bool colorEdit3(const char* label, float* color);
@@ -48,6 +53,8 @@ namespace vultra
         bool collapsingHeader(const char* label);
         bool treeNodeEx(const char* id, ImGuiTreeNodeFlags flags, const char* format, ...) IM_FMTARGS(4);
         void treePop();
+        bool isItemClicked() const;
+        void pushId(const char* id);
         void pushId(int id);
         void popId();
         void pushItemWidth(float width);

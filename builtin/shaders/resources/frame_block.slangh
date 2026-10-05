@@ -1,5 +1,13 @@
 #pragma once
 
+struct LightData
+{
+    float4 positionRange;
+    float4 directionKind;
+    float4 colorIntensity;
+    float4 cones;
+};
+
 struct FrameData
 {
     float4x4 viewProjection;
@@ -16,6 +24,8 @@ struct FrameData
     float4   options;
     float4   cameraClip;
     float4   overrides; // Roughness, metalness, display transfer, meshlet display palette.
+    float4   lightConfig;
+    LightData lights[64];
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<FrameData> frame;

@@ -12,6 +12,56 @@ extern "C"
         uint64_t serial;
     } VultraSceneFrame;
 
+    typedef struct VultraCameraSettings
+    {
+        float verticalFov;
+        float nearPlane;
+        float farPlane;
+    } VultraCameraSettings;
+
+    typedef struct VultraEnvironmentSettings
+    {
+        float intensity;
+    } VultraEnvironmentSettings;
+
+    typedef struct VultraLightSettings
+    {
+        float red;
+        float green;
+        float blue;
+        float intensity;
+        float range;
+        float innerCone;
+        float outerCone;
+    } VultraLightSettings;
+
+    typedef struct VultraMaterialParameters
+    {
+        float baseRed;
+        float baseGreen;
+        float baseBlue;
+        float baseAlpha;
+        float baseWeight;
+        float baseMetalness;
+        float baseDiffuseRoughness;
+        float specularWeight;
+        float specularRed;
+        float specularGreen;
+        float specularBlue;
+        float specularRoughness;
+        float specularIor;
+        float coatWeight;
+        float coatRoughness;
+        float coatIor;
+        float emissionRed;
+        float emissionGreen;
+        float emissionBlue;
+        float emissionLuminance;
+        float normalScale;
+        float occlusionStrength;
+        float alphaCutoff;
+    } VultraMaterialParameters;
+
     typedef struct VultraSceneTranslation
     {
         float x;
@@ -23,11 +73,73 @@ extern "C"
     {
         uint32_t version;
         uint32_t struct_size;
+        VultraStatus (*camera_settings)(VultraSceneFrame frame, uint64_t node, VultraCameraSettings* value);
         VultraStatus (*child_count)(VultraSceneFrame frame, uint64_t parent, uint64_t* value);
         VultraStatus (*child_id)(VultraSceneFrame frame, uint64_t parent, uint64_t index, uint64_t* value);
+        VultraStatus (*copy_mesh_model)(VultraSceneFrame frame, uint64_t target, uint64_t source);
+        VultraStatus (*create_camera)(VultraSceneFrame frame,
+                                      uint64_t         parent,
+                                      const char*      name,
+                                      uint64_t         nameSize,
+                                      uint64_t*        value);
+        VultraStatus (*create_environment)(VultraSceneFrame frame,
+                                           uint64_t         parent,
+                                           const char*      name,
+                                           uint64_t         nameSize,
+                                           uint64_t*        value);
+        VultraStatus (*create_light)(VultraSceneFrame frame,
+                                     uint64_t         parent,
+                                     const char*      name,
+                                     uint64_t         nameSize,
+                                     uint64_t         kind,
+                                     uint64_t*        value);
+        VultraStatus (*create_material)(VultraSceneFrame frame, const char* name, uint64_t nameSize, uint64_t* value);
+        VultraStatus (*create_mesh)(VultraSceneFrame frame,
+                                    uint64_t         parent,
+                                    const char*      name,
+                                    uint64_t         nameSize,
+                                    const char*      assetId,
+                                    uint64_t         assetIdSize,
+                                    uint64_t*        value);
+        VultraStatus (*create_node)(VultraSceneFrame frame,
+                                    uint64_t         parent,
+                                    const char*      name,
+                                    uint64_t         nameSize,
+                                    uint64_t*        value);
+        VultraStatus (*current_camera)(VultraSceneFrame frame, uint64_t* value);
+        VultraStatus (*current_environment)(VultraSceneFrame frame, uint64_t* value);
+        VultraStatus (*duplicate_mesh)(VultraSceneFrame frame, uint64_t source, uint64_t parent, uint64_t* value);
+        VultraStatus (*environment_settings)(VultraSceneFrame frame, uint64_t node, VultraEnvironmentSettings* value);
+        VultraStatus (*light_kind)(VultraSceneFrame frame, uint64_t node, uint64_t* value);
+        VultraStatus (*light_settings)(VultraSceneFrame frame, uint64_t node, VultraLightSettings* value);
+        VultraStatus (*material_name)(VultraSceneFrame frame, uint64_t material, const char** data, uint64_t* size);
+        VultraStatus (*material_parameters)(VultraSceneFrame frame, uint64_t material, VultraMaterialParameters* value);
+        VultraStatus (*mesh_material)(VultraSceneFrame frame, uint64_t node, uint64_t slot, uint64_t* value);
         VultraStatus (*node_name)(VultraSceneFrame frame, uint64_t node, const char** data, uint64_t* size);
         VultraStatus (*node_translation)(VultraSceneFrame frame, uint64_t node, VultraSceneTranslation* value);
+        VultraStatus (*remove_material)(VultraSceneFrame frame, uint64_t material);
+        VultraStatus (*remove_node)(VultraSceneFrame frame, uint64_t node);
+        VultraStatus (*reparent_node)(VultraSceneFrame frame, uint64_t node, uint64_t newParent);
         VultraStatus (*root_id)(VultraSceneFrame frame, uint64_t* value);
+        VultraStatus (*set_camera_settings)(VultraSceneFrame frame, uint64_t node, VultraCameraSettings settings);
+        VultraStatus (*set_current_camera)(VultraSceneFrame frame, uint64_t node);
+        VultraStatus (*set_current_environment)(VultraSceneFrame frame, uint64_t node);
+        VultraStatus (*set_environment_asset)(VultraSceneFrame frame,
+                                              uint64_t         node,
+                                              const char*      assetId,
+                                              uint64_t         assetIdSize);
+        VultraStatus (*set_environment_settings)(VultraSceneFrame          frame,
+                                                 uint64_t                  node,
+                                                 VultraEnvironmentSettings settings);
+        VultraStatus (*set_light_settings)(VultraSceneFrame frame, uint64_t node, VultraLightSettings settings);
+        VultraStatus (*set_material_parameters)(VultraSceneFrame         frame,
+                                                uint64_t                 material,
+                                                VultraMaterialParameters parameters);
+        VultraStatus (*set_mesh_material)(VultraSceneFrame frame, uint64_t node, uint64_t slot, uint64_t material);
+        VultraStatus (*set_mesh_model)(VultraSceneFrame frame,
+                                       uint64_t         target,
+                                       const char*      assetId,
+                                       uint64_t         assetIdSize);
         VultraStatus (*set_node_translation)(VultraSceneFrame frame, uint64_t node, VultraSceneTranslation translation);
     } VultraSceneApi;
 #ifdef __cplusplus

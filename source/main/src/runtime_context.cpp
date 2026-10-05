@@ -2,6 +2,7 @@
 #include <vultra/drivers/rhi/swapchain.hpp>
 #include <vultra/main/app/desktop_app.hpp>
 #include <vultra/main/runtime_context.hpp>
+#include <vultra/servers/rendering/graph/pass_catalog.hpp>
 #include <vultra/servers/rendering/rendering_server.hpp>
 
 namespace vultra
@@ -14,7 +15,8 @@ namespace vultra
             swapchain(device, window, config.swapchainFormat),
             frame(device),
             profiler(device),
-            rendering(device)
+            rendering(device),
+            passes(device)
         {
         }
 
@@ -25,6 +27,7 @@ namespace vultra
         Frame           frame;
         Profiler        profiler;
         RenderingServer rendering;
+        PassCatalog     passes;
     };
 
     RuntimeContext::RuntimeContext(const DesktopAppConfig& config) :
@@ -62,5 +65,10 @@ namespace vultra
     RenderingServer& RuntimeContext::rendering()
     {
         return m_Impl->rendering;
+    }
+
+    PassCatalog& RuntimeContext::passes()
+    {
+        return m_Impl->passes;
     }
 } // namespace vultra

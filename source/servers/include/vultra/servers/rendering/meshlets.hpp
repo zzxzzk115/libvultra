@@ -20,7 +20,7 @@ namespace vultra
     struct Meshlet
     {
         glm::uvec4 geometry; // Vertex offset, triangle offset, vertex count, triangle count.
-        glm::vec4  bounds;   // World-space center and radius; scene transforms are already baked.
+        glm::vec4  bounds;   // Scene-space center and radius; the draw transform is applied during culling.
     };
 
     struct MeshletRange

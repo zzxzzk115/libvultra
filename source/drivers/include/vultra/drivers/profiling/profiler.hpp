@@ -44,6 +44,8 @@ namespace vultra
         double      gpuMs        = 0;
         double      cpuBarrierMs = 0;
         double      gpuBarrierMs = 0;
+        uint32_t    parent       = UINT32_MAX; // Index in this frame's event list; times include child events.
+        uint32_t    depth        = 0;
     };
 
     class Profiler
@@ -71,18 +73,24 @@ namespace vultra
         }
 
     private:
-        static constexpr uint32_t             kMaxPasses = 64;
-        Device&                               m_Device;
-        VriQueryInterface                     m_Api {};
-        VriQueryPool*                         m_Pool = nullptr;
-        std::unique_ptr<Buffer>               m_Readback;
-        std::vector<PassTiming>               m_Records;
-        std::vector<PassTiming>               m_Results;
-        std::vector<bool>                     m_SplitPasses;
-        std::chrono::steady_clock::time_point m_Begin;
-        double                                m_TickNs     = 0;
-        uint32_t                              m_QueryCount = 0;
-        bool                                  m_Open       = false;
-        bool                                  m_Split      = false;
+        struct Record
+        {
+            PassTiming                            timing;
+            std::chrono::steady_clock::time_point begin;
+            uint32_t                              firstQuery   = 0;
+            uint32_t                              commandQuery = UINT32_MAX;
+            uint32_t                              lastQuery    = 0;
+        };
+
+        static constexpr uint32_t kMaxPasses = 64;
+        Device&                   m_Device;
+        VriQueryInterface         m_Api {};
+        VriQueryPool*             m_Pool = nullptr;
+        std::unique_ptr<Buffer>   m_Readback;
+        std::vector<Record>       m_Records;
+        std::vector<PassTiming>   m_Results;
+        std::vector<uint32_t>     m_Stack;
+        double                    m_TickNs     = 0;
+        uint32_t                  m_QueryCount = 0;
     };
 } // namespace vultra

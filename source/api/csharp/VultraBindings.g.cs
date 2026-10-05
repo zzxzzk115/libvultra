@@ -5,7 +5,7 @@ namespace Vultra.Interop;
 
 internal static class VultraAbi
 {
-    public const uint Version = 3;
+    public const uint Version = 1;
 }
 
 internal enum VultraStatus : int
@@ -40,6 +40,60 @@ internal unsafe struct VultraUiApi
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal struct VultraCameraSettings
+{
+    public float VerticalFov;
+    public float NearPlane;
+    public float FarPlane;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct VultraEnvironmentSettings
+{
+    public float Intensity;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct VultraLightSettings
+{
+    public float Red;
+    public float Green;
+    public float Blue;
+    public float Intensity;
+    public float Range;
+    public float InnerCone;
+    public float OuterCone;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct VultraMaterialParameters
+{
+    public float BaseRed;
+    public float BaseGreen;
+    public float BaseBlue;
+    public float BaseAlpha;
+    public float BaseWeight;
+    public float BaseMetalness;
+    public float BaseDiffuseRoughness;
+    public float SpecularWeight;
+    public float SpecularRed;
+    public float SpecularGreen;
+    public float SpecularBlue;
+    public float SpecularRoughness;
+    public float SpecularIor;
+    public float CoatWeight;
+    public float CoatRoughness;
+    public float CoatIor;
+    public float EmissionRed;
+    public float EmissionGreen;
+    public float EmissionBlue;
+    public float EmissionLuminance;
+    public float NormalScale;
+    public float OcclusionStrength;
+    public float AlphaCutoff;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct VultraSceneTranslation
 {
     public float X;
@@ -47,16 +101,46 @@ internal struct VultraSceneTranslation
     public float Z;
 }
 
+
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct VultraSceneApi
 {
     public uint Version;
     public uint StructSize;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraCameraSettings*, VultraStatus> CameraSettings;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong*, VultraStatus> ChildCount;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, ulong*, VultraStatus> ChildId;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, VultraStatus> CopyMeshModel;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, ulong*, VultraStatus> CreateCamera;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, ulong*, VultraStatus> CreateEnvironment;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, ulong, ulong*, VultraStatus> CreateLight;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, byte*, ulong, ulong*, VultraStatus> CreateMaterial;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, byte*, ulong, ulong*, VultraStatus> CreateMesh;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, ulong*, VultraStatus> CreateNode;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong*, VultraStatus> CurrentCamera;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong*, VultraStatus> CurrentEnvironment;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, ulong*, VultraStatus> DuplicateMesh;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraEnvironmentSettings*, VultraStatus> EnvironmentSettings;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong*, VultraStatus> LightKind;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraLightSettings*, VultraStatus> LightSettings;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte**, ulong*, VultraStatus> MaterialName;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraMaterialParameters*, VultraStatus> MaterialParameters;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, ulong*, VultraStatus> MeshMaterial;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte**, ulong*, VultraStatus> NodeName;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraSceneTranslation*, VultraStatus> NodeTranslation;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraStatus> RemoveMaterial;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraStatus> RemoveNode;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, VultraStatus> ReparentNode;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong*, VultraStatus> RootId;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraCameraSettings, VultraStatus> SetCameraSettings;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraStatus> SetCurrentCamera;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraStatus> SetCurrentEnvironment;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, VultraStatus> SetEnvironmentAsset;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraEnvironmentSettings, VultraStatus> SetEnvironmentSettings;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraLightSettings, VultraStatus> SetLightSettings;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraMaterialParameters, VultraStatus> SetMaterialParameters;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, ulong, VultraStatus> SetMeshMaterial;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, VultraStatus> SetMeshModel;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraSceneTranslation, VultraStatus> SetNodeTranslation;
 }
 

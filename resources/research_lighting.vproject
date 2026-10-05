@@ -1,0 +1,18 @@
+{
+  "format": "vultra.project",
+  "version": 1,
+  "main_scene": "scenes/research_lighting.vscene",
+  "assets": [
+    {
+      "id": "8fc32ebe-cf5e-45b6-b93f-05c1ae8f165b",
+      "path": "models/DamagedHelmet/DamagedHelmet.glb"
+    },
+    {
+      "id": "6ddad025-9e72-41d4-9d0e-e2fdc116ca27",
+      "path": "textures/environment_maps/citrus_orchard_puresky_1k.hdr"
+    }
+  ],
+  "extensions": [],
+  "scripts": [],
+  "environment": "6ddad025-9e72-41d4-9d0e-e2fdc116ca27"
+}

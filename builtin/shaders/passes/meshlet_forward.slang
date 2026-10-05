@@ -25,7 +25,11 @@ void taskMain(uint3 group : SV_GroupID, uint lane : SV_GroupIndex)
     if (localIndex < material.meshlets.y)
     {
         uint index = material.meshlets.x + localIndex;
-        bool visible = material.meshlets.z == 0 || meshletInsideFrustum(meshlets[index].bounds, frame.viewProjection);
+        PrimitiveTransform instance = primitiveTransforms[material.instance.x];
+        float4 bounds = meshlets[index].bounds;
+        bounds.xyz = mul(instance.model, float4(bounds.xyz, 1)).xyz;
+        bounds.w *= instance.properties.y;
+        bool visible = material.meshlets.z == 0 || meshletInsideFrustum(bounds, frame.viewProjection);
         if (visible)
         {
             uint slot;
@@ -48,7 +52,7 @@ void meshMain(uint3 group : SV_GroupID, uint lane : SV_GroupIndex, in payload Me
     SetMeshOutputCounts(meshlet.geometry.z, meshlet.geometry.w);
     for (uint vertex = lane; vertex < meshlet.geometry.z; vertex += 32)
     {
-        MeshVertex input = loadMeshletVertex(meshletVertices[meshlet.geometry.x + vertex]);
+        MeshVertex input = loadMeshVertex(sceneVertices, meshletVertices[meshlet.geometry.x + vertex]);
         SurfaceVertex output = transformSurfaceVertex(input);
         if (material.meshlets.w != 0)
         {

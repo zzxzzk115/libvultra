@@ -3,7 +3,9 @@
 #include <vultra/core/base/api_annotations.hpp>
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
 #include <vultra/servers/rendering/builtin/environment.hpp>
+#include <vultra/servers/rendering/builtin/render_light.hpp>
 #include <vultra/servers/rendering/builtin/shadow_cascades.hpp>
+#include <vultra/servers/rendering/builtin/tone_mapping_pass.hpp>
 #include <vultra/servers/rendering/graph/render_graph.hpp>
 #include <vultra/servers/rendering/scene.hpp>
 
@@ -11,6 +13,8 @@
 
 #include <array>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -19,7 +23,8 @@ namespace vultra
     enum class RenderPath
     {
         eNaiveDeferred,
-        eNaiveForward
+        eNaiveForward,
+        eReferencePathTracing
     };
 
     enum class ShadowFilter
@@ -68,11 +73,11 @@ namespace vultra
         struct Outputs
         {
             RenderPath                           path = RenderPath::eNaiveDeferred;
-            ShadowMaps                           shadows;
-            std::array<RenderGraph::Resource, 7> gbuffer;
-            RenderGraph::Resource                hdr;
-            RenderGraph::Resource                depth;
-            RenderGraph::Resource                color;
+            ShadowMaps                           shadows {};
+            std::array<RenderGraph::Resource, 7> gbuffer {};
+            RenderGraph::Resource                hdr {};
+            RenderGraph::Resource                depth {};
+            RenderGraph::Resource                color {};
         };
 
         // UNORM output is display encoded; RGBA16_SFLOAT is tone mapped but linear (for XR).
@@ -91,11 +96,21 @@ namespace vultra
         addForwardPass(RenderGraph& graph, RenderGraph::Resource hdr, RenderGraph::Resource depth, ShadowMaps shadows);
 
         RenderGraph::Resource addToneMappingPass(RenderGraph& graph, RenderGraph::Resource hdr, Extent size);
-        Outputs               addPasses(RenderGraph& graph, Extent size);
+        // Build linear scene outputs so a project pass can run before tone mapping.
+        Outputs addScenePasses(RenderGraph& graph, Extent size);
+        Outputs addPasses(RenderGraph& graph, Extent size);
 
         // After graph.compile(), before recording. Previous frame must have completed.
-        void           prepare(const RenderCamera& camera, RenderGraph& graph, const Outputs& outputs);
-        void           pollShaders();
+        // Absent lighting uses RenderSettings' C++ sun. An explicit empty span disables direct lights.
+        // Environment intensity multiplies the experimental RenderSettings intensity without changing GPU resources.
+        void prepare(const RenderCamera&                         camera,
+                     RenderGraph&                                graph,
+                     const Outputs&                              outputs,
+                     std::optional<std::span<const RenderLight>> lights               = std::nullopt,
+                     float                                       environmentIntensity = 1);
+        void pollShaders();
+        // Prepare only the tone-mapping stage when an external/reference renderer supplies scene color.
+        void           prepareToneMapping(RenderGraph& graph, RenderGraph::Resource hdr);
         std::string    diagnostics() const;
         RenderSettings settings;
 
@@ -119,6 +134,7 @@ namespace vultra
         std::unique_ptr<Texture>       m_OpenPbrLuts;
         std::unique_ptr<Buffer>        m_FrameBuffer;
         VriDescriptor*                 m_FrameView          = nullptr;
+        VriDescriptor*                 m_TransformView      = nullptr;
         VriDescriptor*                 m_EnvironmentSampler = nullptr;
         VriDescriptorPool*             m_Pool               = nullptr;
         VriPipelineLayout*             m_Layout             = nullptr;
@@ -127,14 +143,15 @@ namespace vultra
         VriMeshShaderInterface         m_MeshApi {};
         std::vector<VriDescriptorSet*> m_MaterialSets;
         std::vector<VriDescriptor*>    m_MaterialSamplers;
-        // Geometry pipelines are indexed by doubleSided.
-        std::array<std::unique_ptr<ShaderPipeline>, 2> m_Shadow;
-        std::array<std::unique_ptr<ShaderPipeline>, 2> m_Forward;
-        std::array<std::unique_ptr<ShaderPipeline>, 2> m_GBufferBase;
-        std::array<std::unique_ptr<ShaderPipeline>, 2> m_GBufferMaterial;
-        std::array<std::unique_ptr<ShaderPipeline>, 2> m_MeshForward;
+        // Geometry pipelines are indexed by sidedness and reflected front face.
+        std::array<std::unique_ptr<ShaderPipeline>, 4> m_Shadow;
+        std::array<std::unique_ptr<ShaderPipeline>, 4> m_Forward;
+        std::array<std::unique_ptr<ShaderPipeline>, 4> m_GBufferBase;
+        std::array<std::unique_ptr<ShaderPipeline>, 4> m_GBufferMaterial;
+        std::array<std::unique_ptr<ShaderPipeline>, 4> m_MeshForward;
         std::unique_ptr<ShaderPipeline>                m_Skybox;
-        std::unique_ptr<ShaderPipeline>                m_ToneMapping;
+        std::unique_ptr<ToneMappingPass>               m_ToneMapping;
+        std::array<double, 2>                          m_ToneParameters {};
         std::unique_ptr<ShaderPipeline>                m_DeferredLighting;
     };
 } // namespace vultra

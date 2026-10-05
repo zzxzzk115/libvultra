@@ -1,4 +1,6 @@
+#include <vultra/assets/texture_import.hpp>
 #include <vultra/scene/scene_import.hpp>
+#include <vultra/servers/rendering/scene.hpp>
 
 #include <glm/gtc/matrix_inverse.hpp>
 
@@ -20,6 +22,7 @@ namespace vultra
             AssetId       id;
             ImportedAsset asset;
             uint32_t      materialOffset;
+            bool          instanced = false;
         };
 
         uint32_t checkedOffset(size_t current, size_t added, size_t limit, const char* name)
@@ -103,7 +106,10 @@ namespace vultra
             return materialOffset;
         }
 
-        void appendInstance(SceneData& destination, const ImportedModel& model, const glm::mat4& transform)
+        void appendInstance(SceneData&           destination,
+                            const ImportedModel& model,
+                            const glm::mat4&     transform,
+                            uint32_t             materialOffset)
         {
             if (transform[0][3] != 0 || transform[1][3] != 0 || transform[2][3] != 0 || transform[3][3] != 1)
             {
@@ -164,9 +170,8 @@ namespace vultra
                 {
                     throw std::invalid_argument("Invalid model triangle primitive");
                 }
-                destination.primitives.push_back({indexOffset + primitive.firstIndex,
-                                                  primitive.indexCount,
-                                                  model.materialOffset + primitive.material});
+                destination.primitives.push_back(
+                    {indexOffset + primitive.firstIndex, primitive.indexCount, materialOffset + primitive.material});
                 if (determinant < 0)
                 {
                     for (uint32_t i = primitive.firstIndex; i < primitive.firstIndex + primitive.indexCount; i += 3)
@@ -178,25 +183,28 @@ namespace vultra
         }
     } // namespace
 
-    ImportedAsset importScene(const SceneTree&             tree,
-                              const ProjectManifest&       project,
-                              const std::filesystem::path& projectRoot,
-                              const AssetImportOptions&    options)
+    ImportedAsset importScene(const SceneTree&                tree,
+                              const ProjectManifest&          project,
+                              const std::filesystem::path&    projectRoot,
+                              const AssetImportOptions&       options,
+                              std::vector<SceneMeshInstance>* instances)
     {
         tree.validateAssets(project);
-        ImportedAsset              result;
-        std::vector<ImportedModel> models;
+        ImportedAsset                  result;
+        std::vector<ImportedModel>     models;
+        std::vector<SceneMeshInstance> importedInstances;
         auto visit = [&](const auto& self, const Node& node, const glm::mat4& parentTransform) -> void
         {
             const auto transform = parentTransform * node.localTransform();
             if (node.kind() == NodeKind::eMeshInstance)
             {
-                const auto id    = static_cast<const MeshInstanceNode&>(node).model();
-                auto       model = std::ranges::find_if(models,
-                                                        [id](const ImportedModel& entry)
-                                                        {
+                const auto& mesh  = static_cast<const MeshInstanceNode&>(node);
+                const auto  id    = mesh.model();
+                auto        model = std::ranges::find_if(models,
+                                                         [id](const ImportedModel& entry)
+                                                         {
                                                       return entry.id == id;
-                                                        });
+                                                         });
                 if (model == models.end())
                 {
                     models.push_back({id, importAsset(projectRoot / project.asset(id).path, options), 0});
@@ -205,7 +213,50 @@ namespace vultra
                     result.cacheHit =
                         models.size() == 1 ? model->asset.cacheHit : result.cacheHit && model->asset.cacheHit;
                 }
-                appendInstance(result.scene, *model, transform);
+                const auto                      firstPrimitive = uint32_t(result.scene.primitives.size());
+                auto                            materialOffset = model->materialOffset;
+                const auto                      count          = model->asset.scene.materials.size();
+                std::vector<MaterialParameters> parameters;
+                parameters.reserve(count);
+                if (model->instanced)
+                {
+                    materialOffset = checkedOffset(result.scene.materials.size(),
+                                                   count,
+                                                   std::numeric_limits<uint32_t>::max(),
+                                                   "instance materials");
+                    for (size_t slot = 0; slot < count; ++slot)
+                    {
+                        // Reuse prepared textures; only numeric parameters get per-instance storage.
+                        auto material = result.scene.materials[model->materialOffset + slot];
+                        MaterialParameters::fromMaterial(model->asset.scene.materials[slot]).applyTo(material);
+                        result.scene.materials.push_back(material);
+                        result.textures.materials.push_back(result.textures.materials[model->materialOffset + slot]);
+                    }
+                }
+                model->instanced = true;
+                for (size_t slot = 0; slot < count; ++slot)
+                {
+                    parameters.push_back(MaterialParameters::fromMaterial(model->asset.scene.materials[slot]));
+                }
+                for (const auto& entry : mesh.materialOverrides())
+                {
+                    if (entry.slot >= count)
+                    {
+                        throw std::invalid_argument(mesh.name() + ": material slot exceeds the imported model");
+                    }
+                    tree.findMaterial(entry.material)
+                        ->parameters()
+                        .applyTo(result.scene.materials[materialOffset + entry.slot]);
+                }
+                appendInstance(result.scene, *model, transform, materialOffset);
+                importedInstances.push_back({node.idInScene(),
+                                             id,
+                                             transform,
+                                             transform,
+                                             firstPrimitive,
+                                             uint32_t(result.scene.primitives.size()) - firstPrimitive,
+                                             materialOffset,
+                                             std::move(parameters)});
             }
             for (const auto& child : node.children())
             {
@@ -215,7 +266,16 @@ namespace vultra
         visit(visit, tree.root(), glm::mat4(1));
         if (result.scene.vertices.empty())
         {
-            throw std::invalid_argument("Scene has no mesh geometry");
+            if (result.scene.materials.empty())
+            {
+                result.scene.materials.emplace_back();
+                result.textures = prepareTextures(result.scene, options.textures, options.workers);
+            }
+            if (instances)
+            {
+                *instances = std::move(importedInstances);
+            }
+            return result;
         }
         glm::vec3 low(std::numeric_limits<float>::max());
         glm::vec3 high(std::numeric_limits<float>::lowest());
@@ -226,6 +286,133 @@ namespace vultra
         }
         result.scene.center = (low + high) * 0.5f;
         result.scene.radius = glm::length(high - low) * 0.5f;
+        if (instances)
+        {
+            *instances = std::move(importedInstances);
+        }
         return result;
+    }
+
+    bool sceneMeshTopologyMatches(const SceneTree& tree, std::span<const SceneMeshInstance> instances)
+    {
+        size_t count = 0;
+        auto   visit = [&](const auto& self, const Node& node) -> bool
+        {
+            if (node.kind() == NodeKind::eMeshInstance)
+            {
+                // Import ranges belong to stable node IDs, not the current tree traversal order.
+                const auto instance = std::ranges::find(instances, node.idInScene(), &SceneMeshInstance::node);
+                if (instance == instances.end() ||
+                    instance->model != static_cast<const MeshInstanceNode&>(node).model())
+                {
+                    return false;
+                }
+                ++count;
+            }
+            for (const auto& child : node.children())
+            {
+                if (!self(self, *child))
+                {
+                    return false;
+                }
+            }
+            return true;
+        };
+        return visit(visit, tree.root()) && count == instances.size();
+    }
+
+    void syncSceneMaterials(const SceneTree& tree, std::span<const SceneMeshInstance> instances, GpuScene& gpu)
+    {
+        tree.validateMaterials();
+        for (const auto& instance : instances)
+        {
+            const auto* node = tree.find(instance.node);
+            if (!node || node->kind() != NodeKind::eMeshInstance ||
+                static_cast<const MeshInstanceNode&>(*node).model() != instance.model)
+            {
+                throw std::invalid_argument("Material synchronization requires matching mesh topology");
+            }
+            const auto& mesh = static_cast<const MeshInstanceNode&>(*node);
+            if (uint64_t(instance.firstMaterial) + instance.importedMaterials.size() > gpu.materials.size())
+            {
+                throw std::logic_error("Imported material range exceeds the GPU scene");
+            }
+            for (const auto& entry : mesh.materialOverrides())
+            {
+                if (entry.slot >= instance.importedMaterials.size())
+                {
+                    throw std::invalid_argument(mesh.name() + ": material slot exceeds the imported model");
+                }
+            }
+        }
+        // Validate all references/ranges before changing the active material array.
+        for (const auto& instance : instances)
+        {
+            const auto& mesh = static_cast<const MeshInstanceNode&>(*tree.find(instance.node));
+            for (size_t slot = 0; slot < instance.importedMaterials.size(); ++slot)
+            {
+                const auto found =
+                    std::ranges::find(mesh.materialOverrides(), uint32_t(slot), &MeshMaterialOverride::slot);
+                const auto& parameters = found == mesh.materialOverrides().end() ?
+                                             instance.importedMaterials[slot] :
+                                             tree.findMaterial(found->material)->parameters();
+                auto&       material   = gpu.materials[instance.firstMaterial + slot];
+                if (MaterialParameters::fromMaterial(material) != parameters)
+                {
+                    parameters.applyTo(material);
+                }
+            }
+        }
+    }
+
+    bool SceneGpuSync::needsImport(const SceneTree& tree, std::span<const SceneMeshInstance> instances) const
+    {
+        return (m_Root != tree.root().id() || m_Applied.structure != tree.changes().structure) &&
+               !sceneMeshTopologyMatches(tree, instances);
+    }
+
+    bool SceneGpuSync::environmentChanged(const SceneTree& tree) const
+    {
+        return m_Root != tree.root().id() || m_Applied.structure != tree.changes().structure ||
+               m_Applied.environment != tree.changes().environment;
+    }
+
+    bool SceneGpuSync::update(const SceneTree& tree, std::span<SceneMeshInstance> instances, GpuScene& gpu)
+    {
+        const auto& changes   = tree.changes();
+        const bool  structure = m_Root != tree.root().id() || m_Applied.structure != changes.structure;
+        if (structure && !sceneMeshTopologyMatches(tree, instances))
+        {
+            throw std::invalid_argument("Scene GPU synchronization requires reimporting changed mesh topology");
+        }
+        const bool materials  = structure || m_Applied.materials != changes.materials;
+        const bool transforms = structure || m_Applied.transforms != changes.transforms;
+        if (materials)
+        {
+            syncSceneMaterials(tree, instances, gpu);
+        }
+        if (transforms)
+        {
+            for (auto& instance : instances)
+            {
+                const auto* node = tree.find(instance.node);
+                if (!node)
+                {
+                    throw std::logic_error("Imported mesh node is missing after topology check");
+                }
+                const auto transform = node->globalTransform();
+                if (transform != instance.lastTransform)
+                {
+                    // Imported vertices already contain the initial world transform.
+                    gpu.setPrimitiveTransforms(instance.firstPrimitive,
+                                               instance.primitiveCount,
+                                               transform * glm::inverse(instance.bakedTransform));
+                    instance.lastTransform = transform;
+                }
+            }
+        }
+        m_Root    = tree.root().id();
+        m_Applied = changes;
+        return materials || transforms;
     }
 } // namespace vultra
