@@ -1,0 +1,50 @@
+# Follow-up tasks
+
+The research milestone gates are tracked in [research_milestones.md](research_milestones.md). This list separates
+unfinished acceptance from additional engine/research features. Items here do not create modules or dependencies.
+VRI, the existing RenderGraph, one public static `vultra` library and direct C++ use remain the boundaries.
+
+## Close the current gates first
+
+| Priority | Task | Concrete acceptance |
+| --- | --- | --- |
+| 1 | Windows research workflow and D3D12 | Run workbench/offline/Python/VPK regression on Windows. First settle DXIL delivery: the pinned static Slang package currently disables DXIL. Enable an implemented VRI D3D12 path only with working shader cooking/compilation and device capability checks; compare the same experiment/AOVs against Vulkan. |
+| 1 | Clean-machine delivery | External and embedded VPK player, batch and optional research host on separate Linux/Windows installations. Choose the template's minimum glibc/target sysroot explicitly; record loader/driver/runtime requirements and optional .NET/native module files. Isolated Linux userland checks and copied binaries are useful evidence, not separate-machine acceptance. |
+| 1 | Remaining desktop behavior | GLFW/SDL3 with X11/Wayland, resize, minimize, input, detached viewports and HDR picking. Linux Hyprland resize/viewports have prior unresolved failures; retain their assertions. Use offline testing except when a native-window test is necessary. |
+| 2 | Broader built-in pass composition | Move shadow/G-buffer/lighting stages into useful catalog contracts, sharing current implementations. Keep the scene prelude usable while adding real ports; do not create a second executor. Add non-scalar parameters only when a concrete pass needs them. |
+| 2 | Reference signal/correctness breadth | Texture filtering, environment importance sampling and remaining supported material cases with analytic/convergence fixtures. Add orthographic ray origins when the camera API exposes that model. Verify deformation motion and SDK-specific depth/jitter conventions; add separated diffuse/specular signals and hit distances before claiming NRD/DLSS-ready inputs. |
+| 2 | Research/API completeness | Add AOV channel/range controls and pixel probes; generate safe typed Python scene mutation through the existing ABI; script scene/graph/experiment configuration should share ownership and thread/phase rules. Associate Python report exports with build/shader/asset hashes as completely as CLI reports. |
+| 2 | Diagnostic validation | Automated RenderDoc replay and Nsight Graphics capture inspection; timestamp/memory behavior on a second backend. Keep capture runs distinct from timing baselines. Async compute requires measured benefit and real VRI queue/fence/barrier validation first. |
+| Optional | NVIDIA passes | NRD, DLSS/DLAA and later RTXDI/Ray Reconstruction/Frame Generation are separate optional targets. Define actual signals, VRI interop and vendor-file export checks first. None are linked into the base player by default. |
+
+## Features verified in dev-next source
+
+The comparison uses the locally available `dev-next` snapshot
+[`d8fe93850d7dbeeebc6992476566d7f70bc6ca86`](https://github.com/zzxzzk115/libvultra/tree/d8fe93850d7dbeeebc6992476566d7f70bc6ca86).
+The paths below contain implementations, not only README promises. This audit did not build or rerun that branch.
+Its service locator, old RHI/FrameGraph, EnTT world, global state and shader packaging are not migration templates.
+
+| Order | Verified implementation | Reuse the behavior in the current design |
+| --- | --- | --- |
+| A | [Cooked asset registry and VPK-backed VFS](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra/src/function/asset/asset_registry.cpp) resolve UUIDs, populate a registry from the package and mount resources. | Add CPU asset-source reads from package memory/streams using persistent asset IDs. Preserve the current import/cache formats; evaluate `vasset` only against concrete cooking requirements. GPU residency remains server-owned. Prove readback parity with no whole-package extraction. Native libraries/.NET assemblies can still require materialized files. |
+| A | [Export packing](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra_app/src/editor_app/editor_app_build.cpp) collects enabled scenes and plugins, omits editor-only plugins and copies explicit desktop/Web templates. [Template repository](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra_app/src/editor_app/export_templates_repository.cpp) resolves platform/architecture distributions. | Extend the existing no-xmake export API with cooked Slang shader outputs, explicit template metadata and dependency closure. Test one-EXE embedding, external VPK and optional vendor sidecars independently. This inspected desktop exporter writes `resources.vpk` beside the EXE; it is not evidence of project-VPK embedding. |
+| B | [Frame/video recording](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra_app/src/editor_app/runtime_mcp_recording.cpp) has a bounded raw-frame queue, JPEG worker, MJPEG clients and video-encoder piping. [Python client](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/tools/python/vultra_client/README.md) consumes streamed frames. | Build an optional browser preview over the existing offline session with bounded readback/encoding and explicit cancellation. Begin with a local HTTP MJPEG frontend; authentication/network exposure is a separate deployment choice. Neither MCP nor an AI service becomes a framework prerequisite. |
+| B | [Simulation tools](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra_app/src/editor_app/runtime_mcp_sim_tools.cpp) implement reset/seed and deferred fixed-step simulation. | Extend the generated experiment session API with reset, actions and named observations when actual simulation state exists. Test reset equivalence and action-to-render ordering. Python/NumPy remains an optional external research client. |
+| C | [Material graph compiler](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra/src/function/material_graph/material_graph_compiler.cpp) compiles typed graph nodes to shader expressions. | Use a small validated IR generating Slang/OpenPBR inputs, with texture slots and parameter layouts shared by CPU/shader code. Add cycle/type diagnostics, last-good shader replacement and material-image tests before building a large editor. Do not import the GLSL/vshadersystem pipeline. |
+| C | [Ozz animation](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra/src/function/animation/animation_system.cpp) evaluates sampling, blending and local-to-model jobs. | Add an optional AnimationServer and explicit scene skeleton/animation resources. Define skinning layouts, dirty pose synchronization and packaged clip reads. Verify fixed-time pose and GPU image parity before state-machine tooling. |
+| C | [Jolt physics](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra/src/function/physics/physics_system.cpp) manages bodies, constraints and virtual characters. | Optional PhysicsServer with context-owned IDs, a fixed-step update and scene-node adapters. Test body destruction, transforms, contact events and reset. RenderingServer and SceneTree retain their own authority; avoid a second ECS world. |
+| C | [miniaudio](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra/src/function/audio/audio_system.cpp) supports clips, spatial playback, one-shots and music. | Optional AudioServer with explicit clip/voice ownership and resource-stream decoding. Verify stopped callbacks on teardown and browser audio activation separately. Keep it outside core drawing examples. |
+| D | [Gaussian splatting feature](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra/src/function/rendering/srp/builtin/features/general_gaussian_splat_feature.cpp) composes preprocessing, rendering and optional layered foveated outputs. | Start with an independently linked project pass and CPU splat asset; implement Slang/VRI buffers, ordering/compositing and image fixtures. Add XR/foveated layers only after the basic pass works. |
+| Separate project | [Web exporter](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra_app/src/editor_app/editor_app_build.cpp) copies an explicit Web template and VPK; [Web shell](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/web/emscripten_vultra_runtime.html) provides browser packaging. | Verify VRI WebGPU, WGSL shader cooking, asynchronous browser frames, package mounting and script delivery. Earlier .NET WASM AOT probes establish toolchain feasibility only. The current desktop Vulkan/SPIR-V player is not a Web player. |
+
+## Additional project work
+
+Scene topology authoring, script attachment/discovery, generated safe language wrappers, native/Lua reload-state
+transfer, undo/redo and asset dependency inspection should consume the same Node/Resource and property model.
+Advanced RmlUi masks/transforms/layers/effects need backend implementations and image/input fixtures; current VGui
+support must not silently claim those capabilities. TAA, SSAO, SSR, OIT and research algorithms should be catalog
+passes using explicit history/AOV contracts, added one at a time with baselines.
+
+Preserve the separation between `vultra-runtime` and editor code. Lua remains static in the base player; C#'s .NET
+host and native plugin files have explicit delivery requirements. C# AOT, Web and physical XR each need their own
+verified delivery path. Every new persisted format starts and remains at `1` before release; no migration layer.

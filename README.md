@@ -11,18 +11,23 @@ The `dev-VRI` branch is a small VRI-based rendering research framework within li
 - VRI device and resource access, with selectable GLFW or SDL3 desktop windows
 - BaseApp, DesktopApp and ImGuiApp application lifecycles
 - Window-owned keyboard/mouse input and reusable Orbit/FPS camera controllers
-- An explicit, code-driven RenderGraph
+- An explicit RenderGraph with context-owned pass definitions and version-1 JSON graph definitions
 - Slang shaders with FileWatch hot reload
 - ImGui docking and multiple native viewports on Windows/X11, per-application layouts and an Unreal-style default theme
 - Optional RmlUi-based VGui with an embedded PNG skin for common game UI controls
 - A built-in renderer with naive deferred and forward paths, an opaque OpenPBR subset, HDR IBL and cascaded shadows
+- Optional scene cameras, lights, materials and environments with incremental synchronization shared by C++, native/Lua/C# scripts and both renderer paths
 - A lightweight asset pipeline that caches generated mip levels and BC7 data textures without duplicating source assets
 - Hardware ray-query, ray-tracing and task/mesh shader examples
 - A static glTF/GLB viewer with model selection and Damaged Helmet as the default model
 - OpenXR stereo rendering with a desktop mirror
 - PNG capture, frame dumps, SSIM/PSNR, benchmark reports and CPU/GPU profiling
+- Windowless `vultra-batch`, version-1 experiment descriptions and optional safe Python/NumPy research sessions
+- Progressive reference path tracing with marked AOVs, explicit history and reproducible convergence tests
+- Graph memory/producer reports, nested CPU/GPU events and offscreen RenderDoc capture
+- `vultra-app` research workbench: node graph editing, scene/resource inspection, output previews and saved workspaces; offline UI capture
 
-The source is organized by `core`, `platform`, `drivers`, `assets`, `servers`, `scene`, `ui`, `main` and `api`, with optional `scripting`. A single public `vultra` static library supports direct VRI experiments; `vultra-scripting` adds native, Lua and C# project modules. See the [early engine architecture](docs/architecture.md).
+The source is organized by `core`, `platform`, `drivers`, `assets`, `servers`, `scene`, `ui`, `main` and `api`, with optional `scripting`. A single public `vultra` static library supports direct VRI experiments; `vultra-scripting` adds native, Lua and C# project modules. See the [early engine architecture](docs/architecture.md) and [research core milestones](docs/research_milestones.md).
 
 ## Showcase
 
@@ -92,7 +97,7 @@ xmake build vultra-pack vultra-runtime
 ./build/.tmp/research-game --frames 60
 ```
 
-The unmodified runtime still accepts an external VPK path. Add `--debug-ui` to either launch form for the ImGui renderer/RenderGraph panel; F1 toggles it. `VpkArchive::packProject()` and `VpkArchive::embedProject()` also expose the two export steps to a future editor without invoking xmake. The player bakes static mesh nodes from the scene tree and loads independent native extensions plus node-attached C++, Lua 5.4 and C# scripts through one C ABI. Lua is linked statically; C# projects need an installed .NET 10 runtime. `example-scripting` renders a small arena driven by a native extension and C++ movement, Lua pickup rules and C# throttle control, with development hot reload. The separate C-only plugin demonstrates the ABI in `example-ui`. Linux still requires the system Vulkan loader, graphics driver and display stack. See [project package and runtime](docs/guide.md#project-package-and-runtime) for the format and delivery limits.
+The unmodified runtime still accepts an external VPK path. Add `--debug-ui` to either launch form for the ImGui renderer/RenderGraph panel; F1 toggles it. `VpkArchive::packProject()` and `VpkArchive::embedProject()` also expose the two export steps to a future editor without invoking xmake. The player imports mesh nodes at startup, updates their GPU transforms after script callbacks, and loads independent native extensions plus node-attached C++, Lua 5.4 and C# scripts through one C ABI. Lua is linked statically; C# projects need an installed .NET 10 runtime. `example-scripting` renders a small arena driven by a native extension and C++ movement, Lua pickup rules and C# throttle control, with development hot reload. The separate C-only plugin demonstrates the ABI in `example-ui`. Linux still requires the system Vulkan loader, graphics driver and display stack. See [project package and runtime](docs/guide.md#project-package-and-runtime) for the format and delivery limits.
 
 ## Examples
 
@@ -143,7 +148,7 @@ For xmake target/option Tab completion, source `scripts/setup_xmake_completion.z
 
 The renderer exposes an **opaque OpenPBR subset**; its IBL uses a separate GGX split-sum approximation. The glTF loader handles static scenes, with unsupported features listed in the [guide](docs/guide.md#gltf-support). This is not a complete OpenPBR or glTF implementation.
 
-The RenderGraph currently uses one graphics queue. Data-driven or Python/Lua graph construction is a future extension. Gaussian Splatting and a graph editor are excluded. Ray tracing and mesh shading are available as focused examples. See the [example coverage table](docs/example_parity.md) for differences from `dev`, including lighting and renderer paths that are not yet ported.
+The RenderGraph currently uses one graphics queue. Version-1 JSON graph definitions and the minimal research workbench use its existing executor. The workbench edits authored scene snapshots and numeric pass parameters; the generated experiment API exposes graph configuration to optional Python research sessions. Explicit texture history and opt-in transient reuse are available. Its node canvas connects project passes with built-in scene outputs; individual built-in renderer passes are not yet editable graph nodes. Gaussian Splatting is outside the current scope. Ray tracing and mesh shading remain focused examples; [reference transport](docs/reference_renderer.md) runs in the workbench, batch and [Python sessions](docs/python_research.md). [Follow-up tasks](docs/future_tasks.md) distinguish remaining milestone gates from dev-next feature candidates. See the [example coverage table](docs/example_parity.md) for differences from `dev`, including lighting and renderer paths that are not yet ported.
 
 OpenXR requires an available runtime device. Offscreen color tests and Monado simulated-device eye/mirror rendering have been verified; physical-headset validation remains outstanding.
 
@@ -162,6 +167,7 @@ Run `xmake test -v` for the test suite. Follow the checked-in `.clang-format` an
 - [SDL3](https://github.com/libsdl-org/SDL/tree/release-3.4.0): optional desktop window/input backend (zlib license)
 - [Native File Dialog Extended](https://github.com/btzy/nativefiledialog-extended/tree/v1.3.0): Linux portal model picker (zlib license)
 - [Dear ImGui](https://github.com/ocornut/imgui): immediate-mode UI, docking and multiple viewports
+- [imgui-node-editor](https://github.com/thedmd/imgui-node-editor): optional research editor node canvas (MIT)
 - [Slang](https://github.com/shader-slang/slang): shader compilation to SPIR-V
 - [argparse](https://github.com/p-ranav/argparse): command-line argument parsing
 - [spdlog](https://github.com/gabime/spdlog): console and file logging
@@ -177,7 +183,7 @@ Run `xmake test -v` for the test suite. Follow the checked-in `.clang-format` an
 - [GLM](https://github.com/g-truc/glm): vector and matrix math
 - [OpenXR SDK](https://github.com/KhronosGroup/OpenXR-SDK): OpenXR headers and runtime loader
 - [Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers): Vulkan API declarations
-- [nlohmann/json](https://github.com/nlohmann/json): asset-cache metadata parsing
+- [nlohmann/json](https://github.com/nlohmann/json): asset metadata, graph definitions and workspace persistence
 
 ## License
 
