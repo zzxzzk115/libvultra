@@ -25,6 +25,13 @@ vsxmake*/
 
 # clangd
 *.clangd
+compile_commands.json
+
+# Python tooling and research package artifacts
+__pycache__/
+*.pyc
+source/api/python/*.egg-info/
+source/api/python/dist/
 
 # Runtime artifacts
 .vultra/
@@ -40,3 +47,5 @@ tests/managed_reload/bin/
 tests/managed_reload/obj/
 tests/managed_control/bin/
 tests/managed_control/obj/
+tests/scene_scripts/bin/
+tests/scene_scripts/obj/
