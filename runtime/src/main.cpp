@@ -10,6 +10,7 @@
 #include <vultra/scene/camera/orbit_camera.hpp>
 #include <vultra/scene/scene_import.hpp>
 #include <vultra/scene/scene_render_state.hpp>
+#include <vultra/scene/scene_shader_materials.hpp>
 #include <vultra/scene/scene_tree.hpp>
 #include <vultra/scripting/script_host.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
@@ -149,7 +150,8 @@ namespace
                 // The previous frame is complete before onUpdate; drop graph callbacks before the old renderer.
                 m_Graph.reset();
                 m_GraphSnapshot.reset();
-                m_Renderer       = std::move(renderer);
+                m_Renderer = std::move(renderer);
+                m_ShaderMaterials.reset();
                 m_GpuScene       = std::move(gpuScene);
                 m_SceneInstances = std::move(instances);
                 m_GpuSync        = {};
@@ -199,6 +201,14 @@ namespace
             {
                 ui.textWrapped("%s", diagnostics.c_str());
             }
+            if (m_ShaderMaterials)
+            {
+                const auto shaderDiagnostics = m_ShaderMaterials->diagnostics();
+                if (!shaderDiagnostics.empty())
+                {
+                    ui.textWrapped("%s", shaderDiagnostics.c_str());
+                }
+            }
             if (m_GraphSnapshot)
             {
                 ui.separatorText("RenderGraph");
@@ -228,92 +238,73 @@ namespace
                 capture.keyboard |= gameCapture.keyboard;
             }
             m_Camera.update(getWindow().input(), getWindow().size(), capture);
-        }
-
-        void onRender(VriCommandBuffer* cmd, Texture& target) override
-        {
             if (!m_Graph || m_Size != getSwapchain().size() || m_Outputs.path != m_Renderer->settings.path)
             {
-                m_Size  = getSwapchain().size();
-                m_Graph = std::make_unique<RenderGraph>(getDevice());
-                m_GraphSnapshot.reset();
+                m_Size       = getSwapchain().size();
+                m_Graph      = std::make_unique<RenderGraph>(getDevice());
                 m_Outputs    = m_Renderer->addPasses(*m_Graph, m_Size);
                 m_SceneColor = m_Outputs.color;
-                m_Backbuffer = m_Graph->importResource("backbuffer", target, false);
-                m_Graph->addPass("Copy scene",
-                                 {{m_SceneColor, Usage::eCopySource}, {m_Backbuffer, Usage::eCopyDestination}},
-                                 [this](auto* command, auto& resources)
-                                 {
-                                     VriTextureCopyDesc copy {};
-                                     copy.src.layerNum = 1;
-                                     copy.dst.layerNum = 1;
-                                     copy.src.aspect   = VriImageAspect_Color;
-                                     copy.dst.aspect   = VriImageAspect_Color;
-                                     getDevice().core.CmdCopyTexture(command,
-                                                                     resources.getTexture(m_Backbuffer).handle,
-                                                                     resources.getTexture(m_SceneColor).handle,
-                                                                     &copy);
-                                 });
-                if (m_VGui)
-                {
-                    m_Graph->addPass("Game UI",
-                                     {{m_Backbuffer, Usage::eColorReadWrite}},
-                                     [this](auto* command, auto& resources)
-                                     {
-                                         m_VGui->draw(command, resources.getTexture(m_Backbuffer));
-                                     });
-                }
-                m_Graph->addPass(
-                    "Plugin UI",
-                    {{m_Backbuffer, Usage::eColorReadWrite}},
-                    [this](auto* command, auto& resources)
-                    {
-                        getEditorGui().copy(command);
-                        beginColorPass(getDevice(), command, resources.getTexture(m_Backbuffer).view(), m_Size);
-                        getEditorGui().draw(command);
-                        getDevice().core.CmdEndRendering(command);
-                    });
-                m_Graph->addPass(
-                    "Present",
-                    {{m_Backbuffer, Usage::ePresent}},
-                    [](auto*, auto&)
-                    {
-                    },
-                    true);
                 m_Graph->exportResource(m_SceneColor);
                 m_Graph->compile();
                 m_GraphSnapshot = m_Graph->snapshot();
             }
-            m_Graph->bind(m_Backbuffer, target);
+            if (!m_ShaderMaterials && SceneShaderMaterials::containsShaders(m_Project.scene))
+            {
+                m_ShaderMaterials =
+                    std::make_unique<SceneShaderMaterials>(getDevice(), m_Project.manifest, m_Project.root);
+            }
+            if (m_ShaderMaterials)
+            {
+                m_ShaderMaterials->update(m_Project.scene, m_SceneInstances, *m_Renderer, *m_Graph, m_Outputs);
+            }
             m_SceneRenderState.update(m_Project.scene, m_Size);
             m_Renderer->prepare(m_SceneRenderState.camera.value_or(m_Camera.camera(m_Size)),
                                 *m_Graph,
                                 m_Outputs,
                                 m_SceneRenderState.lighting(),
                                 m_SceneRenderState.environmentIntensity);
-            m_Graph->execute(cmd);
         }
 
-        RuntimeProject                       m_Project;
-        Environment                          m_Environment;
-        std::vector<SceneMeshInstance>       m_SceneInstances;
-        SceneGpuSync                         m_GpuSync;
-        GpuSceneHandle                       m_GpuScene;
-        std::unique_ptr<BuiltinRenderer>     m_Renderer;
-        OrbitCamera                          m_Camera;
-        SceneRenderState                     m_SceneRenderState;
-        std::unique_ptr<VGui>                m_VGui;
-        ScriptHost                           m_Scripts;
-        std::filesystem::path                m_Capture;
-        std::unique_ptr<RenderGraph>         m_Graph;
-        BuiltinRenderer::Outputs             m_Outputs {};
-        RenderGraph::Resource                m_SceneColor {};
-        RenderGraph::Resource                m_Backbuffer {};
-        Extent                               m_Size {};
-        std::optional<RenderGraph::Snapshot> m_GraphSnapshot;
-        std::optional<FrameTiming>           m_LastFrame;
-        bool                                 m_DebugUiEnabled = false;
-        bool                                 m_DebugUiVisible = false;
+        void onRender(VriCommandBuffer* cmd, Texture& target) override
+        {
+            m_Graph->execute(cmd);
+            auto& color = m_Graph->getTexture(m_SceneColor);
+            color.transition(cmd, {VriAccess_CopySourceRead, VriLayout_CopySource, VriPipelineStage_Transfer});
+            target.transition(cmd,
+                              {VriAccess_CopyDestinationWrite, VriLayout_CopyDestination, VriPipelineStage_Transfer});
+            VriTextureCopyDesc copy {};
+            copy.src.layerNum = 1;
+            copy.dst.layerNum = 1;
+            copy.src.aspect   = VriImageAspect_Color;
+            copy.dst.aspect   = VriImageAspect_Color;
+            getDevice().core.CmdCopyTexture(cmd, target.handle, color.handle, &copy);
+            if (m_VGui)
+            {
+                m_VGui->draw(cmd, target);
+            }
+            drawGui(cmd, target);
+        }
+
+        RuntimeProject                        m_Project;
+        Environment                           m_Environment;
+        std::vector<SceneMeshInstance>        m_SceneInstances;
+        SceneGpuSync                          m_GpuSync;
+        GpuSceneHandle                        m_GpuScene;
+        std::unique_ptr<SceneShaderMaterials> m_ShaderMaterials;
+        std::unique_ptr<BuiltinRenderer>      m_Renderer;
+        OrbitCamera                           m_Camera;
+        SceneRenderState                      m_SceneRenderState;
+        std::unique_ptr<VGui>                 m_VGui;
+        ScriptHost                            m_Scripts;
+        std::filesystem::path                 m_Capture;
+        std::unique_ptr<RenderGraph>          m_Graph;
+        BuiltinRenderer::Outputs              m_Outputs {};
+        RenderGraph::Resource                 m_SceneColor {};
+        Extent                                m_Size {};
+        std::optional<RenderGraph::Snapshot>  m_GraphSnapshot;
+        std::optional<FrameTiming>            m_LastFrame;
+        bool                                  m_DebugUiEnabled = false;
+        bool                                  m_DebugUiVisible = false;
     };
 } // namespace
 

@@ -203,6 +203,7 @@ try
             }
         }
         gui.upload(extent);
+        active->prepareFrame();
         auto* cmd = frame.begin();
         active->record(cmd);
         gui.copy(cmd);

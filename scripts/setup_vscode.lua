@@ -73,17 +73,27 @@ function main(projectDir)
     local clean = stripJsonc(source)
     assert(clean:match("^%s*{"), "settings.json must contain a JSON object")
     local settings = json.decode(clean)
+    local searchPaths = {"${workspaceFolder}/builtin/shaders", "${workspaceFolder}/external", "${workspaceFolder}/examples/common"}
+    local shaderDirectories = {}
+    for _, sourceFile in ipairs(os.files(path.join(root, "**.vshader|build/**|external/**|.vultra/**"))) do
+        shaderDirectories[path.directory(sourceFile)] = true
+    end
+    local directories = table.keys(shaderDirectories)
+    table.sort(directories)
+    for _, directory in ipairs(directories) do
+        table.insert(searchPaths, "${workspaceFolder}/" .. path.relative(directory, root):gsub("\\", "/"))
+    end
+    for _, directory in ipairs(settings["slang.additionalSearchPaths"] or {}) do
+        if not table.contains(searchPaths, directory) then table.insert(searchPaths, directory) end
+    end
     local required = {
         ["clangd.arguments"] = {
             "--compile-commands-dir=.vscode",
             "--header-insertion=never",
             "--fallback-style=none"
         },
-        ["slang.additionalSearchPaths"] = {
-            "${workspaceFolder}/builtin/shaders",
-            "${workspaceFolder}/external",
-            "${workspaceFolder}/examples/common"
-        },
+        ["slang.additionalSearchPaths"] = searchPaths,
+        ["vultra.shader.includeDirectories"] = searchPaths,
         ["slang.searchInAllWorkspaceDirectories"] = false
     }
     local changed = source:find("\\/", 1, true) ~= nil

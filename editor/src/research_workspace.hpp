@@ -5,6 +5,7 @@
 #include <vultra/scene/camera/orbit_camera.hpp>
 #include <vultra/scene/scene_import.hpp>
 #include <vultra/scene/scene_render_state.hpp>
+#include <vultra/scene/scene_shader_materials.hpp>
 #include <vultra/scene/scene_tree.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
 #include <vultra/servers/rendering/builtin/reference_path_tracer.hpp>
@@ -64,6 +65,7 @@ namespace vultra
         void setPassParameters(std::string_view id, const PassParameters& parameters);
         // Build replacement lighting before publishing scene selection/asset changes. Zero selects the project preset.
         void setEnvironment(ObjectId node, AssetId radiance);
+        void prepareFrame(); // After GPU completion, before command recording.
         void record(VriCommandBuffer* cmd, Profiler* profiler = nullptr);
         void completeFrame(); // After submission and GPU completion, before editing or exporting.
         void save(const std::filesystem::path& file) const;
@@ -76,20 +78,23 @@ namespace vultra
         const ProjectManifest&  project() const;
         GpuSceneRid             sceneRid() const;
         // Imported slots belong to this mesh instance; overrides can only target these numeric material ranges.
-        uint32_t materialSlotCount(ObjectId mesh) const;
+        uint32_t           materialSlotCount(ObjectId mesh) const;
+        const ShaderAsset& shaderAsset(ObjectId material);
+        std::string        shaderDiagnostics() const;
 
     private:
         struct Scene
         {
-            std::filesystem::path            projectPath;
-            ProjectManifest                  project;
-            std::unique_ptr<SceneTree>       tree;
-            SceneRenderState                 renderState;
-            std::vector<SceneMeshInstance>   instances;
-            SceneGpuSync                     gpuSync;
-            GpuSceneHandle                   gpu;
-            std::unique_ptr<Environment>     environment;
-            std::unique_ptr<BuiltinRenderer> renderer;
+            std::filesystem::path                 projectPath;
+            ProjectManifest                       project;
+            std::unique_ptr<SceneTree>            tree;
+            SceneRenderState                      renderState;
+            std::vector<SceneMeshInstance>        instances;
+            SceneGpuSync                          gpuSync;
+            GpuSceneHandle                        gpu;
+            std::unique_ptr<Environment>          environment;
+            std::unique_ptr<SceneShaderMaterials> shaderMaterials;
+            std::unique_ptr<BuiltinRenderer>      renderer;
         };
 
         Device&                        m_Device;

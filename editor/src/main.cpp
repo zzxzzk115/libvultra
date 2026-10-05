@@ -236,6 +236,11 @@ namespace
                         m_GraphEditor.reset();
                     }
                     ui.textWrapped("%s", m_Status.c_str());
+                    const auto shaderDiagnostics = m_Workspace.shaderDiagnostics();
+                    if (!shaderDiagnostics.empty())
+                    {
+                        ui.textWrapped("%s", shaderDiagnostics.c_str());
+                    }
                     ui.textWrapped("Pass parameters preview while dragging. Connections compile after release. "
                                    "Invalid edits keep the active image. Scene settings use Apply.");
                     try
@@ -423,6 +428,11 @@ namespace
             }
         }
 
+        void prepare()
+        {
+            m_Workspace.prepareFrame();
+        }
+
         void record(VriCommandBuffer* cmd)
         {
             m_Workspace.record(cmd, &m_Profiler);
@@ -528,6 +538,7 @@ namespace
             m_Panel.applyPending();
             ImGuiApp::onPreRender();
             m_Panel.camera().update(getWindow().input(), getWindow().size(), getEditorGui().inputCapture());
+            m_Panel.prepare();
         }
 
         void onImGui() override
@@ -571,6 +582,7 @@ namespace
             gui.begin(extent, 1.0f / 60);
             panel.draw();
             gui.upload(extent);
+            panel.prepare();
             auto* cmd = frame.begin();
             panel.record(cmd);
             drawWorkbench(device, gui, cmd, target);

@@ -21,6 +21,32 @@ asset_target("asset-sponza", "resources/models/Sponza/Sponza.gltf")
 asset_target("asset-rayquery", "resources/models/raytracing_shadow/raytracing_shadow.gltf")
 asset_target("asset-cornell-box", "resources/models/CornellBox/CornellBox-Original.obj")
 
+target("example-shaders")
+    set_kind("phony")
+    set_default(false)
+    add_deps("vultra-shader", {inherit = false})
+    on_build(function (target)
+        import("private.action.run.runenvs")
+        local cooker = target:dep("vultra-shader")
+        local addenvs, setenvs = runenvs.make(cooker)
+        for _, source in ipairs({"examples/shader/painted_metal.vshader", "examples/research/shaders/color_gain.slang"}) do
+            local output = path.join(os.projectdir(), "build/shaders/examples", path.basename(source) .. ".vshaderc")
+            os.execv(path.absolute(cooker:targetfile()),
+                {source, "--output", output, "--include", "builtin/shaders", "--include", "external"},
+                {curdir = os.projectdir(), addenvs = addenvs, setenvs = setenvs})
+        end
+    end)
+target_end()
+
+target("example-shader")
+    set_kind("binary")
+    set_default(true)
+    add_deps("vultra")
+    add_deps("example-shaders", {inherit = false})
+    add_files("shader/main.cpp")
+    set_rundir("$(projectdir)")
+target_end()
+
 target("example-assets")
     set_kind("phony")
     set_default(false)

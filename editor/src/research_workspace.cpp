@@ -471,7 +471,27 @@ namespace vultra
         return uint32_t(instance->importedMaterials.size());
     }
 
-    void ResearchWorkspace::record(VriCommandBuffer* cmd, Profiler* profiler)
+    const ShaderAsset& ResearchWorkspace::shaderAsset(ObjectId material)
+    {
+        if (!m_Scene->shaderMaterials)
+        {
+            m_Scene->shaderMaterials =
+                std::make_unique<SceneShaderMaterials>(m_Device, m_Scene->project, m_Scene->projectPath.parent_path());
+        }
+        const auto* resource = m_Scene->tree->findMaterial(material);
+        if (!resource)
+        {
+            throw std::invalid_argument("Shader material was removed");
+        }
+        return m_Scene->shaderMaterials->asset(resource->shaderMaterial());
+    }
+
+    std::string ResearchWorkspace::shaderDiagnostics() const
+    {
+        return m_Scene->shaderMaterials ? m_Scene->shaderMaterials->diagnostics() : std::string {};
+    }
+
+    void ResearchWorkspace::prepareFrame()
     {
         auto& active = graph();
         if (m_Scene->gpuSync.environmentChanged(*m_Scene->tree))
@@ -480,6 +500,28 @@ namespace vultra
                 sceneEnvironmentPath(*m_Scene->tree, m_Scene->project, m_Scene->projectPath.parent_path()));
         }
         m_Scene->gpuSync.update(*m_Scene->tree, m_Scene->instances, *m_Scene->gpu);
+        if (SceneShaderMaterials::containsShaders(*m_Scene->tree))
+        {
+            if (active.reference)
+            {
+                throw std::invalid_argument(
+                    "Game Surface materials require a raster render path; RayQuery uses raw Slang");
+            }
+            if (!m_Scene->shaderMaterials)
+            {
+                m_Scene->shaderMaterials = std::make_unique<SceneShaderMaterials>(m_Device,
+                                                                                  m_Scene->project,
+                                                                                  m_Scene->projectPath.parent_path());
+            }
+        }
+        if (m_Scene->shaderMaterials)
+        {
+            m_Scene->shaderMaterials->update(*m_Scene->tree,
+                                             m_Scene->instances,
+                                             *m_Scene->renderer,
+                                             active.graph,
+                                             active.rendererOutputs);
+        }
         m_Scene->renderState.update(*m_Scene->tree, m_Document.size);
         const auto camera = m_Scene->renderState.camera.value_or(m_Camera.camera(m_Document.size));
         if (active.reference)
@@ -508,7 +550,11 @@ namespace vultra
                                        m_Scene->renderState.lighting(),
                                        m_Scene->renderState.environmentIntensity);
         }
-        active.graph.execute(cmd, profiler);
+    }
+
+    void ResearchWorkspace::record(VriCommandBuffer* cmd, Profiler* profiler)
+    {
+        graph().graph.execute(cmd, profiler);
     }
 
     void ResearchWorkspace::completeFrame()

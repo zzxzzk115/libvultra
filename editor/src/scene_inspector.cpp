@@ -3,6 +3,7 @@
 #include <vultra/api/scene_properties.generated.hpp>
 #include <vultra/scene/scene_api.hpp>
 #include <vultra/ui/editor_gui.hpp>
+#include <vultra/ui/editor_gui_shader_material.hpp>
 
 // GLM requires this opt-in for its matrix decomposition utility.
 #define GLM_ENABLE_EXPERIMENTAL
@@ -311,6 +312,18 @@ namespace vultra
         if (auto* material = tree.findMaterial(m_Selected))
         {
             ui.text("%s | Material", material->name().c_str());
+            if (material->kind() == MaterialResource::Kind::eShader)
+            {
+                auto instance = material->shaderMaterial();
+                if (drawShaderMaterialInspector(m_Gui,
+                                                workspace.shaderAsset(material->id()),
+                                                instance,
+                                                &workspace.project()))
+                {
+                    material->setShaderMaterial(std::move(instance));
+                }
+                return;
+            }
             ui.textWrapped("Shared numeric parameters. Imported textures remain bound.");
             auto               parameters = material->parameters();
             EditorGuiInspector inspector(m_Gui, id.c_str());

@@ -1,0 +1,73 @@
+{
+  "scopeName": "source.vshader",
+  "patterns": [
+    {
+      "name": "comment.line.double-slash.vshader",
+      "begin": "//",
+      "end": "$"
+    },
+    {
+      "name": "comment.block.vshader",
+      "begin": "/\\*",
+      "end": "\\*/"
+    },
+    {
+      "name": "meta.program.vshader",
+      "begin": "\\b(SLANGPROGRAM|SLANGINCLUDE)\\b",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.vshader"
+        }
+      },
+      "end": "^\\s*(ENDSLANG)\\s*$",
+      "endCaptures": {
+        "1": {
+          "name": "keyword.control.vshader"
+        }
+      },
+      "contentName": "source.slang",
+      "patterns": [
+        {
+          "name": "meta.preprocessor.vshader",
+          "begin": "^[ \\t]*#",
+          "end": "(?<!\\\\)$",
+          "patterns": [
+            {
+              "include": "source.slang"
+            }
+          ]
+        },
+        {
+          "include": "source.slang"
+        }
+      ]
+    },
+    {
+      "name": "string.quoted.double.vshader",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.vshader",
+          "match": "\\\\."
+        }
+      ]
+    },
+    {
+      "name": "keyword.control.vshader",
+      "match": "\\b(Shader|Properties|SubShader|Pass|Surface|Tags|Variant|Constants|Modules|Defines|Requires|Name|Model|Entry|Vertex|Fragment|Task|Mesh|Compute|Cull|FrontFace|ZWrite|ZTest|DepthBias|Blend|BlendOp|ColorMask|Stencil|Ref|ReadMask|WriteMask|Comp|Fail|ZFail)\\b"
+    },
+    {
+      "name": "support.type.vshader",
+      "match": "\\b(Float|Range|Integer|Boolean|Vector|Color|2DArray|2D|3D|CubeArray|Cube|OpenPBR)\\b"
+    },
+    {
+      "name": "constant.numeric.vshader",
+      "match": "(?<![\\w.])[-+]?[0-9]+(?:\\.[0-9]*)?(?:[eE][-+]?[0-9]+)?"
+    },
+    {
+      "name": "constant.language.vshader",
+      "match": "\\b(true|false|On|Off|Back|Front|LEqual|Always)\\b"
+    }
+  ]
+}

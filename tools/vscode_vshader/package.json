@@ -1,0 +1,24 @@
+{
+  "name": "vultra-shader",
+  "displayName": "Vultra Shader",
+  "description": "Vultra game shader syntax and source-mapped native Slang language services",
+  "version": "0.1.0",
+  "publisher": "vultra",
+  "engines": { "vscode": "^1.90.0" },
+  "main": "./extension.js",
+  "extensionDependencies": ["shader-slang.slang-language-extension"],
+  "activationEvents": ["onLanguage:vshader"],
+  "capabilities": { "untrustedWorkspaces": { "supported": false } },
+  "contributes": {
+    "languages": [{ "id": "vshader", "aliases": ["Vultra Shader"], "extensions": [".vshader"], "configuration": "./language_configuration.json" }],
+    "grammars": [{ "language": "vshader", "scopeName": "source.vshader", "path": "./vshader.tmLanguage.json", "embeddedLanguages": { "source.slang": "slang" } }],
+    "commands": [{ "command": "vultra.shader.generatedSource", "title": "Vultra: View Generated Slang" }],
+    "configuration": {
+      "title": "Vultra Shader",
+      "properties": {
+        "vultra.shader.compilerPath": { "type": "string", "default": "", "description": "vultra-shader executable. Empty uses the workspace release build." },
+        "vultra.shader.includeDirectories": { "type": "array", "items": { "type": "string" }, "default": ["${workspaceFolder}/builtin/shaders", "${workspaceFolder}/external"], "description": "Explicit native Slang include roots. Also configure slang.additionalSearchPaths for native completion." }
+      }
+    }
+  }
+}
