@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vultra/assets/project_manifest.hpp>
+#include <vultra/drivers/profiling/profiler.hpp>
 #include <vultra/scene/camera/orbit_camera.hpp>
 #include <vultra/scene/scene_import.hpp>
 #include <vultra/scene/scene_render_state.hpp>
@@ -16,8 +17,6 @@
 
 namespace vultra
 {
-    struct PassTiming;
-
     // Tool state, separate from the project and portable .vgraph pass definition. All formats remain version 1.
     struct ResearchDocument
     {

@@ -2,7 +2,9 @@
 
 from pathlib import Path
 import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
 from clang import cindex
 
@@ -31,6 +33,38 @@ def unit(source, header="reflection_probe.hpp"):
 
 def parse(source):
     return codegen.parse_reflection(unit(source))
+
+
+class CompileCommandTests(unittest.TestCase):
+    def test_cl_and_gnu_commands_read_the_same_annotations(self):
+        with tempfile.TemporaryDirectory(dir=codegen.ROOT / "build/.tmp") as directory:
+            root = Path(directory)
+            include = root / "include"
+            header = include / "vultra/reflection_probe.hpp"
+            header.parent.mkdir(parents=True)
+            header.write_text(declaration(), encoding="utf-8")
+            source = root / "command_probe.cpp"
+            source.write_text("#include <vultra/reflection_probe.hpp>\n", encoding="utf-8")
+            commands = (
+                {
+                    "file": str(source).replace("/", "\\"),
+                    "arguments": ["C:\\LLVM\\bin\\clang-cl.exe", "/c", "/std:c++latest",
+                                  "-imsvc", str(include), str(source).replace("/", "\\")],
+                },
+                {
+                    "file": source.as_posix(),
+                    "arguments": ["clang", "-c", "-std=c++23", "-isystem", str(include),
+                                  "-o", str(root / "probe.o"), source.as_posix()],
+                },
+            )
+            for command in commands:
+                with self.subTest(compiler=command["arguments"][0]):
+                    with patch("codegen.subprocess.check_output", return_value=str(root)):
+                        parsed = codegen.translation_unit([command], "command_probe.cpp")
+                    types = codegen.parse_reflection(parsed)
+                    self.assertEqual([item["name"] for item in types], ["Probe"])
+                    self.assertEqual(types[0]["header"], "vultra/reflection_probe.hpp")
+                    self.assertEqual(types[0]["fields"][0]["label"], "Gain")
 
 
 class ReflectionTests(unittest.TestCase):

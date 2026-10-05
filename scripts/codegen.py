@@ -22,24 +22,34 @@ SOURCES = {
 }
 
 
+def source_path(file):
+    return str(file).replace("\\", "/")
+
+
 def translation_unit(database, source):
-    row = next((row for row in database if row["file"].endswith(source)), None)
+    row = next((row for row in database if source_path(row["file"]).endswith(source)), None)
     if row is None:
         raise RuntimeError(
             f"compile_commands.json has no entry for {source}; run xmake first"
         )
     args = list(row["arguments"][1:])
+    compiler = source_path(row["arguments"][0]).rsplit("/", 1)[-1].lower()
+    msvc = compiler in ("cl", "cl.exe", "clang-cl", "clang-cl.exe")
+    if msvc:
+        # xmake supplies MSVC's system headers; select the CRT's Clang-compatible offsetof.
+        args[:0] = ["--driver-mode=cl", "-D_CRT_USE_BUILTIN_OFFSETOF"]
     for option in ("-o",):
         if option in args:
             index = args.index(option)
             del args[index : index + 2]
     args = [arg for arg in args if arg not in ("-c", row["file"])]
-    resource_dir = subprocess.check_output(
-        ["clang", "-print-resource-dir"], text=True
-    ).strip()
-    args.append(f"-resource-dir={resource_dir}")
+    if not msvc:
+        resource_dir = subprocess.check_output(
+            ["clang", "-print-resource-dir"], text=True
+        ).strip()
+        args.append(f"-resource-dir={resource_dir}")
     unit = cindex.Index.create().parse(
-        row["file"],
+        source_path(row["file"]),
         args=args,
         options=cindex.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES,
     )
@@ -56,7 +66,7 @@ def translation_unit(database, source):
 def walk(cursor):
     for child in cursor.get_children():
         yield child
-        if child.location.file and "/vultra/" in child.location.file.name:
+        if child.location.file and "/vultra/" in source_path(child.location.file.name):
             yield from walk(child)
 
 
@@ -80,7 +90,7 @@ def parse_api(database):
             or "vultra.bind.ui" not in annotations(cursor)
         ):
             continue
-        if not cursor.location.file.name.endswith("/editor_gui_frame.hpp"):
+        if not source_path(cursor.location.file.name).endswith("/editor_gui_frame.hpp"):
             continue
         signature = [argument.type.spelling for argument in cursor.get_arguments()]
         if signature != ["EditorGuiFrame &", "std::string_view"] or cursor.result_type.spelling not in ("bool", "void"):
@@ -121,7 +131,7 @@ def parse_api(database):
             or "vultra.bind.scene" not in annotations(cursor)
         ):
             continue
-        if not cursor.location.file.name.endswith("/scene_api.hpp"):
+        if not source_path(cursor.location.file.name).endswith("/scene_api.hpp"):
             continue
         arguments = [
             {"name": argument.spelling, "type": argument.type.spelling}
@@ -174,7 +184,7 @@ def parse_experiments(unit):
     pods = []
     methods = []
     for cursor in walk(unit.cursor):
-        if not cursor.location.file or not cursor.location.file.name.endswith("/experiment_host.hpp"):
+        if not cursor.location.file or not source_path(cursor.location.file.name).endswith("/experiment_host.hpp"):
             continue
         if cursor.kind == cindex.CursorKind.STRUCT_DECL and "vultra.bind.pod" in annotations(cursor):
             fields = []
@@ -271,7 +281,7 @@ def parse_reflection(unit):
             fields.append({"name": field.spelling, "type": field_type, **properties})
         if not fields:
             raise RuntimeError(f"Reflected type has no annotated properties: {cursor.spelling}")
-        header = cursor.location.file.name.split("/include/", 1)[1]
+        header = source_path(cursor.location.file.name).split("/include/", 1)[1]
         structs.append({"name": cursor.spelling, "header": header, "fields": fields})
     return structs
 
