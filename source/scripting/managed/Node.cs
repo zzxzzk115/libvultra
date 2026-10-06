@@ -75,10 +75,6 @@ public enum LightKind : ulong
     Spot
 }
 
-public readonly record struct CameraSettings(float VerticalFov, float NearPlane, float FarPlane);
-public readonly record struct EnvironmentSettings(float Intensity);
-public readonly record struct LightSettings(Vector3 Color, float Intensity, float Range, float InnerCone, float OuterCone);
-
 public class Camera3D : Node3D
 {
     public CameraSettings Settings

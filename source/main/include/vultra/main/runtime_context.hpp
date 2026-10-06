@@ -12,6 +12,7 @@ namespace vultra
     class Profiler;
     class RenderingServer;
     class PassCatalog;
+    class ObjectTypeCatalog;
 
     // Owns desktop services in construction order. The GPU is idle after each submitted frame.
     class RuntimeContext
@@ -22,13 +23,14 @@ namespace vultra
         RuntimeContext(const RuntimeContext&)            = delete;
         RuntimeContext& operator=(const RuntimeContext&) = delete;
 
-        Window&          window();
-        Device&          device();
-        Swapchain&       swapchain();
-        Frame&           frame();
-        Profiler&        profiler();
-        RenderingServer& rendering();
-        PassCatalog&     passes();
+        Window&            window();
+        Device&            device();
+        Swapchain&         swapchain();
+        Frame&             frame();
+        Profiler&          profiler();
+        RenderingServer&   rendering();
+        PassCatalog&       passes();
+        ObjectTypeCatalog& types();
 
     private:
         struct Impl;

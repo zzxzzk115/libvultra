@@ -1,6 +1,8 @@
+#include <vultra/assets/material_properties.generated.hpp>
 #include <vultra/assets/source_file.hpp>
 #include <vultra/platform/os/file.hpp>
 #include <vultra/scene/render_nodes.hpp>
+#include <vultra/scene/render_properties.generated.hpp>
 #include <vultra/scene/scene_tree.hpp>
 
 #include <nlohmann/json.hpp>
@@ -157,11 +159,11 @@ namespace vultra
             }
             else if (type == "Camera")
             {
-                auto        camera   = std::make_unique<CameraNode>(name, id);
-                const auto& settings = data.at("camera");
-                camera->setSettings({settings.at("vertical_fov").get<float>(),
-                                     settings.at("near").get<float>(),
-                                     settings.at("far").get<float>()});
+                auto           camera   = std::make_unique<CameraNode>(name, id);
+                const auto&    settings = data.at("camera");
+                CameraSettings value;
+                deserializeProperties(cameraSettingsType(), settings.dump(), &value);
+                camera->setSettings(value);
                 node = std::move(camera);
             }
             else if (type == "Environment")
@@ -172,7 +174,11 @@ namespace vultra
                 {
                     environment->setRadianceAsset(parseAssetId(settings.at("radiance").get<std::string>()));
                 }
-                environment->setSettings({settings.at("intensity").get<float>()});
+                auto properties = settings;
+                properties.erase("radiance");
+                EnvironmentSettings value;
+                deserializeProperties(environmentSettingsType(), properties.dump(), &value);
+                environment->setSettings(value);
                 node = std::move(environment);
             }
             else if (type == "DirectionalLight" || type == "PointLight" || type == "SpotLight")
@@ -186,16 +192,11 @@ namespace vultra
                 {
                     kind = RenderLightKind::eSpot;
                 }
-                auto        light    = std::make_unique<LightNode>(name, kind, id);
-                const auto& settings = data.at("light");
-                const auto  color    = settings.at("color").get<std::array<float, 3>>();
-                light->setSettings({color[0],
-                                    color[1],
-                                    color[2],
-                                    settings.at("intensity").get<float>(),
-                                    settings.at("range").get<float>(),
-                                    settings.at("inner_cone").get<float>(),
-                                    settings.at("outer_cone").get<float>()});
+                auto          light    = std::make_unique<LightNode>(name, kind, id);
+                const auto&   settings = data.at("light");
+                LightSettings value;
+                deserializeProperties(lightSettingsType(), settings.dump(), &value);
+                light->setSettings(value);
                 node = std::move(light);
             }
             else
@@ -248,14 +249,14 @@ namespace vultra
             else if (node.kind() == NodeKind::eCamera)
             {
                 const auto& settings = static_cast<const CameraNode&>(node).settings();
-                data["camera"]       = {{"vertical_fov", settings.verticalFov},
-                                        {"near", settings.nearPlane},
-                                        {"far", settings.farPlane}};
+                data["camera"]       = Json::parse(serializeProperties(cameraSettingsType(), &settings));
             }
             else if (node.kind() == NodeKind::eEnvironment)
             {
                 const auto& environment = static_cast<const EnvironmentNode&>(node);
-                data["environment"]     = {{"radiance", nullptr}, {"intensity", environment.settings().intensity}};
+                data["environment"] =
+                    Json::parse(serializeProperties(environmentSettingsType(), &environment.settings()));
+                data["environment"]["radiance"] = nullptr;
                 if (environment.radianceAsset().value.valid())
                 {
                     data["environment"]["radiance"] = environment.radianceAsset().value.toString();
@@ -264,11 +265,7 @@ namespace vultra
             else if (node.kind() == NodeKind::eLight)
             {
                 const auto& settings = static_cast<const LightNode&>(node).settings();
-                data["light"]        = {{"color", {settings.red, settings.green, settings.blue}},
-                                        {"intensity", settings.intensity},
-                                        {"range", settings.range},
-                                        {"inner_cone", settings.innerCone},
-                                        {"outer_cone", settings.outerCone}};
+                data["light"]        = Json::parse(serializeProperties(lightSettingsType(), &settings));
             }
             for (int column = 0; column < 4; ++column)
             {
@@ -306,53 +303,16 @@ namespace vultra
 
         Json writeParameters(const MaterialParameters& value)
         {
-            return {{"base_color", {value.baseRed, value.baseGreen, value.baseBlue, value.baseAlpha}},
-                    {"base_weight", value.baseWeight},
-                    {"metalness", value.baseMetalness},
-                    {"diffuse_roughness", value.baseDiffuseRoughness},
-                    {"specular_weight", value.specularWeight},
-                    {"specular_color", {value.specularRed, value.specularGreen, value.specularBlue}},
-                    {"roughness", value.specularRoughness},
-                    {"specular_ior", value.specularIor},
-                    {"coat_weight", value.coatWeight},
-                    {"coat_roughness", value.coatRoughness},
-                    {"coat_ior", value.coatIor},
-                    {"emission_color", {value.emissionRed, value.emissionGreen, value.emissionBlue}},
-                    {"emission_luminance", value.emissionLuminance},
-                    {"normal_scale", value.normalScale},
-                    {"occlusion_strength", value.occlusionStrength},
-                    {"alpha_cutoff", value.alphaCutoff}};
+            return Json::parse(serializeProperties(materialParametersType(), &value));
         }
 
         MaterialParameters readParameters(const Json& data)
         {
-            const auto base     = data.at("base_color").get<std::array<float, 4>>();
-            const auto specular = data.at("specular_color").get<std::array<float, 3>>();
-            const auto emission = data.at("emission_color").get<std::array<float, 3>>();
-            return {base[0],
-                    base[1],
-                    base[2],
-                    base[3],
-                    data.at("base_weight").get<float>(),
-                    data.at("metalness").get<float>(),
-                    data.at("diffuse_roughness").get<float>(),
-                    data.at("specular_weight").get<float>(),
-                    specular[0],
-                    specular[1],
-                    specular[2],
-                    data.at("roughness").get<float>(),
-                    data.at("specular_ior").get<float>(),
-                    data.at("coat_weight").get<float>(),
-                    data.at("coat_roughness").get<float>(),
-                    data.at("coat_ior").get<float>(),
-                    emission[0],
-                    emission[1],
-                    emission[2],
-                    data.at("emission_luminance").get<float>(),
-                    data.at("normal_scale").get<float>(),
-                    data.at("occlusion_strength").get<float>(),
-                    data.at("alpha_cutoff").get<float>()};
+            MaterialParameters value;
+            deserializeProperties(materialParametersType(), data.dump(), &value);
+            return value;
         }
+
     } // namespace
 
     SceneTree::SceneTree(std::unique_ptr<Node> root) :

@@ -4,6 +4,7 @@
 #include <vultra/platform/os/file.hpp>
 #include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/scene_import.hpp>
+#include <vultra/servers/rendering/builtin/render_properties.generated.hpp>
 #include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/servers/rendering/research/graph_report.hpp>
 
@@ -180,29 +181,16 @@ namespace vultra
         {
             storedProject = projectPath; // Different Windows volumes cannot share a relative path.
         }
-        const auto  projectText = storedProject.generic_u8string();
-        std::string renderPath  = "deferred";
-        if (settings.path == RenderPath::eNaiveForward)
-        {
-            renderPath = "forward";
-        }
-        else if (settings.path == RenderPath::eReferencePathTracing)
-        {
-            renderPath = "reference";
-        }
-        Json data {{"format", "vultra.research"},
-                   {"version", 1},
-                   {"project", std::string(projectText.begin(), projectText.end())},
-                   {"scene", snapshot},
-                   {"graph", Json::parse(definition.serialize())},
-                   {"extent", {size.width, size.height}},
-                   {"renderer",
-                    {{"path", renderPath},
-                     {"seed", seed},
-                     {"exposure", settings.exposure},
-                     {"sun_intensity", settings.lightIntensity},
-                     {"skybox", settings.skybox},
-                     {"ibl", settings.ibl}}}};
+        const auto projectText = storedProject.generic_u8string();
+        Json       data {{"format", "vultra.research"},
+                         {"version", 1},
+                         {"project", std::string(projectText.begin(), projectText.end())},
+                         {"scene", snapshot},
+                         {"graph", Json::parse(definition.serialize())},
+                         {"extent", {size.width, size.height}},
+                         {"seed", seed},
+                         {"renderer", Json::parse(serializeProperties(renderSettingsType(), &settings))}};
+
         if (camera)
         {
             data["camera"] = {{"center", {camera->center.x, camera->center.y, camera->center.z}},
@@ -261,27 +249,14 @@ namespace vultra
                     throw std::invalid_argument("Research extent needs two positive integer dimensions");
                 }
             }
-            document.size        = {extent[0].get<uint32_t>(), extent[1].get<uint32_t>()};
-            const auto& settings = data.at("renderer");
-            const auto  path     = settings.at("path").get<std::string>();
-            if (path != "deferred" && path != "forward" && path != "reference")
-            {
-                throw std::invalid_argument("Unknown research render path: " + path);
-            }
-            document.settings.path = path == "deferred" ? RenderPath::eNaiveDeferred : RenderPath::eNaiveForward;
-            if (path == "reference")
-            {
-                document.settings.path = RenderPath::eReferencePathTracing;
-            }
-            if (!settings.at("seed").is_number_unsigned() || settings.at("seed") > UINT32_MAX)
+            document.size    = {extent[0].get<uint32_t>(), extent[1].get<uint32_t>()};
+            const auto& seed = data.at("seed");
+            if (!seed.is_number_unsigned() || seed > UINT32_MAX)
             {
                 throw std::invalid_argument("Research seed must fit uint32");
             }
-            document.seed                    = settings.at("seed").get<uint32_t>();
-            document.settings.exposure       = settings.at("exposure").get<float>();
-            document.settings.lightIntensity = settings.at("sun_intensity").get<float>();
-            document.settings.skybox         = settings.at("skybox").get<bool>();
-            document.settings.ibl            = settings.at("ibl").get<bool>();
+            document.seed = seed.get<uint32_t>();
+            deserializeProperties(renderSettingsType(), data.at("renderer").dump(), &document.settings);
             if (data.contains("camera"))
             {
                 const auto& value            = data.at("camera");

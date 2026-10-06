@@ -1,9 +1,9 @@
 #include "color_gain.hpp"
 
-#include <vultra/api/render_settings.generated.hpp>
 #include <vultra/assets/asset_pipeline.hpp>
 #include <vultra/core/base/command_line.hpp>
 #include <vultra/core/base/logger.hpp>
+#include <vultra/core/base/property.hpp>
 #include <vultra/drivers/profiling/benchmark.hpp>
 #include <vultra/drivers/profiling/profiler.hpp>
 #include <vultra/main/app/imgui_app.hpp>
@@ -399,7 +399,7 @@ private:
                 auto& settings = m_Renderer->settings;
                 if (EditorGuiInspector inspector(getEditorGui(), "Settings"); inspector)
                 {
-                    drawRenderSettings(inspector, settings);
+                    inspector.properties(getObjectTypeCatalog().type("RenderSettings"), &settings);
                 }
                 m_Screenshot = ui.button("Save scene PNG");
                 ui.sameLine();

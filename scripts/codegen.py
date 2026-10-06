@@ -175,7 +175,8 @@ def parse_api(database):
     if not any(item["name"] == "RenderSettings" for item in structs):
         raise RuntimeError("Missing reflected RenderSettings declaration")
     experiment_pods, experiment_functions = parse_experiments(experiment_unit)
-    return {"ui_functions": functions, "scene_functions": scene_functions, "pods": pods, "types": structs,
+    return {"format": "vultra.api", "version": 1,
+            "ui_functions": functions, "scene_functions": scene_functions, "pods": pods, "types": structs,
             "experiment_pods": experiment_pods, "experiment_functions": experiment_functions}
 
 
@@ -228,57 +229,150 @@ def parse_experiments(unit):
     return sorted(pods, key=lambda item: item["name"]), sorted(functions, key=lambda item: item["name"])
 
 
+PROPERTY_KINDS = {
+    "bool": "eBool", "float": "eFloat", "double": "eDouble", "std::string": "eString",
+    "int": "eInt", "int32_t": "eInt", "int64_t": "eInt", "uint32_t": "eUInt", "uint64_t": "eUInt",
+    "glm::vec2": "eVector2", "glm::vec3": "eVector3", "glm::vec4": "eVector4", "glm::mat4": "eMatrix4",
+}
+PROPERTY_FLAGS = {"serialize": 1, "inspect": 2, "bind": 4, "reload": 8}
+
+
+def parse_property_metadata(cursor, field, metadata):
+    properties = {}
+    for entry in metadata.split(";"):
+        if "=" not in entry:
+            raise RuntimeError(f"Invalid property metadata: {cursor.spelling}.{field.spelling}")
+        key, value = entry.split("=", 1)
+        if key not in {"label", "min", "max", "widget", "speed", "options", "flags", "json", "api"} or key in properties:
+            raise RuntimeError(f"Unknown/duplicate property metadata: {cursor.spelling}.{field.spelling}: {key}")
+        properties[key] = value
+    return properties
+
+
+def validate_property_range(cursor, field, properties, kind, flags):
+    widget = properties.get("widget", "slider")
+    if widget not in ("slider", "drag"):
+        raise RuntimeError(f"Unsupported widget: {cursor.spelling}.{field.spelling}")
+    numeric = kind in ("eInt", "eUInt", "eFloat", "eDouble", "eVector2", "eVector3", "eVector4")
+    if numeric and "inspect" in flags and not {"min", "max"} <= properties.keys():
+        raise RuntimeError(f"Numeric property {field.spelling} needs min and max")
+    if widget == "drag" and (not numeric or "speed" not in properties):
+        raise RuntimeError(f"Drag field {field.spelling} needs a numeric value and speed")
+    if ("min" in properties) != ("max" in properties):
+        raise RuntimeError(f"Property {field.spelling} needs both min and max")
+    try:
+        minimum = float(properties.get("min", "0"))
+        maximum = float(properties.get("max", "0"))
+        speed = float(properties.get("speed", "1"))
+    except ValueError as error:
+        raise RuntimeError(f"Invalid property number: {cursor.spelling}.{field.spelling}") from error
+    if (not all(math.isfinite(value) for value in (minimum, maximum, speed)) or speed <= 0
+            or ("min" in properties and minimum >= maximum)):
+        raise RuntimeError(f"Invalid property range/speed: {cursor.spelling}.{field.spelling}")
+    float_limit = 3.4028234663852886e38
+    if speed > float_limit or (kind in ("eFloat", "eVector2", "eVector3", "eVector4") and
+                              max(abs(minimum), abs(maximum)) > float_limit):
+        raise RuntimeError(f"Property range/speed exceeds float storage: {field.spelling}")
+    if kind in ("eInt", "eUInt") and "inspect" in flags:
+        bits = field.type.get_size() * 8
+        lower = -(2 ** (bits - 1)) if kind == "eInt" else 0
+        upper = 2 ** (bits - (1 if kind == "eInt" else 0)) - 1
+        try:
+            integer_min = int(properties["min"])
+            integer_max = int(properties["max"])
+        except ValueError as error:
+            raise RuntimeError(f"Integer property range must be integral: {field.spelling}") from error
+        if integer_min < lower or integer_max > upper:
+            raise RuntimeError(f"Integer property range exceeds its type: {field.spelling}")
+        if int(minimum) != integer_min or int(maximum) != integer_max:
+            raise RuntimeError(f"Integer property range cannot be represented exactly: {field.spelling}")
+        # ImGui's scalar slider reserves half of its 64-bit storage range for its arithmetic.
+        slider_lower = -(2 ** 62) if kind == "eInt" else 0
+        slider_upper = 2 ** (62 if kind == "eInt" else 63) - 1
+        if widget == "slider" and (integer_min < slider_lower or integer_max > slider_upper):
+            raise RuntimeError(f"Integer slider range exceeds ImGui's supported range: {field.spelling}")
+
+
+def parse_property_choices(field, properties, flags, enum):
+    enum_values = []
+    choices = []
+    if enum.kind == cindex.CursorKind.ENUM_DECL:
+        constants = {item.spelling: item.enum_value for item in enum.get_children()
+                     if item.kind == cindex.CursorKind.ENUM_CONSTANT_DECL}
+        enum_values = list(dict.fromkeys(constants.values()))
+        if any(value < -(2 ** 63) or value >= 2 ** 63 for value in enum_values):
+            raise RuntimeError(f"Enum {field.spelling} does not fit signed 64-bit values")
+        if "inspect" in flags and "options" not in properties:
+            raise RuntimeError(f"Enum {field.spelling} needs options")
+        for option in properties.get("options", "").split("|"):
+            if not option:
+                continue
+            if "e" + option not in constants:
+                raise RuntimeError(f"Unknown enum option {field.spelling}: {option}")
+            if any(choice["value"] == constants["e" + option] for choice in choices):
+                raise RuntimeError(f"Duplicate enum option {field.spelling}: {option}")
+            choices.append({"label": option, "value": constants["e" + option]})
+    elif "options" in properties:
+        raise RuntimeError(f"Non-enum property {field.spelling} cannot have options")
+    return enum_values, choices
+
+
+def parse_property_default(cursor, field):
+    default = None
+    if field.type.spelling == "float":
+        default = "0"
+        initializers = [child for child in field.get_children() if child.kind.is_expression()]
+        if initializers:
+            # A macro annotation can make the field's token range empty. Read its initializer cursor.
+            default = "".join(token.spelling for token in initializers[-1].get_tokens())
+            if not re.fullmatch(r"[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?[fF]?", default):
+                raise RuntimeError(f"Unsupported reflected float default: {cursor.spelling}.{field.spelling}")
+    return default
+
+
 def parse_reflection(unit):
     structs = []
     for cursor in walk(unit.cursor):
-        if (
-            cursor.kind != cindex.CursorKind.STRUCT_DECL
-            or "vultra.reflect" not in annotations(cursor)
-        ):
+        if cursor.kind != cindex.CursorKind.STRUCT_DECL or "vultra.reflect" not in annotations(cursor):
             continue
+        if any(child.kind == cindex.CursorKind.CONSTRUCTOR for child in cursor.get_children()):
+            raise RuntimeError(f"Reflected settings require field initializers, not constructors: {cursor.spelling}")
         fields = []
+        paths = set()
         for field in cursor.get_children():
             if field.kind != cindex.CursorKind.FIELD_DECL:
                 continue
-            metadata = next(
-                (
-                    a[len("vultra.property:") :]
-                    for a in annotations(field)
-                    if a.startswith("vultra.property:")
-                ),
-                None,
-            )
+            metadata = next((a[len("vultra.property:"):] for a in annotations(field)
+                             if a.startswith("vultra.property:")), None)
             if metadata is None:
                 continue
-            properties = dict(
-                part.split("=", 1) for part in metadata.split(";") if "=" in part
-            )
+            if field.access_specifier != cindex.AccessSpecifier.PUBLIC or field.is_bitfield():
+                raise RuntimeError(f"Unsupported reflected field access/layout: {cursor.spelling}.{field.spelling}")
+            properties = parse_property_metadata(cursor, field, metadata)
             field_type = field.type.spelling
-            if field_type not in ("bool", "float", "RenderPath"):
-                raise RuntimeError(
-                    f"Unsupported reflected field: {cursor.spelling}.{field.spelling}: {field_type}"
-                )
-            if field_type == "float" and not {"min", "max"} <= properties.keys():
-                raise RuntimeError(f"Slider {field.spelling} needs min and max")
-            if field_type == "RenderPath" and "options" not in properties:
-                raise RuntimeError(f"Enum {field.spelling} needs options")
-            if properties.get("widget", "slider") not in ("slider", "drag"):
-                raise RuntimeError(f"Unsupported widget: {cursor.spelling}.{field.spelling}")
-            if properties.get("widget") == "drag" and (field_type != "float" or "speed" not in properties):
-                raise RuntimeError(f"Drag field {field.spelling} needs a float value and speed")
-            if field_type == "float":
-                try:
-                    minimum, maximum = float(properties["min"]), float(properties["max"])
-                    speed = float(properties.get("speed", "1"))
-                except ValueError as error:
-                    raise RuntimeError(f"Invalid property number: {cursor.spelling}.{field.spelling}") from error
-                if (
-                    not all(math.isfinite(value) for value in (minimum, maximum, speed))
-                    or minimum >= maximum
-                    or speed <= 0
-                ):
-                    raise RuntimeError(f"Invalid property range/speed: {cursor.spelling}.{field.spelling}")
-            fields.append({"name": field.spelling, "type": field_type, **properties})
+            enum = field.type.get_declaration()
+            is_enum = enum.kind == cindex.CursorKind.ENUM_DECL
+            if field_type not in PROPERTY_KINDS and not is_enum:
+                raise RuntimeError(f"Unsupported reflected field: {cursor.spelling}.{field.spelling}: {field_type}")
+            kind = "eEnum" if is_enum else PROPERTY_KINDS[field_type]
+            flags = properties.get("flags", "serialize|inspect|bind").split("|")
+            if any(flag not in PROPERTY_FLAGS for flag in flags) or len(set(flags)) != len(flags):
+                raise RuntimeError(f"Invalid property flags: {cursor.spelling}.{field.spelling}")
+            flag_bits = sum(PROPERTY_FLAGS[flag] for flag in flags)
+            validate_property_range(cursor, field, properties, kind, flags)
+            enum_values, choices = parse_property_choices(field, properties, flags, enum)
+            path = properties.get("json", "/" + field.spelling)
+            if not path.startswith("/") or re.search(r"~(?![01])", path) or path in paths:
+                raise RuntimeError(f"Invalid/duplicate property JSON path: {cursor.spelling}.{field.spelling}")
+            if any(path.startswith(other + "/") or other.startswith(path + "/") for other in paths):
+                raise RuntimeError(f"Overlapping property JSON path: {cursor.spelling}.{field.spelling}")
+            paths.add(path)
+            default = parse_property_default(cursor, field)
+            fields.append({"name": field.spelling, "type": field_type, **properties, "kind": kind,
+                           "default_cpp": default,
+                           "flag_bits": flag_bits, "json_path": path, "choices": choices,
+                           "enum_values": enum_values,
+                           "integer_bits": field.type.get_size() * 8 if kind in ("eInt", "eUInt") else 0})
         if not fields:
             raise RuntimeError(f"Reflected type has no annotated properties: {cursor.spelling}")
         header = source_path(cursor.location.file.name).split("/include/", 1)[1]
@@ -736,111 +830,146 @@ ABI_VERSION = 1
         "\n".join(fields) + "\n    ]\n"
 
 
-def property_metadata_header():
-    return """// Generated by scripts/codegen.py. Do not edit.
-#pragma once
-namespace vultra
-{
-    enum class ReflectedPropertyKind { eBool, eFloat, eEnum };
-    struct ReflectedProperty
-    {
-        const char* name;
-        const char* label;
-        ReflectedPropertyKind kind;
-        float min;
-        float max;
-    };
-} // namespace vultra
-"""
+def type_function(item):
+    name = item["name"]
+    return name[0].lower() + name[1:] + "Type"
+
+
+def property_header(types):
+    result = "// Generated by scripts/codegen.py. Do not edit.\n#pragma once\n"
+    result += "#include <vultra/core/base/property.hpp>\n"
+    result += "\n".join(f"#include <{header}>" for header in sorted({item["header"] for item in types}))
+    result += "\n\nnamespace vultra\n{\n"
+    for item in types:
+        result += f"    const ObjectTypeInfo& {type_function(item)}();\n"
+    return result + "} // namespace vultra\n"
+
+
+def property_source(types, header):
+    result = f"// Generated by scripts/codegen.py. Do not edit.\n#include <{header}>\n\n#include <array>\n\nnamespace vultra\n{{\n"
+    storage = {"eInt": "int64_t", "eUInt": "uint64_t", "eEnum": "PropertyEnum"}
+    for item in types:
+        name = item["name"]
+        result += f"    const ObjectTypeInfo& {type_function(item)}()\n    {{\n"
+        for field in item["fields"]:
+            if field["kind"] == "eEnum":
+                field_name = field["name"]
+                enum_values = ", ".join(str(value) for value in field["enum_values"])
+                choices = ", ".join("{" + json.dumps(choice["label"]) + ", " + str(choice["value"]) + "}"
+                                    for choice in field["choices"])
+                result += f"        static constexpr std::array<int64_t, {len(field['enum_values'])}> {field_name}Values = {{{enum_values}}};\n"
+                result += f"        static constexpr std::array<PropertyChoice, {len(field['choices'])}> {field_name}Choices = {{{{{choices}}}}};\n"
+        result += f"        static const std::array<PropertyInfo, {len(item['fields'])}> properties = {{{{\n"
+        for field in item["fields"]:
+            member, kind, field_type = field["name"], field["kind"], field["type"]
+            get = f"static_cast<const {name}*>(object)->{member}"
+            default = f"{name}{{}}.{member}"
+            value = f"std::get<{storage.get(kind, field_type)}>(value)"
+            if kind == "eEnum":
+                get, default = f"PropertyEnum{{static_cast<int64_t>({get})}}", f"PropertyEnum{{static_cast<int64_t>({default})}}"
+                value = f"static_cast<{field_type}>({value}.value)"
+            elif kind in ("eInt", "eUInt"):
+                get, default = f"static_cast<{storage[kind]}>({get})", f"static_cast<{storage[kind]}>({default})"
+                value = f"static_cast<{field_type}>({value})"
+            drawer = member if name == "RenderSettings" else f"{name}.{member}"
+            strings = ", ".join(json.dumps(text) for text in (member, field.get("label", member), drawer, field["json_path"]))
+            choices = f"{member}Choices, {member}Values" if kind == "eEnum" else "{}, {}"
+            widget = "eDrag" if field.get("widget") == "drag" else "eSlider"
+            flags = " | ".join("PropertyFlags::e" + name[0].upper() + name[1:]
+                               for name, bit in PROPERTY_FLAGS.items() if field["flag_bits"] & bit)
+            result += f"        {{{strings}, PropertyKind::{kind}, {flags}, PropertyWidget::{widget}, {field['integer_bits']}, {field.get('min', '0')}, {field.get('max', '0')}, {field.get('speed', '1')}, {choices},\n"
+            result += f"            [](const void* object) -> PropertyValue {{ return {get}; }},\n"
+            result += f"            [](void* object, const PropertyValue& value) {{ static_cast<{name}*>(object)->{member} = {value}; }},\n"
+            result += f"            []() -> PropertyValue {{ return {default}; }} }},\n"
+        result += f'        }}}};\n        static const ObjectTypeInfo type = {{"{name}", properties}};\n        return type;\n    }}\n\n'
+    return result + "} // namespace vultra\n"
 
 
 def reflection_header(types):
     headers = sorted({item["header"] for item in types})
     result = "// Generated by scripts/codegen.py. Do not edit.\n#pragma once\n"
-    result += "#include <vultra/api/property_metadata.generated.hpp>\n"
     result += "\n".join(f"#include <{header}>" for header in headers)
-    result += "\n#include <vultra/ui/editor_gui_inspector.hpp>\n\n#include <span>\n"
-    result += "\nnamespace vultra\n{\n"
+    result += "\n#include <vultra/ui/editor_gui_inspector.hpp>\n\nnamespace vultra\n{\n"
     for item in types:
         name = item["name"]
-        function = name[0].lower() + name[1:]
-        result += f"    std::span<const ReflectedProperty> {function}Properties();\n"
         result += f"    bool draw{name}(EditorGuiInspector& inspector, {name}& settings);\n"
     return result + "} // namespace vultra\n"
 
 
-def reflection_type_source(item):
-    fields = item["fields"]
-    type_name = item["name"]
-    function = type_name[0].lower() + type_name[1:]
-    props = []
-    draw = []
-    for field in fields:
-        name, label, kind = (
-            field["name"],
-            field.get("label", field["name"]),
-            field["type"],
-        )
-        enum = {"bool": "eBool", "float": "eFloat", "RenderPath": "eEnum"}[kind]
-        min_value, max_value = field.get("min", "0"), field.get("max", "0")
-        # Preserve the existing RenderSettings drawer keys; scene keys identify their owning type.
-        property_id = name if type_name == "RenderSettings" else f"{type_name}.{name}"
-        props.append(
-            f'        {{"{name}", "{label}", ReflectedPropertyKind::{enum}, {min_value}, {max_value}}},'
-        )
-        if kind == "bool":
-            draw.append(
-                f'    changed |= inspector.boolField({{"{property_id}", "{label}"}}, &settings.{name});'
-            )
-        elif kind == "float":
-            if field.get("widget") == "drag":
-                draw.append(
-                    f'    changed |= inspector.floatField({{"{property_id}", "{label}"}}, '
-                    f'&settings.{name}, {field["speed"]}, {min_value}, {max_value});'
-                )
-            else:
-                draw.append(
-                    f'    changed |= inspector.floatSlider({{"{property_id}", "{label}"}}, '
-                    f'&settings.{name}, {min_value}, {max_value});'
-                )
-        else:
-            options = field["options"].split("|")
-            option_names = ", ".join(f'"{option}"' for option in options)
-            selected = f"static_cast<int>(settings.{name})"
-            draw.append(f"""    int selected = {selected};
-    const char* const options[] = {{{option_names}}};
-    if (inspector.choice({{"{property_id}", "{label}"}}, &selected, options, {len(options)}))
-    {{
-        settings.{name} = static_cast<RenderPath>(selected);
-        changed = true;
-    }}""")
-    return (
-        f"""    std::span<const ReflectedProperty> {function}Properties()
-    {{
-        static constexpr std::array<ReflectedProperty, """
-        + str(len(fields))
-        + """> properties = {{
-"""
-        + "\n".join(props)
-        + """
-        }};
-        return properties;
-    }
-
-    bool draw__TYPE__(EditorGuiInspector& inspector, __TYPE__& settings)
-    {
-        bool changed = false;
-"""
-        + "\n".join(draw)
-        + "\n        return changed;\n    }\n"
-    ).replace("__TYPE__", type_name)
-
-
 def reflection_source(types, header):
     result = f"// Generated by scripts/codegen.py. Do not edit.\n#include <vultra/api/{header}>\n"
-    result += "\n#include <array>\n\nnamespace vultra\n{\n"
-    return result + "\n".join(reflection_type_source(item) for item in types) + "} // namespace vultra\n"
+    names = {item["name"] for item in types}
+    if "MaterialParameters" in names:
+        result += "#include <vultra/assets/material_properties.generated.hpp>\n"
+    if names & {"CameraSettings", "LightSettings", "EnvironmentSettings"}:
+        result += "#include <vultra/scene/render_properties.generated.hpp>\n"
+    if "RenderSettings" in names:
+        result += "#include <vultra/servers/rendering/builtin/render_properties.generated.hpp>\n"
+    result += "\nnamespace vultra\n{\n"
+    for item in types:
+        name = item["name"]
+        result += f"    bool draw{name}(EditorGuiInspector& inspector, {name}& settings)\n    {{\n        return inspector.properties({type_function(item)}(), &settings);\n    }}\n\n"
+    return result + "} // namespace vultra\n"
 
+
+def pascal_name(name):
+    return "".join(part[0].upper() + part[1:] for part in name.split("_"))
+
+
+def csharp_values(ir):
+    result = "// Generated by scripts/codegen.py. Do not edit.\nusing System.Numerics;\nusing Vultra.Interop;\n\nnamespace Vultra.Scripting;\n"
+    pods = {pod["name"] for pod in ir["pods"]}
+    for item in ir["types"]:
+        if item["name"] not in pods:
+            continue
+        groups = {}
+        for field in item["fields"]:
+            tokens = field["json_path"].split("/")[1:]
+            if len(tokens) not in (1, 2) or (len(tokens) == 2 and not tokens[1].isdigit()):
+                raise RuntimeError(f"Unsupported managed value path: {item['name']}.{field['name']}")
+            name = field.get("api", pascal_name(tokens[0]))
+            if not re.fullmatch(r"[A-Z][A-Za-z0-9]*", name):
+                raise RuntimeError(f"Unsupported managed value name: {item['name']}.{field['name']}")
+            groups.setdefault(name, []).append(field)
+        members = []
+        for name, fields in groups.items():
+            if len(fields) == 1:
+                if len(fields[0]["json_path"].split("/")) != 2:
+                    raise RuntimeError(f"Incomplete managed vector: {item['name']}.{name}")
+                value_type = "float"
+            else:
+                if any(len(field["json_path"].split("/")) != 3 for field in fields):
+                    raise RuntimeError(f"Duplicate managed property name: {item['name']}.{name}")
+                fields.sort(key=lambda field: int(field["json_path"].rsplit("/", 1)[1]))
+                if len(fields) not in (2, 3, 4) or [int(field["json_path"].rsplit("/", 1)[1]) for field in fields] != list(range(len(fields))):
+                    raise RuntimeError(f"Incomplete managed vector: {item['name']}.{name}")
+                value_type = "Vector" + str(len(fields))
+            defaults = [field["default_cpp"].rstrip("fF") + "f" for field in fields]
+            default = defaults[0] if len(fields) == 1 else "new(" + ", ".join(defaults) + ")"
+            members.append({"name": name, "type": value_type, "fields": fields, "default": default})
+        name = item["name"]
+        result += f"\npublic readonly record struct {name}\n{{\n"
+        for member in members:
+            result += f"    public {member['type']} {member['name']} {{ get; init; }} = {member['default']};\n"
+        result += f"\n    public {name}() {{ }}\n"
+        arguments = ", ".join(member["type"] + " " + member["name"][0].lower() + member["name"][1:] for member in members)
+        result += f"\n    public {name}({arguments})\n    {{\n"
+        for member in members:
+            result += f"        {member['name']} = {member['name'][0].lower() + member['name'][1:]};\n"
+        result += "    }\n"
+        result += f"\n    internal static {name} FromAbi(Vultra{name} value) => new()\n    {{\n"
+        for member in members:
+            values = ["value." + pascal_name(field["name"]) for field in member["fields"]]
+            value = values[0] if len(values) == 1 else "new " + member["type"] + "(" + ", ".join(values) + ")"
+            result += f"        {member['name']} = {value},\n"
+        result += "    };\n"
+        result += f"\n    internal Vultra{name} ToAbi() => new()\n    {{\n"
+        for member in members:
+            for index, field in enumerate(member["fields"]):
+                value = member["name"] if len(member["fields"]) == 1 else member["name"] + "." + "XYZW"[index]
+                result += f"        {pascal_name(field['name'])} = {value},\n"
+        result += "    };\n}\n"
+    return result
 
 
 def csharp_bindings(ir):
@@ -1009,6 +1138,7 @@ def main():
     files = {
         OUTPUT / "ir/api.json": json.dumps(ir, indent=2, sort_keys=True) + "\n",
         OUTPUT / "csharp/VultraBindings.g.cs": csharp_bindings(ir),
+        OUTPUT / "csharp/VultraValues.g.cs": csharp_values(ir),
         ROOT / "source/scripting/include/vultra/scripting/lua_values.generated.hpp": lua_values(ir),
         OUTPUT / "include/vultra/api/vultra_abi.generated.h": common_header(),
         OUTPUT / "include/vultra/api/vultra_ui.generated.h": c_header(ir),
@@ -1021,10 +1151,20 @@ def main():
         OUTPUT
         / "include/vultra/api/render_settings.generated.hpp": reflection_header(render_types),
         OUTPUT / "src/render_settings.generated.cpp": reflection_source(render_types, "render_settings.generated.hpp"),
-        OUTPUT / "include/vultra/api/property_metadata.generated.hpp": property_metadata_header(),
         OUTPUT / "include/vultra/api/scene_properties.generated.hpp": reflection_header(scene_types),
         OUTPUT / "src/scene_properties.generated.cpp": reflection_source(scene_types, "scene_properties.generated.hpp"),
     }
+    modules = (
+        ("assets", "material_properties", "vultra/assets/material_properties.generated.hpp",
+         [item for item in scene_types if item["name"] == "MaterialParameters"]),
+        ("scene", "render_properties", "vultra/scene/render_properties.generated.hpp",
+         [item for item in scene_types if item["name"] != "MaterialParameters"]),
+        ("servers", "rendering/builtin/render_properties", "vultra/servers/rendering/builtin/render_properties.generated.hpp",
+         render_types),
+    )
+    for module, filename, header, types in modules:
+        files[ROOT / f"source/{module}/include/{header}"] = property_header(types)
+        files[ROOT / f"source/{module}/src/{filename}.generated.cpp"] = property_source(types, header)
     stale = []
     for path, contents in files.items():
         if path.suffix in (".cpp", ".hpp", ".h"):

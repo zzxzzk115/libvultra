@@ -171,17 +171,12 @@ public sealed class ScriptScene
     {
         VultraCameraSettings value;
         Check(((VultraSceneApi*)_api)->CameraSettings(Frame, node, &value));
-        return new CameraSettings(value.VerticalFov, value.NearPlane, value.FarPlane);
+        return Scripting.CameraSettings.FromAbi(value);
     }
 
     internal unsafe void SetCameraSettings(ulong node, CameraSettings value)
     {
-        Check(((VultraSceneApi*)_api)->SetCameraSettings(Frame, node, new VultraCameraSettings
-        {
-            VerticalFov = value.VerticalFov,
-            NearPlane = value.NearPlane,
-            FarPlane = value.FarPlane
-        }));
+        Check(((VultraSceneApi*)_api)->SetCameraSettings(Frame, node, value.ToAbi()));
     }
 
     internal unsafe void SetCurrentCamera(ulong node) => Check(((VultraSceneApi*)_api)->SetCurrentCamera(Frame, node));
@@ -206,13 +201,12 @@ public sealed class ScriptScene
     {
         VultraEnvironmentSettings value;
         Check(((VultraSceneApi*)_api)->EnvironmentSettings(Frame, node, &value));
-        return new EnvironmentSettings(value.Intensity);
+        return Scripting.EnvironmentSettings.FromAbi(value);
     }
 
     internal unsafe void SetEnvironmentSettings(ulong node, EnvironmentSettings value)
     {
-        Check(((VultraSceneApi*)_api)->SetEnvironmentSettings(Frame, node,
-            new VultraEnvironmentSettings { Intensity = value.Intensity }));
+        Check(((VultraSceneApi*)_api)->SetEnvironmentSettings(Frame, node, value.ToAbi()));
     }
 
     internal unsafe void SetEnvironmentAsset(ulong node, string assetId)
@@ -292,22 +286,12 @@ public sealed class ScriptScene
     {
         VultraLightSettings value;
         Check(((VultraSceneApi*)_api)->LightSettings(Frame, node, &value));
-        return new LightSettings(new Vector3(value.Red, value.Green, value.Blue), value.Intensity, value.Range,
-                                 value.InnerCone, value.OuterCone);
+        return Scripting.LightSettings.FromAbi(value);
     }
 
     internal unsafe void SetLightSettings(ulong node, LightSettings value)
     {
-        Check(((VultraSceneApi*)_api)->SetLightSettings(Frame, node, new VultraLightSettings
-        {
-            Red = value.Color.X,
-            Green = value.Color.Y,
-            Blue = value.Color.Z,
-            Intensity = value.Intensity,
-            Range = value.Range,
-            InnerCone = value.InnerCone,
-            OuterCone = value.OuterCone
-        }));
+        Check(((VultraSceneApi*)_api)->SetLightSettings(Frame, node, value.ToAbi()));
     }
 
     internal unsafe Vector3 Position(ulong node)

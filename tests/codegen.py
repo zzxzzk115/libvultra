@@ -13,7 +13,9 @@ import codegen
 
 
 def declaration(name="Probe", kind="float", metadata="label=Gain;min=0;max=2"):
+    aliases = "using int64_t = long long;" if kind == "int64_t" else ""
     return (
+        aliases +
         f'namespace vultra {{ struct [[clang::annotate("vultra.reflect")]] {name} {{ '
         f'[[clang::annotate("vultra.property:{metadata}")]] {kind} value; '
         'int unannotated; }; }'
@@ -68,6 +70,38 @@ class CompileCommandTests(unittest.TestCase):
 
 
 class ReflectionTests(unittest.TestCase):
+    def test_macro_annotated_defaults_reach_safe_managed_values(self):
+        source = '''#define PROPERTY [[clang::annotate("vultra.property:label=Gain;min=-2;max=2")]]
+namespace vultra {
+struct [[clang::annotate("vultra.reflect")]] Probe {
+    PROPERTY float value = -0.5f;
+}; }'''
+        types = parse(source)
+        self.assertEqual(types[0]["fields"][0]["default_cpp"], "-0.5f")
+        generated = codegen.csharp_values({"types": types, "pods": [{"name": "Probe"}]})
+        self.assertIn("public float Value { get; init; } = -0.5f;", generated)
+        self.assertNotIn("unsafe", generated)
+        with self.assertRaises(RuntimeError):
+            parse(source.replace("-0.5f", "1.0f / 2.0f"))
+        with self.assertRaises(RuntimeError):
+            parse(source.replace("PROPERTY float value = -0.5f;", "PROPERTY float value; Probe() : value(1) {}"))
+
+    def test_types_flags_paths_and_enum_values(self):
+        types = parse(declaration(kind="int", metadata="label=Count;min=0;max=20;flags=serialize|inspect|reload;json=/counts/0"))
+        field = types[0]["fields"][0]
+        self.assertEqual(field["kind"], "eInt")
+        self.assertEqual(field["integer_bits"], 32)
+        self.assertEqual(field["flag_bits"], 11)
+        self.assertEqual(field["json_path"], "/counts/0")
+        source = 'namespace vultra { enum class Mode { eFirst = 3, eSecond = 9, eHidden = 20 }; }'
+        types = parse(source + declaration(kind="Mode", metadata="label=Mode;options=First|Second"))
+        self.assertEqual(types[0]["fields"][0]["enum_values"], [3, 9, 20])
+        self.assertEqual(types[0]["fields"][0]["choices"], [{"label": "First", "value": 3},
+                                                         {"label": "Second", "value": 9}])
+        output = codegen.property_source(types, "vultra/probe.hpp")
+        self.assertIn("static_cast<Mode>", output)
+        self.assertIn("static_cast<const Probe*>(object)->value", output)
+
     def test_multiple_types_and_explicit_fields(self):
         types = parse(declaration("First") + declaration("Second"))
         self.assertEqual([item["name"] for item in types], ["First", "Second"])
@@ -85,10 +119,33 @@ class ReflectionTests(unittest.TestCase):
             ("float", "min=0;max=2;widget=drag"),
             ("float", "min=0;max=2;widget=drag;speed=-1"),
             ("float", "min=bad;max=2"),
+            ("float", "min=0;max=2;minimum=1"),
+            ("float", "min=0;max=2;min=1"),
+            ("float", "min=0;max=2;flags=serialize|unknown"),
+            ("float", "min=0;max=2;flags=serialize|serialize"),
+            ("float", "min=0;max=2;json=value"),
+            ("float", "min=0;max=2;json=/wrong~escape"),
+            ("float", "min=0;max=2;options=First"),
+            ("float", "min=0;max=1e99"),
+            ("float", "min=0;max=2;widget=drag;speed=1e99"),
+            ("int", "min=0;max=0.5"),
+            ("int", "min=0;max=4294967295"),
+            ("int64_t", "min=0;max=9223372036854775807"),
+            ("bool", "label=Enabled;widget=drag;speed=1"),
         ]
         for kind, metadata in cases:
             with self.subTest(kind=kind, metadata=metadata), self.assertRaises(RuntimeError):
                 parse(declaration(kind=kind, metadata=metadata))
+
+    def test_colliding_json_paths_are_rejected(self):
+        for second in ("/settings", "/settings/gain"):
+            source = '''namespace vultra {
+struct [[clang::annotate("vultra.reflect")]] Probe {
+    [[clang::annotate("vultra.property:label=First;min=0;max=2;json=/settings")]] float first;
+    [[clang::annotate("vultra.property:label=Second;min=0;max=2;json=PATH")]] float second;
+}; }'''.replace("PATH", second)
+            with self.subTest(path=second), self.assertRaises(RuntimeError):
+                parse(source)
 
 
 def experiment_probe(field="uint64_t count;", method="uint64_t open(uint32_t width);", *, packing=""):

@@ -51,6 +51,11 @@ namespace vultra
             return m_Context->passes();
         }
 
+        ObjectTypeCatalog& getObjectTypeCatalog()
+        {
+            return m_Context->types();
+        }
+
         Swapchain& getSwapchain()
         {
             return m_Context->swapchain();

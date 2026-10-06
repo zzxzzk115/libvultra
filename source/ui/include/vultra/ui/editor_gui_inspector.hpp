@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vultra/core/base/property.hpp>
+
 #include <optional>
 #include <string>
 
@@ -42,10 +44,12 @@ namespace vultra
         bool floatSlider(EditorGuiProperty property, float* value, float min, float max);
         bool choice(EditorGuiProperty property, int* index, const char* const* items, int count);
         bool property(EditorGuiProperty property, void* value, EditorGuiPropertyDrawer drawer);
+        bool properties(const ObjectTypeInfo& type, void* object);
 
     private:
         void                beginRow(EditorGuiProperty property);
         std::optional<bool> drawCustom(EditorGuiProperty property, void* value);
+        bool                drawValue(const PropertyInfo& property, PropertyValue& value);
 
         EditorGui& m_Gui;
         bool       m_Visible;

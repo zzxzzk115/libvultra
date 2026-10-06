@@ -220,6 +220,7 @@
       "name": "ExperimentProgress"
     }
   ],
+  "format": "vultra.api",
   "pods": [
     {
       "fields": [
@@ -890,6 +891,14 @@
     {
       "fields": [
         {
+          "choices": [],
+          "default_cpp": "1.04719755f",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/vertical_fov",
+          "json_path": "/vertical_fov",
+          "kind": "eFloat",
           "label": "FOV (rad)",
           "max": "3.13",
           "min": "0.01",
@@ -897,6 +906,15 @@
           "type": "float"
         },
         {
+          "api": "NearPlane",
+          "choices": [],
+          "default_cpp": "0.01f",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/near",
+          "json_path": "/near",
+          "kind": "eFloat",
           "label": "Near plane",
           "max": "1000000",
           "min": "0.0001",
@@ -906,6 +924,15 @@
           "widget": "drag"
         },
         {
+          "api": "FarPlane",
+          "choices": [],
+          "default_cpp": "100",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/far",
+          "json_path": "/far",
+          "kind": "eFloat",
           "label": "Far plane",
           "max": "1000000",
           "min": "0.0001",
@@ -921,6 +948,14 @@
     {
       "fields": [
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/intensity",
+          "json_path": "/intensity",
+          "kind": "eFloat",
           "label": "Intensity",
           "max": "4",
           "min": "0",
@@ -934,6 +969,14 @@
     {
       "fields": [
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/color/0",
+          "json_path": "/color/0",
+          "kind": "eFloat",
           "label": "Red",
           "max": "4",
           "min": "0",
@@ -941,6 +984,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/color/1",
+          "json_path": "/color/1",
+          "kind": "eFloat",
           "label": "Green",
           "max": "4",
           "min": "0",
@@ -948,6 +999,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/color/2",
+          "json_path": "/color/2",
+          "kind": "eFloat",
           "label": "Blue",
           "max": "4",
           "min": "0",
@@ -955,6 +1014,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/intensity",
+          "json_path": "/intensity",
+          "kind": "eFloat",
           "label": "Intensity",
           "max": "100",
           "min": "0",
@@ -964,6 +1031,14 @@
           "widget": "drag"
         },
         {
+          "choices": [],
+          "default_cpp": "10",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/range",
+          "json_path": "/range",
+          "kind": "eFloat",
           "label": "Range",
           "max": "1000000",
           "min": "0.001",
@@ -973,6 +1048,14 @@
           "widget": "drag"
         },
         {
+          "choices": [],
+          "default_cpp": "0.35f",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/inner_cone",
+          "json_path": "/inner_cone",
+          "kind": "eFloat",
           "label": "Inner cone (rad)",
           "max": "1.56",
           "min": "0",
@@ -980,6 +1063,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "0.6f",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/outer_cone",
+          "json_path": "/outer_cone",
+          "kind": "eFloat",
           "label": "Outer cone (rad)",
           "max": "1.56",
           "min": "0.001",
@@ -993,6 +1084,14 @@
     {
       "fields": [
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/base_color/0",
+          "json_path": "/base_color/0",
+          "kind": "eFloat",
           "label": "Base red",
           "max": "4",
           "min": "0",
@@ -1000,6 +1099,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/base_color/1",
+          "json_path": "/base_color/1",
+          "kind": "eFloat",
           "label": "Base green",
           "max": "4",
           "min": "0",
@@ -1007,6 +1114,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/base_color/2",
+          "json_path": "/base_color/2",
+          "kind": "eFloat",
           "label": "Base blue",
           "max": "4",
           "min": "0",
@@ -1014,6 +1129,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/base_color/3",
+          "json_path": "/base_color/3",
+          "kind": "eFloat",
           "label": "Base alpha",
           "max": "1",
           "min": "0",
@@ -1021,6 +1144,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/base_weight",
+          "json_path": "/base_weight",
+          "kind": "eFloat",
           "label": "Base weight",
           "max": "1",
           "min": "0",
@@ -1028,6 +1159,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "0",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/metalness",
+          "json_path": "/metalness",
+          "kind": "eFloat",
           "label": "Metalness",
           "max": "1",
           "min": "0",
@@ -1035,6 +1174,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "0",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/diffuse_roughness",
+          "json_path": "/diffuse_roughness",
+          "kind": "eFloat",
           "label": "Diffuse roughness",
           "max": "1",
           "min": "0",
@@ -1042,6 +1189,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/specular_weight",
+          "json_path": "/specular_weight",
+          "kind": "eFloat",
           "label": "Specular weight",
           "max": "1",
           "min": "0",
@@ -1049,6 +1204,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/specular_color/0",
+          "json_path": "/specular_color/0",
+          "kind": "eFloat",
           "label": "Specular red",
           "max": "4",
           "min": "0",
@@ -1056,6 +1219,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/specular_color/1",
+          "json_path": "/specular_color/1",
+          "kind": "eFloat",
           "label": "Specular green",
           "max": "4",
           "min": "0",
@@ -1063,6 +1234,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/specular_color/2",
+          "json_path": "/specular_color/2",
+          "kind": "eFloat",
           "label": "Specular blue",
           "max": "4",
           "min": "0",
@@ -1070,6 +1249,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "0.3f",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/roughness",
+          "json_path": "/roughness",
+          "kind": "eFloat",
           "label": "Roughness",
           "max": "1",
           "min": "0",
@@ -1077,6 +1264,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1.5f",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/specular_ior",
+          "json_path": "/specular_ior",
+          "kind": "eFloat",
           "label": "Specular IOR",
           "max": "3",
           "min": "1",
@@ -1084,6 +1279,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "0",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/coat_weight",
+          "json_path": "/coat_weight",
+          "kind": "eFloat",
           "label": "Coat weight",
           "max": "1",
           "min": "0",
@@ -1091,6 +1294,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "0.1f",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/coat_roughness",
+          "json_path": "/coat_roughness",
+          "kind": "eFloat",
           "label": "Coat roughness",
           "max": "1",
           "min": "0",
@@ -1098,6 +1309,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1.5f",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/coat_ior",
+          "json_path": "/coat_ior",
+          "kind": "eFloat",
           "label": "Coat IOR",
           "max": "3",
           "min": "1",
@@ -1105,6 +1324,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "0",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/emission_color/0",
+          "json_path": "/emission_color/0",
+          "kind": "eFloat",
           "label": "Emission red",
           "max": "4",
           "min": "0",
@@ -1112,6 +1339,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "0",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/emission_color/1",
+          "json_path": "/emission_color/1",
+          "kind": "eFloat",
           "label": "Emission green",
           "max": "4",
           "min": "0",
@@ -1119,6 +1354,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "0",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/emission_color/2",
+          "json_path": "/emission_color/2",
+          "kind": "eFloat",
           "label": "Emission blue",
           "max": "4",
           "min": "0",
@@ -1126,6 +1369,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/emission_luminance",
+          "json_path": "/emission_luminance",
+          "kind": "eFloat",
           "label": "Emission luminance",
           "max": "100",
           "min": "0",
@@ -1133,6 +1384,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/normal_scale",
+          "json_path": "/normal_scale",
+          "kind": "eFloat",
           "label": "Normal scale",
           "max": "4",
           "min": "0",
@@ -1140,6 +1399,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/occlusion_strength",
+          "json_path": "/occlusion_strength",
+          "kind": "eFloat",
           "label": "Occlusion strength",
           "max": "1",
           "min": "0",
@@ -1147,6 +1414,14 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "-1",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json": "/alpha_cutoff",
+          "json_path": "/alpha_cutoff",
+          "kind": "eFloat",
           "label": "Alpha cutoff",
           "max": "1",
           "min": "-1",
@@ -1160,12 +1435,65 @@
     {
       "fields": [
         {
+          "choices": [
+            {
+              "label": "NaiveDeferred",
+              "value": 0
+            },
+            {
+              "label": "NaiveForward",
+              "value": 1
+            }
+          ],
+          "default_cpp": null,
+          "enum_values": [
+            0,
+            1,
+            2
+          ],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json_path": "/path",
+          "kind": "eEnum",
           "label": "Path",
           "name": "path",
           "options": "NaiveDeferred|NaiveForward",
           "type": "RenderPath"
         },
         {
+          "choices": [],
+          "default_cpp": null,
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/directionToLight",
+          "kind": "eVector3",
+          "label": "directionToLight",
+          "name": "directionToLight",
+          "type": "glm::vec3"
+        },
+        {
+          "choices": [],
+          "default_cpp": null,
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/lightColor",
+          "kind": "eVector3",
+          "label": "lightColor",
+          "name": "lightColor",
+          "type": "glm::vec3"
+        },
+        {
+          "choices": [],
+          "default_cpp": "3",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json_path": "/lightIntensity",
+          "kind": "eFloat",
           "label": "Sun intensity",
           "max": "10",
           "min": "0",
@@ -1173,6 +1501,26 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": "1",
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/environmentIntensity",
+          "kind": "eFloat",
+          "label": "environmentIntensity",
+          "name": "environmentIntensity",
+          "type": "float"
+        },
+        {
+          "choices": [],
+          "default_cpp": "0",
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json_path": "/exposure",
+          "kind": "eFloat",
           "label": "Exposure (EV)",
           "max": "4",
           "min": "-4",
@@ -1180,14 +1528,202 @@
           "type": "float"
         },
         {
+          "choices": [],
+          "default_cpp": null,
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json_path": "/ibl",
+          "kind": "eBool",
           "label": "IBL",
           "name": "ibl",
           "type": "bool"
         },
         {
+          "choices": [],
+          "default_cpp": null,
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json_path": "/skybox",
+          "kind": "eBool",
           "label": "Skybox",
           "name": "skybox",
           "type": "bool"
+        },
+        {
+          "choices": [],
+          "default_cpp": null,
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/meshShading",
+          "kind": "eBool",
+          "label": "meshShading",
+          "name": "meshShading",
+          "type": "bool"
+        },
+        {
+          "choices": [],
+          "default_cpp": null,
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/meshletCulling",
+          "kind": "eBool",
+          "label": "meshletCulling",
+          "name": "meshletCulling",
+          "type": "bool"
+        },
+        {
+          "choices": [],
+          "default_cpp": null,
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/meshletColors",
+          "kind": "eBool",
+          "label": "meshletColors",
+          "name": "meshletColors",
+          "type": "bool"
+        },
+        {
+          "choices": [],
+          "default_cpp": null,
+          "enum_values": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/shadowFilter",
+          "kind": "eEnum",
+          "label": "shadowFilter",
+          "name": "shadowFilter",
+          "type": "ShadowFilter"
+        },
+        {
+          "choices": [],
+          "default_cpp": null,
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 32,
+          "json_path": "/shadowResolution",
+          "kind": "eUInt",
+          "label": "shadowResolution",
+          "name": "shadowResolution",
+          "type": "uint32_t"
+        },
+        {
+          "choices": [],
+          "default_cpp": "0.7f",
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/splitLambda",
+          "kind": "eFloat",
+          "label": "splitLambda",
+          "name": "splitLambda",
+          "type": "float"
+        },
+        {
+          "choices": [],
+          "default_cpp": "0.0005f",
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/shadowBias",
+          "kind": "eFloat",
+          "label": "shadowBias",
+          "name": "shadowBias",
+          "type": "float"
+        },
+        {
+          "choices": [],
+          "default_cpp": "0.5f",
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/normalBias",
+          "kind": "eFloat",
+          "label": "normalBias",
+          "name": "normalBias",
+          "type": "float"
+        },
+        {
+          "choices": [],
+          "default_cpp": "0.02f",
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/sunAngularRadius",
+          "kind": "eFloat",
+          "label": "sunAngularRadius",
+          "name": "sunAngularRadius",
+          "type": "float"
+        },
+        {
+          "choices": [],
+          "default_cpp": "0.1f",
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/cascadeBlend",
+          "kind": "eFloat",
+          "label": "cascadeBlend",
+          "name": "cascadeBlend",
+          "type": "float"
+        },
+        {
+          "choices": [],
+          "default_cpp": "-1",
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/roughnessOverride",
+          "kind": "eFloat",
+          "label": "roughnessOverride",
+          "name": "roughnessOverride",
+          "type": "float"
+        },
+        {
+          "choices": [],
+          "default_cpp": "-1",
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/metalnessOverride",
+          "kind": "eFloat",
+          "label": "metalnessOverride",
+          "name": "metalnessOverride",
+          "type": "float"
+        },
+        {
+          "choices": [],
+          "default_cpp": null,
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 32,
+          "json_path": "/debugMode",
+          "kind": "eUInt",
+          "label": "debugMode",
+          "name": "debugMode",
+          "type": "uint32_t"
         }
       ],
       "header": "vultra/servers/rendering/builtin/builtin_renderer.hpp",
@@ -1205,5 +1741,6 @@
       "name": "guiText",
       "return": "void"
     }
-  ]
+  ],
+  "version": 1
 }

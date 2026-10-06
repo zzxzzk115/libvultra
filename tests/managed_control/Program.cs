@@ -20,6 +20,18 @@ internal static unsafe class Program
 
     private static void Main()
     {
+        var camera = new CameraSettings();
+        Require(camera.VerticalFov == 1.04719755f && camera.NearPlane == 0.01f && camera.FarPlane == 100,
+                "Generated managed camera defaults differ from the annotated C++ defaults");
+        var material = new MaterialParameters { BaseColor = new(0.2f, 0.4f, 0.8f, 0.5f), CoatWeight = 0.6f };
+        Require(MaterialParameters.FromAbi(material.ToAbi()) == material,
+                "Generated safe material conversion lost grouped color or scalar fields");
+        var light = new LightSettings();
+        Require(light.Color == System.Numerics.Vector3.One && light.Intensity == 1 && light.Range == 10 &&
+                LightSettings.FromAbi(light.ToAbi()) == light,
+                "Generated light defaults/conversion differ from the native property model");
+        Require(new EnvironmentSettings().Intensity == 1,
+                "Generated environment default differs from the native property model");
         var scene = new VultraSceneApi
         {
             Version = VultraAbi.Version,
