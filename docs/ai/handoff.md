@@ -64,10 +64,175 @@ window or workspace switch was used. Workspace 5 is reserved for necessary nativ
   preserves checked-in outputs; eight generator methods, managed-control, 81 changed C/C++ format checks and
   AssetSource clang-tidy pass. The final test log has no unexpected GPU validation diagnostics.
 
-These continuations did not rerun native input, Windows/D3D12 or physical XR. Earlier Windows evidence covers
-MSVC 14.42/MT, GLFW/Vulkan, RTX 4080 and .NET 10.0.301: batch/workbench/Python, shader cooking/authoring and native
-workbench/player smoke passed. It predates the current AssetSource/E0 work. Previous logs remain under
-`build/.tmp/windows-*`; do not treat them as acceptance of these new changes or separate-machine delivery.
+### Windows continuation, 2026-10-06
+
+Pulled `dev-VRI` from `cee4959d` to `2fe875ee` with a clean initial working tree. Current verification uses
+MSVC/MT, GLFW/Vulkan, RTX 4080 SUPER and .NET 10.0.301. Logs and isolated layouts/captures are under
+`build/.tmp/windows-pull-20261006-1791276446331/`; standalone scripts also print their unique output directories.
+
+- All-target builds pass. The pulled revision passes all 43 registered xmake tests. After the local RT stage fix,
+  all 13 affected shader/GPU/meshlet/reference-renderer regressions pass. These test logs have no Vulkan VUIDs.
+- Standalone offline QA passes 37 invocations, including copied-executable VPK/native/Lua/C# parity. Workbench QA
+  passes 15 invocations, including save/reopen, reference AOVs, lighting edits, batch parity and invalid-input
+  recovery. Python checks pass owned NumPy/CLI HDR parity, closed-session/thread rules and copied-library/VPK use.
+- Eight generator methods, real codegen consistency, managed safe-value/default/ABI and zero-allocation controls,
+  and native Slang completion/definition/source-mapped diagnostics pass.
+- All 22 supported example configurations complete six frames and produce PNGs: all basic, scene, ray and XR
+  modes; UI and scripting; research Forward/deferred/data graph; and game shader cooked/edit/deferred/meshlet
+  modes. Representative Workbench, Sponza meshlet, game material, ray and XR mirror images were visually checked.
+  This is finite-frame coverage, not a manual interaction or headset-display acceptance test.
+- A copied standalone player runs with an external VPK and with an embedded VPK, from a directory without project
+  sources/build tools. Both render six frames with no warning/error/VUID diagnostics and identical 1024x768 PNGs.
+
+Local fixes are uncommitted: Workbench QA now writes numeric `renderer.path = 2` and top-level `seed`, matching
+the deliberate workspace schema change. Shared shader compilation and archive validation previously omitted all
+RT stages; this broke both ray-triangle and ray-cornell despite the full registered suite passing. Compile-stage
+mapping, explicit selection, save validation and archive decoding now accept all six RT stages. A regression
+covers discovered/explicit entries and source-free bytecode/stage roundtrips; combined stage bits remain rejected.
+Both actual ray examples now capture successfully without validation diagnostics. The generated renderer
+descriptor correction contains whitespace only; current Windows codegen consistency passes.
+
+Remaining limits:
+
+- `example-shader --meshlets --deferred` fails explicitly: NaiveDeferred still requires indexed geometry.
+  Forward meshlets and indexed deferred pass separately; mesh-driven G-buffer drawing is not implemented.
+- The active runtime is **Pimax OpenXR**, not Meta XR Simulator. Both XR examples complete six application/eye
+  frames and capture their mirror, but report `VUID-VkDeviceCreateInfo-pNext-02830`: an extra timeline-semaphore
+  feature structure accompanies Vulkan12Features. The pinned VRI source enables timeline semaphores in
+  Vulkan12Features, without a separate timeline structure; Vultra forwards that create info unchanged through
+  `xrCreateVulkanDeviceKHR`. This points to XR runtime/layer insertion, but is not a proven root-cause diagnosis.
+  Do not suppress the diagnostic or report clean headset acceptance. This differs from the previously deferred
+  pipeline-cache issue.
+- Built-in path-tracer cooking reports Slang E41012 (implicit profile upgrade). It is not a GPU validation error,
+  but capability/profile declarations still need a deliberate review.
+- Modified C++ files pass clang-format 18.1.8 and clang-tidy with no project diagnostics. A broader dry run of the
+  81 pulled C/C++ files still reports formatting differences in 16 unchanged files. They were not bulk reformatted;
+  reconcile formatter versions/outputs before claiming a clean cross-platform formatting gate.
+
+The proposed internal replacement shader design is in `docs/shader_system_design.md`. It defines typed Boolean/
+exclusive Enum keywords, Material/Pipeline/Pass ownership, link/module/preprocessor lowering, legal selections,
+explicit cooking coverage and separate selection/program/layout/pipeline identities. vshadersystem is not a
+dependency. Keyword domains and retention remain proposals; the scoped module/program reuse slice described
+below is implemented. The existing
+runnable shader guide links this design and records the indexed-deferred limitation.
+
+Earlier Linux continuations and Windows logs do not establish D3D12, Windows SDL3, clean-machine delivery or
+physical headset display/input correctness. Retain those separate gates.
+
+### Shader compilation performance, 2026-10-06
+
+Local uncommitted implementation and QA are under
+build/.tmp/shader-performance-20261006-1791283066759/. No experimental shader-system dependency was added.
+
+- ShaderCompiler owns one lazy Slang global session and a bounded set of 16 primary-module IR snapshots.
+  Every request uses an isolated session before linking constants/modules. Native sweeps can retain a context;
+  source-backed ShaderPipeline retains one across reloads. One game asset compilation shares a context across
+  Passes/variants. Static convenience APIs still work; source-free cooked loading never creates a compiler.
+- Both authoring paths use the same checksummed development program cache (.vultra/shaders/*.vshadercache).
+  The hash only selects a file: full canonical requests, captured content hashes and ordered include resolution
+  establish a hit. Hits return owned SPIR-V/reflection without Slang initialization. Failed compilation retains
+  successful cache files; corruption and lookup collisions explicitly recook. Shipping .vshaderc version 1 and
+  strict typed readers remain unchanged; development cache request text is not packaged.
+- Device owns an in-memory VRI pipeline cache. Built-in renderer/IBL/tone mapping/reference compute, ShaderMaterial,
+  TextureBlit, VGui and the direct graphics/compute examples pass it in ordinary VRI descriptors. This supplements
+  existing pipeline-object reuse. No disk driver cache or RT pipeline-cache support is claimed.
+- The cooker now accepts all six RT stage names as explicit --entry values. Cooking raygen/miss/closesthit from
+  the real triangle source succeeds with its actual common/built-in/external include roots.
+
+Measured on the existing Windows/RTX 4080 SUPER setup, with fresh output paths to avoid whole-asset cook skipping:
+
+| Cooker input | Previous cold process | New cold process | Program-cache process median, five runs |
+| --- | --- | --- | --- |
+| PaintedMetal game asset, all generated Passes | 4.121 s | 1.804 s | 180.46 ms |
+| Native built-in Forward Slang | 0.834 s | 0.585 s | 61.95 ms |
+
+Cold figures are single observations, not statistical guarantees. Process times include startup and artifact
+writing. The small compute GPU probe separately measured frontend cold 129.6 ms versus reused IR 4.0 ms, and
+reopened program-cache loading 1.1 ms. These gains do not remove new specialization linking/SPIR-V costs.
+
+Verification:
+
+- All-target builds pass. All 44 registered xmake tests pass after the shared compiler and device-cache changes.
+  After retaining the native reload context, all six affected native/GPU/compiler/meshlet tests pass again.
+- New GPU checks cover native link-constant isolation/reflection, same-timestamp include edits, earlier search
+  roots, macros, changed linked files, compilation failure/recovery, corrupt caches and checksum-valid lookup
+  collisions. Actual Low/High game variants produce distinct expected values and survive source-free loading.
+  Native compute produces the same readback with and without the device driver cache.
+- Eleven finite-frame examples pass with PNG captures and no Vulkan VUIDs: basic mesh, all three ray modes,
+  research Forward/deferred/data graph, and game cooked/edit/deferred/meshlet. Game cooked/edit/meshlet images
+  match exactly, as do the cooked game and ray-triangle images against the previous QA captures.
+- The new copied runtime renders six frames from an external VPK with only system directories on PATH and no
+  project source files in its run directory. Its image matches the previous standalone player capture.
+- Modified C++ code passes configured clang-tidy checks without project diagnostics. All modified C/C++ format
+  checks, generated-code consistency and git whitespace checks pass.
+
+Limits: native source reload is still synchronous. Game candidate compilation uses the existing vtask worker;
+GPU creation/publication remains on the main thread. Module IR is only in memory and only reuses the primary
+module; linked modules/composed groups are not separately cached. Game metadata edits conservatively invalidate
+dependent programs. Typed keyword domains, Used/AllLegal retention, domain projection and selection-to-program
+deduplication remain proposed gates in docs/shader_system_design.md. D3D12/DXIL and the earlier XR issues were
+not validated or changed by this performance work.
+
+### Research correctness and composition, 2026-10-06
+
+The requested high-priority slice is implemented in the existing Vulkan research path. Logs and captures are under
+`build/.tmp/research-gates-20261006-1791291146781/`. Changes remain uncommitted alongside the earlier shader performance work.
+
+- Shared built-in shadow, skybox, G-buffer and deferred-lighting implementations now have typed PassCatalog
+  contracts. `examples/research/deferred.vgraph` is a complete explicit composition. ExperimentSession and
+  ResearchWorkspace bind owned renderer contexts and omit the automatic prelude for such graphs. Direct C++ can
+  call the same stage builders without a SceneTree. An intermediate-only G-buffer graph culls shadows/lighting;
+  rejected duplicate stages and mismatched ports retain the previous graph and completed image. The first marked
+  output still obeys the existing HDR/display-color contract; additional marked outputs expose raw AOVs.
+- Reference environment sampling uses exact lat-long cell solid angles and a luminance alias table with a 5%
+  uniform-sphere mixture. The stored float alias probabilities determine the PDF used by both MIS paths. GPU
+  upload/readback occurs only when the environment handle changes, between completed frames. Float RNG midpoints
+  use 23 bits so rounding cannot produce 1. Material/environment lookup explicitly remains bilinear mip 0;
+  primary jitter integrates that pointwise model. No implicit ray-cone or raster-derivative approximation was added.
+- The existing libclang generator reuses scene PODs in the experiment ABI and generates frozen Python camera,
+  light, environment and material dataclasses from the same reflected fields/defaults. Transform arrays convert
+  between ordinary Python 4x4 indexing and the native column-major ABI. Persistent UUIDs resolve only within the
+  session's SceneTree; direct-model sessions and wrong kinds fail explicitly. Numeric edits update existing GPU
+  data on the next step, without geometry uploads.
+- Reports share ExperimentSession provenance: the scene/graph snapshot, build mode/Slang toolchain, declared asset,
+  entry-scene/environment and available shader-artifact hashes, plus actual importer-consumed model/buffer/texture
+  dependency hashes. Cache hits preserve those dependencies and scene imports merge/check shared-source records.
+  Reporting hashes outside measured frames. Declared file hashes are read at report time; consumed dependency
+  hashes describe import-time bytes. The caller still supplies a source/build revision and retains external state.
+- ImageView maps RGB, individual RGBA channels or luminance into an explicit finite increasing range without
+  mutating raw floats. Workbench mapping writes a separate preview texture outside experiment timings. Pixel
+  readback happens only on request after completion. Python returns owned mapped/raw arrays and raw RGBA probes.
+  Blit push constants use eight scalar fields (32 bytes), checked against Slang target reflection; a vector padding
+  member had introduced a 44-byte SPIR-V layout during QA and was removed. The preview explicitly transitions from
+  color attachment to shader resource before ImGui sampling.
+
+Verification on Windows/MSVC-MT/GLFW/Vulkan, RTX 4080 SUPER:
+
+- All-target build and the final UI target build pass. All 44 registered tests pass in the final full run with no
+  Vulkan VUIDs. Expected malformed-input/cache/reload fixtures retain their diagnostic coverage.
+- Environment tests establish constant/black-map uniformity, normalized PDFs, bright-cell sampling frequencies and
+  a known sphere integral. Independent upstream OpenPBR C++ midpoint quadrature versus GPU white furnaces covers
+  diffuse, dielectric, metal and coat (largest observed channel error about 0.0012). A high-contrast filtered HDR
+  fixture uses independent CPU bilinear lookup/integration (red CPU 1.14019, GPU 1.14607). Existing analytic,
+  normal/material, mirror/alpha, reset/failure recovery and deterministic Cornell convergence checks remain.
+- Python/CLI raster and reference HDR parity, typed edit/restore/error handling, environment changes, matrix layout,
+  raw probes, mapped channels, independently computed file hashes, explicit-stage parity and copied-library/VPK
+  delivery pass in `python-final.log`. Actual importer dependencies survive cold/warm cache paths in native tests.
+- Workbench QA passes 17 invocations, including explicit stages followed by the same post-processing as the
+  default graph, byte-identical final PNGs, save/reopen, marked AOVs, reference rendering, failed edits and batch
+  parity. The actual mapped Outputs panel was visually inspected in
+  `build/.tmp/workbench-qa-3q7mhjpf/lighting/workbench.png`.
+- Offline QA passes 37 invocations, including copied-executable VPK and native/Lua/C# project parity with build tools
+  absent from PATH. Ten generator test methods and real generated-code consistency pass. All 57 changed/new C/C++
+  files pass clang-format 18.1.8; configured clang-tidy passes on the 21 affected research C++ units without project
+  diagnostics, including a repeated check of the final UI fix. Git whitespace checks pass.
+
+Scope remains the documented opaque OpenPBR subset and alpha masking on Vulkan. Game Surface functions are not
+automatically ray-traced. Indexed deferred composition does not imply mesh-driven G-buffer support. Orthographic
+ray origins, footprint-filtering approximations, deformation/SDK temporal signals, other material domains,
+D3D12/DXIL, clean-machine deployment and physical XR/native interaction remain separate capability/acceptance gates.
+Typed keyword retention and persistent driver-cache/async compilation work remain in the shader design/performance
+handoff above; do not label these unimplemented features as completed merely because the current research tests pass.
 
 ## Next gates
 
@@ -83,8 +248,24 @@ justify bulk ports.
 - M7 remains open: VRI implements D3D12, but Vultra selects Vulkan and pinned static Slang disables DXIL. Establish
   reproducible DXIL cooking and actual Windows draw/compute/readback before exposing backend selection. Linux
   development binaries reference GLIBC_2.43; choose a release sysroot for clean-machine delivery.
-- Validate current Windows AssetSource/E0, native GLFW/SDL3 input, Wayland/X11 and clean Windows/Linux deployment.
+- Current Windows GLFW/Vulkan AssetSource/E0 evidence is above. Still validate Windows SDL3, manual native input,
+  Wayland/X11 and clean Windows/Linux deployment.
   Retain unresolved Hyprland requested-resize/detached-viewport assertions and interactive Wayland picking.
-- Physical XR remains unverified. Simulator pipeline-cache/timestamp/extension diagnostics are not clean headset
-  acceptance. The .NET WASM AOT probe established toolchain/ABI evidence only. Web, NVIDIA SDK passes, async compute
-  and optional browser streaming need separate input, synchronization and delivery validation.
+- Implement the internal shader design one verified gate at a time; do not import the experimental shader runtime.
+- Physical XR display/input remains unverified. Retain the current Pimax feature-chain issue and earlier simulator
+  pipeline-cache/timestamp/extension diagnostics; neither establishes clean headset acceptance. The .NET WASM AOT
+  probe established toolchain/ABI evidence only. Web, NVIDIA SDK passes, async compute and optional browser streaming
+  need separate input, synchronization and delivery validation.
+
+### Embedding for PVW, 2026-10-06
+
+The maintainer authorized committing/pushing the verified library changes before pinning a PVW submodule.
+xmake now preserves a parent project's metadata/tooling, defaults embedded examples/tests off, exports the core
+target without standalone applications/managed/game-UI targets and omits editor-canvas/RmlUi/Lua package requests.
+Shader fingerprints read the library's source root while generated headers remain in the parent build directory.
+Dependency versions/runtime/VRI patches are unchanged. Human instructions are in docs/guide.md.
+
+A separate xmake parent in `build/.tmp/pvw-embedding-1791295344199/consumer` builds and executes a real VRI clear/readback.
+Use `-P .` for this nested temporary fixture so xmake does not select the ancestor project. The core-only
+subproject and standalone all-target build pass. PVW will pin the pushed commit; its research methods stay owned by
+the maintainer, outside the library. No paper-specific algorithm or private assets are part of this library change.

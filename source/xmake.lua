@@ -1,3 +1,5 @@
+local vultra_root = path.directory(os.scriptdir())
+
 target("vultra")
     set_kind("static")
     if is_plat("linux", "macosx") then
@@ -39,16 +41,16 @@ target("vultra")
     add_packages("nlohmann_json")
     add_includedirs("$(builddir)/generated/shaders")
     before_build(function (target)
-        local inputs = os.files(path.join(os.projectdir(), "source/assets/src/shaders/*"))
-        table.join2(inputs, os.files(path.join(os.projectdir(), "source/assets/src/shaders/generated/*.cpp")))
-        table.join2(inputs, os.files(path.join(os.projectdir(), "source/assets/src/shaders/generated/*.h")))
-        table.join2(inputs, os.files(path.join(os.projectdir(), "source/drivers/src/rhi/shader*")))
-        table.join2(inputs, os.files(path.join(os.projectdir(), "source/assets/include/vultra/assets/shader_asset.hpp")))
-        table.join2(inputs, os.files(path.join(os.projectdir(), "source/drivers/include/vultra/drivers/rhi/shader_program.hpp")))
+        local inputs = os.files(path.join(vultra_root, "source/assets/src/shaders/*"))
+        table.join2(inputs, os.files(path.join(vultra_root, "source/assets/src/shaders/generated/*.cpp")))
+        table.join2(inputs, os.files(path.join(vultra_root, "source/assets/src/shaders/generated/*.h")))
+        table.join2(inputs, os.files(path.join(vultra_root, "source/drivers/src/rhi/shader*")))
+        table.join2(inputs, os.files(path.join(vultra_root, "source/assets/include/vultra/assets/shader_asset.hpp")))
+        table.join2(inputs, os.files(path.join(vultra_root, "source/drivers/include/vultra/drivers/rhi/shader*.hpp")))
         table.sort(inputs)
         local hashes = {"antlr-4.13.2", "vultra-shader-language-1"}
         for _, file in ipairs(inputs) do
-            table.insert(hashes, path.relative(file, os.projectdir()):gsub("\\", "/") .. ":" .. hash.sha256(file))
+            table.insert(hashes, path.relative(file, vultra_root):gsub("\\", "/") .. ":" .. hash.sha256(file))
         end
         local output = path.join(os.projectdir(), get_config("builddir") or "build",
                                  "generated/shaders/shader_toolchain_key.hpp")
@@ -67,6 +69,11 @@ target("vultra")
     end
 target_end()
 
+-- Embedded projects consume the public C++ core without standalone scripting/UI build targets.
+if os.projectdir() ~= vultra_root then
+    return
+end
+
 -- Compile the shared managed API once before either example or test script assemblies.
 target("vultra-managed-host")
     set_kind("phony")
@@ -74,7 +81,7 @@ target("vultra-managed-host")
     set_policy("build.fence", true)
     on_build(function ()
         local output = path.join(os.projectdir(), "build", ".tmp", "scripting-managed")
-        os.execv("dotnet", {"build", path.join(os.projectdir(), "source", "scripting", "managed", "Vultra.ManagedHost.csproj"),
+        os.execv("dotnet", {"build", path.join(vultra_root, "source", "scripting", "managed", "Vultra.ManagedHost.csproj"),
                            "-c", "Release", "-o", output, "--nologo"})
     end)
 target_end()

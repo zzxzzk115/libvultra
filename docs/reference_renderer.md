@@ -26,8 +26,14 @@ Seeds select a deterministic per-pixel/sample sequence. Script RNGs remain the s
 
 The material domain is the existing **opaque OpenPBR subset**, including bound base/normal/emission and data textures;
 transmission, subsurface, fuzz, thin-film and blended transparency are outside it. Alpha masking and double-sided
-surfaces are supported. Texture sampling currently uses mip level zero, and environment sampling is uniform over
-the sphere rather than importance-sampled. These choices can increase variance. The reference does not apply the
+surfaces are supported. Material and environment lookup explicitly use bilinear filtering at mip level zero.
+Jittered primary samples integrate that pointwise texture model; the reference does not infer raster derivatives,
+ray cones or a hidden coarse LOD. Mip/cone filtering would define a different approximation and remains separate.
+Environment next-event estimation uses a luminance-weighted alias table with exact latitude-row solid angles,
+uniform longitude and cosine-of-latitude within each cell. A 5% uniform-sphere mixture supplies nonzero support
+even where bilinear lookup spreads radiance into otherwise dark cells. The same solid-angle mixture PDF is used
+for environment and BSDF MIS. The table is uploaded once per environment replacement, after prior GPU use completes.
+The reference does not apply the
 raster renderer's AO or split-sum IBL approximations. Geometric ray offsets and a scene-scaled minimum distance are
 explicit numerical approximations; these tests do not establish a complete OpenPBR renderer.
 
@@ -59,17 +65,29 @@ Sample/ray counters use float channels; integer precision is finite, and accumul
 beyond its exact float range instead of overflowing silently. Diagnostic surface AOVs describe the current sample, rather than an accumulated anti-aliased surface estimate.
 Motion reprojects the current surface through the previous camera and rigid instance transform. Deformation/skinning
 and the complete jitter/depth/exposure contract required by DLSS are not yet implemented. PFM exports store raw RGB,
-including negative normal/motion channels. The current workbench samples raw texture
-channels, so signed/HDR values can clip in its display/PNG previews; inspect the PFM or NumPy arrays for exact values.
-Per-channel range controls and pixel probes remain follow-up UI work.
+including negative normal/motion channels. The workbench Outputs panel selects RGB, individual RGBA channels
+or Rec.709 luminance and a finite increasing display range. Mapping writes a separate preview texture; it never
+changes the experiment's raw attachments or timing events. A requested pixel probe reads original float RGBA at
+top-left pixel coordinates after GPU completion. PNG exports still clamp raw values; use PFM/NumPy for quantitative
+data, or Python `preview()` for an explicitly mapped display array.
 
 Camera, transform, material, light, environment, seed and shader-generation changes invalidate accumulation.
 Explicit `RenderGraph::resetHistory()` also resets it without recreating textures. A resized session/graph owns a
 new history. Call `ReferencePathTracer::prepare()` between completed frames, then execute/submit/wait, then
 `completeFrame()`. Scene, environment, tracer and pass objects must outlive graph callbacks and their last GPU use.
 
-`test-reference-path-tracer` covers a textured emissive surface, alpha masking, mirrored sidedness, analytic
-Lambertian lighting, camera motion, state/shader resets and Cornell Box convergence. The current Linux fixture's
+Independent validation includes normalized environment PDFs, constant/black-map solid-angle uniformity,
+high-contrast alias sampling frequencies and a known spherical integral. GPU white-furnace results for diffuse,
+dielectric, metal and coat materials are compared with deterministic hemisphere quadrature using upstream
+OpenPBR's C++ evaluator, independent of the Slang integrator's sampler and MIS. A filtered high-contrast environment
+uses independent CPU bilinear lookup and hemispherical integration. The existing directional C++/Slang BRDF tests
+remain in `test-rendering`. These fixtures cover the declared opaque subset, not arbitrary material conformance.
+Sampling follows [PBRT's infinite-area light model](https://pbr-book.org/4ed/Light_Sources/Infinite_Area_Lights);
+the explicit pointwise texture boundary distinguishes it from
+[footprint-based texture filtering](https://pbr-book.org/4ed/Textures_and_Materials/Texture_Sampling_and_Antialiasing).
+
+`test-reference-path-tracer` also covers a textured emissive surface, alpha masking, mirrored sidedness, analytic
+Lambertian lighting, camera motion, state/shader resets and Cornell Box convergence. The earlier Linux fixture's
 MSE against an independent 2048-sample reference decreases from about 0.04338 at 16 samples to 0.002712 at 256.
 Repeating a seed gives identical float readbacks on that device. Cross-device/driver bit identity is not promised.
 

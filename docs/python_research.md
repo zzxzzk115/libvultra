@@ -39,8 +39,8 @@ external model dependencies, HDR environments, textures and cooked game shaders 
 Script files and native/managed sidecars are materialized individually and removed after their script hosts stop.
 The embedded engine shader pack still uses the shared file-based bootstrap. Direct-entry loading, copied
 library/VPK startup and CLI/Python raster/reference readbacks pass on Linux. Earlier Windows delivery checks
-predate this source migration; current Windows, separate clean-machine delivery, D3D12 and cross-device
-numerical baselines remain open.
+predate this source migration. Current Windows Vulkan checks also cover copied-library/VPK loading and exact
+CLI/Python raster/reference parity; separate clean-machine delivery, D3D12 and cross-device baselines remain open.
 
 `image()` returns display-encoded final color. `image("hdr")` returns the processed linear scene color. Other names
 must be marked graph outputs, such as `gain.color`. Returned arrays have shape `(height, width, 4)`, `float32`, a
@@ -66,7 +66,58 @@ fixed time step and final scene state. `--warmup` frames advance scripts and ren
 statistics. Python `session.report` exposes completed-frame device/graph/resource/producer and nested timing data;
 `session.save_report(new_directory, revision="BUILD_ID", outputs=("hdr", "scene.depth"))` exports selected linear RGB
 PFMs and the version-1 graph report. Python reports contain the last completed frame rather than the CLI's full
-frame/pass timing history. Typed Python scene mutation wrappers are not yet exposed.
+frame/pass timing history. Both reports include `provenance`: build mode and Slang toolchain, the current graph
+and scene snapshot, entry/declared asset/environment hashes, actual importer-consumed model/buffer/texture dependency
+hashes, and hashes of available engine shader artifacts/libraries. Dependency hashes survive cache hits. Hashing
+runs only when a report is requested, outside measured frames. `revision` must identify the retained source/build;
+the report cannot recover arbitrary unrecorded script RNG or external state. Declared file hashes are read at report
+time; importer hashes describe the bytes actually consumed. Retain the files alongside the experiment.
+
+## Typed scene edits and AOV inspection
+
+Typed settings are generated from the same annotated C++ methods, reflected defaults and POD layouts as the native
+scene API. They do not introduce another schema or registry. Project/VPK sessions use persistent UUID strings;
+direct model sessions have no SceneTree and reject scene-edit operations. Returned frozen dataclasses hold owned
+values; setters validate both numeric storage and the scene's semantic constraints before publishing revisions.
+
+```python
+from dataclasses import replace
+
+with Research(library) as research, research.open(project, width=640, height=480) as session:
+    camera = session.find_node("Camera")  # Requires exactly one matching name.
+    settings = session.camera_settings(camera)
+    session.set_camera_settings(camera, replace(settings, vertical_fov=0.75))
+    transform = session.transform(camera)  # Owned 4×4 float32 matrix, ordinary row/column indexing.
+    transform[0, 3] += 0.1
+    session.set_transform(camera, transform)
+    environment = session.scene["current_environment"]
+    session.set_environment_settings(environment, replace(session.environment_settings(environment), intensity=0.5))
+    material = session.scene["materials"][0]["id"]
+    session.set_material_parameters(material, replace(session.material_parameters(material), coat_weight=0.5))
+    session.step()
+    raw = session.image("hdr")
+    display = session.preview("hdr", channel="luminance", minimum=0, maximum=8)
+    pixel = session.probe_pixel("hdr", 320, 240)  # Original float RGBA, without display mapping.
+```
+
+`light_settings()` / `set_light_settings()` expose color, intensity, range and spot cones. Camera, light,
+environment and material values reject wrong node/resource kinds and non-finite inputs. Transforms must be finite,
+invertible affine matrices. The matrix ABI uses 16 column-major floats internally; Python performs the conversion.
+Changes become visible on the next `step()`; prior owned arrays remain valid. Numeric edits retain graph textures
+and geometry. Progressive reference history resets when the affected rendered state changes.
+
+`preview()` returns a separate owned float32 RGBA display array, with RGB clamped to the declared range and alpha
+one. Channels are `rgb`, `r`, `g`, `b`, `a`, and `luminance`. Invalid or equal range endpoints are rejected.
+`image()`, pixel probes and PFM exports retain signed/HDR values. Probe coordinates use the top-left origin.
+
+## Built-in stage graphs
+
+Load `examples/research/deferred.vgraph` to compose the shared shadow, skybox, G-buffer and deferred lighting stages
+explicitly. Such a graph selects the indexed deferred contract and replaces the automatic scene prelude. Keeping
+only G-buffer outputs culls unused lighting and shadows. A regular post-processing graph still receives
+`scene.hdr`; deferred sessions additionally expose seven `scene.GBUFFER_NAME` ports, `scene.depth` and
+`scene.cascade0` through `scene.cascade3`. See the [pass contracts](guide.md#built-in-raster-pass-composition).
+Failed stage/format/extent edits retain the last valid graph and completed image.
 
 `resources/research.vexperiment` is a version-1 reproducible experiment input. It contains the model/project/VPK path,
 extent, render path, seed, warmup/measured frames, fixed time step, an optional environment override, an inline graph
