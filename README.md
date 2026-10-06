@@ -30,6 +30,8 @@ The `dev-VRI` branch is a small VRI-based rendering research framework within li
 
 The source is organized by `core`, `platform`, `drivers`, `assets`, `servers`, `scene`, `ui`, `main` and `api`, with optional `scripting`. A single public `vultra` static library supports direct VRI experiments; `vultra-scripting` adds native, Lua and C# project modules. See the [early engine architecture](docs/architecture.md) and [unified research and engine roadmap](docs/research_milestones.md).
 
+Use `includes("external/libvultra")` and `add_deps("vultra")` in an xmake parent project; the embedded path exposes the C++ core without standalone applications or their optional packages. See [subproject integration](docs/guide.md#use-as-an-xmake-subproject).
+
 ## Showcase
 
 [Example: glTF Viewer](examples/scene/helmet.cpp)

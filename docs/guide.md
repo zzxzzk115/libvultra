@@ -155,6 +155,37 @@ The Linux model picker uses Native File Dialog Extended v1.3.0's portal backend 
 
 ISPC uses the host executable name and target operating system, with position-independent code on Linux. OpenXR stays at 1.1.49; Linux builds its static loader with the SDK-vendored JSON parser to avoid the [system JsonCpp export issue](https://github.com/KhronosGroup/OpenXR-SDK-Source/issues/481). The `libvultra_with_openxr` option remains enabled by default.
 
+## Built-in raster pass composition
+
+`BuiltinRenderer::addGBufferPasses()` and `addDeferredLightingPass()` expose the same implementation used by the
+default renderer. Direct C++ experiments can substitute a custom lighting pass without rebuilding geometry or
+adopting SceneTree. `addShadowPasses()`, `addSkyboxPass()` and `addForwardPass()` remain direct composition APIs.
+
+`PassCatalog` describes these built-in graph-definition contracts:
+
+| Type | Inputs | Outputs |
+| --- | --- | --- |
+| `vultra.shadow` | Renderer view/scene supplied by the context | `cascade0..3`, equally sized square D32F maps |
+| `vultra.skybox` | Renderer environment supplied by the context | `hdr`, linear RGBA16F |
+| `vultra.gbuffer` | Indexed deferred scene supplied by the context | `position_metallic` RGBA32F; `normal_roughness`, `albedo_weight`, `emission_occlusion`, `specular`, `geometric_normal_ior`, `coat` RGBA16F; `depth` D32F |
+| `vultra.deferred_lighting` | `hdr`, `depth`, all seven G-buffer ports and `cascade0..3` | Updated `hdr` |
+
+Use `bindBuiltinRasterPasses(catalog, renderer, outputs, extent)` before building a definition in direct C++.
+The borrowed renderer and output bindings must outlive that catalog, built pass objects, graph callbacks and their
+last GPU use. Prepare the renderer with those populated bindings after graph compilation, between completed frames.
+An unbound context, repeated geometry/shadow/skybox stage, unsupported mesh-deferred path or mismatched port
+format/extent fails explicitly. Independent views use independent renderer instances. RenderGraph owns resource
+allocation, culling, ordering and barriers; these passes do not add an executor.
+
+`examples/research/deferred.vgraph` connects all four stages. ExperimentSession and the workbench bind their owned
+renderer contexts and omit the default prelude when a graph contains these stages. Post-processing graphs keep
+the default prelude. Mark an intermediate port or feed it to a custom pass to inspect or replace a stage;
+G-buffer-only graphs do not execute unused lighting or shadow work.
+
+The workbench Outputs panel has RGB/RGBA/luminance selection, explicit range mapping and raw pixel probes.
+Preview mapping uses a separate texture outside experiment timings. Quantitative captures remain raw; see
+[reference AOV units](reference_renderer.md) and [Python controls](python_research.md).
+
 ## Application Lifecycle
 
 BaseApp supplies `run()`, `close()`, `frameCount()` and update callbacks. DesktopApp delegates Window, Device, Swapchain, Frame and RenderingServer ownership to RuntimeContext in dependency order. Constructors and RAII handle initialization and cleanup; base constructors and destructors do not call derived virtual functions.
@@ -738,3 +769,36 @@ Use a complete LLVM installation for clang-tidy, including its matching `lib/cla
 ## Game shaders and native research shaders
 
 See [Vultra Shader](shader_system.md) for the two source paths, material properties, standard Surface passes, explicit VRI Pass contracts, cooking, packaging and editor services. The game example depends on build-time shader cooking; research code remains able to use native Slang and VRI directly. Regenerating the private ANTLR parser requires Java, but normal builds do not.
+
+## Use as an xmake subproject
+
+Pin `dev-VRI` as a Git submodule and include its xmake project from a C++23 application:
+
+```lua
+set_project("my-renderer")
+set_languages("cxx23")
+add_rules("mode.debug", "mode.release")
+if is_plat("windows") then
+    set_runtimes(is_mode("debug") and "MTd" or "MT")
+end
+includes("external/libvultra")
+
+target("my-renderer")
+    set_kind("binary")
+    add_deps("vultra")
+    add_files("source/**.cpp")
+    set_rundir("$(projectdir)")
+target_end()
+```
+
+Embedded builds expose the public `vultra` target and its dependencies. They do not overwrite the parent project
+name/editor settings or register the standalone editor, player, tools, tests, examples, managed host and optional
+game-UI targets. Editor-canvas, RmlUi and Lua packages are not requested for this core-only path. Dependency versions,
+VRI patches and the MT/MTd package configuration remain owned by libvultra. The shader toolchain fingerprint uses
+library source paths and writes its generated header in the parent build directory.
+
+Built-in shader lookup remains explicit: source-based renderers expect the library's `builtin/shaders` and
+`external` include roots. Resolve application assets and shader paths first, then use `ScopedWorkingDirectory`
+around the library shader root for the existing built-in renderer. Keep that scope outside its GPU objects.
+A shipping application should cook/package its actual shader closure; including a source submodule alone does not
+embed resources or make a source-free executable. Direct VRI/RenderGraph code does not require SceneTree or scripts.
