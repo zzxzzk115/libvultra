@@ -1,3 +1,4 @@
+#include <vultra/assets/asset_source.hpp>
 #include <vultra/assets/source_file.hpp>
 
 #include <fstream>
@@ -5,8 +6,22 @@
 
 namespace vultra
 {
-    std::vector<std::byte> readSourceFile(const std::filesystem::path& path, const SourceObserver& observer)
+    std::vector<std::byte>
+    readSourceFile(const std::filesystem::path& path, const SourceObserver& observer, const AssetSource* source)
     {
+        if (source)
+        {
+            auto bytes = source->read(path);
+            if (bytes.empty())
+            {
+                throw std::runtime_error("Cannot read empty asset source: " + path.string());
+            }
+            if (observer)
+            {
+                observer(source->resolve(path), bytes);
+            }
+            return bytes;
+        }
         std::ifstream file(path, std::ios::binary | std::ios::ate);
         if (!file || file.tellg() <= 0)
         {

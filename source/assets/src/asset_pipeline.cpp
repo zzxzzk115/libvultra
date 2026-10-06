@@ -3,6 +3,7 @@
 #include "texture_layout.hpp"
 
 #include <vultra/assets/asset_pipeline.hpp>
+#include <vultra/assets/asset_source.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/platform/os/file.hpp>
 
@@ -98,27 +99,28 @@ namespace vultra
             return bytes;
         }
 
-        void validateDependencies(const Json& dependencies, uint32_t workers)
+        void validateDependencies(const Json& dependencies, uint32_t workers, const AssetSource* source)
         {
             if (dependencies.empty())
             {
                 throw std::runtime_error("Asset cache has no source dependencies");
             }
-            asset_detail::runImportJobs("Verifying source dependencies",
-                                        uint32_t(dependencies.size()),
-                                        workers,
-                                        65536,
-                                        [&](uint32_t i)
-                                        {
-                                            const auto&                 dependency = dependencies.at(i);
-                                            const auto                  name = dependency.at("path").get<std::string>();
-                                            const std::filesystem::path dependencyPath =
-                                                std::u8string(name.begin(), name.end());
-                                            if (hashFile(dependencyPath) != dependency.at("hash").get<std::string>())
-                                            {
-                                                throw std::runtime_error("Changed asset dependency: " + name);
-                                            }
-                                        });
+            asset_detail::runImportJobs(
+                "Verifying source dependencies",
+                uint32_t(dependencies.size()),
+                workers,
+                65536,
+                [&](uint32_t i)
+                {
+                    const auto&                 dependency     = dependencies.at(i);
+                    const auto                  name           = dependency.at("path").get<std::string>();
+                    const std::filesystem::path dependencyPath = std::u8string(name.begin(), name.end());
+                    if ((source ? hashBytes(source->read(dependencyPath)) : hashFile(dependencyPath)) !=
+                        dependency.at("hash").get<std::string>())
+                    {
+                        throw std::runtime_error("Changed asset dependency: " + name);
+                    }
+                });
         }
 
         Json readMetadata(CacheReader& archive, std::span<const std::byte> bytes, const Json& recipe)
@@ -283,13 +285,15 @@ namespace vultra
         }
     } // namespace
 
-    bool isAssetCacheCurrent(const std::filesystem::path& input, const AssetImportOptions& options)
+    bool isAssetCacheCurrent(const std::filesystem::path& input,
+                             const AssetImportOptions&    options,
+                             const AssetSource*           assetSource)
     {
         if (!options.cache)
         {
             return false;
         }
-        const auto source    = std::filesystem::canonical(input);
+        const auto source    = assetSource ? assetSource->resolve(input) : std::filesystem::canonical(input);
         const auto recipe    = importRecipe(source, options);
         const auto cachePath = cacheFilePath(source, recipe, options);
         if (!std::filesystem::is_regular_file(cachePath))
@@ -301,7 +305,7 @@ namespace vultra
             const auto  bytes = readFile(cachePath);
             CacheReader archive(bytes);
             const auto  metadata = readMetadata(archive, bytes, recipe);
-            validateDependencies(metadata.at("dependencies"), options.workers);
+            validateDependencies(metadata.at("dependencies"), options.workers, assetSource);
             return true;
         }
         catch (const std::exception& error)
@@ -311,10 +315,11 @@ namespace vultra
         }
     }
 
-    ImportedAsset importAsset(const std::filesystem::path& input, const AssetImportOptions& options)
+    ImportedAsset
+    importAsset(const std::filesystem::path& input, const AssetImportOptions& options, const AssetSource* assetSource)
     {
         const auto started   = std::chrono::steady_clock::now();
-        const auto source    = std::filesystem::canonical(input);
+        const auto source    = assetSource ? assetSource->resolve(input) : std::filesystem::canonical(input);
         const auto recipe    = importRecipe(source, options);
         const auto cachePath = cacheFilePath(source, recipe, options);
         Logger::core().info("Importing asset: {}", pathText(input));
@@ -322,10 +327,11 @@ namespace vultra
         const auto                         loadStarted = std::chrono::steady_clock::now();
         auto                               lastReadLog = loadStarted;
         std::map<std::string, std::string> files;
-        const SourceObserver observer = [&files, &lastReadLog](const auto& path, std::span<const std::byte> bytes)
+        const SourceObserver               observer =
+            [&files, &lastReadLog, assetSource](const auto& path, std::span<const std::byte> bytes)
         {
-            const auto name              = pathText(std::filesystem::canonical(path));
-            const auto hash              = hashBytes(bytes);
+            const auto name = pathText(assetSource ? assetSource->resolve(path) : std::filesystem::canonical(path));
+            const auto hash = hashBytes(bytes);
             const auto [entry, inserted] = files.emplace(name, hash);
             const auto now               = std::chrono::steady_clock::now();
             if (now - lastReadLog >= std::chrono::milliseconds(500))
@@ -348,15 +354,15 @@ namespace vultra
                                });
         if (extension == ".gltf" || extension == ".glb")
         {
-            asset.scene = loadGltf(source, observer, options.workers);
+            asset.scene = loadGltf(source, observer, options.workers, assetSource);
         }
         else if (extension == ".obj")
         {
-            asset.scene = loadObj(source, observer, options.workers);
+            asset.scene = loadObj(source, observer, options.workers, assetSource);
         }
         else if (extension == ".fbx")
         {
-            asset.scene = loadFbx(source, observer, options.workers);
+            asset.scene = loadFbx(source, observer, options.workers, assetSource);
         }
         else
         {
@@ -408,7 +414,7 @@ namespace vultra
         asset.scene.images.clear();
         // Do not publish a mixture of source revisions if an editor changed a dependency during import.
         Logger::core().info("Verifying {} source dependencies before publishing...", files.size());
-        validateDependencies(dependencies, options.workers);
+        validateDependencies(dependencies, options.workers, assetSource);
         asset.cachePath = cachePath;
         if (options.cache)
         {

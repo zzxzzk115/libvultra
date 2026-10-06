@@ -32,6 +32,8 @@ namespace vultra
         std::vector<TextureSubresource> subresources;
     };
 
-    TextureAssetData
-    loadTextureAsset(const std::filesystem::path& path, bool srgb, const SourceObserver& observer = {});
+    TextureAssetData loadTextureAsset(const std::filesystem::path& path,
+                                      bool                         srgb,
+                                      const SourceObserver&        observer = {},
+                                      const AssetSource*           source   = nullptr);
 } // namespace vultra

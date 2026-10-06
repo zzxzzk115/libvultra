@@ -1,3 +1,4 @@
+#include <vultra/assets/asset_source.hpp>
 #include <vultra/main/experiment_session.hpp>
 #include <vultra/scene/camera/orbit_camera.hpp>
 #include <vultra/scene/scene_import.hpp>
@@ -42,18 +43,24 @@ namespace vultra
             device(owner),
             config(settings),
             server(device),
-            environment(device, initialEnvironment()),
+            environment(
+                [&]
+                {
+                    // Parse the project before selecting its provider; call arguments have no fixed order.
+                    const auto hdr = initialEnvironment();
+                    return Environment(device, hdr, config.environment.empty() ? source() : nullptr);
+                }()),
             catalog(device),
             frame(device),
             profiler(device)
         {
             std::vector<SceneMeshInstance> ranges;
-            auto imported           = manifest ? importScene(*tree, *manifest, root, config.importOptions, &ranges) :
-                                                 importAsset(config.input, config.importOptions);
-            cache                   = imported.cachePath;
-            gpuScene                = server.uploadScene(imported);
-            instances               = std::move(ranges);
-            renderer                = std::make_unique<BuiltinRenderer>(device, *gpuScene, environment);
+            auto imported = manifest ? importScene(*tree, *manifest, root, config.importOptions, &ranges, source()) :
+                                       importAsset(config.input, config.importOptions);
+            cache         = imported.cachePath;
+            gpuScene      = server.uploadScene(imported);
+            instances     = std::move(ranges);
+            renderer      = std::make_unique<BuiltinRenderer>(device, *gpuScene, environment);
             renderer->settings.path = config.path;
             fallback.center         = gpuScene->center;
             fallback.radius         = gpuScene->radius;
@@ -75,11 +82,21 @@ namespace vultra
                     "Reference experiments require a device created with VRI ray query and bindless features");
             }
             config.input = std::filesystem::absolute(config.input);
-            if (config.input.extension() == ".vproject")
+            if (config.input.extension() == ".vproject" || config.input.extension() == ".vpk")
             {
-                root     = config.input.parent_path();
-                manifest = ProjectManifest::load(config.input);
-                tree     = SceneTree::load(root / manifest->mainScene);
+                auto file = config.input;
+                if (file.extension() == ".vpk")
+                {
+                    assets = std::make_unique<AssetSource>(VpkArchive(file));
+                    root   = assets->root();
+                    file   = root / "project.vproject";
+                }
+                else
+                {
+                    root = file.parent_path();
+                }
+                manifest = ProjectManifest::load(file, source());
+                tree     = SceneTree::load(root / manifest->mainScene, source());
                 tree->validateAssets(*manifest);
             }
             if (!config.environment.empty())
@@ -88,6 +105,11 @@ namespace vultra
                 return config.environment;
             }
             return manifest ? sceneEnvironmentPath(*tree, *manifest, root) : std::filesystem::path {};
+        }
+
+        const AssetSource* source() const
+        {
+            return assets.get();
         }
 
         SessionGraph
@@ -190,7 +212,7 @@ namespace vultra
             if (gpuSync.needsImport(*tree, instances))
             {
                 std::vector<SceneMeshInstance> ranges;
-                auto imported         = importScene(*tree, *manifest, root, config.importOptions, &ranges);
+                auto imported         = importScene(*tree, *manifest, root, config.importOptions, &ranges, source());
                 auto upload           = server.uploadScene(imported);
                 auto replacement      = std::make_unique<BuiltinRenderer>(device, *upload, environment);
                 replacement->settings = renderer->settings;
@@ -216,7 +238,7 @@ namespace vultra
                 }
                 if (!shaderMaterials)
                 {
-                    shaderMaterials = std::make_unique<SceneShaderMaterials>(device, *manifest, root);
+                    shaderMaterials = std::make_unique<SceneShaderMaterials>(device, *manifest, root, source());
                 }
             }
             if (shaderMaterials)
@@ -230,6 +252,7 @@ namespace vultra
         ExperimentConfig                      config;
         std::filesystem::path                 root;
         std::filesystem::path                 cache;
+        std::unique_ptr<AssetSource>          assets;
         std::optional<ProjectManifest>        manifest;
         std::optional<SceneTree>              tree;
         RenderingServer                       server;
@@ -271,6 +294,21 @@ namespace vultra
     const std::filesystem::path& ExperimentSession::projectRoot() const
     {
         return m_Impl->root;
+    }
+
+    const AssetSource* ExperimentSession::assetSource() const
+    {
+        return m_Impl->source();
+    }
+
+    std::filesystem::path ExperimentSession::scriptPath(const std::filesystem::path& module) const
+    {
+        const auto& state = *m_Impl;
+        if (!state.assets)
+        {
+            return state.root / module;
+        }
+        return state.manifest->materializeModule(*state.assets, module);
     }
 
     const std::filesystem::path& ExperimentSession::environmentSource() const

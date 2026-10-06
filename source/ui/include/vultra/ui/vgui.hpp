@@ -11,11 +11,17 @@
 
 namespace vultra
 {
-    // Retained, authored game UI. Render and input use VRI and Window; RmlUi stays behind this boundary.
+    class AssetSource;
+
+    // Retained, authored game UI. VRI rendering and explicit input frames keep RmlUi behind this boundary.
+    // One live VGui owns RmlUi's process-wide interfaces. Borrowed sources outlive it.
+    // Complete previous GPU work before update(), document replacement and destruction.
     class VGui
     {
     public:
-        VGui(Device& device, Window& window, VriFormat targetFormat);
+        VGui(Device& device, Window& window, VriFormat targetFormat, const AssetSource* source = nullptr);
+        // Offscreen frames use framebuffer pixels as logical coordinates; no desktop input is acquired.
+        VGui(Device& device, Extent size, VriFormat targetFormat, const AssetSource* source = nullptr);
         ~VGui();
         VGui(const VGui&)            = delete;
         VGui& operator=(const VGui&) = delete;

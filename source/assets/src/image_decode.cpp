@@ -39,11 +39,12 @@ namespace vultra
         return {uint32_t(width), uint32_t(height), {pixels.get(), pixels.get() + size_t(width) * height * 4}, {}};
     }
 
-    SceneImage loadSceneImage(const std::filesystem::path& path, const SourceObserver& observer)
+    SceneImage
+    loadSceneImage(const std::filesystem::path& path, const SourceObserver& observer, const AssetSource* source)
     {
         try
         {
-            return asset_detail::decodeImage(readSourceFile(path, observer));
+            return asset_detail::decodeImage(readSourceFile(path, observer, source));
         }
         catch (const std::exception& error)
         {

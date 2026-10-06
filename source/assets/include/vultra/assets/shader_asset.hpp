@@ -154,28 +154,28 @@ namespace vultra
         std::string                  compileKey;
         std::string                  diagnostics;
 
-        static ShaderAsset                  parse(const std::filesystem::path& file, std::string_view text);
-        static ShaderAsset                  compile(const std::filesystem::path& file,
-                                                    const ShaderCompileOptions&  options  = {},
-                                                    std::span<const std::string> variants = {});
-        static ShaderAsset                  compileSource(const std::filesystem::path& file,
-                                                          std::string_view             source,
-                                                          const ShaderCompileOptions&  options  = {},
-                                                          std::span<const std::string> variants = {});
-        static bool                         cook(const std::filesystem::path& source,
-                                                 const std::filesystem::path& output,
-                                                 const ShaderCompileOptions&  options  = {},
-                                                 std::span<const std::string> variants = {});
-        static ShaderAsset                  load(const std::filesystem::path& file);
-        void                                save(const std::filesystem::path& file) const;
-        void                                validate() const;
-        const ShaderProperty&               property(std::string_view name) const;
-        const ShaderVariant&                variant(std::string_view name) const;
-        uint32_t                            selectSubshader(std::string_view                  pipeline,
-                                                            uint64_t                          features,
-                                                            std::span<const std::string_view> lightModes,
-                                                            std::string&                      diagnostics,
-                                                            const SubshaderCompatibility&     compatible = {}) const;
+        static ShaderAsset    parse(const std::filesystem::path& file, std::string_view text);
+        static ShaderAsset    compile(const std::filesystem::path& file,
+                                      const ShaderCompileOptions&  options  = {},
+                                      std::span<const std::string> variants = {});
+        static ShaderAsset    compileSource(const std::filesystem::path& file,
+                                            std::string_view             source,
+                                            const ShaderCompileOptions&  options  = {},
+                                            std::span<const std::string> variants = {});
+        static bool           cook(const std::filesystem::path& source,
+                                   const std::filesystem::path& output,
+                                   const ShaderCompileOptions&  options  = {},
+                                   std::span<const std::string> variants = {});
+        static ShaderAsset    load(const std::filesystem::path& file, const AssetSource* source = nullptr);
+        void                  save(const std::filesystem::path& file) const;
+        void                  validate() const;
+        const ShaderProperty& property(std::string_view name) const;
+        const ShaderVariant&  variant(std::string_view name) const;
+        uint32_t              selectSubshader(std::string_view                  pipeline,
+                                              uint64_t                          features,
+                                              std::span<const std::string_view> lightModes,
+                                              std::string&                      diagnostics,
+                                              const SubshaderCompatibility&     compatible = {}) const;
         std::vector<ShaderSourceProjection> projectSources() const;
         std::string                         generatedMaterialSource() const;
         std::string                         generatedPassSource(uint32_t subshader, uint32_t pass) const;

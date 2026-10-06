@@ -253,9 +253,9 @@ namespace vultra
         ComPtr<slang::IBlob> diagnostics;
         const std::string    sourceBuffer(sourceText);
         auto*                module = session->loadModuleFromSourceString(source.stem().string().c_str(),
-                                                           source.string().c_str(),
-                                                           sourceBuffer.c_str(),
-                                                           diagnostics.writeRef());
+                                                                          source.string().c_str(),
+                                                                          sourceBuffer.c_str(),
+                                                                          diagnostics.writeRef());
         diagnose(module ? SLANG_OK : SLANG_FAIL, diagnostics, "Load shader module");
         std::vector<ComPtr<slang::IEntryPoint>> entries;
         if (requested.empty())
@@ -330,9 +330,9 @@ namespace vultra
             diagnostics.setNull();
             const auto syntheticPath = source.parent_path() / (linkSource.name + ".slang");
             auto*      linkedModule  = session->loadModuleFromSourceString(linkSource.name.c_str(),
-                                                                     syntheticPath.string().c_str(),
-                                                                     linkSource.value.c_str(),
-                                                                     diagnostics.writeRef());
+                                                                           syntheticPath.string().c_str(),
+                                                                           linkSource.value.c_str(),
+                                                                           diagnostics.writeRef());
             diagnose(linkedModule ? SLANG_OK : SLANG_FAIL, diagnostics, "Load link-time Slang source");
             components.push_back(linkedModule);
         }

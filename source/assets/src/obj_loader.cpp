@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <fstream>
 #include <limits>
 #include <sstream>
 
@@ -16,31 +15,23 @@ namespace vultra
 {
     namespace
     {
-        std::string readSource(const std::filesystem::path& path, const SourceObserver& observer)
+        std::string
+        readSource(const std::filesystem::path& path, const SourceObserver& observer, const AssetSource* assetSource)
         {
-            std::ifstream file(path, std::ios::binary);
-            if (!file)
-            {
-                throw std::runtime_error("Read OBJ dependency: " + path.string());
-            }
-            std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-            if (file.bad())
-            {
-                throw std::runtime_error("Read OBJ dependency failed: " + path.string());
-            }
-            if (observer)
-            {
-                observer(path, std::as_bytes(std::span(text)));
-            }
+            const auto  bytes = readSourceFile(path, observer, assetSource);
+            std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
             return text;
         }
 
         class MaterialReader final : public tinyobj::MaterialReader
         {
         public:
-            MaterialReader(std::filesystem::path directory, const SourceObserver& observer) :
+            MaterialReader(std::filesystem::path directory,
+                           const SourceObserver& observer,
+                           const AssetSource*    assetSource) :
                 m_Directory(std::move(directory)),
-                m_Observer(observer)
+                m_Observer(observer),
+                m_AssetSource(assetSource)
             {
             }
 
@@ -50,7 +41,7 @@ namespace vultra
                             std::string*                      warning,
                             std::string*                      error) override
             {
-                std::istringstream stream(readSource(m_Directory / name, m_Observer));
+                std::istringstream stream(readSource(m_Directory / name, m_Observer, m_AssetSource));
                 tinyobj::LoadMtl(names, materials, &stream, warning, error);
                 return error->empty();
             }
@@ -58,14 +49,18 @@ namespace vultra
         private:
             std::filesystem::path m_Directory;
             const SourceObserver& m_Observer;
+            const AssetSource*    m_AssetSource;
         };
     } // namespace
 
-    SceneData loadObj(const std::filesystem::path& path, const SourceObserver& observer, uint32_t workers)
+    SceneData loadObj(const std::filesystem::path& path,
+                      const SourceObserver&        observer,
+                      uint32_t                     workers,
+                      const AssetSource*           assetSource)
     {
         const auto                       parseStarted = std::chrono::steady_clock::now();
-        std::istringstream               source(readSource(path, observer));
-        MaterialReader                   materialReader(path.parent_path(), observer);
+        std::istringstream               source(readSource(path, observer, assetSource));
+        MaterialReader                   materialReader(path.parent_path(), observer, assetSource);
         tinyobj::attrib_t                attributes;
         std::vector<tinyobj::shape_t>    shapes;
         std::vector<tinyobj::material_t> sourceMaterials;

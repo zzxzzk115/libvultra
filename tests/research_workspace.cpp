@@ -286,10 +286,10 @@ try
     auto*      lightingGraph     = &workspace.graph();
     auto*      lightingTexture   = lightingGraph->graph.getTexture(lightingGraph->rendererOutputs.hdr).handle;
     auto&      mesh              = **std::ranges::find_if(workspace.scene().root().children(),
-                                        [](const auto& child)
-                                        {
+                                                          [](const auto& child)
+                                                          {
                                             return child->kind() == NodeKind::eMeshInstance;
-                                        });
+                                                          });
     const auto originalTransform = mesh.localTransform();
     auto       transform         = originalTransform;
     transform[3].x += 0.6f;

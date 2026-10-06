@@ -9,6 +9,8 @@
 
 namespace vultra
 {
+    class AssetSource;
+
     struct AssetId
     {
         StableId    value;
@@ -52,8 +54,11 @@ namespace vultra
         const ProjectAsset&              asset(AssetId id) const;
         const std::vector<ProjectAsset>& assets() const;
 
+        // Retain the source until script hosts stop; native/.NET loaders borrow these real files.
+        std::filesystem::path materializeModule(const AssetSource& source, const std::filesystem::path& module) const;
+
         void                   save(const std::filesystem::path& file) const;
-        static ProjectManifest load(const std::filesystem::path& file);
+        static ProjectManifest load(const std::filesystem::path& file, const AssetSource* source = nullptr);
 
     private:
         void                      validate() const;

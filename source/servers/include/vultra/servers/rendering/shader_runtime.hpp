@@ -14,7 +14,8 @@ namespace vultra
                       ShaderCompileOptions                options            = {},
                       ShaderMaterial::TextureResolver     textures           = {},
                       std::vector<std::string>            requiredLightModes = {},
-                      ShaderAsset::SubshaderCompatibility compatible         = {});
+                      ShaderAsset::SubshaderCompatibility compatible         = {},
+                      const AssetSource*                  assetSource        = nullptr);
         ~ShaderRuntime();
         ShaderRuntime(const ShaderRuntime&)            = delete;
         ShaderRuntime& operator=(const ShaderRuntime&) = delete;

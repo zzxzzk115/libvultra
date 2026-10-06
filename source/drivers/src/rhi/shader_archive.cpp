@@ -235,7 +235,21 @@ namespace vultra::detail
         std::vector<uint8_t> bytes(static_cast<size_t>(input.tellg()));
         input.seekg(0);
         input.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size()));
-        if (!input || !std::equal(kMagic.begin(), kMagic.end(), bytes.begin()))
+        if (!input)
+        {
+            throw std::runtime_error("Read cooked shader: " + file.string());
+        }
+        return readShaderArchive(std::as_bytes(std::span(bytes)), file);
+    }
+
+    Json readShaderArchive(std::span<const std::byte> data, const std::filesystem::path& file)
+    {
+        if (data.size() < kHeaderSize || data.size() > kMaxFileSize)
+        {
+            throw std::runtime_error("Invalid cooked shader size: " + file.string());
+        }
+        const std::span<const uint8_t> bytes(reinterpret_cast<const uint8_t*>(data.data()), data.size());
+        if (!std::equal(kMagic.begin(), kMagic.end(), bytes.begin()))
         {
             throw std::runtime_error("Invalid cooked shader header: " + file.string());
         }

@@ -17,7 +17,7 @@ namespace vultra
 
     struct ExperimentConfig
     {
-        std::filesystem::path       input; // Model or .vproject; unpack a VPK before constructing the session.
+        std::filesystem::path       input; // Model, .vproject or .vpk; package assets are read directly.
         Extent                      size {1280, 720};
         RenderPath                  path = RenderPath::eNaiveDeferred;
         std::filesystem::path       environment; // Nonempty overrides scene/project selection.
@@ -39,6 +39,10 @@ namespace vultra
         SceneTree*                   scene(); // Null for a direct model input.
         const ProjectManifest*       project() const;
         const std::filesystem::path& projectRoot() const;
+        const AssetSource*           assetSource() const;
+        // Materializes only the module and its declared native/managed sidecars when required.
+        // Stop borrowing script hosts before destroying this session.
+        std::filesystem::path        scriptPath(const std::filesystem::path& module) const;
         const std::filesystem::path& environmentSource() const;
         const std::filesystem::path& cachePath() const;
         PassCatalog&                 passes();

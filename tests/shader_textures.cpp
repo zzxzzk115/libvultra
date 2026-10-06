@@ -109,9 +109,9 @@ try
     const std::array                                names {"arrayMap", "volumeMap", "cubeMap", "cubesMap"};
     const std::array                                layers {2u, 2u, 6u, 12u};
     const std::array                                types {VriTextureViewType_2DArray,
-                            VriTextureViewType_3D,
-                            VriTextureViewType_Cube,
-                            VriTextureViewType_CubeArray};
+                                                           VriTextureViewType_3D,
+                                                           VriTextureViewType_Cube,
+                                                           VriTextureViewType_CubeArray};
     for (uint32_t i = 0; i < names.size(); ++i)
     {
         const auto file = root / (std::string(names[i]) + ".dds");
@@ -136,9 +136,9 @@ try
     samplerDesc.addressModeW = VriAddressMode_ClampToEdge;
     VriDescriptor* sampler   = nullptr;
     check(device.core.CreateSampler(device.handle, &samplerDesc, &sampler), "Create texture probe sampler");
-    Buffer                  output(device,
-                                   {32, 16, VriBufferUsage_StorageBuffer | VriBufferUsage_TransferSrc, VriMemoryLocation_Device});
-    Buffer                  readback(device, {32, 0, VriBufferUsage_TransferDst, VriMemoryLocation_HostReadback});
+    Buffer output(device,
+                  {32, 16, VriBufferUsage_StorageBuffer | VriBufferUsage_TransferSrc, VriMemoryLocation_Device});
+    Buffer readback(device, {32, 0, VriBufferUsage_TransferDst, VriMemoryLocation_HostReadback});
     VriDescriptor*          view = nullptr;
     const VriBufferViewDesc outputDesc {output.handle, VriDescriptorType_StorageBuffer, VriFormat_Unknown, 0, 32};
     check(device.core.CreateBufferView(device.handle, &outputDesc, &view), "Create texture probe output");

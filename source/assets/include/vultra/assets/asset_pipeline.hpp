@@ -23,9 +23,13 @@ namespace vultra
 
     // Source files stay untouched. Changed dependencies/options invalidate the derived cache.
     // A rejected cache is logged and rebuilt; importer errors remain errors.
-    ImportedAsset importAsset(const std::filesystem::path& source, const AssetImportOptions& options = {});
+    ImportedAsset importAsset(const std::filesystem::path& source,
+                              const AssetImportOptions&    options     = {},
+                              const AssetSource*           assetSource = nullptr);
 
     // Check archive integrity, recipe and source content without parsing geometry or decoding images.
     // Used by build-time preparation; a missing/stale/corrupt cache returns false.
-    bool isAssetCacheCurrent(const std::filesystem::path& source, const AssetImportOptions& options = {});
+    bool isAssetCacheCurrent(const std::filesystem::path& source,
+                             const AssetImportOptions&    options     = {},
+                             const AssetSource*           assetSource = nullptr);
 } // namespace vultra

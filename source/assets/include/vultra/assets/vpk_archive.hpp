@@ -18,7 +18,10 @@ namespace vultra
     public:
         explicit VpkArchive(std::filesystem::path file);
 
+        const std::filesystem::path& file() const;
+
         bool                   contains(std::string_view path) const;
+        uint64_t               size(std::string_view path) const;
         std::vector<std::byte> read(std::string_view path) const;
         void                   extractTo(const std::filesystem::path& directory) const;
 

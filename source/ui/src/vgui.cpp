@@ -1,5 +1,7 @@
 #include "vgui_style.hpp"
 
+#include <vultra/assets/asset_source.hpp>
+#include <vultra/assets/source_file.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/core/image/image.hpp>
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
@@ -13,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -27,6 +30,132 @@ namespace vultra
         // xmake embeds the built-in skin so VGui works without an asset sidecar.
         constexpr unsigned char kSkinPng[] = {
 #include "vgui_skin.png.h"
+        };
+
+        std::string pathText(const std::filesystem::path& path)
+        {
+            const auto text = path.generic_u8string();
+            return {text.begin(), text.end()};
+        }
+
+        class RmlFiles final : public Rml::FileInterface
+        {
+        public:
+            explicit RmlFiles(const AssetSource* source) :
+                m_Source(source)
+            {
+            }
+
+            std::vector<std::byte> read(const Rml::String& path) const
+            {
+                return readSourceFile(std::filesystem::path(std::u8string(path.begin(), path.end())), {}, m_Source);
+            }
+
+            void reportFailure(const std::string& message)
+            {
+                if (m_Error.empty())
+                {
+                    m_Error = message;
+                }
+                Logger::app().error("Read VGUI resource: {}", message);
+            }
+
+            void check()
+            {
+                if (!m_Error.empty())
+                {
+                    throw std::runtime_error("Read VGUI resource: " + std::exchange(m_Error, {}));
+                }
+            }
+
+            Rml::FileHandle Open(const Rml::String& path) override
+            {
+                try
+                {
+                    auto file   = std::make_unique<File>();
+                    file->bytes = read(path);
+                    return reinterpret_cast<Rml::FileHandle>(file.release());
+                }
+                catch (const std::exception& error)
+                {
+                    reportFailure(error.what());
+                    return 0;
+                }
+            }
+
+            void Close(Rml::FileHandle handle) override
+            {
+                delete reinterpret_cast<File*>(handle);
+            }
+
+            size_t Read(void* buffer, size_t size, Rml::FileHandle handle) override
+            {
+                auto&      file  = *reinterpret_cast<File*>(handle);
+                const auto count = std::min(size, file.bytes.size() - file.position);
+                if (count)
+                {
+                    std::memcpy(buffer, file.bytes.data() + file.position, count);
+                    file.position += count;
+                }
+                return count;
+            }
+
+            bool Seek(Rml::FileHandle handle, long offset, int origin) override
+            {
+                auto&  file = *reinterpret_cast<File*>(handle);
+                size_t base = 0;
+                switch (origin)
+                {
+                    case SEEK_SET:
+                        break;
+                    case SEEK_CUR:
+                        base = file.position;
+                        break;
+                    case SEEK_END:
+                        base = file.bytes.size();
+                        break;
+                    default:
+                        return false;
+                }
+                if (offset < 0)
+                {
+                    const auto distance = uint64_t(-(offset + 1)) + 1;
+                    if (distance > base)
+                    {
+                        return false;
+                    }
+                    file.position = base - size_t(distance);
+                }
+                else
+                {
+                    if (uint64_t(offset) > file.bytes.size() - base)
+                    {
+                        return false;
+                    }
+                    file.position = base + size_t(offset);
+                }
+                return true;
+            }
+
+            size_t Tell(Rml::FileHandle handle) override
+            {
+                return reinterpret_cast<File*>(handle)->position;
+            }
+
+            size_t Length(Rml::FileHandle handle) override
+            {
+                return reinterpret_cast<File*>(handle)->bytes.size();
+            }
+
+        private:
+            struct File
+            {
+                std::vector<std::byte> bytes;
+                size_t                 position = 0;
+            };
+
+            const AssetSource* m_Source;
+            std::string        m_Error;
         };
 
         struct Geometry
@@ -64,8 +193,9 @@ namespace vultra
         class RmlRenderer final : public Rml::RenderInterface
         {
         public:
-            RmlRenderer(Device& device, VriFormat targetFormat) :
-                m_Device(device)
+            RmlRenderer(Device& device, VriFormat targetFormat, RmlFiles& files) :
+                m_Device(device),
+                m_Files(files)
             {
                 VriDescriptorRangeDesc ranges[2] {{0, 1, VriDescriptorType_Texture, VriShaderStage_Fragment},
                                                   {1, 1, VriDescriptorType_Sampler, VriShaderStage_Fragment}};
@@ -197,9 +327,9 @@ namespace vultra
             {
                 try
                 {
-                    const auto image =
-                        source == "vgui://skin" ? loadPng(std::as_bytes(std::span(kSkinPng))) : loadPng(source);
-                    dimensions = {int(image.size.width), int(image.size.height)};
+                    const auto image = source == "vgui://skin" ? loadPng(std::as_bytes(std::span(kSkinPng))) :
+                                                                 loadPng(m_Files.read(source));
+                    dimensions       = {int(image.size.width), int(image.size.height)};
                     std::vector<Rml::byte> pixels(image.rgba.size());
                     for (size_t i = 0; i < pixels.size(); i += 4)
                     {
@@ -215,7 +345,7 @@ namespace vultra
                 }
                 catch (const std::exception& error)
                 {
-                    Logger::app().error("Load VGUI texture '{}': {}", source, error.what());
+                    m_Files.reportFailure("Texture '" + source + "': " + error.what());
                     return 0;
                 }
             }
@@ -303,7 +433,7 @@ namespace vultra
 
             void beginFrame(Rml::Vector2i logical, Extent framebuffer)
             {
-                // DesktopApp waits for the previous submission before this frame's update.
+                // The caller completes the previous submission before this frame's update.
                 m_RetiredGeometry.clear();
                 m_RetiredTextures.clear();
                 m_Draws.clear();
@@ -401,6 +531,7 @@ namespace vultra
             }
 
             Device&                                                    m_Device;
+            RmlFiles&                                                  m_Files;
             VriPipelineLayout*                                         m_Layout  = nullptr;
             VriDescriptor*                                             m_Sampler = nullptr;
             std::unique_ptr<ShaderPipeline>                            m_Pipeline;
@@ -419,9 +550,29 @@ namespace vultra
         class EventListener final : public Rml::EventListener
         {
         public:
-            explicit EventListener(std::function<void()> callback) :
+            EventListener(Rml::EventId event, std::function<void()> callback) :
+                m_Event(event),
                 m_Callback(std::move(callback))
             {
+            }
+
+            ~EventListener() override
+            {
+                // Close() defers document destruction; detach before releasing the callback.
+                if (auto* element = m_Element.get())
+                {
+                    element->RemoveEventListener(m_Event, this);
+                }
+            }
+
+            void OnAttach(Rml::Element* element) override
+            {
+                m_Element = element->GetObserverPtr();
+            }
+
+            void OnDetach(Rml::Element*) override
+            {
+                m_Element = nullptr;
             }
 
             void ProcessEvent(Rml::Event&) override
@@ -430,7 +581,9 @@ namespace vultra
             }
 
         private:
-            std::function<void()> m_Callback;
+            Rml::ObserverPtr<Rml::Element> m_Element;
+            Rml::EventId                   m_Event;
+            std::function<void()>          m_Callback;
         };
 
         Rml::Input::KeyIdentifier toRmlKey(KeyCode key)
@@ -501,21 +654,48 @@ namespace vultra
 
     struct VGui::Impl
     {
-        explicit Impl(Device& device, Window& window, VriFormat format) :
+        Impl(Device& device, Window* window, Extent size, VriFormat format, const AssetSource* source) :
             window(window),
-            renderer(device, format)
+            source(source),
+            files(source),
+            renderer(device, format, files)
         {
-            if (!Rml::Initialise())
+            if (size.empty())
             {
-                throw std::runtime_error("Initialize RmlUi");
+                throw std::invalid_argument("VGUI requires a nonempty extent");
             }
-            name            = "vultra-vgui-" + std::to_string(reinterpret_cast<uintptr_t>(this));
-            const auto size = window.size();
-            context         = Rml::CreateContext(name, {int(size.width), int(size.height)}, &renderer);
-            if (!context)
+            // RmlUi's file/font interfaces are process-wide and live until Shutdown().
+            if (Rml::GetFileInterface())
             {
-                Rml::Shutdown();
-                throw std::runtime_error("Create RmlUi context");
+                throw std::logic_error("VGUI requires exclusive ownership of RmlUi");
+            }
+            name = "vultra-vgui-" + std::to_string(reinterpret_cast<uintptr_t>(this));
+            Rml::SetFileInterface(&files);
+            bool initialized = false;
+            try
+            {
+                initialized = Rml::Initialise();
+                if (!initialized)
+                {
+                    throw std::runtime_error("Initialize RmlUi");
+                }
+                context = Rml::CreateContext(name, {int(size.width), int(size.height)}, &renderer);
+                if (!context)
+                {
+                    throw std::runtime_error("Create RmlUi context");
+                }
+            }
+            catch (...)
+            {
+                if (initialized)
+                {
+                    Rml::Shutdown();
+                }
+                else
+                {
+                    Rml::SetFileInterface(nullptr);
+                }
+                throw;
             }
         }
 
@@ -523,11 +703,11 @@ namespace vultra
         {
             Rml::RemoveContext(name);
             listeners.clear();
-            if (textInputActive)
+            if (textInputActive && window)
             {
                 try
                 {
-                    window.setTextInputEnabled(false);
+                    window->setTextInputEnabled(false);
                 }
                 catch (const std::exception& error)
                 {
@@ -537,7 +717,9 @@ namespace vultra
             Rml::Shutdown();
         }
 
-        Window&                                     window;
+        Window*                                     window;
+        const AssetSource*                          source;
+        RmlFiles                                    files;
         RmlRenderer                                 renderer;
         std::string                                 name;
         Rml::Context*                               context  = nullptr;
@@ -547,8 +729,13 @@ namespace vultra
         bool                                        textInputActive = false;
     };
 
-    VGui::VGui(Device& device, Window& window, VriFormat targetFormat) :
-        m_Impl(std::make_unique<Impl>(device, window, targetFormat))
+    VGui::VGui(Device& device, Window& window, VriFormat targetFormat, const AssetSource* source) :
+        m_Impl(std::make_unique<Impl>(device, &window, window.size(), targetFormat, source))
+    {
+    }
+
+    VGui::VGui(Device& device, Extent size, VriFormat targetFormat, const AssetSource* source) :
+        m_Impl(std::make_unique<Impl>(device, nullptr, size, targetFormat, source))
     {
     }
 
@@ -556,7 +743,10 @@ namespace vultra
 
     void VGui::loadFont(const std::filesystem::path& path)
     {
-        if (!Rml::LoadFontFace(path.string()))
+        const auto file   = m_Impl->source ? m_Impl->source->resolve(path) : path;
+        const bool loaded = Rml::LoadFontFace(pathText(file));
+        m_Impl->files.check();
+        if (!loaded)
         {
             throw std::runtime_error("Load VGUI font: " + path.string());
         }
@@ -564,26 +754,43 @@ namespace vultra
 
     void VGui::loadDocument(const std::filesystem::path& path)
     {
-        m_Impl->context->UnloadAllDocuments();
+        const auto file      = m_Impl->source ? m_Impl->source->resolve(path) : path;
+        auto*      candidate = m_Impl->context->LoadDocument(pathText(file));
+        try
+        {
+            m_Impl->files.check();
+            if (!candidate)
+            {
+                throw std::runtime_error("Load VGUI document: " + path.string());
+            }
+            auto defaults = Rml::Factory::InstanceStyleSheetString(detail::kVGuiStyle);
+            if (!defaults)
+            {
+                throw std::runtime_error("Load built-in VGUI style");
+            }
+            if (const auto* authored = candidate->GetStyleSheetContainer())
+            {
+                candidate->SetStyleSheetContainer(defaults->CombineStyleSheetContainer(*authored));
+            }
+            else
+            {
+                candidate->SetStyleSheetContainer(std::move(defaults));
+            }
+        }
+        catch (...)
+        {
+            if (candidate)
+            {
+                candidate->Close();
+            }
+            throw;
+        }
+        if (m_Impl->document)
+        {
+            m_Impl->document->Close();
+        }
         m_Impl->listeners.clear();
-        m_Impl->document = m_Impl->context->LoadDocument(path.string());
-        if (!m_Impl->document)
-        {
-            throw std::runtime_error("Load VGUI document: " + path.string());
-        }
-        auto defaults = Rml::Factory::InstanceStyleSheetString(detail::kVGuiStyle);
-        if (!defaults)
-        {
-            throw std::runtime_error("Load built-in VGUI style");
-        }
-        if (const auto* authored = m_Impl->document->GetStyleSheetContainer())
-        {
-            m_Impl->document->SetStyleSheetContainer(defaults->CombineStyleSheetContainer(*authored));
-        }
-        else
-        {
-            m_Impl->document->SetStyleSheetContainer(std::move(defaults));
-        }
+        m_Impl->document = candidate;
         m_Impl->document->Show();
     }
 
@@ -594,7 +801,7 @@ namespace vultra
         {
             throw std::invalid_argument("VGUI element not found: " + std::string(elementId));
         }
-        auto listener = std::make_unique<EventListener>(std::move(callback));
+        auto listener = std::make_unique<EventListener>(Rml::EventId::Click, std::move(callback));
         element->AddEventListener("click", listener.get());
         m_Impl->listeners.push_back(std::move(listener));
     }
@@ -606,7 +813,7 @@ namespace vultra
         {
             throw std::invalid_argument("VGUI element not found: " + std::string(elementId));
         }
-        auto listener = std::make_unique<EventListener>(std::move(callback));
+        auto listener = std::make_unique<EventListener>(Rml::EventId::Change, std::move(callback));
         element->AddEventListener("change", listener.get());
         m_Impl->listeners.push_back(std::move(listener));
     }
@@ -686,7 +893,7 @@ namespace vultra
 
     void VGui::update(const Input& input, Extent framebuffer)
     {
-        const auto size = m_Impl->window.size();
+        const auto size = m_Impl->window ? m_Impl->window->size() : framebuffer;
         if (size.empty() || framebuffer.empty())
         {
             return;
@@ -741,11 +948,15 @@ namespace vultra
         m_Impl->capture.keyboard = focused && focused != m_Impl->document;
         if (textFocused != m_Impl->textInputActive)
         {
-            m_Impl->window.setTextInputEnabled(textFocused);
+            if (m_Impl->window)
+            {
+                m_Impl->window->setTextInputEnabled(textFocused);
+            }
             m_Impl->textInputActive = textFocused;
         }
         m_Impl->renderer.beginFrame(logical, framebuffer);
         m_Impl->context->Render();
+        m_Impl->files.check();
     }
 
     void VGui::draw(VriCommandBuffer* cmd, Texture& target)

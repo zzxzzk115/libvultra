@@ -8,4 +8,9 @@ The local `vri-vultra` package inherits the upstream `vri` recipe and applies th
 
 `test-display` exercises resize, GPU readback and swapchain color formats with validation enabled. Remove the local package override when a deliberately selected upstream release includes this forwarding fix.
 
-The checksum-verified `cube_array.patch` enables Vulkan's queried `imageCubeArray` feature when supported. VRI already exposes cube-array textures and views, but v0.1.17 did not enable this required device feature. `test-shader-textures` checks typed array, volume, cube and cube-array GPU sampling with validation. Existing installations of the earlier local patch set must be rebuilt with `xmake require --force --shallow -y vri-vultra`.
+The checksum-verified `cube_array.patch` enables Vulkan's queried `imageCubeArray` feature when supported. VRI already exposes cube-array textures and views, but v0.1.17 did not enable this required device feature. `test-shader-textures` checks typed array, volume, cube and cube-array GPU sampling with validation. Existing installations of the earlier local patch set must rebuild the package and relink consumers; an incremental project build may otherwise retain the earlier static library in its executables:
+
+```sh
+xmake require --force --shallow -y vri-vultra
+xmake build -r -a -y
+```

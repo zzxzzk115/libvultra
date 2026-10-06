@@ -1,5 +1,6 @@
 #include "../upload.hpp"
 
+#include <vultra/assets/source_file.hpp>
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
 #include <vultra/servers/rendering/builtin/environment.hpp>
 
@@ -12,29 +13,41 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numbers>
 
 namespace vultra
 {
     namespace
     {
-        TextureLevel environmentPixels(const std::filesystem::path& path)
+        TextureLevel environmentPixels(const std::filesystem::path& path, const AssetSource* source)
         {
             TextureLevel result;
             if (!path.empty())
             {
-                int    width      = 0;
-                int    height     = 0;
-                int    components = 0;
-                float* pixels     = stbi_loadf(path.string().c_str(), &width, &height, &components, 4);
+                int        width      = 0;
+                int        height     = 0;
+                int        components = 0;
+                const auto bytes      = readSourceFile(path, {}, source);
+                if (bytes.size() > size_t(std::numeric_limits<int>::max()))
+                {
+                    throw std::runtime_error("HDR environment exceeds decoder size limit: " + path.string());
+                }
+                const std::unique_ptr<float, decltype(&stbi_image_free)> pixels(
+                    stbi_loadf_from_memory(reinterpret_cast<const stbi_uc*>(bytes.data()),
+                                           int(bytes.size()),
+                                           &width,
+                                           &height,
+                                           &components,
+                                           4),
+                    &stbi_image_free);
                 if (!pixels)
                 {
                     throw std::runtime_error("Load HDR environment " + path.string() + ": " + stbi_failure_reason());
                 }
                 result.size = {uint32_t(width), uint32_t(height)};
                 result.bytes.resize(size_t(width) * height * 4 * sizeof(float));
-                std::memcpy(result.bytes.data(), pixels, result.bytes.size());
-                stbi_image_free(pixels);
+                std::memcpy(result.bytes.data(), pixels.get(), result.bytes.size());
                 return result;
             }
             result.size = {512, 256};
@@ -66,11 +79,12 @@ namespace vultra
         }
     } // namespace
 
-    Environment::Environment(Device& device, const std::filesystem::path& hdr) :
+    Environment::Environment(Device& device, const std::filesystem::path& hdr, const AssetSource* source) :
         m_Device(device),
-        m_Source(hdr)
+        m_Source(hdr),
+        m_AssetSource(source)
     {
-        radiance    = uploadTexture(device, TextureFormat::eRgba32Sfloat, 16, {environmentPixels(hdr)});
+        radiance    = uploadTexture(device, TextureFormat::eRgba32Sfloat, 16, {environmentPixels(hdr, source)});
         diffuse     = std::make_unique<Texture>(device, colorTexture({64, 32}, VriFormat_RGBA16_SFLOAT));
         auto desc   = colorTexture({256, 128}, VriFormat_RGBA16_SFLOAT);
         desc.mipNum = 9;
@@ -218,7 +232,7 @@ namespace vultra
 
     void Environment::replace(const std::filesystem::path& hdr)
     {
-        Environment replacement(m_Device, hdr);
+        Environment replacement(m_Device, hdr, m_AssetSource);
         radiance.swap(replacement.radiance);
         diffuse.swap(replacement.diffuse);
         specular.swap(replacement.specular);

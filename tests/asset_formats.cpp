@@ -1,5 +1,7 @@
 #include <vultra/assets/asset_pipeline.hpp>
+#include <vultra/assets/asset_source.hpp>
 #include <vultra/core/base/logger.hpp>
+#include <vultra/scene/scene_tree.hpp>
 #include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/servers/rendering/scene.hpp>
 #include <vultra/servers/rendering/texture_blit.hpp>
@@ -400,6 +402,64 @@ try
             vultra::loadFbx(root / "invalid.fbx");
         },
         "Malformed FBX was accepted");
+
+    writeText(root / "triangle.obj", "mtllib paint.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl paint\nf 1 2 3\n");
+    writeText(root / "paint.mtl", "newmtl paint\nKd 0.2 0.4 0.8\n");
+    const auto              object = vultra::loadObj(root / "triangle.obj");
+    const auto              gltf   = vultra::loadGltf(root / "dds.gltf");
+    vultra::SceneTree       packagedTree(std::make_unique<vultra::Node>("Resources"));
+    vultra::ProjectManifest project;
+    project.mainScene = "main.vscene";
+    packagedTree.save(root / project.mainScene);
+    for (const auto* path : {"model.fbx", "color.dds", "dds.gltf", "triangle.bin", "triangle.obj", "paint.mtl"})
+    {
+        project.addAsset(path);
+    }
+    project.save(root / "project.vproject");
+    const auto package = root / "assets.vpk";
+    vultra::VpkArchive::packProject(root / "project.vproject", package);
+    vultra::AssetSource assets {vultra::VpkArchive(package)};
+    for (const auto& asset : project.assets())
+    {
+        std::filesystem::remove(root / asset.path);
+    }
+    sameScene(parallel, vultra::loadFbx(assets.resolve("model.fbx"), {}, 4, &assets));
+    sameScene(gltf, vultra::loadGltf(assets.resolve("dds.gltf"), {}, 4, &assets));
+    const auto packedObject = vultra::loadObj(assets.resolve("triangle.obj"), {}, 1, &assets);
+    sameScene(object, packedObject);
+    require(packedObject.materials[0].baseColor == object.materials[0].baseColor,
+            "VPK-backed OBJ lost its MTL dependency");
+    options.cacheDirectory  = root / "package-cache";
+    const auto packagedCold = vultra::importAsset(assets.resolve("model.fbx"), options, &assets);
+    const auto packagedWarm = vultra::importAsset(assets.resolve("model.fbx"), options, &assets);
+    require(!packagedCold.cacheHit && packagedWarm.cacheHit &&
+                vultra::isAssetCacheCurrent(assets.resolve("model.fbx"), options, &assets),
+            "Package asset cache required extracted source dependencies");
+    require(packagedWarm.textures.images[slot].levels[0].bytes == warm.textures.images[slot].levels[0].bytes,
+            "VPK-backed FBX or DDS changed texture bytes");
+    require(!std::filesystem::exists(assets.resolve("model.fbx")), "Import extracted package geometry");
+    const auto validCache       = vultra::readSourceFile(packagedCold.cachePath);
+    const auto validPackage     = vultra::readSourceFile(package);
+    auto       corruptedPackage = validPackage;
+    const auto imageBytes       = dds(true);
+    const auto payload =
+        std::search(corruptedPackage.begin(), corruptedPackage.end(), imageBytes.begin(), imageBytes.end());
+    require(payload != corruptedPackage.end(), "Packaged DDS corruption fixture has no payload");
+    payload[148] ^= std::byte(1);
+    write(package, corruptedPackage);
+    require(!vultra::isAssetCacheCurrent(assets.resolve("model.fbx"), options, &assets),
+            "Package cache accepted a corrupt source dependency");
+    requireFailure(
+        [&]
+        {
+            vultra::importAsset(assets.resolve("model.fbx"), options, &assets);
+        },
+        "Package import concealed a corrupt image dependency");
+    require(vultra::readSourceFile(packagedCold.cachePath) == validCache,
+            "Failed package import replaced the preceding valid cache");
+    write(package, validPackage);
+    require(vultra::importAsset(assets.resolve("model.fbx"), options, &assets).cacheHit,
+            "Package import did not recover after restoring the source");
     vultra::Logger::app().info("Asset format tests passed: FBX transforms/normals/materials, DDS blocks/mips/sRGB GPU "
                                "sampling, cache and worker failure recovery");
     return 0;

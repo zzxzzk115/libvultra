@@ -46,6 +46,7 @@ namespace vultra
 
         Device&                               device;
         std::filesystem::path                 file;
+        const AssetSource*                    assetSource;
         ShaderCompileOptions                  options;
         ShaderMaterial::TextureResolver       textures;
         std::vector<std::string>              requiredLightModes;
@@ -68,16 +69,18 @@ namespace vultra
               ShaderCompileOptions                options,
               ShaderMaterial::TextureResolver     textures,
               std::vector<std::string>            requiredLightModes,
-              ShaderAsset::SubshaderCompatibility compatible) :
+              ShaderAsset::SubshaderCompatibility compatible,
+              const AssetSource*                  assetSource) :
             device(device),
             file(std::filesystem::absolute(file)),
+            assetSource(assetSource),
             options(std::move(options)),
             textures(std::move(textures)),
             requiredLightModes(std::move(requiredLightModes)),
             compatible(std::move(compatible))
         {
             live        = std::make_unique<Snapshot>();
-            live->asset = this->file.extension() == ".vshaderc" ? ShaderAsset::load(this->file) :
+            live->asset = this->file.extension() == ".vshaderc" ? ShaderAsset::load(this->file, assetSource) :
                                                                   ShaderAsset::compile(this->file, this->options);
             diagnostics = live->asset.diagnostics;
             refreshWatch(live->asset);
@@ -105,41 +108,29 @@ namespace vultra
                 {
                     for (const auto& [name, program] : pass.programs)
                     {
-                        for (const auto& dependency : program.dependencies)
-                        {
-                            roots.insert(dependency.path.parent_path());
-                        }
+                        const auto directories = detail::shaderWatchDirectories(program.dependencies, file, options);
+                        roots.insert(directories.begin(), directories.end());
                     }
                 }
             }
-            for (const auto& path : options.includeDirectories)
-            {
-                roots.insert(std::filesystem::absolute(path));
-            }
 #if defined(__linux__)
-            const auto recursiveRoots = roots;
-            for (const auto& root : recursiveRoots)
+            // Only the authored shader tree needs recursive discovery; dependency/search parents suffice elsewhere.
+            const auto root = file.parent_path();
+            for (auto entry = std::filesystem::recursive_directory_iterator(root);
+                 entry != std::filesystem::recursive_directory_iterator();
+                 ++entry)
             {
-                if (!std::filesystem::is_directory(root))
+                if (!entry->is_directory())
                 {
                     continue;
                 }
-                for (auto entry = std::filesystem::recursive_directory_iterator(root);
-                     entry != std::filesystem::recursive_directory_iterator();
-                     ++entry)
+                const auto name = entry->path().filename();
+                if (name == "build" || name == ".git" || name == ".vultra")
                 {
-                    if (!entry->is_directory())
-                    {
-                        continue;
-                    }
-                    const auto name = entry->path().filename();
-                    if (name == "build" || name == ".git" || name == ".vultra")
-                    {
-                        entry.disable_recursion_pending();
-                        continue;
-                    }
-                    roots.insert(entry->path());
+                    entry.disable_recursion_pending();
+                    continue;
                 }
+                roots.insert(entry->path());
             }
 #endif
             for (const auto& root : roots)
@@ -263,13 +254,15 @@ namespace vultra
                                  ShaderCompileOptions                options,
                                  ShaderMaterial::TextureResolver     textures,
                                  std::vector<std::string>            requiredLightModes,
-                                 ShaderAsset::SubshaderCompatibility compatible) :
+                                 ShaderAsset::SubshaderCompatibility compatible,
+                                 const AssetSource*                  assetSource) :
         m_State(std::make_unique<State>(device,
                                         std::move(source),
                                         std::move(options),
                                         std::move(textures),
                                         std::move(requiredLightModes),
-                                        std::move(compatible)))
+                                        std::move(compatible),
+                                        assetSource))
     {
     }
 
@@ -351,11 +344,14 @@ namespace vultra
         state.observed      = revision;
         try
         {
-            return state.publish(state.file.extension() == ".vshaderc" ?
-                                     ShaderAsset::load(state.file) :
-                                     ShaderAsset::compile(state.file, state.options),
-                                 revision,
-                                 prepare);
+            auto candidate = state.file.extension() == ".vshaderc" ? ShaderAsset::load(state.file, state.assetSource) :
+                                                                     ShaderAsset::compile(state.file, state.options);
+            // Notifications for the write that triggered this synchronous compile may arrive during it.
+            // Publication still checks dependency bytes and rejects edits made during GPU preparation.
+            const auto compiledRevision = state.revision.load(std::memory_order_relaxed);
+            state.started               = compiledRevision;
+            state.observed              = compiledRevision;
+            return state.publish(std::move(candidate), compiledRevision, prepare);
         }
         catch (const std::exception& error)
         {
@@ -413,9 +409,9 @@ namespace vultra
             const auto file     = state.file;
             const auto options  = state.options;
             job->task           = std::make_unique<vtask::TaskSet>(1,
-                                                         1,
-                                                         [job, file, options](vtask::Range)
-                                                         {
+                                                                   1,
+                                                                   [job, file, options](vtask::Range)
+                                                                   {
                                                              try
                                                              {
                                                                  job->candidate = std::make_unique<ShaderAsset>(
@@ -426,7 +422,7 @@ namespace vultra
                                                                  job->diagnostics = error.what();
                                                              }
                                                              job->done.store(true, std::memory_order_release);
-                                                         });
+                                                                   });
             state.scheduler.run(*job->task);
         }
         return published;

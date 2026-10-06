@@ -59,13 +59,13 @@ namespace vultra
                                                       std::numeric_limits<uint32_t>::max(),
                                                       "materials");
             const auto imageOffset    = checkedOffset(destination.images.size(),
-                                                   source.images.size(),
-                                                   std::numeric_limits<int>::max(),
-                                                   "images");
+                                                      source.images.size(),
+                                                      std::numeric_limits<int>::max(),
+                                                      "images");
             const auto samplerOffset  = checkedOffset(destination.samplers.size(),
-                                                     source.samplers.size(),
-                                                     std::numeric_limits<int>::max(),
-                                                     "samplers");
+                                                      source.samplers.size(),
+                                                      std::numeric_limits<int>::max(),
+                                                      "samplers");
             const auto preparedOffset = checkedOffset(result.textures.images.size(),
                                                       model.textures.images.size(),
                                                       std::numeric_limits<uint32_t>::max(),
@@ -124,13 +124,13 @@ namespace vultra
             const glm::mat3 normalTransform = glm::transpose(glm::inverse(linear));
             const auto&     source          = model.asset.scene;
             const auto      vertexOffset    = checkedOffset(destination.vertices.size(),
-                                                    source.vertices.size(),
-                                                    std::numeric_limits<uint32_t>::max(),
-                                                    "vertices");
+                                                            source.vertices.size(),
+                                                            std::numeric_limits<uint32_t>::max(),
+                                                            "vertices");
             const auto      indexOffset     = checkedOffset(destination.indices.size(),
-                                                   source.indices.size(),
-                                                   std::numeric_limits<uint32_t>::max(),
-                                                   "indices");
+                                                            source.indices.size(),
+                                                            std::numeric_limits<uint32_t>::max(),
+                                                            "indices");
             for (auto vertex : source.vertices)
             {
                 vertex.position   = glm::vec3(transform * glm::vec4(vertex.position, 1));
@@ -187,7 +187,8 @@ namespace vultra
                               const ProjectManifest&          project,
                               const std::filesystem::path&    projectRoot,
                               const AssetImportOptions&       options,
-                              std::vector<SceneMeshInstance>* instances)
+                              std::vector<SceneMeshInstance>* instances,
+                              const AssetSource*              source)
     {
         tree.validateAssets(project);
         ImportedAsset                  result;
@@ -201,13 +202,13 @@ namespace vultra
                 const auto& mesh  = static_cast<const MeshInstanceNode&>(node);
                 const auto  id    = mesh.model();
                 auto        model = std::ranges::find_if(models,
-                                                  [id](const ImportedModel& entry)
-                                                  {
+                                                         [id](const ImportedModel& entry)
+                                                         {
                                                       return entry.id == id;
-                                                  });
+                                                         });
                 if (model == models.end())
                 {
-                    models.push_back({id, importAsset(projectRoot / project.asset(id).path, options), 0});
+                    models.push_back({id, importAsset(projectRoot / project.asset(id).path, options, source), 0});
                     model                 = std::prev(models.end());
                     model->materialOffset = appendModelData(result, model->asset);
                     result.cacheHit =

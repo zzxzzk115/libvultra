@@ -52,56 +52,10 @@ namespace vultra
                 std::u8string_view(reinterpret_cast<const char8_t*>(text.data()), text.size()));
         }
 
-        struct SessionFiles
-        {
-            explicit SessionFiles(const std::filesystem::path& input)
-            {
-                if (input.extension() != ".vpk")
-                {
-                    project = input;
-                    return;
-                }
-                extracted =
-                    std::filesystem::temp_directory_path() / ("vultra-experiment-" + StableId::generate().toString());
-                try
-                {
-                    const VpkArchive archive(input);
-                    if (!archive.contains("project.vproject"))
-                    {
-                        throw std::invalid_argument("Experiment VPK has no project manifest");
-                    }
-                    archive.extractTo(extracted);
-                    project = extracted / "project.vproject";
-                }
-                catch (...)
-                {
-                    std::error_code error;
-                    std::filesystem::remove_all(extracted, error);
-                    throw;
-                }
-            }
-
-            SessionFiles(const SessionFiles&)            = delete;
-            SessionFiles& operator=(const SessionFiles&) = delete;
-
-            ~SessionFiles()
-            {
-                if (!extracted.empty())
-                {
-                    std::error_code error;
-                    std::filesystem::remove_all(extracted, error);
-                }
-            }
-
-            std::filesystem::path project;
-            std::filesystem::path extracted;
-        };
-
         struct HostedSession
         {
             HostedSession(Device& device, const PassCatalog& catalog, const ExperimentConfig& config, float delta) :
-                files(config.input),
-                renderer(device, configuration(config)),
+                renderer(device, config),
                 timeStep(delta)
             {
                 for (const auto& definition : catalog.definitions())
@@ -121,23 +75,16 @@ namespace vultra
                     scripts.emplace(*renderer.scene(), false, project);
                     for (const auto& extension : project->extensions)
                     {
-                        scripts->addExtension(renderer.projectRoot() / extension);
+                        scripts->addExtension(renderer.scriptPath(extension));
                     }
                     for (const auto& script : project->scripts)
                     {
-                        scripts->add(script, renderer.projectRoot() / script.path);
+                        scripts->add(script, renderer.scriptPath(script.path));
                     }
                 }
             }
 
-            ExperimentConfig configuration(ExperimentConfig config) const
-            {
-                config.input = files.project;
-                return config;
-            }
-
-            // Stop scripts and release GPU objects before removing an extracted project.
-            SessionFiles              files;
+            // Stop scripts before the session removes its materialized module files.
             ExperimentSession         renderer;
             std::optional<ScriptHost> scripts;
             float                     timeStep;

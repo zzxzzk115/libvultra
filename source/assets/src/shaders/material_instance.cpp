@@ -33,7 +33,7 @@ namespace vultra
             {
                 const auto& texture = std::get<ShaderTextureValue>(value);
                 document["value"]   = {{"asset",
-                                      texture.asset.value.valid() ? nlohmann::json(texture.asset.value.toString()) :
+                                        texture.asset.value.valid() ? nlohmann::json(texture.asset.value.toString()) :
                                                                       nlohmann::json(nullptr)},
                                        {"builtin", texture.builtin},
                                        {"scale_offset", texture.scaleOffset}};
@@ -204,10 +204,10 @@ namespace vultra
                                                                       return property.name == override.first;
                                                                   });
                           const auto old   = std::ranges::find_if(previous.properties,
-                                                                [&](const ShaderProperty& property)
-                                                                {
+                                                                  [&](const ShaderProperty& property)
+                                                                  {
                                                                     return property.name == override.first;
-                                                                });
+                                                                  });
                           if (found == candidate.properties.end() || old == previous.properties.end() ||
                               found->type != old->type)
                           {

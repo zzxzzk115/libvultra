@@ -154,18 +154,21 @@ namespace vultra
         return result;
     }
 
-    TextureData loadDds(const std::filesystem::path& path, const SourceObserver& observer)
+    TextureData loadDds(const std::filesystem::path& path, const SourceObserver& observer, const AssetSource* source)
     {
-        return asset_detail::decodeDds(readSourceFile(path, observer), std::nullopt, false);
+        return asset_detail::decodeDds(readSourceFile(path, observer, source), std::nullopt, false);
     }
 
-    TextureAssetData loadTextureAsset(const std::filesystem::path& path, bool srgb, const SourceObserver& observer)
+    TextureAssetData loadTextureAsset(const std::filesystem::path& path,
+                                      bool                         srgb,
+                                      const SourceObserver&        observer,
+                                      const AssetSource*           source)
     {
-        const auto       bytes = readSourceFile(path, observer);
+        const auto       bytes = readSourceFile(path, observer, source);
         TextureAssetData result;
         if (bytes.size() < 4 || std::memcmp(bytes.data(), "DDS ", 4) != 0)
         {
-            const auto texture = prepareTexture(loadSceneImage(path, observer), srgb);
+            const auto texture = prepareTexture(loadSceneImage(path, observer, source), srgb);
             result.format      = texture.format;
             result.mips        = uint32_t(texture.levels.size());
             for (uint32_t mip = 0; mip < result.mips; ++mip)

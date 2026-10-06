@@ -236,6 +236,15 @@ target("test-gui-offscreen")
     add_tests("default")
 target_end()
 
+target("test-vgui-offscreen")
+    set_kind("binary")
+    set_default(false)
+    add_deps("vultra-vgui")
+    add_files("vgui_offscreen.cpp")
+    set_rundir("$(projectdir)")
+    add_tests("default")
+target_end()
+
 if is_plat("linux") then
     -- Exercise POSIX replacement while a concurrent reader holds the previous file open.
     target("test-platform")

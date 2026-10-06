@@ -21,6 +21,22 @@ namespace vultra::detail
             }
             return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
         }
+
+        std::vector<std::filesystem::path> searchRoots(const std::filesystem::path& source,
+                                                       const ShaderCompileOptions&  options)
+        {
+            std::vector<std::filesystem::path> roots {std::filesystem::absolute(source).parent_path()};
+            for (const auto& root : options.includeDirectories)
+            {
+                roots.push_back(std::filesystem::absolute(root));
+            }
+            for (const auto& module : options.linkModules)
+            {
+                roots.push_back(std::filesystem::absolute(module.is_absolute() ? module : source.parent_path() / module)
+                                    .parent_path());
+            }
+            return roots;
+        }
     } // namespace
 
     std::string
@@ -67,16 +83,7 @@ namespace vultra::detail
                                    const std::filesystem::path&      source,
                                    const ShaderCompileOptions&       options)
     {
-        std::vector<std::filesystem::path> roots {std::filesystem::absolute(source).parent_path()};
-        for (const auto& root : options.includeDirectories)
-        {
-            roots.push_back(std::filesystem::absolute(root));
-        }
-        for (const auto& module : options.linkModules)
-        {
-            roots.push_back(
-                std::filesystem::absolute(module.is_absolute() ? module : source.parent_path() / module).parent_path());
-        }
+        const auto roots = searchRoots(source, options);
         for (const auto& dependency : dependencies)
         {
             if (!std::filesystem::is_regular_file(dependency.path))
@@ -116,5 +123,48 @@ namespace vultra::detail
             }
         }
         return true;
+    }
+
+    std::set<std::filesystem::path> shaderWatchDirectories(std::span<const ShaderDependency> dependencies,
+                                                           const std::filesystem::path&      source,
+                                                           const ShaderCompileOptions&       options)
+    {
+        const auto                      roots = searchRoots(source, options);
+        std::set<std::filesystem::path> directories;
+        auto                            addDirectory = [&](std::filesystem::path directory)
+        {
+            while (!directory.empty() && !std::filesystem::is_directory(directory))
+            {
+                directory = directory.parent_path();
+            }
+            if (!directory.empty())
+            {
+                directories.insert(directory.lexically_normal());
+            }
+        };
+        for (const auto& root : roots)
+        {
+            addDirectory(root);
+        }
+        for (const auto& dependency : dependencies)
+        {
+            addDirectory(dependency.path.parent_path());
+            const auto original = std::filesystem::weakly_canonical(dependency.path);
+            for (const auto& oldRoot : roots)
+            {
+                const auto relative = original.lexically_relative(std::filesystem::weakly_canonical(oldRoot));
+                if (relative.empty() || relative.is_absolute() || *relative.begin() == "..")
+                {
+                    continue;
+                }
+                // A newly created include in an earlier search root can replace the resolved dependency.
+                // Watch its nearest existing parent so later directory creation also triggers a refresh.
+                for (const auto& root : roots)
+                {
+                    addDirectory((root / relative).parent_path());
+                }
+            }
+        }
+        return directories;
     }
 } // namespace vultra::detail

@@ -173,13 +173,13 @@ namespace vultra
     } // namespace
 
     VpkArchive::VpkArchive(std::filesystem::path file) :
-        m_File(std::move(file))
+        m_File(std::filesystem::absolute(file).lexically_normal())
     {
         load(0, std::filesystem::file_size(m_File));
     }
 
     VpkArchive::VpkArchive(std::filesystem::path file, uint64_t offset, uint64_t length) :
-        m_File(std::move(file))
+        m_File(std::filesystem::absolute(file).lexically_normal())
     {
         load(offset, length);
     }
@@ -242,15 +242,20 @@ namespace vultra
     {
         const auto normalized = archivePath(path);
         const auto found      = std::ranges::find_if(m_Entries,
-                                                [&](const Entry& candidate)
-                                                {
+                                                     [&](const Entry& candidate)
+                                                     {
                                                     return candidate.path == normalized;
-                                                });
+                                                     });
         if (found == m_Entries.end())
         {
             throw std::invalid_argument("VPK entry not found: " + normalized);
         }
         return *found;
+    }
+
+    const std::filesystem::path& VpkArchive::file() const
+    {
+        return m_File;
     }
 
     bool VpkArchive::contains(std::string_view path) const
@@ -261,6 +266,11 @@ namespace vultra
                                    {
                                        return candidate.path == normalized;
                                    });
+    }
+
+    uint64_t VpkArchive::size(std::string_view path) const
+    {
+        return entry(path).size;
     }
 
     std::vector<std::byte> VpkArchive::read(std::string_view path) const
@@ -421,7 +431,7 @@ namespace vultra
     {
         auto       project = ProjectManifest::load(projectFile);
         const auto root    = std::filesystem::canonical(projectFile.parent_path().empty() ? std::filesystem::path(".") :
-                                                                                         projectFile.parent_path());
+                                                                                            projectFile.parent_path());
         auto       scene   = SceneTree::load(sourceFile(root, pathText(project.mainScene)));
         scene.validateAssets(project);
         std::vector<std::pair<std::string, std::filesystem::path>> files;

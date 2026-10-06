@@ -1,10 +1,13 @@
+#include <vultra/assets/asset_source.hpp>
 #include <vultra/assets/project_manifest.hpp>
+#include <vultra/assets/source_file.hpp>
 #include <vultra/platform/os/file.hpp>
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
-#include <fstream>
+#include <array>
+#include <cctype>
 #include <iterator>
 #include <span>
 #include <stdexcept>
@@ -255,16 +258,13 @@ namespace vultra
         writeFileAtomically(file, std::as_bytes(std::span(text)));
     }
 
-    ProjectManifest ProjectManifest::load(const std::filesystem::path& file)
+    ProjectManifest ProjectManifest::load(const std::filesystem::path& file, const AssetSource* source)
     {
-        std::ifstream input(file, std::ios::binary);
-        if (!input)
-        {
-            throw std::runtime_error("Open project manifest: " + file.string());
-        }
         try
         {
-            const auto document = nlohmann::json::parse(input);
+            const auto  bytes    = readSourceFile(file, {}, source);
+            const auto* begin    = reinterpret_cast<const char*>(bytes.data());
+            const auto  document = nlohmann::json::parse(begin, begin + bytes.size());
             if (document.at("format") != "vultra.project" || document.at("version") != kProjectVersion)
             {
                 throw std::invalid_argument("Unsupported project manifest format or version");
@@ -318,5 +318,48 @@ namespace vultra
         {
             throw std::runtime_error("Read project manifest " + file.string() + ": " + error.what());
         }
+    }
+
+    std::filesystem::path ProjectManifest::materializeModule(const AssetSource&           source,
+                                                             const std::filesystem::path& module) const
+    {
+        const auto result = source.materialize(module);
+        // The .NET host requires adjacent assemblies and its runtime/dependency descriptions.
+        if (std::ranges::any_of(scripts,
+                                [&](const auto& script)
+                                {
+                                    return script.path == module && script.language == ScriptModule::Language::eCSharp;
+                                }))
+        {
+            const auto directory = module.parent_path();
+            source.materialize(directory / "Vultra.Scripting.dll");
+            source.materialize(directory / "Vultra.ManagedHost.dll");
+            source.materialize(directory / "Vultra.ManagedHost.runtimeconfig.json");
+            const std::array optional {directory / "Vultra.ManagedHost.deps.json",
+                                       directory / (module.stem().string() + ".deps.json")};
+            for (const auto& path : optional)
+            {
+                if (source.contains(path))
+                {
+                    source.materialize(path);
+                }
+            }
+        }
+        for (const auto& asset : assets())
+        {
+            auto extension = asset.path.extension().string();
+            std::ranges::transform(extension,
+                                   extension.begin(),
+                                   [](unsigned char c)
+                                   {
+                                       return char(std::tolower(c));
+                                   });
+            if (extension == ".dll" || extension == ".so" || extension == ".dylib" ||
+                asset.path.filename().string().contains(".so."))
+            {
+                source.materialize(asset.path);
+            }
+        }
+        return result;
     }
 } // namespace vultra

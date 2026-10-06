@@ -169,7 +169,7 @@ namespace vultra
                 }
                 const bool numeric = command == "DepthBias" || command == "Stencil.Ref" ||
                                      command == "Stencil.ReadMask" || command == "Stencil.WriteMask";
-                const bool mask = command == "ColorMask";
+                const bool mask    = command == "ColorMask";
                 if (!numeric && !mask && !enums.contains(command))
                 {
                     fail("Unknown render state: " + command);

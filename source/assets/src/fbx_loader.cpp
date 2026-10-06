@@ -105,9 +105,12 @@ namespace vultra
         }
     } // namespace
 
-    SceneData loadFbx(const std::filesystem::path& path, const SourceObserver& observer, uint32_t workers)
+    SceneData loadFbx(const std::filesystem::path& path,
+                      const SourceObserver&        observer,
+                      uint32_t                     workers,
+                      const AssetSource*           assetSource)
     {
-        const auto bytes   = readSourceFile(path, observer);
+        const auto bytes   = readSourceFile(path, observer, assetSource);
         const auto process = [](ofbx::JobFunction function, void* user, void* data, ofbx::u32 size, ofbx::u32 count)
         {
             asset_detail::runImportJobs("Parsing FBX arrays",
@@ -404,7 +407,7 @@ namespace vultra
                         throw std::runtime_error("FBX texture has no image path or embedded data");
                     }
                     const std::filesystem::path texturePath = std::u8string(name.begin(), name.end());
-                    scene.images[i] = loadSceneImage(path.parent_path() / texturePath, serialObserver);
+                    scene.images[i] = loadSceneImage(path.parent_path() / texturePath, serialObserver, assetSource);
                 }
             });
         return scene;

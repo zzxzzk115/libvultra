@@ -1,3 +1,5 @@
+#include "shader_cache.hpp"
+
 #include <vultra/core/base/logger.hpp>
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
 
@@ -24,12 +26,20 @@ namespace vultra
         bool                                  pending  = false;
         std::chrono::steady_clock::time_point changed {};
         std::set<std::filesystem::path>       roots;
+        std::set<std::filesystem::path>       dependencyDirectories;
         // Destroy first: FileWatch joins its threads before callback state is destroyed.
         std::map<std::filesystem::path, std::unique_ptr<filewatch::FileWatch<std::string>>> watchers;
 
         void refreshDirectories()
         {
             std::set<std::filesystem::path> directories = roots;
+            for (const auto& directory : dependencyDirectories)
+            {
+                if (std::filesystem::is_directory(directory))
+                {
+                    directories.insert(directory);
+                }
+            }
 #if defined(__linux__)
             // inotify watches one directory; FileWatch's Windows backend already watches subtrees.
             for (const auto& root : roots)
@@ -129,36 +139,15 @@ namespace vultra
         {
             directory = std::filesystem::absolute(directory).lexically_normal();
         }
-        if (!reload())
-        {
-            throw std::runtime_error(m_Diagnostics);
-        }
-        if (m_File.extension() == ".vshaderc")
-        {
-            return;
-        }
-        // Watch the shader directory tree, including includes and imported modules.
-        try
+        if (m_File.extension() == ".slang")
         {
             m_Watch = std::make_unique<Watch>();
             m_Watch->roots.insert(watchDirectory.empty() ? m_File.parent_path() :
                                                            std::filesystem::absolute(watchDirectory));
-            for (const auto& root : m_CompileOptions.includeDirectories)
-            {
-                m_Watch->roots.insert(root);
-            }
-            for (const auto& module : m_CompileOptions.linkModules)
-            {
-                m_Watch->roots.insert(
-                    std::filesystem::absolute(module.is_absolute() ? module : m_File.parent_path() / module)
-                        .parent_path());
-            }
-            m_Watch->refreshDirectories();
         }
-        catch (...)
+        if (!reload())
         {
-            m_Device.core.DestroyPipeline(m_Pipeline);
-            throw;
+            throw std::runtime_error(m_Diagnostics);
         }
     }
 
@@ -211,6 +200,13 @@ namespace vultra
             if (program.rayQuery && !desc.hasRayQuery)
             {
                 throw std::invalid_argument("Shader program requires ray query: " + m_File.string());
+            }
+            if (m_Watch)
+            {
+                // Recurse the shader tree, not every third-party search root for every pipeline.
+                m_Watch->dependencyDirectories =
+                    detail::shaderWatchDirectories(program.dependencies, m_File, m_CompileOptions);
+                m_Watch->refreshDirectories();
             }
             const auto   shaders     = program.descriptors(m_CompileOptions.entries);
             VriPipeline* replacement = m_Builder(shaders);

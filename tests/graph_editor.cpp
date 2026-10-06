@@ -74,6 +74,10 @@ try
             }
         }
         gui.upload(extent);
+        if (workspace)
+        {
+            workspace->prepareFrame();
+        }
         auto* cmd = frame.begin();
         if (workspace)
         {

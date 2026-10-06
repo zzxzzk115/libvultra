@@ -1,5 +1,6 @@
 #include <vultra/api/render_settings.generated.hpp>
 #include <vultra/assets/asset_pipeline.hpp>
+#include <vultra/assets/asset_source.hpp>
 #include <vultra/assets/project_manifest.hpp>
 #include <vultra/assets/vpk_archive.hpp>
 #include <vultra/core/base/command_line.hpp>
@@ -34,20 +35,22 @@ namespace
 {
     struct RuntimeProject
     {
-        ProjectManifest       manifest;
-        SceneTree             scene;
-        std::filesystem::path root;
-        std::filesystem::path environmentPath;
-        std::filesystem::path uiDocumentPath;
-        std::filesystem::path uiFontPath;
+        std::unique_ptr<AssetSource> assets;
+        ProjectManifest              manifest;
+        SceneTree                    scene;
+        std::filesystem::path        environmentPath;
+        std::filesystem::path        uiDocumentPath;
+        std::filesystem::path        uiFontPath;
     };
 
-    RuntimeProject loadProject(const std::filesystem::path& root)
+    RuntimeProject loadProject(VpkArchive archive)
     {
-        auto manifest = ProjectManifest::load(root / "project.vproject");
-        auto scene    = SceneTree::load(root / manifest.mainScene);
+        auto        assets   = std::make_unique<AssetSource>(std::move(archive));
+        const auto& root     = assets->root();
+        auto        manifest = ProjectManifest::load(root / "project.vproject", assets.get());
+        auto        scene    = SceneTree::load(root / manifest.mainScene, assets.get());
         scene.validateAssets(manifest);
-        RuntimeProject project {std::move(manifest), std::move(scene), root, {}, {}, {}};
+        RuntimeProject project {std::move(assets), std::move(manifest), std::move(scene), {}, {}, {}};
         project.environmentPath = sceneEnvironmentPath(project.scene, project.manifest, root);
         if (project.manifest.uiDocument)
         {
@@ -67,9 +70,13 @@ namespace
             ImGuiApp({.title = "Vultra Runtime", .size = {1024, 768}},
                      {.multiViewport = false, .persistLayout = false}),
             m_Project(std::move(project)),
-            m_Environment(getDevice(), m_Project.environmentPath),
-            m_GpuScene(getRenderingServer().uploadScene(
-                importScene(m_Project.scene, m_Project.manifest, m_Project.root, {}, &m_SceneInstances))),
+            m_Environment(getDevice(), m_Project.environmentPath, m_Project.assets.get()),
+            m_GpuScene(getRenderingServer().uploadScene(importScene(m_Project.scene,
+                                                                    m_Project.manifest,
+                                                                    m_Project.assets->root(),
+                                                                    {},
+                                                                    &m_SceneInstances,
+                                                                    m_Project.assets.get()))),
             m_Renderer(
                 std::make_unique<BuiltinRenderer>(getDevice(), *m_GpuScene, m_Environment, getSwapchain().format())),
             m_Scripts(m_Project.scene, false, &m_Project.manifest),
@@ -79,7 +86,8 @@ namespace
         {
             if (!m_Project.uiDocumentPath.empty())
             {
-                m_VGui = std::make_unique<VGui>(getDevice(), getWindow(), getSwapchain().format());
+                m_VGui =
+                    std::make_unique<VGui>(getDevice(), getWindow(), getSwapchain().format(), m_Project.assets.get());
                 if (!m_Project.uiFontPath.empty())
                 {
                     m_VGui->loadFont(m_Project.uiFontPath);
@@ -99,11 +107,11 @@ namespace
             m_Camera.pitch    = 0.2f;
             for (const auto& extension : m_Project.manifest.extensions)
             {
-                m_Scripts.addExtension(m_Project.root / extension);
+                m_Scripts.addExtension(m_Project.manifest.materializeModule(*m_Project.assets, extension));
             }
             for (const auto& script : m_Project.manifest.scripts)
             {
-                m_Scripts.add(script, m_Project.root / script.path);
+                m_Scripts.add(script, m_Project.manifest.materializeModule(*m_Project.assets, script.path));
             }
         }
 
@@ -136,14 +144,20 @@ namespace
         {
             if (m_GpuSync.environmentChanged(m_Project.scene))
             {
-                m_Environment.setSource(sceneEnvironmentPath(m_Project.scene, m_Project.manifest, m_Project.root));
+                m_Environment.setSource(
+                    sceneEnvironmentPath(m_Project.scene, m_Project.manifest, m_Project.assets->root()));
             }
             if (m_GpuSync.needsImport(m_Project.scene, m_SceneInstances))
             {
                 std::vector<SceneMeshInstance> instances;
-                auto imported = importScene(m_Project.scene, m_Project.manifest, m_Project.root, {}, &instances);
-                auto gpuScene = getRenderingServer().uploadScene(imported);
-                auto renderer =
+                auto                           imported = importScene(m_Project.scene,
+                                                                      m_Project.manifest,
+                                                                      m_Project.assets->root(),
+                                                                      {},
+                                                                      &instances,
+                                                                      m_Project.assets.get());
+                auto                           gpuScene = getRenderingServer().uploadScene(imported);
+                auto                           renderer =
                     std::make_unique<BuiltinRenderer>(getDevice(), *gpuScene, m_Environment, getSwapchain().format());
                 renderer->settings = m_Renderer->settings;
 
@@ -250,8 +264,10 @@ namespace
             }
             if (!m_ShaderMaterials && SceneShaderMaterials::containsShaders(m_Project.scene))
             {
-                m_ShaderMaterials =
-                    std::make_unique<SceneShaderMaterials>(getDevice(), m_Project.manifest, m_Project.root);
+                m_ShaderMaterials = std::make_unique<SceneShaderMaterials>(getDevice(),
+                                                                           m_Project.manifest,
+                                                                           m_Project.assets->root(),
+                                                                           m_Project.assets.get());
             }
             if (m_ShaderMaterials)
             {
@@ -331,7 +347,7 @@ try
         throw std::invalid_argument("No embedded project VPK; provide a package path");
     }
     PackagedResources      resources;
-    auto                   project = loadProject(resources.extractProject(*archive));
+    auto                   project = loadProject(std::move(*archive));
     ScopedWorkingDirectory cwd(resources.engineRoot());
     RuntimeApp             app(std::move(project), capturePath, cli.get<bool>("--debug-ui"));
     app.run(cli.present<uint64_t>("--frames").value_or(0));

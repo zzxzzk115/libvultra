@@ -69,12 +69,12 @@ namespace vultra
                                                             VriFormat_RGBA16_SFLOAT,
                                                             VriFormat_RGBA16_SFLOAT};
         constexpr std::array               kGBufferNames {"gbuffer_position_metallic",
-                                            "gbuffer_normal_roughness",
-                                            "gbuffer_albedo_weight",
-                                            "gbuffer_emission_occlusion",
-                                            "gbuffer_specular",
-                                            "gbuffer_geometric_normal_ior",
-                                            "gbuffer_coat"};
+                                                          "gbuffer_normal_roughness",
+                                                          "gbuffer_albedo_weight",
+                                                          "gbuffer_emission_occlusion",
+                                                          "gbuffer_specular",
+                                                          "gbuffer_geometric_normal_ior",
+                                                          "gbuffer_coat"};
 
         VriPipeline* createPipeline(Device&                        device,
                                     VriPipelineLayout*             layout,
@@ -340,7 +340,7 @@ namespace vultra
                         [this, stage, doubleSided, mirrored](std::span<const VriShaderDesc> shaders)
                         {
                             const auto formats = stage == 0 ? std::span(kGBufferFormats).first(4) :
-                                                                    std::span(kGBufferFormats).subspan(4);
+                                                              std::span(kGBufferFormats).subspan(4);
                             return createPipeline(m_Device,
                                                   m_Layout,
                                                   shaders,
@@ -873,11 +873,11 @@ namespace vultra
         }
         const auto& shadowDesc     = graph.getTexture(outputs.shadows[0]).desc;
         const auto  cascades       = calculateCascades(camera,
-                                                directionToLight,
-                                                m_Scene.center,
-                                                m_Scene.radius,
-                                                shadowDesc.width,
-                                                settings.splitLambda);
+                                                       directionToLight,
+                                                       m_Scene.center,
+                                                       m_Scene.radius,
+                                                       shadowDesc.width,
+                                                       settings.splitLambda);
         data.viewProjection        = camera.projection * camera.view;
         data.inverseViewProjection = glm::inverse(data.viewProjection);
         data.view                  = camera.view;
@@ -893,19 +893,19 @@ namespace vultra
                                       settings.sunAngularRadius,
                                       float(settings.shadowFilter)};
         data.options               = {settings.ibl ? 1.0f : 0.0f,
-                        settings.skybox ? 1.0f : 0.0f,
-                        settings.exposure,
-                        float(m_Environment.specular->desc.mipNum - 1)};
-        data.cameraClip  = {camera.nearPlane,
-                            camera.farPlane,
-                            std::clamp(settings.cascadeBlend, 0.0f, 0.15f),
-                            float(settings.debugMode)};
-        m_ToneParameters = {settings.exposure, settings.meshShading && settings.meshletColors ? 1.0 : 0.0};
-        data.overrides   = {settings.roughnessOverride,
-                            settings.metalnessOverride,
-                          m_OutputFormat == VriFormat_RGBA16_SFLOAT ? 0.0f : 1.0f,
-                          settings.meshShading && settings.meshletColors ? 1.0f : 0.0f};
-        auto* mapped     = m_Device.core.MapBuffer(m_FrameBuffer->handle, 0, sizeof(data));
+                                      settings.skybox ? 1.0f : 0.0f,
+                                      settings.exposure,
+                                      float(m_Environment.specular->desc.mipNum - 1)};
+        data.cameraClip            = {camera.nearPlane,
+                                      camera.farPlane,
+                                      std::clamp(settings.cascadeBlend, 0.0f, 0.15f),
+                                      float(settings.debugMode)};
+        m_ToneParameters           = {settings.exposure, settings.meshShading && settings.meshletColors ? 1.0 : 0.0};
+        data.overrides             = {settings.roughnessOverride,
+                                      settings.metalnessOverride,
+                                      m_OutputFormat == VriFormat_RGBA16_SFLOAT ? 0.0f : 1.0f,
+                                      settings.meshShading && settings.meshletColors ? 1.0f : 0.0f};
+        auto* mapped               = m_Device.core.MapBuffer(m_FrameBuffer->handle, 0, sizeof(data));
         if (!mapped)
         {
             throw std::runtime_error("Map renderer frame data");
@@ -965,17 +965,17 @@ namespace vultra
                                                           m_OpenPbrLuts->view()};
         std::vector<ShaderResourceViews>           shaderResources;
         constexpr std::array                       frameNames {"frame",
-                                         "shadow0",
-                                         "shadow1",
-                                         "shadow2",
-                                         "shadow3",
-                                         "radianceMap",
-                                         "diffuseMap",
-                                         "specularMap",
-                                         "brdfLut",
-                                         "hdrColor",
-                                         "environmentSampler",
-                                         "openPbrLuts"};
+                                                               "shadow0",
+                                                               "shadow1",
+                                                               "shadow2",
+                                                               "shadow3",
+                                                               "radianceMap",
+                                                               "diffuseMap",
+                                                               "specularMap",
+                                                               "brdfLut",
+                                                               "hdrColor",
+                                                               "environmentSampler",
+                                                               "openPbrLuts"};
         for (uint32_t i = 0; i < frameNames.size(); ++i)
         {
             auto type = VriDescriptorType_Texture;

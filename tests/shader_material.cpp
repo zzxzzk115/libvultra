@@ -87,10 +87,10 @@ try
     asset.save(cooked);
     std::filesystem::remove(source);
     asset = ShaderAsset::load(cooked);
-    Device                  device;
-    Buffer                  output(device,
-                                   {16, 16, VriBufferUsage_StorageBuffer | VriBufferUsage_TransferSrc, VriMemoryLocation_Device});
-    Buffer                  readback(device, {16, 0, VriBufferUsage_TransferDst, VriMemoryLocation_HostReadback});
+    Device device;
+    Buffer output(device,
+                  {16, 16, VriBufferUsage_StorageBuffer | VriBufferUsage_TransferSrc, VriMemoryLocation_Device});
+    Buffer readback(device, {16, 0, VriBufferUsage_TransferDst, VriMemoryLocation_HostReadback});
     VriDescriptor*          view = nullptr;
     const VriBufferViewDesc desc {output.handle, VriDescriptorType_StorageBuffer, VriFormat_Unknown, 0, 16};
     check(device.core.CreateBufferView(device.handle, &desc, &view), "Create material test output");

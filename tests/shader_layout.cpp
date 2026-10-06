@@ -97,9 +97,9 @@ try
     std::memcpy(mapped, &inputValues[0], sizeof(float));
     std::memcpy(static_cast<std::byte*>(mapped) + 16, &inputValues[1], sizeof(float));
     device.core.UnmapBuffer(inputs.handle);
-    Buffer                        output(device,
-                                         {16, 16, VriBufferUsage_StorageBuffer | VriBufferUsage_TransferSrc, VriMemoryLocation_Device});
-    Buffer                        readback(device, {16, 0, VriBufferUsage_TransferDst, VriMemoryLocation_HostReadback});
+    Buffer output(device,
+                  {16, 16, VriBufferUsage_StorageBuffer | VriBufferUsage_TransferSrc, VriMemoryLocation_Device});
+    Buffer readback(device, {16, 0, VriBufferUsage_TransferDst, VriMemoryLocation_HostReadback});
     std::array<VriDescriptor*, 4> views {};
     const std::array              descriptions {
         VriBufferViewDesc {uniforms.handle, VriDescriptorType_ConstantBuffer, VriFormat_Unknown, 0, bytes.size()},

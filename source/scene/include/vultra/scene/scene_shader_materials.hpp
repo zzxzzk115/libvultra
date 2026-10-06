@@ -10,7 +10,10 @@ namespace vultra
     class SceneShaderMaterials
     {
     public:
-        SceneShaderMaterials(Device& device, const ProjectManifest& project, std::filesystem::path projectRoot);
+        SceneShaderMaterials(Device&                device,
+                             const ProjectManifest& project,
+                             std::filesystem::path  projectRoot,
+                             const AssetSource*     source = nullptr);
         ~SceneShaderMaterials();
         SceneShaderMaterials(const SceneShaderMaterials&)            = delete;
         SceneShaderMaterials& operator=(const SceneShaderMaterials&) = delete;

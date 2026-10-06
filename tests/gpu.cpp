@@ -67,6 +67,10 @@ try
                          std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(scratch / "passes");
     std::filesystem::create_directories(scratch / "reload");
+    const auto includeRoot = scratch.parent_path() / (scratch.filename().string() + "-includes");
+    std::filesystem::create_directories(includeRoot / "preferred/nested");
+    std::filesystem::create_directories(includeRoot / "resolved/nested");
+    write(includeRoot / "resolved/nested/external.slangh", "float3 externalColor() { return float3(0.2,0.3,0.8); }\n");
     std::ifstream source("examples/research/shaders/triangle.slang");
     std::string   shader((std::istreambuf_iterator<char>(source)), std::istreambuf_iterator<char>());
     const auto    include = shader.find("color.slangh");
@@ -74,11 +78,12 @@ try
     shader.replace(include, std::string("color.slangh").size(), "reload/color.slangh");
     write(scratch / "passes/triangle.slang", shader.c_str());
     std::filesystem::copy_file("examples/research/shaders/color.slangh", scratch / "reload/color.slangh");
-    Triangle triangle(device,
-                      VriFormat_BGRA8_UNORM,
-                      scratch / "passes/triangle.slang",
-                      scratch,
-                      {scratch, "builtin/shaders", "examples/common"});
+    Triangle triangle(
+        device,
+        VriFormat_BGRA8_UNORM,
+        scratch / "passes/triangle.slang",
+        scratch,
+        {scratch, includeRoot / "preferred", includeRoot / "resolved", "builtin/shaders", "examples/common"});
     require(triangle.pipeline->diagnostics().empty(), "Valid shader produced unexpected diagnostics");
     Profiler    profiler(device);
     RenderGraph graph(device);
@@ -229,6 +234,34 @@ try
         {
             return triangle.pipeline->generation() > before;
         });
+
+    // External include trees stay reloadable without recursively watching every search directory.
+    before = triangle.pipeline->generation();
+    write(scratch / "reload/color.slangh",
+          "#include \"nested/external.slangh\"\nfloat3 experimentColor(float3 c) { return externalColor(); }\n");
+    pollUntil(
+        [&]
+        {
+            return triangle.pipeline->generation() > before;
+        });
+    const auto external = render();
+    before              = triangle.pipeline->generation();
+    write(includeRoot / "resolved/nested/external.slangh", "float3 externalColor() { return float3(0.7,0.2,0.1); }\n");
+    pollUntil(
+        [&]
+        {
+            return triangle.pipeline->generation() > before;
+        });
+    const auto edited = render();
+    require(compare(external, edited).mse > 0.001, "External nested shader dependency was not watched");
+    before = triangle.pipeline->generation();
+    write(includeRoot / "preferred/nested/external.slangh", "float3 externalColor() { return float3(0.1,0.8,0.2); }\n");
+    pollUntil(
+        [&]
+        {
+            return triangle.pipeline->generation() > before;
+        });
+    require(compare(edited, render()).mse > 0.001, "Higher-priority nested shader include did not trigger reload");
 
     RenderGraph bad(device);
     const auto  uninitialized = bad.createTexture("never written", colorTexture({16, 16}));

@@ -48,7 +48,7 @@ namespace vultra
         std::string      serialize() const;
         static SceneTree parse(std::string_view text);
         void             save(const std::filesystem::path& file) const;
-        static SceneTree load(const std::filesystem::path& file);
+        static SceneTree load(const std::filesystem::path& file, const AssetSource* source = nullptr);
 
     private:
         static void bindChanges(Node& node, SceneChanges* changes);

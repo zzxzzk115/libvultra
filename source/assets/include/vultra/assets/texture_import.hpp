@@ -40,7 +40,9 @@ namespace vultra
     };
 
     // Static 2D DDS with its authored mips and color-space metadata. Arrays/cubes/volumes are rejected.
-    TextureData loadDds(const std::filesystem::path& path, const SourceObserver& observer = {});
+    TextureData loadDds(const std::filesystem::path& path,
+                        const SourceObserver&        observer = {},
+                        const AssetSource*           source   = nullptr);
 
     TextureData prepareTexture(const SceneImage& image, bool srgb, const TextureImportOptions& options = {});
     PreparedTextures

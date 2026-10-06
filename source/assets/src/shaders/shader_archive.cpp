@@ -1,6 +1,8 @@
 #include "rhi/shader_archive.hpp"
 #include "shader_values.hpp"
 
+#include <vultra/assets/asset_source.hpp>
+
 #include <stdexcept>
 
 namespace vultra
@@ -169,9 +171,10 @@ namespace vultra
         detail::writeShaderArchive(file, document);
     }
 
-    ShaderAsset ShaderAsset::load(const std::filesystem::path& file)
+    ShaderAsset ShaderAsset::load(const std::filesystem::path& file, const AssetSource* source)
     {
-        const auto document = detail::readShaderArchive(file);
+        const auto document =
+            source ? detail::readShaderArchive(source->read(file), file) : detail::readShaderArchive(file);
         if (document.at("kind") != "game_shader")
         {
             throw std::invalid_argument("ShaderAsset requires a game shader artifact: " + file.string());

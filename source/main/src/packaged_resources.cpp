@@ -92,15 +92,4 @@ namespace vultra
         return m_ShaderHash;
     }
 
-    std::filesystem::path PackagedResources::extractProject(const VpkArchive& archive)
-    {
-        if (!archive.contains("project.vproject"))
-        {
-            throw std::invalid_argument("Project VPK has no project manifest");
-        }
-        const auto root = m_Root / "project";
-        archive.extractTo(root);
-        return root;
-    }
-
 } // namespace vultra

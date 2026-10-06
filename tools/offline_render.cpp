@@ -1,6 +1,7 @@
 #include "../examples/research/color_gain.hpp"
 
 #include <vultra/assets/asset_pipeline.hpp>
+#include <vultra/assets/asset_source.hpp>
 #include <vultra/assets/project_manifest.hpp>
 #include <vultra/assets/vpk_archive.hpp>
 #include <vultra/core/base/command_line.hpp>
@@ -35,8 +36,18 @@ namespace
         return std::chrono::duration<double, std::milli>(to - from).count();
     }
 
-    std::string fileHash(const std::filesystem::path& path)
+    std::string fileHash(const std::filesystem::path& path, const AssetSource* assets = nullptr)
     {
+        if (assets)
+        {
+            const auto bytes = assets->read(path);
+            uint64_t   hash  = 14695981039346656037ull;
+            for (const auto byte : bytes)
+            {
+                hash = (hash ^ std::to_integer<uint8_t>(byte)) * 1099511628211ull;
+            }
+            return std::format("{:016x}", hash);
+        }
         std::ifstream source(path, std::ios::binary);
         if (!source)
         {
@@ -192,13 +203,9 @@ try
     // bin2c appends a C terminator; Slang source files cannot contain that NUL byte.
     static_assert(kGainShader[std::size(kGainShader) - 1] == 0);
     writeFileAtomically(gainShader, std::as_bytes(std::span(kGainShader).first(std::size(kGainShader) - 1)));
-    const auto inputFile     = experiment.config.input;
-    auto       sessionConfig = experiment.config;
-    if (inputFile.extension() == ".vpk")
-    {
-        sessionConfig.input = resources.extractProject(VpkArchive(inputFile)) / "project.vproject";
-    }
-    const auto& definition = experiment.graph;
+    const auto  inputFile     = experiment.config.input;
+    auto        sessionConfig = experiment.config;
+    const auto& definition    = experiment.graph;
 
     // No Window, Swapchain, RuntimeContext or ImGui objects are constructed on this path.
     ScopedWorkingDirectory cwd(resources.engineRoot());
@@ -219,11 +226,11 @@ try
         scripts.emplace(*session.scene(), false, project);
         for (const auto& extension : project->extensions)
         {
-            scripts->addExtension(session.projectRoot() / extension);
+            scripts->addExtension(session.scriptPath(extension));
         }
         for (const auto& script : project->scripts)
         {
-            scripts->add(script, session.projectRoot() / script.path);
+            scripts->add(script, session.scriptPath(script.path));
         }
     }
     const auto                      captureFrame = cli.present<uint64_t>("--renderdoc-frame");
@@ -302,21 +309,23 @@ try
         metadata.parameters.emplace_back("extensions", std::to_string(project->extensions.size()));
         for (size_t i = 0; i < project->scripts.size(); ++i)
         {
-            metadata.parameters.emplace_back(std::format("script_{}_hash_fnv1a64", i),
-                                             fileHash(session.projectRoot() / project->scripts[i].path));
+            metadata.parameters.emplace_back(
+                std::format("script_{}_hash_fnv1a64", i),
+                fileHash(session.projectRoot() / project->scripts[i].path, session.assetSource()));
         }
         for (size_t i = 0; i < project->extensions.size(); ++i)
         {
-            metadata.parameters.emplace_back(std::format("extension_{}_hash_fnv1a64", i),
-                                             fileHash(session.projectRoot() / project->extensions[i]));
+            metadata.parameters.emplace_back(
+                std::format("extension_{}_hash_fnv1a64", i),
+                fileHash(session.projectRoot() / project->extensions[i], session.assetSource()));
         }
         metadata.parameters.emplace_back("final_scene", (output / "final.vscene").generic_string());
         metadata.parameters.emplace_back("scene_hash_fnv1a64",
-                                         fileHash(sessionConfig.input.parent_path() / project->mainScene));
+                                         fileHash(session.projectRoot() / project->mainScene, session.assetSource()));
         for (const auto& asset : project->assets())
         {
             metadata.parameters.emplace_back("asset_" + asset.id.value.toString() + "_hash_fnv1a64",
-                                             fileHash(sessionConfig.input.parent_path() / asset.path));
+                                             fileHash(session.projectRoot() / asset.path, session.assetSource()));
         }
     }
     else
@@ -325,7 +334,9 @@ try
     }
     if (!session.environmentSource().empty())
     {
-        metadata.parameters.emplace_back("environment_hash_fnv1a64", fileHash(session.environmentSource()));
+        metadata.parameters.emplace_back(
+            "environment_hash_fnv1a64",
+            fileHash(session.environmentSource(), sessionConfig.environment.empty() ? session.assetSource() : nullptr));
     }
     if (definition)
     {

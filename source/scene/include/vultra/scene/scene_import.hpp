@@ -29,7 +29,8 @@ namespace vultra
                               const ProjectManifest&          project,
                               const std::filesystem::path&    projectRoot,
                               const AssetImportOptions&       options   = {},
-                              std::vector<SceneMeshInstance>* instances = nullptr);
+                              std::vector<SceneMeshInstance>* instances = nullptr,
+                              const AssetSource*              source    = nullptr);
 
     bool sceneMeshTopologyMatches(const SceneTree& tree, std::span<const SceneMeshInstance> instances);
     // Previous GPU use must be complete. Retains geometry, textures, descriptors and the compiled graph.

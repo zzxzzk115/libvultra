@@ -5,9 +5,7 @@
 
 namespace vultra
 {
-    class VpkArchive;
-
-    // Owns extracted files for the executable's embedded shader pack and optional project pack.
+    // Owns extracted files for the executable's embedded engine shader pack.
     class PackagedResources
     {
     public:
@@ -18,7 +16,6 @@ namespace vultra
 
         const std::filesystem::path& engineRoot() const;
         const std::string&           shaderHash() const;
-        std::filesystem::path        extractProject(const VpkArchive& archive);
 
     private:
         std::filesystem::path m_Root;

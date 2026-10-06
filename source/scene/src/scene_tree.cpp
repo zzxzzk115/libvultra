@@ -1,3 +1,4 @@
+#include <vultra/assets/source_file.hpp>
 #include <vultra/platform/os/file.hpp>
 #include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/scene_tree.hpp>
@@ -7,7 +8,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <fstream>
 #include <iterator>
 #include <span>
 #include <stdexcept>
@@ -458,10 +458,10 @@ namespace vultra
         destination.reserve(destination.size() + 1);
         auto&      source = node.parent()->m_Children;
         const auto it     = std::ranges::find_if(source,
-                                             [&](const auto& child)
-                                             {
+                                                 [&](const auto& child)
+                                                 {
                                                  return child.get() == &node;
-                                             });
+                                                 });
         auto       moved  = std::move(*it);
         source.erase(it);
         moved->m_Parent = &newParent;
@@ -477,10 +477,10 @@ namespace vultra
         }
         auto&      children = node.parent()->m_Children;
         const auto it       = std::ranges::find_if(children,
-                                             [&](const auto& child)
-                                             {
+                                                   [&](const auto& child)
+                                                   {
                                                  return child.get() == &node;
-                                             });
+                                                   });
         auto       result   = std::move(*it);
         children.erase(it);
         result->m_Parent = nullptr;
@@ -794,21 +794,12 @@ namespace vultra
         writeFileAtomically(file, std::as_bytes(std::span(text)));
     }
 
-    SceneTree SceneTree::load(const std::filesystem::path& file)
+    SceneTree SceneTree::load(const std::filesystem::path& file, const AssetSource* source)
     {
-        std::ifstream input(file, std::ios::binary);
-        if (!input)
-        {
-            throw std::runtime_error("Open scene: " + file.string());
-        }
-        const std::string text(std::istreambuf_iterator<char> {input}, {});
-        if (input.bad())
-        {
-            throw std::runtime_error("Read scene: " + file.string());
-        }
         try
         {
-            return parse(text);
+            const auto bytes = readSourceFile(file, {}, source);
+            return parse(std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
         }
         catch (const std::exception& error)
         {

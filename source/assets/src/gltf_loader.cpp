@@ -1,6 +1,7 @@
 #include "image_decode.hpp"
 #include "import_jobs.hpp"
 
+#include <vultra/assets/asset_source.hpp>
 #include <vultra/assets/scene_data.hpp>
 #include <vultra/core/base/logger.hpp>
 
@@ -200,30 +201,69 @@ namespace vultra
         }
     } // namespace
 
-    SceneData loadGltf(const std::filesystem::path& path, const SourceObserver& observer, uint32_t workers)
+    SceneData loadGltf(const std::filesystem::path& path,
+                       const SourceObserver&        observer,
+                       uint32_t                     workers,
+                       const AssetSource*           assetSource)
     {
         const auto         parseStarted = std::chrono::steady_clock::now();
         tinygltf::TinyGLTF loader;
         tinygltf::Model    model;
         std::string        error;
         std::string        warning;
-        if (observer)
+        if (observer || assetSource)
         {
             tinygltf::FsCallbacks callbacks {
-                tinygltf::FileExists,
-                tinygltf::ExpandFilePath,
-                [&observer](std::vector<unsigned char>* bytes, std::string* error, const std::string& filename, void*)
+                [assetSource](const std::string& filename, void*)
                 {
-                    if (!tinygltf::ReadWholeFile(bytes, error, filename, nullptr))
+                    const std::filesystem::path file = std::u8string(filename.begin(), filename.end());
+                    return assetSource ? assetSource->contains(file) : tinygltf::FileExists(filename, nullptr);
+                },
+                [assetSource](const std::string& filename, void*)
+                {
+                    return assetSource ? filename : tinygltf::ExpandFilePath(filename, nullptr);
+                },
+                [&observer,
+                 assetSource](std::vector<unsigned char>* bytes, std::string* error, const std::string& filename, void*)
+                {
+                    try
                     {
+                        const std::filesystem::path file = std::u8string(filename.begin(), filename.end());
+                        const auto                  data = readSourceFile(file, observer, assetSource);
+                        bytes->resize(data.size());
+                        std::memcpy(bytes->data(), data.data(), data.size());
+                        return true;
+                    }
+                    catch (const std::exception& failure)
+                    {
+                        *error = failure.what();
                         return false;
                     }
-                    const std::filesystem::path sourcePath = std::u8string(filename.begin(), filename.end());
-                    observer(sourcePath, std::as_bytes(std::span(*bytes)));
-                    return true;
                 },
                 tinygltf::WriteWholeFile,
-                tinygltf::GetFileSizeInBytes,
+                [assetSource](size_t* size, std::string* error, const std::string& filename, void*)
+                {
+                    if (!assetSource)
+                    {
+                        return tinygltf::GetFileSizeInBytes(size, error, filename, nullptr);
+                    }
+                    try
+                    {
+                        const std::filesystem::path file  = std::u8string(filename.begin(), filename.end());
+                        const auto                  count = assetSource->size(file);
+                        if (count > SIZE_MAX)
+                        {
+                            throw std::runtime_error("glTF dependency exceeds addressable memory: " + filename);
+                        }
+                        *size = size_t(count);
+                        return true;
+                    }
+                    catch (const std::exception& failure)
+                    {
+                        *error = failure.what();
+                        return false;
+                    }
+                },
                 nullptr};
             if (!loader.SetFsCallbacks(std::move(callbacks), &error))
             {

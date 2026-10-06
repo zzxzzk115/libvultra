@@ -1,5 +1,8 @@
+#include <vultra/assets/asset_source.hpp>
 #include <vultra/assets/project_manifest.hpp>
+#include <vultra/assets/source_file.hpp>
 #include <vultra/assets/vpk_archive.hpp>
+#include <vultra/main/packaged_resources.hpp>
 #include <vultra/scene/scene_tree.hpp>
 
 #include <chrono>
@@ -62,7 +65,38 @@ try
         "Packing overwrote an existing VPK");
     require(fs::file_size(output) == packedSize, "Rejected VPK output was modified");
 
-    vultra::VpkArchive archive(output);
+    vultra::VpkArchive  archive(output);
+    vultra::AssetSource source(archive);
+    const auto          directProject = vultra::ProjectManifest::load(source.resolve("project.vproject"), &source);
+    auto                directScene   = vultra::SceneTree::load(source.resolve(directProject.mainScene), &source);
+    directScene.validateAssets(directProject);
+    require(source.read("project.vproject") == archive.read("project.vproject") &&
+                source.size("project.vproject") == archive.size("project.vproject") &&
+                !fs::exists(source.resolve(directProject.mainScene)),
+            "Resource source changed bytes or extracted scene data");
+    requireFailure(
+        [&]
+        {
+            source.read("../outside");
+        },
+        "Package resource source accepted traversal");
+    requireFailure(
+        [&]
+        {
+            source.read(fs::absolute("resources/research.vproject"));
+        },
+        "Package resource source read an external file");
+    requireFailure(
+        [&]
+        {
+            source.read("missing.bin");
+        },
+        "Package source silently supplied missing bytes");
+    {
+        vultra::ScopedWorkingDirectory workingDirectory(fs::absolute(root));
+        require(source.read("project.vproject") == archive.read("project.vproject"),
+                "Mounted source depended on the current working directory");
+    }
     require(archive.contains("project.vproject") && archive.contains("models/DamagedHelmet/DamagedHelmet.glb") &&
                 archive.contains("textures/environment_maps/citrus_orchard_puresky_1k.hdr") &&
                 archive.contains("ui/hud.rml") && archive.contains("ui/hud.rcss") &&
@@ -112,6 +146,23 @@ try
     const auto managedPack = root / "managed.vpk";
     vultra::VpkArchive::packProject(managedRoot / "project.vproject", managedPack);
     vultra::VpkArchive managedArchive(managedPack);
+    fs::path           materialized;
+    {
+        vultra::AssetSource files(managedArchive);
+        materialized = files.materialize("scripts/Extension.so");
+        require(vultra::readSourceFile(materialized) == files.read("scripts/Extension.so") &&
+                    !fs::exists(materialized.parent_path() / "Game.dll") &&
+                    !fs::exists(materialized.parent_path().parent_path() / "main.vscene"),
+                "Selective resource materialization extracted unrelated entries");
+        const auto assembly = managedProject.materializeModule(files, "scripts/Game.dll");
+        require(fs::exists(assembly.parent_path() / "Vultra.ManagedHost.dll") &&
+                    fs::exists(assembly.parent_path() / "Vultra.Scripting.dll") &&
+                    fs::exists(assembly.parent_path() / "Vultra.ManagedHost.runtimeconfig.json") &&
+                    fs::exists(assembly.parent_path() / "Game.deps.json") &&
+                    !fs::exists(assembly.parent_path().parent_path() / "main.vscene"),
+                "Shared module materialization omitted managed sidecars or extracted the scene");
+    }
+    require(!fs::exists(materialized), "Resource source retained temporary files after destruction");
     require(managedArchive.contains("scripts/Extension.so") && managedArchive.contains("scripts/Game.dll") &&
                 managedArchive.contains("scripts/Vultra.ManagedHost.dll") &&
                 managedArchive.contains("scripts/Vultra.Scripting.dll") &&
@@ -170,6 +221,11 @@ try
     require(embedded && embedded->contains("project.vproject") &&
                 embedded->read("project.vproject") == archive.read("project.vproject"),
             "Embedded VPK cannot read the project manifest");
+    {
+        vultra::AssetSource embeddedSource(*embedded);
+        require(embeddedSource.read("project.vproject") == source.read("project.vproject"),
+                "Resource reads lost the executable's embedded archive offset");
+    }
     requireFailure(
         [&]
         {

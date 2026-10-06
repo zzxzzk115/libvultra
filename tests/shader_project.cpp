@@ -1,10 +1,13 @@
+#include <vultra/assets/asset_source.hpp>
 #include <vultra/assets/vpk_archive.hpp>
 #include <vultra/main/experiment_session.hpp>
+#include <vultra/platform/os/file.hpp>
 #include <vultra/scene/scene_tree.hpp>
 #include <vultra/servers/rendering/research/capture.hpp>
 
 #include <cstdio>
 #include <stdexcept>
+#include <string>
 
 namespace
 {
@@ -86,24 +89,45 @@ try
     options.includeDirectories = {"builtin/shaders", "external"};
     const auto pack            = root / "game.vpk";
     VpkArchive::packProject(root / "project.vproject", pack, options);
+    // Exercise native DLL classification without requiring a Windows loader on this machine.
+    const std::string moduleProbe = "native module materialization probe";
+    writeFileAtomically(root / "platform.dll", std::as_bytes(std::span(moduleProbe)));
+    auto probeProject = project;
+    probeProject.extensions.push_back("platform.dll");
+    probeProject.save(root / "probe.vproject");
+    const auto probePack = root / "native-module.vpk";
+    VpkArchive::packProject(root / "probe.vproject", probePack, options);
     VpkArchive archive(pack);
     require(archive.contains("painted.vshaderc") && !archive.contains("painted.vshader"),
             "Game VPK retained shader source");
-    const auto extracted = root / "shipped";
-    archive.extractTo(extracted);
+    AssetSource assets(archive);
     fs::remove(root / "painted.vshader");
-    const auto shipped = ProjectManifest::load(extracted / "project.vproject");
+    const auto shipped = ProjectManifest::load(assets.resolve("project.vproject"), &assets);
     require(shipped.asset(shader).path == "painted.vshaderc",
             "Shader cooking changed AssetId or failed to rewrite its path");
     {
-        ExperimentConfig config {.input = extracted / "project.vproject",
-                                 .size  = {64, 48},
-                                 .path  = RenderPath::eNaiveForward};
+        ExperimentConfig config {.input = pack, .size = {64, 48}, .path = RenderPath::eNaiveForward};
         config.importOptions.cacheDirectory = root / "shipped-cache";
         ExperimentSession session(device, config);
         session.render();
         require(compare(baseline, session.capture("hdr")).mse == 0, "Source-free game VPK changed GPU pixels");
+        require(session.assetSource() && !fs::exists(session.projectRoot() / "helmet.glb") &&
+                    !fs::exists(session.projectRoot() / "painted.vshaderc"),
+                "Packaged scene or shader was extracted before rendering");
     }
+    std::filesystem::path materializedModule;
+    {
+        ExperimentConfig config {.input = probePack, .size = {64, 48}, .path = RenderPath::eNaiveForward};
+        config.importOptions.cacheDirectory = root / "probe-cache";
+        ExperimentSession session(device, config);
+        materializedModule = session.scriptPath("platform.dll");
+        require(readSourceFile(materializedModule) ==
+                        std::vector<std::byte>(std::as_bytes(std::span(moduleProbe)).begin(),
+                                               std::as_bytes(std::span(moduleProbe)).end()) &&
+                    !fs::exists(materializedModule.parent_path() / "helmet.glb"),
+                "Materializing a native DLL required a managed host or extracted unrelated assets");
+    }
+    require(!fs::exists(materializedModule), "Session shutdown retained materialized module files");
     std::puts("Game project passed: typed scene persistence, live parameter edits and source-free VPK GPU parity");
     return 0;
 }

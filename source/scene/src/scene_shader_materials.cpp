@@ -20,6 +20,7 @@ namespace vultra
         Device&                device;
         const ProjectManifest& project;
         std::filesystem::path  root;
+        const AssetSource*     source;
         VriDescriptor*         sampler = nullptr;
         // Reverse destruction releases GPU materials before their borrowed texture views.
         std::map<std::string, std::unique_ptr<Texture>>       textures;
@@ -28,10 +29,11 @@ namespace vultra
         std::map<uint32_t, ShaderMaterial*>                   slots;
         uint64_t                                              appliedMaterials = UINT64_MAX;
 
-        State(Device& device, const ProjectManifest& project, std::filesystem::path root) :
+        State(Device& device, const ProjectManifest& project, std::filesystem::path root, const AssetSource* source) :
             device(device),
             project(project),
-            root(std::filesystem::absolute(root))
+            root(std::filesystem::absolute(root)),
+            source(source)
         {
         }
 
@@ -57,7 +59,7 @@ namespace vultra
                                     path.string(),
                                     property.srgb ? "sRGB" : "linear");
                 // Retain authored DDS mips/compression; color interpretation is selected by the property.
-                const auto prepared = loadTextureAsset(path, property.srgb);
+                const auto prepared = loadTextureAsset(path, property.srgb, {}, source);
                 auto       gpu      = uploadTextureAsset(device, prepared);
                 found               = textures.emplace(key, std::move(gpu)).first;
                 Logger::core().info("Shader texture ready: {}", path.string());
@@ -118,7 +120,8 @@ namespace vultra
                         return texture(property, value);
                     },
                     std::vector<std::string> {"Forward", "ShadowCaster", "GBufferBase", "GBufferMaterial"},
-                    BuiltinRenderer::shaderSubshaderCompatibility);
+                    BuiltinRenderer::shaderSubshaderCompatibility,
+                    source);
                 found = shaders.emplace(key, std::move(runtime)).first;
             }
             return *found->second;
@@ -127,8 +130,9 @@ namespace vultra
 
     SceneShaderMaterials::SceneShaderMaterials(Device&                device,
                                                const ProjectManifest& project,
-                                               std::filesystem::path  projectRoot) :
-        m_State(std::make_unique<State>(device, project, std::move(projectRoot)))
+                                               std::filesystem::path  projectRoot,
+                                               const AssetSource*     source) :
+        m_State(std::make_unique<State>(device, project, std::move(projectRoot), source))
     {
     }
 
