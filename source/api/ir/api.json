@@ -5,11 +5,41 @@
         {
           "name": "session",
           "type": "uint64_t"
+        },
+        {
+          "name": "node",
+          "type": "std::string_view"
+        }
+      ],
+      "host_mutable": true,
+      "name": "cameraSettings",
+      "return": "CameraSettings"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
         }
       ],
       "host_mutable": true,
       "name": "close",
       "return": "void"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
+          "name": "node",
+          "type": "std::string_view"
+        }
+      ],
+      "host_mutable": true,
+      "name": "environmentSettings",
+      "return": "EnvironmentSettings"
     },
     {
       "arguments": [
@@ -31,6 +61,36 @@
       "host_mutable": false,
       "name": "lastError",
       "return": "std::string_view"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
+          "name": "node",
+          "type": "std::string_view"
+        }
+      ],
+      "host_mutable": true,
+      "name": "lightSettings",
+      "return": "LightSettings"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
+          "name": "material",
+          "type": "std::string_view"
+        }
+      ],
+      "host_mutable": true,
+      "name": "materialParameters",
+      "return": "MaterialParameters"
     },
     {
       "arguments": [
@@ -72,6 +132,29 @@
         {
           "name": "session",
           "type": "uint64_t"
+        },
+        {
+          "name": "output",
+          "type": "std::string_view"
+        },
+        {
+          "name": "x",
+          "type": "uint32_t"
+        },
+        {
+          "name": "y",
+          "type": "uint32_t"
+        }
+      ],
+      "host_mutable": true,
+      "name": "probePixel",
+      "return": "ExperimentPixel"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
         }
       ],
       "host_mutable": false,
@@ -95,6 +178,56 @@
       ],
       "host_mutable": true,
       "name": "readImage",
+      "return": "void"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
+          "name": "output",
+          "type": "std::string_view"
+        },
+        {
+          "name": "channel",
+          "type": "uint32_t"
+        },
+        {
+          "name": "minimum",
+          "type": "float"
+        },
+        {
+          "name": "maximum",
+          "type": "float"
+        },
+        {
+          "name": "pixels",
+          "type": "std::span<float>"
+        }
+      ],
+      "host_mutable": true,
+      "name": "readPreview",
+      "return": "void"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
+          "name": "node",
+          "type": "std::string_view"
+        },
+        {
+          "name": "values",
+          "type": "std::span<float>"
+        }
+      ],
+      "host_mutable": true,
+      "name": "readTransform",
       "return": "void"
     },
     {
@@ -137,12 +270,88 @@
           "type": "uint64_t"
         },
         {
+          "name": "node",
+          "type": "std::string_view"
+        },
+        {
+          "name": "settings",
+          "type": "CameraSettings"
+        }
+      ],
+      "host_mutable": true,
+      "name": "setCameraSettings",
+      "return": "void"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
+          "name": "node",
+          "type": "std::string_view"
+        },
+        {
+          "name": "settings",
+          "type": "EnvironmentSettings"
+        }
+      ],
+      "host_mutable": true,
+      "name": "setEnvironmentSettings",
+      "return": "void"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
           "name": "definition",
           "type": "std::string_view"
         }
       ],
       "host_mutable": true,
       "name": "setGraph",
+      "return": "void"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
+          "name": "node",
+          "type": "std::string_view"
+        },
+        {
+          "name": "settings",
+          "type": "LightSettings"
+        }
+      ],
+      "host_mutable": true,
+      "name": "setLightSettings",
+      "return": "void"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
+          "name": "material",
+          "type": "std::string_view"
+        },
+        {
+          "name": "parameters",
+          "type": "MaterialParameters"
+        }
+      ],
+      "host_mutable": true,
+      "name": "setMaterialParameters",
       "return": "void"
     },
     {
@@ -175,6 +384,25 @@
           "type": "uint64_t"
         },
         {
+          "name": "node",
+          "type": "std::string_view"
+        },
+        {
+          "name": "values",
+          "type": "std::span<float>"
+        }
+      ],
+      "host_mutable": true,
+      "name": "setTransform",
+      "return": "void"
+    },
+    {
+      "arguments": [
+        {
+          "name": "session",
+          "type": "uint64_t"
+        },
+        {
           "name": "frames",
           "type": "uint64_t"
         }
@@ -185,6 +413,32 @@
     }
   ],
   "experiment_pods": [
+    {
+      "fields": [
+        {
+          "name": "verticalFov",
+          "type": "float"
+        },
+        {
+          "name": "nearPlane",
+          "type": "float"
+        },
+        {
+          "name": "farPlane",
+          "type": "float"
+        }
+      ],
+      "name": "CameraSettings"
+    },
+    {
+      "fields": [
+        {
+          "name": "intensity",
+          "type": "float"
+        }
+      ],
+      "name": "EnvironmentSettings"
+    },
     {
       "fields": [
         {
@@ -205,6 +459,27 @@
     {
       "fields": [
         {
+          "name": "red",
+          "type": "float"
+        },
+        {
+          "name": "green",
+          "type": "float"
+        },
+        {
+          "name": "blue",
+          "type": "float"
+        },
+        {
+          "name": "alpha",
+          "type": "float"
+        }
+      ],
+      "name": "ExperimentPixel"
+    },
+    {
+      "fields": [
+        {
           "name": "frames",
           "type": "uint64_t"
         },
@@ -218,6 +493,136 @@
         }
       ],
       "name": "ExperimentProgress"
+    },
+    {
+      "fields": [
+        {
+          "name": "red",
+          "type": "float"
+        },
+        {
+          "name": "green",
+          "type": "float"
+        },
+        {
+          "name": "blue",
+          "type": "float"
+        },
+        {
+          "name": "intensity",
+          "type": "float"
+        },
+        {
+          "name": "range",
+          "type": "float"
+        },
+        {
+          "name": "innerCone",
+          "type": "float"
+        },
+        {
+          "name": "outerCone",
+          "type": "float"
+        }
+      ],
+      "name": "LightSettings"
+    },
+    {
+      "fields": [
+        {
+          "name": "baseRed",
+          "type": "float"
+        },
+        {
+          "name": "baseGreen",
+          "type": "float"
+        },
+        {
+          "name": "baseBlue",
+          "type": "float"
+        },
+        {
+          "name": "baseAlpha",
+          "type": "float"
+        },
+        {
+          "name": "baseWeight",
+          "type": "float"
+        },
+        {
+          "name": "baseMetalness",
+          "type": "float"
+        },
+        {
+          "name": "baseDiffuseRoughness",
+          "type": "float"
+        },
+        {
+          "name": "specularWeight",
+          "type": "float"
+        },
+        {
+          "name": "specularRed",
+          "type": "float"
+        },
+        {
+          "name": "specularGreen",
+          "type": "float"
+        },
+        {
+          "name": "specularBlue",
+          "type": "float"
+        },
+        {
+          "name": "specularRoughness",
+          "type": "float"
+        },
+        {
+          "name": "specularIor",
+          "type": "float"
+        },
+        {
+          "name": "coatWeight",
+          "type": "float"
+        },
+        {
+          "name": "coatRoughness",
+          "type": "float"
+        },
+        {
+          "name": "coatIor",
+          "type": "float"
+        },
+        {
+          "name": "emissionRed",
+          "type": "float"
+        },
+        {
+          "name": "emissionGreen",
+          "type": "float"
+        },
+        {
+          "name": "emissionBlue",
+          "type": "float"
+        },
+        {
+          "name": "emissionLuminance",
+          "type": "float"
+        },
+        {
+          "name": "normalScale",
+          "type": "float"
+        },
+        {
+          "name": "occlusionStrength",
+          "type": "float"
+        },
+        {
+          "name": "alphaCutoff",
+          "type": "float"
+        }
+      ],
+      "name": "MaterialParameters"
     }
   ],
   "format": "vultra.api",

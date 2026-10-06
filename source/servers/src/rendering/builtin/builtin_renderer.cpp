@@ -69,12 +69,12 @@ namespace vultra
                                                             VriFormat_RGBA16_SFLOAT,
                                                             VriFormat_RGBA16_SFLOAT};
         constexpr std::array               kGBufferNames {"gbuffer_position_metallic",
-                                                          "gbuffer_normal_roughness",
-                                                          "gbuffer_albedo_weight",
-                                                          "gbuffer_emission_occlusion",
-                                                          "gbuffer_specular",
-                                                          "gbuffer_geometric_normal_ior",
-                                                          "gbuffer_coat"};
+                                            "gbuffer_normal_roughness",
+                                            "gbuffer_albedo_weight",
+                                            "gbuffer_emission_occlusion",
+                                            "gbuffer_specular",
+                                            "gbuffer_geometric_normal_ior",
+                                            "gbuffer_coat"};
 
         VriPipeline* createPipeline(Device&                        device,
                                     VriPipelineLayout*             layout,
@@ -110,6 +110,7 @@ namespace vultra
                 colors[i].colorWriteMask = VriColorWrite_RGBA;
             }
             VriGraphicsPipelineDesc desc {};
+            desc.pipelineCache  = device.pipelineCache;
             desc.pipelineLayout = layout;
             desc.shaders        = shaders.data();
             desc.shaderNum      = uint32_t(shaders.size());
@@ -340,7 +341,7 @@ namespace vultra
                         [this, stage, doubleSided, mirrored](std::span<const VriShaderDesc> shaders)
                         {
                             const auto formats = stage == 0 ? std::span(kGBufferFormats).first(4) :
-                                                              std::span(kGBufferFormats).subspan(4);
+                                                                    std::span(kGBufferFormats).subspan(4);
                             return createPipeline(m_Device,
                                                   m_Layout,
                                                   shaders,
@@ -660,15 +661,20 @@ namespace vultra
                       });
     }
 
-    void BuiltinRenderer::addDeferredPasses(RenderGraph& graph, Outputs& outputs, Extent size)
+    BuiltinRenderer::GBuffer
+    BuiltinRenderer::addGBufferPasses(RenderGraph& graph, RenderGraph::Resource depth, Extent size)
     {
-        for (size_t i = 0; i < outputs.gbuffer.size(); ++i)
+        const auto depthInfo = graph.resourceInfo(depth);
+        if (!depthInfo.isTexture || depthInfo.textureDesc.format != VriFormat_D32_SFLOAT ||
+            depthInfo.textureDesc.width != size.width || depthInfo.textureDesc.height != size.height)
         {
-            outputs.gbuffer[i] = graph.createTexture(kGBufferNames[i], colorTexture(size, kGBufferFormats[i]));
+            throw std::invalid_argument("G-buffer depth requires D32F at the view extent");
         }
-        const auto gbuffer = outputs.gbuffer;
-        const auto depth   = outputs.depth;
-        const auto hdr     = outputs.hdr;
+        GBuffer gbuffer {};
+        for (size_t i = 0; i < gbuffer.size(); ++i)
+        {
+            gbuffer[i] = graph.createTexture(kGBufferNames[i], colorTexture(size, kGBufferFormats[i]));
+        }
         graph.addPass("G-buffer geometry",
                       {{gbuffer[0], Usage::eColorWrite},
                        {gbuffer[1], Usage::eColorWrite},
@@ -730,6 +736,41 @@ namespace vultra
                           drawScene(cmd, GeometryPass::eGBufferMaterial);
                           m_Device.core.CmdEndRendering(cmd);
                       });
+        return gbuffer;
+    }
+
+    void BuiltinRenderer::addDeferredLightingPass(RenderGraph&          graph,
+                                                  RenderGraph::Resource hdr,
+                                                  GBuffer               gbuffer,
+                                                  ShadowMaps            shadows)
+    {
+        const auto   info = graph.resourceInfo(hdr);
+        const Extent size {info.textureDesc.width, info.textureDesc.height};
+        if (!info.isTexture || info.textureDesc.format != VriFormat_RGBA16_SFLOAT)
+        {
+            throw std::invalid_argument("Deferred lighting requires a linear RGBA16F target");
+        }
+        for (size_t i = 0; i < gbuffer.size(); ++i)
+        {
+            const auto source = graph.resourceInfo(gbuffer[i]);
+            if (!source.isTexture || source.textureDesc.format != kGBufferFormats[i] ||
+                source.textureDesc.width != size.width || source.textureDesc.height != size.height)
+            {
+                throw std::invalid_argument(std::string("Deferred lighting G-buffer contract mismatch: ") +
+                                            kGBufferNames[i]);
+            }
+        }
+        const auto shadowInfo = graph.resourceInfo(shadows[0]);
+        for (const auto shadow : shadows)
+        {
+            const auto source = graph.resourceInfo(shadow);
+            if (!source.isTexture || source.textureDesc.format != VriFormat_D32_SFLOAT ||
+                source.textureDesc.width != shadowInfo.textureDesc.width ||
+                source.textureDesc.height != source.textureDesc.width)
+            {
+                throw std::invalid_argument("Deferred lighting requires four equally sized square D32F shadow maps");
+            }
+        }
         graph.addPass("Deferred OpenPBR",
                       {{hdr, Usage::eColorReadWrite},
                        {gbuffer[0], Usage::eSampled},
@@ -739,10 +780,10 @@ namespace vultra
                        {gbuffer[4], Usage::eSampled},
                        {gbuffer[5], Usage::eSampled},
                        {gbuffer[6], Usage::eSampled},
-                       {outputs.shadows[0], Usage::eSampled},
-                       {outputs.shadows[1], Usage::eSampled},
-                       {outputs.shadows[2], Usage::eSampled},
-                       {outputs.shadows[3], Usage::eSampled}},
+                       {shadows[0], Usage::eSampled},
+                       {shadows[1], Usage::eSampled},
+                       {shadows[2], Usage::eSampled},
+                       {shadows[3], Usage::eSampled}},
                       [this, hdr, size](auto* cmd, auto& resources)
                       {
                           beginColorPass(m_Device, cmd, resources.getTexture(hdr).view(), size);
@@ -785,7 +826,8 @@ namespace vultra
                 {
                     throw std::invalid_argument("NaiveDeferred currently requires indexed geometry");
                 }
-                addDeferredPasses(graph, outputs, size);
+                outputs.gbuffer = addGBufferPasses(graph, outputs.depth, size);
+                addDeferredLightingPass(graph, outputs.hdr, outputs.gbuffer, outputs.shadows);
                 break;
             case RenderPath::eNaiveForward:
                 addForwardPass(graph, outputs.hdr, outputs.depth, outputs.shadows);
@@ -871,64 +913,71 @@ namespace vultra
                 }
             }
         }
-        const auto& shadowDesc     = graph.getTexture(outputs.shadows[0]).desc;
-        const auto  cascades       = calculateCascades(camera,
-                                                       directionToLight,
-                                                       m_Scene.center,
-                                                       m_Scene.radius,
-                                                       shadowDesc.width,
-                                                       settings.splitLambda);
-        data.viewProjection        = camera.projection * camera.view;
-        data.inverseViewProjection = glm::inverse(data.viewProjection);
-        data.view                  = camera.view;
-        data.lightViewProjection   = cascades.viewProjection;
-        data.cameraPosition        = glm::inverse(camera.view)[3];
-        data.lightDirection        = {glm::normalize(directionToLight), lightIntensity};
-        data.lightColor            = {lightColor, effectiveEnvironmentIntensity};
-        data.cascadeSplits         = cascades.splits;
-        data.cascadeWidths         = cascades.worldWidths;
-        data.cascadeDepthRanges    = cascades.depthRanges;
-        data.shadowParameters      = {settings.shadowBias,
-                                      settings.normalBias,
-                                      settings.sunAngularRadius,
-                                      float(settings.shadowFilter)};
-        data.options               = {settings.ibl ? 1.0f : 0.0f,
-                                      settings.skybox ? 1.0f : 0.0f,
-                                      settings.exposure,
-                                      float(m_Environment.specular->desc.mipNum - 1)};
-        data.cameraClip            = {camera.nearPlane,
-                                      camera.farPlane,
-                                      std::clamp(settings.cascadeBlend, 0.0f, 0.15f),
-                                      float(settings.debugMode)};
-        m_ToneParameters           = {settings.exposure, settings.meshShading && settings.meshletColors ? 1.0 : 0.0};
-        data.overrides             = {settings.roughnessOverride,
-                                      settings.metalnessOverride,
-                                      m_OutputFormat == VriFormat_RGBA16_SFLOAT ? 0.0f : 1.0f,
-                                      settings.meshShading && settings.meshletColors ? 1.0f : 0.0f};
-        auto* mapped               = m_Device.core.MapBuffer(m_FrameBuffer->handle, 0, sizeof(data));
+        const auto shadowResolution = outputs.shadows[0].graph ?
+                                          graph.resourceInfo(outputs.shadows[0]).textureDesc.width :
+                                          settings.shadowResolution;
+        const auto cascades         = calculateCascades(camera,
+                                                directionToLight,
+                                                m_Scene.center,
+                                                m_Scene.radius,
+                                                shadowResolution,
+                                                settings.splitLambda);
+        data.viewProjection         = camera.projection * camera.view;
+        data.inverseViewProjection  = glm::inverse(data.viewProjection);
+        data.view                   = camera.view;
+        data.lightViewProjection    = cascades.viewProjection;
+        data.cameraPosition         = glm::inverse(camera.view)[3];
+        data.lightDirection         = {glm::normalize(directionToLight), lightIntensity};
+        data.lightColor             = {lightColor, effectiveEnvironmentIntensity};
+        data.cascadeSplits          = cascades.splits;
+        data.cascadeWidths          = cascades.worldWidths;
+        data.cascadeDepthRanges     = cascades.depthRanges;
+        data.shadowParameters       = {settings.shadowBias,
+                                       settings.normalBias,
+                                       settings.sunAngularRadius,
+                                       float(settings.shadowFilter)};
+        data.options                = {settings.ibl ? 1.0f : 0.0f,
+                        settings.skybox ? 1.0f : 0.0f,
+                        settings.exposure,
+                        float(m_Environment.specular->desc.mipNum - 1)};
+        data.cameraClip  = {camera.nearPlane,
+                            camera.farPlane,
+                            std::clamp(settings.cascadeBlend, 0.0f, 0.15f),
+                            float(settings.debugMode)};
+        m_ToneParameters = {settings.exposure, settings.meshShading && settings.meshletColors ? 1.0 : 0.0};
+        data.overrides   = {settings.roughnessOverride,
+                            settings.metalnessOverride,
+                          m_OutputFormat == VriFormat_RGBA16_SFLOAT ? 0.0f : 1.0f,
+                          settings.meshShading && settings.meshletColors ? 1.0f : 0.0f};
+        auto* mapped     = m_Device.core.MapBuffer(m_FrameBuffer->handle, 0, sizeof(data));
         if (!mapped)
         {
             throw std::runtime_error("Map renderer frame data");
         }
         std::memcpy(mapped, &data, sizeof(data));
         m_Device.core.UnmapBuffer(m_FrameBuffer->handle);
+        auto resourceView = [&](RenderGraph::Resource resource) -> const VriDescriptor*
+        {
+            // Culled stages do not read these slots, but the shared descriptor set still needs valid views.
+            return resource.graph && graph.resourceInfo(resource).active ? graph.getTexture(resource).view() :
+                                                                           m_Environment.radiance->view();
+        };
         const VriDescriptor* descriptors[20] {m_FrameView,
-                                              graph.getTexture(outputs.shadows[0]).view(),
-                                              graph.getTexture(outputs.shadows[1]).view(),
-                                              graph.getTexture(outputs.shadows[2]).view(),
-                                              graph.getTexture(outputs.shadows[3]).view(),
+                                              resourceView(outputs.shadows[0]),
+                                              resourceView(outputs.shadows[1]),
+                                              resourceView(outputs.shadows[2]),
+                                              resourceView(outputs.shadows[3]),
                                               m_Environment.radiance->view(),
                                               m_Environment.diffuse->view(),
                                               m_Environment.specular->view(),
                                               m_Environment.brdfLut->view(),
-                                              graph.getTexture(outputs.hdr).view(),
+                                              resourceView(outputs.hdr),
                                               m_EnvironmentSampler,
                                               m_OpenPbrLuts->view()};
         for (size_t i = 0; i < outputs.gbuffer.size(); ++i)
         {
-            descriptors[i + 12] = outputs.path == RenderPath::eNaiveDeferred ?
-                                      graph.getTexture(outputs.gbuffer[i]).view() :
-                                      graph.getTexture(outputs.hdr).view();
+            descriptors[i + 12] = outputs.path == RenderPath::eNaiveDeferred ? resourceView(outputs.gbuffer[i]) :
+                                                                               resourceView(outputs.hdr);
         }
         descriptors[19] = m_TransformView;
         VriDescriptorRangeUpdateDesc updates[20] {};
@@ -951,31 +1000,37 @@ namespace vultra
     std::array<VriPipeline*, 10>
     BuiltinRenderer::prepareShaderMaterial(ShaderMaterial& material, RenderGraph& graph, const Outputs& outputs)
     {
+        auto resourceView = [&](RenderGraph::Resource resource) -> const VriDescriptor*
+        {
+            // Culled stages do not read these slots, but the shared descriptor set still needs valid views.
+            return resource.graph && graph.resourceInfo(resource).active ? graph.getTexture(resource).view() :
+                                                                           m_Environment.radiance->view();
+        };
         const std::array<const VriDescriptor*, 12> views {m_FrameView,
-                                                          graph.getTexture(outputs.shadows[0]).view(),
-                                                          graph.getTexture(outputs.shadows[1]).view(),
-                                                          graph.getTexture(outputs.shadows[2]).view(),
-                                                          graph.getTexture(outputs.shadows[3]).view(),
+                                                          resourceView(outputs.shadows[0]),
+                                                          resourceView(outputs.shadows[1]),
+                                                          resourceView(outputs.shadows[2]),
+                                                          resourceView(outputs.shadows[3]),
                                                           m_Environment.radiance->view(),
                                                           m_Environment.diffuse->view(),
                                                           m_Environment.specular->view(),
                                                           m_Environment.brdfLut->view(),
-                                                          graph.getTexture(outputs.hdr).view(),
+                                                          resourceView(outputs.hdr),
                                                           m_EnvironmentSampler,
                                                           m_OpenPbrLuts->view()};
         std::vector<ShaderResourceViews>           shaderResources;
         constexpr std::array                       frameNames {"frame",
-                                                               "shadow0",
-                                                               "shadow1",
-                                                               "shadow2",
-                                                               "shadow3",
-                                                               "radianceMap",
-                                                               "diffuseMap",
-                                                               "specularMap",
-                                                               "brdfLut",
-                                                               "hdrColor",
-                                                               "environmentSampler",
-                                                               "openPbrLuts"};
+                                         "shadow0",
+                                         "shadow1",
+                                         "shadow2",
+                                         "shadow3",
+                                         "radianceMap",
+                                         "diffuseMap",
+                                         "specularMap",
+                                         "brdfLut",
+                                         "hdrColor",
+                                         "environmentSampler",
+                                         "openPbrLuts"};
         for (uint32_t i = 0; i < frameNames.size(); ++i)
         {
             auto type = VriDescriptorType_Texture;

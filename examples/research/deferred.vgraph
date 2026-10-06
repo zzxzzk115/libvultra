@@ -1,0 +1,91 @@
+{
+  "format": "vultra.graph",
+  "version": 1,
+  "passes": [
+    {
+      "id": "shadows",
+      "type": "vultra.shadow",
+      "parameters": {}
+    },
+    {
+      "id": "sky",
+      "type": "vultra.skybox",
+      "parameters": {}
+    },
+    {
+      "id": "geometry",
+      "type": "vultra.gbuffer",
+      "parameters": {}
+    },
+    {
+      "id": "lighting",
+      "type": "vultra.deferred_lighting",
+      "parameters": {}
+    }
+  ],
+  "edges": [
+    {
+      "from": "sky.hdr",
+      "to": "lighting.hdr"
+    },
+    {
+      "from": "geometry.depth",
+      "to": "lighting.depth"
+    },
+    {
+      "from": "geometry.position_metallic",
+      "to": "lighting.position_metallic"
+    },
+    {
+      "from": "geometry.normal_roughness",
+      "to": "lighting.normal_roughness"
+    },
+    {
+      "from": "geometry.albedo_weight",
+      "to": "lighting.albedo_weight"
+    },
+    {
+      "from": "geometry.emission_occlusion",
+      "to": "lighting.emission_occlusion"
+    },
+    {
+      "from": "geometry.specular",
+      "to": "lighting.specular"
+    },
+    {
+      "from": "geometry.geometric_normal_ior",
+      "to": "lighting.geometric_normal_ior"
+    },
+    {
+      "from": "geometry.coat",
+      "to": "lighting.coat"
+    },
+    {
+      "from": "shadows.cascade0",
+      "to": "lighting.cascade0"
+    },
+    {
+      "from": "shadows.cascade1",
+      "to": "lighting.cascade1"
+    },
+    {
+      "from": "shadows.cascade2",
+      "to": "lighting.cascade2"
+    },
+    {
+      "from": "shadows.cascade3",
+      "to": "lighting.cascade3"
+    }
+  ],
+  "outputs": [
+    "lighting.hdr",
+    "geometry.position_metallic",
+    "geometry.normal_roughness",
+    "geometry.albedo_weight",
+    "geometry.emission_occlusion",
+    "geometry.specular",
+    "geometry.geometric_normal_ior",
+    "geometry.coat",
+    "geometry.depth"
+  ]
+}

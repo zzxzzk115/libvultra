@@ -1,6 +1,7 @@
 #pragma once
 #include <vultra/core/math/extent.hpp>
 
+#include <array>
 #include <cstddef>
 #include <filesystem>
 #include <span>
@@ -21,6 +22,28 @@ namespace vultra
         double psnr = 0;
         double ssim = 0;
     };
+
+    enum class ImageChannel : uint32_t
+    {
+        eRgb,
+        eRed,
+        eGreen,
+        eBlue,
+        eAlpha,
+        eLuminance
+    };
+
+    // Explicit display mapping. Original capture data is never modified or implicitly gamma converted.
+    struct ImageView
+    {
+        ImageChannel channel = ImageChannel::eRgb;
+        float        minimum = 0;
+        float        maximum = 1;
+    };
+
+    void                 validateImageView(const ImageView& view);
+    Image                mapImage(const Image& image, const ImageView& view);
+    std::array<float, 4> imagePixel(const Image& image, uint32_t x, uint32_t y);
 
     Image loadPng(const std::filesystem::path& path);
     Image loadPng(std::span<const std::byte> bytes);

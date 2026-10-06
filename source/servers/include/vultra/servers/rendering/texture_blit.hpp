@@ -1,6 +1,9 @@
 #pragma once
+#include <vultra/core/image/image.hpp>
 #include <vultra/drivers/rhi/resources.hpp>
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
+
+#include <optional>
 
 namespace vultra
 {
@@ -16,8 +19,12 @@ namespace vultra
         // Update descriptors before recording draws; one slot per source used in that submission.
         void setSource(uint32_t slot, Texture& source);
         // Set encodeSrgb only when writing linear samples to a display UNORM target.
-        void
-        draw(VriCommandBuffer* cmd, Texture& target, VriRect rectangle, uint32_t slot = 0, bool encodeSrgb = false);
+        void draw(VriCommandBuffer*        cmd,
+                  Texture&                 target,
+                  VriRect                  rectangle,
+                  uint32_t                 slot       = 0,
+                  bool                     encodeSrgb = false,
+                  std::optional<ImageView> view       = std::nullopt);
 
     private:
         void                            release();

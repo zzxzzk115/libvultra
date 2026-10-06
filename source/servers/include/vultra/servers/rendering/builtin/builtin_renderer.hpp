@@ -85,6 +85,7 @@ namespace vultra
     class BuiltinRenderer
     {
     public:
+        using GBuffer    = std::array<RenderGraph::Resource, 7>;
         using ShadowMaps = std::array<RenderGraph::Resource, 4>;
 
         struct Outputs
@@ -111,6 +112,10 @@ namespace vultra
         void       addSkyboxPass(RenderGraph& graph, RenderGraph::Resource hdr);
         void
         addForwardPass(RenderGraph& graph, RenderGraph::Resource hdr, RenderGraph::Resource depth, ShadowMaps shadows);
+
+        GBuffer addGBufferPasses(RenderGraph& graph, RenderGraph::Resource depth, Extent size);
+        void
+        addDeferredLightingPass(RenderGraph& graph, RenderGraph::Resource hdr, GBuffer gbuffer, ShadowMaps shadows);
 
         RenderGraph::Resource addToneMappingPass(RenderGraph& graph, RenderGraph::Resource hdr, Extent size);
         // Build linear scene outputs so a project pass can run before tone mapping.
@@ -149,7 +154,6 @@ namespace vultra
 
         void                           release();
         void                           drawScene(VriCommandBuffer* cmd, GeometryPass pass, uint32_t cascade = 0);
-        void                           addDeferredPasses(RenderGraph& graph, Outputs& outputs, Extent size);
         void                           drawFullscreen(VriCommandBuffer* cmd, VriPipeline* pipeline);
         Device&                        m_Device;
         GpuScene&                      m_Scene;

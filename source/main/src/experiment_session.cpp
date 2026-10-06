@@ -1,15 +1,20 @@
 #include <vultra/assets/asset_source.hpp>
+#include <vultra/assets/source_file.hpp>
 #include <vultra/main/experiment_session.hpp>
 #include <vultra/scene/camera/orbit_camera.hpp>
 #include <vultra/scene/scene_import.hpp>
 #include <vultra/scene/scene_render_state.hpp>
 #include <vultra/scene/scene_shader_materials.hpp>
+#include <vultra/servers/rendering/builtin/raster_passes.hpp>
 #include <vultra/servers/rendering/builtin/reference_path_tracer.hpp>
 #include <vultra/servers/rendering/rendering_server.hpp>
 #include <vultra/servers/rendering/research/capture.hpp>
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <chrono>
+#include <format>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -28,12 +33,14 @@ namespace vultra
         struct SessionGraph
         {
             // Graph callbacks borrow pass and renderer state; destroy the graph before either owner.
-            std::unique_ptr<ReferencePathTracer> reference;
-            ReferencePathTracer::Outputs         aovs {};
-            GraphBuild                           passes;
-            std::unique_ptr<RenderGraph>         graph;
-            BuiltinRenderer::Outputs             outputs;
-            std::vector<std::string>             marked;
+            std::unique_ptr<ReferencePathTracer>      reference;
+            ReferencePathTracer::Outputs              aovs {};
+            std::unique_ptr<BuiltinRenderer::Outputs> rasterBindings;
+            std::unique_ptr<PassCatalog>              rasterCatalog;
+            GraphBuild                                passes;
+            std::unique_ptr<RenderGraph>              graph;
+            BuiltinRenderer::Outputs                  outputs;
+            std::vector<std::string>                  marked;
         };
     } // namespace
 
@@ -58,6 +65,7 @@ namespace vultra
             auto imported = manifest ? importScene(*tree, *manifest, root, config.importOptions, &ranges, source()) :
                                        importAsset(config.input, config.importOptions);
             cache         = imported.cachePath;
+            dependencies  = imported.dependencies;
             gpuScene      = server.uploadScene(imported);
             instances     = std::move(ranges);
             renderer      = std::make_unique<BuiltinRenderer>(device, *gpuScene, environment);
@@ -118,6 +126,11 @@ namespace vultra
             SessionGraph candidate;
             candidate.graph = std::make_unique<RenderGraph>(device);
             std::vector<GraphBinding> imports;
+            const bool                authoredRaster = graphDefinition && usesBuiltinRasterPasses(*graphDefinition);
+            if (authoredRaster && config.path != RenderPath::eNaiveDeferred)
+            {
+                throw std::invalid_argument("Explicit built-in raster graphs require the indexed deferred path");
+            }
             if (config.path == RenderPath::eReferencePathTracing)
             {
                 candidate.reference    = std::make_unique<ReferencePathTracer>(device, geometry, environment);
@@ -132,14 +145,49 @@ namespace vultra
                                           {"scene.sample_count", candidate.aovs.sampleCount},
                                           {"scene.ray_count", candidate.aovs.rayCount}};
             }
+            else if (authoredRaster)
+            {
+                candidate.rasterBindings       = std::make_unique<BuiltinRenderer::Outputs>();
+                candidate.rasterBindings->path = config.path;
+                candidate.rasterCatalog        = std::make_unique<PassCatalog>(catalog);
+                bindBuiltinRasterPasses(*candidate.rasterCatalog, target, *candidate.rasterBindings, config.size);
+            }
             else
             {
                 candidate.outputs = target.addScenePasses(*candidate.graph, config.size);
+                if (candidate.outputs.path == RenderPath::eNaiveDeferred)
+                {
+                    constexpr std::array names {"position_metallic",
+                                                "normal_roughness",
+                                                "albedo_weight",
+                                                "emission_occlusion",
+                                                "specular",
+                                                "geometric_normal_ior",
+                                                "coat"};
+                    for (size_t i = 0; i < names.size(); ++i)
+                    {
+                        imports.push_back({"scene." + std::string(names[i]), candidate.outputs.gbuffer[i]});
+                    }
+                    imports.push_back({"scene.depth", candidate.outputs.depth});
+                    for (size_t i = 0; i < candidate.outputs.shadows.size(); ++i)
+                    {
+                        imports.push_back({"scene.cascade" + std::to_string(i), candidate.outputs.shadows[i]});
+                    }
+                }
             }
-            imports.insert(imports.begin(), {"scene.hdr", candidate.outputs.hdr});
+            if (!authoredRaster)
+            {
+                imports.insert(imports.begin(), {"scene.hdr", candidate.outputs.hdr});
+            }
             if (graphDefinition)
             {
-                candidate.passes = graphDefinition->build(*candidate.graph, catalog, imports);
+                candidate.passes = graphDefinition->build(*candidate.graph,
+                                                          candidate.rasterCatalog ? *candidate.rasterCatalog : catalog,
+                                                          imports);
+                if (candidate.rasterBindings)
+                {
+                    candidate.outputs = *candidate.rasterBindings;
+                }
                 if (candidate.passes.outputs.empty())
                 {
                     throw std::invalid_argument("Experiment graph requires a marked output");
@@ -221,10 +269,11 @@ namespace vultra
                 active.graph.reset();
                 renderer = std::move(replacement);
                 shaderMaterials.reset();
-                gpuScene  = std::move(upload);
-                instances = std::move(ranges);
-                cache     = std::move(imported.cachePath);
-                gpuSync   = {};
+                gpuScene     = std::move(upload);
+                instances    = std::move(ranges);
+                cache        = std::move(imported.cachePath);
+                dependencies = std::move(imported.dependencies);
+                gpuSync      = {};
                 replaceGraph(std::move(graph));
                 server.collectCompletedFrame();
             }
@@ -252,6 +301,7 @@ namespace vultra
         ExperimentConfig                      config;
         std::filesystem::path                 root;
         std::filesystem::path                 cache;
+        std::vector<AssetDependency>          dependencies;
         std::unique_ptr<AssetSource>          assets;
         std::optional<ProjectManifest>        manifest;
         std::optional<SceneTree>              tree;
@@ -349,6 +399,90 @@ namespace vultra
         }
         state.catalog.setParameters(*found, values);
         definition->parameters = std::move(values);
+    }
+
+    std::string ExperimentSession::provenance(const std::filesystem::path& shaderRoot) const
+    {
+        const auto& state = *m_Impl;
+        using Json        = nlohmann::json;
+        auto describe     = [](const std::filesystem::path& file, const AssetSource* source)
+        {
+            const auto bytes = readSourceFile(file, {}, source);
+            uint64_t   hash  = 14695981039346656037ull;
+            for (const auto byte : bytes)
+            {
+                hash = (hash ^ std::to_integer<uint8_t>(byte)) * 1099511628211ull;
+            }
+            return Json {{"path", file.generic_string()}, {"fnv1a64", std::format("{:016x}", hash)}};
+        };
+        Json result {{"input", describe(state.config.input, nullptr)},
+                     {"assets", Json::array()},
+                     {"import_dependencies", Json::array()},
+                     {"slang_compiler", ShaderProgram::compilerVersion()},
+                     {"graph", state.definition ? Json::parse(state.definition->serialize()) : Json(nullptr)}};
+#ifdef NDEBUG
+        result["build_mode"] = "release";
+#else
+        result["build_mode"] = "debug";
+#endif
+        if (state.manifest)
+        {
+            result["entry_scene"] = describe(state.root / state.manifest->mainScene, state.source());
+            for (const auto& asset : state.manifest->assets())
+            {
+                auto record  = describe(state.root / asset.path, state.source());
+                record["id"] = asset.id.value.toString();
+                result["assets"].push_back(std::move(record));
+            }
+            result["scene"] = Json::parse(state.tree->serialize());
+            for (const auto& script : state.manifest->scripts)
+            {
+                result["assets"].push_back(describe(state.root / script.path, state.source()));
+            }
+            for (const auto& extension : state.manifest->extensions)
+            {
+                result["assets"].push_back(describe(state.root / extension, state.source()));
+            }
+        }
+        for (const auto& dependency : state.dependencies)
+        {
+            result["import_dependencies"].push_back(
+                {{"path", dependency.path.generic_string()}, {"xxh3_64", dependency.hash}});
+        }
+        if (!state.environment.source().empty())
+        {
+            result["environment"] =
+                describe(state.environment.source(), state.config.environment.empty() ? state.source() : nullptr);
+        }
+        else
+        {
+            result["environment"] = {{"kind", "builtin_studio"}};
+        }
+        result["shader_files"] = Json::array();
+        std::vector<std::filesystem::path> files;
+        for (const auto& directory : {"builtin/shaders", "external/openpbr", "examples/research/shaders"})
+        {
+            const auto root = shaderRoot / directory;
+            if (!std::filesystem::is_directory(root))
+            {
+                continue;
+            }
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(root))
+            {
+                if (entry.is_regular_file())
+                {
+                    files.push_back(entry.path());
+                }
+            }
+        }
+        std::ranges::sort(files);
+        for (const auto& file : files)
+        {
+            auto record    = describe(file, nullptr);
+            record["path"] = file.lexically_relative(shaderRoot).generic_string();
+            result["shader_files"].push_back(std::move(record));
+        }
+        return result.dump();
     }
 
     FrameTiming ExperimentSession::render()

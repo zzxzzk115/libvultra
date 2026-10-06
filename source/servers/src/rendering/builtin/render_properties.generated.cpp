@@ -13,531 +13,531 @@ namespace vultra
         static constexpr std::array<PropertyChoice, 0> shadowFilterChoices = {{}};
         static const std::array<PropertyInfo, 21>      properties          = {{
             {"path",
-             "Path",
-             "path",
-             "/path",
-             PropertyKind::eEnum,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             pathChoices,
-             pathValues,
-             [](const void* object) -> PropertyValue
-             {
+                           "Path",
+                           "path",
+                           "/path",
+                           PropertyKind::eEnum,
+                           PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           pathChoices,
+                           pathValues,
+                           [](const void* object) -> PropertyValue
+                           {
                  return PropertyEnum {static_cast<int64_t>(static_cast<const RenderSettings*>(object)->path)};
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->path =
                      static_cast<RenderPath>(std::get<PropertyEnum>(value).value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return PropertyEnum {static_cast<int64_t>(RenderSettings {}.path)};
              }},
             {"directionToLight",
-             "directionToLight",
-             "directionToLight",
-             "/directionToLight",
-             PropertyKind::eVector3,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "directionToLight",
+                           "directionToLight",
+                           "/directionToLight",
+                           PropertyKind::eVector3,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->directionToLight;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->directionToLight = std::get<glm::vec3>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.directionToLight;
              }},
             {"lightColor",
-             "lightColor",
-             "lightColor",
-             "/lightColor",
-             PropertyKind::eVector3,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "lightColor",
+                           "lightColor",
+                           "/lightColor",
+                           PropertyKind::eVector3,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->lightColor;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->lightColor = std::get<glm::vec3>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.lightColor;
              }},
             {"lightIntensity",
-             "Sun intensity",
-             "lightIntensity",
-             "/lightIntensity",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             10,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "Sun intensity",
+                           "lightIntensity",
+                           "/lightIntensity",
+                           PropertyKind::eFloat,
+                           PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           10,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->lightIntensity;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->lightIntensity = std::get<float>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.lightIntensity;
              }},
             {"environmentIntensity",
-             "environmentIntensity",
-             "environmentIntensity",
-             "/environmentIntensity",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "environmentIntensity",
+                           "environmentIntensity",
+                           "/environmentIntensity",
+                           PropertyKind::eFloat,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->environmentIntensity;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->environmentIntensity = std::get<float>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.environmentIntensity;
              }},
             {"exposure",
-             "Exposure (EV)",
-             "exposure",
-             "/exposure",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             -4,
-             4,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "Exposure (EV)",
+                           "exposure",
+                           "/exposure",
+                           PropertyKind::eFloat,
+                           PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           -4,
+                           4,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->exposure;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->exposure = std::get<float>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.exposure;
              }},
             {"ibl",
-             "IBL",
-             "ibl",
-             "/ibl",
-             PropertyKind::eBool,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "IBL",
+                           "ibl",
+                           "/ibl",
+                           PropertyKind::eBool,
+                           PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->ibl;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->ibl = std::get<bool>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.ibl;
              }},
             {"skybox",
-             "Skybox",
-             "skybox",
-             "/skybox",
-             PropertyKind::eBool,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "Skybox",
+                           "skybox",
+                           "/skybox",
+                           PropertyKind::eBool,
+                           PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->skybox;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->skybox = std::get<bool>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.skybox;
              }},
             {"meshShading",
-             "meshShading",
-             "meshShading",
-             "/meshShading",
-             PropertyKind::eBool,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "meshShading",
+                           "meshShading",
+                           "/meshShading",
+                           PropertyKind::eBool,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->meshShading;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->meshShading = std::get<bool>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.meshShading;
              }},
             {"meshletCulling",
-             "meshletCulling",
-             "meshletCulling",
-             "/meshletCulling",
-             PropertyKind::eBool,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "meshletCulling",
+                           "meshletCulling",
+                           "/meshletCulling",
+                           PropertyKind::eBool,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->meshletCulling;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->meshletCulling = std::get<bool>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.meshletCulling;
              }},
             {"meshletColors",
-             "meshletColors",
-             "meshletColors",
-             "/meshletColors",
-             PropertyKind::eBool,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "meshletColors",
+                           "meshletColors",
+                           "/meshletColors",
+                           PropertyKind::eBool,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->meshletColors;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->meshletColors = std::get<bool>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.meshletColors;
              }},
             {"shadowFilter",
-             "shadowFilter",
-             "shadowFilter",
-             "/shadowFilter",
-             PropertyKind::eEnum,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             shadowFilterChoices,
-             shadowFilterValues,
-             [](const void* object) -> PropertyValue
-             {
+                           "shadowFilter",
+                           "shadowFilter",
+                           "/shadowFilter",
+                           PropertyKind::eEnum,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           shadowFilterChoices,
+                           shadowFilterValues,
+                           [](const void* object) -> PropertyValue
+                           {
                  return PropertyEnum {static_cast<int64_t>(static_cast<const RenderSettings*>(object)->shadowFilter)};
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->shadowFilter =
                      static_cast<ShadowFilter>(std::get<PropertyEnum>(value).value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return PropertyEnum {static_cast<int64_t>(RenderSettings {}.shadowFilter)};
              }},
             {"shadowResolution",
-             "shadowResolution",
-             "shadowResolution",
-             "/shadowResolution",
-             PropertyKind::eUInt,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             32,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "shadowResolution",
+                           "shadowResolution",
+                           "/shadowResolution",
+                           PropertyKind::eUInt,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           32,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<uint64_t>(static_cast<const RenderSettings*>(object)->shadowResolution);
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->shadowResolution =
                      static_cast<uint32_t>(std::get<uint64_t>(value));
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return static_cast<uint64_t>(RenderSettings {}.shadowResolution);
              }},
             {"splitLambda",
-             "splitLambda",
-             "splitLambda",
-             "/splitLambda",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "splitLambda",
+                           "splitLambda",
+                           "/splitLambda",
+                           PropertyKind::eFloat,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->splitLambda;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->splitLambda = std::get<float>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.splitLambda;
              }},
             {"shadowBias",
-             "shadowBias",
-             "shadowBias",
-             "/shadowBias",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "shadowBias",
+                           "shadowBias",
+                           "/shadowBias",
+                           PropertyKind::eFloat,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->shadowBias;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->shadowBias = std::get<float>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.shadowBias;
              }},
             {"normalBias",
-             "normalBias",
-             "normalBias",
-             "/normalBias",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "normalBias",
+                           "normalBias",
+                           "/normalBias",
+                           PropertyKind::eFloat,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->normalBias;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->normalBias = std::get<float>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.normalBias;
              }},
             {"sunAngularRadius",
-             "sunAngularRadius",
-             "sunAngularRadius",
-             "/sunAngularRadius",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "sunAngularRadius",
+                           "sunAngularRadius",
+                           "/sunAngularRadius",
+                           PropertyKind::eFloat,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->sunAngularRadius;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->sunAngularRadius = std::get<float>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.sunAngularRadius;
              }},
             {"cascadeBlend",
-             "cascadeBlend",
-             "cascadeBlend",
-             "/cascadeBlend",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "cascadeBlend",
+                           "cascadeBlend",
+                           "/cascadeBlend",
+                           PropertyKind::eFloat,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->cascadeBlend;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->cascadeBlend = std::get<float>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.cascadeBlend;
              }},
             {"roughnessOverride",
-             "roughnessOverride",
-             "roughnessOverride",
-             "/roughnessOverride",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "roughnessOverride",
+                           "roughnessOverride",
+                           "/roughnessOverride",
+                           PropertyKind::eFloat,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->roughnessOverride;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->roughnessOverride = std::get<float>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.roughnessOverride;
              }},
             {"metalnessOverride",
-             "metalnessOverride",
-             "metalnessOverride",
-             "/metalnessOverride",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "metalnessOverride",
+                           "metalnessOverride",
+                           "/metalnessOverride",
+                           PropertyKind::eFloat,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<const RenderSettings*>(object)->metalnessOverride;
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->metalnessOverride = std::get<float>(value);
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return RenderSettings {}.metalnessOverride;
              }},
             {"debugMode",
-             "debugMode",
-             "debugMode",
-             "/debugMode",
-             PropertyKind::eUInt,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             32,
-             0,
-             0,
-             1,
-             {},
-             {},
-             [](const void* object) -> PropertyValue
-             {
+                           "debugMode",
+                           "debugMode",
+                           "/debugMode",
+                           PropertyKind::eUInt,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           32,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
                  return static_cast<uint64_t>(static_cast<const RenderSettings*>(object)->debugMode);
              },
-             [](void* object, const PropertyValue& value)
-             {
+                           [](void* object, const PropertyValue& value)
+                           {
                  static_cast<RenderSettings*>(object)->debugMode = static_cast<uint32_t>(std::get<uint64_t>(value));
              },
-             []() -> PropertyValue
-             {
+                           []() -> PropertyValue
+                           {
                  return static_cast<uint64_t>(RenderSettings {}.debugMode);
              }},
         }};

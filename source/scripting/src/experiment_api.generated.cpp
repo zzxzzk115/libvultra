@@ -5,16 +5,100 @@
 #include <cstddef>
 #include <stdexcept>
 
+static_assert(sizeof(VultraCameraSettings) == sizeof(vultra::CameraSettings));
+static_assert(alignof(VultraCameraSettings) == alignof(vultra::CameraSettings));
+static_assert(offsetof(VultraCameraSettings, verticalFov) == offsetof(vultra::CameraSettings, verticalFov));
+static_assert(offsetof(VultraCameraSettings, nearPlane) == offsetof(vultra::CameraSettings, nearPlane));
+static_assert(offsetof(VultraCameraSettings, farPlane) == offsetof(vultra::CameraSettings, farPlane));
+static_assert(sizeof(VultraEnvironmentSettings) == sizeof(vultra::EnvironmentSettings));
+static_assert(alignof(VultraEnvironmentSettings) == alignof(vultra::EnvironmentSettings));
+static_assert(offsetof(VultraEnvironmentSettings, intensity) == offsetof(vultra::EnvironmentSettings, intensity));
 static_assert(sizeof(VultraExperimentImageInfo) == sizeof(vultra::ExperimentImageInfo));
 static_assert(alignof(VultraExperimentImageInfo) == alignof(vultra::ExperimentImageInfo));
 static_assert(offsetof(VultraExperimentImageInfo, width) == offsetof(vultra::ExperimentImageInfo, width));
 static_assert(offsetof(VultraExperimentImageInfo, height) == offsetof(vultra::ExperimentImageInfo, height));
 static_assert(offsetof(VultraExperimentImageInfo, floatCount) == offsetof(vultra::ExperimentImageInfo, floatCount));
+static_assert(sizeof(VultraExperimentPixel) == sizeof(vultra::ExperimentPixel));
+static_assert(alignof(VultraExperimentPixel) == alignof(vultra::ExperimentPixel));
+static_assert(offsetof(VultraExperimentPixel, red) == offsetof(vultra::ExperimentPixel, red));
+static_assert(offsetof(VultraExperimentPixel, green) == offsetof(vultra::ExperimentPixel, green));
+static_assert(offsetof(VultraExperimentPixel, blue) == offsetof(vultra::ExperimentPixel, blue));
+static_assert(offsetof(VultraExperimentPixel, alpha) == offsetof(vultra::ExperimentPixel, alpha));
 static_assert(sizeof(VultraExperimentProgress) == sizeof(vultra::ExperimentProgress));
 static_assert(alignof(VultraExperimentProgress) == alignof(vultra::ExperimentProgress));
 static_assert(offsetof(VultraExperimentProgress, frames) == offsetof(vultra::ExperimentProgress, frames));
 static_assert(offsetof(VultraExperimentProgress, seconds) == offsetof(vultra::ExperimentProgress, seconds));
 static_assert(offsetof(VultraExperimentProgress, timeStep) == offsetof(vultra::ExperimentProgress, timeStep));
+static_assert(sizeof(VultraLightSettings) == sizeof(vultra::LightSettings));
+static_assert(alignof(VultraLightSettings) == alignof(vultra::LightSettings));
+static_assert(offsetof(VultraLightSettings, red) == offsetof(vultra::LightSettings, red));
+static_assert(offsetof(VultraLightSettings, green) == offsetof(vultra::LightSettings, green));
+static_assert(offsetof(VultraLightSettings, blue) == offsetof(vultra::LightSettings, blue));
+static_assert(offsetof(VultraLightSettings, intensity) == offsetof(vultra::LightSettings, intensity));
+static_assert(offsetof(VultraLightSettings, range) == offsetof(vultra::LightSettings, range));
+static_assert(offsetof(VultraLightSettings, innerCone) == offsetof(vultra::LightSettings, innerCone));
+static_assert(offsetof(VultraLightSettings, outerCone) == offsetof(vultra::LightSettings, outerCone));
+static_assert(sizeof(VultraMaterialParameters) == sizeof(vultra::MaterialParameters));
+static_assert(alignof(VultraMaterialParameters) == alignof(vultra::MaterialParameters));
+static_assert(offsetof(VultraMaterialParameters, baseRed) == offsetof(vultra::MaterialParameters, baseRed));
+static_assert(offsetof(VultraMaterialParameters, baseGreen) == offsetof(vultra::MaterialParameters, baseGreen));
+static_assert(offsetof(VultraMaterialParameters, baseBlue) == offsetof(vultra::MaterialParameters, baseBlue));
+static_assert(offsetof(VultraMaterialParameters, baseAlpha) == offsetof(vultra::MaterialParameters, baseAlpha));
+static_assert(offsetof(VultraMaterialParameters, baseWeight) == offsetof(vultra::MaterialParameters, baseWeight));
+static_assert(offsetof(VultraMaterialParameters, baseMetalness) == offsetof(vultra::MaterialParameters, baseMetalness));
+static_assert(offsetof(VultraMaterialParameters, baseDiffuseRoughness) ==
+              offsetof(vultra::MaterialParameters, baseDiffuseRoughness));
+static_assert(offsetof(VultraMaterialParameters, specularWeight) ==
+              offsetof(vultra::MaterialParameters, specularWeight));
+static_assert(offsetof(VultraMaterialParameters, specularRed) == offsetof(vultra::MaterialParameters, specularRed));
+static_assert(offsetof(VultraMaterialParameters, specularGreen) == offsetof(vultra::MaterialParameters, specularGreen));
+static_assert(offsetof(VultraMaterialParameters, specularBlue) == offsetof(vultra::MaterialParameters, specularBlue));
+static_assert(offsetof(VultraMaterialParameters, specularRoughness) ==
+              offsetof(vultra::MaterialParameters, specularRoughness));
+static_assert(offsetof(VultraMaterialParameters, specularIor) == offsetof(vultra::MaterialParameters, specularIor));
+static_assert(offsetof(VultraMaterialParameters, coatWeight) == offsetof(vultra::MaterialParameters, coatWeight));
+static_assert(offsetof(VultraMaterialParameters, coatRoughness) == offsetof(vultra::MaterialParameters, coatRoughness));
+static_assert(offsetof(VultraMaterialParameters, coatIor) == offsetof(vultra::MaterialParameters, coatIor));
+static_assert(offsetof(VultraMaterialParameters, emissionRed) == offsetof(vultra::MaterialParameters, emissionRed));
+static_assert(offsetof(VultraMaterialParameters, emissionGreen) == offsetof(vultra::MaterialParameters, emissionGreen));
+static_assert(offsetof(VultraMaterialParameters, emissionBlue) == offsetof(vultra::MaterialParameters, emissionBlue));
+static_assert(offsetof(VultraMaterialParameters, emissionLuminance) ==
+              offsetof(vultra::MaterialParameters, emissionLuminance));
+static_assert(offsetof(VultraMaterialParameters, normalScale) == offsetof(vultra::MaterialParameters, normalScale));
+static_assert(offsetof(VultraMaterialParameters, occlusionStrength) ==
+              offsetof(vultra::MaterialParameters, occlusionStrength));
+static_assert(offsetof(VultraMaterialParameters, alphaCutoff) == offsetof(vultra::MaterialParameters, alphaCutoff));
+
+static VultraStatus
+abiCameraSettings(void* context, uint64_t session, const char* node, uint64_t nodeSize, VultraCameraSettings* value)
+{
+    if (!context || (!node && nodeSize) || nodeSize > SIZE_MAX || !value)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto& host = *static_cast<vultra::ExperimentHost*>(context);
+    try
+    {
+        const auto result = host.cameraSettings(session, {node ? node : "", static_cast<size_t>(nodeSize)});
+        *value            = {result.verticalFov, result.nearPlane, result.farPlane};
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument& error)
+    {
+        host.recordError("cameraSettings", error.what());
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& error)
+    {
+        host.recordError("cameraSettings", error.what());
+        return VULTRA_STATUS_ERROR;
+    }
+    catch (...)
+    {
+        host.recordError("cameraSettings", "Unknown exception");
+        return VULTRA_STATUS_ERROR;
+    }
+}
 
 static VultraStatus abiClose(void* context, uint64_t session)
 {
@@ -41,6 +125,40 @@ static VultraStatus abiClose(void* context, uint64_t session)
     catch (...)
     {
         host.recordError("close", "Unknown exception");
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiEnvironmentSettings(void*                      context,
+                                           uint64_t                   session,
+                                           const char*                node,
+                                           uint64_t                   nodeSize,
+                                           VultraEnvironmentSettings* value)
+{
+    if (!context || (!node && nodeSize) || nodeSize > SIZE_MAX || !value)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto& host = *static_cast<vultra::ExperimentHost*>(context);
+    try
+    {
+        const auto result = host.environmentSettings(session, {node ? node : "", static_cast<size_t>(nodeSize)});
+        *value            = {result.intensity};
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument& error)
+    {
+        host.recordError("environmentSettings", error.what());
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& error)
+    {
+        host.recordError("environmentSettings", error.what());
+        return VULTRA_STATUS_ERROR;
+    }
+    catch (...)
+    {
+        host.recordError("environmentSettings", "Unknown exception");
         return VULTRA_STATUS_ERROR;
     }
 }
@@ -107,6 +225,95 @@ static VultraStatus abiLastError(void* context, const char** data, uint64_t* siz
     }
 }
 
+static VultraStatus
+abiLightSettings(void* context, uint64_t session, const char* node, uint64_t nodeSize, VultraLightSettings* value)
+{
+    if (!context || (!node && nodeSize) || nodeSize > SIZE_MAX || !value)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto& host = *static_cast<vultra::ExperimentHost*>(context);
+    try
+    {
+        const auto result = host.lightSettings(session, {node ? node : "", static_cast<size_t>(nodeSize)});
+        *value =
+            {result.red, result.green, result.blue, result.intensity, result.range, result.innerCone, result.outerCone};
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument& error)
+    {
+        host.recordError("lightSettings", error.what());
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& error)
+    {
+        host.recordError("lightSettings", error.what());
+        return VULTRA_STATUS_ERROR;
+    }
+    catch (...)
+    {
+        host.recordError("lightSettings", "Unknown exception");
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiMaterialParameters(void*                     context,
+                                          uint64_t                  session,
+                                          const char*               material,
+                                          uint64_t                  materialSize,
+                                          VultraMaterialParameters* value)
+{
+    if (!context || (!material && materialSize) || materialSize > SIZE_MAX || !value)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto& host = *static_cast<vultra::ExperimentHost*>(context);
+    try
+    {
+        const auto result =
+            host.materialParameters(session, {material ? material : "", static_cast<size_t>(materialSize)});
+        *value = {result.baseRed,
+                  result.baseGreen,
+                  result.baseBlue,
+                  result.baseAlpha,
+                  result.baseWeight,
+                  result.baseMetalness,
+                  result.baseDiffuseRoughness,
+                  result.specularWeight,
+                  result.specularRed,
+                  result.specularGreen,
+                  result.specularBlue,
+                  result.specularRoughness,
+                  result.specularIor,
+                  result.coatWeight,
+                  result.coatRoughness,
+                  result.coatIor,
+                  result.emissionRed,
+                  result.emissionGreen,
+                  result.emissionBlue,
+                  result.emissionLuminance,
+                  result.normalScale,
+                  result.occlusionStrength,
+                  result.alphaCutoff};
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument& error)
+    {
+        host.recordError("materialParameters", error.what());
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& error)
+    {
+        host.recordError("materialParameters", error.what());
+        return VULTRA_STATUS_ERROR;
+    }
+    catch (...)
+    {
+        host.recordError("materialParameters", "Unknown exception");
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus abiOpen(void*       context,
                             const char* input,
                             uint64_t    inputSize,
@@ -149,6 +356,42 @@ static VultraStatus abiOpen(void*       context,
     catch (...)
     {
         host.recordError("open", "Unknown exception");
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiProbePixel(void*                  context,
+                                  uint64_t               session,
+                                  const char*            output,
+                                  uint64_t               outputSize,
+                                  uint32_t               x,
+                                  uint32_t               y,
+                                  VultraExperimentPixel* value)
+{
+    if (!context || (!output && outputSize) || outputSize > SIZE_MAX || !value)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto& host = *static_cast<vultra::ExperimentHost*>(context);
+    try
+    {
+        const auto result = host.probePixel(session, {output ? output : "", static_cast<size_t>(outputSize)}, x, y);
+        *value            = {result.red, result.green, result.blue, result.alpha};
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument& error)
+    {
+        host.recordError("probePixel", error.what());
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& error)
+    {
+        host.recordError("probePixel", error.what());
+        return VULTRA_STATUS_ERROR;
+    }
+    catch (...)
+    {
+        host.recordError("probePixel", "Unknown exception");
         return VULTRA_STATUS_ERROR;
     }
 }
@@ -216,6 +459,86 @@ static VultraStatus abiReadImage(void*       context,
     catch (...)
     {
         host.recordError("readImage", "Unknown exception");
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiReadPreview(void*       context,
+                                   uint64_t    session,
+                                   const char* output,
+                                   uint64_t    outputSize,
+                                   uint32_t    channel,
+                                   float       minimum,
+                                   float       maximum,
+                                   float*      pixels,
+                                   uint64_t    pixelsCount)
+{
+    if (!context || (!output && outputSize) || outputSize > SIZE_MAX || (!pixels && pixelsCount) ||
+        pixelsCount > SIZE_MAX / sizeof(float))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto& host = *static_cast<vultra::ExperimentHost*>(context);
+    try
+    {
+        host.readPreview(session,
+                         {output ? output : "", static_cast<size_t>(outputSize)},
+                         channel,
+                         minimum,
+                         maximum,
+                         {pixels, static_cast<size_t>(pixelsCount)});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument& error)
+    {
+        host.recordError("readPreview", error.what());
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& error)
+    {
+        host.recordError("readPreview", error.what());
+        return VULTRA_STATUS_ERROR;
+    }
+    catch (...)
+    {
+        host.recordError("readPreview", "Unknown exception");
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiReadTransform(void*       context,
+                                     uint64_t    session,
+                                     const char* node,
+                                     uint64_t    nodeSize,
+                                     float*      values,
+                                     uint64_t    valuesCount)
+{
+    if (!context || (!node && nodeSize) || nodeSize > SIZE_MAX || (!values && valuesCount) ||
+        valuesCount > SIZE_MAX / sizeof(float))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto& host = *static_cast<vultra::ExperimentHost*>(context);
+    try
+    {
+        host.readTransform(session,
+                           {node ? node : "", static_cast<size_t>(nodeSize)},
+                           {values, static_cast<size_t>(valuesCount)});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument& error)
+    {
+        host.recordError("readTransform", error.what());
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& error)
+    {
+        host.recordError("readTransform", error.what());
+        return VULTRA_STATUS_ERROR;
+    }
+    catch (...)
+    {
+        host.recordError("readTransform", "Unknown exception");
         return VULTRA_STATUS_ERROR;
     }
 }
@@ -311,6 +634,76 @@ static VultraStatus abiSceneSnapshot(void* context, uint64_t session, const char
     }
 }
 
+static VultraStatus abiSetCameraSettings(void*                context,
+                                         uint64_t             session,
+                                         const char*          node,
+                                         uint64_t             nodeSize,
+                                         VultraCameraSettings settings)
+{
+    if (!context || (!node && nodeSize) || nodeSize > SIZE_MAX)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto& host = *static_cast<vultra::ExperimentHost*>(context);
+    try
+    {
+        host.setCameraSettings(session,
+                               {node ? node : "", static_cast<size_t>(nodeSize)},
+                               vultra::CameraSettings {settings.verticalFov, settings.nearPlane, settings.farPlane});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument& error)
+    {
+        host.recordError("setCameraSettings", error.what());
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& error)
+    {
+        host.recordError("setCameraSettings", error.what());
+        return VULTRA_STATUS_ERROR;
+    }
+    catch (...)
+    {
+        host.recordError("setCameraSettings", "Unknown exception");
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSetEnvironmentSettings(void*                     context,
+                                              uint64_t                  session,
+                                              const char*               node,
+                                              uint64_t                  nodeSize,
+                                              VultraEnvironmentSettings settings)
+{
+    if (!context || (!node && nodeSize) || nodeSize > SIZE_MAX)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto& host = *static_cast<vultra::ExperimentHost*>(context);
+    try
+    {
+        host.setEnvironmentSettings(session,
+                                    {node ? node : "", static_cast<size_t>(nodeSize)},
+                                    vultra::EnvironmentSettings {settings.intensity});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument& error)
+    {
+        host.recordError("setEnvironmentSettings", error.what());
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& error)
+    {
+        host.recordError("setEnvironmentSettings", error.what());
+        return VULTRA_STATUS_ERROR;
+    }
+    catch (...)
+    {
+        host.recordError("setEnvironmentSettings", "Unknown exception");
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus abiSetGraph(void* context, uint64_t session, const char* definition, uint64_t definitionSize)
 {
     if (!context || (!definition && definitionSize) || definitionSize > SIZE_MAX)
@@ -336,6 +729,101 @@ static VultraStatus abiSetGraph(void* context, uint64_t session, const char* def
     catch (...)
     {
         host.recordError("setGraph", "Unknown exception");
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus
+abiSetLightSettings(void* context, uint64_t session, const char* node, uint64_t nodeSize, VultraLightSettings settings)
+{
+    if (!context || (!node && nodeSize) || nodeSize > SIZE_MAX)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto& host = *static_cast<vultra::ExperimentHost*>(context);
+    try
+    {
+        host.setLightSettings(session,
+                              {node ? node : "", static_cast<size_t>(nodeSize)},
+                              vultra::LightSettings {settings.red,
+                                                     settings.green,
+                                                     settings.blue,
+                                                     settings.intensity,
+                                                     settings.range,
+                                                     settings.innerCone,
+                                                     settings.outerCone});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument& error)
+    {
+        host.recordError("setLightSettings", error.what());
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& error)
+    {
+        host.recordError("setLightSettings", error.what());
+        return VULTRA_STATUS_ERROR;
+    }
+    catch (...)
+    {
+        host.recordError("setLightSettings", "Unknown exception");
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSetMaterialParameters(void*                    context,
+                                             uint64_t                 session,
+                                             const char*              material,
+                                             uint64_t                 materialSize,
+                                             VultraMaterialParameters parameters)
+{
+    if (!context || (!material && materialSize) || materialSize > SIZE_MAX)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto& host = *static_cast<vultra::ExperimentHost*>(context);
+    try
+    {
+        host.setMaterialParameters(session,
+                                   {material ? material : "", static_cast<size_t>(materialSize)},
+                                   vultra::MaterialParameters {parameters.baseRed,
+                                                               parameters.baseGreen,
+                                                               parameters.baseBlue,
+                                                               parameters.baseAlpha,
+                                                               parameters.baseWeight,
+                                                               parameters.baseMetalness,
+                                                               parameters.baseDiffuseRoughness,
+                                                               parameters.specularWeight,
+                                                               parameters.specularRed,
+                                                               parameters.specularGreen,
+                                                               parameters.specularBlue,
+                                                               parameters.specularRoughness,
+                                                               parameters.specularIor,
+                                                               parameters.coatWeight,
+                                                               parameters.coatRoughness,
+                                                               parameters.coatIor,
+                                                               parameters.emissionRed,
+                                                               parameters.emissionGreen,
+                                                               parameters.emissionBlue,
+                                                               parameters.emissionLuminance,
+                                                               parameters.normalScale,
+                                                               parameters.occlusionStrength,
+                                                               parameters.alphaCutoff});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument& error)
+    {
+        host.recordError("setMaterialParameters", error.what());
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& error)
+    {
+        host.recordError("setMaterialParameters", error.what());
+        return VULTRA_STATUS_ERROR;
+    }
+    catch (...)
+    {
+        host.recordError("setMaterialParameters", "Unknown exception");
         return VULTRA_STATUS_ERROR;
     }
 }
@@ -379,6 +867,43 @@ static VultraStatus abiSetParameter(void*       context,
     }
 }
 
+static VultraStatus abiSetTransform(void*       context,
+                                    uint64_t    session,
+                                    const char* node,
+                                    uint64_t    nodeSize,
+                                    float*      values,
+                                    uint64_t    valuesCount)
+{
+    if (!context || (!node && nodeSize) || nodeSize > SIZE_MAX || (!values && valuesCount) ||
+        valuesCount > SIZE_MAX / sizeof(float))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto& host = *static_cast<vultra::ExperimentHost*>(context);
+    try
+    {
+        host.setTransform(session,
+                          {node ? node : "", static_cast<size_t>(nodeSize)},
+                          {values, static_cast<size_t>(valuesCount)});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument& error)
+    {
+        host.recordError("setTransform", error.what());
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& error)
+    {
+        host.recordError("setTransform", error.what());
+        return VULTRA_STATUS_ERROR;
+    }
+    catch (...)
+    {
+        host.recordError("setTransform", "Unknown exception");
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus abiStep(void* context, uint64_t session, uint64_t frames)
 {
     if (!context)
@@ -414,17 +939,29 @@ namespace vultra
     {
         static const VultraExperimentApi api {VULTRA_ABI_VERSION,
                                               sizeof(VultraExperimentApi),
+                                              abiCameraSettings,
                                               abiClose,
+                                              abiEnvironmentSettings,
                                               abiImageInfo,
                                               abiLastError,
+                                              abiLightSettings,
+                                              abiMaterialParameters,
                                               abiOpen,
+                                              abiProbePixel,
                                               abiProgress,
                                               abiReadImage,
+                                              abiReadPreview,
+                                              abiReadTransform,
                                               abiReportSnapshot,
                                               abiRunDescription,
                                               abiSceneSnapshot,
+                                              abiSetCameraSettings,
+                                              abiSetEnvironmentSettings,
                                               abiSetGraph,
+                                              abiSetLightSettings,
+                                              abiSetMaterialParameters,
                                               abiSetParameter,
+                                              abiSetTransform,
                                               abiStep};
         return api;
     }

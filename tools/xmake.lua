@@ -7,6 +7,7 @@ target("vultra-import")
 target_end()
 
 target("vultra-batch")
+    add_packages("nlohmann_json")
     set_kind("binary")
     set_default(false)
     add_rules("vultra.linux.delivery")

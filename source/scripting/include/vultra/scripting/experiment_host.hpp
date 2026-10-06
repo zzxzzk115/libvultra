@@ -2,6 +2,7 @@
 
 #include <vultra/core/base/api_annotations.hpp>
 #include <vultra/main/experiment_session.hpp>
+#include <vultra/scene/scene_api.hpp>
 
 #include <memory>
 
@@ -12,6 +13,14 @@ namespace vultra
         uint32_t width;
         uint32_t height;
         uint64_t floatCount;
+    };
+
+    struct VULTRA_BIND_POD ExperimentPixel
+    {
+        float red;
+        float green;
+        float blue;
+        float alpha;
     };
 
     struct VULTRA_BIND_POD ExperimentProgress
@@ -57,12 +66,42 @@ namespace vultra
         VULTRA_BIND_EXPERIMENT
         void readImage(uint64_t session, std::string_view output, std::span<float> pixels);
         VULTRA_BIND_EXPERIMENT
+        void readPreview(uint64_t         session,
+                         std::string_view output,
+                         uint32_t         channel,
+                         float            minimum,
+                         float            maximum,
+                         std::span<float> pixels);
+        VULTRA_BIND_EXPERIMENT
+        ExperimentPixel probePixel(uint64_t session, std::string_view output, uint32_t x, uint32_t y);
+        VULTRA_BIND_EXPERIMENT
         ExperimentProgress progress(uint64_t session) const;
         VULTRA_BIND_EXPERIMENT
         std::string_view sceneSnapshot(uint64_t session);
         VULTRA_BIND_EXPERIMENT
         std::string_view reportSnapshot(uint64_t session);
-        void             recordError(std::string_view operation, std::string_view message) noexcept;
+        VULTRA_BIND_EXPERIMENT
+        CameraSettings cameraSettings(uint64_t session, std::string_view node);
+        VULTRA_BIND_EXPERIMENT
+        void setCameraSettings(uint64_t session, std::string_view node, CameraSettings settings);
+        VULTRA_BIND_EXPERIMENT
+        LightSettings lightSettings(uint64_t session, std::string_view node);
+        VULTRA_BIND_EXPERIMENT
+        void setLightSettings(uint64_t session, std::string_view node, LightSettings settings);
+        VULTRA_BIND_EXPERIMENT
+        EnvironmentSettings environmentSettings(uint64_t session, std::string_view node);
+        VULTRA_BIND_EXPERIMENT
+        void setEnvironmentSettings(uint64_t session, std::string_view node, EnvironmentSettings settings);
+        VULTRA_BIND_EXPERIMENT
+        MaterialParameters materialParameters(uint64_t session, std::string_view material);
+        VULTRA_BIND_EXPERIMENT
+        void setMaterialParameters(uint64_t session, std::string_view material, MaterialParameters parameters);
+        // Column-major affine matrix, exactly 16 finite floats. Edits affect the next completed step.
+        VULTRA_BIND_EXPERIMENT
+        void readTransform(uint64_t session, std::string_view node, std::span<float> values);
+        VULTRA_BIND_EXPERIMENT
+        void setTransform(uint64_t session, std::string_view node, std::span<float> values);
+        void recordError(std::string_view operation, std::string_view message) noexcept;
         VULTRA_BIND_EXPERIMENT
         std::string_view lastError() const;
 

@@ -168,6 +168,34 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(methods[0]["arguments"], [{"name": "width", "type": "uint32_t"}])
         self.assertTrue(methods[0]["host_mutable"])
 
+    def test_scene_pods_are_shared_by_value(self):
+        source = experiment_probe(method="void setSettings(uint64_t session, CameraSettings value);")
+        source = source.replace("class ExperimentHost", "struct CameraSettings { float verticalFov; };\nclass ExperimentHost")
+        camera = {"name": "CameraSettings", "fields": [{"name": "verticalFov", "type": "float"}]}
+        pods, methods = codegen.parse_experiments(unit(source, "experiment_host.hpp"), [camera])
+        self.assertEqual(next(pod for pod in pods if pod["name"] == "CameraSettings"), camera)
+        self.assertEqual(methods[0]["arguments"][1]["type"], "CameraSettings")
+        parameters = codegen.experiment_parameters(methods[0], {pod["name"] for pod in pods})
+        self.assertIn(("value", "VultraCameraSettings"), parameters)
+
+    def test_python_scene_defaults_use_reflected_values(self):
+        camera = {"name": "CameraSettings", "fields": [{"name": "verticalFov", "type": "float"}]}
+        source = codegen.python_scene_controls({
+            "pods": [camera], "experiment_pods": [camera],
+            "types": [{"name": "CameraSettings", "fields": [
+                {"name": "verticalFov", "type": "float", "default_cpp": "0.75f"}]}],
+            "experiment_functions": [
+                {"name": "cameraSettings", "return": "CameraSettings", "arguments": [
+                    {"name": "session", "type": "uint64_t"}, {"name": "node", "type": "std::string_view"}]},
+                {"name": "setCameraSettings", "return": "void", "arguments": [
+                    {"name": "session", "type": "uint64_t"}, {"name": "node", "type": "std::string_view"},
+                    {"name": "value", "type": "CameraSettings"}]}],
+        })
+        self.assertIn("vertical_fov: float = 0.75", source)
+        self.assertIn("def camera_settings(self, identifier: str)", source)
+        self.assertIn("def set_camera_settings(self, identifier: str, value: CameraSettings)", source)
+        self.assertIn("_finite_float(self.vertical_fov)", source)
+
     def test_unsupported_signatures_and_layouts(self):
         cases = [
             experiment_probe(field="int count;"),

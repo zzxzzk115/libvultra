@@ -15,8 +15,9 @@ import weakref
 
 import numpy as np
 
+from ._scene_controls_generated import ExperimentSceneControls, _scene_id
 from ._bindings_generated import (
-    ABI_VERSION, VultraExperimentApi, VultraExperimentImageInfo, VultraExperimentProgress,
+    ABI_VERSION, VultraExperimentApi, VultraExperimentImageInfo, VultraExperimentPixel, VultraExperimentProgress,
 )
 
 
@@ -154,7 +155,7 @@ class Research:
         self.close()
 
 
-class Session:
+class Session(ExperimentSceneControls):
     """A project/model/VPK, its script host, scene, catalog and completed GPU outputs."""
 
     def __init__(self, host, identifier):
@@ -171,6 +172,41 @@ class Session:
         self._check()
         frames = _positive(frames, 64, "frames")
         self._host._status(self._host._api.step(self._host._native.context, self._id, frames))
+
+    def transform(self, identifier):
+        """Return an owned 4x4 local transform with ordinary matrix indexing."""
+        self._check()
+        name = _scene_id(identifier)
+        values = np.empty(16, dtype=np.float32)
+        self._host._status(self._host._api.read_transform(
+            self._host._native.context, self._id, name, len(name),
+            values.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), 16))
+        return values.reshape((4, 4), order="F").copy()
+
+    def set_transform(self, identifier, matrix):
+        """Set a finite affine local transform; publication occurs on the next step."""
+        self._check()
+        name = _scene_id(identifier)
+        matrix = np.asarray(matrix, dtype=np.float32)
+        if matrix.shape != (4, 4) or not np.isfinite(matrix).all():
+            raise ValueError("transform requires a finite 4x4 matrix")
+        values = np.ascontiguousarray(matrix.flatten(order="F"))
+        self._host._status(self._host._api.set_transform(
+            self._host._native.context, self._id, name, len(name),
+            values.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), 16))
+
+    def find_node(self, name):
+        """Resolve a unique authored node name to a persistent UUID."""
+        matches = []
+        def visit(node):
+            if node["name"] == name:
+                matches.append(node["id"])
+            for child in node.get("children", ()):
+                visit(child)
+        visit(self.scene["root"])
+        if len(matches) != 1:
+            raise ValueError("node name must identify exactly one node")
+        return matches[0]
 
     def set_graph(self, definition):
         self._check()
@@ -207,6 +243,36 @@ class Session:
             image.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), image.size,
         ))
         return image
+
+    def preview(self, output="hdr", *, channel="rgb", minimum=0.0, maximum=1.0):
+        """Return a mapped display array; image() and probe_pixel() retain raw values."""
+        self._check()
+        channels = {"rgb": 0, "r": 1, "g": 2, "b": 3, "a": 4, "luminance": 5}
+        if channel not in channels:
+            raise ValueError("unknown preview channel")
+        name = _text(output)
+        info = VultraExperimentImageInfo()
+        self._host._status(self._host._api.image_info(
+            self._host._native.context, self._id, name, len(name), ctypes.byref(info)))
+        if not info.width or not info.height or info.floatCount != info.width * info.height * 4:
+            raise ResearchError("Invalid native image descriptor")
+        result = np.empty((info.height, info.width, 4), dtype=np.float32)
+        self._host._status(self._host._api.read_preview(
+            self._host._native.context, self._id, name, len(name), channels[channel],
+            float(minimum), float(maximum),
+            result.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), result.size))
+        return result
+
+    def probe_pixel(self, output, x, y):
+        """Read the original RGBA float value at top-left pixel coordinates."""
+        self._check()
+        if any(isinstance(v, bool) or not isinstance(v, int) or v < 0 or v >= 2**32 for v in (x, y)):
+            raise ValueError("pixel coordinates must be uint32 integers")
+        name = _text(output)
+        value = VultraExperimentPixel()
+        self._host._status(self._host._api.probe_pixel(
+            self._host._native.context, self._id, name, len(name), x, y, ctypes.byref(value)))
+        return np.array((value.red, value.green, value.blue, value.alpha), dtype=np.float32)
 
     @property
     def progress(self):

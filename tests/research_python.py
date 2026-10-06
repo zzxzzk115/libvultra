@@ -12,7 +12,9 @@ import threading
 
 import numpy as np
 
-from vultra import Research, ResearchError
+from dataclasses import replace
+
+from vultra import CameraSettings, LightSettings, Research, ResearchError
 from vultra.research import _Host
 from vultra._bindings_generated import ABI_VERSION, VultraExperimentApi
 
@@ -172,6 +174,86 @@ def main():
             np.testing.assert_array_equal(read_pfm(run / "reference-python/output_000.pfm"),
                                           read_pfm(output / "scene_hdr.pfm"))
             print("reference: exact Python/CLI HDR, seven AOVs and exported graph report", flush=True)
+
+    with Research(library) as host, host.open(project, width=65, height=49) as session:
+        session.step(2)
+        original = session.image("hdr")
+        camera = session.find_node("Camera")
+        settings = session.camera_settings(camera)
+        assert type(settings) is CameraSettings
+        session.set_camera_settings(camera, replace(settings, vertical_fov=settings.vertical_fov * 0.7))
+        session.step()
+        assert not np.array_equal(session.image("hdr"), original)
+        session.set_camera_settings(camera, settings)
+        session.step()
+        np.testing.assert_array_equal(session.image("hdr"), original)
+        rejected(lambda: session.set_camera_settings(camera, replace(settings, near_plane=settings.far_plane)),
+                 "near < far")
+        assert session.camera_settings(camera) == settings
+        matrix = session.transform(camera)
+        moved = matrix.copy()
+        moved[0, 3] += 0.2
+        session.set_transform(camera, moved)
+        session.step()
+        assert not np.array_equal(session.image("hdr"), original)
+        session.set_transform(camera, matrix)
+        session.step()
+        np.testing.assert_array_equal(session.image("hdr"), original)
+        nodes = []
+        def collect(node):
+            nodes.append(node)
+            for child in node.get("children", ()):
+                collect(child)
+        collect(session.scene["root"])
+        light = next(node["id"] for node in nodes if "light" in node)
+        light_settings = session.light_settings(light)
+        assert type(light_settings) is LightSettings
+        session.set_light_settings(light, replace(light_settings, intensity=0))
+        session.step()
+        assert not np.array_equal(session.image("hdr"), original)
+        session.set_light_settings(light, light_settings)
+        environment_id = session.scene["current_environment"]
+        environment_settings = session.environment_settings(environment_id)
+        session.set_environment_settings(environment_id, replace(environment_settings, intensity=0))
+        session.step()
+        assert not np.array_equal(session.image("hdr"), original)
+        session.set_environment_settings(environment_id, environment_settings)
+        rejected(lambda: session.set_environment_settings(environment_id,
+                 replace(environment_settings, intensity=float("nan"))), "finite numeric")
+        material = session.scene["materials"][0]["id"]
+        material_settings = session.material_parameters(material)
+        session.set_material_parameters(material, replace(material_settings, base_red=0.05, coat_weight=0.5))
+        session.step()
+        assert not np.array_equal(session.image("hdr"), original)
+        session.set_material_parameters(material, material_settings)
+        session.step()
+        np.testing.assert_array_equal(session.image("hdr"), original)
+        rgba = session.probe_pixel("hdr", 32, 24)
+        np.testing.assert_array_equal(rgba, original[24, 32])
+        preview = session.preview("hdr", channel="r", minimum=-1, maximum=2)
+        mapped = np.clip((original[:, :, 0] + 1) / 3, 0, 1)
+        np.testing.assert_allclose(preview[:, :, :3], np.repeat(mapped[:, :, None], 3, axis=2), atol=1e-7, rtol=0)
+        np.testing.assert_array_equal(session.image("hdr"), original)
+        rejected(lambda: session.preview("hdr", minimum=2, maximum=1), "range")
+        rejected(lambda: session.probe_pixel("hdr", 65, 0), "outside")
+        rejected(lambda: session.set_camera_settings(light, settings), "camera node")
+        report = session.report
+        assert report["provenance"]["import_dependencies"] and report["provenance"]["shader_files"]
+        def fnv1a64(bytes_):
+            value = 14695981039346656037
+            for byte in bytes_:
+                value = ((value ^ byte) * 1099511628211) & ((1 << 64) - 1)
+            return f"{value:016x}"
+        assert report["provenance"]["entry_scene"]["fnv1a64"] == fnv1a64(
+            (root / "resources/scenes/research_lighting.vscene").read_bytes())
+        shader = next(file for file in report["provenance"]["shader_files"]
+                      if file["path"] == "examples/research/shaders/color_gain.slang")
+        assert shader["fnv1a64"] == fnv1a64((root / shader["path"]).read_bytes())
+        session.set_graph(json.loads((root / "examples/research/deferred.vgraph").read_text()))
+        session.step()
+        np.testing.assert_array_equal(session.image("hdr"), original)
+        assert session.image("geometry.normal_roughness").shape == original.shape
+        print("typed scene edits, raw probes, mapped AOVs, asset/shader provenance and built-in pass parity", flush=True)
 
     # A copied native library and VPK need neither xmake nor repository-relative shaders.
     delivery = run / "delivery"

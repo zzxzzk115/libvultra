@@ -339,7 +339,7 @@ namespace
             {
                 const std::string message = error.what();
                 rejected                  = message.contains("invalid glTF tangent") && message.contains("vertex 0") &&
-                                            message.contains(source.string());
+                           message.contains(source.string());
             }
             require(rejected, "Invalid tangent values were not rejected with source/vertex context");
         }
@@ -441,6 +441,14 @@ try
     require(cold.textures.images.at(slots[2]).levels.size() == 3, "Odd-sized mip chain is incomplete");
     const auto warm = vultra::importAsset(source, options);
     require(warm.cacheHit, "Unchanged asset did not hit its cache");
+    require(cold.dependencies.size() == 3 && warm.dependencies.size() == cold.dependencies.size(),
+            "Import provenance omitted a model, external buffer or texture");
+    for (size_t i = 0; i < cold.dependencies.size(); ++i)
+    {
+        require(warm.dependencies[i].path == cold.dependencies[i].path &&
+                    warm.dependencies[i].hash == cold.dependencies[i].hash && !warm.dependencies[i].hash.empty(),
+                "Cache hit changed consumed-source dependency provenance");
+    }
     require(warm.textures.images.at(slots[2]).levels[0].bytes == cold.textures.images.at(slots[2]).levels[0].bytes,
             "Cache changed compressed texture bytes");
     testGpuTextures(warm);

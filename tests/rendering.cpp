@@ -70,6 +70,65 @@ namespace
                 "Pass-boundary capture must preserve the earlier color after a later overwrite");
     }
 
+    void aovMapping(vultra::Device& device)
+    {
+        using namespace vultra;
+        const auto program   = ShaderProgram::compile("builtin/shaders/passes/texture_blit.slang",
+                                                      {},
+                                                    std::array {std::filesystem::path("builtin/shaders")});
+        const auto bindings  = program.resourceBindings();
+        const auto constants = std::ranges::find(bindings, true, &ShaderResourceBinding::pushConstant);
+        require(constants != bindings.end() && constants->uniformSize == 32,
+                "Blit target reflection differs from the 32-byte CPU push constants");
+        RenderGraph graph(device);
+        const auto  input  = graph.createTexture("raw", colorTexture({4, 4}, VriFormat_RGBA32_SFLOAT));
+        const auto  output = graph.createTexture("mapped", colorTexture({4, 4}, VriFormat_RGBA32_SFLOAT));
+        const float raw[4] {-2, 0, 2, 4};
+        graph.addPass("Raw AOV",
+                      {{input, Usage::eColorWrite}},
+                      [&](auto* cmd, auto& resources)
+                      {
+                          beginColorPass(device, cmd, resources.getTexture(input).view(), {4, 4}, raw);
+                          device.core.CmdEndRendering(cmd);
+                      });
+        TextureBlit blit(device, VriFormat_RGBA32_SFLOAT);
+        ImageView   view {ImageChannel::eRgb, -2, 2};
+        graph.addPass("Mapped AOV",
+                      {{input, Usage::eSampled}, {output, Usage::eColorWrite}},
+                      [&](auto* cmd, auto& resources)
+                      {
+                          const float clear[4] {0, 0, 0, 0};
+                          beginColorPass(device, cmd, resources.getTexture(output).view(), {4, 4}, clear);
+                          device.core.CmdEndRendering(cmd);
+                          blit.draw(cmd, resources.getTexture(output), {0, 0, 4, 4}, 0, false, view);
+                      });
+        graph.exportResource(input);
+        graph.exportResource(output);
+        graph.compile();
+        blit.setSource(0, graph.getTexture(input));
+        Frame frame(device);
+        for (const auto channel : {ImageChannel::eRgb,
+                                   ImageChannel::eRed,
+                                   ImageChannel::eGreen,
+                                   ImageChannel::eBlue,
+                                   ImageChannel::eAlpha,
+                                   ImageChannel::eLuminance})
+        {
+            view.channel = channel;
+            graph.execute(frame.begin());
+            frame.submitAndWait();
+            const auto source   = readback(device, graph.getTexture(input));
+            const auto expected = mapImage(source, view);
+            const auto actual   = readback(device, graph.getTexture(output));
+            for (size_t i = 0; i < actual.rgba.size(); ++i)
+            {
+                require(std::abs(actual.rgba[i] - expected.rgba[i]) < 1e-6f, "CPU/GPU AOV mapping differs");
+            }
+            require(imagePixel(source, 1, 2) == std::array<float, 4> {-2, 0, 2, 4},
+                    "Display mapping changed the original float AOV");
+        }
+    }
+
     void constantEnvironment(vultra::Device& device, vultra::Environment& environment)
     {
         auto constant = [](const vultra::Image& image)
@@ -624,11 +683,11 @@ namespace
                                      0.1f,
                                      25};
         const auto           cascades = vultra::calculateCascades(camera,
-                                                                  renderer.settings.directionToLight,
-                                                                  scene.center,
-                                                                  scene.radius,
-                                                                  512,
-                                                                  0.7f);
+                                                        renderer.settings.directionToLight,
+                                                        scene.center,
+                                                        scene.radius,
+                                                        512,
+                                                        0.7f);
         require(cascades.splits.x > camera.nearPlane && cascades.splits.y > cascades.splits.x &&
                     cascades.splits.z > cascades.splits.y && std::abs(cascades.splits.w - camera.farPlane) < 0.001f,
                 "Invalid CSM splits");
@@ -699,6 +758,7 @@ try
     file.close();
     vultra::Device device;
     renderingServerIds(device);
+    aovMapping(device);
     vultra::Environment environment(device, hdr);
     constantEnvironment(device, environment);
     emptyGpuScene(device, environment);

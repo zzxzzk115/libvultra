@@ -1,3 +1,4 @@
+#include <vultra/servers/rendering/builtin/raster_passes.hpp>
 #include <vultra/servers/rendering/builtin/tone_mapping_pass.hpp>
 #include <vultra/servers/rendering/graph/pass_catalog.hpp>
 
@@ -92,6 +93,10 @@ namespace vultra
         m_Device(device)
     {
         add(toneMappingDefinition());
+        for (auto definition : builtinRasterPassDefinitions())
+        {
+            add(std::move(definition));
+        }
     }
 
     void PassCatalog::add(PassDefinition definition)
@@ -122,6 +127,20 @@ namespace vultra
             }
         }
         m_Definitions.push_back(std::move(definition));
+    }
+
+    void PassCatalog::bindFactory(std::string_view type, std::function<std::unique_ptr<GraphPass>(Device&)> create)
+    {
+        if (!create)
+        {
+            throw std::invalid_argument("Pass binding requires a factory");
+        }
+        const auto found = std::ranges::find(m_Definitions, type, &PassDefinition::type);
+        if (found == m_Definitions.end())
+        {
+            throw std::invalid_argument("Unknown bound pass type: " + std::string(type));
+        }
+        found->create = std::move(create);
     }
 
     const PassDefinition& PassCatalog::definition(std::string_view type) const

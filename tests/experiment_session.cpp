@@ -86,6 +86,59 @@ try
     require(session.render().frameIndex == 0, "Session frame indices do not start at zero");
     const auto baseline = session.capture("final");
     {
+        auto              staged = config;
+        ExperimentSession explicitSession(device, staged);
+        explicitSession.setGraph(GraphDefinition::load("examples/research/deferred.vgraph"));
+        explicitSession.render();
+        require(explicitSession.capture("final").rgba == baseline.rgba,
+                "Catalog shadow/G-buffer/lighting composition differs from the built-in renderer");
+        const auto position = explicitSession.capture("geometry.position_metallic");
+        require(position.size == config.size, "Catalog G-buffer output is not available to research passes");
+        auto invalid          = GraphDefinition::load("examples/research/deferred.vgraph");
+        invalid.edges[2].from = "geometry.depth";
+        expectError(
+            [&]
+            {
+                explicitSession.setGraph(invalid);
+            },
+            "texture format mismatch");
+        require(explicitSession.capture("final").rgba == baseline.rgba,
+                "Rejected built-in pass contract replaced the completed image");
+        explicitSession.render();
+        require(explicitSession.capture("final").rgba == baseline.rgba,
+                "Built-in stage contract rejection broke the next frame");
+    }
+
+    {
+        auto              stageConfig = config;
+        ExperimentSession stageSession(device, stageConfig);
+        GraphDefinition   stages {{{"geometry", "vultra.gbuffer", {}}},
+                                  {},
+                                  {"geometry.normal_roughness", "geometry.depth"}};
+        stageSession.setGraph(stages);
+        stageSession.render();
+        require(stageSession.graph().activePasses() == std::vector<std::string> {"G-buffer geometry", "Tone mapping"},
+                "G-buffer-only experiment retained unrelated lighting, material or shadow work");
+        const auto depth = stageSession.capture("geometry.depth");
+        require(std::ranges::any_of(depth.rgba,
+                                    [](float value)
+                                    {
+                                        return value > 0;
+                                    }),
+                "G-buffer-only rendering produced no geometry depth");
+        stages.passes.push_back({"other_geometry", "vultra.gbuffer", {}});
+        expectError(
+            [&]
+            {
+                stageSession.setGraph(stages);
+            },
+            "One geometry stage");
+        stageSession.render();
+        require(stageSession.capture("geometry.depth").rgba == depth.rgba,
+                "Rejected duplicate stage changed retained geometry");
+    }
+
+    {
         auto pinnedConfig   = config;
         pinnedConfig.camera = session.camera();
         ExperimentSession pinned(device, pinnedConfig);

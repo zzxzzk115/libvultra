@@ -2,7 +2,9 @@
 #include "openpbr_luts.hpp"
 
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
+#include <vultra/servers/rendering/builtin/environment_sampling.hpp>
 #include <vultra/servers/rendering/builtin/reference_path_tracer.hpp>
+#include <vultra/servers/rendering/research/capture.hpp>
 
 #include <glm/gtc/matrix_inverse.hpp>
 #include <vri/ext/vri_ext_raytracing.h>
@@ -169,7 +171,7 @@ namespace vultra
                     std::vector<ShaderEntry> {{"traceMain", VriShaderStage_Compute}},
                     [this](std::span<const VriShaderDesc> shaders)
                     {
-                        const VriComputePipelineDesc desc {layout, shaders.front()};
+                        const VriComputePipelineDesc desc {layout, shaders.front(), device.pipelineCache};
                         VriPipeline*                 result = nullptr;
                         check(device.core.CreateComputePipeline(device.handle, &desc, &result),
                               "Create reference path tracing pipeline");
@@ -237,17 +239,17 @@ namespace vultra
             {
                 primitives.emplace_back(0);
             }
-            primitiveBuffer  = uploadBuffer(device,
-                                            std::as_bytes(std::span(primitives)),
-                                            VriBufferUsage_StorageBuffer,
-                                            {VriAccess_ShaderResourceRead, VriPipelineStage_ComputeShader},
-                                            sizeof(glm::uvec4));
-            instanceBuffer   = std::make_unique<Buffer>(device,
-                                                        VriBufferDesc {instances.size() * sizeof(TraceInstance),
-                                                                       0,
-                                                                       VriBufferUsage_AccelerationBuildInput,
-                                                                       VriMemoryLocation_HostUpload});
-            topGeometry.type = VriAsGeometryType_Instances;
+            primitiveBuffer                      = uploadBuffer(device,
+                                           std::as_bytes(std::span(primitives)),
+                                           VriBufferUsage_StorageBuffer,
+                                                                {VriAccess_ShaderResourceRead, VriPipelineStage_ComputeShader},
+                                           sizeof(glm::uvec4));
+            instanceBuffer                       = std::make_unique<Buffer>(device,
+                                                      VriBufferDesc {instances.size() * sizeof(TraceInstance),
+                                                                     0,
+                                                                     VriBufferUsage_AccelerationBuildInput,
+                                                                     VriMemoryLocation_HostUpload});
+            topGeometry.type                     = VriAsGeometryType_Instances;
             topGeometry.instances.instanceBuffer = instanceBuffer->handle;
             topGeometry.instances.instanceCount  = uint32_t(scene.primitives.size());
             top                                  = {VriAccelerationStructureType_TopLevel,
@@ -314,9 +316,34 @@ namespace vultra
             return view;
         }
 
+        void refreshEnvironment()
+        {
+            if (distributionSource == environment.radiance->handle)
+            {
+                return;
+            }
+            const EnvironmentDistribution distribution(readback(device, *environment.radiance));
+            auto                          candidate = hostBuffer(distribution.cells().size(), sizeof(EnvironmentAlias));
+            uploadHost(device, *candidate, distribution.cells());
+            VriDescriptor*          view = nullptr;
+            const VriBufferViewDesc desc {candidate->handle,
+                                          VriDescriptorType_StructuredBuffer,
+                                          VriFormat_Unknown,
+                                          0,
+                                          0};
+            check(device.core.CreateBufferView(device.handle, &desc, &view), "Create environment distribution view");
+            if (distributionView)
+            {
+                device.core.DestroyDescriptor(distributionView);
+            }
+            distributionView        = view;
+            environmentDistribution = std::move(candidate);
+            distributionSource      = environment.radiance->handle;
+        }
+
         void createDescriptors(uint32_t slots)
         {
-            std::array<VriDescriptorRangeDesc, 21> ranges {};
+            std::array<VriDescriptorRangeDesc, 22> ranges {};
             for (uint32_t i = 0; i < ranges.size(); ++i)
             {
                 ranges[i] = {i, 1, VriDescriptorType_StructuredBuffer, VriShaderStage_Compute};
@@ -340,10 +367,11 @@ namespace vultra
                                                        VriDescriptorType_Sampler,
                                                        VriShaderStage_Compute,
                                                        VriDescriptorRange_VariableSized};
-            const std::array             sets {VriDescriptorSetDesc {0, ranges.data(), uint32_t(ranges.size())},
-                                               VriDescriptorSetDesc {1, &textureRange, 1},
-                                               VriDescriptorSetDesc {2, &samplerRange, 1}};
-            VriPipelineLayoutDesc        description {};
+            ranges[21] = {21, 1, VriDescriptorType_StructuredBuffer, VriShaderStage_Compute};
+            const std::array      sets {VriDescriptorSetDesc {0, ranges.data(), uint32_t(ranges.size())},
+                                   VriDescriptorSetDesc {1, &textureRange, 1},
+                                   VriDescriptorSetDesc {2, &samplerRange, 1}};
+            VriPipelineLayoutDesc description {};
             description.descriptorSets   = sets.data();
             description.descriptorSetNum = uint32_t(sets.size());
             description.shaderStages     = VriShaderStage_Compute;
@@ -351,7 +379,7 @@ namespace vultra
             VriDescriptorPoolDesc poolDesc {};
             poolDesc.descriptorSetMaxNum         = 3;
             poolDesc.accelerationStructureMaxNum = 1;
-            poolDesc.structuredBufferMaxNum      = 8;
+            poolDesc.structuredBufferMaxNum      = 9;
             poolDesc.constantBufferMaxNum        = 1;
             poolDesc.textureMaxNum               = slots + 2;
             poolDesc.storageTextureMaxNum        = 8;
@@ -424,6 +452,10 @@ namespace vultra
         void release()
         {
             pipeline.reset();
+            if (distributionView)
+            {
+                device.core.DestroyDescriptor(distributionView);
+            }
             if (pool)
             {
                 device.core.DestroyDescriptorPool(pool);
@@ -496,6 +528,9 @@ namespace vultra
         VriPipelineLayout*                        layout = nullptr;
         std::array<VriDescriptorSet*, 3>          descriptorSets {};
         std::array<const VriDescriptor*, 13>      fixedViews {};
+        std::unique_ptr<Buffer>                   environmentDistribution;
+        VriDescriptor*                            distributionView   = nullptr;
+        VriTexture*                               distributionSource = nullptr;
         std::vector<VriDescriptor*>               views;
         std::vector<VriDescriptor*>               samplers;
         VriDescriptor*                            environmentSampler = nullptr;
@@ -540,13 +575,13 @@ namespace vultra
         outputs.sampleCount = graph.createTexture("reference.sample_count", desc);
         outputs.rayCount    = graph.createHistoryTexture("reference.ray_count", desc);
         const std::array              buffers {state.scene.vertices.get(),
-                                               state.scene.indices.get(),
-                                               state.primitiveBuffer.get(),
-                                               state.scene.transforms.get(),
-                                               state.previousBuffer.get(),
-                                               state.materialBuffer.get(),
-                                               state.lightBuffer.get(),
-                                               state.emitterBuffer.get()};
+                                  state.scene.indices.get(),
+                                  state.primitiveBuffer.get(),
+                                  state.scene.transforms.get(),
+                                  state.previousBuffer.get(),
+                                  state.materialBuffer.get(),
+                                  state.lightBuffer.get(),
+                                  state.emitterBuffer.get()};
         std::vector<RenderGraph::Use> uses;
         for (size_t i = 0; i < buffers.size(); ++i)
         {
@@ -574,14 +609,15 @@ namespace vultra
                           {
                               throw std::logic_error("Prepare the reference frame before recording it");
                           }
-                          std::array<const VriDescriptor*, 21> descriptors {};
+                          std::array<const VriDescriptor*, 22> descriptors {};
                           std::ranges::copy(state.fixedViews, descriptors.begin());
                           descriptors[10] = state.environment.radiance->view();
+                          descriptors[21] = state.distributionView;
                           for (size_t i = 0; i < resources.size(); ++i)
                           {
                               descriptors[i + 13] = current.getTexture(resources[i]).view();
                           }
-                          std::array<VriDescriptorRangeUpdateDesc, 21> updates {};
+                          std::array<VriDescriptorRangeUpdateDesc, 22> updates {};
                           for (size_t i = 0; i < updates.size(); ++i)
                           {
                               updates[i] = {&descriptors[i], 1};
@@ -598,6 +634,9 @@ namespace vultra
                                                               VriLayout_ShaderResource,
                                                               VriPipelineStage_ComputeShader};
                           state.environment.radiance->transition(cmd, sampled);
+                          state.environmentDistribution->transition(
+                              cmd,
+                              {VriAccess_ShaderResourceRead, VriPipelineStage_ComputeShader});
                           for (const auto& texture : state.scene.textures)
                           {
                               texture->transition(cmd, sampled);
@@ -650,6 +689,7 @@ namespace vultra
                 }
             }
         }
+        state.refreshEnvironment();
         state.frame = {viewProjection,
                        inverse,
                        camera.view,
@@ -689,7 +729,7 @@ namespace vultra
         }
         state.frame.counts.w   = uint32_t(state.emitters.size());
         const bool transformed = state.transformRevision != state.scene.transformRevision();
-        const bool reset = !state.hasPrevious || materialChanged || transformed ||
+        const bool reset       = !state.hasPrevious || materialChanged || transformed ||
                            state.previousFrame.viewProjection != viewProjection ||
                            state.previousFrame.counts.y != seed || state.previousFrame.counts.z != lights.size() ||
                            state.previousFrame.options.x != environmentIntensity ||

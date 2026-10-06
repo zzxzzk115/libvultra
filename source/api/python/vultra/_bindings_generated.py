@@ -3,11 +3,31 @@ import ctypes
 
 ABI_VERSION = 1
 
+class VultraCameraSettings(ctypes.Structure):
+    _fields_ = [
+        ("verticalFov", ctypes.c_float),
+        ("nearPlane", ctypes.c_float),
+        ("farPlane", ctypes.c_float),
+    ]
+
+class VultraEnvironmentSettings(ctypes.Structure):
+    _fields_ = [
+        ("intensity", ctypes.c_float),
+    ]
+
 class VultraExperimentImageInfo(ctypes.Structure):
     _fields_ = [
         ("width", ctypes.c_uint32),
         ("height", ctypes.c_uint32),
         ("floatCount", ctypes.c_uint64),
+    ]
+
+class VultraExperimentPixel(ctypes.Structure):
+    _fields_ = [
+        ("red", ctypes.c_float),
+        ("green", ctypes.c_float),
+        ("blue", ctypes.c_float),
+        ("alpha", ctypes.c_float),
     ]
 
 class VultraExperimentProgress(ctypes.Structure):
@@ -17,14 +37,68 @@ class VultraExperimentProgress(ctypes.Structure):
         ("timeStep", ctypes.c_float),
     ]
 
+class VultraLightSettings(ctypes.Structure):
+    _fields_ = [
+        ("red", ctypes.c_float),
+        ("green", ctypes.c_float),
+        ("blue", ctypes.c_float),
+        ("intensity", ctypes.c_float),
+        ("range", ctypes.c_float),
+        ("innerCone", ctypes.c_float),
+        ("outerCone", ctypes.c_float),
+    ]
+
+class VultraMaterialParameters(ctypes.Structure):
+    _fields_ = [
+        ("baseRed", ctypes.c_float),
+        ("baseGreen", ctypes.c_float),
+        ("baseBlue", ctypes.c_float),
+        ("baseAlpha", ctypes.c_float),
+        ("baseWeight", ctypes.c_float),
+        ("baseMetalness", ctypes.c_float),
+        ("baseDiffuseRoughness", ctypes.c_float),
+        ("specularWeight", ctypes.c_float),
+        ("specularRed", ctypes.c_float),
+        ("specularGreen", ctypes.c_float),
+        ("specularBlue", ctypes.c_float),
+        ("specularRoughness", ctypes.c_float),
+        ("specularIor", ctypes.c_float),
+        ("coatWeight", ctypes.c_float),
+        ("coatRoughness", ctypes.c_float),
+        ("coatIor", ctypes.c_float),
+        ("emissionRed", ctypes.c_float),
+        ("emissionGreen", ctypes.c_float),
+        ("emissionBlue", ctypes.c_float),
+        ("emissionLuminance", ctypes.c_float),
+        ("normalScale", ctypes.c_float),
+        ("occlusionStrength", ctypes.c_float),
+        ("alphaCutoff", ctypes.c_float),
+    ]
+
 class VultraExperimentApi(ctypes.Structure):
     _fields_ = [
         ("version", ctypes.c_uint32),
         ("struct_size", ctypes.c_uint32),
+        ("camera_settings", ctypes.CFUNCTYPE(
+            ctypes.c_int32,
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.c_char_p,
+            ctypes.c_uint64,
+            ctypes.POINTER(VultraCameraSettings),
+        )),
         ("close", ctypes.CFUNCTYPE(
             ctypes.c_int32,
             ctypes.c_void_p,
             ctypes.c_uint64,
+        )),
+        ("environment_settings", ctypes.CFUNCTYPE(
+            ctypes.c_int32,
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.c_char_p,
+            ctypes.c_uint64,
+            ctypes.POINTER(VultraEnvironmentSettings),
         )),
         ("image_info", ctypes.CFUNCTYPE(
             ctypes.c_int32,
@@ -40,6 +114,22 @@ class VultraExperimentApi(ctypes.Structure):
             ctypes.POINTER(ctypes.c_void_p),
             ctypes.POINTER(ctypes.c_uint64),
         )),
+        ("light_settings", ctypes.CFUNCTYPE(
+            ctypes.c_int32,
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.c_char_p,
+            ctypes.c_uint64,
+            ctypes.POINTER(VultraLightSettings),
+        )),
+        ("material_parameters", ctypes.CFUNCTYPE(
+            ctypes.c_int32,
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.c_char_p,
+            ctypes.c_uint64,
+            ctypes.POINTER(VultraMaterialParameters),
+        )),
         ("open", ctypes.CFUNCTYPE(
             ctypes.c_int32,
             ctypes.c_void_p,
@@ -54,6 +144,16 @@ class VultraExperimentApi(ctypes.Structure):
             ctypes.c_uint32,
             ctypes.POINTER(ctypes.c_uint64),
         )),
+        ("probe_pixel", ctypes.CFUNCTYPE(
+            ctypes.c_int32,
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.c_char_p,
+            ctypes.c_uint64,
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.POINTER(VultraExperimentPixel),
+        )),
         ("progress", ctypes.CFUNCTYPE(
             ctypes.c_int32,
             ctypes.c_void_p,
@@ -61,6 +161,27 @@ class VultraExperimentApi(ctypes.Structure):
             ctypes.POINTER(VultraExperimentProgress),
         )),
         ("read_image", ctypes.CFUNCTYPE(
+            ctypes.c_int32,
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.c_char_p,
+            ctypes.c_uint64,
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_uint64,
+        )),
+        ("read_preview", ctypes.CFUNCTYPE(
+            ctypes.c_int32,
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.c_char_p,
+            ctypes.c_uint64,
+            ctypes.c_uint32,
+            ctypes.c_float,
+            ctypes.c_float,
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_uint64,
+        )),
+        ("read_transform", ctypes.CFUNCTYPE(
             ctypes.c_int32,
             ctypes.c_void_p,
             ctypes.c_uint64,
@@ -90,12 +211,44 @@ class VultraExperimentApi(ctypes.Structure):
             ctypes.POINTER(ctypes.c_void_p),
             ctypes.POINTER(ctypes.c_uint64),
         )),
+        ("set_camera_settings", ctypes.CFUNCTYPE(
+            ctypes.c_int32,
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.c_char_p,
+            ctypes.c_uint64,
+            VultraCameraSettings,
+        )),
+        ("set_environment_settings", ctypes.CFUNCTYPE(
+            ctypes.c_int32,
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.c_char_p,
+            ctypes.c_uint64,
+            VultraEnvironmentSettings,
+        )),
         ("set_graph", ctypes.CFUNCTYPE(
             ctypes.c_int32,
             ctypes.c_void_p,
             ctypes.c_uint64,
             ctypes.c_char_p,
             ctypes.c_uint64,
+        )),
+        ("set_light_settings", ctypes.CFUNCTYPE(
+            ctypes.c_int32,
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.c_char_p,
+            ctypes.c_uint64,
+            VultraLightSettings,
+        )),
+        ("set_material_parameters", ctypes.CFUNCTYPE(
+            ctypes.c_int32,
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.c_char_p,
+            ctypes.c_uint64,
+            VultraMaterialParameters,
         )),
         ("set_parameter", ctypes.CFUNCTYPE(
             ctypes.c_int32,
@@ -106,6 +259,15 @@ class VultraExperimentApi(ctypes.Structure):
             ctypes.c_char_p,
             ctypes.c_uint64,
             ctypes.c_double,
+        )),
+        ("set_transform", ctypes.CFUNCTYPE(
+            ctypes.c_int32,
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.c_char_p,
+            ctypes.c_uint64,
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_uint64,
         )),
         ("step", ctypes.CFUNCTYPE(
             ctypes.c_int32,

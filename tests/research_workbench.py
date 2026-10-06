@@ -58,8 +58,8 @@ def main():
     reference_workspace = json.loads((run / "first/workspace.vworkspace").read_text())
     reference_workspace["project"] = str(root / "resources/research.vproject")
     reference_workspace["extent"] = [128, 96]
-    reference_workspace["renderer"]["path"] = "reference"
-    reference_workspace["renderer"]["seed"] = 71
+    reference_workspace["renderer"]["path"] = 2
+    reference_workspace["seed"] = 71
     reference_file = run / "reference.vworkspace"
     reference_file.write_text(json.dumps(reference_workspace), encoding="utf-8")
     invoke("reference", common + ["--workspace", str(reference_file), "--export", str(run / "reference")])
@@ -106,6 +106,26 @@ def main():
     assert (run / "lighting/final.png").read_bytes() == (run / "lighting-reopened/final.png").read_bytes()
     assert (run / "lighting/final.png").read_bytes() == (run / "lighting-batch/final.png").read_bytes()
     assert (run / "lighting/output_000.pfm").read_bytes() == (run / "lighting-batch/scene_hdr.pfm").read_bytes()
+    stages = json.loads((root / "examples/research/deferred.vgraph").read_text())
+    post = json.loads((run / "lighting/graph.vgraph").read_text())
+    stages["passes"] += post["passes"]
+    stages["edges"] += [{"from": edge["from"].replace("scene.hdr", "lighting.hdr"), "to": edge["to"]}
+                        for edge in post["edges"]]
+    stages["outputs"] = post["outputs"] + stages["outputs"]
+    stages_file = run / "deferred-with-post.vgraph"
+    stages_file.write_text(json.dumps(stages))
+    invoke("lighting-stages", common + [
+        "--project", lighting_project, "--graph", str(stages_file),
+        "--export", str(run / "lighting-stages"),
+    ])
+    invoke("lighting-stages-reopened", common + [
+        "--workspace", str(run / "lighting-stages/workspace.vworkspace"),
+        "--export", str(run / "lighting-stages-reopened"),
+    ])
+    assert (run / "lighting-stages/final.png").read_bytes() == (run / "lighting/final.png").read_bytes()
+    assert (run / "lighting-stages/final.png").read_bytes() == (run / "lighting-stages-reopened/final.png").read_bytes()
+    staged_report = json.loads((run / "lighting-stages/graph_report.json").read_text())
+    assert any(event["name"] == "G-buffer geometry" for event in staged_report["events"])
     lighting_report = json.loads((run / "lighting-batch/report/manifest.json").read_text())
     eye = [float(value) for value in lighting_report["parameters"]["camera_eye"].split(",")]
     assert eye == [0, 0.3, 3], "Report did not record the scene camera"

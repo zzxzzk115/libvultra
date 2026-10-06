@@ -13,12 +13,19 @@ namespace vultra
         bool                  reimport = false;
     };
 
+    struct AssetDependency
+    {
+        std::filesystem::path path;
+        std::string           hash; // XXH3-64 of the exact bytes consumed by the importer.
+    };
+
     struct ImportedAsset
     {
-        SceneData             scene;
-        PreparedTextures      textures;
-        bool                  cacheHit = false;
-        std::filesystem::path cachePath;
+        SceneData                    scene;
+        PreparedTextures             textures;
+        bool                         cacheHit = false;
+        std::filesystem::path        cachePath;
+        std::vector<AssetDependency> dependencies;
     };
 
     // Source files stay untouched. Changed dependencies/options invalidate the derived cache.

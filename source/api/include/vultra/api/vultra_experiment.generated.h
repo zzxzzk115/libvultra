@@ -2,6 +2,7 @@
 #ifndef VULTRA_EXPERIMENT_GENERATED_H
 #define VULTRA_EXPERIMENT_GENERATED_H
 #include <vultra/api/vultra_abi.generated.h>
+#include <vultra/api/vultra_scene.generated.h>
 #ifdef __cplusplus
 extern "C"
 {
@@ -12,6 +13,14 @@ extern "C"
         uint32_t height;
         uint64_t floatCount;
     } VultraExperimentImageInfo;
+
+    typedef struct VultraExperimentPixel
+    {
+        float red;
+        float green;
+        float blue;
+        float alpha;
+    } VultraExperimentPixel;
 
     typedef struct VultraExperimentProgress
     {
@@ -25,13 +34,33 @@ extern "C"
     {
         uint32_t version;
         uint32_t struct_size;
+        VultraStatus (*camera_settings)(void*                 context,
+                                        uint64_t              session,
+                                        const char*           node,
+                                        uint64_t              nodeSize,
+                                        VultraCameraSettings* value);
         VultraStatus (*close)(void* context, uint64_t session);
+        VultraStatus (*environment_settings)(void*                      context,
+                                             uint64_t                   session,
+                                             const char*                node,
+                                             uint64_t                   nodeSize,
+                                             VultraEnvironmentSettings* value);
         VultraStatus (*image_info)(void*                      context,
                                    uint64_t                   session,
                                    const char*                output,
                                    uint64_t                   outputSize,
                                    VultraExperimentImageInfo* value);
         VultraStatus (*last_error)(void* context, const char** data, uint64_t* size);
+        VultraStatus (*light_settings)(void*                context,
+                                       uint64_t             session,
+                                       const char*          node,
+                                       uint64_t             nodeSize,
+                                       VultraLightSettings* value);
+        VultraStatus (*material_parameters)(void*                     context,
+                                            uint64_t                  session,
+                                            const char*               material,
+                                            uint64_t                  materialSize,
+                                            VultraMaterialParameters* value);
         VultraStatus (*open)(void*       context,
                              const char* input,
                              uint64_t    inputSize,
@@ -43,6 +72,13 @@ extern "C"
                              uint64_t    environmentSize,
                              uint32_t    seed,
                              uint64_t*   value);
+        VultraStatus (*probe_pixel)(void*                  context,
+                                    uint64_t               session,
+                                    const char*            output,
+                                    uint64_t               outputSize,
+                                    uint32_t               x,
+                                    uint32_t               y,
+                                    VultraExperimentPixel* value);
         VultraStatus (*progress)(void* context, uint64_t session, VultraExperimentProgress* value);
         VultraStatus (*read_image)(void*       context,
                                    uint64_t    session,
@@ -50,10 +86,45 @@ extern "C"
                                    uint64_t    outputSize,
                                    float*      pixels,
                                    uint64_t    pixelsCount);
+        VultraStatus (*read_preview)(void*       context,
+                                     uint64_t    session,
+                                     const char* output,
+                                     uint64_t    outputSize,
+                                     uint32_t    channel,
+                                     float       minimum,
+                                     float       maximum,
+                                     float*      pixels,
+                                     uint64_t    pixelsCount);
+        VultraStatus (*read_transform)(void*       context,
+                                       uint64_t    session,
+                                       const char* node,
+                                       uint64_t    nodeSize,
+                                       float*      values,
+                                       uint64_t    valuesCount);
         VultraStatus (*report_snapshot)(void* context, uint64_t session, const char** data, uint64_t* size);
         VultraStatus (*run_description)(void* context, const char* file, uint64_t fileSize, uint64_t* value);
         VultraStatus (*scene_snapshot)(void* context, uint64_t session, const char** data, uint64_t* size);
+        VultraStatus (*set_camera_settings)(void*                context,
+                                            uint64_t             session,
+                                            const char*          node,
+                                            uint64_t             nodeSize,
+                                            VultraCameraSettings settings);
+        VultraStatus (*set_environment_settings)(void*                     context,
+                                                 uint64_t                  session,
+                                                 const char*               node,
+                                                 uint64_t                  nodeSize,
+                                                 VultraEnvironmentSettings settings);
         VultraStatus (*set_graph)(void* context, uint64_t session, const char* definition, uint64_t definitionSize);
+        VultraStatus (*set_light_settings)(void*               context,
+                                           uint64_t            session,
+                                           const char*         node,
+                                           uint64_t            nodeSize,
+                                           VultraLightSettings settings);
+        VultraStatus (*set_material_parameters)(void*                    context,
+                                                uint64_t                 session,
+                                                const char*              material,
+                                                uint64_t                 materialSize,
+                                                VultraMaterialParameters parameters);
         VultraStatus (*set_parameter)(void*       context,
                                       uint64_t    session,
                                       const char* pass,
@@ -61,6 +132,12 @@ extern "C"
                                       const char* parameter,
                                       uint64_t    parameterSize,
                                       double      value);
+        VultraStatus (*set_transform)(void*       context,
+                                      uint64_t    session,
+                                      const char* node,
+                                      uint64_t    nodeSize,
+                                      float*      values,
+                                      uint64_t    valuesCount);
         VultraStatus (*step)(void* context, uint64_t session, uint64_t frames);
     } VultraExperimentApi;
 #ifdef __cplusplus

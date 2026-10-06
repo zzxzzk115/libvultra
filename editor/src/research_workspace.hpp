@@ -42,12 +42,13 @@ namespace vultra
         {
         }
 
+        BuiltinRenderer::Outputs     rendererOutputs;
+        std::unique_ptr<PassCatalog> rasterCatalog;
         // Reverse destruction discards callbacks before destroying pass instances.
         std::unique_ptr<ReferencePathTracer> reference;
         ReferencePathTracer::Outputs         referenceOutputs {};
         GraphBuild                           instances;
         RenderGraph                          graph;
-        BuiltinRenderer::Outputs             rendererOutputs;
         std::vector<GraphBinding>            previews;
         RenderGraph::Snapshot                snapshot;
     };

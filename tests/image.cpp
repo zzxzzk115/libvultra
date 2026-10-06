@@ -117,6 +117,45 @@ try
     require(bool(pfm) && pfm.peek() == std::char_traits<char>::eof(), "PFM payload size is wrong");
     require(pixels == std::array<float, 12> {4, 5, 6, -7, 8, 9, 3, -0.5f, 0.25f, 0, 1, 2},
             "PFM lost signed HDR values, included alpha or changed row order");
+    const auto rawPixel = imagePixel(hdr, 0, 0);
+    require(rawPixel == std::array<float, 4> {3, -0.5f, 0.25f, 0.1f}, "Pixel probe lost signed HDR or alpha");
+    const auto mapped = mapImage(hdr, {ImageChannel::eGreen, -0.5f, 1.0f});
+    require(mapped.rgba[0] == 0 && mapped.rgba[4] == 1 && mapped.rgba[3] == 1,
+            "AOV mapping does not clamp the declared display range");
+    require(imagePixel(hdr, 0, 0) == rawPixel, "Display mapping mutated the original image");
+    const Image tiny {{1, 1}, {0, 0, 0, 0}};
+    const auto  tinyMapped = mapImage(tiny, {ImageChannel::eRgb, 0, std::numeric_limits<float>::min() / 2});
+    require(tinyMapped.rgba[0] == 0, "Narrow finite display range produced NaN");
+    reject(
+        [&]
+        {
+            imagePixel(hdr, 2, 0);
+        });
+    reject(
+        [&]
+        {
+            mapImage(hdr, {ImageChannel::eRgb, 1, 1});
+        });
+    reject(
+        [&]
+        {
+            mapImage(hdr, {ImageChannel::eRgb, 2, 1});
+        });
+    reject(
+        [&]
+        {
+            mapImage(hdr, {ImageChannel(6), 0, 1});
+        });
+    reject(
+        [&]
+        {
+            mapImage(hdr, {ImageChannel::eRgb, 0, std::numeric_limits<float>::infinity()});
+        });
+    reject(
+        [&]
+        {
+            mapImage(hdr, {ImageChannel::eRgb, -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()});
+        });
     require(std::abs(compare(a, b).ssim - directSsim(a, b)) < 1e-10, "SSIM differs from direct 2D reference");
     b = a;
     for (size_t i = 3; i < b.rgba.size(); i += 4)

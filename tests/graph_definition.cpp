@@ -171,8 +171,15 @@ namespace
         RenderGraph      graph(device);
         const auto       source = graph.createTexture("input", colorTexture({4, 4}, VriFormat_RGBA16_SFLOAT));
         const std::array imports {GraphBinding {"scene.hdr", source}};
-        auto             invalid = chain();
-        invalid.edges[0].from    = "final.color";
+        GraphDefinition  unbound {{{"geometry", "vultra.gbuffer", {}}}, {}, {"geometry.normal_roughness"}};
+        expectError(
+            [&]
+            {
+                unbound.build(graph, catalog, {});
+            },
+            "bindBuiltinRasterPasses");
+        auto invalid          = chain();
+        invalid.edges[0].from = "final.color";
         expectError(
             [&]
             {

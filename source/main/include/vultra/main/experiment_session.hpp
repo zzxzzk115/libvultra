@@ -47,11 +47,13 @@ namespace vultra
         const std::filesystem::path& cachePath() const;
         PassCatalog&                 passes();
         // Validate/compile a candidate before replacing the active graph. Failure retains active state.
-        void                         setGraph(GraphDefinition definition);
-        void                         setPassParameters(std::string_view pass, const PassParameters& parameters);
-        FrameTiming                  render();
-        const RenderGraph&           graph() const;
-        const ExperimentConfig&      configuration() const;
+        void                    setGraph(GraphDefinition definition);
+        void                    setPassParameters(std::string_view pass, const PassParameters& parameters);
+        FrameTiming             render();
+        const RenderGraph&      graph() const;
+        const ExperimentConfig& configuration() const;
+        // Completed-frame report work, never part of the measured rendering interval.
+        std::string                  provenance(const std::filesystem::path& shaderRoot) const;
         RenderGraph::Resource        outputResource(std::string_view name) const;
         std::span<const PassTiming>  timings() const;
         const RenderCamera&          camera() const;

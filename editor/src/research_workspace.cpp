@@ -4,6 +4,7 @@
 #include <vultra/platform/os/file.hpp>
 #include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/scene_import.hpp>
+#include <vultra/servers/rendering/builtin/raster_passes.hpp>
 #include <vultra/servers/rendering/builtin/render_properties.generated.hpp>
 #include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/servers/rendering/research/graph_report.hpp>
@@ -70,6 +71,11 @@ namespace vultra
             auto&                     graph   = result->graph;
             auto&                     outputs = result->rendererOutputs;
             std::vector<GraphBinding> imports;
+            const bool                authoredRaster = usesBuiltinRasterPasses(document.definition);
+            if (authoredRaster && document.settings.path != RenderPath::eNaiveDeferred)
+            {
+                throw std::invalid_argument("Explicit built-in raster graphs require the indexed deferred path");
+            }
             if (document.settings.path == RenderPath::eReferencePathTracing)
             {
                 result->reference        = std::make_unique<ReferencePathTracer>(device, geometry, environment);
@@ -87,12 +93,18 @@ namespace vultra
                                             {"scene.sample_count", reference.sampleCount},
                                             {"scene.ray_count", reference.rayCount}};
             }
+            else if (authoredRaster)
+            {
+                outputs.path          = document.settings.path;
+                result->rasterCatalog = std::make_unique<PassCatalog>(catalog);
+                bindBuiltinRasterPasses(*result->rasterCatalog, renderer, outputs, document.size);
+            }
             else
             {
                 outputs = renderer.addScenePasses(graph, document.size);
                 imports = {{"scene.hdr", outputs.hdr}, {"scene.depth", outputs.depth}};
             }
-            if (outputs.path == RenderPath::eNaiveDeferred)
+            if (!authoredRaster && outputs.path == RenderPath::eNaiveDeferred)
             {
                 constexpr std::array names {"scene.position_metallic",
                                             "scene.normal_roughness",
@@ -106,9 +118,10 @@ namespace vultra
                     imports.push_back({names[i], outputs.gbuffer[i]});
                 }
             }
-            result->instances = document.definition.build(graph, catalog, imports);
-            const auto hdr    = result->instances.outputs.front().resource;
-            const auto info   = graph.resourceInfo(hdr);
+            result->instances =
+                document.definition.build(graph, result->rasterCatalog ? *result->rasterCatalog : catalog, imports);
+            const auto hdr  = result->instances.outputs.front().resource;
+            const auto info = graph.resourceInfo(hdr);
             if (!info.isTexture ||
                 (info.textureDesc.format != VriFormat_RGBA16_SFLOAT &&
                  info.textureDesc.format != VriFormat_RGBA8_UNORM) ||

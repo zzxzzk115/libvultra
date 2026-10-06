@@ -174,13 +174,13 @@ def parse_api(database):
     structs = sorted(reflected.values(), key=lambda item: item["name"])
     if not any(item["name"] == "RenderSettings" for item in structs):
         raise RuntimeError("Missing reflected RenderSettings declaration")
-    experiment_pods, experiment_functions = parse_experiments(experiment_unit)
+    experiment_pods, experiment_functions = parse_experiments(experiment_unit, pods)
     return {"format": "vultra.api", "version": 1,
             "ui_functions": functions, "scene_functions": scene_functions, "pods": pods, "types": structs,
             "experiment_pods": experiment_pods, "experiment_functions": experiment_functions}
 
 
-def parse_experiments(unit):
+def parse_experiments(unit, scene_pods=()):
     scalar_types = {"float", "double", "uint32_t", "uint64_t"}
     pods = []
     methods = []
@@ -211,6 +211,9 @@ def parse_experiments(unit):
             if cursor.semantic_parent.spelling != "ExperimentHost" or cursor.is_static_method():
                 raise RuntimeError("Experiment ABI requires instance methods on ExperimentHost")
             methods.append(cursor)
+    used_types = {method.result_type.spelling for method in methods}
+    used_types.update(argument.type.spelling for method in methods for argument in method.get_arguments())
+    pods.extend(pod for pod in scene_pods if pod["name"] in used_types)
     pod_names = {pod["name"] for pod in pods}
     functions = []
     for method in methods:
@@ -218,7 +221,7 @@ def parse_experiments(unit):
                      for argument in method.get_arguments()]
         result = method.result_type.spelling
         if result not in {"void", "uint64_t", "std::string_view"} | pod_names or any(
-            argument["type"] not in scalar_types | {"std::string_view", "std::span<float>"}
+            argument["type"] not in scalar_types | pod_names | {"std::string_view", "std::span<float>"}
             for argument in arguments
         ):
             raise RuntimeError(f"Unsupported experiment ABI signature: {method.spelling}({arguments}) -> {result}")
@@ -674,7 +677,7 @@ def experiment_parameters(function, pod_names):
         elif kind == "std::span<float>":
             parameters.extend([(name, "float*"), (name + "Count", "uint64_t")])
         else:
-            parameters.append((name, kind))
+            parameters.append((name, 'Vultra' + kind if kind in pod_names else kind))
     result = function["return"]
     if result == "std::string_view":
         parameters.extend([("data", "const char**"), ("size", "uint64_t*")])
@@ -689,6 +692,8 @@ def experiment_header(ir):
     pod_names = {pod["name"] for pod in ir["experiment_pods"]}
     structs = []
     for pod in ir["experiment_pods"]:
+        if any(scene_pod['name'] == pod['name'] for scene_pod in ir['pods']):
+            continue
         fields = "\n".join(f"    {field['type']} {field['name']};" for field in pod["fields"])
         structs.append(f"typedef struct Vultra{pod['name']} {{\n{fields}\n}} Vultra{pod['name']};")
     declarations = []
@@ -699,6 +704,7 @@ def experiment_header(ir):
 #ifndef VULTRA_EXPERIMENT_GENERATED_H
 #define VULTRA_EXPERIMENT_GENERATED_H
 #include <vultra/api/vultra_abi.generated.h>
+#include <vultra/api/vultra_scene.generated.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -737,6 +743,9 @@ def experiment_source(ir):
                 checks.extend([f"(!{argument_name} && {argument_name}Count)",
                                f"{argument_name}Count > SIZE_MAX / sizeof(float)"])
                 calls.append(f"{{{argument_name}, static_cast<size_t>({argument_name}Count)}}")
+            elif kind in pods:
+                values = ', '.join(f"{argument_name}.{field['name']}" for field in pods[kind])
+                calls.append(f"vultra::{kind} {{{values}}}")
             else:
                 calls.append(argument_name)
         result = function["return"]
@@ -811,6 +820,7 @@ def python_experiment_bindings(ir):
         name = "Vultra" + pod["name"]
         fields = "\n".join(f'        ("{field["name"]}", {kinds[field["type"]]}),' for field in pod["fields"])
         structs.append(f"class {name}(ctypes.Structure):\n    _fields_ = [\n{fields}\n    ]")
+        kinds[name] = name
         kinds[name + "*"] = f"ctypes.POINTER({name})"
     for kind in ("uint64_t", "float"):
         kinds[kind + "*"] = f"ctypes.POINTER({kinds[kind]})"
@@ -828,6 +838,73 @@ ABI_VERSION = 1
 """ + "\n\n".join(structs) + "\n\nclass VultraExperimentApi(ctypes.Structure):\n    _fields_ = [\n" + \
         '        ("version", ctypes.c_uint32),\n        ("struct_size", ctypes.c_uint32),\n' + \
         "\n".join(fields) + "\n    ]\n"
+
+
+
+def python_scene_controls(ir):
+    native_pods = {pod["name"]: pod for pod in ir["pods"]}
+    reflected = {item["name"]: item for item in ir["types"]}
+    used = {pod["name"] for pod in ir["experiment_pods"]} & native_pods.keys()
+    values = []
+    for name in sorted(used):
+        if name not in reflected:
+            continue
+        fields = reflected[name]["fields"]
+        if any(field["type"] != "float" for field in fields):
+            raise RuntimeError(f"Unsupported Python scene value: {name}")
+        declarations = []
+        for field in fields:
+            default = field["default_cpp"].rstrip("fF")
+            declarations.append(f"    {experiment_name(field['name'])}: float = {default}")
+        arguments = ", ".join(f"value.{field['name']}" for field in fields)
+        conversions = ", ".join(f"_finite_float(self.{experiment_name(field['name'])})" for field in fields)
+        values.append("@dataclass(frozen=True)\n" + f"class {name}:\n" + "\n".join(declarations) +
+                      f"\n\n    @classmethod\n    def _from_native(cls, value):\n        return cls({arguments})\n"
+                      f"\n    def _to_native(self):\n        return Vultra{name}({conversions})")
+    methods = []
+    for function in ir["experiment_functions"]:
+        result = function["return"]
+        arguments = function["arguments"]
+        if len(arguments) < 2 or arguments[0]["name"] != "session" or arguments[1]["type"] != "std::string_view":
+            continue
+        name = experiment_name(function["name"])
+        if result in used and result in reflected:
+            methods.append(f"    def {name}(self, identifier: str) -> {result}:\n"
+                           "        self._check()\n        text = _scene_id(identifier)\n"
+                           f"        value = Vultra{result}()\n"
+                           f"        self._host._status(self._host._api.{name}(\n"
+                           "            self._host._native.context, self._id, text, len(text), ctypes.byref(value)))\n"
+                           f"        return {result}._from_native(value)")
+        elif len(arguments) == 3 and arguments[2]["type"] in used and arguments[2]["type"] in reflected:
+            kind = arguments[2]["type"]
+            methods.append(f"    def {name}(self, identifier: str, value: {kind}) -> None:\n"
+                           "        self._check()\n        text = _scene_id(identifier)\n"
+                           f"        if type(value) is not {kind}:\n"
+                           f"            raise TypeError('value must be {kind}')\n"
+                           f"        self._host._status(self._host._api.{name}(\n"
+                           "            self._host._native.context, self._id, text, len(text), value._to_native()))")
+    return """# Generated by scripts/codegen.py. Do not edit.
+import ctypes
+import math
+from dataclasses import dataclass
+from numbers import Real
+
+from ._bindings_generated import """ + ", ".join("Vultra" + name for name in sorted(used) if name in reflected) + """
+
+def _scene_id(value):
+    if not isinstance(value, str) or not value or '\\0' in value:
+        raise ValueError("identifier must be a persistent UUID string")
+    return value.encode("utf-8")
+
+def _finite_float(value):
+    if isinstance(value, bool) or not isinstance(value, Real) or not math.isfinite(float(value)):
+        raise ValueError("settings require finite numeric values")
+    stored = ctypes.c_float(float(value)).value
+    if not math.isfinite(stored):
+        raise ValueError("settings value exceeds float32")
+    return stored
+
+""" + "\n\n".join(values) + "\n\nclass ExperimentSceneControls:\n" + "\n\n".join(methods) + "\n"
 
 
 def type_function(item):
@@ -1148,6 +1225,7 @@ def main():
         OUTPUT / "include/vultra/api/vultra_experiment.generated.h": experiment_header(ir),
         ROOT / "source/scripting/src/experiment_api.generated.cpp": experiment_source(ir),
         OUTPUT / "python/vultra/_bindings_generated.py": python_experiment_bindings(ir),
+        OUTPUT / "python/vultra/_scene_controls_generated.py": python_scene_controls(ir),
         OUTPUT
         / "include/vultra/api/render_settings.generated.hpp": reflection_header(render_types),
         OUTPUT / "src/render_settings.generated.cpp": reflection_source(render_types, "render_settings.generated.hpp"),

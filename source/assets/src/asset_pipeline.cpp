@@ -378,6 +378,7 @@ namespace vultra
         for (const auto& [path, hash] : files)
         {
             dependencies.push_back({{"path", path}, {"hash", hash}});
+            asset.dependencies.push_back({std::filesystem::path(std::u8string(path.begin(), path.end())), hash});
         }
         if (options.cache && !options.reimport && std::filesystem::exists(cachePath))
         {

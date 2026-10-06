@@ -15,6 +15,8 @@
 #include <vultra/scripting/script_host.hpp>
 #include <vultra/servers/rendering/research/graph_report.hpp>
 
+#include <nlohmann/json.hpp>
+
 #include <chrono>
 #include <format>
 #include <fstream>
@@ -211,8 +213,8 @@ try
     ScopedWorkingDirectory cwd(resources.engineRoot());
     sessionConfig.importOptions.cacheDirectory = resources.engineRoot().parent_path() / "cache";
     Device            device(true,
-                             nullptr,
-                             path == RenderPath::eReferencePathTracing ? VriFeature_RayQuery | VriFeature_Bindless : 0);
+                  nullptr,
+                  path == RenderPath::eReferencePathTracing ? VriFeature_RayQuery | VriFeature_Bindless : 0);
     ExperimentSession session(device, sessionConfig);
     session.passes().add(research::colorGainDefinition());
     if (definition)
@@ -381,8 +383,10 @@ try
         const auto& name = session.markedOutputs()[i];
         images.push_back({name, imageFiles[i + 2], session.outputResource(name)});
     }
-    const auto captureFile      = gpuCapture ? gpuCapture->file().generic_string() : std::string();
-    const auto graphDiagnostics = graphReport(session.graph(), session.timings(), images, captureFile);
+    const auto captureFile = gpuCapture ? gpuCapture->file().generic_string() : std::string();
+    auto graphReportData = nlohmann::json::parse(graphReport(session.graph(), session.timings(), images, captureFile));
+    graphReportData["provenance"] = nlohmann::json::parse(session.provenance(std::filesystem::current_path()));
+    const auto graphDiagnostics   = graphReportData.dump(2);
     writeFileAtomically(output / "graph_report.json", std::as_bytes(std::span(graphDiagnostics)));
     if (session.scene())
     {

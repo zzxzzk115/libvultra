@@ -11,6 +11,7 @@
 #include <vultra/platform/os/file.hpp>
 #include <vultra/scene/render_nodes.hpp>
 #include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/servers/rendering/texture_blit.hpp>
 
 #include <algorithm>
 #include <array>
@@ -49,6 +50,7 @@ namespace
             m_GraphEditor(catalog),
             m_SceneInspector(gui),
             m_Profiler(device),
+            m_PreviewBlit(device, VriFormat_RGBA8_UNORM),
             m_Draft(std::move(document)),
             m_WorkspaceFile(std::move(workspaceFile)),
             m_GraphDefinitionFile(std::move(graphFile))
@@ -63,6 +65,10 @@ namespace
         ~ResearchPanel()
         {
             forgetPreviews(m_Workspace.graph());
+            if (m_PreviewTexture)
+            {
+                m_Gui.forgetTexture(*m_PreviewTexture);
+            }
         }
 
         void exportImages(const std::filesystem::path& directory)
@@ -83,6 +89,9 @@ namespace
 
         void forgetPreviews(ResearchGraph& graph)
         {
+            m_PreviewSource  = nullptr;
+            m_ProbeRequested = false;
+            m_ProbeValue.reset();
             for (const auto& preview : graph.previews)
             {
                 if (graph.graph.resourceInfo(preview.resource).isTexture)
@@ -369,18 +378,70 @@ namespace
                     const auto info     = active.graph.resourceInfo(resource);
                     if (info.isTexture)
                     {
-                        auto&       texture   = active.graph.getTexture(resource);
+                        auto& texture = active.graph.getTexture(resource);
+                        if (!m_PreviewTexture || m_PreviewTexture->desc.width != texture.desc.width ||
+                            m_PreviewTexture->desc.height != texture.desc.height)
+                        {
+                            if (m_PreviewTexture)
+                            {
+                                m_Gui.forgetTexture(*m_PreviewTexture);
+                            }
+                            VriTextureDesc desc {};
+                            desc.type   = VriTextureType_2D;
+                            desc.format = VriFormat_RGBA8_UNORM;
+                            desc.usage  = VriTextureUsage_ColorAttachment | VriTextureUsage_ShaderResource |
+                                         VriTextureUsage_TransferSrc;
+                            desc.width       = texture.desc.width;
+                            desc.height      = texture.desc.height;
+                            desc.depth       = 1;
+                            desc.mipNum      = 1;
+                            desc.layerNum    = 1;
+                            desc.sampleNum   = 1;
+                            m_PreviewTexture = std::make_unique<Texture>(m_Device, desc);
+                        }
+                        if (m_PreviewSource != &texture)
+                        {
+                            m_ProbeValue.reset();
+                        }
+                        m_PreviewSource = &texture;
+                        m_PreviewBlit.setSource(0, texture);
+                        ui.combo("Channel", &m_ViewChannel, "RGB\0R\0G\0B\0A\0Luminance\0");
+                        ImGui::InputFloat2("Range", m_ViewRange.data());
+                        const ImageView candidate {ImageChannel(m_ViewChannel), m_ViewRange[0], m_ViewRange[1]};
+                        try
+                        {
+                            validateImageView(candidate);
+                            m_ImageView = candidate;
+                        }
+                        catch (const std::invalid_argument&)
+                        {
+                            ui.textDisabled("Range must be finite and increasing; retaining the last valid view.");
+                        }
                         const auto  available = ui.contentRegionAvail();
-                        const float height    = std::max(1.0f, available.y - 80);
+                        const float height    = std::max(1.0f, available.y - 150);
                         const float width = std::min(available.x, height * texture.desc.width / texture.desc.height);
-                        ui.image(m_Gui.textureId(texture), {width, width * texture.desc.height / texture.desc.width});
-                        ui.textDisabled("%ux%u, format %d | raw channels",
+                        ui.image(m_Gui.textureId(*m_PreviewTexture),
+                                 {width, width * texture.desc.height / texture.desc.width});
+                        ui.textDisabled("%ux%u, format %d | display mapping only",
                                         texture.desc.width,
                                         texture.desc.height,
                                         int(texture.desc.format));
+                        ImGui::InputInt2("Pixel (x, y)", m_ProbePosition.data());
+                        m_ProbeRequested = ui.button("Read raw pixel");
+                        if (m_ProbeValue)
+                        {
+                            ui.text("RGBA: %.9g %.9g %.9g %.9g",
+                                    (*m_ProbeValue)[0],
+                                    (*m_ProbeValue)[1],
+                                    (*m_ProbeValue)[2],
+                                    (*m_ProbeValue)[3]);
+                        }
                     }
                     else
                     {
+                        m_PreviewSource  = nullptr;
+                        m_ProbeRequested = false;
+                        m_ProbeValue.reset();
                         ui.text("Buffer: %llu bytes", static_cast<unsigned long long>(info.bufferDesc.size));
                     }
                     ui.inputText("Capture directory", &m_ExportDirectory);
@@ -436,6 +497,21 @@ namespace
         void record(VriCommandBuffer* cmd)
         {
             m_Workspace.record(cmd, &m_Profiler);
+            if (m_PreviewSource && m_PreviewTexture)
+            {
+                const auto& desc = m_PreviewTexture->desc;
+                m_PreviewTexture->transition(cmd,
+                                             {VriAccess_ColorAttachmentWrite,
+                                              VriLayout_ColorAttachment,
+                                              VriPipelineStage_ColorAttachmentOutput});
+                const float clear[4] {0, 0, 0, 1};
+                beginColorPass(m_Device, cmd, m_PreviewTexture->view(), {desc.width, desc.height}, clear);
+                m_Device.core.CmdEndRendering(cmd);
+                m_PreviewBlit.draw(cmd, *m_PreviewTexture, {0, 0, desc.width, desc.height}, 0, false, m_ImageView);
+                m_PreviewTexture->transition(
+                    cmd,
+                    {VriAccess_ShaderResourceRead, VriLayout_ShaderResource, VriPipelineStage_FragmentShader});
+            }
         }
 
         OrbitCamera& camera()
@@ -447,6 +523,25 @@ namespace
         {
             m_Workspace.completeFrame();
             m_Profiler.collect();
+            if (m_ProbeRequested && m_PreviewSource)
+            {
+                try
+                {
+                    if (m_ProbePosition[0] < 0 || m_ProbePosition[1] < 0)
+                    {
+                        throw std::invalid_argument("Pixel coordinates cannot be negative");
+                    }
+                    m_ProbeValue = imagePixel(readback(m_Device, *m_PreviewSource),
+                                              uint32_t(m_ProbePosition[0]),
+                                              uint32_t(m_ProbePosition[1]));
+                }
+                catch (const std::exception& error)
+                {
+                    m_ProbeValue.reset();
+                    m_Status = error.what();
+                }
+                m_ProbeRequested = false;
+            }
             if (m_ExportRequested)
             {
                 try
@@ -464,26 +559,35 @@ namespace
         }
 
     private:
-        Device&               m_Device;
-        EditorGui&            m_Gui;
-        PassCatalog&          m_Catalog;
-        std::filesystem::path m_LaunchDirectory;
-        ResearchWorkspace     m_Workspace;
-        GraphEditor           m_GraphEditor;
-        SceneInspector        m_SceneInspector;
-        Profiler              m_Profiler;
-        ResearchDocument      m_Draft;
-        std::string           m_ProjectFile;
-        std::string           m_WorkspaceFile;
-        std::string           m_GraphDefinitionFile;
-        std::string           m_ExportDirectory;
-        std::string           m_Status;
-        std::string           m_SceneFile = "captures/scene.vscene";
-        std::string           m_Preview;
-        size_t                m_OutputIndex     = 0;
-        bool                  m_Apply           = false;
-        bool                  m_LoadWorkspace   = false;
-        bool                  m_ExportRequested = false;
+        Device&                             m_Device;
+        EditorGui&                          m_Gui;
+        PassCatalog&                        m_Catalog;
+        std::filesystem::path               m_LaunchDirectory;
+        ResearchWorkspace                   m_Workspace;
+        GraphEditor                         m_GraphEditor;
+        SceneInspector                      m_SceneInspector;
+        Profiler                            m_Profiler;
+        TextureBlit                         m_PreviewBlit;
+        std::unique_ptr<Texture>            m_PreviewTexture;
+        Texture*                            m_PreviewSource = nullptr;
+        ImageView                           m_ImageView;
+        int                                 m_ViewChannel = 0;
+        std::array<float, 2>                m_ViewRange {0, 1};
+        std::array<int, 2>                  m_ProbePosition {0, 0};
+        std::optional<std::array<float, 4>> m_ProbeValue;
+        bool                                m_ProbeRequested = false;
+        ResearchDocument                    m_Draft;
+        std::string                         m_ProjectFile;
+        std::string                         m_WorkspaceFile;
+        std::string                         m_GraphDefinitionFile;
+        std::string                         m_ExportDirectory;
+        std::string                         m_Status;
+        std::string                         m_SceneFile = "captures/scene.vscene";
+        std::string                         m_Preview;
+        size_t                              m_OutputIndex     = 0;
+        bool                                m_Apply           = false;
+        bool                                m_LoadWorkspace   = false;
+        bool                                m_ExportRequested = false;
     };
 
     void drawWorkbench(Device& device, EditorGui& gui, VriCommandBuffer* cmd, Texture& target)

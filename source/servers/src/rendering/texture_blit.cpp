@@ -18,7 +18,7 @@ namespace vultra
             VriDescriptorSetDesc   set {};
             set.ranges   = ranges;
             set.rangeNum = 2;
-            VriPushConstantDesc   push {0, 16, VriShaderStage_Fragment};
+            VriPushConstantDesc   push {0, 32, VriShaderStage_Fragment};
             VriPipelineLayoutDesc layout {};
             layout.descriptorSets   = &set;
             layout.descriptorSetNum = 1;
@@ -51,6 +51,7 @@ namespace vultra
                     color.format         = targetFormat;
                     color.colorWriteMask = VriColorWrite_RGBA;
                     VriGraphicsPipelineDesc desc {};
+                    desc.pipelineCache           = m_Device.pipelineCache;
                     desc.pipelineLayout          = m_Layout;
                     desc.shaders                 = shaders.data();
                     desc.shaderNum               = uint32_t(shaders.size());
@@ -110,8 +111,17 @@ namespace vultra
         m_Sources.at(slot) = &source;
     }
 
-    void TextureBlit::draw(VriCommandBuffer* cmd, Texture& target, VriRect rectangle, uint32_t slot, bool encodeSrgb)
+    void TextureBlit::draw(VriCommandBuffer*        cmd,
+                           Texture&                 target,
+                           VriRect                  rectangle,
+                           uint32_t                 slot,
+                           bool                     encodeSrgb,
+                           std::optional<ImageView> view)
     {
+        if (view)
+        {
+            validateImageView(*view);
+        }
         auto* source = m_Sources.at(slot);
         if (!source || source == &target)
         {
@@ -135,8 +145,26 @@ namespace vultra
         m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
         m_Device.core.CmdSetPipeline(cmd, m_Pipeline->handle());
         m_Device.core.CmdSetDescriptorSet(cmd, 0, m_Sets.at(slot));
-        const uint32_t parameters[4] {uint32_t(encodeSrgb), 0, 0, 0};
-        m_Device.core.CmdSetConstants(cmd, 0, parameters, sizeof(parameters));
+
+        struct Parameters
+        {
+            uint32_t encode;
+            uint32_t channel;
+            float    minimum;
+            float    maximum;
+            uint32_t remap;
+            uint32_t padding[3];
+        };
+
+        static_assert(sizeof(Parameters) == 32);
+        const auto       settings = view.value_or(ImageView {});
+        const Parameters parameters {uint32_t(encodeSrgb),
+                                     uint32_t(settings.channel),
+                                     settings.minimum,
+                                     settings.maximum,
+                                     uint32_t(view.has_value()),
+                                     {}};
+        m_Device.core.CmdSetConstants(cmd, 0, &parameters, sizeof(parameters));
         const VriDrawDesc draw {3, 1, 0, 0};
         m_Device.core.CmdDraw(cmd, &draw);
         m_Device.core.CmdEndRendering(cmd);

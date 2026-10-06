@@ -75,7 +75,9 @@ namespace vultra
     {
     public:
         explicit PassCatalog(Device& device);
-        void                  add(PassDefinition definition);
+        void add(PassDefinition definition);
+        // Bind a context-owned scene factory without changing the port/parameter contract.
+        void bindFactory(std::string_view type, std::function<std::unique_ptr<GraphPass>(Device&)> create);
         const PassDefinition& definition(std::string_view type) const;
 
         std::span<const PassDefinition> definitions() const

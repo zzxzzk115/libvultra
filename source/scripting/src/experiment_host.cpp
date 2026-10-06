@@ -13,6 +13,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <map>
 #include <optional>
 #include <stdexcept>
@@ -50,6 +51,36 @@ namespace vultra
             }
             return std::filesystem::path(
                 std::u8string_view(reinterpret_cast<const char8_t*>(text.data()), text.size()));
+        }
+
+        StableId persistentId(std::string_view text)
+        {
+            const auto id = StableId::parse(text);
+            if (!id || !id->valid())
+            {
+                throw std::invalid_argument("Experiment object requires a persistent UUID");
+            }
+            return *id;
+        }
+
+        Node& experimentNode(SceneTree& scene, std::string_view text)
+        {
+            auto* node = scene.find(NodeId {persistentId(text)});
+            if (!node)
+            {
+                throw std::invalid_argument("Node does not belong to this experiment: " + std::string(text));
+            }
+            return *node;
+        }
+
+        MaterialResource& experimentMaterial(SceneTree& scene, std::string_view text)
+        {
+            auto* material = scene.findMaterial(AssetId {persistentId(text)});
+            if (!material)
+            {
+                throw std::invalid_argument("Material does not belong to this experiment: " + std::string(text));
+            }
+            return *material;
         }
 
         struct HostedSession
@@ -114,6 +145,16 @@ namespace vultra
                 throw std::invalid_argument("Invalid experiment session for this host");
             }
             return *found->second;
+        }
+
+        SceneTree& scene(uint64_t id) const
+        {
+            auto* tree = session(id).renderer.scene();
+            if (!tree)
+            {
+                throw std::invalid_argument("Scene editing requires a project scene, not a direct model input");
+            }
+            return *tree;
         }
 
         Device&                                            device;
@@ -242,6 +283,35 @@ namespace vultra
         std::ranges::copy(image.rgba, pixels.begin());
     }
 
+    void ExperimentHost::readPreview(uint64_t         session,
+                                     std::string_view output,
+                                     uint32_t         channel,
+                                     float            minimum,
+                                     float            maximum,
+                                     std::span<float> pixels)
+    {
+        const auto info = imageInfo(session, output);
+        if (pixels.size() != info.floatCount)
+        {
+            throw std::invalid_argument("Preview readback requires width * height * 4 floats");
+        }
+        const ImageView view {ImageChannel(channel), minimum, maximum};
+        validateImageView(view);
+        const auto image = mapImage(m_Impl->session(session).renderer.capture(output), view);
+        std::ranges::copy(image.rgba, pixels.begin());
+    }
+
+    ExperimentPixel ExperimentHost::probePixel(uint64_t session, std::string_view output, uint32_t x, uint32_t y)
+    {
+        const auto info = imageInfo(session, output);
+        if (x >= info.width || y >= info.height)
+        {
+            throw std::invalid_argument("Pixel probe is outside the output");
+        }
+        const auto pixel = imagePixel(m_Impl->session(session).renderer.capture(output), x, y);
+        return {pixel[0], pixel[1], pixel[2], pixel[3]};
+    }
+
     ExperimentProgress ExperimentHost::progress(uint64_t session) const
     {
         const auto& state = m_Impl->session(session);
@@ -280,6 +350,7 @@ namespace vultra
                                       {"path", uint32_t(config.path)},
                                       {"width", config.size.width},
                                       {"height", config.size.height}};
+        report["provenance"]       = Json::parse(renderer.provenance(m_Impl->root));
         report["device"]           = {{"adapter", device.adapter.name},
                                       {"graphics_api", int(device.graphicsAPI)},
                                       {"enabled_features", device.enabledFeatures},
@@ -293,6 +364,75 @@ namespace vultra
         }
         state.snapshot = report.dump(2) + '\n';
         return state.snapshot;
+    }
+
+    CameraSettings ExperimentHost::cameraSettings(uint64_t session, std::string_view node)
+    {
+        auto& scene = m_Impl->scene(session);
+        return sceneCameraSettings(scene, experimentNode(scene, node).id());
+    }
+
+    void ExperimentHost::setCameraSettings(uint64_t session, std::string_view node, CameraSettings values)
+    {
+        auto& scene = m_Impl->scene(session);
+        sceneSetCameraSettings(scene, experimentNode(scene, node).id(), values);
+    }
+
+    LightSettings ExperimentHost::lightSettings(uint64_t session, std::string_view node)
+    {
+        auto& scene = m_Impl->scene(session);
+        return sceneLightSettings(scene, experimentNode(scene, node).id());
+    }
+
+    void ExperimentHost::setLightSettings(uint64_t session, std::string_view node, LightSettings values)
+    {
+        auto& scene = m_Impl->scene(session);
+        sceneSetLightSettings(scene, experimentNode(scene, node).id(), values);
+    }
+
+    EnvironmentSettings ExperimentHost::environmentSettings(uint64_t session, std::string_view node)
+    {
+        auto& scene = m_Impl->scene(session);
+        return sceneEnvironmentSettings(scene, experimentNode(scene, node).id());
+    }
+
+    void ExperimentHost::setEnvironmentSettings(uint64_t session, std::string_view node, EnvironmentSettings values)
+    {
+        auto& scene = m_Impl->scene(session);
+        sceneSetEnvironmentSettings(scene, experimentNode(scene, node).id(), values);
+    }
+
+    MaterialParameters ExperimentHost::materialParameters(uint64_t session, std::string_view material)
+    {
+        auto& scene = m_Impl->scene(session);
+        return sceneMaterialParameters(scene, experimentMaterial(scene, material).id());
+    }
+
+    void ExperimentHost::setMaterialParameters(uint64_t session, std::string_view material, MaterialParameters values)
+    {
+        auto& scene = m_Impl->scene(session);
+        sceneSetMaterialParameters(scene, experimentMaterial(scene, material).id(), values);
+    }
+
+    void ExperimentHost::readTransform(uint64_t session, std::string_view node, std::span<float> values)
+    {
+        if (values.size() != 16)
+        {
+            throw std::invalid_argument("Transform readback requires 16 floats");
+        }
+        const auto& matrix = experimentNode(m_Impl->scene(session), node).localTransform();
+        std::memcpy(values.data(), &matrix, sizeof(matrix));
+    }
+
+    void ExperimentHost::setTransform(uint64_t session, std::string_view node, std::span<float> values)
+    {
+        if (values.size() != 16)
+        {
+            throw std::invalid_argument("Transform requires 16 floats");
+        }
+        glm::mat4 matrix;
+        std::memcpy(&matrix, values.data(), sizeof(matrix));
+        experimentNode(m_Impl->scene(session), node).setLocalTransform(matrix);
     }
 
     void ExperimentHost::recordError(std::string_view operation, std::string_view message) noexcept

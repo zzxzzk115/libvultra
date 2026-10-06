@@ -1,5 +1,6 @@
 #include "lib/ray_surface.slangh"
 #include "lib/texture.slangh"
+#include "lib/environment_sampling.slangh"
 
 uint hashRandom(uint value)
 {
@@ -13,7 +14,8 @@ uint hashRandom(uint value)
 float random(inout uint state)
 {
     state = hashRandom(state + 0x9e3779b9);
-    return (float(state >> 8) + 0.5) * (1.0 / 16777216.0);
+    // A 23-bit midpoint stays strictly inside (0, 1) in float32, including the largest integer.
+    return (float(state >> 9) + 0.5) * (1.0 / 8388608.0);
 }
 
 float3 random3(inout uint state)
@@ -103,15 +105,17 @@ float3 directEnvironment(RaySurface surface, OpenPBR_PreparedBsdf bsdf, inout ui
     {
         return float3(0);
     }
-    float y = 1 - 2 * random(state);
-    float phi = 2 * pi * random(state);
-    float radius = sqrt(max(0, 1 - y * y));
-    float3 direction = float3(radius * cos(phi), y, radius * sin(phi));
+    float technique = random(state);
+    float cell = random(state);
+    float chooseAlias = random(state);
+    float longitude = random(state);
+    float latitude = random(state);
+    float3 direction = sampleEnvironment(technique, cell, chooseAlias, longitude, latitude);
     if (!visible(surface, direction, 1e30, rays))
     {
         return float3(0);
     }
-    float pdf = 1 / (4 * pi);
+    float pdf = environmentPdf(direction);
     return openpbr_get_sum_of_diffuse_specular(openpbr_eval(bsdf, direction)) * environmentRadiance(direction) *
            misWeight(pdf, openpbr_pdf(bsdf, direction)) / pdf;
 }
@@ -204,7 +208,7 @@ void traceMain(uint3 thread : SV_DispatchThreadID)
         RayHit hit = traceRay(ray, false);
         if (!hit.found)
         {
-            float weight = bounce == 0 ? 1 : misWeight(previousPdf, 1 / (4 * pi));
+            float weight = bounce == 0 ? 1 : misWeight(previousPdf, environmentPdf(ray.Direction));
             radiance += throughput * environmentRadiance(ray.Direction) * weight;
             break;
         }

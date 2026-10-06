@@ -1,0 +1,52 @@
+#pragma once
+
+#include "lib/texture.slangh"
+#include "resources/path_trace.slangh"
+
+struct EnvironmentAlias
+{
+    float probability;
+    uint alias;
+    float density;
+    float padding;
+};
+[[vk::binding(21, 0)]] StructuredBuffer<EnvironmentAlias> traceEnvironmentDistribution;
+
+float environmentPdf(float3 direction)
+{
+    uint width;
+    uint height;
+    traceEnvironment.GetDimensions(width, height);
+    float2 uv = environmentUv(direction);
+    uv.x = frac(uv.x);
+    uint2 pixel = min(uint2(uv * float2(width, height)), uint2(width - 1, height - 1));
+    return 0.95 * traceEnvironmentDistribution[pixel.y * width + pixel.x].density + 0.05 / (4 * pi);
+}
+
+float3 sampleEnvironment(float technique, float cell, float chooseAlias, float longitude, float latitude)
+{
+    uint width;
+    uint height;
+    traceEnvironment.GetDimensions(width, height);
+    float phi;
+    float cosine;
+    if (technique < 0.05)
+    {
+        phi = (longitude - 0.5) * 2 * pi;
+        cosine = 1 - 2 * latitude;
+    }
+    else
+    {
+        uint index = min(uint(cell * (width * height)), width * height - 1);
+        EnvironmentAlias entry = traceEnvironmentDistribution[index];
+        if (chooseAlias >= entry.probability)
+        {
+            index = entry.alias;
+        }
+        uint2 pixel = uint2(index % width, index / width);
+        phi = ((pixel.x + longitude) / width - 0.5) * 2 * pi;
+        cosine = lerp(cos(pi * pixel.y / height), cos(pi * (pixel.y + 1) / height), latitude);
+    }
+    float sine = sqrt(max(0, 1 - cosine * cosine));
+    return float3(cos(phi) * sine, cosine, sin(phi) * sine);
+}
