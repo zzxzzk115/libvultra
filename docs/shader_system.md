@@ -1,5 +1,8 @@
 # Vultra Shader
 
+This guide describes the current implementation. The proposed internal keyword and specialization design is in
+[Internal Shader System Design](shader_system_design.md); those extensions are not implemented yet.
+
 Vultra has two independent authoring paths. A game material is a `.vshader` file with a ShaderLab-style
 description and ordinary Slang program blocks. A research program is a native `.slang` file; its host constructs
 VRI descriptors and records draw or dispatch commands directly. Neither path requires a SceneTree. Both use
@@ -17,6 +20,9 @@ xmake run example-shader --deferred --frames 60
 xmake run example-shader --meshlets --frames 60
 xmake run example-shader --edit
 ```
+
+`--meshlets` selects Forward task/mesh drawing; `--deferred` selects indexed G-buffer drawing. The current
+renderer rejects their combination. Mesh-driven G-buffer rendering remains unimplemented.
 
 `example-shader` depends on `example-shaders`. This build target cooks the game example and a native research
 compute shader before execution, reusing unchanged artifacts. The default game example loads
@@ -223,6 +229,60 @@ The experiment owns layouts, descriptor pools, bindings and draw/dispatch comman
 sizes, mesh outputs and native language features come from Slang and reflection. No game material declaration,
 shader registry or SceneTree is introduced on this path.
 
+## Compilation cost and development caches
+
+Use a retained ShaderCompiler for native experiments that compile several entry groups or link-time constants:
+
+~~~cpp
+#include <vultra/drivers/rhi/shader_compiler.hpp>
+
+vultra::ShaderCompiler compiler;
+vultra::ShaderCompileOptions options;
+options.entries = {{"main", VriShaderStage_Compute}};
+options.linkSources = {{"selection", "export static const uint samples = 16;"}};
+auto program = compiler.compile("experiment.slang", options);
+
+options.linkSources.front().value = "export static const uint samples = 64;";
+auto specialized = compiler.compile("experiment.slang", options);
+const auto timings = compiler.lastCompileStatistics();
+~~~
+
+A context owns one lazily initialized Slang global session and up to 16 checked module IR snapshots. Each request
+uses a fresh compilation session: entry selection and link constants cannot leak between variants. Matching primary
+module IR can be reused for another entry group or link constant; changed macros, profiles, capabilities, source or
+resolved dependencies require new frontend work. Linked modules are compiled in that isolated session. One caller
+owns a context; concurrent workers must use separate contexts. The ordinary ShaderProgram convenience functions
+remain available. Source-backed ShaderPipeline retains its own context across reloads; cooked pipelines do not
+construct one. Game asset compilation shares one context across its Passes and named variants.
+
+Three distinct reuse mechanisms are implemented:
+
+| Layer | Ownership and lifetime | Work avoided |
+| --- | --- | --- |
+| Checked module IR | ShaderCompiler, bounded to 16 snapshots in memory | Parsing and checking the matching primary Slang module |
+| Target program cache | Development files under .vultra/shaders | Slang initialization, linking and SPIR-V emission on a valid hit |
+| Driver pipeline cache | Device-owned VRI handle, current process only | Allows the driver to reuse graphics/compute pipeline compilation work |
+
+The program cache uses checksummed .vshadercache files. A hash selects the file; the entire canonical request
+must match, and every captured dependency is checked by content and include resolution. Invalid caches are logged
+and recooked. Compiler failures preserve the last successful file. A cache hit returns owned bytecode and target
+reflection before creating a Slang session. These development files include authoring request data and are not
+shipping assets; package .vshaderc artifacts instead. Construct ShaderCompiler with an empty filesystem path
+to disable disk caching while retaining scoped IR reuse. Do not put development caches under version control.
+
+ShaderCompileStatistics reports program/module hits and frontend, link, code generation and total durations.
+The compiler logs these durations and dependency invalidations. New source or specialization still requires
+linking and SPIR-V emission; IR reuse does not make arbitrary edits free. Authored game-file changes conservatively
+invalidate its dependent programs, including metadata edits. Stable frames neither compile nor create pipelines.
+Native ShaderPipeline reload remains synchronous; game ShaderRuntime compiles candidates on its existing vtask
+worker and publishes GPU state at a completed-frame boundary.
+
+Pass Device::pipelineCache directly in VriGraphicsPipelineDesc or VriComputePipelineDesc when constructing native
+pipelines. The built-in renderer, ShaderMaterial and drawing examples do this. Destroy pipelines before their
+Device. The cache is neither persisted between launches nor supplied to ray-tracing pipelines, whose pinned VRI
+descriptor does not expose it. It supplements the existing per-material pipeline-object reuse; changing a uniform
+property still does not require shader compilation, pipeline creation or geometry upload.
+
 ## Cooking, caching and packaging
 
 ```powershell
@@ -233,7 +293,8 @@ xmake run vultra-shader experiment.slang --output build/experiment.vshaderc --en
 
 Other options include repeated `--link`, `--capability`, `--variant`, `--profile`, `--ray-query` and `--reflection`.
 The reflection JSON includes target offsets, resource categories, array strides and matrix layout information.
-Game entries come from Pass declarations; `--entry` applies to the research path.
+Game entries come from Pass declarations; `--entry` applies to the research path. Its stage names are vertex,
+fragment, compute, geometry, hull, domain, task, mesh, raygen, intersection, anyhit, closesthit, miss and callable.
 
 Both paths write a checksummed, bounded version-1 `.vshaderc` archive. Its source kind is explicitly `raw_slang` or
 `game_shader`. Raw loading never interprets game properties, and game loading never interprets a raw program as
@@ -326,6 +387,9 @@ Inspector tests drive actual pointer events for edits, reset and variant selecti
 padding, matrices, arrays, resource arrays and sparse sets. Surface tests compare indexed, meshlet, Forward and
 deferred output and check alpha mask, dedicated DepthOnly, shadow, normal mapping, mirrors, backfaces, state
 pipeline reuse and OpenPBR channels. Project tests delete source before loading their VPK and compare HDR output.
+Native program tests retain all six ray tracing stages through discovery, explicit entry selection and a
+source-free cooked roundtrip, while still rejecting combined stage bits. The triangle and Cornell examples
+exercise actual raygen/miss/closest-hit pipelines; this does not establish game Surface participation in RT.
 Windows player acceptance also cooks a game project, removes its source and compares identical external/embedded
 VPK captures. Native language-service verification is available with:
 

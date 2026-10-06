@@ -245,6 +245,7 @@ namespace vultra
                                                     VriBlendFactor_OneMinusSrcAlpha,
                                                     VriBlendOp_Add};
                             VriGraphicsPipelineDesc desc {};
+                            desc.pipelineCache           = m_Device.pipelineCache;
                             desc.pipelineLayout          = m_Layout;
                             desc.shaders                 = shaders.data();
                             desc.shaderNum               = uint32_t(shaders.size());
@@ -297,8 +298,8 @@ namespace vultra
                     makeBuffer(vertices.data(), vertices.size() * sizeof(Rml::Vertex), VriBufferUsage_VertexBuffer);
                 std::vector<uint32_t> unsignedIndices(indices.begin(), indices.end());
                 geometry->indices    = makeBuffer(unsignedIndices.data(),
-                                                  unsignedIndices.size() * sizeof(uint32_t),
-                                                  VriBufferUsage_IndexBuffer);
+                                               unsignedIndices.size() * sizeof(uint32_t),
+                                               VriBufferUsage_IndexBuffer);
                 geometry->indexCount = uint32_t(indices.size());
                 auto* pointer        = geometry.get();
                 m_Geometries.emplace(pointer, std::move(geometry));

@@ -105,7 +105,10 @@ namespace vultra::detail
             return stage == VriShaderStage_Vertex || stage == VriShaderStage_Fragment ||
                    stage == VriShaderStage_Compute || stage == VriShaderStage_Geometry ||
                    stage == VriShaderStage_TessControl || stage == VriShaderStage_TessEval ||
-                   stage == VriShaderStage_Task || stage == VriShaderStage_Mesh;
+                   stage == VriShaderStage_Task || stage == VriShaderStage_Mesh || stage == VriShaderStage_RayGen ||
+                   stage == VriShaderStage_Intersection || stage == VriShaderStage_AnyHit ||
+                   stage == VriShaderStage_ClosestHit || stage == VriShaderStage_Miss ||
+                   stage == VriShaderStage_Callable;
         }
     } // namespace
 
@@ -201,9 +204,11 @@ namespace vultra::detail
     void writeShaderArchive(const std::filesystem::path& file, const Json& document)
     {
         static_assert(std::endian::native == std::endian::little);
-        if (file.extension() != ".vshaderc")
+        const bool developmentCache = document.at("kind") == "development_shader";
+        const auto extension        = developmentCache ? ".vshadercache" : ".vshaderc";
+        if (file.extension() != extension)
         {
-            throw std::invalid_argument("Cooked shader output must use .vshaderc");
+            throw std::invalid_argument(std::string("Shader output must use ") + extension);
         }
         const auto payload = Json::to_cbor(document);
         if (payload.size() > kMaxFileSize - kHeaderSize)
@@ -264,7 +269,8 @@ namespace vultra::detail
         }
         auto document = Json::from_cbor(bytes.begin() + kHeaderSize, bytes.end());
         if (!document.at("version").is_number_integer() || document.at("version") != 1 ||
-            (document.at("kind") != "raw_slang" && document.at("kind") != "game_shader"))
+            (document.at("kind") != "raw_slang" && document.at("kind") != "game_shader" &&
+             !(document.at("kind") == "development_shader" && file.extension() == ".vshadercache")))
         {
             throw std::invalid_argument("Unsupported cooked shader format: " + file.string());
         }

@@ -1,4 +1,5 @@
 #pragma once
+#include <vri/ext/vri_ext_pipeline_cache.h>
 #include <vri/vri.h>
 
 #include <stdexcept>
@@ -29,6 +30,11 @@ namespace vultra
         VriQueue*             queue    = nullptr;
         VriCoreInterface      core {};
         VriSwapChainInterface swap {};
+        // Pass this device-owned cache to graphics/compute VRI descriptors.
+        VriPipelineCache* pipelineCache = nullptr;
+
+    private:
+        VriPipelineCacheInterface m_PipelineCacheApi {};
     };
 
     // One frame in flight. submitAndWait is the lifetime boundary for all resources.

@@ -40,6 +40,11 @@ namespace vultra
                 throw std::runtime_error("VRI does not expose the actual swapchain extent");
             }
             check(core.GetQueue(handle, VriQueueType_Graphics, 0, &queue), "Get graphics queue");
+            check(
+                vriGetInterface(handle, VRI_INTERFACE_PIPELINE_CACHE, sizeof(m_PipelineCacheApi), &m_PipelineCacheApi),
+                "Get pipeline cache interface");
+            check(m_PipelineCacheApi.CreatePipelineCache(handle, nullptr, 0, &pipelineCache),
+                  "Create device pipeline cache");
         }
         catch (...)
         {
@@ -51,6 +56,7 @@ namespace vultra
     Device::~Device()
     {
         waitIdle();
+        m_PipelineCacheApi.DestroyPipelineCache(pipelineCache);
         vriDestroyDevice(handle);
     }
 

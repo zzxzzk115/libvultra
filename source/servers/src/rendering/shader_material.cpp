@@ -585,7 +585,7 @@ namespace vultra
                 {
                     throw std::invalid_argument("Compute Pass cannot use graphics attachments/input");
                 }
-                VriComputePipelineDesc desc {pass.layout, shaders.front(), nullptr};
+                VriComputePipelineDesc desc {pass.layout, shaders.front(), state.device.pipelineCache};
                 check(state.device.core.CreateComputePipeline(state.device.handle, &desc, &handle),
                       "Create shader compute pipeline");
             }
@@ -607,6 +607,7 @@ namespace vultra
                     colors.push_back({format, {}, VriColorWrite_RGBA});
                 }
                 VriGraphicsPipelineDesc desc {};
+                desc.pipelineCache  = state.device.pipelineCache;
                 desc.pipelineLayout = pass.layout;
                 desc.shaders        = shaders.data();
                 desc.shaderNum      = uint32_t(shaders.size());

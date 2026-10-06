@@ -37,6 +37,7 @@ namespace vultra
                 {
                     const VriColorAttachmentDesc color {.format = m_Format, .colorWriteMask = VriColorWrite_RGBA};
                     VriGraphicsPipelineDesc      desc {};
+                    desc.pipelineCache           = m_Device.pipelineCache;
                     desc.pipelineLayout          = m_Layout;
                     desc.shaders                 = shaders.data();
                     desc.shaderNum               = uint32_t(shaders.size());

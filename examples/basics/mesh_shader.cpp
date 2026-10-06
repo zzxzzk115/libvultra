@@ -35,6 +35,7 @@ public:
                     color.format         = getSwapchain().format();
                     color.colorWriteMask = VriColorWrite_RGBA;
                     VriGraphicsPipelineDesc desc {};
+                    desc.pipelineCache           = getDevice().pipelineCache;
                     desc.pipelineLayout          = m_Layout;
                     desc.shaders                 = shaders.data();
                     desc.shaderNum               = uint32_t(shaders.size());

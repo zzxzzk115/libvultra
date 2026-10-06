@@ -103,6 +103,73 @@ try
     require(views.size() == 2 && std::string_view(views[0].entryPointName) == "vertexMain" &&
                 views[1].stage == VriShaderStage_Fragment,
             "Cooked descriptor selection failed");
+
+    const std::string_view raySource = R"(
+struct Payload
+{
+    float value;
+};
+[shader("raygeneration")]
+void raygenMain()
+{
+}
+[shader("miss")]
+void missMain(inout Payload payload)
+{
+    payload.value = 0;
+}
+[shader("closesthit")]
+void closestHitMain(inout Payload payload, BuiltInTriangleIntersectionAttributes attributes)
+{
+    payload.value = attributes.barycentrics.x;
+}
+[shader("anyhit")]
+void anyHitMain(inout Payload payload, BuiltInTriangleIntersectionAttributes attributes)
+{
+    payload.value = attributes.barycentrics.y;
+}
+[shader("intersection")]
+void intersectionMain()
+{
+    BuiltInTriangleIntersectionAttributes attributes;
+    attributes.barycentrics = 0;
+    ReportHit(1, 0, attributes);
+}
+[shader("callable")]
+void callableMain(inout Payload payload)
+{
+    payload.value = 1;
+}
+)";
+    const std::array       rayEntries {ShaderEntry {"raygenMain", VriShaderStage_RayGen},
+                                 ShaderEntry {"missMain", VriShaderStage_Miss},
+                                 ShaderEntry {"closestHitMain", VriShaderStage_ClosestHit},
+                                 ShaderEntry {"anyHitMain", VriShaderStage_AnyHit},
+                                 ShaderEntry {"intersectionMain", VriShaderStage_Intersection},
+                                 ShaderEntry {"callableMain", VriShaderStage_Callable}};
+    const auto             rayProgram = ShaderProgram::compileSource(root / "ray.slang", raySource);
+    require(rayProgram.shaders.size() == rayEntries.size(), "Ray tracing entry discovery failed");
+    const auto rayCooked = root / "ray.vshaderc";
+    rayProgram.save(rayCooked);
+    const auto           rayRestored = ShaderProgram::load(rayCooked);
+    const auto           rayViews    = rayRestored.descriptors(rayEntries);
+    ShaderCompileOptions rayOptions;
+    rayOptions.entries.assign(rayEntries.begin(), rayEntries.end());
+    const auto rayRequested = ShaderProgram::compileSource(root / "ray.slang", raySource, rayOptions);
+    for (size_t i = 0; i < rayEntries.size(); ++i)
+    {
+        require(rayViews[i].stage == rayEntries[i].stage &&
+                    std::string_view(rayViews[i].entryPointName) == rayEntries[i].name &&
+                    rayRestored.shaders[i].words == rayProgram.shaders[i].words &&
+                    rayRequested.shaders[i].entry.stage == rayEntries[i].stage,
+                "Ray tracing explicit selection or source-free roundtrip lost stage/bytecode");
+    }
+    alterDocument(rayCooked,
+                  readBytes(rayCooked),
+                  [](auto& document)
+                  {
+                      document["entries"][0]["stage"] = uint32_t(VriShaderStage_RayGen | VriShaderStage_Miss);
+                  });
     const std::array wrongStage {ShaderEntry {"vertexMain", VriShaderStage_Fragment}};
     reject(
         [&]

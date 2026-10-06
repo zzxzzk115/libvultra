@@ -1,6 +1,7 @@
 #include "shader_cache.hpp"
 
 #include <vultra/core/base/logger.hpp>
+#include <vultra/drivers/rhi/shader_compiler.hpp>
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
 
 #ifdef _MSC_VER
@@ -141,7 +142,8 @@ namespace vultra
         }
         if (m_File.extension() == ".slang")
         {
-            m_Watch = std::make_unique<Watch>();
+            m_Compiler = std::make_unique<ShaderCompiler>();
+            m_Watch    = std::make_unique<Watch>();
             m_Watch->roots.insert(watchDirectory.empty() ? m_File.parent_path() :
                                                            std::filesystem::absolute(watchDirectory));
         }
@@ -195,7 +197,7 @@ namespace vultra
                 throw std::invalid_argument("SPIR-V shader programs require a Vulkan device");
             }
             const auto program = m_File.extension() == ".vshaderc" ? ShaderProgram::load(m_File) :
-                                                                     ShaderProgram::compile(m_File, m_CompileOptions);
+                                                                     m_Compiler->compile(m_File, m_CompileOptions);
             m_Diagnostics      = program.diagnostics;
             if (program.rayQuery && !desc.hasRayQuery)
             {

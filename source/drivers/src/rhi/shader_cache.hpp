@@ -6,6 +6,9 @@
 
 namespace vultra::detail
 {
+    std::string shaderCompileSignature(const std::filesystem::path& source,
+                                       std::string_view             text,
+                                       const ShaderCompileOptions&  options);
     std::string
     shaderCompileKey(const std::filesystem::path& source, std::string_view text, const ShaderCompileOptions& options);
     bool                            shaderDependenciesCurrent(std::span<const ShaderDependency> dependencies,

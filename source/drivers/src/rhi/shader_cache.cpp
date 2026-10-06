@@ -39,8 +39,9 @@ namespace vultra::detail
         }
     } // namespace
 
-    std::string
-    shaderCompileKey(const std::filesystem::path& source, std::string_view text, const ShaderCompileOptions& options)
+    std::string shaderCompileSignature(const std::filesystem::path& source,
+                                       std::string_view             text,
+                                       const ShaderCompileOptions&  options)
     {
         using Json = nlohmann::json;
         Json key {{"compiler", ShaderProgram::compilerVersion()},
@@ -75,7 +76,13 @@ namespace vultra::detail
         {
             key["link_sources"].push_back({module.name, module.value});
         }
-        const auto serialized = key.dump();
+        return key.dump();
+    }
+
+    std::string
+    shaderCompileKey(const std::filesystem::path& source, std::string_view text, const ShaderCompileOptions& options)
+    {
+        const auto serialized = shaderCompileSignature(source, text, options);
         return std::to_string(XXH3_64bits(serialized.data(), serialized.size()));
     }
 

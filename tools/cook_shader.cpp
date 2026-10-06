@@ -54,7 +54,7 @@ try
     cli.add_argument("--include").append().help("Additional include directory; may be repeated");
     cli.add_argument("--variant").append().help("Selected game variant; repeated, defaults to all declared variants");
     cli.add_argument("--entry").append().help(
-        "Raw entry as vertex:name, fragment:name, compute:name, task:name or mesh:name");
+        "Raw stage:name entry; raster, compute, task/mesh and ray-tracing stages are supported");
     cli.add_argument("--define").append().help("Preprocessor macro NAME=VALUE; may be repeated");
     cli.add_argument("--capability").append().help("Explicit Slang target capability; may be repeated");
     cli.add_argument("--link").append().help("Additional Slang link module; may be repeated");
@@ -95,7 +95,13 @@ try
                                                                 {"mesh", VriShaderStage_Mesh},
                                                                 {"geometry", VriShaderStage_Geometry},
                                                                 {"hull", VriShaderStage_TessControl},
-                                                                {"domain", VriShaderStage_TessEval}};
+                                                                {"domain", VriShaderStage_TessEval},
+                                                                {"raygen", VriShaderStage_RayGen},
+                                                                {"intersection", VriShaderStage_Intersection},
+                                                                {"anyhit", VriShaderStage_AnyHit},
+                                                                {"closesthit", VriShaderStage_ClosestHit},
+                                                                {"miss", VriShaderStage_Miss},
+                                                                {"callable", VriShaderStage_Callable}};
         for (const auto& value : *values)
         {
             const auto separator = value.find(':');

@@ -20,8 +20,8 @@ namespace sample
                                 VriBufferUsage_VertexBuffer,
                                 {VriAccess_VertexBufferRead, VriPipelineStage_VertexInput});
         indices  = uploadBuffer(device,
-                                std::as_bytes(indexData),
-                                VriBufferUsage_IndexBuffer,
+                               std::as_bytes(indexData),
+                               VriBufferUsage_IndexBuffer,
                                 {VriAccess_IndexBufferRead, VriPipelineStage_VertexInput});
         VriPushConstantDesc   push {0, sizeof(Parameters), VriShaderStage_Vertex | VriShaderStage_Fragment};
         VriPipelineLayoutDesc layoutDesc {};
@@ -50,6 +50,7 @@ namespace sample
                     color.colorWriteMask = VriColorWrite_RGBA;
 
                     VriGraphicsPipelineDesc desc {};
+                    desc.pipelineCache           = device.pipelineCache;
                     desc.pipelineLayout          = layout;
                     desc.shaders                 = shaders.data();
                     desc.shaderNum               = uint32_t(shaders.size());

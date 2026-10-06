@@ -2,6 +2,7 @@
 
 #include <vultra/assets/shader_asset.hpp>
 #include <vultra/core/base/logger.hpp>
+#include <vultra/drivers/rhi/shader_compiler.hpp>
 
 #include <nlohmann/json.hpp>
 #include <xxhash.h>
@@ -252,6 +253,7 @@ namespace vultra
         {
             expandSurface(subshader);
         }
+        ShaderCompiler compiler;
         for (uint32_t subshaderIndex = 0; subshaderIndex < asset.subshaders.size(); ++subshaderIndex)
         {
             auto& subshader = asset.subshaders[subshaderIndex];
@@ -280,7 +282,7 @@ namespace vultra
                     ShaderProgram program;
                     try
                     {
-                        program = ShaderProgram::compileSource(asset.sourcePath, source, settings);
+                        program = compiler.compileSource(asset.sourcePath, source, settings);
                     }
                     catch (const std::exception& error)
                     {

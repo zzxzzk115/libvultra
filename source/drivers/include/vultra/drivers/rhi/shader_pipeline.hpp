@@ -10,6 +10,8 @@
 
 namespace vultra
 {
+    class ShaderCompiler;
+
     class ShaderPipeline
     {
     public:
@@ -53,13 +55,14 @@ namespace vultra
 
     private:
         struct Watch;
-        Device&                m_Device;
-        std::filesystem::path  m_File;
-        ShaderCompileOptions   m_CompileOptions;
-        Builder                m_Builder;
-        VriPipeline*           m_Pipeline = nullptr;
-        std::string            m_Diagnostics;
-        uint64_t               m_Generation = 0;
-        std::unique_ptr<Watch> m_Watch;
+        Device&                         m_Device;
+        std::filesystem::path           m_File;
+        ShaderCompileOptions            m_CompileOptions;
+        Builder                         m_Builder;
+        VriPipeline*                    m_Pipeline = nullptr;
+        std::string                     m_Diagnostics;
+        uint64_t                        m_Generation = 0;
+        std::unique_ptr<ShaderCompiler> m_Compiler;
+        std::unique_ptr<Watch>          m_Watch;
     };
 } // namespace vultra

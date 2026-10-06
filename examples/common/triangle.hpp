@@ -47,6 +47,7 @@ struct Triangle
                     color.format         = format;
                     color.colorWriteMask = VriColorWrite_RGBA;
                     VriGraphicsPipelineDesc desc {};
+                    desc.pipelineCache           = device.pipelineCache;
                     desc.pipelineLayout          = layout;
                     desc.shaders                 = shaders.data();
                     desc.shaderNum               = uint32_t(shaders.size());

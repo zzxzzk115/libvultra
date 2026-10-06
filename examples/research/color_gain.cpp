@@ -50,6 +50,7 @@ namespace research
                         [this](std::span<const VriShaderDesc> shaders)
                         {
                             VriComputePipelineDesc desc {};
+                            desc.pipelineCache    = m_Device.pipelineCache;
                             desc.pipelineLayout   = m_Layout;
                             desc.shader           = shaders.front();
                             VriPipeline* pipeline = nullptr;
@@ -79,7 +80,7 @@ namespace research
                 const auto source = inputs.front();
                 auto       desc   = graph.resourceInfo(source).textureDesc;
                 desc.usage        = VriTextureUsage_ShaderResourceStorage | VriTextureUsage_ShaderResource |
-                                    VriTextureUsage_TransferSrc;
+                             VriTextureUsage_TransferSrc;
                 const auto output = graph.createTexture(std::string(name) + ".color", desc);
                 graph.addPass(
                     std::string(name),
