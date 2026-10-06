@@ -18,6 +18,7 @@ The `dev-VRI` branch is a small VRI-based rendering research framework within li
 - A built-in renderer with naive deferred and forward paths, an opaque OpenPBR subset, HDR IBL and cascaded shadows
 - Optional scene cameras, lights, materials and environments with incremental synchronization shared by C++, native/Lua/C# scripts and both renderer paths
 - A lightweight asset pipeline that caches generated mip levels and BC7 data textures without duplicating source assets
+- Explicit filesystem/VPK sources; offline sessions read packaged models, HDR, textures and game shaders directly
 - Hardware ray-query, ray-tracing and task/mesh shader examples
 - A static glTF/GLB viewer with model selection and Damaged Helmet as the default model
 - OpenXR stereo rendering with a desktop mirror
@@ -27,7 +28,7 @@ The `dev-VRI` branch is a small VRI-based rendering research framework within li
 - Graph memory/producer reports, nested CPU/GPU events and offscreen RenderDoc capture
 - `vultra-app` research workbench: node graph editing, scene/resource inspection, output previews and saved workspaces; offline UI capture
 
-The source is organized by `core`, `platform`, `drivers`, `assets`, `servers`, `scene`, `ui`, `main` and `api`, with optional `scripting`. A single public `vultra` static library supports direct VRI experiments; `vultra-scripting` adds native, Lua and C# project modules. See the [early engine architecture](docs/architecture.md) and [research core milestones](docs/research_milestones.md).
+The source is organized by `core`, `platform`, `drivers`, `assets`, `servers`, `scene`, `ui`, `main` and `api`, with optional `scripting`. A single public `vultra` static library supports direct VRI experiments; `vultra-scripting` adds native, Lua and C# project modules. See the [early engine architecture](docs/architecture.md) and [unified research and engine roadmap](docs/research_milestones.md).
 
 ## Showcase
 
@@ -90,7 +91,7 @@ xmake build -y --all
 
 The `libvultra_build_examples`, `libvultra_build_tests` and `libvultra_with_openxr` options are enabled by default. Set `--libvultra_with_openxr=y` to restore XR support.
 
-The packaged player supports either `vultra-runtime` plus a project VPK or a single executable with the project VPK appended. Built-in Slang shaders are cooked to SPIR-V during the build and embedded in the runtime. The sample package includes a RmlUi HUD; the ImGui debugger remains optional with `--debug-ui`. After building the tools, export and launch use their executables directly; xmake is not needed on the target machine:
+The packaged player supports either `vultra-runtime` plus a project VPK or a single executable with the project VPK appended. Built-in Slang shaders are cooked to SPIR-V during the build and embedded in the runtime. The runtime reads project assets and its RmlUi HUD directly from VPK entries; the ImGui debugger remains optional with `--debug-ui`. After building the tools, export and launch use their executables directly; xmake is not needed on the target machine:
 
 ```sh
 xmake build vultra-pack vultra-runtime

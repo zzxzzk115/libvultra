@@ -34,9 +34,13 @@ with Research("build/linux/x86_64/release/libvultra-research.so") as research:
         print(session.scene["version"])
 ```
 
-Input may be a model, `.vproject` or `.vpk`. A VPK is extracted into a session-owned temporary directory and removed
-after scripts and GPU resources are destroyed. This is file extraction, not resource-stream import. Copied library/VPK
-loading and the CLI/Python raster/reference readback regressions pass on Linux and Windows development machines. Separate clean-machine delivery, D3D12 and cross-device numerical baselines remain open.
+Input may be a model, `.vproject` or `.vpk`. A VPK stays mounted in a session-owned `AssetSource`: scenes, models,
+external model dependencies, HDR environments, textures and cooked game shaders are read from checked entry bytes.
+Script files and native/managed sidecars are materialized individually and removed after their script hosts stop.
+The embedded engine shader pack still uses the shared file-based bootstrap. Direct-entry loading, copied
+library/VPK startup and CLI/Python raster/reference readbacks pass on Linux. Earlier Windows delivery checks
+predate this source migration; current Windows, separate clean-machine delivery, D3D12 and cross-device
+numerical baselines remain open.
 
 `image()` returns display-encoded final color. `image("hdr")` returns the processed linear scene color. Other names
 must be marked graph outputs, such as `gain.color`. Returned arrays have shape `(height, width, 4)`, `float32`, a

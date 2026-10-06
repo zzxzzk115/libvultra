@@ -1,7 +1,10 @@
 # Follow-up tasks
 
-The research milestone gates are tracked in [research_milestones.md](research_milestones.md). This list separates
-unfinished acceptance from additional engine/research features. Items here do not create modules or dependencies.
+The integrated E0–E7 engine work and M0–M7 research gates are tracked in
+[research_milestones.md](research_milestones.md). Implement E0 properties, E1 attachments and E3 editing as the
+first combined slice; the platform gates below remain acceptance work, not a reason to defer that core.
+This list separates unfinished acceptance from additional engine/research features. Items here do not create
+modules or dependencies.
 VRI, the existing RenderGraph, one public static `vultra` library and direct C++ use remain the boundaries.
 
 ## Close the current gates first
@@ -26,7 +29,7 @@ Its service locator, old RHI/FrameGraph, EnTT world, global state and shader pac
 
 | Order | Verified implementation | Reuse the behavior in the current design |
 | --- | --- | --- |
-| A | [Cooked asset registry and VPK-backed VFS](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra/src/function/asset/asset_registry.cpp) resolve UUIDs, populate a registry from the package and mount resources. | Add CPU asset-source reads from package memory/streams using persistent asset IDs. Preserve the current import/cache formats; evaluate `vasset` only against concrete cooking requirements. GPU residency remains server-owned. Prove readback parity with no whole-package extraction. Native libraries/.NET assemblies can still require materialized files. |
+| A | [Cooked asset registry and VPK-backed VFS](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra/src/function/asset/asset_registry.cpp) resolve UUIDs, populate a registry from the package and mount resources. | Offline and project-runtime CPU asset reads are implemented through `AssetSource`, preserving asset IDs, import/cache formats and GPU server ownership. File/VPK pixels match without whole-project extraction; native/managed dependencies are materialized selectively. VGui also reads RML/RCSS, fonts and PNGs directly; remaining work is the embedded-engine bootstrap and Lua module-stream loading. Evaluate `vasset` only against concrete cooking requirements. |
 | A | [Export packing](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra_app/src/editor_app/editor_app_build.cpp) collects enabled scenes and plugins, omits editor-only plugins and copies explicit desktop/Web templates. [Template repository](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra_app/src/editor_app/export_templates_repository.cpp) resolves platform/architecture distributions. | Built-in and explicit project SPIR-V shader cooking, typed game/native shader assets and source-free shader VPKs are implemented. Extend the existing no-xmake export API with DXIL, explicit template metadata and dependency closure. Test one-EXE embedding, external VPK and optional vendor sidecars independently. This inspected desktop exporter writes `resources.vpk` beside the EXE; it is not evidence of project-VPK embedding. |
 | B | [Frame/video recording](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra_app/src/editor_app/runtime_mcp_recording.cpp) has a bounded raw-frame queue, JPEG worker, MJPEG clients and video-encoder piping. [Python client](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/tools/python/vultra_client/README.md) consumes streamed frames. | Build an optional browser preview over the existing offline session with bounded readback/encoding and explicit cancellation. Begin with a local HTTP MJPEG frontend; authentication/network exposure is a separate deployment choice. Neither MCP nor an AI service becomes a framework prerequisite. |
 | B | [Simulation tools](https://github.com/zzxzzk115/libvultra/blob/d8fe93850d7dbeeebc6992476566d7f70bc6ca86/source/vultra_app/src/editor_app/runtime_mcp_sim_tools.cpp) implement reset/seed and deferred fixed-step simulation. | Extend the generated experiment session API with reset, actions and named observations when actual simulation state exists. Test reset equivalence and action-to-render ordering. Python/NumPy remains an optional external research client. |
@@ -39,8 +42,10 @@ Its service locator, old RHI/FrameGraph, EnTT world, global state and shader pac
 
 ## Additional project work
 
-Scene topology authoring, script attachment/discovery, generated safe language wrappers, native/Lua reload-state
-transfer, undo/redo and asset dependency inspection should consume the same Node/Resource and property model.
+Scene topology authoring, script attachment/discovery, native/Lua reload-state transfer, undo/redo and asset
+dependency inspection belong to E1–E4 and consume the same Node/Resource and generated property model.
+Safe C# camera/light/environment/material value types and their ABI conversion now come from the existing IR;
+node wrapper discovery/identity and script-class metadata remain E0/E1 work.
 Advanced RmlUi masks/transforms/layers/effects need backend implementations and image/input fixtures; current VGui
 support must not silently claim those capabilities. TAA, SSAO, SSR, OIT and research algorithms should be catalog
 passes using explicit history/AOV contracts, added one at a time with baselines.

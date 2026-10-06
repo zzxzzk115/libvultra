@@ -2,17 +2,42 @@
 
 Vultra has two entry paths. A C++ research program links `vultra` and uses VRI, shaders, RenderGraph, asset import or the built-in renderer directly. A packaged project uses `vultra-runtime` with an external VPK or appends that VPK to a copy of the executable. The scene tree, script host and separate editor do not sit between direct C++ code and VRI.
 
+The implementation order and acceptance gates are in the
+[unified roadmap](research_milestones.md#editable-engine-core-implementation-order). JSON remains the scene,
+resource and workspace format. Keep each format at version `1` before release and update both ends of a
+breaking change without compatibility readers. Fixed updates, attachments, PackedScene, undo/redo and independent
+offscreen Play are planned there; their inclusion in the roadmap does not make them current features.
+
+## Generated properties
+
+`PropertyValue` in `core` owns a typed scalar, string, enum, vector or matrix value. `PropertyInfo` describes
+the name, JSON path, editor hints, serialization/inspection/binding/reload flags and generated typed accessors.
+`ObjectTypeInfo` groups properties; `ObjectTypeCatalog` belongs to a context or direct C++ caller. Descriptors
+are borrowed, so registrations must end before a defining module unloads. There is no global type registry.
+
+Camera, light, environment, material and renderer settings use generated descriptors in their owning modules.
+Scene JSON and EditorGuiInspector consume the same descriptors. JSON decoding validates the complete input before
+writing fields, rejects unknown keys/type errors and fills missing fields from C++ defaults. Numeric UI ranges are
+hints; apply an edited settings value through the scene setter to validate semantic relationships and mark changes.
+The Inspector does not own the edited object. Current descriptors cover value settings, not arbitrary Node factories,
+script-class metadata, persistent references or variable-length property arrays.
+
+The existing libclang IR also generates safe C# camera/light/environment/material value records, native defaults,
+color-vector grouping and conversion to the generated C ABI PODs. `VultraValues.g.cs` contains no unsafe code;
+`VultraBindings.g.cs` remains private interop. Native defaults are used by `new SettingsType()`; CLR `default`
+still zero-initializes a value type. General node wrappers and managed reload metadata are subsequent work.
+
 ## Modules and identity
 
 | Module | Responsibility |
 | --- | --- |
-| `core`, `platform` | Values, diagnostics, files, windows and input. |
+| `core`, `platform` | Values, property/type contracts, diagnostics, files, windows and input. |
 | `drivers` | VRI device/resources/swapchain, profiling and OpenXR GPU integration. |
 | `assets` | CPU `SceneData`, import/cache, project manifests and stable asset IDs. |
 | `servers` | RenderGraph, GPU scene ownership and `RenderingServer` RIDs. |
 | `scene` | Optional Node/Resource tree, runtime `ObjectId` and persistent node IDs. |
 | `ui`, `main` | EditorGui/VGui and the application frame lifecycle. |
-| `api` | Generated C UI/scene/experiment tables, language layouts and Inspector descriptions. |
+| `api` | Generated C UI/scene/experiment tables, language layouts and Inspector adapters. |
 | `scripting` | Optional native, Lua and C# host, linked as `vultra-scripting`. |
 
 A RenderGraph resource is valid only inside its graph. A server RID identifies a live GPU resource in one rendering context; it is never serialized. `ObjectId` identifies a live scene object, while VPKs persist separate asset and node IDs. `RuntimeContext` owns Window, Device, Swapchain/Frame and RenderingServer in dependency order. The packaged renderer bakes mesh geometry, updates GPU instance transforms after script callbacks, and rebuilds geometry after mesh membership or model changes at a completed-frame boundary. Scripted group/mesh creation and reparenting use the same scene tree; reparenting preserves local transforms. Camera/light nodes remain CPU-owned by the tree. A reused `SceneRenderState` resolves their global transforms and selected camera into frame data consumed by both renderer paths, without rebuilding geometry or graphs. Scene-owned material resources persist by stable asset ID; mesh overrides resolve into per-instance numeric slots while retaining imported texture bindings. Their changes synchronize existing constants after GPU completion without reuploading geometry. Removing a resource clears references and invalidates its runtime handle. An explicitly selected non-spatial EnvironmentNode owns CPU HDR asset/intensity settings. Source changes replace preprocessed lighting at a completed-frame boundary while retaining the renderer and graph; scalar intensity changes reuse textures. Camera/light/material/environment value layouts and C wrappers are generated from the same annotated declarations. Direct C++ renderers can bypass the scene tree or pass an explicit light span to the renderer.
@@ -37,9 +62,9 @@ Ready/start runs before the first update; scene reads and writes are valid only 
 
 ## Package contract and open boundaries
 
-The runtime statically links its engine libraries and the optional Lua host. A project VPK carries its native modules, C# assemblies and assets. The player currently extracts project and built-in VPK contents for file-based loading; native libraries require a real file path. C# projects also need an installed .NET 10 runtime. On Linux, system Vulkan, display-stack and libc libraries remain required, so “single executable” does not mean a fully static ELF.
+The runtime statically links its engine libraries and the optional Lua host. A project VPK carries its native modules, C# assemblies and assets. Offline sessions and the project runtime own an explicit `AssetSource` and read project CPU assets directly from checked VPK entries. VGui reads documents, relative stylesheets, fonts and PNGs through that same source; only script files and declared native/managed sidecars are materialized. The embedded engine-shader bootstrap still uses extracted files. C# projects also need an installed .NET 10 runtime. On Linux, system Vulkan, display-stack and libc libraries remain required, so “single executable” does not mean a fully static ELF.
 
-Before the first public release, every serialized-data and file-structure version stays at `1`; format edits are breaking changes across writer, reader, examples and tests. The C ABI version also remains `1`; rebuild native and managed modules after breaking API changes. SDK bootstrap checks require exact table sizes. No compatibility adapters are provided. Stream-backed asset/UI reads and broader resource/server/editor bindings remain open. The current `vultra-app` is a static-scene research workbench, not a complete engine editor. The optional Python adapter exposes experiment sessions and owned NumPy images; batch scene/action calls for AI simulation remain future work. [Infernux](https://infernux-engine.com/) is a reference for that use case.
+Before the first public release, every serialized-data and file-structure version stays at `1`; format edits are breaking changes across writer, reader, examples and tests. The C ABI version also remains `1`; rebuild native and managed modules after breaking API changes. SDK bootstrap checks require exact table sizes. No compatibility adapters are provided. Stream-backed embedded-engine bootstrap, Lua module loading and broader resource/server/editor bindings remain open. The current `vultra-app` is a static-scene research workbench, not a complete engine editor. The optional Python adapter exposes experiment sessions and owned NumPy images; batch scene/action calls for AI simulation remain future work. [Infernux](https://infernux-engine.com/) is a reference for that use case.
 
 ## Offline research ownership
 
