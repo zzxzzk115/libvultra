@@ -5,7 +5,10 @@
 - The maintainer authorized cleanup, English commits and pushes for both libvultra dev-VRI and PVW.
   The pending work is grouped into asset/import packaging, research/rendering foundations, native host/SDK
   integration and documentation. PVW is a standalone native research vproject, not an engine submodule.
-  Its initial remote is private because the paper repository is intended for a later public release.
+  Four engine batches were pushed successfully. PVW has two local commits and a clean main branch, but no origin.
+  Creating the proposed private zzxzzk115/pvw remote was rejected by automatic approval review because the
+  destination, owner and visibility need explicit maintainer authorization. No PVW source was uploaded;
+  the destination question remains pending. Do not create or push a new remote without that answer.
 - The source tree excludes evaluation FBX/DDS/HDR binaries, asset/shader caches, compiled modules, exported
   SDKs, local editor settings, layouts and QA captures. Upstream asset and dependency attribution remains.
   Existing local assets, captures and layouts are preserved; no bulk ignored-file deletion is performed.
