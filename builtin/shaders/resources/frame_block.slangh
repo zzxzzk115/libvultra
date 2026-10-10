@@ -17,6 +17,7 @@ struct FrameData
     float4   cameraPosition;
     float4   lightDirection;
     float4   lightColor;
+    float4   ambientColor;
     float4   cascadeSplits;
     float4   cascadeWidths;
     float4   cascadeDepthRanges;

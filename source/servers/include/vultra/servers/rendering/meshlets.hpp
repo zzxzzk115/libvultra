@@ -44,8 +44,9 @@ namespace vultra
     public:
         GpuMeshlets(Device& device, Buffer& vertices, const SceneData& scene, uint32_t workers = 0);
         ~GpuMeshlets();
-        GpuMeshlets(const GpuMeshlets&)            = delete;
-        GpuMeshlets& operator=(const GpuMeshlets&) = delete;
+        GpuMeshlets(const GpuMeshlets&)                         = delete;
+        GpuMeshlets&              operator=(const GpuMeshlets&) = delete;
+        std::array<VriBuffer*, 3> buffers() const; // Borrowed handles for allocator telemetry.
 
         std::array<VriDescriptor*, 4> views {};
         std::vector<MeshletRange>     primitives;

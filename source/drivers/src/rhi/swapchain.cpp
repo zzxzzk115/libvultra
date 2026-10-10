@@ -12,23 +12,29 @@ namespace vultra
         {
             throw std::invalid_argument("Desktop swapchain format must be BGRA8_SRGB or BGRA8_UNORM");
         }
-        m_Requested = window.framebufferSize();
+        create();
+    }
+
+    void Swapchain::create()
+    {
+        m_Requested = m_Window.framebufferSize();
         VriSwapChainDesc desc {};
-        desc.window      = platform::nativeWindow(window);
-        desc.queue       = device.queue;
+        desc.window      = platform::nativeWindow(m_Window);
+        desc.queue       = m_Device.queue;
         desc.format      = m_Format;
         desc.width       = m_Requested.width;
         desc.height      = m_Requested.height;
         desc.textureNum  = 2;
-        desc.presentMode = VriPresentMode_Fifo;
-        check(device.swap.CreateSwapChain(device.handle, &desc, &m_Handle), "Create swapchain");
+        desc.presentMode = m_PresentMode;
+        check(m_Device.swap.CreateSwapChain(m_Device.handle, &desc, &m_Handle), "Create swapchain");
         try
         {
             refresh();
         }
         catch (...)
         {
-            device.swap.DestroySwapChain(m_Handle);
+            m_Device.swap.DestroySwapChain(m_Handle);
+            m_Handle = nullptr;
             throw;
         }
     }
@@ -38,6 +44,32 @@ namespace vultra
         m_Device.waitIdle();
         m_Images.clear();
         m_Device.swap.DestroySwapChain(m_Handle);
+    }
+
+    void Swapchain::setVsync(bool enabled)
+    {
+        const auto mode = enabled ? VriPresentMode_Fifo : VriPresentMode_Immediate;
+        if (m_PresentMode == mode || m_Window.framebufferSize().empty())
+        {
+            return;
+        }
+        m_Device.waitIdle();
+        const auto previous = m_PresentMode;
+        m_Images.clear();
+        m_Device.swap.DestroySwapChain(m_Handle);
+        m_Handle      = nullptr;
+        m_PresentMode = mode;
+        try
+        {
+            create();
+            m_Rebuild = false;
+        }
+        catch (...)
+        {
+            m_PresentMode = previous;
+            create();
+            throw;
+        }
     }
 
     void Swapchain::refresh()

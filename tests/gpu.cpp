@@ -175,6 +175,42 @@ try
     require(diagnostics["resources"][output.index]["memory_bytes"].get<uint64_t>() >= 129 * 73 * 4 &&
                 diagnostics["graph_owned_bytes"] == diagnostics["resources"][output.index]["memory_bytes"],
             "Graph report did not preserve VRI allocator measurements");
+    bool invalidCapacity = false;
+    try
+    {
+        Profiler invalid(device, 0);
+    }
+    catch (const std::invalid_argument&)
+    {
+        invalidCapacity = true;
+    }
+    require(invalidCapacity, "Profiler accepted zero event capacity");
+    Profiler pyramidProfiler(device, 80);
+    auto*    pyramidCommands = frame.begin();
+    pyramidProfiler.beginFrame(pyramidCommands);
+    for (uint32_t level = 0; level < 80; ++level)
+    {
+        pyramidProfiler.beginPass(pyramidCommands, "pyramid." + std::to_string(level));
+        pyramidProfiler.beginCommands(pyramidCommands);
+        triangle.draw(pyramidCommands, nestedTarget, nestedClear);
+        pyramidProfiler.endPass(pyramidCommands);
+    }
+    bool overflowRejected = false;
+    try
+    {
+        pyramidProfiler.beginPass(pyramidCommands, "overflow");
+    }
+    catch (const std::runtime_error&)
+    {
+        overflowRejected = true;
+    }
+    require(overflowRejected, "Profiler exceeded its configured event capacity");
+    pyramidProfiler.resolve(pyramidCommands);
+    frame.submitAndWait();
+    pyramidProfiler.collect();
+    require(pyramidProfiler.timings().size() == 80 && pyramidProfiler.timings().back().name == "pyramid.79" &&
+                pyramidProfiler.timings().back().gpuMs >= 0,
+            "Profiler did not resolve a pyramid with more than 64 events");
     auto pollUntil = [&](auto predicate)
     {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);

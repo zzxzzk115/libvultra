@@ -125,11 +125,11 @@ namespace vultra
                 const auto* vertices  = job.vertices.data() + meshlet.vertex_offset;
                 const auto* triangles = job.triangles.data() + meshlet.triangle_offset;
                 const auto  bounds    = meshopt_computeMeshletBounds(vertices,
-                                                                     triangles,
-                                                                     meshlet.triangle_count,
-                                                                     positions,
-                                                                     scene.vertices.size(),
-                                                                     sizeof(SceneVertex));
+                                                                 triangles,
+                                                                 meshlet.triangle_count,
+                                                                 positions,
+                                                                 scene.vertices.size(),
+                                                                 sizeof(SceneVertex));
                 result.meshlets.push_back({{uint32_t(result.vertices.size()),
                                             uint32_t(result.triangles.size()),
                                             meshlet.vertex_count,
@@ -159,7 +159,7 @@ namespace vultra
         auto data  = buildMeshlets(scene, workers);
         count      = uint32_t(data.meshlets.size());
         primitives = std::move(data.primitives);
-        const VriAccessStage ready {VriAccess_ShaderResourceRead,
+        const VriAccessStage                            ready {VriAccess_ShaderResourceRead,
                                     VriPipelineStage_TaskShader | VriPipelineStage_MeshShader};
         const std::array<std::span<const std::byte>, 3> bytes {std::as_bytes(std::span(data.meshlets)),
                                                                std::as_bytes(std::span(data.vertices)),
@@ -194,6 +194,11 @@ namespace vultra
             }
             throw;
         }
+    }
+
+    std::array<VriBuffer*, 3> GpuMeshlets::buffers() const
+    {
+        return {m_Buffers[0]->handle, m_Buffers[1]->handle, m_Buffers[2]->handle};
     }
 
     GpuMeshlets::~GpuMeshlets()

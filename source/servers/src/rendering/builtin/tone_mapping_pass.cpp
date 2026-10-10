@@ -86,16 +86,17 @@ namespace vultra
                                                                   std::span<const RenderGraph::Resource> inputs,
                                                                   std::span<const double>                parameters)
     {
-        if (inputs.size() != 1 || parameters.size() != 2 || &graph.device() != &m_Device)
+        if (inputs.size() != 1 || parameters.size() != 3 || &graph.device() != &m_Device)
         {
             throw std::invalid_argument(
-                "Tone mapping needs one HDR input and exposure/bypass parameters on its device");
+                "Tone mapping needs one HDR input and exposure/bypass/operator parameters on its device");
         }
         const auto source = inputs.front();
         const auto info   = graph.resourceInfo(source);
-        if (!info.isTexture || info.textureDesc.format != VriFormat_RGBA16_SFLOAT)
+        if (!info.isTexture ||
+            (info.textureDesc.format != VriFormat_RGBA16_SFLOAT && info.textureDesc.format != VriFormat_RGBA32_SFLOAT))
         {
-            throw std::invalid_argument("Tone mapping input must be an RGBA16_SFLOAT texture");
+            throw std::invalid_argument("Tone mapping input must be an RGBA16_SFLOAT or RGBA32_SFLOAT texture");
         }
         const Extent size {info.textureDesc.width, info.textureDesc.height};
         const auto   output = graph.createTexture(std::string(name) + ".color", colorTexture(size, m_Format));
@@ -113,7 +114,7 @@ namespace vultra
                           const std::array constants {float(parameters[0]),
                                                       m_Format == VriFormat_RGBA16_SFLOAT ? 0.0f : 1.0f,
                                                       float(parameters[1]),
-                                                      0.0f};
+                                                      float(parameters[2])};
                           m_Device.core.CmdSetConstants(cmd, 0, constants.data(), sizeof(constants));
                           const VriViewport viewport {0, 0, float(size.width), float(size.height), 0, 1};
                           const VriRect     scissor {0, 0, size.width, size.height};
@@ -134,9 +135,18 @@ namespace vultra
     PassDefinition toneMappingDefinition()
     {
         return {"vultra.tone_mapping",
-                {{"hdr", PassResourceKind::eTexture, VriFormat_RGBA16_SFLOAT}},
+                {{"hdr", PassResourceKind::eTexture, VriFormat_Unknown}},
                 {{"color", PassResourceKind::eTexture, VriFormat_RGBA8_UNORM, 0}},
-                {{"exposure", 0, -16, 16}, {"bypass", 0, 0, 1}},
+                {{"exposure", 0, -16, 16},
+                 {"bypass", 0, 0, 1},
+                 {"operator",
+                  0,
+                  0,
+                  2,
+                  "Tone operator",
+                  "Display transform",
+                  PassControl::eChoice,
+                  {{"ACES", 0}, {"None", 1}, {"Reinhard", 2}}}},
                 0,
                 [](Device& device)
                 {

@@ -36,7 +36,15 @@ internal unsafe struct VultraUiApi
     public uint Version;
     public uint StructSize;
     public delegate* unmanaged[Cdecl]<VultraUiFrame, byte*, ulong, byte*, VultraStatus> Button;
+    public delegate* unmanaged[Cdecl]<VultraUiFrame, byte*, ulong, byte*, byte*, VultraStatus> Checkbox;
+    public delegate* unmanaged[Cdecl]<VultraUiFrame, byte*, ulong, int*, byte*, ulong, byte*, VultraStatus> Combo;
+    public delegate* unmanaged[Cdecl]<VultraUiFrame, byte*, ulong, int, byte*, VultraStatus> Header;
+    public delegate* unmanaged[Cdecl]<VultraUiFrame, byte*, ulong, int*, int, int, byte*, VultraStatus> IntegerSlider;
+    public delegate* unmanaged[Cdecl]<VultraUiFrame, byte*, ulong, VultraStatus> Separator;
+    public delegate* unmanaged[Cdecl]<VultraUiFrame, byte*, ulong, double*, double, double, byte*, VultraStatus> Slider;
     public delegate* unmanaged[Cdecl]<VultraUiFrame, byte*, ulong, VultraStatus> Text;
+    public delegate* unmanaged[Cdecl]<VultraUiFrame, byte*, ulong, VultraStatus> TextWrapped;
+    public delegate* unmanaged[Cdecl]<VultraUiFrame, byte*, ulong, VultraStatus> Tooltip;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -161,6 +169,7 @@ internal unsafe struct VultraHostApi
     public VultraUiApi* Ui;
     public VultraSceneApi* Scene;
     public VultraScriptRegistrationApi* Scripts;
+    public void* Research;
 }
 
 [StructLayout(LayoutKind.Sequential)]

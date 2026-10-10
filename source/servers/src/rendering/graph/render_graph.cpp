@@ -267,12 +267,43 @@ namespace vultra
         m_Compiled = false;
     }
 
+    void RenderGraph::nameResource(Resource resource, std::string name)
+    {
+        edit();
+        if (name.empty())
+        {
+            throw std::invalid_argument("RenderGraph resource name is empty");
+        }
+        lookup(resource).name = std::move(name);
+    }
+
     void RenderGraph::exportResource(Resource resource)
     {
         edit();
         lookup(resource);
         m_Exports.push_back(resource);
         m_Compiled = false;
+    }
+
+    RenderGraph::Resource RenderGraph::findResource(std::string_view name) const
+    {
+        uint32_t found = UINT32_MAX;
+        for (uint32_t i = 0; i < m_Resources.size(); ++i)
+        {
+            if (m_Resources[i].name == name)
+            {
+                if (found != UINT32_MAX)
+                {
+                    throw std::invalid_argument("Ambiguous graph resource: " + std::string(name));
+                }
+                found = i;
+            }
+        }
+        if (found == UINT32_MAX)
+        {
+            throw std::invalid_argument("Unknown graph resource: " + std::string(name));
+        }
+        return {this, found};
     }
 
     RenderGraph::Resource RenderGraph::captureAfterPass(const std::string& passName, Resource source, std::string name)
@@ -283,15 +314,39 @@ namespace vultra
         {
             throw std::invalid_argument("Capture source must be a TransferSrc texture");
         }
-        const auto matches = [&](const Pass& pass)
+        auto pass = m_Passes.end();
+        if (passName.empty())
         {
-            return pass.name == passName;
-        };
-        if (std::count_if(m_Passes.begin(), m_Passes.end(), matches) != 1)
-        {
-            throw std::invalid_argument("Capture requires one pass named: " + passName);
+            for (auto candidate = m_Passes.begin(); candidate != m_Passes.end(); ++candidate)
+            {
+                if (std::any_of(candidate->uses.begin(),
+                                candidate->uses.end(),
+                                [source](const Use& use)
+                                {
+                                    return use.resource.index == source.index && writes(use.usage);
+                                }))
+                {
+                    pass = candidate;
+                }
+            }
+            if (pass == m_Passes.end())
+            {
+                throw std::invalid_argument("Captured texture has no writer: " + entry.name);
+            }
         }
-        const auto pass = std::find_if(m_Passes.begin(), m_Passes.end(), matches);
+        else
+        {
+            const auto matches = [&](const Pass& candidate)
+            {
+                return candidate.name == passName;
+            };
+            if (std::count_if(m_Passes.begin(), m_Passes.end(), matches) != 1)
+            {
+                throw std::invalid_argument("Capture requires one pass named: " + passName);
+            }
+            pass = std::find_if(m_Passes.begin(), m_Passes.end(), matches);
+        }
+        const auto writer = pass->name;
         if (!std::any_of(pass->uses.begin(),
                          pass->uses.end(),
                          [source](const Use& use)
@@ -304,7 +359,7 @@ namespace vultra
         auto desc = entry.textureDesc;
         desc.usage |= VriTextureUsage_TransferDst;
         const auto captured = createTexture(std::move(name), desc);
-        const auto label    = "Capture after " + passName;
+        const auto label    = "Capture after " + writer;
         m_Passes.insert(m_Passes.begin() + (pass - m_Passes.begin()) + 1,
                         {label,
                          {{source, Usage::eCopySource}, {captured, Usage::eCopyDestination}},
@@ -566,6 +621,11 @@ namespace vultra
         m_Compiled = true;
     }
 
+    bool RenderGraph::aliasesTransients() const
+    {
+        return m_Aliased;
+    }
+
     void RenderGraph::execute(VriCommandBuffer* cmd, Profiler* profiler)
     {
         if (!m_Compiled)
@@ -684,11 +744,11 @@ namespace vultra
         {
             const auto& entry    = m_Resources[i];
             const bool  exported = std::any_of(m_Exports.begin(),
-                                               m_Exports.end(),
-                                               [i](Resource resource)
-                                               {
+                                              m_Exports.end(),
+                                              [i](Resource resource)
+                                              {
                                                   return resource.index == i;
-                                               });
+                                              });
             result.resources.push_back({entry.name,
                                         entry.imported,
                                         exported,
@@ -764,10 +824,10 @@ namespace vultra
         }
         const auto& entry    = m_Resources[resource.index];
         const bool  exported = std::ranges::any_of(m_Exports,
-                                                   [resource](Resource value)
-                                                   {
+                                                  [resource](Resource value)
+                                                  {
                                                       return value.index == resource.index;
-                                                   });
+                                                  });
         bool        active   = m_Compiled && exported;
         if (m_Compiled && !active)
         {

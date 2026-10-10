@@ -14,6 +14,7 @@
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <memory>
 
 namespace
 {
@@ -165,6 +166,7 @@ namespace
         auto*         cmd = frame.begin();
         graph.execute(cmd);
         frame.submitAndWait();
+        renderer.completeFrame();
         auto image = vultra::readback(device, graph.getTexture(outputs.hdr));
         finite(image);
         return image;
@@ -245,6 +247,58 @@ namespace
         first.collectCompletedFrame();
     }
 
+    void constantAmbient(vultra::Device& device, vultra::Environment& environment)
+    {
+        using namespace vultra;
+        SceneData scene;
+        scene.vertices   = {{{-2, -2, 0}, {0, 0, 1}, {0, 0}},
+                            {{2, -2, 0}, {0, 0, 1}, {1, 0}},
+                            {{2, 2, 0}, {0, 0, 1}, {1, 1}},
+                            {{-2, 2, 0}, {0, 0, 1}, {0, 1}}};
+        scene.indices    = {0, 1, 2, 0, 2, 3};
+        scene.primitives = {{0, 6, 0}};
+        scene.materials.emplace_back();
+        scene.materials[0].baseColor              = {0.4f, 0.2f, 0.1f, 1};
+        scene.materials[0].baseMetalness          = 1;
+        scene.materials[0].occlusionTexture.image = 0;
+        scene.images.push_back({1, 1, {64, 64, 64, 255}});
+        scene.radius = 3;
+        GpuScene           gpu(device, scene);
+        const RenderCamera camera {glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0)),
+                                   glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
+                                   0.1f,
+                                   10};
+        for (const auto path : {RenderPath::eNaiveForward, RenderPath::eNaiveDeferred})
+        {
+            BuiltinRenderer renderer(device, gpu, environment);
+            renderer.settings.path             = path;
+            renderer.settings.skybox           = false;
+            renderer.settings.ibl              = false;
+            renderer.settings.shadowFilter     = ShadowFilter::eHard;
+            renderer.settings.shadowResolution = 64;
+            renderer.settings.directionToLight = {0, 0, -1}; // Backlit surface receives no direct light.
+            RenderGraph graph(device);
+            const auto  outputs = renderer.addPasses(graph, {65, 65});
+            graph.exportResource(outputs.hdr);
+            graph.compile();
+            constexpr size_t center = (32 * 65 + 32) * 4;
+            const auto       dark   = render(device, renderer, graph, outputs, camera);
+            require(dark.rgba[center] < 0.0001f, "Default raster ambient must remain zero");
+            renderer.settings.ambientColor = {0.15f, 0.1f, 0.05f};
+            const auto      lit            = render(device, renderer, graph, outputs, camera);
+            const glm::vec3 expected = glm::vec3(0.15f, 0.1f, 0.05f) * glm::vec3(0.4f, 0.2f, 0.1f) * (64.0f / 255);
+            for (size_t channel = 0; channel < 3; ++channel)
+            {
+                require(std::abs(lit.rgba[center + channel] - expected[channel]) < 0.0001f,
+                        "Raster ambient must use linear base color/material AO with IBL disabled");
+            }
+            renderer.settings.ambientColor = glm::vec3(0);
+            const auto reset               = render(device, renderer, graph, outputs, camera);
+            require(reset.rgba[center] < 0.0001f, "Ambient edits did not update the existing graph");
+        }
+        std::cout << "Constant ambient: forward/deferred, linear RGB, metal, AO, IBL off and live updates passed\n";
+    }
+
     void emptyGpuScene(vultra::Device& device, vultra::Environment& environment)
     {
         using namespace vultra;
@@ -267,9 +321,32 @@ namespace
                {glm::mat4(1), glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f), 0.1f, 10.0f});
     }
 
-    void livePrimitiveTransform(vultra::Device& device, vultra::Environment& environment)
+    void livePrimitiveTransform(vultra::Device&              device,
+                                vultra::Environment&         environment,
+                                const std::filesystem::path& directory)
     {
         using namespace vultra;
+        const auto computeFile = directory / "empty_compute.slang";
+        std::ofstream(computeFile) << "[shader(\"compute\")] [numthreads(1,1,1)] void main() {}\n";
+        VriPipelineLayout*          rawLayout = nullptr;
+        const VriPipelineLayoutDesc layoutDesc {};
+        check(device.core.CreatePipelineLayout(device.handle, &layoutDesc, &rawLayout), "Compute fixture layout");
+        auto destroyLayout = [&device](VriPipelineLayout* handle)
+        {
+            device.core.DestroyPipelineLayout(handle);
+        };
+        std::unique_ptr<VriPipelineLayout, decltype(destroyLayout)> computeLayout(rawLayout, destroyLayout);
+        ShaderPipeline                                              compute(
+            device,
+            computeFile,
+            {{"main", VriShaderStage_Compute}},
+            [&](std::span<const VriShaderDesc> shaders)
+            {
+                VriPipeline*                 result = nullptr;
+                const VriComputePipelineDesc desc {computeLayout.get(), shaders[0], device.pipelineCache};
+                check(device.core.CreateComputePipeline(device.handle, &desc, &result), "Compute fixture pipeline");
+                return result;
+            });
         SceneData scene;
         scene.vertices   = {{{-0.7f, -0.7f, 0}, {0, 0, 1}, {0, 0}},
                             {{0.7f, -0.7f, 0}, {0, 0, 1}, {1, 0}},
@@ -298,10 +375,43 @@ namespace
             graph.exportResource(outputs.color);
             graph.compile();
             gpu.setPrimitiveTransforms(0, 1, glm::mat4(1));
-            const auto stationary      = render(device, renderer, graph, outputs, camera);
+            const auto stationary = render(device, renderer, graph, outputs, camera);
+            require(renderer.primitiveCounts()[0] == 1, "Visible triangle was culled");
             const auto stationaryColor = readback(device, graph.getTexture(outputs.color));
+            Frame      mixedFrame(device);
+            for (uint32_t iteration = 0; iteration < 2; ++iteration)
+            {
+                auto* cmd = mixedFrame.begin();
+                if (iteration == 0)
+                {
+                    device.core.CmdSetPipelineLayout(cmd, computeLayout.get());
+                    device.core.CmdSetPipeline(cmd, compute.handle());
+                    const VriDispatchDesc dispatch {1, 1, 1};
+                    device.core.CmdDispatch(cmd, &dispatch);
+                }
+                renderer.prepare(camera, graph, outputs);
+                graph.execute(cmd);
+                // Leave compute bound so the next recording also begins after a compute-only final Pass.
+                device.core.CmdSetPipelineLayout(cmd, computeLayout.get());
+                device.core.CmdSetPipeline(cmd, compute.handle());
+                mixedFrame.submitAndWait();
+                require(readback(device, graph.getTexture(outputs.hdr)).rgba == stationary.rgba,
+                        "Compute-to-graphics descriptor binding changed geometry output");
+            }
+            gpu.setPrimitiveTransforms(0,
+                                       1,
+                                       glm::translate(glm::mat4(1), {1, 0, 0}) *
+                                           glm::scale(glm::mat4(1), {-0.5f, 0.8f, 1}));
+            const auto partial = render(device, renderer, graph, outputs, camera);
+            require(renderer.primitiveCounts()[0] == 1 && std::ranges::any_of(partial.rgba,
+                                                                              [](float value)
+                                                                              {
+                                                                                  return value > 1.5f;
+                                                                              }),
+                    "A reflected, nonuniformly scaled triangle intersecting the frustum must remain visible");
             gpu.setPrimitiveTransforms(0, 1, glm::translate(glm::mat4(1), {2, 0, 0}));
-            const auto   moved      = render(device, renderer, graph, outputs, camera);
+            const auto moved = render(device, renderer, graph, outputs, camera);
+            require(renderer.primitiveCounts()[0] == 0, "Offscreen triangle was still submitted");
             const auto   movedColor = readback(device, graph.getTexture(outputs.color));
             const size_t center     = (32 * 65 + 32) * 4;
             require(stationary.rgba[center] > 0.5f && moved.rgba[center] < stationary.rgba[center] * 0.05f,
@@ -310,6 +420,7 @@ namespace
                     "Primitive transform did not reach tone-mapped output");
             gpu.setPrimitiveTransforms(0, 1, glm::scale(glm::mat4(1), {-1, 1, 1}));
             const auto mirrored = render(device, renderer, graph, outputs, camera);
+            require(renderer.primitiveCounts()[0] == 1, "Mirrored bounds were incorrectly culled");
             require(mirrored.rgba[center] > 0.5f, "Mirrored primitive was culled");
         }
     }
@@ -717,11 +828,33 @@ namespace
         };
         renderer.settings.shadowFilter = vultra::ShadowFilter::eDisabled;
         const auto off                 = render(device, renderer, graph, outputs, camera);
+        renderer.settings.cacheShadows = true;
         renderer.settings.shadowFilter = vultra::ShadowFilter::eHard;
         const auto hard                = render(device, renderer, graph, outputs, camera);
         require(at(off, {1.2f, 0, -0.2f}) > 0.99f && at(hard, {1.2f, 0, -0.2f}) < 0.01f,
                 "CSM did not shadow the analytic receiver point");
         require(at(hard, {3, 0, 2}) > 0.99f, "CSM shadowed an unoccluded point");
+        auto shadowSubmitted = [&]
+        {
+            const auto counts = renderer.primitiveCounts();
+            return std::any_of(counts.begin() + 1,
+                               counts.end(),
+                               [](auto count)
+                               {
+                                   return count != 0;
+                               });
+        };
+        require(shadowSubmitted(), "Cold shadow cache did not draw casters");
+        const auto warm = render(device, renderer, graph, outputs, camera);
+        require(!shadowSubmitted() && warm.rgba == hard.rgba, "Warm shadow cache changed the image or redrew casters");
+        renderer.invalidateShadowCache();
+        // A successful submission that has not been published must not create a cache hit.
+        renderer.prepare(camera, graph, outputs);
+        vultra::Frame unpublished(device);
+        graph.execute(unpublished.begin());
+        unpublished.submitAndWait();
+        const auto recovered = render(device, renderer, graph, outputs, camera);
+        require(shadowSubmitted() && recovered.rgba == hard.rgba, "Unpublished shadow contents were accepted");
         renderer.settings.shadowFilter = vultra::ShadowFilter::ePcf;
         const auto pcf                 = render(device, renderer, graph, outputs, camera);
         require(softPixels(pcf) > softPixels(hard), "PCF must filter shadow boundaries");
@@ -736,6 +869,41 @@ namespace
         renderer.settings.shadowFilter = vultra::ShadowFilter::eHard;
         const auto masked              = render(device, renderer, graph, outputs, camera);
         require(at(masked, {1.2f, 0, -0.2f}) > 0.99f, "Discarded alpha-mask surface still casts a shadow");
+        require(shadowSubmitted(), "Alpha material edits did not invalidate cached shadows");
+        gpu.materials[1].baseColor.a = 1;
+        static_cast<void>(render(device, renderer, graph, outputs, camera));
+        gpu.setPrimitiveTransforms(1, 1, glm::translate(glm::mat4(1), glm::vec3(2, 0, 0)));
+        const auto moved = render(device, renderer, graph, outputs, camera);
+        require(shadowSubmitted() && moved.rgba != hard.rgba, "Transform edits did not refresh shadow contents");
+        renderer.settings.cacheShadows = false;
+        const auto movedUncached       = render(device, renderer, graph, outputs, camera);
+        require(moved.rgba == movedUncached.rgba, "Transform refresh differs from uncached shadows");
+        renderer.settings.cacheShadows = true;
+        static_cast<void>(render(device, renderer, graph, outputs, camera));
+        auto movedCamera       = camera;
+        movedCamera.view       = glm::lookAtRH(glm::vec3(3, 6, 8), glm::vec3(0), glm::vec3(0, 1, 0));
+        const auto changedView = render(device, renderer, graph, outputs, movedCamera);
+        require(shadowSubmitted(), "Camera/light matrix edits did not refresh cached shadows");
+        renderer.settings.cacheShadows = false;
+        const auto changedViewUncached = render(device, renderer, graph, outputs, movedCamera);
+        require(changedView.rgba == changedViewUncached.rgba, "Camera refresh differs from uncached shadows");
+        renderer.settings.cacheShadows = true;
+        vultra::RenderGraph aliased(device);
+        const auto          aliasedOutputs = renderer.addPasses(aliased, size);
+        aliased.exportResource(aliasedOutputs.color);
+        aliased.compile(true);
+        bool rejectedAliasing = false;
+        try
+        {
+            renderer.prepare(camera, aliased, aliasedOutputs);
+        }
+        catch (const std::logic_error& error)
+        {
+            rejectedAliasing = std::string(error.what()).find("transient aliasing") != std::string::npos;
+        }
+        require(rejectedAliasing, "Cached shadows accepted an aliased transient allocation plan");
+        std::cout
+            << "Static shadow cache: cold/warm, unpublished submission, alpha and transform/camera refresh passed\n";
         std::cout << "Shadow soft pixels: hard=" << softPixels(hard) << ", PCF=" << softPixels(pcf)
                   << ", PCSS small=" << softPixels(small) << ", PCSS large=" << softPixels(large) << '\n';
     }
@@ -761,8 +929,9 @@ try
     aovMapping(device);
     vultra::Environment environment(device, hdr);
     constantEnvironment(device, environment);
+    constantAmbient(device, environment);
     emptyGpuScene(device, environment);
-    livePrimitiveTransform(device, environment);
+    livePrimitiveTransform(device, environment, directory);
     materialReference(device, environment);
     materialTextures(device, environment, vultra::TextureFormat::eBc5Unorm);
     materialTextures(device, environment, vultra::TextureFormat::eRg8Unorm);

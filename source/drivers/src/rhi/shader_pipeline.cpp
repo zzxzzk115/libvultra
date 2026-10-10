@@ -13,6 +13,8 @@
 #pragma warning(pop)
 #endif
 
+#include <xxhash.h>
+
 #include <atomic>
 #include <chrono>
 #include <map>
@@ -118,7 +120,8 @@ namespace vultra
                                    std::filesystem::path file,
                                    ShaderCompileOptions  options,
                                    Builder               builder,
-                                   std::filesystem::path watchDirectory) :
+                                   std::filesystem::path watchDirectory,
+                                   std::filesystem::path cacheDirectory) :
         m_Device(device),
         m_File(std::filesystem::absolute(file)),
         m_CompileOptions(std::move(options)),
@@ -142,7 +145,7 @@ namespace vultra
         }
         if (m_File.extension() == ".slang")
         {
-            m_Compiler = std::make_unique<ShaderCompiler>();
+            m_Compiler = std::make_unique<ShaderCompiler>(std::move(cacheDirectory));
             m_Watch    = std::make_unique<Watch>();
             m_Watch->roots.insert(watchDirectory.empty() ? m_File.parent_path() :
                                                            std::filesystem::absolute(watchDirectory));
@@ -210,7 +213,15 @@ namespace vultra
                     detail::shaderWatchDirectories(program.dependencies, m_File, m_CompileOptions);
                 m_Watch->refreshDirectories();
             }
-            const auto   shaders     = program.descriptors(m_CompileOptions.entries);
+            const auto             shaders = program.descriptors(m_CompileOptions.entries);
+            ShaderPipelineIdentity identity {m_File, program.compileKey, 0, program.dependencies};
+            for (const auto& shader : shaders)
+            {
+                const std::string_view entry = shader.entryPointName ? shader.entryPointName : "main";
+                identity.spirvHash = XXH3_64bits_withSeed(&shader.stage, sizeof(shader.stage), identity.spirvHash);
+                identity.spirvHash = XXH3_64bits_withSeed(entry.data(), entry.size(), identity.spirvHash);
+                identity.spirvHash = XXH3_64bits_withSeed(shader.bytecode, shader.bytecodeSize, identity.spirvHash);
+            }
             VriPipeline* replacement = m_Builder(shaders);
             if (!replacement)
             {
@@ -223,6 +234,7 @@ namespace vultra
                 m_Device.core.DestroyPipeline(m_Pipeline);
             }
             m_Pipeline = replacement;
+            m_Identity = std::move(identity);
             ++m_Generation;
             return true;
         }

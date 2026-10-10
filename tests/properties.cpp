@@ -143,12 +143,14 @@ try
     RenderSettings renderer;
     renderer.path             = RenderPath::eReferencePathTracing;
     renderer.lightColor       = {0.2f, 0.4f, 0.8f};
+    renderer.ambientColor     = {0.15f, 0.1f, 0.05f};
     renderer.meshShading      = true;
     renderer.shadowFilter     = ShadowFilter::ePcss;
     renderer.shadowResolution = 2048;
     RenderSettings reopened;
     deserializeProperties(renderSettingsType(), serializeProperties(renderSettingsType(), &renderer), &reopened);
-    require(reopened.path == renderer.path && reopened.lightColor == renderer.lightColor && reopened.meshShading &&
+    require(reopened.path == renderer.path && reopened.lightColor == renderer.lightColor &&
+                reopened.ambientColor == renderer.ambientColor && reopened.meshShading &&
                 reopened.shadowFilter == renderer.shadowFilter &&
                 reopened.shadowResolution == renderer.shadowResolution,
             "Renderer round trip lost uninspected or non-scalar fields");

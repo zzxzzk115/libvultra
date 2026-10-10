@@ -295,7 +295,34 @@ namespace vultra
         }
     } // namespace
 
-    ImageMetrics compare(const Image& reference, const Image& test, double peak)
+    MetricRegion validateMetricRegion(Extent size, MetricRegion region, std::span<const float> mask)
+    {
+        if (!region.width && !region.height)
+        {
+            region = {0, 0, size.width, size.height};
+        }
+        if (!region.width || !region.height || region.x >= size.width || region.y >= size.height ||
+            region.width > size.width - region.x || region.height > size.height - region.y)
+        {
+            throw std::invalid_argument("Metric ROI is empty or outside the image");
+        }
+        if (!mask.empty() && (mask.size() != size_t(size.width) * size.height ||
+                              !std::ranges::all_of(mask,
+                                                   [](float value)
+                                                   {
+                                                       return value == 0 || value == 1;
+                                                   })))
+        {
+            throw std::invalid_argument("Metric mask requires one binary 0/1 value per image pixel");
+        }
+        return region;
+    }
+
+    RegionMetrics compareRegion(const Image&           reference,
+                                const Image&           test,
+                                MetricRegion           region,
+                                std::span<const float> mask,
+                                double                 peak)
     {
         validateImage(reference);
         validateImage(test);
@@ -307,45 +334,77 @@ namespace vultra
         {
             throw std::invalid_argument("Peak must be positive and finite");
         }
-        if (reference.size.width < 11 || reference.size.height < 11)
-        {
-            throw std::invalid_argument("SSIM requires at least 11x11 pixels");
-        }
-        ImageMetrics result;
-        const size_t pixels = reference.rgba.size() / 4;
+        region = validateMetricRegion(reference.size, region, mask);
+        RegionMetrics result;
+        double        mse    = 0;
+        const size_t  pixels = reference.rgba.size() / 4;
         for (size_t i = 0; i < pixels; ++i)
         {
+            const auto x = uint32_t(i % reference.size.width);
+            const auto y = uint32_t(i / reference.size.width);
+            if (x < region.x || x - region.x >= region.width || y < region.y || y - region.y >= region.height ||
+                (!mask.empty() && mask[i] == 0))
+            {
+                continue;
+            }
+            ++result.pixels;
             for (size_t c = 0; c < 3; ++c)
             {
                 const double d = double(reference.rgba[i * 4 + c]) - test.rgba[i * 4 + c];
-                result.mse += d * d;
+                mse += d * d;
             }
         }
-        result.mse /= double(pixels) * 3;
-        result.psnr     = result.mse == 0 ? std::numeric_limits<double>::infinity() :
-                                            20 * std::log10(peak) - 10 * std::log10(result.mse);
-        const auto   a  = luma(reference);
-        const auto   b  = luma(test);
-        const auto   ma = blur(a, reference.size);
-        const auto   mb = blur(b, reference.size);
-        const auto   aa = blur(multiply(a, a), reference.size);
-        const auto   bb = blur(multiply(b, b), reference.size);
-        const auto   ab = blur(multiply(a, b), reference.size);
-        const double c1 = (0.01 * peak) * (0.01 * peak);
-        const double c2 = (0.03 * peak) * (0.03 * peak);
-        for (uint32_t y = 5; y < reference.size.height - 5; ++y)
+        if (result.pixels)
         {
-            for (uint32_t x = 5; x < reference.size.width - 5; ++x)
+            result.mse  = mse / (double(result.pixels) * 3);
+            result.psnr = *result.mse == 0 ? std::numeric_limits<double>::infinity() :
+                                             20 * std::log10(peak) - 10 * std::log10(*result.mse);
+        }
+        if (region.width < 11 || region.height < 11 || !result.pixels)
+        {
+            return result;
+        }
+        const auto   a    = luma(reference);
+        const auto   b    = luma(test);
+        const auto   ma   = blur(a, reference.size);
+        const auto   mb   = blur(b, reference.size);
+        const auto   aa   = blur(multiply(a, a), reference.size);
+        const auto   bb   = blur(multiply(b, b), reference.size);
+        const auto   ab   = blur(multiply(a, b), reference.size);
+        const double c1   = (0.01 * peak) * (0.01 * peak);
+        const double c2   = (0.03 * peak) * (0.03 * peak);
+        double       ssim = 0;
+        for (uint32_t y = region.y + 5; y < region.y + region.height - 5; ++y)
+        {
+            for (uint32_t x = region.x + 5; x < region.x + region.width - 5; ++x)
             {
-                const size_t i          = size_t(y) * reference.size.width + x;
+                const size_t i = size_t(y) * reference.size.width + x;
+                if (!mask.empty() && mask[i] == 0)
+                {
+                    continue;
+                }
+                ++result.ssimWindows;
                 const double va         = std::max(0.0, aa[i] - ma[i] * ma[i]);
                 const double vb         = std::max(0.0, bb[i] - mb[i] * mb[i]);
                 const double covariance = ab[i] - ma[i] * mb[i];
-                result.ssim += ((2 * ma[i] * mb[i] + c1) * (2 * covariance + c2)) /
-                               ((ma[i] * ma[i] + mb[i] * mb[i] + c1) * (va + vb + c2));
+                ssim += ((2 * ma[i] * mb[i] + c1) * (2 * covariance + c2)) /
+                        ((ma[i] * ma[i] + mb[i] * mb[i] + c1) * (va + vb + c2));
             }
         }
-        result.ssim /= double(reference.size.width - 10) * (reference.size.height - 10);
+        if (result.ssimWindows)
+        {
+            result.ssim = ssim / double(result.ssimWindows);
+        }
         return result;
+    }
+
+    ImageMetrics compare(const Image& reference, const Image& test, double peak)
+    {
+        const auto metrics = compareRegion(reference, test, {}, {}, peak);
+        if (!metrics.ssim)
+        {
+            throw std::invalid_argument("SSIM requires at least 11x11 pixels");
+        }
+        return {*metrics.mse, *metrics.psnr, *metrics.ssim};
     }
 } // namespace vultra

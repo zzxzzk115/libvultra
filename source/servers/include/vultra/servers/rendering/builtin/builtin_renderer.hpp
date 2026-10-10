@@ -36,6 +36,13 @@ namespace vultra
         ePcss
     };
 
+    enum class ToneOperator
+    {
+        eAces,
+        eNone,
+        eReinhard
+    };
+
     struct VULTRA_REFLECT RenderSettings
     {
         VULTRA_PROPERTY("label=Path;options=NaiveDeferred|NaiveForward")
@@ -44,12 +51,16 @@ namespace vultra
         glm::vec3 directionToLight {-0.5f, 0.8f, 0.4f};
         VULTRA_PROPERTY("label=lightColor;flags=serialize|bind")
         glm::vec3 lightColor {1, 0.95f, 0.85f};
+        VULTRA_PROPERTY("label=Ambient color;flags=serialize|bind")
+        glm::vec3 ambientColor {0}; // Optional constant raster fill, independent of IBL and direct-light shadows.
         VULTRA_PROPERTY("label=Sun intensity;min=0;max=10")
         float lightIntensity = 3;
         VULTRA_PROPERTY("label=environmentIntensity;flags=serialize|bind")
         float environmentIntensity = 1;
         VULTRA_PROPERTY("label=Exposure (EV);min=-4;max=4")
         float exposure = 0;
+        VULTRA_PROPERTY("label=Tone operator;options=Aces|None|Reinhard")
+        ToneOperator toneOperator = ToneOperator::eAces;
         VULTRA_PROPERTY("label=IBL")
         bool ibl = true;
         VULTRA_PROPERTY("label=Skybox")
@@ -62,6 +73,8 @@ namespace vultra
         bool meshletColors = false;
         VULTRA_PROPERTY("label=shadowFilter;flags=serialize|bind")
         ShadowFilter shadowFilter = ShadowFilter::ePcf;
+        VULTRA_PROPERTY("label=Cache static shadows")
+        bool cacheShadows = false; // Opt in for immutable imported geometry/texture contents.
         VULTRA_PROPERTY("label=shadowResolution;flags=serialize|bind")
         uint32_t shadowResolution = 1024; // Change before assembling the graph.
         VULTRA_PROPERTY("label=splitLambda;flags=serialize|bind")
@@ -139,8 +152,14 @@ namespace vultra
         // Returns an empty reason for a SubShader that meets the built-in raster ABI.
         static std::string shaderSubshaderCompatibility(const ShaderSubshader& subshader);
         // Prepare only the tone-mapping stage when an external/reference renderer supplies scene color.
-        void           prepareToneMapping(RenderGraph& graph, RenderGraph::Resource hdr);
-        std::string    diagnostics() const;
+        void        prepareToneMapping(RenderGraph& graph, RenderGraph::Resource hdr);
+        std::string diagnostics() const;
+        // Camera-visible primitives followed by submitted cascade caster counts (zero for cached maps).
+        std::array<uint32_t, 5> primitiveCounts() const;
+        // Publish recorded shadow contents only after their GPU submission completes.
+        void completeFrame();
+        // Required after in-place GPU writes to geometry/alpha textures or replacement of the graph's shadow maps.
+        void           invalidateShadowCache();
         RenderSettings settings;
 
     private:
@@ -152,25 +171,54 @@ namespace vultra
             eGBufferMaterial
         };
 
-        void                           release();
-        void                           drawScene(VriCommandBuffer* cmd, GeometryPass pass, uint32_t cascade = 0);
-        void                           drawFullscreen(VriCommandBuffer* cmd, VriPipeline* pipeline);
-        Device&                        m_Device;
-        GpuScene&                      m_Scene;
-        Environment&                   m_Environment;
-        VriFormat                      m_OutputFormat;
-        std::unique_ptr<Texture>       m_OpenPbrLuts;
-        std::unique_ptr<Buffer>        m_FrameBuffer;
-        VriDescriptor*                 m_FrameView          = nullptr;
-        VriDescriptor*                 m_TransformView      = nullptr;
-        VriDescriptor*                 m_EnvironmentSampler = nullptr;
-        VriDescriptorPool*             m_Pool               = nullptr;
-        VriPipelineLayout*             m_Layout             = nullptr;
-        VriDescriptorSet*              m_FrameSet           = nullptr;
-        VriDescriptorSet*              m_MeshletSet         = nullptr;
-        VriMeshShaderInterface         m_MeshApi {};
-        std::vector<VriDescriptorSet*> m_MaterialSets;
-        std::vector<ShaderMaterial*>   m_ShaderMaterials;
+        void                                 release();
+        void                                 drawScene(VriCommandBuffer* cmd, GeometryPass pass, uint32_t cascade = 0);
+        void                                 drawFullscreen(VriCommandBuffer* cmd, VriPipeline* pipeline);
+        Device&                              m_Device;
+        GpuScene&                            m_Scene;
+        Environment&                         m_Environment;
+        VriFormat                            m_OutputFormat;
+        std::unique_ptr<Texture>             m_OpenPbrLuts;
+        std::unique_ptr<Buffer>              m_FrameBuffer;
+        VriDescriptor*                       m_FrameView          = nullptr;
+        VriDescriptor*                       m_TransformView      = nullptr;
+        VriDescriptor*                       m_EnvironmentSampler = nullptr;
+        VriDescriptorPool*                   m_Pool               = nullptr;
+        VriPipelineLayout*                   m_Layout             = nullptr;
+        VriDescriptorSet*                    m_FrameSet           = nullptr;
+        VriDescriptorSet*                    m_MeshletSet         = nullptr;
+        VriMeshShaderInterface               m_MeshApi {};
+        std::array<std::vector<uint32_t>, 5> m_VisiblePrimitives;
+
+        struct ShadowKey
+        {
+            const RenderGraph*      graph    = nullptr;
+            uint32_t                resource = 0;
+            glm::mat4               matrix {1};
+            uint64_t                transformRevision = 0;
+            std::array<uint64_t, 4> programs {};
+            bool                    draw                               = false;
+            bool                    operator==(const ShadowKey&) const = default;
+        };
+
+        struct ShadowMaterial
+        {
+            float                alpha                                   = 0;
+            float                cutoff                                  = 0;
+            int32_t              sampler                                 = 0;
+            bool                 doubleSided                             = false;
+            const VriDescriptor* texture                                 = nullptr;
+            bool                 operator==(const ShadowMaterial&) const = default;
+        };
+
+        std::array<ShadowKey, 4>                  m_PreparedShadowKeys;
+        std::array<std::optional<ShadowKey>, 4>   m_ShadowCache;
+        std::array<std::optional<ShadowKey>, 4>   m_RecordedShadows;
+        std::array<bool, 4>                       m_ShadowDrawn {};
+        std::vector<ShadowMaterial>               m_ShadowMaterials;
+        bool                                      m_CacheShadows = false;
+        std::vector<VriDescriptorSet*>            m_MaterialSets;
+        std::vector<ShaderMaterial*>              m_ShaderMaterials;
         std::vector<std::array<VriPipeline*, 10>> m_ShaderPipelines;
         std::vector<VriDescriptor*>               m_MaterialSamplers;
         // Geometry pipelines are indexed by sidedness and reflected front face.
@@ -181,7 +229,7 @@ namespace vultra
         std::array<std::unique_ptr<ShaderPipeline>, 4> m_MeshForward;
         std::unique_ptr<ShaderPipeline>                m_Skybox;
         std::unique_ptr<ToneMappingPass>               m_ToneMapping;
-        std::array<double, 2>                          m_ToneParameters {};
+        std::array<double, 3>                          m_ToneParameters {};
         std::unique_ptr<ShaderPipeline>                m_DeferredLighting;
     };
 } // namespace vultra

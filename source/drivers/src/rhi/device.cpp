@@ -1,6 +1,8 @@
 #include <vultra/core/base/logger.hpp>
 #include <vultra/drivers/rhi/device.hpp>
 
+#include <chrono>
+
 namespace vultra
 {
     namespace
@@ -107,6 +109,8 @@ namespace vultra
         submit.signalFences     = &signal;
         submit.signalFenceNum   = 1;
         c.QueueSubmit(m_Device.queue, &submit);
+        const auto waitStart = std::chrono::steady_clock::now();
         c.Wait(m_Fence, m_Value);
+        m_WaitMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - waitStart).count();
     }
 } // namespace vultra

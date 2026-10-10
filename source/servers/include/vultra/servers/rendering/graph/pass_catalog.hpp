@@ -27,13 +27,32 @@ namespace vultra
         std::optional<uint32_t> sameExtentAsInput;
     };
 
+    enum class PassControl
+    {
+        eSlider,
+        eCheckbox,
+        eChoice,
+        eReadOnly
+    };
+
+    struct PassChoice
+    {
+        std::string label;
+        double      value;
+    };
+
     // Numeric parameters change command recording, not resource layout or graph topology.
     struct PassParameter
     {
-        std::string name;
-        double      defaultValue;
-        double      minimum;
-        double      maximum;
+        std::string             name;
+        double                  defaultValue;
+        double                  minimum;
+        double                  maximum;
+        std::string             label;
+        std::string             description;
+        PassControl             control = PassControl::eSlider;
+        std::vector<PassChoice> choices;
+        bool                    shared = false;
     };
 
     using PassParameters = std::map<std::string, double>;
@@ -57,6 +76,8 @@ namespace vultra
         std::vector<PassParameter>                         parameters;
         uint64_t                                           requiredFeatures = 0;
         std::function<std::unique_ptr<GraphPass>(Device&)> create;
+        std::string                                        displayName;
+        std::string                                        description;
     };
 
     // Own this state until the graph's final submission completes and its callbacks are discarded.

@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 
 namespace vultra
@@ -162,6 +163,37 @@ namespace vultra
                 throw std::invalid_argument("Invalid scene primitive");
             }
         }
+        for (uint32_t index : scene.indices)
+        {
+            if (index >= scene.vertices.size())
+            {
+                throw std::invalid_argument("Invalid scene vertex index");
+            }
+        }
+        m_LocalBounds.reserve(primitives.size());
+        m_WorldBounds.resize(primitives.size());
+        for (const auto& primitive : primitives)
+        {
+            PrimitiveBounds bounds;
+            if (primitive.indexCount)
+            {
+                glm::vec3 minimum(std::numeric_limits<float>::infinity());
+                glm::vec3 maximum(-std::numeric_limits<float>::infinity());
+                for (uint32_t i = 0; i < primitive.indexCount; ++i)
+                {
+                    const auto position = scene.vertices[scene.indices[primitive.firstIndex + i]].position;
+                    if (!std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z))
+                    {
+                        throw std::invalid_argument("Scene position must be finite");
+                    }
+                    minimum = glm::min(minimum, position);
+                    maximum = glm::max(maximum, position);
+                }
+                bounds.center = (minimum + maximum) * .5f;
+                bounds.extent = (maximum - minimum) * .5f;
+            }
+            m_LocalBounds.push_back(bounds);
+        }
         transforms =
             std::make_unique<Buffer>(device,
                                      VriBufferDesc {std::max<size_t>(primitives.size(), 1) * sizeof(PrimitiveTransform),
@@ -171,13 +203,6 @@ namespace vultra
         m_Mirrored.resize(primitives.size());
         m_Transforms.resize(primitives.size());
         setPrimitiveTransforms(0, uint32_t(primitives.size()), glm::mat4(1));
-        for (uint32_t index : scene.indices)
-        {
-            if (index >= scene.vertices.size())
-            {
-                throw std::invalid_argument("Invalid scene vertex index");
-            }
-        }
         std::vector<SceneVertex>     generated;
         std::span<const SceneVertex> vertexData = scene.vertices;
 
@@ -218,10 +243,10 @@ namespace vultra
             VriPipelineStage_VertexInput | (meshShading ? VriPipelineStage_MeshShader : 0ull)};
         vertices = uploadBuffer(device, std::as_bytes(vertexData), vertexUsage, vertexReady);
         indices  = uploadBuffer(device,
-                                std::as_bytes(indexData),
-                                VriBufferUsage_IndexBuffer | VriBufferUsage_StorageBuffer | accelerationUsage,
+                               std::as_bytes(indexData),
+                               VriBufferUsage_IndexBuffer | VriBufferUsage_StorageBuffer | accelerationUsage,
                                 {VriAccess_IndexBufferRead, VriPipelineStage_VertexInput},
-                                sizeof(uint32_t));
+                               sizeof(uint32_t));
         if (meshShading)
         {
             meshlets = std::make_unique<GpuMeshlets>(device, *vertices, scene, workers);
@@ -252,7 +277,10 @@ namespace vultra
         {
             throw std::out_of_range("Primitive transform range");
         }
-        const auto data = transformData(transform);
+        const auto      data = transformData(transform);
+        const glm::mat3 absoluteLinear {glm::abs(glm::vec3(transform[0])),
+                                        glm::abs(glm::vec3(transform[1])),
+                                        glm::abs(glm::vec3(transform[2]))};
         if (count == 0)
         {
             return;
@@ -271,8 +299,11 @@ namespace vultra
         for (uint32_t index = 0; index < count; ++index)
         {
             std::memcpy(mapped + uint64_t(index) * sizeof(data), &data, sizeof(data));
-            m_Mirrored[first + index]   = data.properties.x < 0;
-            m_Transforms[first + index] = transform;
+            m_Mirrored[first + index]    = data.properties.x < 0;
+            m_Transforms[first + index]  = transform;
+            const auto& local            = m_LocalBounds[first + index];
+            m_WorldBounds[first + index] = {glm::vec3(transform * glm::vec4(local.center, 1)),
+                                            absoluteLinear * local.extent};
         }
         m_Device.core.UnmapBuffer(transforms->handle);
         ++m_TransformRevision;
@@ -291,5 +322,10 @@ namespace vultra
     uint64_t GpuScene::transformRevision() const
     {
         return m_TransformRevision;
+    }
+
+    const PrimitiveBounds& GpuScene::primitiveBounds(uint32_t index) const
+    {
+        return m_WorldBounds.at(index);
     }
 } // namespace vultra

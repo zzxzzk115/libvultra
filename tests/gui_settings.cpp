@@ -29,7 +29,7 @@ namespace
     {
         std::filesystem::path original = std::filesystem::current_path();
         std::filesystem::path root     = original / "build/.tmp/gui-settings" /
-                                         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+                                     std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
 
         RunDirectory()
         {
@@ -44,6 +44,41 @@ namespace
     };
 
     // Both apps intentionally have the same title and panel name. Only AppName differs.
+    void editorWidgets(VultraUiFrame frame)
+    {
+        const auto& api        = vultra::uiApi();
+        uint8_t     changed    = 0;
+        uint8_t     enabled    = 1;
+        int32_t     selection  = 1;
+        int32_t     resolution = 640;
+        double      tolerance  = 0.1;
+        require(api.header(frame, "Settings", 8, 1, &changed) == VULTRA_STATUS_OK,
+                "Extension header could not draw in the host context");
+        require(api.checkbox(frame, "Enabled", 7, &enabled, &changed) == VULTRA_STATUS_OK && enabled == 1,
+                "Checkbox failed to preserve its value");
+        require(api.combo(frame, "Mode", 4, &selection, "Compute\nGraphics", 16, &changed) == VULTRA_STATUS_OK &&
+                    selection == 1,
+                "Newline-separated choices failed");
+        require(api.integerslider(frame, "Width", 5, &resolution, 11, 4096, &changed) == VULTRA_STATUS_OK &&
+                    resolution == 640,
+                "Integer slider failed");
+        require(api.slider(frame, "Tolerance", 9, &tolerance, 0, 1, &changed) == VULTRA_STATUS_OK && tolerance == 0.1,
+                "Numeric slider failed");
+        require(api.textwrapped(frame, "Help text", 9) == VULTRA_STATUS_OK, "Wrapped extension description failed");
+        require(api.tooltip(frame, "Tooltip", 7) == VULTRA_STATUS_OK, "Extension tooltip failed");
+        require(api.slider(frame, "Null", 4, nullptr, 0, 1, &changed) == VULTRA_STATUS_INVALID_ARGUMENT,
+                "Null editable value accepted");
+        enabled = 2;
+        require(api.checkbox(frame, "Invalid", 7, &enabled, &changed) != VULTRA_STATUS_OK,
+                "Nonboolean checkbox value accepted");
+        selection = 2;
+        require(api.combo(frame, "Invalid", 7, &selection, "A\nB", 3, &changed) != VULTRA_STATUS_OK,
+                "Out-of-range choice accepted");
+        const VultraUiFrame stale {frame.context, frame.serial + 1};
+        require(api.slider(stale, "Expired", 7, &tolerance, 0, 1, &changed) == VULTRA_STATUS_INVALID_FRAME,
+                "Editable widget accepted a stale frame");
+    }
+
     void layoutSession(vultra::Device&                device,
                        vultra::Window&                window,
                        const vultra::EditorGuiConfig& config,
@@ -81,6 +116,7 @@ namespace
                 }
             }
             ImGui::TextUnformatted("Persist this panel");
+            editorWidgets(uiFrame);
             ImGui::End();
             gui.upload(window.framebufferSize());
             require(vultra::uiApi().text(uiFrame, "stale", 5) == VULTRA_STATUS_INVALID_FRAME,

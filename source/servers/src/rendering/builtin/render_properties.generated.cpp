@@ -9,9 +9,12 @@ namespace vultra
     {
         static constexpr std::array<int64_t, 3>        pathValues  = {0, 1, 2};
         static constexpr std::array<PropertyChoice, 2> pathChoices = {{{"NaiveDeferred", 0}, {"NaiveForward", 1}}};
+        static constexpr std::array<int64_t, 3>        toneOperatorValues  = {0, 1, 2};
+        static constexpr std::array<PropertyChoice, 3> toneOperatorChoices = {
+            {{"Aces", 0}, {"None", 1}, {"Reinhard", 2}}};
         static constexpr std::array<int64_t, 4>        shadowFilterValues  = {0, 1, 2, 3};
         static constexpr std::array<PropertyChoice, 0> shadowFilterChoices = {{}};
-        static const std::array<PropertyInfo, 21>      properties          = {{
+        static const std::array<PropertyInfo, 24>      properties          = {{
             {"path",
                            "Path",
                            "path",
@@ -88,6 +91,31 @@ namespace vultra
                            {
                  return RenderSettings {}.lightColor;
              }},
+            {"ambientColor",
+                           "Ambient color",
+                           "ambientColor",
+                           "/ambientColor",
+                           PropertyKind::eVector3,
+                           PropertyFlags::eSerialize | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
+                 return static_cast<const RenderSettings*>(object)->ambientColor;
+             },
+                           [](void* object, const PropertyValue& value)
+                           {
+                 static_cast<RenderSettings*>(object)->ambientColor = std::get<glm::vec3>(value);
+             },
+                           []() -> PropertyValue
+                           {
+                 return RenderSettings {}.ambientColor;
+             }},
             {"lightIntensity",
                            "Sun intensity",
                            "lightIntensity",
@@ -162,6 +190,32 @@ namespace vultra
                            []() -> PropertyValue
                            {
                  return RenderSettings {}.exposure;
+             }},
+            {"toneOperator",
+                           "Tone operator",
+                           "toneOperator",
+                           "/toneOperator",
+                           PropertyKind::eEnum,
+                           PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           toneOperatorChoices,
+                           toneOperatorValues,
+                           [](const void* object) -> PropertyValue
+                           {
+                 return PropertyEnum {static_cast<int64_t>(static_cast<const RenderSettings*>(object)->toneOperator)};
+             },
+                           [](void* object, const PropertyValue& value)
+                           {
+                 static_cast<RenderSettings*>(object)->toneOperator =
+                     static_cast<ToneOperator>(std::get<PropertyEnum>(value).value);
+             },
+                           []() -> PropertyValue
+                           {
+                 return PropertyEnum {static_cast<int64_t>(RenderSettings {}.toneOperator)};
              }},
             {"ibl",
                            "IBL",
@@ -313,6 +367,31 @@ namespace vultra
                            []() -> PropertyValue
                            {
                  return PropertyEnum {static_cast<int64_t>(RenderSettings {}.shadowFilter)};
+             }},
+            {"cacheShadows",
+                           "Cache static shadows",
+                           "cacheShadows",
+                           "/cacheShadows",
+                           PropertyKind::eBool,
+                           PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+                           PropertyWidget::eSlider,
+                           0,
+                           0,
+                           0,
+                           1,
+                           {},
+                           {},
+                           [](const void* object) -> PropertyValue
+                           {
+                 return static_cast<const RenderSettings*>(object)->cacheShadows;
+             },
+                           [](void* object, const PropertyValue& value)
+                           {
+                 static_cast<RenderSettings*>(object)->cacheShadows = std::get<bool>(value);
+             },
+                           []() -> PropertyValue
+                           {
+                 return RenderSettings {}.cacheShadows;
              }},
             {"shadowResolution",
                            "shadowResolution",

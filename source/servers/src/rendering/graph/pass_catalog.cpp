@@ -83,6 +83,15 @@ namespace vultra
                 {
                     throw std::invalid_argument(std::string(name) + ": parameter out of range: " + parameter.name);
                 }
+                if ((parameter.control == PassControl::eCheckbox && value != 0 && value != 1) ||
+                    (!parameter.choices.empty() && !std::ranges::any_of(parameter.choices,
+                                                                        [&](const auto& choice)
+                                                                        {
+                                                                            return choice.value == value;
+                                                                        })))
+                {
+                    throw std::invalid_argument(std::string(name) + ": invalid discrete parameter: " + parameter.name);
+                }
                 values.push_back(value);
             }
             return values;
@@ -125,7 +134,25 @@ namespace vultra
             {
                 throw std::invalid_argument("Invalid pass parameter: " + parameter.name);
             }
+            if (parameter.control < PassControl::eSlider || parameter.control > PassControl::eReadOnly ||
+                (parameter.control == PassControl::eChoice && parameter.choices.empty()) ||
+                (parameter.control == PassControl::eCheckbox &&
+                 (parameter.minimum != 0 || parameter.maximum != 1 ||
+                  (parameter.defaultValue != 0 && parameter.defaultValue != 1))))
+            {
+                throw std::invalid_argument("Invalid pass parameter control: " + parameter.name);
+            }
+            std::set<double> choiceValues;
+            for (const auto& choice : parameter.choices)
+            {
+                if (choice.label.empty() || !std::isfinite(choice.value) || choice.value < parameter.minimum ||
+                    choice.value > parameter.maximum || !choiceValues.insert(choice.value).second)
+                {
+                    throw std::invalid_argument("Invalid pass parameter choice: " + parameter.name);
+                }
+            }
         }
+        parameterValues(definition, definition.type, {});
         m_Definitions.push_back(std::move(definition));
     }
 
