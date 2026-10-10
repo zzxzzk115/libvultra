@@ -16,6 +16,9 @@ env -u DISPLAY -u WAYLAND_DISPLAY ./build/linux/x86_64/release/vultra-batch \
 the same workbench UI without a window. A saved version-1 workspace includes the render path and required `seed`.
 The legacy Research example's path selector still demonstrates the two raster paths. Workbench Skybox/IBL toggles
 are raster-only; reference transport samples the environment directly and uses its authored intensity.
+The optional raster `RenderSettings::ambientColor` fill is also excluded from reference transport. It is a
+declared `ambientColor * baseColor * materialAO` approximation for reproducing raster protocols, not a substitute
+for traced indirect illumination.
 
 ## Transport and material boundary
 
@@ -108,7 +111,8 @@ with graph resources and producer passes; resources include active use intervals
 VRI-reported memory. `graph_owned_bytes` deduplicates graph-owned physical allocations. Imported scene resources,
 BLAS/TLAS and private renderer textures are outside that subtotal. Unsupported memory/timestamp queries are `null`,
 never estimated zero. CPU/GPU events include parent/depth, inclusive durations and barrier intervals; summing only
-root events avoids counting nested work twice. `Profiler` supports up to 64 events, including nested scopes.
+root events avoids counting nested work twice. `Profiler` defaults to 64 events, including nested scopes;
+its constructor accepts a capacity for larger graphs. The stereo research host allocates 256 events.
 
 An offscreen RenderDoc capture can be recorded without a desktop window:
 

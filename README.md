@@ -26,6 +26,7 @@ The `dev-VRI` branch is a small VRI-based rendering research framework within li
 - Windowless `vultra-batch`, version-1 experiment descriptions and optional safe Python/NumPy research sessions
 - Progressive reference path tracing with marked AOVs, explicit history and reproducible convergence tests
 - Graph memory/producer reports, nested CPU/GPU events and offscreen RenderDoc capture
+- `vultra-app` [research vprojects](docs/research_projects.md): native VRI Pass modules, pure Slang, stereo/XR comparison and source-free delivery
 - `vultra-app` research workbench: node graph editing, scene/resource inspection, output previews and saved workspaces; offline UI capture
 
 The source is organized by `core`, `platform`, `drivers`, `assets`, `servers`, `scene`, `ui`, `main` and `api`, with optional `scripting`. A single public `vultra` static library supports direct VRI experiments; `vultra-scripting` adds native, Lua and C# project modules. See the [early engine architecture](docs/architecture.md) and [unified research and engine roadmap](docs/research_milestones.md).
@@ -151,6 +152,10 @@ For xmake target/option Tab completion, source `scripts/setup_xmake_completion.z
 
 ## Current Scope
 
+Native research projects hosted by `vultra-app` provide [reproducible stereo workflows](docs/research_workflow.md):
+saved configurations, headset geometry profiles, frame-indexed camera tracks, independent benchmark sweeps,
+intermediate inspection, explicit ROI/mask quality metrics and LDR-FLIP, display operators and VRI memory reports.
+
 The renderer exposes an **opaque OpenPBR subset**; its IBL uses a separate GGX split-sum approximation. The glTF loader handles static scenes, with unsupported features listed in the [guide](docs/guide.md#gltf-support). This is not a complete OpenPBR or glTF implementation.
 
 The RenderGraph currently uses one graphics queue. Version-1 JSON graph definitions and the minimal research workbench use its existing executor. The workbench edits authored scene snapshots and numeric pass parameters; the generated experiment API exposes graph configuration to optional Python research sessions. Explicit texture history and opt-in transient reuse are available. Its node canvas connects project passes with built-in scene outputs; individual built-in renderer passes are not yet editable graph nodes. Gaussian Splatting is outside the current scope. Ray tracing and mesh shading remain focused examples; [reference transport](docs/reference_renderer.md) runs in the workbench, batch and [Python sessions](docs/python_research.md). [Follow-up tasks](docs/future_tasks.md) distinguish remaining milestone gates from dev-next feature candidates. See the [example coverage table](docs/example_parity.md) for differences from `dev`, including lighting and renderer paths that are not yet ported.
@@ -178,9 +183,11 @@ Run `xmake test -v` for the test suite. Follow the checked-in `.clang-format` an
 - [argparse](https://github.com/p-ranav/argparse): command-line argument parsing
 - [spdlog](https://github.com/gabime/spdlog): console and file logging
 - [stb](https://github.com/nothings/stb): image loading, SIMD mip filtering and PNG writing
+- [NVIDIA FLIP](https://github.com/NVlabs/flip): on-demand perceptual image assessment ([BSD-3-Clause provenance](external/flip/README.vultra.md))
 - [VTask](https://github.com/zzxzzk115/vtask): parallel loading, geometry and texture import jobs
 - [meshoptimizer](https://github.com/zeux/meshoptimizer): meshlet construction and bounds, inherited from `dev`
 - [OpenFBX](https://github.com/nem0/OpenFBX): static FBX scene loading
+- [VRI-Framework](https://github.com/zzxzzk115/VRI-Framework): ORCA FBX material and normal-map conventions ([MIT notice](external/vrf_fbx_license.txt))
 - [DirectXTex](https://github.com/microsoft/DirectXTex): CPU DDS loading and block decompression
 - [TinyObjLoader](https://github.com/tinyobjloader/tinyobjloader): original OBJ/MTL loading
 - [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo): direct SIMD BC7 encoding
