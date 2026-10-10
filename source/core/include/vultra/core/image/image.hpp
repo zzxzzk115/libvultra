@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -22,6 +23,32 @@ namespace vultra
         double psnr = 0;
         double ssim = 0;
     };
+
+    struct MetricRegion
+    {
+        uint32_t x      = 0;
+        uint32_t y      = 0;
+        uint32_t width  = 0; // Both zero select the full frame.
+        uint32_t height = 0;
+    };
+
+    struct RegionMetrics
+    {
+        uint64_t              pixels      = 0;
+        uint64_t              ssimWindows = 0;
+        std::optional<double> mse;
+        std::optional<double> psnr;
+        std::optional<double> ssim;
+    };
+
+    // Binary mask: one finite 0 or 1 per image pixel. SSIM includes selected window centers;
+    // each complete 11x11 window must fit inside the ROI. Empty selections have absent metrics.
+    MetricRegion  validateMetricRegion(Extent size, MetricRegion region, std::span<const float> mask = {});
+    RegionMetrics compareRegion(const Image&           reference,
+                                const Image&           test,
+                                MetricRegion           region = {},
+                                std::span<const float> mask   = {},
+                                double                 peak   = 1);
 
     enum class ImageChannel : uint32_t
     {

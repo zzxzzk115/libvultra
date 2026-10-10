@@ -14,6 +14,41 @@ namespace vultra
 {
     namespace
     {
+        std::array<glm::vec4, 6> frustumPlanes(const glm::mat4& matrix)
+        {
+            const glm::vec4 x {matrix[0][0], matrix[1][0], matrix[2][0], matrix[3][0]};
+            const glm::vec4 y {matrix[0][1], matrix[1][1], matrix[2][1], matrix[3][1]};
+            const glm::vec4 z {matrix[0][2], matrix[1][2], matrix[2][2], matrix[3][2]};
+            const glm::vec4 w {matrix[0][3], matrix[1][3], matrix[2][3], matrix[3][3]};
+            std::array      planes {w + x, w - x, w + y, w - y, z, w - z}; // VRI depth is [0,1].
+            for (auto& plane : planes)
+            {
+                const float length = glm::length(glm::vec3(plane));
+                if (length > 0)
+                {
+                    plane /= length;
+                }
+            }
+            return planes;
+        }
+
+        bool intersects(const PrimitiveBounds& bounds, const std::array<glm::vec4, 6>& planes)
+        {
+            for (const auto& plane : planes)
+            {
+                const glm::vec3 normal(plane);
+                const auto      support =
+                    glm::dot(normal, bounds.center) + plane.w + glm::dot(glm::abs(normal), bounds.extent);
+                // Keep touching boxes despite float transform/clip-plane roundoff.
+                const auto margin = 1e-4f * (1 + glm::dot(glm::abs(normal), glm::abs(bounds.center) + bounds.extent));
+                if (support < -margin)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         struct LightData
         {
             glm::vec4 positionRange;
@@ -32,6 +67,7 @@ namespace vultra
             glm::vec4                cameraPosition;
             glm::vec4                lightDirection;
             glm::vec4                lightColor;
+            glm::vec4                ambientColor;
             glm::vec4                cascadeSplits;
             glm::vec4                cascadeWidths;
             glm::vec4                cascadeDepthRanges;
@@ -56,8 +92,9 @@ namespace vultra
         };
 
         static_assert(sizeof(LightData) == 64);
-        static_assert(offsetof(FrameData, lightConfig) == 608 && offsetof(FrameData, lights) == 624);
-        static_assert(sizeof(FrameData) == 4720);
+        static_assert(offsetof(FrameData, ambientColor) == 496);
+        static_assert(offsetof(FrameData, lightConfig) == 624 && offsetof(FrameData, lights) == 640);
+        static_assert(sizeof(FrameData) == 4736);
         static_assert(sizeof(MaterialData) == 128);
         static_assert(sizeof(SceneVertex) == 64 && offsetof(SceneVertex, tangent) == 48);
 
@@ -437,11 +474,6 @@ namespace vultra
     {
         const bool meshShading = settings.meshShading && pass == GeometryPass::eForward;
         m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
-        if (meshShading)
-        {
-            m_Device.core.CmdSetDescriptorSet(cmd, 2, m_MeshletSet);
-        }
-        m_Device.core.CmdSetDescriptorSet(cmd, 0, m_FrameSet);
         if (!meshShading)
         {
             const VriVertexBufferBinding vertices {m_Scene.vertices->handle, 0};
@@ -449,7 +481,8 @@ namespace vultra
             m_Device.core.CmdSetIndexBuffer(cmd, m_Scene.indices->handle, 0, VriIndexType_UInt32);
         }
         VriPipeline* activePipeline = nullptr;
-        for (size_t i = 0; i < m_Scene.primitives.size(); ++i)
+        const auto&  visible        = m_VisiblePrimitives[pass == GeometryPass::eShadow ? cascade + 1 : 0];
+        for (const uint32_t i : visible)
         {
             const auto& primitive = m_Scene.primitives[i];
             const auto& material  = m_Scene.materials.at(primitive.material);
@@ -486,13 +519,8 @@ namespace vultra
                     const VriDrawIndexedDesc draw {primitive.indexCount, 1, primitive.firstIndex, 0, 0};
                     m_Device.core.CmdDrawIndexed(cmd, &draw);
                 }
-                // Restore imported-material descriptors before the next primitive.
+                // The next imported primitive restores its descriptors after binding its graphics pipeline.
                 m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
-                m_Device.core.CmdSetDescriptorSet(cmd, 0, m_FrameSet);
-                if (meshShading)
-                {
-                    m_Device.core.CmdSetDescriptorSet(cmd, 2, m_MeshletSet);
-                }
                 activePipeline = nullptr;
                 continue;
             }
@@ -521,6 +549,12 @@ namespace vultra
             if (pipeline != activePipeline)
             {
                 m_Device.core.CmdSetPipeline(cmd, pipeline);
+                // VRI binds descriptors at the current pipeline's bind point, which may previously be compute.
+                m_Device.core.CmdSetDescriptorSet(cmd, 0, m_FrameSet);
+                if (meshShading)
+                {
+                    m_Device.core.CmdSetDescriptorSet(cmd, 2, m_MeshletSet);
+                }
                 activePipeline = pipeline;
             }
             float normalMode = 0;
@@ -588,6 +622,14 @@ namespace vultra
                           {{maps[cascade], Usage::eDepthWrite}},
                           [this, cascade, resource = maps[cascade], size](auto* cmd, auto& resources)
                           {
+                              const auto& key = m_PreparedShadowKeys[cascade];
+                              if (m_CacheShadows && m_ShadowCache[cascade] && *m_ShadowCache[cascade] == key)
+                              {
+                                  m_ShadowDrawn[cascade] = false;
+                                  return;
+                              }
+                              m_ShadowCache[cascade].reset();
+                              m_ShadowDrawn[cascade] = settings.shadowFilter != ShadowFilter::eDisabled;
                               VriAttachmentDesc depth {};
                               depth.view                          = resources.getTexture(resource).view();
                               depth.loadOp                        = VriAttachmentLoadOp_Clear;
@@ -604,6 +646,10 @@ namespace vultra
                                   drawScene(cmd, GeometryPass::eShadow, cascade);
                               }
                               m_Device.core.CmdEndRendering(cmd);
+                              if (m_CacheShadows)
+                              {
+                                  m_RecordedShadows[cascade] = key;
+                              }
                           });
         }
         return maps;
@@ -852,6 +898,11 @@ namespace vultra
                                   float                                       environmentIntensity)
     {
         const auto effectiveEnvironmentIntensity = settings.environmentIntensity * environmentIntensity;
+        if (!std::isfinite(settings.ambientColor.x) || !std::isfinite(settings.ambientColor.y) ||
+            !std::isfinite(settings.ambientColor.z) || glm::any(glm::lessThan(settings.ambientColor, glm::vec3(0))))
+        {
+            throw std::invalid_argument("Renderer ambient color must be nonnegative and finite");
+        }
         if (!std::isfinite(environmentIntensity) || environmentIntensity < 0 ||
             !std::isfinite(effectiveEnvironmentIntensity) || effectiveEnvironmentIntensity < 0)
         {
@@ -927,16 +978,95 @@ namespace vultra
         data.view                   = camera.view;
         data.lightViewProjection    = cascades.viewProjection;
         data.cameraPosition         = glm::inverse(camera.view)[3];
-        data.lightDirection         = {glm::normalize(directionToLight), lightIntensity};
-        data.lightColor             = {lightColor, effectiveEnvironmentIntensity};
-        data.cascadeSplits          = cascades.splits;
-        data.cascadeWidths          = cascades.worldWidths;
-        data.cascadeDepthRanges     = cascades.depthRanges;
-        data.shadowParameters       = {settings.shadowBias,
-                                       settings.normalBias,
-                                       settings.sunAngularRadius,
-                                       float(settings.shadowFilter)};
-        data.options                = {settings.ibl ? 1.0f : 0.0f,
+        m_RecordedShadows           = {};
+        // Game vertex/surface programs may depend on arbitrary resources; their shadows cannot be cached here.
+        m_CacheShadows = settings.cacheShadows && std::ranges::none_of(m_ShaderMaterials,
+                                                                       [](const auto* material)
+                                                                       {
+                                                                           return material != nullptr;
+                                                                       });
+        if (m_CacheShadows)
+        {
+            if (graph.aliasesTransients())
+            {
+                throw std::logic_error("Cached shadow maps require a graph without transient aliasing");
+            }
+            if (m_ShadowMaterials.size() != m_Scene.materials.size())
+            {
+                m_ShadowMaterials.resize(m_Scene.materials.size());
+                invalidateShadowCache();
+            }
+            for (size_t i = 0; i < m_ShadowMaterials.size(); ++i)
+            {
+                const auto&          material = m_Scene.materials[i];
+                const ShadowMaterial current {material.baseColor.a,
+                                              material.alphaCutoff,
+                                              material.baseColorTexture.sampler,
+                                              material.doubleSided,
+                                              m_Scene.materialTextures[i][0]->view()};
+                if (current != m_ShadowMaterials[i])
+                {
+                    invalidateShadowCache();
+                    m_ShadowMaterials[i] = current;
+                }
+            }
+        }
+        else
+        {
+            invalidateShadowCache();
+        }
+        std::array<uint64_t, 4> shadowPrograms;
+        for (size_t i = 0; i < shadowPrograms.size(); ++i)
+        {
+            shadowPrograms[i]       = m_Shadow[i]->generation();
+            m_PreparedShadowKeys[i] = {outputs.shadows[i].graph,
+                                       outputs.shadows[i].index,
+                                       data.lightViewProjection[i],
+                                       m_Scene.transformRevision(),
+                                       {},
+                                       settings.shadowFilter != ShadowFilter::eDisabled};
+        }
+        for (auto& key : m_PreparedShadowKeys)
+        {
+            key.programs = shadowPrograms;
+        }
+        for (size_t volume = 0; volume < m_VisiblePrimitives.size(); ++volume)
+        {
+            auto& visible = m_VisiblePrimitives[volume];
+            visible.clear();
+            if (volume &&
+                (!outputs.shadows[volume - 1].graph || !graph.resourceInfo(outputs.shadows[volume - 1]).active))
+            {
+                continue;
+            }
+            if (volume && m_CacheShadows && m_ShadowCache[volume - 1] &&
+                *m_ShadowCache[volume - 1] == m_PreparedShadowKeys[volume - 1])
+            {
+                continue;
+            }
+            const auto planes = frustumPlanes(volume ? data.lightViewProjection[volume - 1] : data.viewProjection);
+            visible.reserve(m_Scene.primitives.size());
+            for (uint32_t index = 0; index < m_Scene.primitives.size(); ++index)
+            {
+                // Explicit game vertex programs may displace vertices beyond the imported bounds.
+                if (m_Scene.primitives[index].indexCount && (m_ShaderMaterials[m_Scene.primitives[index].material] ||
+                                                             intersects(m_Scene.primitiveBounds(index), planes)))
+                {
+                    visible.push_back(index);
+                }
+            }
+        }
+        data.lightDirection     = {glm::normalize(directionToLight), lightIntensity};
+        data.lightColor         = {lightColor, effectiveEnvironmentIntensity};
+        data.ambientColor       = {settings.ambientColor, 0};
+        data.cascadeSplits      = cascades.splits;
+        data.cascadeWidths      = cascades.worldWidths;
+        data.cascadeDepthRanges = cascades.depthRanges;
+        data.shadowParameters   = {settings.shadowBias,
+                                   settings.normalBias,
+                                   settings.sunAngularRadius,
+                                   float(settings.shadowFilter)};
+        data.options            = {settings.ibl ? 1.0f : 0.0f,
                         settings.skybox ? 1.0f : 0.0f,
                         settings.exposure,
                         float(m_Environment.specular->desc.mipNum - 1)};
@@ -944,7 +1074,9 @@ namespace vultra
                             camera.farPlane,
                             std::clamp(settings.cascadeBlend, 0.0f, 0.15f),
                             float(settings.debugMode)};
-        m_ToneParameters = {settings.exposure, settings.meshShading && settings.meshletColors ? 1.0 : 0.0};
+        m_ToneParameters = {settings.exposure,
+                            settings.meshShading && settings.meshletColors ? 1.0 : 0.0,
+                            double(settings.toneOperator)};
         data.overrides   = {settings.roughnessOverride,
                             settings.metalnessOverride,
                           m_OutputFormat == VriFormat_RGBA16_SFLOAT ? 0.0f : 1.0f,
@@ -1142,10 +1274,38 @@ namespace vultra
         return {};
     }
 
+    std::array<uint32_t, 5> BuiltinRenderer::primitiveCounts() const
+    {
+        std::array<uint32_t, 5> result;
+        for (size_t i = 0; i < result.size(); ++i)
+        {
+            result[i] = i == 0 || m_ShadowDrawn[i - 1] ? uint32_t(m_VisiblePrimitives[i].size()) : 0;
+        }
+        return result;
+    }
+
+    void BuiltinRenderer::completeFrame()
+    {
+        for (size_t i = 0; i < m_ShadowCache.size(); ++i)
+        {
+            if (m_RecordedShadows[i])
+            {
+                m_ShadowCache[i] = std::move(m_RecordedShadows[i]);
+                m_RecordedShadows[i].reset();
+            }
+        }
+    }
+
+    void BuiltinRenderer::invalidateShadowCache()
+    {
+        m_ShadowCache     = {};
+        m_RecordedShadows = {};
+    }
+
     void BuiltinRenderer::prepareToneMapping(RenderGraph& graph, RenderGraph::Resource hdr)
     {
         graph.getTexture(hdr);
-        m_ToneParameters = {settings.exposure, 0};
+        m_ToneParameters = {settings.exposure, 0, double(settings.toneOperator)};
     }
 
     void BuiltinRenderer::setShaderMaterial(uint32_t slot, ShaderMaterial* material)

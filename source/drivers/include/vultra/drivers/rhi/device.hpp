@@ -48,11 +48,17 @@ namespace vultra
         VriCommandBuffer* begin();
         void              submitAndWait();
 
+        double waitMs() const
+        {
+            return m_WaitMs;
+        }
+
     private:
         Device&              m_Device;
         VriCommandAllocator* m_Allocator = nullptr;
         VriCommandBuffer*    m_Commands  = nullptr;
         VriFence*            m_Fence     = nullptr;
         uint64_t             m_Value     = 0;
+        double               m_WaitMs    = 0;
     };
 } // namespace vultra

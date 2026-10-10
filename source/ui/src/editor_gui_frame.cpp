@@ -4,6 +4,7 @@
 #include <misc/cpp/imgui_stdlib.h>
 
 #include <cfloat>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 
@@ -188,7 +189,13 @@ namespace vultra
         {
             return false;
         }
-        const bool changed = ImGui::SliderScalar("##value", ImGuiDataType_Double, value, &min, &max, "%.4g");
+        const bool changed = ImGui::SliderScalar("##value",
+                                                 ImGuiDataType_Double,
+                                                 value,
+                                                 &min,
+                                                 &max,
+                                                 "%.4g",
+                                                 ImGuiSliderFlags_AlwaysClamp);
         EditorGuiLayout::endProperty();
         return changed;
     }
@@ -328,6 +335,101 @@ namespace vultra
     void guiText(EditorGuiFrame&, std::string_view text)
     {
         ImGui::TextUnformatted(text.data(), text.data() + text.size());
+    }
+
+    void guiTextWrapped(EditorGuiFrame& frame, std::string_view text)
+    {
+        frame.textWrapped("%.*s", int(text.size()), text.data());
+    }
+
+    void guiSeparator(EditorGuiFrame& frame, std::string_view label)
+    {
+        frame.separatorText(std::string(label).c_str());
+    }
+
+    void guiTooltip(EditorGuiFrame&, std::string_view text)
+    {
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        {
+            ImGui::SetTooltip("%.*s", int(text.size()), text.data());
+        }
+    }
+
+    bool guiHeader(EditorGuiFrame&, std::string_view label, int32_t initiallyOpen)
+    {
+        if (initiallyOpen < 0 || initiallyOpen > 1)
+        {
+            throw std::invalid_argument("Header initial state must be zero or one");
+        }
+        return ImGui::CollapsingHeader(std::string(label).c_str(), initiallyOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+    }
+
+    bool guiCheckbox(EditorGuiFrame& frame, std::string_view label, uint8_t& value)
+    {
+        if (value > 1)
+        {
+            throw std::invalid_argument("Checkbox values must be zero or one");
+        }
+        bool       checked = value != 0;
+        const bool changed = frame.checkbox(std::string(label).c_str(), &checked);
+        value              = checked ? 1 : 0;
+        return changed;
+    }
+
+    bool guiSlider(EditorGuiFrame& frame, std::string_view label, double& value, double minimum, double maximum)
+    {
+        if (!std::isfinite(value) || !std::isfinite(minimum) || !std::isfinite(maximum) || minimum > maximum ||
+            value < minimum || value > maximum)
+        {
+            throw std::invalid_argument("Slider values must be finite and within their range");
+        }
+        return frame.sliderDouble(std::string(label).c_str(), &value, minimum, maximum);
+    }
+
+    bool guiIntegerSlider(EditorGuiFrame&, std::string_view label, int32_t& value, int32_t minimum, int32_t maximum)
+    {
+        if (minimum > maximum || value < minimum || value > maximum)
+        {
+            throw std::invalid_argument("Integer slider values must be within their range");
+        }
+        if (!EditorGuiLayout::beginProperty(std::string(label).c_str()))
+        {
+            return false;
+        }
+        const bool changed = ImGui::SliderScalar("##value",
+                                                 ImGuiDataType_S32,
+                                                 &value,
+                                                 &minimum,
+                                                 &maximum,
+                                                 "%d",
+                                                 ImGuiSliderFlags_AlwaysClamp);
+        EditorGuiLayout::endProperty();
+        return changed;
+    }
+
+    bool guiCombo(EditorGuiFrame& frame, std::string_view label, int32_t& value, std::string_view items)
+    {
+        // Newline-separated options avoid C-string truncation at embedded nulls across language bindings.
+        if (items.empty() || items.find(char(0)) != std::string_view::npos)
+        {
+            throw std::invalid_argument("Combo options must be nonempty newline-separated text");
+        }
+        std::string options(items);
+        int32_t     count = 1;
+        for (auto& character : options)
+        {
+            if (character == '\n')
+            {
+                character = 0;
+                ++count;
+            }
+        }
+        if (value < 0 || value >= count)
+        {
+            throw std::invalid_argument("Combo selection must name an option");
+        }
+        options.push_back(0);
+        return frame.combo(std::string(label).c_str(), &value, options.c_str());
     }
 
     EditorGuiWindow::EditorGuiWindow(EditorGuiFrame& frame, const char* title, bool* open, ImGuiWindowFlags flags) :

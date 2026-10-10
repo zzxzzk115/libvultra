@@ -31,6 +31,7 @@ namespace vultra
     {
         Texture*  color = nullptr;
         XrView    view {XR_TYPE_VIEW};
+        glm::mat4 poseMatrix() const;
         glm::mat4 viewProjection(float nearZ = 0.05f, float farZ = 100.0f) const;
     };
 
@@ -40,6 +41,8 @@ namespace vultra
         bool                 shouldRender = false;
         XrTime               displayTime  = 0;
         std::array<XREye, 2> eyes;
+        // Located eye midpoint in the runtime's tracking space, retaining the session head orientation.
+        glm::mat4 headPose() const;
     };
 
     class OpenXRSession

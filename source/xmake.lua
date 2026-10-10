@@ -14,6 +14,7 @@ target("vultra")
     end
     add_includedirs("assets/src")
     add_includedirs("drivers/src")
+    add_includedirs("../external", {system = true})
     add_files("core/src/**.cpp", "drivers/src/rhi/**.cpp", "drivers/src/profiling/**.cpp", "assets/src/**.cpp")
     add_files("servers/src/**.cpp", "scene/src/**.cpp", "ui/src/editor_gui*.cpp", "main/src/**.cpp", "api/src/**.cpp")
     add_files("platform/src/input/**.cpp", "platform/src/os/**.cpp")

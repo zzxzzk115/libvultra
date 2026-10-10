@@ -12,6 +12,14 @@ namespace vultra
 {
     class ShaderCompiler;
 
+    struct ShaderPipelineIdentity
+    {
+        std::filesystem::path         file;
+        std::string                   compileKey;
+        uint64_t                      spirvHash = 0;
+        std::vector<ShaderDependency> dependencies;
+    };
+
     class ShaderPipeline
     {
     public:
@@ -27,11 +35,14 @@ namespace vultra
                        Builder                            builder,
                        std::filesystem::path              watchDirectory     = {},
                        std::vector<std::filesystem::path> includeDirectories = {});
+        // Source cache paths resolve at construction; an empty path disables the disk program cache.
+        // Cooked programs do not create a compiler or cache.
         ShaderPipeline(Device&               device,
                        std::filesystem::path file,
                        ShaderCompileOptions  options,
                        Builder               builder,
-                       std::filesystem::path watchDirectory = {});
+                       std::filesystem::path watchDirectory = {},
+                       std::filesystem::path cacheDirectory = ".vultra/shaders");
         ~ShaderPipeline();
         ShaderPipeline(const ShaderPipeline&)            = delete;
         ShaderPipeline& operator=(const ShaderPipeline&) = delete;
@@ -53,6 +64,11 @@ namespace vultra
             return m_Generation;
         }
 
+        const ShaderPipelineIdentity& identity() const
+        {
+            return m_Identity;
+        }
+
     private:
         struct Watch;
         Device&                         m_Device;
@@ -62,6 +78,7 @@ namespace vultra
         VriPipeline*                    m_Pipeline = nullptr;
         std::string                     m_Diagnostics;
         uint64_t                        m_Generation = 0;
+        ShaderPipelineIdentity          m_Identity;
         std::unique_ptr<ShaderCompiler> m_Compiler;
         std::unique_ptr<Watch>          m_Watch;
     };

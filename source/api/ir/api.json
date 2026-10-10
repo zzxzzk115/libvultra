@@ -1893,6 +1893,19 @@
         },
         {
           "choices": [],
+          "default_cpp": null,
+          "enum_values": [],
+          "flag_bits": 5,
+          "flags": "serialize|bind",
+          "integer_bits": 0,
+          "json_path": "/ambientColor",
+          "kind": "eVector3",
+          "label": "Ambient color",
+          "name": "ambientColor",
+          "type": "glm::vec3"
+        },
+        {
+          "choices": [],
           "default_cpp": "3",
           "enum_values": [],
           "flag_bits": 7,
@@ -1931,6 +1944,36 @@
           "min": "-4",
           "name": "exposure",
           "type": "float"
+        },
+        {
+          "choices": [
+            {
+              "label": "Aces",
+              "value": 0
+            },
+            {
+              "label": "None",
+              "value": 1
+            },
+            {
+              "label": "Reinhard",
+              "value": 2
+            }
+          ],
+          "default_cpp": null,
+          "enum_values": [
+            0,
+            1,
+            2
+          ],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json_path": "/toneOperator",
+          "kind": "eEnum",
+          "label": "Tone operator",
+          "name": "toneOperator",
+          "options": "Aces|None|Reinhard",
+          "type": "ToneOperator"
         },
         {
           "choices": [],
@@ -2012,6 +2055,18 @@
           "label": "shadowFilter",
           "name": "shadowFilter",
           "type": "ShadowFilter"
+        },
+        {
+          "choices": [],
+          "default_cpp": null,
+          "enum_values": [],
+          "flag_bits": 7,
+          "integer_bits": 0,
+          "json_path": "/cacheShadows",
+          "kind": "eBool",
+          "label": "Cache static shadows",
+          "name": "cacheShadows",
+          "type": "bool"
         },
         {
           "choices": [],
@@ -2138,12 +2193,152 @@
   "ui_functions": [
     {
       "argument": "label",
+      "arguments": [
+        {
+          "name": "label",
+          "type": "std::string_view"
+        }
+      ],
       "name": "guiButton",
       "return": "bool"
     },
     {
+      "argument": "label",
+      "arguments": [
+        {
+          "name": "label",
+          "type": "std::string_view"
+        },
+        {
+          "name": "value",
+          "type": "uint8_t &"
+        }
+      ],
+      "name": "guiCheckbox",
+      "return": "bool"
+    },
+    {
+      "argument": "label",
+      "arguments": [
+        {
+          "name": "label",
+          "type": "std::string_view"
+        },
+        {
+          "name": "value",
+          "type": "int32_t &"
+        },
+        {
+          "name": "items",
+          "type": "std::string_view"
+        }
+      ],
+      "name": "guiCombo",
+      "return": "bool"
+    },
+    {
+      "argument": "label",
+      "arguments": [
+        {
+          "name": "label",
+          "type": "std::string_view"
+        },
+        {
+          "name": "initiallyOpen",
+          "type": "int32_t"
+        }
+      ],
+      "name": "guiHeader",
+      "return": "bool"
+    },
+    {
+      "argument": "label",
+      "arguments": [
+        {
+          "name": "label",
+          "type": "std::string_view"
+        },
+        {
+          "name": "value",
+          "type": "int32_t &"
+        },
+        {
+          "name": "minimum",
+          "type": "int32_t"
+        },
+        {
+          "name": "maximum",
+          "type": "int32_t"
+        }
+      ],
+      "name": "guiIntegerSlider",
+      "return": "bool"
+    },
+    {
+      "argument": "label",
+      "arguments": [
+        {
+          "name": "label",
+          "type": "std::string_view"
+        }
+      ],
+      "name": "guiSeparator",
+      "return": "void"
+    },
+    {
+      "argument": "label",
+      "arguments": [
+        {
+          "name": "label",
+          "type": "std::string_view"
+        },
+        {
+          "name": "value",
+          "type": "double &"
+        },
+        {
+          "name": "minimum",
+          "type": "double"
+        },
+        {
+          "name": "maximum",
+          "type": "double"
+        }
+      ],
+      "name": "guiSlider",
+      "return": "bool"
+    },
+    {
       "argument": "text",
+      "arguments": [
+        {
+          "name": "text",
+          "type": "std::string_view"
+        }
+      ],
       "name": "guiText",
+      "return": "void"
+    },
+    {
+      "argument": "text",
+      "arguments": [
+        {
+          "name": "text",
+          "type": "std::string_view"
+        }
+      ],
+      "name": "guiTextWrapped",
+      "return": "void"
+    },
+    {
+      "argument": "text",
+      "arguments": [
+        {
+          "name": "text",
+          "type": "std::string_view"
+        }
+      ],
+      "name": "guiTooltip",
       "return": "void"
     }
   ],

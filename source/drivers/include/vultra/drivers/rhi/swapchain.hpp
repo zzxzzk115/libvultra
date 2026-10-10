@@ -17,6 +17,12 @@ namespace vultra
         // nullptr means minimized or temporarily out of date. Retry on the next iteration.
         Texture* acquire();
         void     present();
+        void     setVsync(bool enabled); // Between completed frames, before acquiring an image.
+
+        bool vsync() const
+        {
+            return m_PresentMode == VriPresentMode_Fifo;
+        }
 
         Extent size() const
         {
@@ -30,13 +36,15 @@ namespace vultra
 
     private:
         void                                  refresh();
+        void                                  create();
         Device&                               m_Device;
         Window&                               m_Window;
         VriSwapChain*                         m_Handle = nullptr;
         VriFormat                             m_Format;
         Extent                                m_Extent {};
         Extent                                m_Requested {};
-        bool                                  m_Rebuild = false;
+        bool                                  m_Rebuild     = false;
+        VriPresentMode                        m_PresentMode = VriPresentMode_Fifo;
         std::vector<std::unique_ptr<Texture>> m_Images;
     };
 } // namespace vultra

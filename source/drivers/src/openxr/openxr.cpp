@@ -189,6 +189,32 @@ namespace vultra
         return m_Impl->system;
     }
 
+    glm::mat4 XREye::poseMatrix() const
+    {
+        const auto& pose = view.pose;
+        return glm::translate(glm::mat4(1), glm::vec3(pose.position.x, pose.position.y, pose.position.z)) *
+               glm::mat4_cast(
+                   glm::quat(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z));
+    }
+
+    glm::mat4 XRFrame::headPose() const
+    {
+        if (!shouldRender)
+        {
+            throw std::invalid_argument("Head pose requires located, renderable XR views");
+        }
+        const auto& left  = eyes[0].view.pose;
+        const auto& right = eyes[1].view.pose;
+        const auto  orientation =
+            glm::slerp(glm::quat(left.orientation.w, left.orientation.x, left.orientation.y, left.orientation.z),
+                       glm::quat(right.orientation.w, right.orientation.x, right.orientation.y, right.orientation.z),
+                       0.5f);
+        const glm::vec3 midpoint {(left.position.x + right.position.x) * 0.5f,
+                                  (left.position.y + right.position.y) * 0.5f,
+                                  (left.position.z + right.position.z) * 0.5f};
+        return glm::translate(glm::mat4(1), midpoint) * glm::mat4_cast(orientation);
+    }
+
     glm::mat4 XREye::viewProjection(float nearZ, float farZ) const
     {
         if (!(nearZ > 0 && farZ > nearZ))
@@ -208,11 +234,7 @@ namespace vultra
         projection[2][2] = farZ / (nearZ - farZ);
         projection[2][3] = -1;
         projection[3][2] = farZ * nearZ / (nearZ - farZ);
-        const auto& p    = view.pose;
-        const auto  world =
-            glm::translate(glm::mat4(1), glm::vec3(p.position.x, p.position.y, p.position.z)) *
-            glm::mat4_cast(glm::quat(p.orientation.w, p.orientation.x, p.orientation.y, p.orientation.z));
-        return projection * glm::inverse(world);
+        return projection * glm::inverse(poseMatrix());
     }
 
     OpenXRSession::OpenXRSession(OpenXRSystem& system, Device& device) :

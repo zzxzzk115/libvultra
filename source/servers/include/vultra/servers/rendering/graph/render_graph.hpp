@@ -101,10 +101,13 @@ namespace vultra
         void addPass(std::string name, std::initializer_list<Use> uses, ExecutePass execute, bool sideEffect = false);
         void addPass(std::string name, std::span<const Use> uses, ExecutePass execute, bool sideEffect = false);
         void exportResource(Resource resource);
+        void nameResource(Resource resource, std::string name); // Before compile; used by inspection and diagnostics.
         // Insert and export an opt-in copy after the pass writes source, before later writes overwrite it.
         Resource captureAfterPass(const std::string& passName, Resource source, std::string name);
+        Resource findResource(std::string_view name) const; // Named outputs/intermediates, also before compile.
         // Aliasing reuses identical transient resources with disjoint live intervals. An aliased plan is immutable.
         void compile(bool aliasTransients = false);
+        bool aliasesTransients() const;
         void execute(VriCommandBuffer* cmd, Profiler* profiler = nullptr);
         // Rebind a same-format/size imported backbuffer after acquisition, before execute.
         void                     bind(Resource resource, Texture& texture);

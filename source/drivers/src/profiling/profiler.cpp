@@ -28,12 +28,17 @@ namespace vultra
         return suffix;
     }
 
-    Profiler::Profiler(Device& device) :
+    Profiler::Profiler(Device& device, uint32_t eventCapacity) :
+        m_EventCapacity(eventCapacity),
         m_Device(device)
     {
-        m_Records.reserve(kMaxPasses);
-        m_Results.reserve(kMaxPasses);
-        m_Stack.reserve(kMaxPasses);
+        if (eventCapacity == 0 || eventCapacity > UINT32_MAX / 3)
+        {
+            throw std::invalid_argument("Profiler event capacity must fit three queries per event");
+        }
+        m_Records.reserve(eventCapacity);
+        m_Results.reserve(eventCapacity);
+        m_Stack.reserve(eventCapacity);
         const auto* desc = device.core.GetDeviceDesc(device.handle);
         m_TickNs         = desc->timestampPeriodNanoseconds;
         if (!desc->hasTimestampQueries || m_TickNs <= 0)
@@ -42,11 +47,11 @@ namespace vultra
         }
         check(vriGetInterface(device.handle, VRI_INTERFACE_QUERY, sizeof(m_Api), &m_Api), "Get timestamp interface");
         m_Readback = std::make_unique<Buffer>(device,
-                                              VriBufferDesc {kMaxPasses * 3 * sizeof(uint64_t),
+                                              VriBufferDesc {uint64_t(eventCapacity) * 3 * sizeof(uint64_t),
                                                              0,
                                                              VriBufferUsage_TransferDst,
                                                              VriMemoryLocation_HostReadback});
-        VriQueryPoolDesc query {VriQueryType_Timestamp, kMaxPasses * 3};
+        VriQueryPoolDesc query {VriQueryType_Timestamp, eventCapacity * 3};
         check(m_Api.CreateQueryPool(device.handle, &query, &m_Pool), "Create timestamp pool");
     }
 
@@ -66,15 +71,15 @@ namespace vultra
         m_QueryCount = 0;
         if (m_Pool)
         {
-            m_Api.CmdResetQueries(cmd, m_Pool, 0, kMaxPasses * 3);
+            m_Api.CmdResetQueries(cmd, m_Pool, 0, m_EventCapacity * 3);
         }
     }
 
     void Profiler::beginPass(VriCommandBuffer* cmd, const std::string& name)
     {
-        if (m_Records.size() == kMaxPasses)
+        if (m_Records.size() == m_EventCapacity)
         {
-            throw std::runtime_error("Profiler supports at most 64 events per frame");
+            throw std::runtime_error(std::format("Profiler supports at most {} events per frame", m_EventCapacity));
         }
         Record record;
         record.timing.name   = name;

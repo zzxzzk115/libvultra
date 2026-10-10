@@ -51,7 +51,7 @@ namespace vultra
     class Profiler
     {
     public:
-        explicit Profiler(Device& device);
+        explicit Profiler(Device& device, uint32_t eventCapacity = 64);
         ~Profiler();
         Profiler(const Profiler&)            = delete;
         Profiler& operator=(const Profiler&) = delete;
@@ -82,15 +82,15 @@ namespace vultra
             uint32_t                              lastQuery    = 0;
         };
 
-        static constexpr uint32_t kMaxPasses = 64;
-        Device&                   m_Device;
-        VriQueryInterface         m_Api {};
-        VriQueryPool*             m_Pool = nullptr;
-        std::unique_ptr<Buffer>   m_Readback;
-        std::vector<Record>       m_Records;
-        std::vector<PassTiming>   m_Results;
-        std::vector<uint32_t>     m_Stack;
-        double                    m_TickNs     = 0;
-        uint32_t                  m_QueryCount = 0;
+        uint32_t                m_EventCapacity;
+        Device&                 m_Device;
+        VriQueryInterface       m_Api {};
+        VriQueryPool*           m_Pool = nullptr;
+        std::unique_ptr<Buffer> m_Readback;
+        std::vector<Record>     m_Records;
+        std::vector<PassTiming> m_Results;
+        std::vector<uint32_t>   m_Stack;
+        double                  m_TickNs     = 0;
+        uint32_t                m_QueryCount = 0;
     };
 } // namespace vultra

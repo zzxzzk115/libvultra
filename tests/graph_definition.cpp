@@ -140,7 +140,7 @@ namespace
                           device.core.CmdEndRendering(cmd);
                       });
         RenderGraph::Resource       color;
-        const std::array<double, 2> parameters {0, 0};
+        const std::array<double, 3> parameters {0, 0, 0};
         if (definitionDriven)
         {
             const auto definition = GraphDefinition::parse(
