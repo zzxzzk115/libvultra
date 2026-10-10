@@ -2,9 +2,14 @@
 #include <vultra/assets/asset_source.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/scene/scene_tree.hpp>
+#include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
 #include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/servers/rendering/scene.hpp>
 #include <vultra/servers/rendering/texture_blit.hpp>
+
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -268,9 +273,200 @@ Connections: {
         for (size_t i = 0; i < a.vertices.size(); ++i)
         {
             require(a.vertices[i].position == b.vertices[i].position && a.vertices[i].normal == b.vertices[i].normal &&
-                        a.vertices[i].uv == b.vertices[i].uv,
+                        a.vertices[i].uv == b.vertices[i].uv && a.vertices[i].tangent == b.vertices[i].tangent,
                     "Parallel FBX attributes differ");
         }
+    }
+
+    void testOrca(const std::filesystem::path& root)
+    {
+        using namespace vultra;
+        std::filesystem::create_directories(root / "Textures");
+        auto packed = dds(false);
+        for (size_t offset = 148; offset < packed.size(); offset += 8)
+        {
+            packed[offset]     = std::byte(0x1f); // R=0, G=32/63, B=1; palette entry zero.
+            packed[offset + 1] = std::byte(0x04);
+        }
+        write(root / "Textures/packed.dds", packed);
+        auto                     normal = dds(false);
+        std::array<uint32_t, 37> header;
+        std::memcpy(header.data(), normal.data(), sizeof(header));
+        header[5]  = 16;
+        header[32] = 83; // DXGI_FORMAT_BC5_UNORM.
+        normal.resize(148 + 3 * 16);
+        std::memcpy(normal.data(), header.data(), sizeof(header));
+        std::fill(normal.begin() + 148, normal.end(), std::byte(0));
+        for (size_t offset = 148; offset < normal.size(); offset += 16)
+        {
+            normal[offset] = normal[offset + 1] = std::byte(166);
+            normal[offset + 8] = normal[offset + 9] = std::byte(153);
+        }
+        write(root / "Textures/normal.dds", normal);
+        write(root / "Textures/emission.dds", dds(true));
+        std::string fbx(kFbx);
+        fbx.replace(fbx.find("Material::Gray"), std::strlen("Material::Gray"), "Material::Chrome.DoubleSided");
+        const auto factor = fbx.find("\"DiffuseFactor\", \"Number\", \"\", \"A\",1");
+        fbx.replace(factor,
+                    std::strlen("\"DiffuseFactor\", \"Number\", \"\", \"A\",1"),
+                    "\"DiffuseFactor\", \"Number\", \"\", \"A\",0");
+        const auto connections = fbx.find("\n}\nConnections:");
+        fbx.insert(connections, R"(
+ Texture: 16, "Texture::Packed", "" {
+  Type: "TextureVideoClip"
+  Version: 202
+  FileName: "Textures/packed.dds"
+  RelativeFilename: "Textures/packed.dds"
+ }
+ Texture: 17, "Texture::Normal", "" {
+  Type: "TextureVideoClip"
+  Version: 202
+  FileName: "Textures/normal.dds"
+  RelativeFilename: "Textures/normal.dds"
+ }
+ Texture: 18, "Texture::Emission", "" {
+  Type: "TextureVideoClip"
+  Version: 202
+  FileName: "Textures/emission.dds"
+  RelativeFilename: "Textures/emission.dds"
+ })");
+        fbx.insert(fbx.find("\nConnections: {") + std::strlen("\nConnections: {"), R"(
+ C: "OP",16,4,"SpecularColor"
+ C: "OP",17,4,"NormalMap"
+ C: "OP",18,4,"EmissiveColor"
+)");
+        writeText(root / "orca.FbX", fbx);
+        AssetImportOptions options;
+        options.cacheDirectory = root / "orca-cache";
+        options.workers        = 4;
+        options.fbx            = {FbxMaterialConvention::eOrcaMetallicRoughness, true};
+        const auto cold        = importAsset(root / "orca.FbX", options);
+        const auto warm        = importAsset(root / "orca.FbX", options);
+        require(!cold.cacheHit && warm.cacheHit, "ORCA cache did not hit");
+        sameScene(cold.scene, warm.scene);
+        const auto& material = warm.scene.materials[0];
+        require(material.baseColor == glm::vec4(1) && material.baseMetalness == 1 && material.specularRoughness == 1 &&
+                    material.metallicRoughnessTexture.image >= 0 && material.occlusionTexture.image == -1 &&
+                    material.alphaCutoff == 0.5f && material.doubleSided && material.emissionColor == glm::vec3(1) &&
+                    material.emissionLuminance == 1,
+                "ORCA factors, channel bindings, emission or coverage are incorrect");
+        require(warm.textures.images[warm.textures.materials[0][2]].format == TextureFormat::eBc5Unorm,
+                "ORCA BC5 normal blocks were converted");
+        options.fbx.directXNormalMaps = false;
+        require(!isAssetCacheCurrent(root / "orca.FbX", options), "Normal convention omitted from cache key");
+        const auto opengl = importAsset(root / "orca.FbX", options);
+        require(!opengl.cacheHit && opengl.cachePath != cold.cachePath,
+                "Normal convention reused incompatible cached tangents");
+        for (size_t vertex = 0; vertex < cold.scene.vertices.size(); ++vertex)
+        {
+            require(cold.scene.vertices[vertex].tangent.w == -opengl.scene.vertices[vertex].tangent.w,
+                    "DirectX normal-map inversion was lost or applied twice");
+        }
+        options.fbx.materialConvention = FbxMaterialConvention::ePhong;
+        const auto phong               = importAsset(root / "orca.FbX", options);
+        require(!phong.cacheHit && phong.cachePath != opengl.cachePath &&
+                    phong.scene.materials[0].baseColor == glm::vec4(0, 0, 0, 1) &&
+                    phong.scene.materials[0].metallicRoughnessTexture.image == -1 &&
+                    phong.scene.materials[0].emissionLuminance == 0,
+                "ORCA interpretation leaked into generic Phong import or missing properties were uninitialized");
+
+        Device          device;
+        GpuScene        gpu(device, warm);
+        Environment     environment(device);
+        BuiltinRenderer renderer(device, gpu, environment);
+        renderer.settings.ibl          = false;
+        renderer.settings.skybox       = false;
+        renderer.settings.shadowFilter = ShadowFilter::eDisabled;
+        const RenderCamera camera {glm::lookAtRH(glm::vec3(3, 1.5f, 3), glm::vec3(3, 1.5f, 0), glm::vec3(0, 1, 0)),
+                                   glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
+                                   0.1f,
+                                   10.0f};
+        renderer.settings.path = RenderPath::eNaiveDeferred;
+        RenderGraph graph(device);
+        const auto  outputs = renderer.addScenePasses(graph, {17, 17});
+        for (const auto resource : {outputs.hdr, outputs.gbuffer[0], outputs.gbuffer[1], outputs.gbuffer[3]})
+        {
+            graph.exportResource(resource);
+        }
+        graph.compile();
+        renderer.prepare(camera, graph, outputs);
+        Frame frame(device);
+        graph.execute(frame.begin());
+        frame.submitAndWait();
+        const auto       position        = readback(device, graph.getTexture(outputs.gbuffer[0]));
+        const auto       normalRoughness = readback(device, graph.getTexture(outputs.gbuffer[1]));
+        const auto       emission        = readback(device, graph.getTexture(outputs.gbuffer[3]));
+        constexpr size_t center          = (8 * 17 + 8) * 4;
+        require(std::abs(position.rgba[center + 3] - 1) < 0.01f &&
+                    std::abs(normalRoughness.rgba[center + 3] - 130.0f / 255) < 0.01f,
+                "GPU material did not read metalness from B and roughness from G");
+        const float x = 166.0f / 255 * 2 - 1;
+        const float y = 153.0f / 255 * 2 - 1;
+        require(std::abs(normalRoughness.rgba[center] - x) < 0.01f &&
+                    std::abs(normalRoughness.rgba[center + 1] + y) < 0.01f &&
+                    std::abs(normalRoughness.rgba[center + 2] - std::sqrt(1 - x * x - y * y)) < 0.01f,
+                "GPU BC5 reconstruction or DirectX tangent handedness is incorrect");
+        require(emission.rgba[center] > 0.2f && emission.rgba[center] < 0.3f && emission.rgba[center + 3] == 1,
+                "GPU emission multiplier or reserved ORCA AO channel is incorrect");
+
+        SceneTree       tree(std::make_unique<Node>("ORCA"));
+        ProjectManifest project;
+        project.mainScene = "orca.vscene";
+        const auto model =
+            project.addAsset("orca.FbX", FbxImportOptions {FbxMaterialConvention::eOrcaMetallicRoughness, true});
+        project.addAsset("color.dds");
+        tree.save(root / project.mainScene);
+        project.save(root / "orca.vproject");
+        const auto loaded = ProjectManifest::load(root / "orca.vproject");
+        require(loaded.asset(model).fbx == project.asset(model).fbx, "FBX import settings did not roundtrip");
+        std::ifstream manifest(root / "orca.vproject");
+        const auto    document = nlohmann::json::parse(manifest);
+        for (const auto& invalid : {nlohmann::json {{"materials", "unknown"}},
+                                    nlohmann::json {{"normal_maps", "unknown"}},
+                                    nlohmann::json {{"materials", 1}},
+                                    nlohmann::json {{"normal_map", "directx"}}})
+        {
+            auto rejected                       = document;
+            rejected["assets"][0]["fbx_import"] = invalid;
+            writeText(root / "invalid-orca.vproject", rejected.dump());
+            bool failed = false;
+            try
+            {
+                ProjectManifest::load(root / "invalid-orca.vproject");
+            }
+            catch (const std::exception&)
+            {
+                failed = true;
+            }
+            require(failed, "Invalid FBX import settings were accepted");
+        }
+        auto wrongType                 = document;
+        wrongType["assets"][0]["path"] = "color.dds";
+        writeText(root / "invalid-orca.vproject", wrongType.dump());
+        bool wrongTypeRejected = false;
+        try
+        {
+            ProjectManifest::load(root / "invalid-orca.vproject");
+        }
+        catch (const std::exception&)
+        {
+            wrongTypeRejected = true;
+        }
+        require(wrongTypeRejected, "FBX import settings were accepted for a DDS asset");
+        VpkArchive::packProject(root / "orca.vproject", root / "orca.vpk");
+        AssetSource source {VpkArchive(root / "orca.vpk")};
+        const auto  packedProject = ProjectManifest::load(source.resolve("project.vproject"), &source);
+        require(packedProject.asset(model).fbx == project.asset(model).fbx, "VPK lost its FBX import settings");
+        require(source.contains("Textures/packed.dds") && source.contains("Textures/normal.dds") &&
+                    source.contains("Textures/emission.dds"),
+                "VPK omitted referenced FBX texture dependencies");
+        options.cacheDirectory = root / "orca-package-cache";
+        options.fbx            = *packedProject.asset(model).fbx;
+        const auto packedAsset = importAsset(source.resolve("orca.FbX"), options, &source);
+        require(packedAsset.scene.materials[0].baseMetalness == 1 &&
+                    packedAsset.textures.images[packedAsset.textures.materials[0][2]].levels[0].bytes ==
+                        cold.textures.images[cold.textures.materials[0][2]].levels[0].bytes,
+                "Packaged ORCA lost its material convention or authored BC5 bytes");
     }
 } // namespace
 
@@ -346,6 +542,7 @@ try
         "Malformed DDS was accepted");
 
     testGltfDds(root);
+    testOrca(root);
     const auto embedded = vultra::loadFbx("tests/fixtures/embedded_dds.fbx", {}, 4);
     require(embedded.indices.size() == 3 && embedded.images.size() == 1 && !embedded.images[0].dds.empty(),
             "Binary FBX embedded DDS image was not loaded");

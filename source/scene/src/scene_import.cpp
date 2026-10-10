@@ -221,7 +221,13 @@ namespace vultra
                                                   });
                 if (model == models.end())
                 {
-                    models.push_back({id, importAsset(projectRoot / project.asset(id).path, options, source), 0});
+                    const auto& modelAsset    = project.asset(id);
+                    auto        importOptions = options;
+                    if (modelAsset.fbx)
+                    {
+                        importOptions.fbx = *modelAsset.fbx;
+                    }
+                    models.push_back({id, importAsset(projectRoot / modelAsset.path, importOptions, source), 0});
                     model                 = std::prev(models.end());
                     model->materialOffset = appendModelData(result, model->asset);
                     result.cacheHit =

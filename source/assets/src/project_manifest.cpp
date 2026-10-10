@@ -91,7 +91,7 @@ namespace vultra
         }
     } // namespace
 
-    AssetId ProjectManifest::addAsset(const std::filesystem::path& path)
+    AssetId ProjectManifest::addAsset(const std::filesystem::path& path, std::optional<FbxImportOptions> fbx)
     {
         const auto normalized = projectPath(pathText(path));
         if (std::ranges::any_of(m_Assets,
@@ -111,7 +111,7 @@ namespace vultra
                                      {
                                          return asset.id == id;
                                      }));
-        m_Assets.push_back({id, normalized});
+        m_Assets.push_back({id, normalized, fbx});
         return id;
     }
 
@@ -168,6 +168,19 @@ namespace vultra
                 throw std::invalid_argument("Project asset ID is empty");
             }
             projectPath(pathText(entry.path));
+            auto extension = entry.path.extension().string();
+            std::ranges::transform(extension,
+                                   extension.begin(),
+                                   [](unsigned char c)
+                                   {
+                                       return char(std::tolower(c));
+                                   });
+            if (entry.fbx && ((extension != ".fbx") ||
+                              (entry.fbx->materialConvention != FbxMaterialConvention::ePhong &&
+                               entry.fbx->materialConvention != FbxMaterialConvention::eOrcaMetallicRoughness)))
+            {
+                throw std::invalid_argument("fbx_import requires an FBX asset and a supported material convention");
+            }
             for (size_t j = 0; j < i; ++j)
             {
                 if (m_Assets[j].id == entry.id || m_Assets[j].path == entry.path)
@@ -187,6 +200,50 @@ namespace vultra
         if (uiFont)
         {
             asset(*uiFont);
+        }
+        if (research)
+        {
+            if (research->name.empty() || research->name.find_first_of("/\\:") != std::string::npos ||
+                research->name == "." || research->name == ".." || research->methods.empty() || research->width < 11 ||
+                research->height < 11 || research->width > 8192 || research->height > 8192)
+            {
+                throw std::invalid_argument("Research project requires a name, methods and valid eye extent");
+            }
+            if (research->renderPath != "forward" && research->renderPath != "deferred")
+            {
+                throw std::invalid_argument("Research render_path must be forward or deferred");
+            }
+            const auto renderer = nlohmann::json::parse(research->rendererSettings);
+            if (!renderer.is_object() || renderer.contains("path"))
+            {
+                throw std::invalid_argument("Research renderer must be an object; use render_path to select the path");
+            }
+            asset(research->comparison);
+            if (research->configurationLabel.empty() ||
+                (!research->referenceMethod.empty() &&
+                 (research->methods.size() < 2 ||
+                  std::ranges::find(research->methods, research->referenceMethod, &ResearchMethod::name) ==
+                      research->methods.end())))
+            {
+                throw std::invalid_argument(
+                    "Research reference method must name an existing method with an alternative");
+            }
+            for (size_t i = 0; i < research->methods.size(); ++i)
+            {
+                const auto& method = research->methods[i];
+                asset(method.graph);
+                if (method.name.empty())
+                {
+                    throw std::invalid_argument("Research method name is empty");
+                }
+                for (size_t j = 0; j < i; ++j)
+                {
+                    if (research->methods[j].name == method.name)
+                    {
+                        throw std::invalid_argument("Duplicate research method name");
+                    }
+                }
+            }
         }
         for (size_t index = 0; index < extensions.size(); ++index)
         {
@@ -235,7 +292,14 @@ namespace vultra
         }
         for (const auto& asset : m_Assets)
         {
-            document["assets"].push_back({{"id", asset.id.value.toString()}, {"path", pathText(asset.path)}});
+            nlohmann::json entry {{"id", asset.id.value.toString()}, {"path", pathText(asset.path)}};
+            if (asset.fbx)
+            {
+                entry["fbx_import"] = {
+                    {"materials", asset.fbx->materialConvention == FbxMaterialConvention::ePhong ? "phong" : "orca"},
+                    {"normal_maps", asset.fbx->directXNormalMaps ? "directx" : "opengl"}};
+            }
+            document["assets"].push_back(std::move(entry));
         }
         for (const auto& extension : extensions)
         {
@@ -253,6 +317,23 @@ namespace vultra
                 entry["node"] = script.node->toString();
             }
             document["scripts"].push_back(std::move(entry));
+        }
+        if (research)
+        {
+            auto& description = document["research"];
+            description       = {{"name", research->name},
+                                 {"size", {research->width, research->height}},
+                                 {"features", research->features},
+                                 {"render_path", research->renderPath},
+                                 {"reference_method", research->referenceMethod},
+                                 {"configuration_label", research->configurationLabel},
+                                 {"renderer", nlohmann::json::parse(research->rendererSettings)},
+                                 {"comparison", research->comparison.value.toString()},
+                                 {"methods", nlohmann::json::array()}};
+            for (const auto& method : research->methods)
+            {
+                description["methods"].push_back({{"name", method.name}, {"graph", method.graph.value.toString()}});
+            }
         }
         const auto text = document.dump(2) + "\n";
         writeFileAtomically(file, std::as_bytes(std::span(text)));
@@ -287,6 +368,32 @@ namespace vultra
             {
                 project.m_Assets.push_back({parseAssetId(entry.at("id").get<std::string>()),
                                             projectPath(entry.at("path").get<std::string>())});
+                if (entry.contains("fbx_import"))
+                {
+                    const auto& description = entry.at("fbx_import");
+                    if (!description.is_object())
+                    {
+                        throw std::invalid_argument("fbx_import must be an object");
+                    }
+                    for (const auto& setting : description.items())
+                    {
+                        const auto& key = setting.key();
+                        if (key != "materials" && key != "normal_maps")
+                        {
+                            throw std::invalid_argument("Unknown fbx_import setting: " + key);
+                        }
+                    }
+                    const auto materials = description.value("materials", std::string("phong"));
+                    const auto normals   = description.value("normal_maps", std::string("opengl"));
+                    if ((materials != "phong" && materials != "orca") || (normals != "opengl" && normals != "directx"))
+                    {
+                        throw std::invalid_argument("Unknown fbx_import material or normal-map convention");
+                    }
+                    project.m_Assets.back().fbx =
+                        FbxImportOptions {materials == "orca" ? FbxMaterialConvention::eOrcaMetallicRoughness :
+                                                                FbxMaterialConvention::ePhong,
+                                          normals == "directx"};
+                }
             }
             for (const auto& extension : document.at("extensions"))
             {
@@ -310,6 +417,26 @@ namespace vultra
                     script.node = *node;
                 }
                 project.scripts.push_back(std::move(script));
+            }
+            if (document.contains("research"))
+            {
+                const auto&     description = document.at("research");
+                ResearchProject research;
+                research.name               = description.at("name").get<std::string>();
+                research.width              = description.at("size").at(0).get<uint32_t>();
+                research.height             = description.at("size").at(1).get<uint32_t>();
+                research.features           = description.value("features", uint64_t(0));
+                research.renderPath         = description.value("render_path", std::string("forward"));
+                research.referenceMethod    = description.value("reference_method", std::string {});
+                research.configurationLabel = description.value("configuration_label", std::string("Configuration"));
+                research.rendererSettings   = description.value("renderer", nlohmann::json::object()).dump();
+                research.comparison         = parseAssetId(description.at("comparison").get<std::string>());
+                for (const auto& method : description.at("methods"))
+                {
+                    research.methods.push_back(
+                        {method.at("name").get<std::string>(), parseAssetId(method.at("graph").get<std::string>())});
+                }
+                project.research = std::move(research);
             }
             project.validate();
             return project;

@@ -12,6 +12,7 @@
 #include <limits>
 #include <map>
 #include <mutex>
+#include <string_view>
 
 namespace vultra
 {
@@ -63,6 +64,73 @@ namespace vultra
             return result;
         }
 
+        // Read Properties70 directly: OpenFBX 0.9 getters may contain uninitialized values for absent properties.
+        const ofbx::IElementProperty* materialProperty(const ofbx::Material& material, std::string_view name)
+        {
+            for (auto* group = material.element.getFirstChild(); group; group = group->getSibling())
+            {
+                if (text(group->getID()) != "Properties70")
+                {
+                    continue;
+                }
+                for (auto* entry = group->getFirstChild(); entry; entry = entry->getSibling())
+                {
+                    auto* value = entry->getFirstProperty();
+                    if (text(entry->getID()) != "P" || !value || text(value->getValue()) != name)
+                    {
+                        continue;
+                    }
+                    for (int field = 0; field < 4 && value; ++field)
+                    {
+                        value = value->getNext();
+                    }
+                    if (!value)
+                    {
+                        throw std::runtime_error(std::string(material.name) + ": incomplete FBX material property");
+                    }
+                    return value;
+                }
+            }
+            return nullptr;
+        }
+
+        float materialNumber(const ofbx::Material& material, std::string_view name, float fallback)
+        {
+            const auto* value  = materialProperty(material, name);
+            const float result = value ? float(value->getValue().toDouble()) : fallback;
+            if (!std::isfinite(result))
+            {
+                throw std::runtime_error(std::string(material.name) + ": non-finite FBX property " + std::string(name));
+            }
+            return result;
+        }
+
+        glm::vec3 materialColor(const ofbx::Material& material, std::string_view name, glm::vec3 fallback)
+        {
+            const auto* value = materialProperty(material, name);
+            if (!value)
+            {
+                return fallback;
+            }
+            glm::vec3 result;
+            for (int component = 0; component < 3; ++component)
+            {
+                if (!value)
+                {
+                    throw std::runtime_error(std::string(material.name) + ": incomplete FBX color " +
+                                             std::string(name));
+                }
+                result[component] = float(value->getValue().toDouble());
+                if (!std::isfinite(result[component]))
+                {
+                    throw std::runtime_error(std::string(material.name) + ": non-finite FBX color " +
+                                             std::string(name));
+                }
+                value = value->getNext();
+            }
+            return result;
+        }
+
         glm::vec3 position(const ofbx::Vec3Attributes& positions, int corner)
         {
             if (corner < 0 || corner >= positions.count || !positions.values)
@@ -108,8 +176,18 @@ namespace vultra
     SceneData loadFbx(const std::filesystem::path& path,
                       const SourceObserver&        observer,
                       uint32_t                     workers,
-                      const AssetSource*           assetSource)
+                      const AssetSource*           assetSource,
+                      const FbxImportOptions&      options)
     {
+        if (options.materialConvention != FbxMaterialConvention::ePhong &&
+            options.materialConvention != FbxMaterialConvention::eOrcaMetallicRoughness)
+        {
+            throw std::invalid_argument("Unknown FBX material convention");
+        }
+        Logger::core().info("FBX material convention: {}; {} normal maps",
+                            options.materialConvention == FbxMaterialConvention::eOrcaMetallicRoughness ? "ORCA" :
+                                                                                                          "Phong",
+                            options.directXNormalMaps ? "DirectX" : "OpenGL");
         const auto bytes   = readSourceFile(path, observer, assetSource);
         const auto process = [](ofbx::JobFunction function, void* user, void* data, ofbx::u32 size, ofbx::u32 count)
         {
@@ -177,23 +255,41 @@ namespace vultra
                 SurfaceMaterial result;
                 if (material)
                 {
-                    const auto diffuse  = material->getDiffuseColor();
-                    const auto emission = material->getEmissiveColor();
-                    result.baseColor =
-                        glm::vec4(glm::vec3(diffuse.r, diffuse.g, diffuse.b) * float(material->getDiffuseFactor()), 1);
-                    result.emissionColor     = glm::vec3(emission.r, emission.g, emission.b);
-                    result.emissionLuminance = float(material->getEmissiveFactor());
-                    result.specularRoughness =
-                        std::clamp(std::sqrt(2.0f / (float(material->getShininess()) + 2.0f)), 0.02f, 1.0f);
+                    const auto diffuse            = materialColor(*material, "DiffuseColor", glm::vec3(1));
+                    result.baseColor              = glm::vec4(diffuse, 1);
+                    result.emissionColor          = materialColor(*material, "EmissiveColor", glm::vec3(0));
+                    result.emissionLuminance      = materialNumber(*material, "EmissiveFactor", 0);
                     result.baseColorTexture.image = imageIndex(*material, ofbx::Texture::DIFFUSE);
                     result.normalTexture.image    = imageIndex(*material, ofbx::Texture::NORMAL);
                     result.emissionTexture.image  = imageIndex(*material, ofbx::Texture::EMISSIVE);
+                    const bool orca = options.materialConvention == FbxMaterialConvention::eOrcaMetallicRoughness;
+                    if (orca)
+                    {
+                        // ORCA's Specular DDS is a packed linear data map: G roughness, B metalness.
+                        // Bistro v5.2's R is reserved/zero; interpreting it as AO would black out IBL.
+                        result.metallicRoughnessTexture.image = imageIndex(*material, ofbx::Texture::SPECULAR);
+                        result.baseMetalness     = result.metallicRoughnessTexture.image >= 0 ? 1.0f : 0.0f;
+                        result.specularRoughness = 1;
+                        result.alphaCutoff       = result.baseColorTexture.image >= 0 ? 0.5f : -1.0f;
+                        result.doubleSided       = std::string_view(material->name).ends_with(".DoubleSided");
+                        if (result.emissionTexture.image >= 0)
+                        {
+                            result.emissionColor     = glm::vec3(1);
+                            result.emissionLuminance = 1;
+                        }
+                    }
+                    else
+                    {
+                        result.baseColor *= glm::vec4(glm::vec3(materialNumber(*material, "DiffuseFactor", 1)), 1);
+                        const float shininess    = std::max(0.0f, materialNumber(*material, "Shininess", 20));
+                        result.specularRoughness = std::clamp(std::sqrt(2.0f / (shininess + 2.0f)), 0.02f, 1.0f);
+                    }
                     for (const auto type : {ofbx::Texture::SPECULAR,
                                             ofbx::Texture::SHININESS,
                                             ofbx::Texture::AMBIENT,
                                             ofbx::Texture::REFLECTION})
                     {
-                        if (material->getTexture(type))
+                        if (material->getTexture(type) && !(orca && type == ofbx::Texture::SPECULAR))
                         {
                             Logger::core().warn("[FBX] Material {}: texture slot {} is outside the static "
                                                 "diffuse/normal/emission subset",
@@ -346,6 +442,14 @@ namespace vultra
                 generateTangents(std::span(scene.vertices).subspan(job.first, job.count),
                                  std::span(scene.indices).subspan(job.first, job.count),
                                  job.first);
+                // Tangents already include the fixed V flip. Only OpenGL source maps need the extra inversion.
+                if (!options.directXNormalMaps)
+                {
+                    for (auto& vertex : std::span(scene.vertices).subspan(job.first, job.count))
+                    {
+                        vertex.tangent.w = -vertex.tangent.w;
+                    }
+                }
                 if (output != job.first + job.count)
                 {
                     throw std::runtime_error("FBX triangulation size mismatch");

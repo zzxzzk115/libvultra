@@ -64,7 +64,50 @@ HDR environment decoding and IBL precomputation still belong to `Environment` an
 
 `loadFbx()` imports static mesh instances, hierarchy/geometric transforms, signed axis metadata and unit scale into meters with Y up and -Z forward. Mirrored transforms reverse winding; supplied normals use the inverse transpose, and absent normals become face normals. OpenFBX 0.9 supports triangles and convex polygon fans here; triangulate concave polygons when exporting. Skinning and blend shapes are rejected. Animation is logged and ignored.
 
-FBX materials map diffuse/emission factors, a shininess-to-roughness approximation, and diffuse/normal/emission texture slots. Other texture slots produce a warning; this does not claim complete FBX PBR material equivalence. Binary embedded images and external PNG/JPEG/DDS images are supported. ASCII embedded base64 images are rejected. Relative texture paths remain relative to the FBX file.
+The default FBX material convention is Phong: diffuse/emission factors, a shininess-to-roughness approximation,
+and diffuse/normal/emission texture slots. Missing material properties have defined defaults instead of relying on
+OpenFBX 0.9 accessors for absent fields. Other texture slots produce a warning; this is not complete FBX PBR equivalence.
+Binary embedded images and external PNG/JPEG/DDS images are supported. ASCII embedded base64 images are rejected.
+Relative texture paths remain relative to the FBX file.
+
+ORCA assets such as the [official Bistro Exterior](https://developer.nvidia.com/orca/amazon-lumberyard-bistro)
+require an explicit material convention:
+
+```cpp
+options.fbx = {vultra::FbxMaterialConvention::eOrcaMetallicRoughness, true};
+auto asset = vultra::importAsset("assets/models/BistroOfficial/BistroExterior.fbx", options);
+```
+
+The `true` selects DirectX normal maps. ORCA Specular textures provide linear roughness in G and metalness in B;
+placeholder Phong factors do not modulate them. Bistro v5.2's reserved R channel is not used as occlusion.
+Base-color RGB uses sRGB sampling and alpha uses a 0.5 cutoff. Emission textures use a unit multiplier even when
+the FBX has no emission factor. Untextured emission uses the explicit color/factor, defaulting to zero.
+Only material names ending in `.DoubleSided` select two-sided rendering for this convention.
+BC5 normal XY reconstructs positive Z; tangent handedness compensates for DirectX normals and the importer's V flip.
+Authored DDS compression and mip chains remain intact where the existing VRI format policy permits.
+
+In a `.vproject`, store the same settings on the model's asset entry:
+
+```json
+{
+  "id": "d2cd5b95-193c-49ea-a14f-d43dc45a3f82",
+  "path": "assets/models/BistroOfficial/BistroExterior.fbx",
+  "fbx_import": {"materials": "orca", "normal_maps": "directx"}
+}
+```
+
+`materials` accepts `phong` or `orca`; `normal_maps` accepts `opengl` or `directx`. Omitted fields use Phong/OpenGL.
+Unknown settings, wrong types and settings on non-FBX assets fail explicitly. Per-asset settings override global
+import options and survive VPK packaging. For an external `--model`, use `--fbx-materials orca --fbx-normal-maps directx`.
+The convention and normal-map orientation participate in the FBX cache recipe, so changing either cannot reuse
+an incompatible entry. FBX VPK packaging collects consumed texture files automatically and requires them to remain
+inside the project root. Original DDS payloads are not duplicated into the generated-data cache.
+
+Material conventions and tangent handling were adapted from the public
+[VRI-Framework loader at 0139ce5a](https://github.com/zzxzzk115/VRI-Framework/blob/0139ce5a4efda005f4794e5f32b6a67e001231a7/source/vrf/src/asset/loaders/fbx_loader.cpp).
+Vultra keeps its existing parallel importer and rendering/material types; local changes include safe property reads,
+omitting reserved AO, explicit asset metadata and cache/package integration. The upstream MIT notice is retained in
+[external/vrf_fbx_license.txt](../external/vrf_fbx_license.txt).
 
 DDS can be loaded directly with `loadDds()`, through FBX texture references, or through glTF `MSFT_texture_dds`. `loadSceneImage()` retains DDS source bytes until the material slot determines the transfer function. The current upload path accepts one 2D texture and its mips. Arrays, cubemaps, volumes and premultiplied alpha are explicitly unsupported; environment cubemaps still use the existing HDR-to-IBL path.
 
