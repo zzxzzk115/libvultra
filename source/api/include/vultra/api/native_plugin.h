@@ -8,6 +8,8 @@ extern "C"
 {
 #endif
 
+    typedef struct VultraResearchApi VultraResearchApi;
+
     typedef struct VultraScriptRegistrationApi
     {
         uint32_t version;
@@ -24,6 +26,7 @@ extern "C"
         const VultraSceneApi* scene;
         /* Available only while initializing a project extension. */
         const VultraScriptRegistrationApi* scripts;
+        const VultraResearchApi*           research;
     } VultraHostApi;
 
     typedef struct VultraPluginApi

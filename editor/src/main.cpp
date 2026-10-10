@@ -3,12 +3,15 @@
 #include "research_workspace.hpp"
 #include "scene_inspector.hpp"
 
+#include <vultra/assets/asset_options.hpp>
 #include <vultra/core/base/command_line.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/drivers/profiling/profiler.hpp>
 #include <vultra/main/app/imgui_app.hpp>
+#include <vultra/main/app/research_project_app.hpp>
 #include <vultra/main/packaged_resources.hpp>
 #include <vultra/platform/os/file.hpp>
+#include <vultra/platform/os/process.hpp>
 #include <vultra/scene/render_nodes.hpp>
 #include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/servers/rendering/texture_blit.hpp>
@@ -707,6 +710,40 @@ try
     argparse::ArgumentParser cli("vultra-app", "0.1.0", argparse::default_arguments::none);
     cli.add_description("Research workbench for static projects and version-1 RenderGraph graph definitions");
     addAppOptions(cli);
+    addAssetImportOptions(cli);
+#ifdef NDEBUG
+    const std::string defaultValidation = "off";
+#else
+    const std::string defaultValidation = "on";
+#endif
+    cli.add_argument("--validation")
+        .default_value(defaultValidation)
+        .choices("on", "off")
+        .help("Research Vulkan validation: debug defaults on, release defaults off");
+    cli.add_argument("--xr").flag().help("Use OpenXR for a research vproject");
+    cli.add_argument("--width").scan<'u', uint32_t>().help("Override research eye width");
+    cli.add_argument("--height").scan<'u', uint32_t>().help("Override research eye height");
+    cli.add_argument("--model").help("Override research geometry with an external glTF, OBJ or FBX");
+    cli.add_argument("--environment").help("Override the research HDR environment");
+    cli.add_argument("--layout-file").help("Override the project-specific ImGui layout");
+    cli.add_argument("--configuration").help("Restore a research configuration JSON");
+    cli.add_argument("--save-configuration").help("Save the completed research state to a new JSON file");
+    cli.add_argument("--headset-profile").help("Replay a captured headset profile on desktop");
+    cli.add_argument("--capture-headset").help("Save the first located OpenXR profile to a new JSON file");
+    cli.add_argument("--camera-track").help("Play a camera track by rendered frame index");
+    cli.add_argument("--benchmark").help("Execute an independent research benchmark plan JSON");
+    cli.add_argument("--quality").flag().help("Assess the last finite frame, including LDR-FLIP and ROI/mask metrics");
+    cli.add_argument("--inspect").help("Read an active graph texture on the last finite frame");
+    cli.add_argument("--inspect-after")
+        .help("Copy the --inspect Pass.port endpoint immediately after this command Pass");
+    cli.add_argument("--inspection-export").help("Export the inspected texture to a new directory");
+    cli.add_argument("--method-a").help("Select a named project method for A");
+    cli.add_argument("--method-b").help("Select a named project method for B");
+    cli.add_argument("--view").default_value(std::string("b")).choices("a", "b", "compare", "difference");
+    cli.add_argument("--export-sdk").help("Export the matching header-only native Pass SDK to a new directory");
+    cli.add_argument("--sdk-dir").help("Use this matching SDK for research Slang includes and project cooking");
+    cli.add_argument("--pack").help("Cook --project into this VPK; no rendering");
+    cli.add_argument("--embed").help("With --pack, append the package to this host in a new executable");
     cli.add_argument("--offline").flag().help("Render the same UI offscreen; requires --frames and --export");
     cli.add_argument("--workspace").help("Open a saved .vworkspace document");
     cli.add_argument("--project").default_value(std::string("resources/research.vproject"));
@@ -722,9 +759,28 @@ try
     {
         throw std::invalid_argument("Choose --workspace or --project/--graph");
     }
-    const bool offline = cli.get<bool>("--offline");
-    const auto frames  = cli.present<uint64_t>("--frames").value_or(0);
-    const auto output  = cli.present<std::string>("--export");
+    if (cli.is_used("--workspace") && cli.is_used("--sdk-dir"))
+    {
+        throw std::invalid_argument("--sdk-dir requires a research project or --pack");
+    }
+    const bool offline       = cli.get<bool>("--offline");
+    const auto frames        = cli.present<uint64_t>("--frames").value_or(0);
+    const bool researchTools = cli.is_used("--validation") || cli.is_used("--configuration") ||
+                               cli.is_used("--save-configuration") || cli.is_used("--headset-profile") ||
+                               cli.is_used("--capture-headset") || cli.is_used("--camera-track") ||
+                               cli.is_used("--benchmark") || cli.get<bool>("--quality") || cli.is_used("--inspect") ||
+                               cli.is_used("--inspect-after") || cli.is_used("--inspection-export");
+    if ((researchTools && cli.is_used("--workspace")) ||
+        ((cli.get<bool>("--quality") || cli.is_used("--inspect")) && !frames) ||
+        (cli.is_used("--inspection-export") && !cli.is_used("--inspect")) ||
+        (cli.is_used("--inspect-after") && !cli.is_used("--inspect")) ||
+        (cli.is_used("--benchmark") && (cli.get<bool>("--xr") || frames || cli.is_used("--export") || offline)) ||
+        (cli.is_used("--capture-headset") && (!cli.get<bool>("--xr") || !frames)))
+    {
+        throw std::invalid_argument("Research tools need a research project; inspection/quality need finite frames, "
+                                    "headset capture needs XR, benchmark uses its own plan/output");
+    }
+    const auto output = cli.present<std::string>("--export");
     if (output && (frames == 0 || output->empty() || std::filesystem::exists(*output)))
     {
         throw std::invalid_argument("--export requires positive --frames and a new output directory");
@@ -733,8 +789,202 @@ try
     {
         throw std::invalid_argument("--offline requires positive --frames and --export");
     }
-    const auto       launchDirectory = std::filesystem::current_path();
-    const auto       workspaceFile   = cli.present<std::string>("--workspace").value_or("research.vworkspace");
+    const auto            launchDirectory = std::filesystem::current_path();
+    std::filesystem::path sdkDirectory;
+    if (auto sdk = cli.present<std::string>("--sdk-dir"))
+    {
+        if (sdk->empty())
+        {
+            throw std::invalid_argument("--sdk-dir requires a matching SDK directory");
+        }
+        sdkDirectory = std::filesystem::absolute(*sdk);
+        if (!std::filesystem::is_regular_file(sdkDirectory / "include/vultra/api/research_api.h") ||
+            !std::filesystem::is_directory(sdkDirectory / "shaders/builtin/shaders") ||
+            !std::filesystem::is_directory(sdkDirectory / "shaders/external"))
+        {
+            throw std::invalid_argument("Invalid research SDK directory: " + sdkDirectory.string());
+        }
+    }
+    const auto        workspaceFile = cli.present<std::string>("--workspace").value_or("research.vworkspace");
+    PackagedResources resources;
+    if (auto sdk = cli.present<std::string>("--export-sdk"))
+    {
+        const auto destination = std::filesystem::absolute(*sdk);
+        if (sdk->empty() || std::filesystem::exists(destination))
+        {
+            throw std::invalid_argument("SDK destination must be a new directory");
+        }
+        const auto source = resources.engineRoot() / "sdk";
+        if (!std::filesystem::is_directory(source))
+        {
+            throw std::runtime_error("Host SDK is missing");
+        }
+        std::filesystem::copy(source, destination, std::filesystem::copy_options::recursive);
+        Logger::app().info("Exported native Pass SDK to {}", destination.string());
+        return 0;
+    }
+    if (auto pack = cli.present<std::string>("--pack"))
+    {
+        const auto destination = std::filesystem::absolute(*pack);
+        if (pack->empty() || std::filesystem::exists(destination))
+        {
+            throw std::invalid_argument("Package destination must be a new file");
+        }
+        ShaderCompileOptions options;
+        const auto           shaderSdk = sdkDirectory.empty() ? resources.engineRoot() / "sdk" : sdkDirectory;
+        options.includeDirectories     = {shaderSdk / "shaders/builtin/shaders",
+                                          shaderSdk / "shaders/external",
+                                          resources.engineRoot() / "builtin/shaders",
+                                          resources.engineRoot() / "external"};
+        VpkArchive::packProject(std::filesystem::absolute(cli.get<std::string>("--project")), destination, options);
+        if (auto embed = cli.present<std::string>("--embed"))
+        {
+            if (embed->empty() || std::filesystem::exists(*embed))
+            {
+                throw std::invalid_argument("Executable destination must be a new file");
+            }
+            VpkArchive::embedProject(executablePath(), destination, std::filesystem::absolute(*embed));
+        }
+        return 0;
+    }
+    if (cli.is_used("--embed"))
+    {
+        throw std::invalid_argument("--embed requires --pack");
+    }
+    if (!cli.is_used("--workspace"))
+    {
+        ResearchProjectOptions options;
+        options.projectFile = std::filesystem::absolute(cli.get<std::string>("--project"));
+        std::filesystem::path manifest;
+        if (!cli.is_used("--project"))
+        {
+            if (auto embedded = VpkArchive::embeddedProject(executablePath()))
+            {
+                options.source      = std::make_unique<AssetSource>(std::move(*embedded));
+                options.projectFile = executablePath();
+                manifest            = "project.vproject";
+            }
+        }
+        if (!options.source)
+        {
+            if (options.projectFile.extension() == ".vpk")
+            {
+                options.source = std::make_unique<AssetSource>(VpkArchive(options.projectFile));
+                manifest       = "project.vproject";
+            }
+            else
+            {
+                options.source = std::make_unique<AssetSource>(options.projectFile.parent_path());
+                manifest       = options.projectFile.filename();
+            }
+        }
+        options.project = ProjectManifest::load(options.source->resolve(manifest), options.source.get());
+        if (options.project.research)
+        {
+            if (offline || cli.is_used("--graph") || cli.is_used("--path") || cli.is_used("--seed"))
+            {
+                throw std::invalid_argument(
+                    "Stereo research uses its project graph and render contract; workbench-only options were supplied");
+            }
+            options.xr                 = cli.get<bool>("--xr");
+            options.sdkDirectory       = sdkDirectory;
+            options.engineHash         = resources.shaderHash();
+            const auto& projectMethods = options.project.research->methods;
+            if (!options.project.research->referenceMethod.empty())
+            {
+                const auto reference =
+                    std::ranges::find(projectMethods, options.project.research->referenceMethod, &ResearchMethod::name);
+                options.selections = {size_t(reference - projectMethods.begin()), 0};
+                if (options.selections[1] == options.selections[0])
+                {
+                    options.selections[1] = 1;
+                }
+            }
+            options.eyeSize = {cli.present<uint32_t>("--width").value_or(options.project.research->width),
+                               cli.present<uint32_t>("--height").value_or(options.project.research->height)};
+            if (options.eyeSize.width < 11 || options.eyeSize.height < 11 || options.eyeSize.width > 8192 ||
+                options.eyeSize.height > 8192)
+            {
+                throw std::invalid_argument("Eye extent must be between 11 and 8192");
+            }
+            for (const auto& [name, destination] : {std::pair {"--model", &options.model},
+                                                    {"--environment", &options.environment},
+                                                    {"--layout-file", &options.layout},
+                                                    {"--configuration", &options.configuration},
+                                                    {"--save-configuration", &options.saveConfiguration},
+                                                    {"--headset-profile", &options.headsetProfile},
+                                                    {"--capture-headset", &options.captureHeadset},
+                                                    {"--camera-track", &options.cameraTrack},
+                                                    {"--benchmark", &options.benchmark},
+                                                    {"--inspection-export", &options.inspectionOutput}})
+            {
+                if (auto value = cli.present<std::string>(name))
+                {
+                    *destination = std::filesystem::absolute(*value);
+                }
+            }
+            for (const auto& destination :
+                 {options.saveConfiguration, options.captureHeadset, options.inspectionOutput})
+            {
+                if (!destination.empty() && std::filesystem::exists(destination))
+                {
+                    throw std::invalid_argument("Research output already exists: " + destination.string());
+                }
+            }
+            if (!options.configuration.empty())
+            {
+                const auto config = ResearchConfiguration::load(options.configuration);
+                if ((cli.is_used("--model") && options.model != config.modelOverride) ||
+                    (cli.is_used("--environment") && options.environment != config.environmentOverride))
+                {
+                    throw std::invalid_argument("Asset overrides conflict with --configuration");
+                }
+                options.model       = config.modelOverride;
+                options.environment = config.environmentOverride;
+            }
+            options.validation   = cli.get<std::string>("--validation") == "on";
+            options.quality      = cli.get<bool>("--quality");
+            options.inspect      = cli.present<std::string>("--inspect").value_or("");
+            options.inspectAfter = cli.present<std::string>("--inspect-after").value_or("");
+            for (size_t slot = 0; slot < 2; ++slot)
+            {
+                if (auto name = cli.present<std::string>(slot ? "--method-b" : "--method-a"))
+                {
+                    const auto& methods = options.project.research->methods;
+                    const auto  found   = std::ranges::find(methods, *name, &ResearchMethod::name);
+                    if (found == methods.end())
+                    {
+                        throw std::invalid_argument("Unknown research method: " + *name);
+                    }
+                    options.selections[slot] = size_t(found - methods.begin());
+                }
+            }
+            options.import                = getAssetImportOptions(cli);
+            options.import.cacheDirectory = cli.is_used("--cache-dir") ?
+                                                std::filesystem::absolute(options.import.cacheDirectory) :
+                                                launchDirectory / ".vultra/assets";
+            if (output)
+            {
+                options.output = launchDirectory / *output;
+            }
+            const std::array<std::string_view, 4> views {"a", "b", "compare", "difference"};
+            options.view = int(std::ranges::find(views, cli.get<std::string>("--view")) - views.begin());
+            ScopedWorkingDirectory cwd(resources.engineRoot());
+            ResearchProjectApp     app(std::move(options));
+            app.run(frames);
+            return 0;
+        }
+        if (researchTools || cli.get<bool>("--xr") || cli.is_used("--method-a") || cli.is_used("--method-b") ||
+            !sdkDirectory.empty())
+        {
+            throw std::invalid_argument("XR, method selection and --sdk-dir require a research project");
+        }
+        if (options.projectFile.extension() == ".vpk" || options.projectFile == executablePath())
+        {
+            throw std::invalid_argument(
+                "vultra-app packages require research metadata; use vultra-runtime for scene projects");
+        }
+    }
     ResearchDocument document;
     if (cli.is_used("--workspace"))
     {
@@ -761,8 +1011,7 @@ try
     {
         document.seed = *seed;
     }
-    PackagedResources resources;
-    const auto        shader = resources.engineRoot() / "examples/research/shaders/color_gain.slang";
+    const auto shader = resources.engineRoot() / "examples/research/shaders/color_gain.slang";
     std::filesystem::create_directories(shader.parent_path());
     static_assert(kGainShader[std::size(kGainShader) - 1] == 0);
     writeFileAtomically(shader, std::as_bytes(std::span(kGainShader).first(std::size(kGainShader) - 1)));

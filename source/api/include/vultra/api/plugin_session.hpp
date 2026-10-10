@@ -18,7 +18,8 @@ namespace vultra
                       SceneTree*                         scene,
                       void*                              initData = nullptr,
                       const VultraScriptRegistrationApi* scripts  = nullptr,
-                      const ProjectManifest*             project  = nullptr);
+                      const ProjectManifest*             project  = nullptr,
+                      const VultraResearchApi*           research = nullptr);
         ~PluginSession();
         PluginSession(const PluginSession&)            = delete;
         PluginSession& operator=(const PluginSession&) = delete;

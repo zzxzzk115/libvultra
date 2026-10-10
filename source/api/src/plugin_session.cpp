@@ -11,7 +11,8 @@ namespace vultra
                                  SceneTree*                         scene,
                                  void*                              initData,
                                  const VultraScriptRegistrationApi* scripts,
-                                 const ProjectManifest*             project)
+                                 const ProjectManifest*             project,
+                                 const VultraResearchApi*           research)
     {
         if (!initialize)
         {
@@ -19,7 +20,7 @@ namespace vultra
         }
         m_SceneAccess.scene   = scene;
         m_SceneAccess.project = project;
-        const VultraHostApi host {VULTRA_ABI_VERSION, sizeof(VultraHostApi), &uiApi(), &sceneApi(), scripts};
+        const VultraHostApi host {VULTRA_ABI_VERSION, sizeof(VultraHostApi), &uiApi(), &sceneApi(), scripts, research};
         m_Api.version     = VULTRA_ABI_VERSION;
         m_Api.user_data   = initData;
         m_Api.struct_size = sizeof(VultraPluginApi);

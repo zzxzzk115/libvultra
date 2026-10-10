@@ -56,7 +56,8 @@ namespace vultra
                                SceneTree*                         scene,
                                void*                              initData,
                                const VultraScriptRegistrationApi* scripts,
-                               const ProjectManifest*             project)
+                               const ProjectManifest*             project,
+                               const VultraResearchApi*           research)
     {
         void* module = openModule(path);
         if (!module)
@@ -70,7 +71,7 @@ namespace vultra
             {
                 throw std::runtime_error("Find vultra_plugin_init in " + path.string() + ": " + moduleError());
             }
-            m_Session = std::make_unique<PluginSession>(initialize, scene, initData, scripts, project);
+            m_Session = std::make_unique<PluginSession>(initialize, scene, initData, scripts, project, research);
             m_Module  = module;
             m_Entry   = initialize;
         }
