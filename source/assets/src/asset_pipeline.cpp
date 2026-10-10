@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cctype>
 #include <chrono>
 #include <format>
 #include <fstream>
@@ -43,11 +44,25 @@ namespace vultra
 
         Json importRecipe(const std::filesystem::path& source, const AssetImportOptions& options)
         {
-            return {{"version", kPipelineVersion},
-                    {"source", pathText(source)},
-                    {"mipmaps", options.textures.mipmaps},
-                    {"compression", int(options.textures.compression)},
-                    {"bc7_encoder", "bc7e-ispc-fast-v1"}};
+            Json recipe {{"version", kPipelineVersion},
+                         {"source", pathText(source)},
+                         {"mipmaps", options.textures.mipmaps},
+                         {"compression", int(options.textures.compression)},
+                         {"bc7_encoder", "bc7e-ispc-fast-v1"}};
+            auto extension = source.extension().string();
+            std::ranges::transform(extension,
+                                   extension.begin(),
+                                   [](unsigned char c)
+                                   {
+                                       return char(std::tolower(c));
+                                   });
+            if (extension == ".fbx")
+            {
+                recipe["fbx"] = {{"importer", "static-orca-v1"},
+                                 {"materials", int(options.fbx.materialConvention)},
+                                 {"directx_normals", options.fbx.directXNormalMaps}};
+            }
+            return recipe;
         }
 
         std::filesystem::path
@@ -362,7 +377,7 @@ namespace vultra
         }
         else if (extension == ".fbx")
         {
-            asset.scene = loadFbx(source, observer, options.workers, assetSource);
+            asset.scene = loadFbx(source, observer, options.workers, assetSource, options.fbx);
         }
         else
         {

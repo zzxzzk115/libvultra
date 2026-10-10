@@ -8,6 +8,7 @@ namespace vultra
     {
         std::filesystem::path cacheDirectory = ".vultra/assets";
         TextureImportOptions  textures;
+        FbxImportOptions      fbx;
         uint32_t              workers  = 0; // Maximum import concurrency; zero selects automatically.
         bool                  cache    = true;
         bool                  reimport = false;

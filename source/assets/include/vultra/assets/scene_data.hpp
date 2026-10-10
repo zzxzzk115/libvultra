@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vultra/assets/fbx_import.hpp>
 #include <vultra/assets/source_file.hpp>
 #include <vultra/core/math/extent.hpp>
 
@@ -133,7 +134,8 @@ namespace vultra
     SceneData  loadFbx(const std::filesystem::path& path,
                        const SourceObserver&        observer = {},
                        uint32_t                     workers  = 0,
-                       const AssetSource*           source   = nullptr);
+                       const AssetSource*           source   = nullptr,
+                       const FbxImportOptions&      options  = {});
     SceneImage loadSceneImage(const std::filesystem::path& path,
                               const SourceObserver&        observer = {},
                               const AssetSource*           source   = nullptr);

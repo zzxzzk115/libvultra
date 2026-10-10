@@ -1,4 +1,5 @@
 #include <vultra/assets/project_manifest.hpp>
+#include <vultra/assets/scene_data.hpp>
 #include <vultra/assets/shader_asset.hpp>
 #include <vultra/assets/vpk_archive.hpp>
 #include <vultra/core/base/logger.hpp>
@@ -11,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdio>
 #include <fstream>
 #include <limits>
@@ -242,10 +244,10 @@ namespace vultra
     {
         const auto normalized = archivePath(path);
         const auto found      = std::ranges::find_if(m_Entries,
-                                                     [&](const Entry& candidate)
-                                                     {
+                                                [&](const Entry& candidate)
+                                                {
                                                     return candidate.path == normalized;
-                                                     });
+                                                });
         if (found == m_Entries.end())
         {
             throw std::invalid_argument("VPK entry not found: " + normalized);
@@ -431,7 +433,7 @@ namespace vultra
     {
         auto       project = ProjectManifest::load(projectFile);
         const auto root    = std::filesystem::canonical(projectFile.parent_path().empty() ? std::filesystem::path(".") :
-                                                                                            projectFile.parent_path());
+                                                                                         projectFile.parent_path());
         auto       scene   = SceneTree::load(sourceFile(root, pathText(project.mainScene)));
         scene.validateAssets(project);
         std::vector<std::pair<std::string, std::filesystem::path>> files;
@@ -483,6 +485,28 @@ namespace vultra
             files.emplace_back(archivePath(pathText(asset.path)),
                                std::filesystem::is_regular_file(artifact) ? artifact :
                                                                             sourceFile(root, pathText(asset.path)));
+            auto extension = asset.path.extension().string();
+            std::ranges::transform(extension,
+                                   extension.begin(),
+                                   [](unsigned char c)
+                                   {
+                                       return char(std::tolower(c));
+                                   });
+            if (extension == ".fbx")
+            {
+                Logger::core().info("Collecting FBX package dependencies: {}", pathText(asset.path));
+                const SourceObserver dependency = [&](const auto& file, std::span<const std::byte>)
+                {
+                    const auto relative = file.lexically_relative(root);
+                    const auto name     = archivePath(pathText(relative));
+                    files.emplace_back(name, sourceFile(root, name));
+                };
+                loadFbx(sourceFile(root, pathText(asset.path)),
+                        dependency,
+                        0,
+                        nullptr,
+                        asset.fbx.value_or(FbxImportOptions {}));
+            }
         }
         for (const auto& extension : project.extensions)
         {
@@ -668,10 +692,24 @@ namespace vultra
             files.emplace_back(archivePath(pathText(relative)), outputFile);
         }
         // Ship upstream attribution with the compiled implementation, without compiler inputs.
+        files.emplace_back("external/vrf_fbx_license.txt", sourceFile(engine, "external/vrf_fbx_license.txt"));
+        files.emplace_back("external/flip/LICENSE", sourceFile(engine, "external/flip/LICENSE"));
+        files.emplace_back("external/flip/README.vultra.md", sourceFile(engine, "external/flip/README.vultra.md"));
         for (const auto* name : {"LICENSE", "README.vultra.md"})
         {
             const auto relative = std::string("external/openpbr/") + name;
             files.emplace_back(relative, sourceFile(engine, relative));
+        }
+        const auto sdk = engine / "build/sdk";
+        if (std::filesystem::is_directory(sdk))
+        {
+            for (const auto& item : std::filesystem::recursive_directory_iterator(sdk))
+            {
+                if (item.is_regular_file())
+                {
+                    files.emplace_back("sdk/" + pathText(item.path().lexically_relative(sdk)), item.path());
+                }
+            }
         }
         packFiles(files, output);
     }

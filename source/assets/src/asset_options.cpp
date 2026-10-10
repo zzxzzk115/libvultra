@@ -18,18 +18,30 @@ namespace vultra
             .default_value(std::string("bc7-linear"))
             .choices("none", "bc7-linear")
             .help("BC7 for linear data textures; color textures retain hardware sRGB sampling");
+        cli.add_argument("--fbx-materials")
+            .default_value(std::string("phong"))
+            .choices("phong", "orca")
+            .help("Explicit FBX texture/material convention for external model imports");
+        cli.add_argument("--fbx-normal-maps")
+            .default_value(std::string("opengl"))
+            .choices("opengl", "directx")
+            .help("Source FBX tangent-space normal convention before the importer's UV flip");
     }
 
     AssetImportOptions getAssetImportOptions(const argparse::ArgumentParser& cli)
     {
         AssetImportOptions options;
-        options.cacheDirectory       = cli.get<std::string>("--cache-dir");
-        options.cache                = !cli.get<bool>("--no-cache");
-        options.reimport             = cli.get<bool>("--reimport");
-        options.textures.mipmaps     = !cli.get<bool>("--no-mipmaps");
-        options.workers              = cli.get<uint32_t>("--import-jobs");
-        options.textures.compression = cli.get<std::string>("--compression") == "none" ? TextureCompression::eNone :
-                                                                                         TextureCompression::eBc7Linear;
+        options.cacheDirectory         = cli.get<std::string>("--cache-dir");
+        options.cache                  = !cli.get<bool>("--no-cache");
+        options.reimport               = cli.get<bool>("--reimport");
+        options.textures.mipmaps       = !cli.get<bool>("--no-mipmaps");
+        options.workers                = cli.get<uint32_t>("--import-jobs");
+        options.textures.compression   = cli.get<std::string>("--compression") == "none" ? TextureCompression::eNone :
+                                                                                           TextureCompression::eBc7Linear;
+        options.fbx.materialConvention = cli.get<std::string>("--fbx-materials") == "orca" ?
+                                             FbxMaterialConvention::eOrcaMetallicRoughness :
+                                             FbxMaterialConvention::ePhong;
+        options.fbx.directXNormalMaps  = cli.get<std::string>("--fbx-normal-maps") == "directx";
         return options;
     }
 } // namespace vultra
