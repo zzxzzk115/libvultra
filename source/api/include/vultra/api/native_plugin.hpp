@@ -19,7 +19,8 @@ namespace vultra
                               SceneTree*                         scene    = nullptr,
                               void*                              initData = nullptr,
                               const VultraScriptRegistrationApi* scripts  = nullptr,
-                              const ProjectManifest*             project  = nullptr);
+                              const ProjectManifest*             project  = nullptr,
+                              const VultraResearchApi*           research = nullptr);
         ~NativePlugin();
         NativePlugin(const NativePlugin&)            = delete;
         NativePlugin& operator=(const NativePlugin&) = delete;

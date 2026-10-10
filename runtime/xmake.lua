@@ -2,13 +2,14 @@ target("vultra-builtin-pack")
     set_kind("phony")
     set_default(false)
     set_policy("build.fence", true)
-    add_deps("vultra-pack")
+    add_deps("vultra-pack", "vultra-sdk")
     on_build(function (target)
         import("core.project.depend")
         local output = path.join(os.projectdir(), "build", ".tmp", "runtime-builtin.vpk")
         local pack = target:dep("vultra-pack")
         local files = table.join(os.files(path.join(os.projectdir(), "builtin", "shaders", "**")),
                                  os.files(path.join(os.projectdir(), "external", "openpbr", "**")),
+                                 os.files(path.join(os.projectdir(), "build", "sdk", "**")),
                                  {pack:targetfile()})
         table.sort(files)
         depend.on_changed(function ()
