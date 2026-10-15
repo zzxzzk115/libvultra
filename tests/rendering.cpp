@@ -1,7 +1,7 @@
 #include <vultra/assets/asset_pipeline.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
 #include <vultra/servers/rendering/rendering_server.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/servers/rendering/texture_blit.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
@@ -76,7 +76,7 @@ namespace
         using namespace vultra;
         const auto program   = ShaderProgram::compile("builtin/shaders/passes/texture_blit.slang",
                                                       {},
-                                                    std::array {std::filesystem::path("builtin/shaders")});
+                                                      std::array {std::filesystem::path("builtin/shaders")});
         const auto bindings  = program.resourceBindings();
         const auto constants = std::ranges::find(bindings, true, &ShaderResourceBinding::pushConstant);
         require(constants != bindings.end() && constants->uniformSize == 32,
@@ -794,11 +794,11 @@ namespace
                                      0.1f,
                                      25};
         const auto           cascades = vultra::calculateCascades(camera,
-                                                        renderer.settings.directionToLight,
-                                                        scene.center,
-                                                        scene.radius,
-                                                        512,
-                                                        0.7f);
+                                                                  renderer.settings.directionToLight,
+                                                                  scene.center,
+                                                                  scene.radius,
+                                                                  512,
+                                                                  0.7f);
         require(cascades.splits.x > camera.nearPlane && cascades.splits.y > cascades.splits.x &&
                     cascades.splits.z > cascades.splits.y && std::abs(cascades.splits.w - camera.farPlane) < 0.001f,
                 "Invalid CSM splits");

@@ -8,7 +8,7 @@ extern "C"
 #endif
     typedef struct VultraSceneFrame
     {
-        void*    context; /* Borrowed; valid only during the update callback. */
+        void*    context; /* Borrowed; valid only during a scene lifecycle/process callback. */
         uint64_t serial;
     } VultraSceneFrame;
 
@@ -73,6 +73,7 @@ extern "C"
     {
         uint32_t version;
         uint32_t struct_size;
+        VultraStatus (*action_state)(VultraSceneFrame frame, const char* action, uint64_t actionSize, uint64_t* value);
         VultraStatus (*camera_settings)(VultraSceneFrame frame, uint64_t node, VultraCameraSettings* value);
         VultraStatus (*child_count)(VultraSceneFrame frame, uint64_t parent, uint64_t* value);
         VultraStatus (*child_id)(VultraSceneFrame frame, uint64_t parent, uint64_t index, uint64_t* value);
@@ -106,6 +107,11 @@ extern "C"
                                     const char*      name,
                                     uint64_t         nameSize,
                                     uint64_t*        value);
+        VultraStatus (*create_node3d)(VultraSceneFrame frame,
+                                      uint64_t         parent,
+                                      const char*      name,
+                                      uint64_t         nameSize,
+                                      uint64_t*        value);
         VultraStatus (*current_camera)(VultraSceneFrame frame, uint64_t* value);
         VultraStatus (*current_environment)(VultraSceneFrame frame, uint64_t* value);
         VultraStatus (*duplicate_mesh)(VultraSceneFrame frame, uint64_t source, uint64_t parent, uint64_t* value);
@@ -115,11 +121,28 @@ extern "C"
         VultraStatus (*material_name)(VultraSceneFrame frame, uint64_t material, const char** data, uint64_t* size);
         VultraStatus (*material_parameters)(VultraSceneFrame frame, uint64_t material, VultraMaterialParameters* value);
         VultraStatus (*mesh_material)(VultraSceneFrame frame, uint64_t node, uint64_t slot, uint64_t* value);
+        VultraStatus (*node_inside_tree)(VultraSceneFrame frame, uint64_t node, uint64_t* value);
         VultraStatus (*node_name)(VultraSceneFrame frame, uint64_t node, const char** data, uint64_t* size);
+        VultraStatus (*node_owner_id)(VultraSceneFrame frame, uint64_t node, uint64_t* value);
+        VultraStatus (*node_parent_id)(VultraSceneFrame frame, uint64_t node, uint64_t* value);
+        VultraStatus (*node_process_mode)(VultraSceneFrame frame, uint64_t node, uint64_t* value);
+        VultraStatus (*node_process_priority)(VultraSceneFrame frame, uint64_t node, int32_t* value);
+        VultraStatus (*node_queued_for_deletion)(VultraSceneFrame frame, uint64_t node, uint64_t* value);
         VultraStatus (*node_translation)(VultraSceneFrame frame, uint64_t node, VultraSceneTranslation* value);
+        VultraStatus (*node_type)(VultraSceneFrame frame, uint64_t node, const char** data, uint64_t* size);
+        VultraStatus (*paused)(VultraSceneFrame frame, uint64_t* value);
+        VultraStatus (*physics_frame)(VultraSceneFrame frame, uint64_t* value);
+        VultraStatus (*queue_free)(VultraSceneFrame frame, uint64_t node);
+        VultraStatus (*read_property)(VultraSceneFrame frame,
+                                      uint64_t         node,
+                                      const char*      property,
+                                      uint64_t         propertySize,
+                                      char*            data,
+                                      uint64_t         capacity,
+                                      uint64_t*        size);
         VultraStatus (*remove_material)(VultraSceneFrame frame, uint64_t material);
         VultraStatus (*remove_node)(VultraSceneFrame frame, uint64_t node);
-        VultraStatus (*reparent_node)(VultraSceneFrame frame, uint64_t node, uint64_t newParent);
+        VultraStatus (*reparent_node)(VultraSceneFrame frame, uint64_t node, uint64_t newParent, uint64_t keepGlobal);
         VultraStatus (*root_id)(VultraSceneFrame frame, uint64_t* value);
         VultraStatus (*set_camera_settings)(VultraSceneFrame frame, uint64_t node, VultraCameraSettings settings);
         VultraStatus (*set_current_camera)(VultraSceneFrame frame, uint64_t node);
@@ -140,7 +163,19 @@ extern "C"
                                        uint64_t         target,
                                        const char*      assetId,
                                        uint64_t         assetIdSize);
+        VultraStatus (*set_node_owner)(VultraSceneFrame frame, uint64_t node, uint64_t owner);
+        VultraStatus (*set_node_process_mode)(VultraSceneFrame frame, uint64_t node, uint64_t mode);
+        VultraStatus (*set_node_process_priority)(VultraSceneFrame frame, uint64_t node, int32_t priority);
         VultraStatus (*set_node_translation)(VultraSceneFrame frame, uint64_t node, VultraSceneTranslation translation);
+        VultraStatus (*set_paused)(VultraSceneFrame frame, uint64_t paused);
+        VultraStatus (*set_time_scale)(VultraSceneFrame frame, double scale);
+        VultraStatus (*time_scale)(VultraSceneFrame frame, double* value);
+        VultraStatus (*write_property)(VultraSceneFrame frame,
+                                       uint64_t         node,
+                                       const char*      property,
+                                       uint64_t         propertySize,
+                                       const char*      json,
+                                       uint64_t         jsonSize);
     } VultraSceneApi;
 #ifdef __cplusplus
 }

@@ -1,5 +1,3 @@
-#include <vultra/servers/rendering/builtin/raster_passes.hpp>
-#include <vultra/servers/rendering/builtin/tone_mapping_pass.hpp>
 #include <vultra/servers/rendering/graph/pass_catalog.hpp>
 
 #include <algorithm>
@@ -101,11 +99,6 @@ namespace vultra
     PassCatalog::PassCatalog(Device& device) :
         m_Device(device)
     {
-        add(toneMappingDefinition());
-        for (auto definition : builtinRasterPassDefinitions())
-        {
-            add(std::move(definition));
-        }
     }
 
     void PassCatalog::add(PassDefinition definition)

@@ -1,4 +1,5 @@
 #include "rhi/shader_cache.hpp"
+#include "shader_toolchain_key.hpp"
 
 #include <vultra/assets/shader_asset.hpp>
 #include <vultra/core/base/logger.hpp>
@@ -39,9 +40,9 @@ namespace vultra
                                        std::string_view             text,
                                        std::span<const std::string> variants)
         {
-            const auto sourceKey = detail::shaderCompileKey(file, text, options);
-            const auto serialized =
-                sourceKey + nlohmann::json(std::vector<std::string>(variants.begin(), variants.end())).dump();
+            const auto sourceKey  = detail::shaderCompileKey(file, text, options);
+            const auto serialized = sourceKey + kShaderLanguageKey +
+                                    nlohmann::json(std::vector<std::string>(variants.begin(), variants.end())).dump();
             return std::to_string(XXH3_64bits(serialized.data(), serialized.size()));
         }
 

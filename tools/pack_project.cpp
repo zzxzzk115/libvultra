@@ -1,4 +1,5 @@
 #include <vultra/assets/vpk_archive.hpp>
+#include <vultra/assets/vpk_export.hpp>
 #include <vultra/core/base/command_line.hpp>
 #include <vultra/core/base/logger.hpp>
 
@@ -27,7 +28,7 @@ try
     }
     if (builtins)
     {
-        vultra::VpkArchive::packBuiltins(inputs[0], inputs[1]);
+        vultra::packBuiltins(inputs[0], inputs[1]);
     }
     else if (embed)
     {
@@ -48,7 +49,7 @@ try
                 options.includeDirectories.emplace_back(std::filesystem::absolute(root));
             }
         }
-        vultra::VpkArchive::packProject(inputs[0], inputs[1], options);
+        vultra::packProject(inputs[0], inputs[1], options);
     }
     vultra::Logger::app().info("Created {}", inputs.back());
     return 0;

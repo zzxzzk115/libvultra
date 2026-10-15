@@ -1,8 +1,9 @@
 #include "../examples/research/color_gain.hpp"
 
+#include <vultra/drivers/rhi/image_readback.hpp>
+#include <vultra/servers/rendering/builtin/raster_passes.hpp>
 #include <vultra/servers/rendering/builtin/tone_mapping_pass.hpp>
 #include <vultra/servers/rendering/graph/graph_definition.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 
 #include <array>
 #include <chrono>
@@ -330,7 +331,12 @@ try
 {
     Device      device;
     PassCatalog catalog(device);
+    require(catalog.definitions().empty(), "A graph catalog must not implicitly install a renderer");
     catalog.add(research::colorGainDefinition());
+    require(catalog.definitions().size() == 1 &&
+                catalog.definition("research.color_gain").type == "research.color_gain",
+            "Installing a project pass also installed unrelated renderer definitions");
+    installBuiltinRenderPasses(catalog);
     invalidGraphs(device, catalog);
     const auto directory =
         std::filesystem::path("build/.tmp") /

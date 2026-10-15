@@ -1,13 +1,7 @@
-#include <vultra/assets/material_properties.generated.hpp>
-#include <vultra/core/base/property.hpp>
 #include <vultra/drivers/profiling/profiler.hpp>
 #include <vultra/drivers/rhi/swapchain.hpp>
 #include <vultra/main/app/desktop_app.hpp>
 #include <vultra/main/runtime_context.hpp>
-#include <vultra/scene/render_properties.generated.hpp>
-#include <vultra/servers/rendering/builtin/render_properties.generated.hpp>
-#include <vultra/servers/rendering/graph/pass_catalog.hpp>
-#include <vultra/servers/rendering/rendering_server.hpp>
 
 namespace vultra
 {
@@ -18,26 +12,16 @@ namespace vultra
             device(config.validation, nullptr, config.features),
             swapchain(device, window, config.swapchainFormat),
             frame(device),
-            profiler(device),
-            rendering(device),
-            passes(device)
+            profiler(device)
         {
-            types.add(cameraSettingsType());
-            types.add(environmentSettingsType());
-            types.add(lightSettingsType());
-            types.add(materialParametersType());
-            types.add(renderSettingsType());
         }
 
-        // Reverse destruction releases server resources and frame objects before the device and window.
-        Window            window;
-        Device            device;
-        Swapchain         swapchain;
-        Frame             frame;
-        Profiler          profiler;
-        RenderingServer   rendering;
-        PassCatalog       passes;
-        ObjectTypeCatalog types;
+        // Applications own optional renderers/catalogs; their members die before this desktop context.
+        Window    window;
+        Device    device;
+        Swapchain swapchain;
+        Frame     frame;
+        Profiler  profiler;
     };
 
     RuntimeContext::RuntimeContext(const DesktopAppConfig& config) :
@@ -70,20 +54,5 @@ namespace vultra
     Profiler& RuntimeContext::profiler()
     {
         return m_Impl->profiler;
-    }
-
-    RenderingServer& RuntimeContext::rendering()
-    {
-        return m_Impl->rendering;
-    }
-
-    PassCatalog& RuntimeContext::passes()
-    {
-        return m_Impl->passes;
-    }
-
-    ObjectTypeCatalog& RuntimeContext::types()
-    {
-        return m_Impl->types;
     }
 } // namespace vultra

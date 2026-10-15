@@ -1,11 +1,12 @@
 #include "../examples/research/color_gain.hpp"
 
-#include <vultra/api/experiment_bridge.hpp>
-#include <vultra/api/research_host.h>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/main/packaged_resources.hpp>
 #include <vultra/platform/os/file.hpp>
-#include <vultra/scripting/experiment_host.hpp>
+#include <vultra/research/api/experiment_bridge.hpp>
+#include <vultra/research/api/research_host.h>
+#include <vultra/research/experiment_host.hpp>
+#include <vultra/servers/rendering/builtin/raster_passes.hpp>
 
 #include <memory>
 
@@ -30,6 +31,7 @@ namespace
             static_assert(kGainShader[std::size(kGainShader) - 1] == 0);
             vultra::writeFileAtomically(shader,
                                         std::as_bytes(std::span(kGainShader).first(std::size(kGainShader) - 1)));
+            vultra::installBuiltinRenderPasses(catalog);
             catalog.add(research::colorGainDefinition());
         }
 

@@ -2,6 +2,7 @@
 #include <vultra/assets/project_manifest.hpp>
 #include <vultra/assets/source_file.hpp>
 #include <vultra/assets/vpk_archive.hpp>
+#include <vultra/assets/vpk_export.hpp>
 #include <vultra/main/packaged_resources.hpp>
 #include <vultra/scene/scene_tree.hpp>
 
@@ -54,13 +55,13 @@ try
         fs::path("build/.tmp/vpk") / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     const auto output = root / "research.vpk";
     fs::create_directories(root);
-    vultra::VpkArchive::packProject("resources/research.vproject", output);
+    vultra::packProject("resources/research.vproject", output);
     const auto packedSize = fs::file_size(output);
     require(packedSize > 5'000'000, "VPK omitted model or environment data");
     requireFailure(
         [&]
         {
-            vultra::VpkArchive::packProject("resources/research.vproject", output);
+            vultra::packProject("resources/research.vproject", output);
         },
         "Packing overwrote an existing VPK");
     require(fs::file_size(output) == packedSize, "Rejected VPK output was modified");
@@ -144,7 +145,7 @@ try
         std::ofstream(managedRoot / "scripts/Game.deps.json") << "{}";
     }
     const auto managedPack = root / "managed.vpk";
-    vultra::VpkArchive::packProject(managedRoot / "project.vproject", managedPack);
+    vultra::packProject(managedRoot / "project.vproject", managedPack);
     vultra::VpkArchive managedArchive(managedPack);
     fs::path           materialized;
     {
@@ -175,7 +176,7 @@ try
     requireFailure(
         [&]
         {
-            vultra::VpkArchive::packProject(managedRoot / "project.vproject", root / "missing-scripting-api.vpk");
+            vultra::packProject(managedRoot / "project.vproject", root / "missing-scripting-api.vpk");
         },
         "Managed VPK accepted a missing scripting API assembly");
     fs::rename(managedRoot / "scripts/Vultra.Scripting.saved", scriptingApi);
@@ -183,12 +184,12 @@ try
     requireFailure(
         [&]
         {
-            vultra::VpkArchive::packProject(managedRoot / "project.vproject", root / "missing-managed-config.vpk");
+            vultra::packProject(managedRoot / "project.vproject", root / "missing-managed-config.vpk");
         },
         "Managed VPK accepted missing runtime configuration");
 
     const auto builtinOutput = root / "builtin.vpk";
-    vultra::VpkArchive::packBuiltins(".", builtinOutput);
+    vultra::packBuiltins(".", builtinOutput);
     vultra::VpkArchive builtins(builtinOutput);
     require(builtins.contains("builtin/shaders/passes/forward.vshaderc") &&
                 builtins.contains("builtin/shaders/passes/path_trace.vshaderc") &&

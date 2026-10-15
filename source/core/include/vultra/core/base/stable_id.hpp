@@ -23,7 +23,8 @@ namespace vultra
 
     struct ObjectId
     {
-        uint64_t    value                          = 0;
-        friend bool operator==(ObjectId, ObjectId) = default;
+        static ObjectId generate();
+        uint64_t        value                          = 0;
+        friend bool     operator==(ObjectId, ObjectId) = default;
     };
 } // namespace vultra

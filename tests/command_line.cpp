@@ -28,6 +28,13 @@ namespace
 int main()
 try
 {
+    for (const auto* help : {"-h", "--help"})
+    {
+        argparse::ArgumentParser helpParser("import", "0.1.0", argparse::default_arguments::none);
+        vultra::addAppOptions(helpParser);
+        helpParser.add_argument("source");
+        require(!parse(helpParser, {"import", help}), "Help required a positional input before displaying usage");
+    }
     const std::vector<std::vector<std::string>> invalid {{"app", "--frames"},
                                                          {"app", "--frames", "-1"},
                                                          {"app", "--frames", "3x"},

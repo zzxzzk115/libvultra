@@ -1,8 +1,9 @@
 #include "../editor/src/scene_inspector.hpp"
 
 #include <vultra/api/scene_properties.generated.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/scene/render_nodes.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/servers/rendering/builtin/raster_passes.hpp>
 #include <vultra/ui/editor_gui.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -124,7 +125,7 @@ try
     project.environment = radiance;
     project.save(directory / "project.vproject");
     SceneTree initial(std::make_unique<Node>("World"));
-    initial.addChild(initial.root(), std::make_unique<MeshInstanceNode>("Quad", model));
+    initial.addChild(initial.root(), std::make_unique<MeshInstance3D>("Quad", model));
     initial.save(directory / "main.vscene");
 
     VectorProbe      position;
@@ -155,8 +156,9 @@ try
     {
         gui.setPropertyDrawer(id, drawer);
     }
-    SceneInspector   inspector(gui);
-    PassCatalog      catalog(device);
+    SceneInspector inspector(gui);
+    PassCatalog    catalog(device);
+    installBuiltinRenderPasses(catalog);
     ResearchDocument document;
     document.project            = directory / "project.vproject";
     document.size               = {129, 97};
@@ -244,7 +246,7 @@ try
     };
     render();
     render();
-    auto& mesh = *workspace.scene().root().children().front();
+    auto& mesh = static_cast<MeshInstance3D&>(*workspace.scene().root().children().front());
     click(lastTreeItem);
     const auto  rid      = workspace.sceneRid();
     auto*       graph    = &workspace.graph();
@@ -284,8 +286,8 @@ try
             "Inspector rotation discarded the existing shear");
     mesh.setLocalTransform(shear);
 
-    auto& camera = static_cast<CameraNode&>(
-        workspace.scene().addChild(workspace.scene().root(), std::make_unique<CameraNode>("Camera")));
+    auto& camera = static_cast<Camera3D&>(
+        workspace.scene().addChild(workspace.scene().root(), std::make_unique<Camera3D>("Camera")));
     camera.setLocalTransform(glm::translate(glm::mat4(1), {0, 0, 3}));
     render();
     click(lastTreeItem);
@@ -305,9 +307,9 @@ try
     render();
     require(status.empty() && camera.settings().nearPlane == 0.05f, "Camera field did not recover after rejection");
 
-    auto& light = static_cast<LightNode&>(
-        workspace.scene().addChild(workspace.scene().root(),
-                                   std::make_unique<LightNode>("Point", RenderLightKind::ePoint)));
+    auto& light =
+        static_cast<Light3D&>(workspace.scene().addChild(workspace.scene().root(),
+                                                         std::make_unique<Light3D>("Point", RenderLightKind::ePoint)));
     light.setLocalTransform(glm::translate(glm::mat4(1), {0, 0, 2}));
     render();
     click(lastTreeItem);
@@ -317,8 +319,8 @@ try
             "Generated light field did not change the next HDR/display frame while held");
     release();
 
-    auto& environment = static_cast<EnvironmentNode&>(
-        workspace.scene().addChild(workspace.scene().root(), std::make_unique<EnvironmentNode>("Environment")));
+    auto& environment = static_cast<WorldEnvironment&>(
+        workspace.scene().addChild(workspace.scene().root(), std::make_unique<WorldEnvironment>("Environment")));
     environment.setRadianceAsset(missing);
     render();
     const auto environmentTreeItem = lastTreeItem;
@@ -343,7 +345,7 @@ try
     release();
 
     auto& material = workspace.scene().addMaterial(std::make_unique<MaterialResource>("Shared material"));
-    static_cast<MeshInstanceNode&>(mesh).setMaterial(0, material.assetId());
+    static_cast<MeshInstance3D&>(mesh).setMaterial(0, material.assetId());
     render();
     click(lastTreeItem);
     const auto beforeMaterial = image();

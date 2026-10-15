@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vultra/drivers/rhi/resources.hpp>
-#include <vultra/platform/os/window.hpp>
+#include <vultra/platform/input/input.hpp>
 
 #include <filesystem>
 #include <functional>
@@ -12,6 +12,7 @@
 namespace vultra
 {
     class AssetSource;
+    class Window;
 
     // Retained, authored game UI. VRI rendering and explicit input frames keep RmlUi behind this boundary.
     // One live VGui owns RmlUi's process-wide interfaces. Borrowed sources outlive it.

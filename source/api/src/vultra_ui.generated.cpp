@@ -74,7 +74,7 @@ static VultraStatus uiCombo(VultraUiFrame frame,
         auto current = gui->frame();
         *changed     = vultra::guiCombo(current,
                                         {label ? label : "", static_cast<size_t>(labelSize)},
-                                    *value,
+                                        *value,
                                         {items ? items : "", static_cast<size_t>(itemsSize)});
         return VULTRA_STATUS_OK;
     }
@@ -130,9 +130,9 @@ static VultraStatus uiIntegerSlider(VultraUiFrame frame,
         auto current = gui->frame();
         *changed     = vultra::guiIntegerSlider(current,
                                                 {label ? label : "", static_cast<size_t>(labelSize)},
-                                            *value,
-                                            minimum,
-                                            maximum);
+                                                *value,
+                                                minimum,
+                                                maximum);
         return VULTRA_STATUS_OK;
     }
     catch (...)

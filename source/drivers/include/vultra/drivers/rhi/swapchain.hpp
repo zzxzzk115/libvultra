@@ -1,5 +1,6 @@
 #pragma once
 #include <vultra/drivers/rhi/resources.hpp>
+#include <vultra/platform/os/window.hpp>
 
 #include <memory>
 #include <vector>

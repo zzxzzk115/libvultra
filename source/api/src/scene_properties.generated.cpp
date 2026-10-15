@@ -5,6 +5,11 @@
 
 namespace vultra
 {
+    bool drawCamera3D(EditorGuiInspector& inspector, Camera3D& settings)
+    {
+        return inspector.properties(camera3DType(), &settings);
+    }
+
     bool drawCameraSettings(EditorGuiInspector& inspector, CameraSettings& settings)
     {
         return inspector.properties(cameraSettingsType(), &settings);
@@ -15,6 +20,11 @@ namespace vultra
         return inspector.properties(environmentSettingsType(), &settings);
     }
 
+    bool drawLight3D(EditorGuiInspector& inspector, Light3D& settings)
+    {
+        return inspector.properties(light3DType(), &settings);
+    }
+
     bool drawLightSettings(EditorGuiInspector& inspector, LightSettings& settings)
     {
         return inspector.properties(lightSettingsType(), &settings);
@@ -23,6 +33,26 @@ namespace vultra
     bool drawMaterialParameters(EditorGuiInspector& inspector, MaterialParameters& settings)
     {
         return inspector.properties(materialParametersType(), &settings);
+    }
+
+    bool drawMeshInstance3D(EditorGuiInspector& inspector, MeshInstance3D& settings)
+    {
+        return inspector.properties(meshInstance3DType(), &settings);
+    }
+
+    bool drawNode(EditorGuiInspector& inspector, Node& settings)
+    {
+        return inspector.properties(nodeType(), &settings);
+    }
+
+    bool drawNode3D(EditorGuiInspector& inspector, Node3D& settings)
+    {
+        return inspector.properties(node3DType(), &settings);
+    }
+
+    bool drawWorldEnvironment(EditorGuiInspector& inspector, WorldEnvironment& settings)
+    {
+        return inspector.properties(worldEnvironmentType(), &settings);
     }
 
 } // namespace vultra

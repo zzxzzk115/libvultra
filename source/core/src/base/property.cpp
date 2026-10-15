@@ -31,6 +31,19 @@ namespace vultra
                     {
                         return item.value;
                     }
+                    else if constexpr (std::is_same_v<Value, PropertyReference>)
+                    {
+                        return item.id.valid() ? Json(item.id.toString()) : Json(nullptr);
+                    }
+                    else if constexpr (std::is_same_v<Value, PropertyArray>)
+                    {
+                        auto result = Json::array();
+                        for (const auto& element : item.values)
+                        {
+                            result.push_back(writeValue(element));
+                        }
+                        return result;
+                    }
                     else if constexpr (std::is_same_v<Value, glm::mat4>)
                     {
                         auto result = Json::array();
@@ -71,7 +84,7 @@ namespace vultra
             return value.get<int64_t>();
         }
 
-        PropertyValue readValue(PropertyKind kind, const Json& value)
+        PropertyValue readValue(PropertyKind kind, const Json& value, PropertyKind elementKind)
         {
             switch (kind)
             {
@@ -93,11 +106,40 @@ namespace vultra
                     return value.get<std::string>();
                 case PropertyKind::eEnum:
                     return PropertyEnum {readSigned(value)};
+                case PropertyKind::eReference:
+                    if (value.is_null())
+                    {
+                        return PropertyReference {};
+                    }
+                    if (const auto id = StableId::parse(value.get<std::string>()); id && id->valid())
+                    {
+                        return PropertyReference {*id};
+                    }
+                    throw std::invalid_argument("Property requires a persistent UUID or null");
+                case PropertyKind::eArray: {
+                    if (!value.is_array() || elementKind == PropertyKind::eArray)
+                    {
+                        throw std::invalid_argument("Property requires a homogeneous array of scalar values");
+                    }
+                    PropertyArray result;
+                    result.values.reserve(value.size());
+                    for (const auto& element : value)
+                    {
+                        result.values.push_back(readValue(elementKind, element, PropertyKind::eBool));
+                    }
+                    return result;
+                }
                 case PropertyKind::eVector2:
                 case PropertyKind::eVector3:
                 case PropertyKind::eVector4:
                 case PropertyKind::eMatrix4: {
                     const auto values = value.get<std::vector<float>>();
+                    const auto count =
+                        kind == PropertyKind::eMatrix4 ? 16 : int(kind) - int(PropertyKind::eVector2) + 2;
+                    if (values.size() != size_t(count))
+                    {
+                        throw std::invalid_argument("Wrong property vector/matrix length");
+                    }
                     switch (kind)
                     {
                         case PropertyKind::eVector2:
@@ -174,12 +216,29 @@ namespace vultra
         {
             throw std::invalid_argument(std::string("Wrong value type for property ") + name);
         }
+        if (kind == PropertyKind::eReference && !nullable && !std::get<PropertyReference>(value).id.valid())
+        {
+            throw std::invalid_argument(std::string("Property requires a non-null reference: ") + name);
+        }
+        if (kind == PropertyKind::eArray)
+        {
+            if (elementKind == PropertyKind::eArray)
+            {
+                throw std::invalid_argument("Nested property arrays are not supported");
+            }
+            auto element = *this;
+            element.kind = elementKind;
+            for (const auto& item : std::get<PropertyArray>(value).values)
+            {
+                element.validate(item);
+            }
+        }
         if (kind == PropertyKind::eEnum &&
             std::ranges::find(enumValues, std::get<PropertyEnum>(value).value) == enumValues.end())
         {
             throw std::invalid_argument(std::string("Unknown enum value for property ") + name);
         }
-        if (kind == PropertyKind::eInt && integerBits < 64)
+        if (kind == PropertyKind::eInt && integerBits > 0 && integerBits < 64)
         {
             const auto number = std::get<int64_t>(value);
             const auto limit  = int64_t {1} << (integerBits - 1);
@@ -188,7 +247,7 @@ namespace vultra
                 throw std::invalid_argument(std::string("Integer out of range for property ") + name);
             }
         }
-        if (kind == PropertyKind::eUInt && integerBits < 64 &&
+        if (kind == PropertyKind::eUInt && integerBits > 0 && integerBits < 64 &&
             std::get<uint64_t>(value) >= (uint64_t {1} << integerBits))
         {
             throw std::invalid_argument(std::string("Integer out of range for property ") + name);
@@ -249,6 +308,11 @@ namespace vultra
         {
             throw std::invalid_argument("Property type requires a nonempty name");
         }
+        if (typeInfo.base && (std::ranges::find(m_Types, typeInfo.base) == m_Types.end() ||
+                              typeInfo.base->category != typeInfo.category))
+        {
+            throw std::invalid_argument(std::string("Register the matching base category before: ") + typeInfo.name);
+        }
         if (std::ranges::any_of(m_Types,
                                 [&](const auto* type)
                                 {
@@ -256,6 +320,25 @@ namespace vultra
                                 }))
         {
             throw std::invalid_argument(std::string("Duplicate property type: ") + typeInfo.name);
+        }
+        for (const auto& property : typeInfo.properties)
+        {
+            if (!property.name || !property.name[0] || !property.jsonPath || property.jsonPath[0] != '/' ||
+                !property.get || !property.set || !property.defaultValue)
+            {
+                throw std::invalid_argument(std::string("Incomplete property descriptor: ") + typeInfo.name);
+            }
+            if ((property.kind == PropertyKind::eReference ||
+                 (property.kind == PropertyKind::eArray && property.elementKind == PropertyKind::eReference)) &&
+                (!property.referenceType || !property.referenceType[0] ||
+                 property.referenceCategory == ObjectCategory::eValue))
+            {
+                throw std::invalid_argument(std::string("Reference needs a target category/type: ") + property.name);
+            }
+            if (std::ranges::count(typeInfo.properties, std::string_view(property.name), &PropertyInfo::name) != 1)
+            {
+                throw std::invalid_argument(std::string("Duplicate effective property: ") + property.name);
+            }
         }
         m_Types.push_back(&typeInfo);
     }
@@ -266,6 +349,14 @@ namespace vultra
         if (found == m_Types.end())
         {
             throw std::invalid_argument(std::string("Property type does not belong to this catalog: ") + typeInfo.name);
+        }
+        if (std::ranges::any_of(m_Types,
+                                [&](const auto* type)
+                                {
+                                    return type->base == &typeInfo;
+                                }))
+        {
+            throw std::logic_error(std::string("Remove derived type registrations before: ") + typeInfo.name);
         }
         m_Types.erase(found);
     }
@@ -287,6 +378,18 @@ namespace vultra
     std::span<const ObjectTypeInfo* const> ObjectTypeCatalog::types() const
     {
         return m_Types;
+    }
+
+    bool ObjectTypeInfo::isA(std::string_view typeName) const
+    {
+        for (const auto* type = this; type; type = type->base)
+        {
+            if (type->name == typeName)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     std::string serializeProperties(const ObjectTypeInfo& type, const void* object)
@@ -321,6 +424,12 @@ namespace vultra
             if (hasPropertyFlag(property.flags, PropertyFlags::eSerialize))
             {
                 expected[Json::json_pointer(property.jsonPath)] = writeValue(property.defaultValue());
+                if ((property.kind == PropertyKind::eArray || property.kind == PropertyKind::eReference) &&
+                    input.contains(Json::json_pointer(property.jsonPath)))
+                {
+                    // Their shape is defined by the descriptor, not by the length/nullness of the default.
+                    expected[Json::json_pointer(property.jsonPath)] = input.at(Json::json_pointer(property.jsonPath));
+                }
             }
         }
         validateShape(input, expected, type.name);
@@ -330,7 +439,8 @@ namespace vultra
             if (hasPropertyFlag(property.flags, PropertyFlags::eSerialize))
             {
                 const Json::json_pointer path(property.jsonPath);
-                auto value = input.contains(path) ? readValue(property.kind, input.at(path)) : property.defaultValue();
+                auto value = input.contains(path) ? readValue(property.kind, input.at(path), property.elementKind) :
+                                                    property.defaultValue();
                 property.validate(value);
                 values.emplace_back(&property, std::move(value));
             }
@@ -338,6 +448,26 @@ namespace vultra
         for (const auto& [property, value] : values)
         {
             property->write(object, value);
+        }
+    }
+
+    std::string serializeProperty(const PropertyInfo& property, const PropertyValue& value)
+    {
+        property.validate(value);
+        return writeValue(value).dump();
+    }
+
+    PropertyValue deserializeProperty(const PropertyInfo& property, std::string_view json)
+    {
+        try
+        {
+            auto value = readValue(property.kind, Json::parse(json), property.elementKind);
+            property.validate(value);
+            return value;
+        }
+        catch (const Json::exception& error)
+        {
+            throw std::invalid_argument(std::string(property.name) + ": " + error.what());
         }
     }
 } // namespace vultra

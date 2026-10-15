@@ -4,6 +4,7 @@
 #include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/render_properties.generated.hpp>
 #include <vultra/scene/scene_tree.hpp>
+#include <vultra/scene/scene_types.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -21,38 +22,6 @@ namespace vultra
     {
         using Json                  = nlohmann::json;
         constexpr int kSceneVersion = 1;
-
-        Node* findObject(Node& node, ObjectId id)
-        {
-            if (node.id() == id)
-            {
-                return &node;
-            }
-            for (const auto& child : node.children())
-            {
-                if (auto* found = findObject(*child, id))
-                {
-                    return found;
-                }
-            }
-            return nullptr;
-        }
-
-        Node* findPersistent(Node& node, NodeId id)
-        {
-            if (node.idInScene() == id)
-            {
-                return &node;
-            }
-            for (const auto& child : node.children())
-            {
-                if (auto* found = findPersistent(*child, id))
-                {
-                    return found;
-                }
-            }
-            return nullptr;
-        }
 
         void collectIds(const Node& node, std::vector<NodeId>& ids)
         {
@@ -76,32 +45,6 @@ namespace vultra
                                                                           });
         }
 
-        const char* nodeType(const Node& node)
-        {
-            switch (node.kind())
-            {
-                case NodeKind::eGroup:
-                    return "Node";
-                case NodeKind::eMeshInstance:
-                    return "MeshInstance";
-                case NodeKind::eCamera:
-                    return "Camera";
-                case NodeKind::eEnvironment:
-                    return "Environment";
-                case NodeKind::eLight:
-                    switch (static_cast<const LightNode&>(node).lightKind())
-                    {
-                        case RenderLightKind::eDirectional:
-                            return "DirectionalLight";
-                        case RenderLightKind::ePoint:
-                            return "PointLight";
-                        case RenderLightKind::eSpot:
-                            return "SpotLight";
-                    }
-            }
-            throw std::logic_error("Unknown scene node kind");
-        }
-
         NodeId parseNodeId(const std::string& text)
         {
             const auto parsed = StableId::parse(text);
@@ -122,182 +65,86 @@ namespace vultra
             return {*parsed};
         }
 
-        std::unique_ptr<Node> readNode(const Json& data)
+        std::unique_ptr<Node> readNode(const Json& data, const SceneTypeCatalog& types)
         {
-            const auto            id   = parseNodeId(data.at("id").get<std::string>());
-            const auto            name = data.at("name").get<std::string>();
-            const auto            type = data.at("type").get<std::string>();
-            std::unique_ptr<Node> node;
-            if (type == "Node")
+            const auto id    = parseNodeId(data.at("id").get<std::string>());
+            const auto name  = data.at("name").get<std::string>();
+            const auto type  = data.at("type").get<std::string>();
+            auto       state = data;
+            for (const auto* field :
+                 {"id", "name", "type", "owner", "children", "transform", "process_mode", "process_priority"})
             {
-                node = std::make_unique<Node>(name, id);
+                state.erase(field);
             }
-            else if (type == "MeshInstance")
+            auto        node   = types.create(type, name, id, state.dump());
+            const auto& schema = nodeType();
+            for (const auto* property : {"processMode", "processPriority"})
             {
-                node = std::make_unique<MeshInstanceNode>(name, parseAssetId(data.at("model").get<std::string>()), id);
-                auto&       mesh      = static_cast<MeshInstanceNode&>(*node);
-                const auto& overrides = data.at("materials");
-                if (!overrides.is_array())
-                {
-                    throw std::invalid_argument("Mesh material overrides must be an array");
-                }
-                for (const auto& entry : overrides)
-                {
-                    const auto& slot = entry.at("slot");
-                    if (!slot.is_number_integer() || slot < 0 || slot > UINT32_MAX)
-                    {
-                        throw std::invalid_argument("Mesh material slot must be a uint32 index");
-                    }
-                    const auto index = slot.get<uint32_t>();
-                    if (std::ranges::find(mesh.materialOverrides(), index, &MeshMaterialOverride::slot) !=
-                        mesh.materialOverrides().end())
-                    {
-                        throw std::invalid_argument("Duplicate mesh material slot");
-                    }
-                    mesh.setMaterial(index, parseAssetId(entry.at("resource").get<std::string>()));
-                }
+                const auto& info = schema.property(property);
+                info.write(node.get(), deserializeProperty(info, data.at(Json::json_pointer(info.jsonPath)).dump()));
             }
-            else if (type == "Camera")
+            if (auto* spatial = dynamic_cast<Node3D*>(node.get()))
             {
-                auto           camera   = std::make_unique<CameraNode>(name, id);
-                const auto&    settings = data.at("camera");
-                CameraSettings value;
-                deserializeProperties(cameraSettingsType(), settings.dump(), &value);
-                camera->setSettings(value);
-                node = std::move(camera);
+                const auto& info = node3DType().property("localTransform");
+                info.write(spatial, deserializeProperty(info, data.at("transform").dump()));
             }
-            else if (type == "Environment")
+            else if (data.contains("transform"))
             {
-                auto        environment = std::make_unique<EnvironmentNode>(name, id);
-                const auto& settings    = data.at("environment");
-                if (!settings.at("radiance").is_null())
-                {
-                    environment->setRadianceAsset(parseAssetId(settings.at("radiance").get<std::string>()));
-                }
-                auto properties = settings;
-                properties.erase("radiance");
-                EnvironmentSettings value;
-                deserializeProperties(environmentSettingsType(), properties.dump(), &value);
-                environment->setSettings(value);
-                node = std::move(environment);
+                throw std::invalid_argument("Non-spatial node cannot have a transform");
             }
-            else if (type == "DirectionalLight" || type == "PointLight" || type == "SpotLight")
-            {
-                auto kind = RenderLightKind::eDirectional;
-                if (type == "PointLight")
-                {
-                    kind = RenderLightKind::ePoint;
-                }
-                else if (type == "SpotLight")
-                {
-                    kind = RenderLightKind::eSpot;
-                }
-                auto          light    = std::make_unique<LightNode>(name, kind, id);
-                const auto&   settings = data.at("light");
-                LightSettings value;
-                deserializeProperties(lightSettingsType(), settings.dump(), &value);
-                light->setSettings(value);
-                node = std::move(light);
-            }
-            else
-            {
-                throw std::invalid_argument("Unknown scene node type: " + type);
-            }
-            const auto values = data.at("transform").get<std::vector<float>>();
-            if (values.size() != 16)
-            {
-                throw std::invalid_argument("Scene node transform requires 16 values");
-            }
-            glm::mat4 transform {1};
-            for (int column = 0; column < 4; ++column)
-            {
-                for (int row = 0; row < 4; ++row)
-                {
-                    transform[column][row] = values[size_t(column * 4 + row)];
-                }
-            }
-            node->setLocalTransform(transform);
             return node;
         }
 
-        void readChildren(SceneTree& tree, Node& parent, const Json& data)
+        void readChildren(SceneTree& tree, Node& parent, const Json& data, const SceneTypeCatalog& types)
         {
             for (const auto& childData : data.at("children"))
             {
-                auto& child = tree.addChild(parent, readNode(childData));
-                readChildren(tree, child, childData);
+                auto& child = tree.addChild(parent, readNode(childData, types));
+                readChildren(tree, child, childData, types);
             }
         }
 
-        Json writeNode(const Node& node)
+        Json writeNode(const Node& node, const SceneTypeCatalog& types)
         {
-            Json data = {{"id", node.idInScene().value.toString()},
-                         {"name", node.name()},
-                         {"type", nodeType(node)},
-                         {"transform", Json::array()},
-                         {"children", Json::array()}};
-            if (node.kind() == NodeKind::eMeshInstance)
+            Json data;
+            if (const auto* spatial = dynamic_cast<const Node3D*>(&node))
             {
-                const auto& mesh  = static_cast<const MeshInstanceNode&>(node);
-                data["model"]     = mesh.model().value.toString();
-                data["materials"] = Json::array();
-                for (const auto& entry : mesh.materialOverrides())
+                data = Json::parse(serializeProperties(node3DType(), spatial));
+            }
+            else
+            {
+                data = Json::parse(serializeProperties(nodeType(), &node));
+            }
+            data["id"]       = node.idInScene().value.toString();
+            data["type"]     = node.typeName();
+            data["children"] = Json::array();
+            const auto state = Json::parse(types.serialize(node));
+            if (!state.is_object())
+            {
+                throw std::invalid_argument("Scene type state must be a JSON object");
+            }
+            for (const auto& [key, value] : state.items())
+            {
+                if (data.contains(key) || key == "transform")
                 {
-                    data["materials"].push_back({{"slot", entry.slot}, {"resource", entry.material.value.toString()}});
+                    throw std::invalid_argument("Scene type cannot overwrite common field: " + key);
                 }
-            }
-            else if (node.kind() == NodeKind::eCamera)
-            {
-                const auto& settings = static_cast<const CameraNode&>(node).settings();
-                data["camera"]       = Json::parse(serializeProperties(cameraSettingsType(), &settings));
-            }
-            else if (node.kind() == NodeKind::eEnvironment)
-            {
-                const auto& environment = static_cast<const EnvironmentNode&>(node);
-                data["environment"] =
-                    Json::parse(serializeProperties(environmentSettingsType(), &environment.settings()));
-                data["environment"]["radiance"] = nullptr;
-                if (environment.radianceAsset().value.valid())
-                {
-                    data["environment"]["radiance"] = environment.radianceAsset().value.toString();
-                }
-            }
-            else if (node.kind() == NodeKind::eLight)
-            {
-                const auto& settings = static_cast<const LightNode&>(node).settings();
-                data["light"]        = Json::parse(serializeProperties(lightSettingsType(), &settings));
-            }
-            for (int column = 0; column < 4; ++column)
-            {
-                for (int row = 0; row < 4; ++row)
-                {
-                    data["transform"].push_back(node.localTransform()[column][row]);
-                }
+                data[key] = value;
             }
             for (const auto& child : node.children())
             {
-                data["children"].push_back(writeNode(*child));
+                data["children"].push_back(writeNode(*child, types));
             }
             return data;
         }
 
-        void validateNodeAssets(const Node& node, const ProjectManifest& project)
+        void readOwners(SceneTree& tree, Node& node, const Json& data)
         {
-            if (node.kind() == NodeKind::eMeshInstance)
+            const auto& property = nodeType().property("ownerId");
+            property.write(&node, deserializeProperty(property, data.at("owner").dump()));
+            for (size_t index = 0; index < node.children().size(); ++index)
             {
-                project.asset(static_cast<const MeshInstanceNode&>(node).model());
-            }
-            if (node.kind() == NodeKind::eEnvironment)
-            {
-                const auto asset = static_cast<const EnvironmentNode&>(node).radianceAsset();
-                if (asset.value.valid() && project.asset(asset).path.extension() != ".hdr")
-                {
-                    throw std::invalid_argument(node.name() + ": environment asset must be a Radiance HDR image");
-                }
-            }
-            for (const auto& child : node.children())
-            {
-                validateNodeAssets(*child, project);
+                readOwners(tree, *node.children()[index], data.at("children").at(index));
             }
         }
 
@@ -325,32 +172,103 @@ namespace vultra
         std::vector<NodeId> ids;
         collectIds(*m_Root, ids);
         m_SceneLighting = containsLight(*m_Root);
-        bindChanges(*m_Root, m_Changes.get());
+        connectComponentSignals();
+        bindTree(*m_Root, this);
     }
 
-    SceneTree& SceneTree::operator=(SceneTree&& other) noexcept
+    SceneTree::~SceneTree()
+    {
+        stop();
+        disconnectComponentSignals();
+        m_Nodes.clear();
+        m_Root.reset();
+        for (auto& systems : m_Systems)
+        {
+            systems.clear();
+        }
+    }
+
+    SceneTree::SceneTree(std::unique_ptr<Node> root, const SceneTypeCatalog& types) :
+        SceneTree(std::move(root))
+    {
+        m_Types = types;
+    }
+
+    SceneTree::SceneTree(SceneTree&& other)
+    {
+        *this = std::move(other);
+    }
+
+    SceneTree& SceneTree::operator=(SceneTree&& other)
     {
         if (this != &other)
         {
-            // Retire borrowers before replacing their notification storage.
+            requireMovable();
+            other.requireMovable();
+            stop();
+            disconnectComponentSignals();
+            other.disconnectComponentSignals();
+            // Retire facades before replacing their component and notification storage.
+            m_Nodes.clear();
             m_Root.reset();
             m_Materials.clear();
             m_Changes            = std::move(other.m_Changes);
+            m_Registry           = std::move(other.m_Registry);
+            m_NodeEntities       = std::move(other.m_NodeEntities);
+            m_PersistentEntities = std::move(other.m_PersistentEntities);
+            m_Nodes              = std::move(other.m_Nodes);
+            m_EntityOrder        = std::move(other.m_EntityOrder);
+            m_TransformOrder     = std::move(other.m_TransformOrder);
+            m_OrderRevision      = other.m_OrderRevision;
+            m_TransformRevision  = other.m_TransformRevision;
+            m_TransformStructure = other.m_TransformStructure;
+            m_ProcessStructure   = other.m_ProcessStructure;
+            m_ProcessMetadata    = other.m_ProcessMetadata;
+            m_Systems            = std::move(other.m_Systems);
+            m_NextSystemId       = other.m_NextSystemId;
             m_Root               = std::move(other.m_Root);
             m_Materials          = std::move(other.m_Materials);
             m_CurrentCamera      = other.m_CurrentCamera;
             m_CurrentEnvironment = other.m_CurrentEnvironment;
             m_SceneLighting      = other.m_SceneLighting;
+            m_Types              = std::move(other.m_Types);
+            m_Input              = std::move(other.m_Input);
+            m_Commands           = std::move(other.m_Commands);
+            m_DeletionQueue      = std::move(other.m_DeletionQueue);
+            m_ProcessOrder       = std::move(other.m_ProcessOrder);
+            m_Accumulator        = other.m_Accumulator;
+            m_TimeScale          = other.m_TimeScale;
+            m_PhysicsFrame       = other.m_PhysicsFrame;
+            m_Paused             = other.m_Paused;
+            connectComponentSignals();
+            for (auto&& [entity, metadata] : m_Registry->view<SceneNode>().each())
+            {
+                if (metadata.node)
+                {
+                    metadata.node->m_Tree = this;
+                }
+            }
         }
         return *this;
     }
 
-    void SceneTree::bindChanges(Node& node, SceneChanges* changes)
+    void SceneTree::clearInvalidOwners(Node& node)
     {
-        node.m_Changes = changes;
+        if (node.owner())
+        {
+            auto* ancestor = node.parent();
+            while (ancestor && ancestor != node.owner())
+            {
+                ancestor = ancestor->parent();
+            }
+            if (!ancestor)
+            {
+                node.setOwner(nullptr);
+            }
+        }
         for (const auto& child : node.children())
         {
-            bindChanges(*child, changes);
+            clearInvalidOwners(*child);
         }
     }
 
@@ -366,16 +284,58 @@ namespace vultra
 
     Node* SceneTree::find(ObjectId id) const
     {
-        return id.value ? findObject(*m_Root, id) : nullptr;
+        const auto handle = entity(id);
+        return handle == entt::null ? nullptr : m_Registry->get<SceneNode>(handle).node;
+    }
+
+    const entt::registry& SceneTree::registry() const
+    {
+        return *m_Registry;
+    }
+
+    entt::entity SceneTree::entity(ObjectId id) const
+    {
+        const auto found = m_NodeEntities.find(id.value);
+        return found == m_NodeEntities.end() ? entt::null : found->second;
+    }
+
+    void SceneTree::setLocalTransforms(std::span<const SceneTransformUpdate> updates)
+    {
+        for (const auto& update : updates)
+        {
+            const auto handle = entity(update.node);
+            if (handle == entt::null || !m_Registry->all_of<SceneTransform>(handle))
+            {
+                throw std::invalid_argument("Transform update requires a live spatial node in this scene: " +
+                                            std::to_string(update.node.value));
+            }
+            SceneTransform::validate(update.local);
+        }
+        bool changed = false;
+        for (const auto& update : updates)
+        {
+            auto& local = m_Registry->get<SceneTransform>(entity(update.node)).local;
+            if (local != update.local)
+            {
+                local   = update.local;
+                changed = true;
+            }
+        }
+        if (changed)
+        {
+            m_Changes->mark(SceneChange::eTransform);
+        }
     }
 
     Node* SceneTree::find(NodeId id) const
     {
-        return id.value.valid() ? findPersistent(*m_Root, id) : nullptr;
+        const auto handle = entity(id);
+        return handle == entt::null ? nullptr : m_Registry->get<SceneNode>(handle).node;
     }
 
     Node& SceneTree::addChild(Node& parent, std::unique_ptr<Node> child)
     {
+        requireStructuralBoundary(&parent);
         if (!child || child->parent() || find(parent.id()) != &parent)
         {
             throw std::invalid_argument("Attach a new child to a node in this scene tree");
@@ -384,21 +344,61 @@ namespace vultra
         collectIds(*child, ids);
         for (const auto id : ids)
         {
-            if (find(id))
+            if (entity(id) != entt::null)
             {
                 throw std::invalid_argument("Scene node ID already belongs to this tree");
             }
         }
-        child->m_Parent = &parent;
-        parent.m_Children.push_back(std::move(child));
-        bindChanges(*parent.m_Children.back(), m_Changes.get());
-        m_SceneLighting |= containsLight(*parent.m_Children.back());
+        auto& destination = m_Registry->get<SceneHierarchy>(parent.entity()).children;
+        destination.reserve(destination.size() + 1);
+        child->m_Detached->parent = &parent;
+        auto&      result         = *child;
+        const auto id             = result.id();
+        m_Nodes.try_emplace(id.value, std::move(child));
+        try
+        {
+            bindTree(result, this);
+        }
+        catch (...)
+        {
+            m_Nodes.erase(id.value);
+            throw;
+        }
+        // Child attachment may grow hierarchy storage; resolve the parent again before publishing membership.
+        m_Registry->get<SceneHierarchy>(parent.entity()).children.push_back(result.entity());
+        m_SceneLighting |= containsLight(result);
         m_Changes->mark(SceneChange::eStructure);
-        return *parent.m_Children.back();
+        if (m_Running)
+        {
+            const auto wasDispatching = m_Dispatching;
+            const auto wasLifecycle   = m_Lifecycle;
+            m_Dispatching             = true;
+            m_Lifecycle               = true;
+            try
+            {
+                enterBranch(result);
+                readyBranch(result);
+                m_Dispatching = wasDispatching;
+                m_Lifecycle   = wasLifecycle;
+            }
+            catch (...)
+            {
+                m_Dispatching = false;
+                m_Lifecycle   = false;
+                stop();
+                throw;
+            }
+        }
+        if (m_StopRequested && !m_Dispatching && !m_Flushing)
+        {
+            stop();
+        }
+        return result;
     }
 
-    void SceneTree::reparent(Node& node, Node& newParent)
+    void SceneTree::reparent(Node& node, Node& newParent, bool keepGlobalTransform)
     {
+        requireStructuralBoundary();
         if (&node == m_Root.get() || find(node.id()) != &node || find(newParent.id()) != &newParent)
         {
             throw std::invalid_argument("Reparent nodes in the same scene tree");
@@ -414,53 +414,104 @@ namespace vultra
         {
             return;
         }
-        auto& destination = newParent.m_Children;
+        auto*     spatial = dynamic_cast<Node3D*>(&node);
+        glm::mat4 local {1};
+        if (spatial && keepGlobalTransform)
+        {
+            const auto* spatialParent = dynamic_cast<const Node3D*>(&newParent);
+            const auto  global        = spatial->globalTransform();
+            local = spatialParent ? Node3D::localForParent(global, spatialParent->globalTransform()) : global;
+            SceneTransform::validate(local);
+        }
+        auto& destination = m_Registry->get<SceneHierarchy>(newParent.entity()).children;
         destination.reserve(destination.size() + 1);
-        auto&      source = node.parent()->m_Children;
-        const auto it     = std::ranges::find_if(source,
-                                                 [&](const auto& child)
-                                                 {
-                                                 return child.get() == &node;
-                                                 });
-        auto       moved  = std::move(*it);
-        source.erase(it);
-        moved->m_Parent = &newParent;
-        destination.push_back(std::move(moved));
+        if (m_Running)
+        {
+            m_Dispatching = true;
+            exitBranch(node);
+            m_Dispatching = false;
+        }
+        auto& source = m_Registry->get<SceneHierarchy>(node.parent()->entity()).children;
+        std::erase(source, node.entity());
+        m_Registry->get<SceneHierarchy>(node.entity()).parent = newParent.entity();
+        destination.push_back(node.entity());
+        if (spatial && keepGlobalTransform)
+        {
+            spatial->setLocalTransform(local);
+        }
+        clearInvalidOwners(node);
         m_Changes->mark(SceneChange::eStructure);
+        if (m_Running)
+        {
+            m_Dispatching = true;
+            try
+            {
+                enterBranch(node);
+                readyBranch(node);
+                m_Dispatching = false;
+            }
+            catch (...)
+            {
+                m_Dispatching = false;
+                stop();
+                throw;
+            }
+        }
+        if (m_StopRequested && !m_Flushing)
+        {
+            stop();
+        }
     }
 
     std::unique_ptr<Node> SceneTree::remove(Node& node)
     {
+        requireStructuralBoundary();
         if (&node == m_Root.get() || !node.parent() || find(node.id()) != &node)
         {
             throw std::invalid_argument("Remove a non-root node from this scene tree");
         }
-        auto&      children = node.parent()->m_Children;
-        const auto it       = std::ranges::find_if(children,
-                                                   [&](const auto& child)
-                                                   {
-                                                 return child.get() == &node;
-                                                   });
-        auto       result   = std::move(*it);
-        children.erase(it);
-        result->m_Parent = nullptr;
-        bindChanges(*result, nullptr);
-        if (m_CurrentCamera.value.valid() && findPersistent(*result, m_CurrentCamera))
+        if (m_Running)
+        {
+            m_Dispatching = true;
+            exitBranch(node);
+            m_Dispatching = false;
+        }
+        // Runtime-only descendants belong to this world and are not part of a detachable authoring subtree.
+        auto runtimeChildren = branchEntities(node.entity());
+        std::erase_if(runtimeChildren,
+                      [this](entt::entity handle)
+                      {
+                          return m_Registry->get<SceneNode>(handle).node != nullptr;
+                      });
+        retireRuntimeEntities(runtimeChildren);
+        const auto nodeHandle = node.entity();
+        auto&      children   = m_Registry->get<SceneHierarchy>(node.parent()->entity()).children;
+        std::erase(children, nodeHandle);
+        m_Registry->get<SceneHierarchy>(nodeHandle).parent = entt::null;
+        clearInvalidOwners(node);
+        auto owned  = m_Nodes.extract(node.id().value);
+        auto result = std::move(owned.mapped());
+        bindTree(*result, nullptr);
+        if (m_CurrentCamera.value.valid() && entity(m_CurrentCamera) == entt::null)
         {
             m_CurrentCamera = {};
         }
-        if (m_CurrentEnvironment.value.valid() && findPersistent(*result, m_CurrentEnvironment))
+        if (m_CurrentEnvironment.value.valid() && entity(m_CurrentEnvironment) == entt::null)
         {
             m_CurrentEnvironment = {};
         }
         m_Changes->mark(SceneChange::eStructure);
+        if (m_StopRequested && !m_Flushing)
+        {
+            stop();
+        }
         return result;
     }
 
     ObjectId SceneTree::currentCamera() const
     {
-        const auto* camera = find(m_CurrentCamera);
-        return camera ? camera->id() : ObjectId {};
+        const auto handle = entity(m_CurrentCamera);
+        return handle == entt::null ? ObjectId {} : m_Registry->get<SceneNode>(handle).id;
     }
 
     void SceneTree::setCurrentCamera(ObjectId id)
@@ -474,22 +525,22 @@ namespace vultra
             }
             return;
         }
-        const auto* node = find(id);
-        if (!node || node->kind() != NodeKind::eCamera)
+        const auto handle = entity(id);
+        if (handle == entt::null || !m_Registry->all_of<SceneCamera, SceneTransform>(handle))
         {
             throw std::invalid_argument("Current camera must be a camera node in this scene");
         }
-        if (m_CurrentCamera != node->idInScene())
+        if (m_CurrentCamera != m_Registry->get<SceneNode>(handle).persistentId)
         {
-            m_CurrentCamera = node->idInScene();
+            m_CurrentCamera = m_Registry->get<SceneNode>(handle).persistentId;
             m_Changes->mark(SceneChange::eCamera);
         }
     }
 
     ObjectId SceneTree::currentEnvironment() const
     {
-        const auto* environment = find(m_CurrentEnvironment);
-        return environment ? environment->id() : ObjectId {};
+        const auto handle = entity(m_CurrentEnvironment);
+        return handle == entt::null ? ObjectId {} : m_Registry->get<SceneNode>(handle).id;
     }
 
     void SceneTree::setCurrentEnvironment(ObjectId id)
@@ -503,14 +554,14 @@ namespace vultra
             }
             return;
         }
-        const auto* node = find(id);
-        if (!node || node->kind() != NodeKind::eEnvironment)
+        const auto handle = entity(id);
+        if (handle == entt::null || !m_Registry->all_of<SceneEnvironment>(handle))
         {
             throw std::invalid_argument("Current environment must be an environment node in this scene");
         }
-        if (m_CurrentEnvironment != node->idInScene())
+        if (m_CurrentEnvironment != m_Registry->get<SceneNode>(handle).persistentId)
         {
-            m_CurrentEnvironment = node->idInScene();
+            m_CurrentEnvironment = m_Registry->get<SceneNode>(handle).persistentId;
             m_Changes->mark(SceneChange::eEnvironment);
         }
     }
@@ -522,7 +573,18 @@ namespace vultra
 
     void SceneTree::validateAssets(const ProjectManifest& project) const
     {
-        validateNodeAssets(*m_Root, project);
+        for (const auto& [entity, node, mesh] : m_Registry->view<const SceneNode, const SceneMesh>().each())
+        {
+            project.asset(mesh.model);
+        }
+        for (const auto& [entity, node, environment] :
+             m_Registry->view<const SceneNode, const SceneEnvironment>().each())
+        {
+            if (environment.radiance.value.valid() && project.asset(environment.radiance).path.extension() != ".hdr")
+            {
+                throw std::invalid_argument(node.name + ": environment asset must be a Radiance HDR image");
+            }
+        }
         validateMaterials();
         for (const auto& material : m_Materials)
         {
@@ -591,31 +653,14 @@ namespace vultra
             throw std::invalid_argument("Material does not belong to this scene");
         }
         const auto asset = material.assetId();
-        auto       visit = [&](const auto& self, Node& node) -> void
+        for (auto&& [entity, mesh] : m_Registry->view<SceneMesh>().each())
         {
-            if (node.kind() == NodeKind::eMeshInstance)
-            {
-                auto&       mesh      = static_cast<MeshInstanceNode&>(node);
-                const auto& overrides = mesh.materialOverrides();
-                size_t      index     = 0;
-                while (index < overrides.size())
-                {
-                    if (overrides[index].material == asset)
-                    {
-                        mesh.setMaterial(overrides[index].slot, {});
-                    }
-                    else
-                    {
-                        ++index;
-                    }
-                }
-            }
-            for (const auto& child : node.children())
-            {
-                self(self, *child);
-            }
-        };
-        visit(visit, *m_Root);
+            std::erase_if(mesh.materials,
+                          [asset](const MeshMaterialOverride& entry)
+                          {
+                              return entry.material == asset;
+                          });
+        }
         const auto* target = &material;
         std::erase_if(m_Materials,
                       [target](const auto& value)
@@ -627,32 +672,37 @@ namespace vultra
 
     void SceneTree::validateMaterials() const
     {
-        auto visit = [&](const auto& self, const Node& node) -> void
+        for (const auto& [entity, node, mesh] : m_Registry->view<const SceneNode, const SceneMesh>().each())
         {
-            if (node.kind() == NodeKind::eMeshInstance)
+            for (const auto& entry : mesh.materials)
             {
-                for (const auto& entry : static_cast<const MeshInstanceNode&>(node).materialOverrides())
+                if (!findMaterial(entry.material))
                 {
-                    if (!findMaterial(entry.material))
-                    {
-                        throw std::invalid_argument(node.name() + ": material override references a missing resource");
-                    }
+                    throw std::invalid_argument(node.name + ": material override references a missing resource");
                 }
             }
-            for (const auto& child : node.children())
-            {
-                self(self, *child);
-            }
-        };
-        visit(visit, *m_Root);
+        }
     }
 
     std::string SceneTree::serialize() const
     {
+        return serialize(m_Types);
+    }
+
+    std::string SceneTree::serialize(const SceneTypeCatalog& types) const
+    {
+        for (const auto& [entity, node] : m_Registry->view<const SceneNode>().each())
+        {
+            if (!node.node)
+            {
+                throw std::invalid_argument("Scene documents persist authored nodes; runtime-only ECS entities need an "
+                                            "explicit snapshot schema");
+            }
+        }
         validateMaterials();
         Json document {{"format", "vultra.scene"},
                        {"version", kSceneVersion},
-                       {"root", writeNode(*m_Root)},
+                       {"root", writeNode(*m_Root, types)},
                        {"scene_lighting", m_SceneLighting},
                        {"current_camera", nullptr},
                        {"current_environment", nullptr},
@@ -683,6 +733,11 @@ namespace vultra
 
     SceneTree SceneTree::parse(std::string_view text)
     {
+        return parse(text, SceneTypeCatalog {});
+    }
+
+    SceneTree SceneTree::parse(std::string_view text, const SceneTypeCatalog& types)
+    {
         try
         {
             const auto document = Json::parse(text);
@@ -691,8 +746,9 @@ namespace vultra
                 throw std::invalid_argument("Unsupported scene format or version");
             }
             const auto& rootData = document.at("root");
-            SceneTree   tree(readNode(rootData));
-            readChildren(tree, tree.root(), rootData);
+            SceneTree   tree(readNode(rootData, types), types);
+            readChildren(tree, tree.root(), rootData, types);
+            readOwners(tree, tree.root(), rootData);
             if (!document.at("materials").is_array())
             {
                 throw std::invalid_argument("Scene materials must be an array");
@@ -750,16 +806,27 @@ namespace vultra
 
     void SceneTree::save(const std::filesystem::path& file) const
     {
-        const auto text = serialize();
+        save(file, SceneTypeCatalog {});
+    }
+
+    void SceneTree::save(const std::filesystem::path& file, const SceneTypeCatalog& types) const
+    {
+        const auto text = serialize(types);
         writeFileAtomically(file, std::as_bytes(std::span(text)));
     }
 
     SceneTree SceneTree::load(const std::filesystem::path& file, const AssetSource* source)
     {
+        return load(file, SceneTypeCatalog {}, source);
+    }
+
+    SceneTree
+    SceneTree::load(const std::filesystem::path& file, const SceneTypeCatalog& types, const AssetSource* source)
+    {
         try
         {
             const auto bytes = readSourceFile(file, {}, source);
-            return parse(std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
+            return parse(std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()), types);
         }
         catch (const std::exception& error)
         {

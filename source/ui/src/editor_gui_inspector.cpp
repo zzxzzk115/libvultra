@@ -312,6 +312,32 @@ namespace vultra
                 }
                 return changed;
             }
+            case PropertyKind::eReference: {
+                auto& reference = std::get<PropertyReference>(value);
+                auto  text      = reference.id.valid() ? reference.id.toString() : std::string {};
+                if (!ImGui::InputText("##value", &text, ImGuiInputTextFlags_EnterReturnsTrue))
+                {
+                    return false;
+                }
+                const auto parsed = StableId::parse(text);
+                if (!text.empty() && !parsed)
+                {
+                    throw std::invalid_argument("Reference requires a persistent UUID");
+                }
+                reference.id = parsed.value_or(StableId {});
+                info.validate(value);
+                return true;
+            }
+            case PropertyKind::eArray: {
+                // Custom drawers can provide component-specific collection controls.
+                auto text = serializeProperty(info, value);
+                if (!ImGui::InputText("##value", &text, ImGuiInputTextFlags_EnterReturnsTrue))
+                {
+                    return false;
+                }
+                value = deserializeProperty(info, text);
+                return true;
+            }
             default:
                 throw std::logic_error("Unsupported property Inspector kind");
         }

@@ -11,14 +11,14 @@ from pathlib import Path
 from clang import cindex
 
 ROOT = Path(__file__).resolve().parents[1]
-DATABASE = ROOT / ".vscode/compile_commands.json"
+DATABASE = ROOT / "compile_commands.json"
 OUTPUT = ROOT / "source/api"
 ABI_VERSION = 1
 SOURCES = {
     "ui": "source/ui/src/editor_gui_frame.cpp",
     "settings": "source/servers/src/rendering/builtin/builtin_renderer.cpp",
     "scene": "source/scene/src/scene_api.cpp",
-    "experiment": "source/scripting/src/experiment_host.cpp",
+    "experiment": "extensions/research/scripting/src/experiment_host.cpp",
 }
 
 
@@ -26,7 +26,7 @@ def source_path(file):
     return str(file).replace("\\", "/")
 
 
-def translation_unit(database, source):
+def translation_unit(database, source, *, skip_bodies=True):
     row = next((row for row in database if source_path(row["file"]).endswith(source)), None)
     if row is None:
         raise RuntimeError(
@@ -51,7 +51,7 @@ def translation_unit(database, source):
     unit = cindex.Index.create().parse(
         source_path(row["file"]),
         args=args,
-        options=cindex.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES,
+        options=cindex.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES if skip_bodies else 0,
     )
     failures = [
         str(diagnostic)
@@ -144,14 +144,15 @@ def parse_api(database):
         ]
         result = cursor.result_type.spelling
         project_required = len(arguments) > 1 and arguments[1]["type"] == "const ProjectManifest &"
-        call_arguments = arguments[2:] if project_required else arguments[1:]
-        supported_arguments = {"ObjectId", "uint64_t", "std::string_view"} | pod_names
+        project_optional = len(arguments) > 1 and arguments[1]["type"] == "const ProjectManifest *"
+        call_arguments = arguments[2:] if project_required or project_optional else arguments[1:]
+        supported_arguments = {"ObjectId", "uint64_t", "int32_t", "double", "std::string_view"} | pod_names
         if (
             not cursor.spelling.startswith("scene")
             or not arguments
             or arguments[0]["type"] not in ("const SceneTree &", "SceneTree &")
             or any(arg["type"] not in supported_arguments for arg in call_arguments)
-            or result not in {"ObjectId", "uint64_t", "std::string_view", "void"} | pod_names
+            or result not in {"ObjectId", "uint64_t", "int32_t", "double", "std::string_view", "std::string", "void"} | pod_names
         ):
             raise RuntimeError(
                 f"Unsupported scene ABI signature: {cursor.spelling}({arguments}) -> {result}"
@@ -162,6 +163,7 @@ def parse_api(database):
                 "return": result,
                 "scene_mutable": arguments[0]["type"] == "SceneTree &",
                 "project_required": project_required,
+                "project_optional": project_optional,
                 "arguments": call_arguments,
             }
         )
@@ -240,6 +242,7 @@ def parse_experiments(unit, scene_pods=()):
 PROPERTY_KINDS = {
     "bool": "eBool", "float": "eFloat", "double": "eDouble", "std::string": "eString",
     "int": "eInt", "int32_t": "eInt", "int64_t": "eInt", "uint32_t": "eUInt", "uint64_t": "eUInt",
+    "AssetId": "eReference", "NodeId": "eReference", "PropertyReference": "eReference",
     "glm::vec2": "eVector2", "glm::vec3": "eVector3", "glm::vec4": "eVector4", "glm::mat4": "eMatrix4",
 }
 PROPERTY_FLAGS = {"serialize": 1, "inspect": 2, "bind": 4, "reload": 8}
@@ -251,13 +254,14 @@ def parse_property_metadata(cursor, field, metadata):
         if "=" not in entry:
             raise RuntimeError(f"Invalid property metadata: {cursor.spelling}.{field.spelling}")
         key, value = entry.split("=", 1)
-        if key not in {"label", "min", "max", "widget", "speed", "options", "flags", "json", "api"} or key in properties:
+        if key not in {"label", "min", "max", "widget", "speed", "options", "flags", "json", "api",
+                       "set", "default", "reference", "nullable"} or key in properties:
             raise RuntimeError(f"Unknown/duplicate property metadata: {cursor.spelling}.{field.spelling}: {key}")
         properties[key] = value
     return properties
 
 
-def validate_property_range(cursor, field, properties, kind, flags):
+def validate_property_range(cursor, field, properties, kind, flags, scalar_type=None):
     widget = properties.get("widget", "slider")
     if widget not in ("slider", "drag"):
         raise RuntimeError(f"Unsupported widget: {cursor.spelling}.{field.spelling}")
@@ -282,7 +286,7 @@ def validate_property_range(cursor, field, properties, kind, flags):
                               max(abs(minimum), abs(maximum)) > float_limit):
         raise RuntimeError(f"Property range/speed exceeds float storage: {field.spelling}")
     if kind in ("eInt", "eUInt") and "inspect" in flags:
-        bits = field.type.get_size() * 8
+        bits = (scalar_type or (field.result_type if field.kind == cindex.CursorKind.CXX_METHOD else field.type)).get_size() * 8
         lower = -(2 ** (bits - 1)) if kind == "eInt" else 0
         upper = 2 ** (bits - (1 if kind == "eInt" else 0)) - 1
         try:
@@ -339,53 +343,112 @@ def parse_property_default(cursor, field):
 
 
 def parse_reflection(unit):
-    structs = []
+    records = {}
     for cursor in walk(unit.cursor):
-        if cursor.kind != cindex.CursorKind.STRUCT_DECL or "vultra.reflect" not in annotations(cursor):
+        category = next((value for value in annotations(cursor)
+                         if value in ("vultra.reflect", "vultra.reflect.node")), None)
+        if cursor.kind not in (cindex.CursorKind.STRUCT_DECL, cindex.CursorKind.CLASS_DECL) or not category:
             continue
-        if any(child.kind == cindex.CursorKind.CONSTRUCTOR for child in cursor.get_children()):
+        object_type = category == "vultra.reflect.node"
+        if not object_type and any(child.kind == cindex.CursorKind.CONSTRUCTOR for child in cursor.get_children()):
             raise RuntimeError(f"Reflected settings require field initializers, not constructors: {cursor.spelling}")
         fields = []
-        paths = set()
+        bases = [child for child in cursor.get_children() if child.kind == cindex.CursorKind.CXX_BASE_SPECIFIER
+                 and any(value.startswith("vultra.reflect") for value in annotations(child.type.get_declaration()))]
+        if len(bases) > 1 or any(base.access_specifier != cindex.AccessSpecifier.PUBLIC for base in bases):
+            raise RuntimeError(f"Reflected type needs at most one public reflected base: {cursor.spelling}")
         for field in cursor.get_children():
-            if field.kind != cindex.CursorKind.FIELD_DECL:
+            if field.kind not in (cindex.CursorKind.FIELD_DECL, cindex.CursorKind.CXX_METHOD):
                 continue
             metadata = next((a[len("vultra.property:"):] for a in annotations(field)
                              if a.startswith("vultra.property:")), None)
             if metadata is None:
                 continue
-            if field.access_specifier != cindex.AccessSpecifier.PUBLIC or field.is_bitfield():
-                raise RuntimeError(f"Unsupported reflected field access/layout: {cursor.spelling}.{field.spelling}")
+            method = field.kind == cindex.CursorKind.CXX_METHOD
+            if field.access_specifier != cindex.AccessSpecifier.PUBLIC or (not method and field.is_bitfield()):
+                raise RuntimeError(f"Unsupported reflected property access: {cursor.spelling}.{field.spelling}")
             properties = parse_property_metadata(cursor, field, metadata)
-            field_type = field.type.spelling
-            enum = field.type.get_declaration()
-            is_enum = enum.kind == cindex.CursorKind.ENUM_DECL
-            if field_type not in PROPERTY_KINDS and not is_enum:
-                raise RuntimeError(f"Unsupported reflected field: {cursor.spelling}.{field.spelling}: {field_type}")
-            kind = "eEnum" if is_enum else PROPERTY_KINDS[field_type]
+            value_type = field.result_type if method else field.type
+            if method:
+                if (not field.is_const_method() or field.is_static_method() or list(field.get_arguments())
+                        or not {"set", "default"} <= properties.keys()):
+                    raise RuntimeError(f"Property getter requires const/no arguments, setter and default: {field.spelling}")
+                setters = [child for child in cursor.get_children() if child.kind == cindex.CursorKind.CXX_METHOD
+                           and child.spelling == properties["set"] and child.access_specifier == cindex.AccessSpecifier.PUBLIC
+                           and not child.is_static_method() and not child.is_const_method()
+                           and child.result_type.spelling == "void" and len(list(child.get_arguments())) == 1]
+                if len(setters) != 1:
+                    raise RuntimeError(f"Property setter must be unambiguous: {field.spelling}")
+                if value_type.kind == cindex.TypeKind.LVALUEREFERENCE:
+                    value_type = value_type.get_pointee()
+                setter_type = list(setters[0].get_arguments())[0].type
+                if setter_type.kind == cindex.TypeKind.LVALUEREFERENCE:
+                    setter_type = setter_type.get_pointee()
+                if re.sub(r"^const ", "", setter_type.spelling) != re.sub(r"^const ", "", value_type.spelling):
+                    raise RuntimeError(f"Property getter/setter types differ: {field.spelling}")
+            elif "set" in properties or "default" in properties:
+                raise RuntimeError(f"Field properties use C++ initializers: {field.spelling}")
+            field_type = re.sub(r"^const ", "", value_type.spelling)
+            array = re.fullmatch(r"std::vector<(.+)>", field_type)
+            scalar_type = array[1] if array else field_type
+            scalar_clang_type = value_type.get_template_argument_type(0) if array else value_type
+            enum = scalar_clang_type.get_declaration()
+            is_enum = enum.kind == cindex.CursorKind.ENUM_DECL and not array
+            if scalar_type not in PROPERTY_KINDS and not is_enum:
+                raise RuntimeError(f"Unsupported reflected property: {cursor.spelling}.{field.spelling}: {field_type}")
+            scalar_kind = "eEnum" if is_enum else PROPERTY_KINDS[scalar_type]
+            kind = "eArray" if array else scalar_kind
             flags = properties.get("flags", "serialize|inspect|bind").split("|")
             if any(flag not in PROPERTY_FLAGS for flag in flags) or len(set(flags)) != len(flags):
                 raise RuntimeError(f"Invalid property flags: {cursor.spelling}.{field.spelling}")
-            flag_bits = sum(PROPERTY_FLAGS[flag] for flag in flags)
-            validate_property_range(cursor, field, properties, kind, flags)
+            validate_property_range(cursor, field, properties, scalar_kind, flags, scalar_clang_type)
             enum_values, choices = parse_property_choices(field, properties, flags, enum)
+            if scalar_kind == "eReference":
+                if not properties.get("reference") or properties.get("nullable", "true") not in ("true", "false"):
+                    raise RuntimeError(f"Reference property needs a target type and nullable boolean: {field.spelling}")
+            elif "reference" in properties or "nullable" in properties:
+                raise RuntimeError(f"Reference metadata on a scalar property: {field.spelling}")
             path = properties.get("json", "/" + field.spelling)
-            if not path.startswith("/") or re.search(r"~(?![01])", path) or path in paths:
-                raise RuntimeError(f"Invalid/duplicate property JSON path: {cursor.spelling}.{field.spelling}")
-            if any(path.startswith(other + "/") or other.startswith(path + "/") for other in paths):
-                raise RuntimeError(f"Overlapping property JSON path: {cursor.spelling}.{field.spelling}")
-            paths.add(path)
-            default = parse_property_default(cursor, field)
+            if not path.startswith("/") or re.search(r"~(?![01])", path):
+                raise RuntimeError(f"Invalid property JSON path: {cursor.spelling}.{field.spelling}")
+            default = properties.get("default") if method else parse_property_default(cursor, field)
             fields.append({"name": field.spelling, "type": field_type, **properties, "kind": kind,
-                           "default_cpp": default,
-                           "flag_bits": flag_bits, "json_path": path, "choices": choices,
-                           "enum_values": enum_values,
-                           "integer_bits": field.type.get_size() * 8 if kind in ("eInt", "eUInt") else 0})
-        if not fields:
+                           "default_cpp": default, "accessor": method,
+                           "element_kind": scalar_kind, "element_type": scalar_type,
+                           "flag_bits": sum(PROPERTY_FLAGS[flag] for flag in flags), "json_path": path,
+                           "choices": choices, "enum_values": enum_values,
+                           "integer_bits": scalar_clang_type.get_size() * 8 if scalar_kind in ("eInt", "eUInt") else 0})
+        if not fields and not bases:
             raise RuntimeError(f"Reflected type has no annotated properties: {cursor.spelling}")
         header = source_path(cursor.location.file.name).split("/include/", 1)[1]
-        structs.append({"name": cursor.spelling, "header": header, "fields": fields})
-    return structs
+        records[cursor.spelling] = {"name": cursor.spelling, "header": header, "fields": fields,
+                                    "base": bases[0].type.get_declaration().spelling if bases else None,
+                                    "category": "eNode" if object_type else "eValue"}
+
+    resolved = {}
+    def resolve(name, visiting):
+        if name in resolved:
+            return resolved[name]
+        if name in visiting or name not in records:
+            raise RuntimeError(f"Unresolved or cyclic reflected base: {name}")
+        item = records[name].copy()
+        if item["base"]:
+            base = resolve(item["base"], visiting | {name})
+            if base["category"] != item["category"]:
+                raise RuntimeError(f"Reflected base category differs: {name}")
+            item["fields"] = base["fields"] + item["fields"]
+        paths = set()
+        names = set()
+        for field in item["fields"]:
+            path = field["json_path"]
+            if (field["name"] in names or path in paths or
+                    any(path.startswith(other + "/") or other.startswith(path + "/") for other in paths)):
+                raise RuntimeError(f"Duplicate/overlapping inherited property: {name}.{field['name']}")
+            names.add(field["name"])
+            paths.add(path)
+        resolved[name] = item
+        return item
+    return [resolve(name, set()) for name in records]
 
 
 def common_header():
@@ -401,7 +464,8 @@ typedef enum VultraStatus {
     VULTRA_STATUS_OK = 0,
     VULTRA_STATUS_INVALID_ARGUMENT = 1,
     VULTRA_STATUS_INVALID_FRAME = 2,
-    VULTRA_STATUS_ERROR = 3
+    VULTRA_STATUS_ERROR = 3,
+    VULTRA_STATUS_BUFFER_TOO_SMALL = 4
 } VultraStatus;
 #ifdef __cplusplus
 }
@@ -463,7 +527,13 @@ typedef struct VultraUiApi {
 
 
 def c_name(name):
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", name[5:]).lower()
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", name[5:]).lower().replace("3_d", "3d")
+
+
+def scene_abi_type(kind, pods):
+    if kind in pods:
+        return "Vultra" + kind
+    return "uint64_t" if kind == "ObjectId" else kind
 
 
 def scene_header(ir):
@@ -479,14 +549,16 @@ def scene_header(ir):
             if argument["type"] == "std::string_view":
                 parameters.extend([f"const char* {argument['name']}", f"uint64_t {argument['name']}Size"])
             else:
-                kind = "Vultra" + argument["type"] if argument["type"] in pod_names else "uint64_t"
+                kind = scene_abi_type(argument["type"], pod_names)
                 parameters.append(f"{kind} {argument['name']}")
         if function["return"] == "std::string_view":
             parameters.extend(["const char** data", "uint64_t* size"])
+        elif function["return"] == "std::string":
+            parameters.extend(["char* data", "uint64_t capacity", "uint64_t* size"])
         elif function["return"] in pod_names:
             parameters.append(f"Vultra{function['return']}* value")
         elif function["return"] != "void":
-            parameters.append("uint64_t* value")
+            parameters.append(f"{scene_abi_type(function['return'], pod_names)}* value")
         declarations.append(
             f"    VultraStatus (*{c_name(function['name'])})({', '.join(parameters)});"
         )
@@ -499,7 +571,7 @@ def scene_header(ir):
 extern "C" {
 #endif
 typedef struct VultraSceneFrame {
-    void* context; /* Borrowed; valid only during the update callback. */
+    void* context; /* Borrowed; valid only during a scene lifecycle/process callback. */
     uint64_t serial;
 } VultraSceneFrame;
 """
@@ -587,6 +659,8 @@ def scene_source(ir):
         calls = ["*access->scene"]
         if function["project_required"]:
             calls.append("*access->project")
+        elif function.get("project_optional"):
+            calls.append("access->project")
         text_checks = []
         for argument in function["arguments"]:
             name = argument["name"]
@@ -596,7 +670,7 @@ def scene_source(ir):
                 calls.append(f"std::string_view {{{name} ? {name} : \"\", static_cast<size_t>({name}Size)}}")
                 text_checks.append(f"(!{name} && {name}Size != 0)")
             else:
-                parameters.append(f"{'Vultra' + kind if kind in pods else 'uint64_t'} {name}")
+                parameters.append(f"{scene_abi_type(kind, pods)} {name}")
                 if kind == "ObjectId":
                     calls.append(f"vultra::ObjectId {{{name}}}")
                 elif kind in pods:
@@ -608,17 +682,25 @@ def scene_source(ir):
         if result == "std::string_view":
             parameters.extend(["const char** data", "uint64_t* size"])
             check = "!data || !size"
+        elif result == "std::string":
+            parameters.extend(["char* data", "uint64_t capacity", "uint64_t* size"])
+            check = "!size || (!data && capacity != 0)"
         elif result in pods:
             parameters.append(f"Vultra{result}* value")
             check = "!value"
         elif result == "void":
             check = None
         else:
-            parameters.append("uint64_t* value")
+            parameters.append(f"{scene_abi_type(result, pods)}* value")
             check = "!value"
         expression = f"vultra::{function['name']}({', '.join(calls)})"
         if result == "std::string_view":
             assign = f"const auto result = {expression};\n        *data = result.data();\n        *size = result.size();"
+        elif result == "std::string":
+            assign = (f"const auto result = {expression};\n        *size = result.size();\n"
+                      "        if (!data) { return VULTRA_STATUS_OK; }\n"
+                      "        if (capacity < result.size()) { return VULTRA_STATUS_BUFFER_TOO_SMALL; }\n"
+                      "        std::copy(result.begin(), result.end(), data);")
         elif result in pods:
             values = ", ".join(f"result.{field['name']}" for field in pods[result])
             assign = f"const auto result = {expression};\n        *value = {{{values}}};"
@@ -669,6 +751,7 @@ def scene_source(ir):
 #include <vultra/api/scene_bridge.hpp>
 #include <vultra/scene/scene_api.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <stdexcept>
 #include <string_view>
@@ -817,8 +900,8 @@ def experiment_source(ir):
 }}""")
         table.append(wrapper)
     return """// Generated by scripts/codegen.py. Do not edit.
-#include <vultra/api/experiment_bridge.hpp>
-#include <vultra/scripting/experiment_host.hpp>
+#include <vultra/research/api/experiment_bridge.hpp>
+#include <vultra/research/experiment_host.hpp>
 
 #include <cstddef>
 #include <stdexcept>
@@ -964,8 +1047,9 @@ def property_source(types, header):
         result += f"        static const std::array<PropertyInfo, {len(item['fields'])}> properties = {{{{\n"
         for field in item["fields"]:
             member, kind, field_type = field["name"], field["kind"], field["type"]
-            get = f"static_cast<const {name}*>(object)->{member}"
-            default = f"{name}{{}}.{member}"
+            access = member + "()" if field.get("accessor") else member
+            get = f"static_cast<const {name}*>(object)->{access}"
+            default = field["default_cpp"] if field.get("accessor") else f"{name}{{}}.{member}"
             value = f"std::get<{storage.get(kind, field_type)}>(value)"
             if kind == "eEnum":
                 get, default = f"PropertyEnum{{static_cast<int64_t>({get})}}", f"PropertyEnum{{static_cast<int64_t>({default})}}"
@@ -973,6 +1057,27 @@ def property_source(types, header):
             elif kind in ("eInt", "eUInt"):
                 get, default = f"static_cast<{storage[kind]}>({get})", f"static_cast<{storage[kind]}>({default})"
                 value = f"static_cast<{field_type}>({value})"
+            elif kind == "eReference":
+                if field_type != "PropertyReference":
+                    get, default = f"PropertyReference{{({get}).value}}", f"PropertyReference{{({default}).value}}"
+                value = "std::get<PropertyReference>(value)"
+                if field_type != "PropertyReference":
+                    value = f"{field_type}{{{value}.id}}"
+            elif kind == "eArray":
+                scalar = field["element_type"]
+                element = "element.value" if field["element_kind"] == "eReference" and scalar != "PropertyReference" else "element"
+                convert = f"PropertyReference{{{element}}}" if field["element_kind"] == "eReference" else element
+                if field["element_kind"] in ("eInt", "eUInt"):
+                    convert = f"static_cast<{storage[field['element_kind']]}>({element})"
+                get = f"[&]() {{ PropertyArray result; for (const auto& element : {get}) {{ result.values.emplace_back({convert}); }} return result; }}()"
+                default = f"[&]() {{ PropertyArray result; for (const auto& element : {default}) {{ result.values.emplace_back({convert}); }} return result; }}()"
+                element_value = f"std::get<{storage.get(field['element_kind'], scalar)}>(element)"
+                if field["element_kind"] == "eReference":
+                    element_value = "std::get<PropertyReference>(element)"
+                    if scalar != "PropertyReference":
+                        element_value = f"{scalar}{{{element_value}.id}}"
+                value = f"[&]() {{ {field_type} result; for (const auto& element : std::get<PropertyArray>(value).values) {{ result.push_back({element_value}); }} return result; }}()"
+            assignment = (f"{field['set']}({value})" if field.get("accessor") else f"{member} = {value}")
             drawer = member if name == "RenderSettings" else f"{name}.{member}"
             strings = ", ".join(json.dumps(text) for text in (member, field.get("label", member), drawer, field["json_path"]))
             choices = f"{member}Choices, {member}Values" if kind == "eEnum" else "{}, {}"
@@ -981,9 +1086,11 @@ def property_source(types, header):
                                for name, bit in PROPERTY_FLAGS.items() if field["flag_bits"] & bit)
             result += f"        {{{strings}, PropertyKind::{kind}, {flags}, PropertyWidget::{widget}, {field['integer_bits']}, {field.get('min', '0')}, {field.get('max', '0')}, {field.get('speed', '1')}, {choices},\n"
             result += f"            [](const void* object) -> PropertyValue {{ return {get}; }},\n"
-            result += f"            [](void* object, const PropertyValue& value) {{ static_cast<{name}*>(object)->{member} = {value}; }},\n"
-            result += f"            []() -> PropertyValue {{ return {default}; }} }},\n"
-        result += f'        }}}};\n        static const ObjectTypeInfo type = {{"{name}", properties}};\n        return type;\n    }}\n\n'
+            result += f"            [](void* object, const PropertyValue& value) {{ static_cast<{name}*>(object)->{assignment}; }},\n"
+            reference_category = "eNode" if field.get("element_type", field_type) == "NodeId" else "eResource"
+            target = json.dumps(field["reference"]) if "reference" in field else "nullptr"
+            result += f"            []() -> PropertyValue {{ return {default}; }}, PropertyKind::{field.get('element_kind', 'eBool')}, ObjectCategory::{reference_category}, {target}, {field.get('nullable', 'true')} }},\n"
+        result += f'        }}}};\n        static const ObjectTypeInfo type = {{"{name}", properties, {("&" + item["base"][0].lower() + item["base"][1:] + "Type()") if item.get("base") else "nullptr"}, ObjectCategory::{item.get("category", "eValue")}}};\n        return type;\n    }}\n\n'
     return result + "} // namespace vultra\n"
 
 
@@ -1097,6 +1204,8 @@ def csharp_bindings(ir):
             "std::string_view": "byte*, ulong",
             "ObjectId": "ulong",
             "uint64_t": "ulong",
+            "int32_t": "int",
+            "double": "double",
         }
         argument_types.update({name: "Vultra" + name for name in pods})
         arguments = ", ".join(argument_types[argument["type"]] for argument in function["arguments"])
@@ -1104,7 +1213,10 @@ def csharp_bindings(ir):
             arguments += ", "
         output = {
             "std::string_view": "byte**, ulong*, VultraStatus",
+            "std::string": "byte*, ulong, ulong*, VultraStatus",
             "void": "VultraStatus",
+            "int32_t": "int*, VultraStatus",
+            "double": "double*, VultraStatus",
         }
         output.update({name: f"Vultra{name}*, VultraStatus" for name in pods})
         output = output.get(function["return"], "ulong*, VultraStatus")
@@ -1126,7 +1238,8 @@ internal enum VultraStatus : int
     Ok = 0,
     InvalidArgument = 1,
     InvalidFrame = 2,
-    Error = 3
+    Error = 3,
+    BufferTooSmall = 4
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -1177,7 +1290,8 @@ internal unsafe struct VultraHostApi
     public VultraUiApi* Ui;
     public VultraSceneApi* Scene;
     public VultraScriptRegistrationApi* Scripts;
-    public void* Research;
+    public void* Extensions;
+    public ulong ExtensionCount;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -1189,6 +1303,7 @@ internal unsafe struct VultraPluginApi
     public delegate* unmanaged[Cdecl]<void*, VultraSceneFrame, float, VultraStatus> Update;
     public delegate* unmanaged[Cdecl]<void*, VultraUiFrame, VultraStatus> OnGui;
     public delegate* unmanaged[Cdecl]<void*, VultraStatus> Stop;
+    public delegate* unmanaged[Cdecl]<void*, VultraSceneFrame, uint, float, VultraStatus> OnScene;
 }
 """
 
@@ -1235,10 +1350,14 @@ namespace vultra::scripting::detail
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--database", type=Path, default=DATABASE,
+        help="Compilation database selected by the active build configuration"
+    )
+    parser.add_argument(
         "--check", action="store_true", help="Fail when checked-in output differs"
     )
     args = parser.parse_args()
-    ir = parse_api(json.loads(DATABASE.read_text()))
+    ir = parse_api(json.loads(args.database.read_text()))
     render_types = [item for item in ir["types"] if item["name"] == "RenderSettings"]
     scene_types = [item for item in ir["types"] if item["name"] != "RenderSettings"]
     files = {
@@ -1251,10 +1370,10 @@ def main():
         OUTPUT / "include/vultra/api/vultra_scene.generated.h": scene_header(ir),
         OUTPUT / "src/vultra_ui.generated.cpp": c_source(ir),
         OUTPUT / "src/vultra_scene.generated.cpp": scene_source(ir),
-        OUTPUT / "include/vultra/api/vultra_experiment.generated.h": experiment_header(ir),
-        ROOT / "source/scripting/src/experiment_api.generated.cpp": experiment_source(ir),
-        OUTPUT / "python/vultra/_bindings_generated.py": python_experiment_bindings(ir),
-        OUTPUT / "python/vultra/_scene_controls_generated.py": python_scene_controls(ir),
+        ROOT / "extensions/research/include/vultra/research/api/vultra_experiment.generated.h": experiment_header(ir),
+        ROOT / "extensions/research/scripting/src/experiment_api.generated.cpp": experiment_source(ir),
+        ROOT / "extensions/research/python/vultra/_bindings_generated.py": python_experiment_bindings(ir),
+        ROOT / "extensions/research/python/vultra/_scene_controls_generated.py": python_scene_controls(ir),
         OUTPUT
         / "include/vultra/api/render_settings.generated.hpp": reflection_header(render_types),
         OUTPUT / "src/render_settings.generated.cpp": reflection_source(render_types, "render_settings.generated.hpp"),

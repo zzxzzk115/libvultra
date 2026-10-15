@@ -1,12 +1,12 @@
 #include "../examples/common/triangle.hpp"
 
 #include <vultra/drivers/profiling/profiler.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/drivers/rhi/swapchain.hpp>
 #include <vultra/platform/os/file.hpp>
 #include <vultra/platform/window.hpp>
+#include <vultra/research/graph_report.hpp>
 #include <vultra/servers/rendering/graph/render_graph.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
-#include <vultra/servers/rendering/research/graph_report.hpp>
 #include <vultra/ui/editor_gui.hpp>
 
 #include <nlohmann/json.hpp>

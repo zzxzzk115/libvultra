@@ -1,11 +1,12 @@
 #include "../examples/research/color_gain.hpp"
 
-#include <vultra/main/experiment_session.hpp>
+#include <vultra/research/experiment_session.hpp>
 #include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/scene_tree.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <functional>
@@ -55,11 +56,11 @@ try
     const auto modelId = project.addAsset("quad.obj");
     project.save(directory / "project.vproject");
     SceneTree scene(std::make_unique<Node>("Experiment"));
-    scene.addChild(scene.root(), std::make_unique<MeshInstanceNode>("Quad", modelId));
-    auto& camera = scene.addChild(scene.root(), std::make_unique<CameraNode>("Camera"));
+    scene.addChild(scene.root(), std::make_unique<MeshInstance3D>("Quad", modelId));
+    auto& camera = scene.addChild(scene.root(), std::make_unique<Camera3D>("Camera"));
     camera.setLocalTransform(glm::translate(glm::mat4(1), {0, 0, 3}));
     scene.setCurrentCamera(camera.id());
-    auto& light = scene.addChild(scene.root(), std::make_unique<LightNode>("Light", RenderLightKind::ePoint));
+    auto& light = scene.addChild(scene.root(), std::make_unique<Light3D>("Light", RenderLightKind::ePoint));
     light.setLocalTransform(glm::translate(glm::mat4(1), {0, 0, 2}));
     scene.save(directory / project.mainScene);
 
@@ -144,7 +145,7 @@ try
         ExperimentSession pinned(device, pinnedConfig);
         pinned.render();
         auto* fixedTexture = pinned.output("final").handle;
-        auto* cameraNode   = pinned.scene()->find(pinned.scene()->currentCamera());
+        auto* cameraNode   = dynamic_cast<Camera3D*>(pinned.scene()->find(pinned.scene()->currentCamera()));
         cameraNode->setLocalTransform(glm::translate(glm::mat4(1), {0.8f, 0, 3}));
         pinned.render();
         require(pinned.output("final").handle == fixedTexture && pinned.capture("final").rgba == baseline.rgba,
@@ -154,7 +155,7 @@ try
     auto* hdr   = session.output("hdr").handle;
     require(!session.timings().empty(), "Session did not expose completed pass timings");
     auto& tree = *session.scene();
-    auto& mesh = *tree.root().children()[0];
+    auto& mesh = static_cast<MeshInstance3D&>(*tree.root().children()[0]);
     mesh.setLocalTransform(glm::translate(glm::mat4(1), {0.4f, 0, 0}));
     require(session.render().frameIndex == 1 && session.capture("final").rgba != baseline.rgba,
             "Session did not synchronize changed node transforms");
@@ -164,7 +165,7 @@ try
     session.render();
     require(session.capture("final").rgba == baseline.rgba, "Restoring a transform did not restore the image");
     auto& material = tree.addMaterial(std::make_unique<MaterialResource>("Material"));
-    static_cast<MeshInstanceNode&>(mesh).setMaterial(0, material.assetId());
+    static_cast<MeshInstance3D&>(mesh).setMaterial(0, material.assetId());
     auto parameters    = material.parameters();
     parameters.baseRed = 0.1f;
     material.setParameters(parameters);
@@ -239,7 +240,7 @@ try
     require(session.capture("final").rgba == baseline.rgba, "Rejected live parameter edit changed rendering");
     session.setPassParameters("gain", {{"gain", 0.5}});
     session.render();
-    static_cast<MeshInstanceNode&>(mesh).setModel({StableId::generate()});
+    static_cast<MeshInstance3D&>(mesh).setModel({StableId::generate()});
     expectError(
         [&]
         {
@@ -247,11 +248,11 @@ try
         },
         "asset");
     require(session.capture("final").rgba == changed.rgba, "Failed scene import discarded the completed image");
-    static_cast<MeshInstanceNode&>(mesh).setModel(modelId);
+    static_cast<MeshInstance3D&>(mesh).setModel(modelId);
     session.render();
     require(session.capture("final").rgba == changed.rgba, "Failed scene import did not recover");
 
-    auto& duplicate = tree.addChild(tree.root(), std::make_unique<MeshInstanceNode>("Duplicate", modelId));
+    auto& duplicate = tree.addChild(tree.root(), std::make_unique<MeshInstance3D>("Duplicate", modelId));
     duplicate.setLocalTransform(glm::translate(glm::mat4(1), {-0.5f, 0, 0}));
     session.render();
     require(session.output("final").handle != color && session.capture("final").rgba != changed.rgba,
@@ -264,7 +265,7 @@ try
     const auto empty = session.capture("final");
     require(empty.rgba != changed.rgba && session.markedOutputs().size() == 2,
             "Zero-mesh rendering lost the active project pass");
-    tree.addChild(tree.root(), std::make_unique<MeshInstanceNode>("Restored", modelId));
+    tree.addChild(tree.root(), std::make_unique<MeshInstance3D>("Restored", modelId));
     session.render();
     require(session.capture("final").rgba == changed.rgba, "Zero-mesh recovery did not restore the rendered scene");
     savePng(session.capture("final"), directory / "final.png");

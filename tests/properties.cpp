@@ -1,5 +1,7 @@
 #include <vultra/assets/material_properties.generated.hpp>
+#include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/render_properties.generated.hpp>
+#include <vultra/scene/scene_api.hpp>
 #include <vultra/servers/rendering/builtin/render_properties.generated.hpp>
 
 #include <nlohmann/json.hpp>
@@ -113,9 +115,9 @@ try
     deserializeProperties(cameraSettingsType(), R"({"near":0.25})", &camera);
     require(camera.nearPlane == 0.25f && camera.farPlane == CameraSettings {}.farPlane,
             "Missing serialized fields did not use C++ defaults");
-    CameraNode node("Camera");
-    auto       invalid = camera;
-    invalid.nearPlane  = invalid.farPlane;
+    Camera3D node("Camera");
+    auto     invalid  = camera;
+    invalid.nearPlane = invalid.farPlane;
     requireFailure(
         [&]
         {
@@ -178,6 +180,90 @@ try
         [&]
         {
             deserializeProperties(renderSettingsType(), R"({"lightColor":[1,2,3,4]})", &renderer);
+        });
+    SceneTree world(std::make_unique<Node>("Root"));
+    auto&     child = world.addChild(world.root(), std::make_unique<Node3D>("Child"));
+    require(node3DType().isA("Node") && node3DType().properties.size() > nodeType().properties.size(),
+            "Generated object inheritance lost effective properties");
+    world.writeProperty(child.id(), "name", std::string("Renamed"));
+    world.writeProperty(child.id(), "processPriority", int64_t {25});
+    auto transform  = glm::mat4 {1};
+    transform[3][0] = 2;
+    world.writeProperty(child.id(), "localTransform", transform);
+    world.writeProperty(child.id(), "ownerId", PropertyReference {world.root().idInScene().value});
+    require(child.name() == "Renamed" && child.processPriority() == 25 && child.localTransform() == transform &&
+                child.owner() == &world.root(),
+            "Inherited semantic properties did not edit the ECS store");
+    const auto nodeState = nlohmann::json::parse(serializeProperties(node3DType(), &child));
+    require(nodeState.at("name") == "Renamed" && nodeState.at("process_priority") == 25 &&
+                nodeState.at("owner") == world.root().idInScene().value.toString() &&
+                nodeState.at("transform").size() == 16,
+            "Object serialization and semantic property access use different schemas");
+    SceneTree foreign(std::make_unique<Node>("Foreign"));
+    requireFailure(
+        [&]
+        {
+            world.readProperty(foreign.root().id(), "name");
+        });
+    requireFailure(
+        [&]
+        {
+            world.writeProperty(child.id(), "ownerId", PropertyReference {foreign.root().idInScene().value});
+        });
+    require(child.owner() == &world.root(), "Failed reference resolution changed ownership");
+    requireFailure(
+        [&]
+        {
+            world.writeProperty(child.id(), "localTransform", glm::mat4 {0});
+        });
+    require(child.localTransform() == transform, "Property reflection bypassed affine transform validation");
+    auto reopenedWorld = SceneTree::parse(world.serialize());
+    require(reopenedWorld.find(child.idInScene())->owner() == &reopenedWorld.root(),
+            "Reflected common scene properties failed to round trip");
+    require(sceneReadProperty(world, child.id(), "name") == R"("Renamed")", "Owned property JSON differs");
+    sceneWriteProperty(world, nullptr, child.id(), "processPriority", "30");
+    require(child.processPriority() == 30, "Generic property API failed to call its semantic setter");
+
+    PropertyInfo links = nodeType().property("ownerId");
+    links.name         = "links";
+    links.jsonPath     = "/links";
+    links.kind         = PropertyKind::eArray;
+    links.elementKind  = PropertyKind::eReference;
+    links.flags        = PropertyFlags::eSerialize;
+    links.get          = [](const void* object) -> PropertyValue
+    {
+        return *static_cast<const PropertyArray*>(object);
+    };
+    links.set = [](void* object, const PropertyValue& value)
+    {
+        *static_cast<PropertyArray*>(object) = std::get<PropertyArray>(value);
+    };
+    links.defaultValue = []() -> PropertyValue
+    {
+        return PropertyArray {};
+    };
+    const ObjectTypeInfo linksType {"Links", std::span(&links, 1)};
+    PropertyArray        references {{PropertyReference {child.idInScene().value}, PropertyReference {}}};
+    const auto           linksJson = serializeProperties(linksType, &references);
+    PropertyArray        restoredLinks;
+    deserializeProperties(linksType, linksJson, &restoredLinks);
+    require(references == restoredLinks, "Variable-length reference collection failed to round trip");
+    requireFailure(
+        [&]
+        {
+            deserializeProperties(linksType, R"({"links":[null,"bad"]})", &restoredLinks);
+        });
+    require(restoredLinks == references, "Failed collection decoding partially mutated the object");
+    requireFailure(
+        [&]
+        {
+            deserializeProperty(links, R"([12])");
+        });
+    links.nullable = false;
+    requireFailure(
+        [&]
+        {
+            links.validate(PropertyArray {{PropertyReference {}}});
         });
     std::cout
         << "Property tests passed: named access, catalogs, defaults, strict/atomic decoding and settings parity\n";

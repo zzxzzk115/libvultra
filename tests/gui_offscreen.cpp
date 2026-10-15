@@ -1,5 +1,5 @@
 #include <vultra/core/base/stable_id.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/ui/editor_gui.hpp>
 
 #include <array>

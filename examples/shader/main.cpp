@@ -77,7 +77,9 @@ namespace
             ui.setNextWindowSize({430, 620}, ImGuiCond_FirstUseEver);
             if (ui.beginWindow("Game shader material"))
             {
-                ui.text("%s | generation %llu", m_Shader.asset().name.c_str(), m_Shader.generation());
+                ui.text("%s | generation %llu",
+                        m_Shader.asset().name.c_str(),
+                        static_cast<unsigned long long>(m_Shader.generation()));
                 ui.combo("Sphere", &m_Selected, "1\0 2\0 3\0 4\0 5\0 6\0 7\0 8\0 9\0 10\0");
                 vultra::drawShaderMaterialInspector(getEditorGui(),
                                                     m_Shader.asset(),

@@ -2,12 +2,13 @@
 
 #include "research_workspace.hpp"
 
+#include <vultra/scene/render_nodes.hpp>
 #include <vultra/ui/editor_gui_frame.hpp>
 
 namespace vultra
 {
     class EditorGui;
-    class EnvironmentNode;
+    class WorldEnvironment;
 
     // Editor-only selection. Object IDs are resolved each frame; no node/resource pointers are retained.
     class SceneInspector
@@ -27,9 +28,9 @@ namespace vultra
             AssetId  radiance {};
         };
 
-        void drawTransform(EditorGuiFrame& ui, Node& node);
-        void drawMesh(EditorGuiFrame& ui, ResearchWorkspace& workspace, MeshInstanceNode& mesh);
-        void drawEnvironment(EditorGuiFrame& ui, ResearchWorkspace& workspace, EnvironmentNode& environment);
+        void drawTransform(EditorGuiFrame& ui, Node3D& node);
+        void drawMesh(EditorGuiFrame& ui, ResearchWorkspace& workspace, MeshInstance3D& mesh);
+        void drawEnvironment(EditorGuiFrame& ui, ResearchWorkspace& workspace, WorldEnvironment& environment);
 
         EditorGui&                     m_Gui;
         ObjectId                       m_Selected {};

@@ -1,6 +1,6 @@
 #include <vultra/assets/shader_asset.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/servers/rendering/texture_upload.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>

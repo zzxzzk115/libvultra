@@ -2,6 +2,7 @@
 #include "shader_values.hpp"
 
 #include <vultra/assets/asset_source.hpp>
+#include <vultra/assets/shader_asset.hpp>
 
 #include <stdexcept>
 

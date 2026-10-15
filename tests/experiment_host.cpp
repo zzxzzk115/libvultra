@@ -1,8 +1,10 @@
 #include "../examples/research/color_gain.hpp"
 
-#include <vultra/api/experiment_bridge.hpp>
+#include <vultra/research/api/experiment_bridge.hpp>
+#include <vultra/research/experiment_host.hpp>
+#include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/scene_tree.hpp>
-#include <vultra/scripting/experiment_host.hpp>
+#include <vultra/servers/rendering/builtin/raster_passes.hpp>
 
 #include <algorithm>
 #include <fstream>
@@ -36,7 +38,7 @@ try
     ProjectManifest project;
     project.mainScene = "scene.vscene";
     const auto model  = project.addAsset("quad.obj");
-    tree.addChild(tree.root(), std::make_unique<MeshInstanceNode>("Quad", model));
+    tree.addChild(tree.root(), std::make_unique<MeshInstance3D>("Quad", model));
     tree.save(directory / project.mainScene);
     {
         std::ofstream script(directory / "motion.lua");
@@ -54,6 +56,7 @@ try
     project.save(directory / "project.vproject");
     Device      device;
     PassCatalog catalog(device);
+    installBuiltinRenderPasses(catalog);
     catalog.add(research::colorGainDefinition());
     const AssetImportOptions imports {.cacheDirectory = directory / "cache"};
     ExperimentHost           host(device, catalog, std::filesystem::current_path(), imports);
@@ -106,7 +109,7 @@ try
     require(api.scene_snapshot(&host, session, &data, &length) == VULTRA_STATUS_OK,
             "Generated experiment snapshot did not expose UTF-8 JSON");
     auto snapshot = SceneTree::parse({data, size_t(length)});
-    require(snapshot.root().children()[0]->localTransform()[3].x == 0.75f,
+    require(static_cast<const MeshInstance3D&>(*snapshot.root().children()[0]).localTransform()[3].x == 0.75f,
             "Script updates did not use the configured fixed time step");
     require(api.step(&host, session, 0) == VULTRA_STATUS_INVALID_ARGUMENT &&
                 api.last_error(&host, &data, &length) == VULTRA_STATUS_OK &&

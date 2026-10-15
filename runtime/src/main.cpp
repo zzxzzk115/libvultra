@@ -1,11 +1,15 @@
+#ifdef VULTRA_RUNTIME_GUI
 #include <vultra/api/render_settings.generated.hpp>
+#include <vultra/main/app/imgui_app.hpp>
+#endif
 #include <vultra/assets/asset_pipeline.hpp>
 #include <vultra/assets/asset_source.hpp>
 #include <vultra/assets/project_manifest.hpp>
 #include <vultra/assets/vpk_archive.hpp>
 #include <vultra/core/base/command_line.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/main/app/imgui_app.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
+#include <vultra/main/app/desktop_app.hpp>
 #include <vultra/main/packaged_resources.hpp>
 #include <vultra/platform/os/process.hpp>
 #include <vultra/scene/camera/orbit_camera.hpp>
@@ -17,7 +21,6 @@
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
 #include <vultra/servers/rendering/graph/render_graph.hpp>
 #include <vultra/servers/rendering/rendering_server.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/ui/vgui.hpp>
 
 #include <glm/gtc/matrix_inverse.hpp>
@@ -33,6 +36,11 @@ using namespace vultra;
 
 namespace
 {
+#ifdef VULTRA_RUNTIME_GUI
+    using RuntimeBase = ImGuiApp;
+#else
+    using RuntimeBase = DesktopApp;
+#endif
     struct RuntimeProject
     {
         std::unique_ptr<AssetSource> assets;
@@ -63,20 +71,25 @@ namespace
         return project;
     }
 
-    class RuntimeApp final : public ImGuiApp
+    class RuntimeApp final : public RuntimeBase
     {
     public:
         RuntimeApp(RuntimeProject project, std::filesystem::path capture, bool debugUi) :
-            ImGuiApp({.title = "Vultra Runtime", .size = {1024, 768}},
-                     {.multiViewport = false, .persistLayout = false}),
+#ifdef VULTRA_RUNTIME_GUI
+            RuntimeBase({.title = "Vultra Runtime", .size = {1024, 768}},
+                        {.multiViewport = false, .persistLayout = false}),
+#else
+            RuntimeBase({.title = "Vultra Runtime", .size = {1024, 768}}),
+#endif
+            m_Server(getDevice()),
             m_Project(std::move(project)),
             m_Environment(getDevice(), m_Project.environmentPath, m_Project.assets.get()),
-            m_GpuScene(getRenderingServer().uploadScene(importScene(m_Project.scene,
-                                                                    m_Project.manifest,
-                                                                    m_Project.assets->root(),
-                                                                    {},
-                                                                    &m_SceneInstances,
-                                                                    m_Project.assets.get()))),
+            m_GpuScene(m_Server.uploadScene(importScene(m_Project.scene,
+                                                        m_Project.manifest,
+                                                        m_Project.assets->root(),
+                                                        {},
+                                                        &m_SceneInstances,
+                                                        m_Project.assets.get()))),
             m_Renderer(
                 std::make_unique<BuiltinRenderer>(getDevice(), *m_GpuScene, m_Environment, getSwapchain().format())),
             m_Scripts(m_Project.scene, false, &m_Project.manifest),
@@ -156,14 +169,16 @@ namespace
                                                                       {},
                                                                       &instances,
                                                                       m_Project.assets.get());
-                auto                           gpuScene = getRenderingServer().uploadScene(imported);
+                auto                           gpuScene = m_Server.uploadScene(imported);
                 auto                           renderer =
                     std::make_unique<BuiltinRenderer>(getDevice(), *gpuScene, m_Environment, getSwapchain().format());
                 renderer->settings = m_Renderer->settings;
 
                 // The previous frame is complete before onUpdate; drop graph callbacks before the old renderer.
                 m_Graph.reset();
+#ifdef VULTRA_RUNTIME_GUI
                 m_GraphSnapshot.reset();
+#endif
                 m_Renderer = std::move(renderer);
                 m_ShaderMaterials.reset();
                 m_GpuScene       = std::move(gpuScene);
@@ -176,6 +191,7 @@ namespace
             m_GpuSync.update(m_Project.scene, m_SceneInstances, *m_GpuScene);
         }
 
+#ifdef VULTRA_RUNTIME_GUI
         void onImGui() override
         {
             if (m_DebugUiVisible)
@@ -233,16 +249,27 @@ namespace
                 }
             }
         }
+#endif
 
+        void onPostRender(Texture&) override
+        {
+            m_Server.collectCompletedFrame();
+        }
+
+#ifdef VULTRA_RUNTIME_GUI
         void onFrameComplete(const FrameTiming& timing) override
         {
             m_LastFrame = timing;
         }
+#endif
 
         void onPreRender() override
         {
+            InputCapture capture;
+#ifdef VULTRA_RUNTIME_GUI
             ImGuiApp::onPreRender();
-            auto capture = getEditorGui().inputCapture();
+            capture = getEditorGui().inputCapture();
+#endif
             if (m_VGui)
             {
                 m_VGui->setChecked("toggle-skybox", m_Renderer->settings.skybox);
@@ -260,7 +287,9 @@ namespace
                 m_SceneColor = m_Outputs.color;
                 m_Graph->exportResource(m_SceneColor);
                 m_Graph->compile();
+#ifdef VULTRA_RUNTIME_GUI
                 m_GraphSnapshot = m_Graph->snapshot();
+#endif
             }
             if (!m_ShaderMaterials && SceneShaderMaterials::containsShaders(m_Project.scene))
             {
@@ -298,9 +327,12 @@ namespace
             {
                 m_VGui->draw(cmd, target);
             }
+#ifdef VULTRA_RUNTIME_GUI
             drawGui(cmd, target);
+#endif
         }
 
+        RenderingServer                       m_Server;
         RuntimeProject                        m_Project;
         Environment                           m_Environment;
         std::vector<SceneMeshInstance>        m_SceneInstances;
@@ -317,10 +349,12 @@ namespace
         BuiltinRenderer::Outputs              m_Outputs {};
         RenderGraph::Resource                 m_SceneColor {};
         Extent                                m_Size {};
-        std::optional<RenderGraph::Snapshot>  m_GraphSnapshot;
-        std::optional<FrameTiming>            m_LastFrame;
-        bool                                  m_DebugUiEnabled = false;
-        bool                                  m_DebugUiVisible = false;
+#ifdef VULTRA_RUNTIME_GUI
+        std::optional<RenderGraph::Snapshot> m_GraphSnapshot;
+        std::optional<FrameTiming>           m_LastFrame;
+#endif
+        bool m_DebugUiEnabled = false;
+        bool m_DebugUiVisible = false;
     };
 } // namespace
 
@@ -337,6 +371,12 @@ try
     {
         return 0;
     }
+#ifndef VULTRA_RUNTIME_GUI
+    if (cli.get<bool>("--debug-ui"))
+    {
+        throw std::invalid_argument("Runtime debug UI requires the api_ui feature");
+    }
+#endif
     const auto capture     = cli.present<std::string>("--capture");
     const auto capturePath = capture ? std::filesystem::absolute(*capture) : std::filesystem::path {};
     const auto package     = cli.get<std::string>("package");

@@ -1,6 +1,6 @@
 #include "image_decode.hpp"
 
-// Private decoder instance; research PNG writing has a separate implementation.
+// Keep the full asset decoder private; Image I/O has its own PNG-only stb implementation.
 #define STB_IMAGE_STATIC
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>

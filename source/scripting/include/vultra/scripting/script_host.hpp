@@ -27,8 +27,9 @@ namespace vultra
         size_t           reloadChanged(bool retryFailed = false);
         std::string_view lastReloadError() const;
         void             update(float deltaSeconds);
-        void             gui(EditorGui& gui);
-        void             stop() noexcept;
+        // Requires api_ui; CPU-only hosts still use the same lifecycle and scene ABI.
+        void gui(EditorGui& gui);
+        void stop() noexcept;
 
     private:
         struct Impl;

@@ -13,7 +13,8 @@ internal enum VultraStatus : int
     Ok = 0,
     InvalidArgument = 1,
     InvalidFrame = 2,
-    Error = 3
+    Error = 3,
+    BufferTooSmall = 4
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -115,6 +116,7 @@ internal unsafe struct VultraSceneApi
 {
     public uint Version;
     public uint StructSize;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, byte*, ulong, ulong*, VultraStatus> ActionState;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraCameraSettings*, VultraStatus> CameraSettings;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong*, VultraStatus> ChildCount;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, ulong*, VultraStatus> ChildId;
@@ -125,6 +127,7 @@ internal unsafe struct VultraSceneApi
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, byte*, ulong, ulong*, VultraStatus> CreateMaterial;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, byte*, ulong, ulong*, VultraStatus> CreateMesh;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, ulong*, VultraStatus> CreateNode;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, ulong*, VultraStatus> CreateNode3D;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong*, VultraStatus> CurrentCamera;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong*, VultraStatus> CurrentEnvironment;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, ulong*, VultraStatus> DuplicateMesh;
@@ -134,11 +137,22 @@ internal unsafe struct VultraSceneApi
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte**, ulong*, VultraStatus> MaterialName;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraMaterialParameters*, VultraStatus> MaterialParameters;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, ulong*, VultraStatus> MeshMaterial;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong*, VultraStatus> NodeInsideTree;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte**, ulong*, VultraStatus> NodeName;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong*, VultraStatus> NodeOwnerId;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong*, VultraStatus> NodeParentId;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong*, VultraStatus> NodeProcessMode;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, int*, VultraStatus> NodeProcessPriority;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong*, VultraStatus> NodeQueuedForDeletion;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraSceneTranslation*, VultraStatus> NodeTranslation;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte**, ulong*, VultraStatus> NodeType;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong*, VultraStatus> Paused;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong*, VultraStatus> PhysicsFrame;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraStatus> QueueFree;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, byte*, ulong, ulong*, VultraStatus> ReadProperty;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraStatus> RemoveMaterial;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraStatus> RemoveNode;
-    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, VultraStatus> ReparentNode;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, ulong, VultraStatus> ReparentNode;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong*, VultraStatus> RootId;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraCameraSettings, VultraStatus> SetCameraSettings;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraStatus> SetCurrentCamera;
@@ -149,7 +163,14 @@ internal unsafe struct VultraSceneApi
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraMaterialParameters, VultraStatus> SetMaterialParameters;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, ulong, VultraStatus> SetMeshMaterial;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, VultraStatus> SetMeshModel;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, VultraStatus> SetNodeOwner;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, VultraStatus> SetNodeProcessMode;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, int, VultraStatus> SetNodeProcessPriority;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraSceneTranslation, VultraStatus> SetNodeTranslation;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraStatus> SetPaused;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, double, VultraStatus> SetTimeScale;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, double*, VultraStatus> TimeScale;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, byte*, ulong, VultraStatus> WriteProperty;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -169,7 +190,8 @@ internal unsafe struct VultraHostApi
     public VultraUiApi* Ui;
     public VultraSceneApi* Scene;
     public VultraScriptRegistrationApi* Scripts;
-    public void* Research;
+    public void* Extensions;
+    public ulong ExtensionCount;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -181,4 +203,5 @@ internal unsafe struct VultraPluginApi
     public delegate* unmanaged[Cdecl]<void*, VultraSceneFrame, float, VultraStatus> Update;
     public delegate* unmanaged[Cdecl]<void*, VultraUiFrame, VultraStatus> OnGui;
     public delegate* unmanaged[Cdecl]<void*, VultraStatus> Stop;
+    public delegate* unmanaged[Cdecl]<void*, VultraSceneFrame, uint, float, VultraStatus> OnScene;
 }

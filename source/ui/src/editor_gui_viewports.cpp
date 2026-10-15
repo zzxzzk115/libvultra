@@ -104,12 +104,4 @@ namespace vultra
         };
     }
 
-    void EditorGui::renderPlatformWindows()
-    {
-        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-        {
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
-        }
-    }
 } // namespace vultra

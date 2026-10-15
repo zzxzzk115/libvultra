@@ -1,8 +1,8 @@
 #include "../examples/common/triangle.hpp"
 
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/platform/os/file.hpp>
 #include <vultra/servers/rendering/graph/render_graph.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 
 #include <nlohmann/json.hpp>
 #include <xxhash.h>
@@ -142,11 +142,11 @@ void callableMain(inout Payload payload)
 }
 )";
     const std::array       rayEntries {ShaderEntry {"raygenMain", VriShaderStage_RayGen},
-                                 ShaderEntry {"missMain", VriShaderStage_Miss},
-                                 ShaderEntry {"closestHitMain", VriShaderStage_ClosestHit},
-                                 ShaderEntry {"anyHitMain", VriShaderStage_AnyHit},
-                                 ShaderEntry {"intersectionMain", VriShaderStage_Intersection},
-                                 ShaderEntry {"callableMain", VriShaderStage_Callable}};
+                                       ShaderEntry {"missMain", VriShaderStage_Miss},
+                                       ShaderEntry {"closestHitMain", VriShaderStage_ClosestHit},
+                                       ShaderEntry {"anyHitMain", VriShaderStage_AnyHit},
+                                       ShaderEntry {"intersectionMain", VriShaderStage_Intersection},
+                                       ShaderEntry {"callableMain", VriShaderStage_Callable}};
     const auto             rayProgram = ShaderProgram::compileSource(root / "ray.slang", raySource);
     require(rayProgram.shaders.size() == rayEntries.size(), "Ray tracing entry discovery failed");
     const auto rayCooked = root / "ray.vshaderc";

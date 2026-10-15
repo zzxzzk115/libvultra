@@ -1,19 +1,26 @@
 #include "../../examples/research/color_gain.hpp"
 #include "graph_editor.hpp"
+#ifdef VULTRA_RESEARCH_STEREO
+#include "research_project_app.hpp"
+#endif
 #include "research_workspace.hpp"
 #include "scene_inspector.hpp"
 
 #include <vultra/assets/asset_options.hpp>
+#include <vultra/assets/asset_source.hpp>
+#include <vultra/assets/vpk_archive.hpp>
+#include <vultra/assets/vpk_export.hpp>
 #include <vultra/core/base/command_line.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/drivers/profiling/profiler.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/main/app/imgui_app.hpp>
-#include <vultra/main/app/research_project_app.hpp>
 #include <vultra/main/packaged_resources.hpp>
 #include <vultra/platform/os/file.hpp>
 #include <vultra/platform/os/process.hpp>
+#include <vultra/research/research_project.hpp>
 #include <vultra/scene/render_nodes.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/servers/rendering/builtin/raster_passes.hpp>
 #include <vultra/servers/rendering/texture_blit.hpp>
 
 #include <algorithm>
@@ -58,6 +65,7 @@ namespace
             m_WorkspaceFile(std::move(workspaceFile)),
             m_GraphDefinitionFile(std::move(graphFile))
         {
+            installBuiltinRenderPasses(m_Catalog);
             m_Catalog.add(research::colorGainDefinition());
             m_Workspace.replace(m_Draft);
             resetDraft();
@@ -390,10 +398,10 @@ namespace
                                 m_Gui.forgetTexture(*m_PreviewTexture);
                             }
                             VriTextureDesc desc {};
-                            desc.type   = VriTextureType_2D;
-                            desc.format = VriFormat_RGBA8_UNORM;
-                            desc.usage  = VriTextureUsage_ColorAttachment | VriTextureUsage_ShaderResource |
-                                         VriTextureUsage_TransferSrc;
+                            desc.type        = VriTextureType_2D;
+                            desc.format      = VriFormat_RGBA8_UNORM;
+                            desc.usage       = VriTextureUsage_ColorAttachment | VriTextureUsage_ShaderResource |
+                                               VriTextureUsage_TransferSrc;
                             desc.width       = texture.desc.width;
                             desc.height      = texture.desc.height;
                             desc.depth       = 1;
@@ -619,9 +627,11 @@ namespace
                  .persistLayout = persistLayout,
                  .appName       = "vultra-app",
                  .iniFile       = launchDirectory / ".vultra/vultra-app/imgui.ini"}),
+            m_Server(getDevice()),
+            m_Catalog(getDevice()),
             m_Panel(getDevice(),
-                    getRenderingServer(),
-                    getPassCatalog(),
+                    m_Server,
+                    m_Catalog,
                     getEditorGui(),
                     std::move(document),
                     launchDirectory,
@@ -661,10 +671,13 @@ namespace
 
         void onPostRender(Texture&) override
         {
+            m_Server.collectCompletedFrame();
             m_Panel.complete();
         }
 
-        ResearchPanel m_Panel;
+        RenderingServer m_Server;
+        PassCatalog     m_Catalog;
+        ResearchPanel   m_Panel;
     };
 
     void renderOffline(ResearchDocument             document,
@@ -798,7 +811,7 @@ try
             throw std::invalid_argument("--sdk-dir requires a matching SDK directory");
         }
         sdkDirectory = std::filesystem::absolute(*sdk);
-        if (!std::filesystem::is_regular_file(sdkDirectory / "include/vultra/api/research_api.h") ||
+        if (!std::filesystem::is_regular_file(sdkDirectory / "include/vultra/research/api/research_api.h") ||
             !std::filesystem::is_directory(sdkDirectory / "shaders/builtin/shaders") ||
             !std::filesystem::is_directory(sdkDirectory / "shaders/external"))
         {
@@ -836,7 +849,7 @@ try
                                           shaderSdk / "shaders/external",
                                           resources.engineRoot() / "builtin/shaders",
                                           resources.engineRoot() / "external"};
-        VpkArchive::packProject(std::filesystem::absolute(cli.get<std::string>("--project")), destination, options);
+        packProject(std::filesystem::absolute(cli.get<std::string>("--project")), destination, options);
         if (auto embed = cli.present<std::string>("--embed"))
         {
             if (embed->empty() || std::filesystem::exists(*embed))
@@ -853,34 +866,40 @@ try
     }
     if (!cli.is_used("--workspace"))
     {
-        ResearchProjectOptions options;
-        options.projectFile = std::filesystem::absolute(cli.get<std::string>("--project"));
-        std::filesystem::path manifest;
+        auto                         projectFile = std::filesystem::absolute(cli.get<std::string>("--project"));
+        std::unique_ptr<AssetSource> source;
+        std::filesystem::path        manifest;
         if (!cli.is_used("--project"))
         {
             if (auto embedded = VpkArchive::embeddedProject(executablePath()))
             {
-                options.source      = std::make_unique<AssetSource>(std::move(*embedded));
-                options.projectFile = executablePath();
-                manifest            = "project.vproject";
+                source      = std::make_unique<AssetSource>(std::move(*embedded));
+                projectFile = executablePath();
+                manifest    = "project.vproject";
             }
         }
-        if (!options.source)
+        if (!source)
         {
-            if (options.projectFile.extension() == ".vpk")
+            if (projectFile.extension() == ".vpk")
             {
-                options.source = std::make_unique<AssetSource>(VpkArchive(options.projectFile));
-                manifest       = "project.vproject";
+                source   = std::make_unique<AssetSource>(VpkArchive(projectFile));
+                manifest = "project.vproject";
             }
             else
             {
-                options.source = std::make_unique<AssetSource>(options.projectFile.parent_path());
-                manifest       = options.projectFile.filename();
+                source   = std::make_unique<AssetSource>(projectFile.parent_path());
+                manifest = projectFile.filename();
             }
         }
-        options.project = ProjectManifest::load(options.source->resolve(manifest), options.source.get());
-        if (options.project.research)
+        auto project = ProjectManifest::load(source->resolve(manifest), source.get());
+        if (auto research = ResearchProject::read(project))
         {
+#ifdef VULTRA_RESEARCH_STEREO
+            ResearchProjectOptions options;
+            options.projectFile = projectFile;
+            options.source      = std::move(source);
+            options.project     = std::move(project);
+            options.research    = std::move(*research);
             if (offline || cli.is_used("--graph") || cli.is_used("--path") || cli.is_used("--seed"))
             {
                 throw std::invalid_argument(
@@ -889,19 +908,19 @@ try
             options.xr                 = cli.get<bool>("--xr");
             options.sdkDirectory       = sdkDirectory;
             options.engineHash         = resources.shaderHash();
-            const auto& projectMethods = options.project.research->methods;
-            if (!options.project.research->referenceMethod.empty())
+            const auto& projectMethods = options.research.methods;
+            if (!options.research.referenceMethod.empty())
             {
                 const auto reference =
-                    std::ranges::find(projectMethods, options.project.research->referenceMethod, &ResearchMethod::name);
+                    std::ranges::find(projectMethods, options.research.referenceMethod, &ResearchMethod::name);
                 options.selections = {size_t(reference - projectMethods.begin()), 0};
                 if (options.selections[1] == options.selections[0])
                 {
                     options.selections[1] = 1;
                 }
             }
-            options.eyeSize = {cli.present<uint32_t>("--width").value_or(options.project.research->width),
-                               cli.present<uint32_t>("--height").value_or(options.project.research->height)};
+            options.eyeSize = {cli.present<uint32_t>("--width").value_or(options.research.width),
+                               cli.present<uint32_t>("--height").value_or(options.research.height)};
             if (options.eyeSize.width < 11 || options.eyeSize.height < 11 || options.eyeSize.width > 8192 ||
                 options.eyeSize.height > 8192)
             {
@@ -950,7 +969,7 @@ try
             {
                 if (auto name = cli.present<std::string>(slot ? "--method-b" : "--method-a"))
                 {
-                    const auto& methods = options.project.research->methods;
+                    const auto& methods = options.research.methods;
                     const auto  found   = std::ranges::find(methods, *name, &ResearchMethod::name);
                     if (found == methods.end())
                     {
@@ -973,13 +992,16 @@ try
             ResearchProjectApp     app(std::move(options));
             app.run(frames);
             return 0;
+#else
+            throw std::invalid_argument("Stereo research projects require the research_stereo feature");
+#endif
         }
         if (researchTools || cli.get<bool>("--xr") || cli.is_used("--method-a") || cli.is_used("--method-b") ||
             !sdkDirectory.empty())
         {
             throw std::invalid_argument("XR, method selection and --sdk-dir require a research project");
         }
-        if (options.projectFile.extension() == ".vpk" || options.projectFile == executablePath())
+        if (projectFile.extension() == ".vpk" || projectFile == executablePath())
         {
             throw std::invalid_argument(
                 "vultra-app packages require research metadata; use vultra-runtime for scene projects");

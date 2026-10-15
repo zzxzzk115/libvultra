@@ -1,5 +1,5 @@
 #include <vultra/assets/shader_asset.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/ui/editor_gui.hpp>
 #include <vultra/ui/editor_gui_shader_material.hpp>
 

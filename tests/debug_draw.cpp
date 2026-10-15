@@ -1,9 +1,9 @@
 #include "../examples/common/debug_lines.hpp"
 
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/scene/camera/fps_camera.hpp>
 #include <vultra/scene/camera/orbit_camera.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/gtc/type_ptr.hpp>

@@ -1,5 +1,6 @@
 #pragma once
 #include <vultra/drivers/rhi/resources.hpp>
+#include <vultra/platform/input/input.hpp>
 #include <vultra/ui/editor_gui_frame.hpp>
 #include <vultra/ui/editor_gui_inspector.hpp>
 #include <vultra/ui/editor_gui_theme.hpp>
@@ -15,6 +16,8 @@
 
 namespace vultra
 {
+    class Window;
+
     struct EditorGuiConfig
     {
         bool                  docking       = true;

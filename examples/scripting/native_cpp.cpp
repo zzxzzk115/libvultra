@@ -12,13 +12,17 @@ namespace
     class ShipOrbit final : public vultra::scripting::NativeScript
     {
     public:
-        void onStart() override
+        void onReady() override
         {
             m_Throttle.emplace(sceneRoot().child(2));
         }
 
-        void onUpdate(float deltaSeconds) override
+        void onProcess(float deltaSeconds) override
         {
+            if (!m_Throttle)
+            {
+                m_Throttle.emplace(sceneRoot().child(2));
+            }
             const auto throttle = m_Throttle->position();
             m_Speed             = 1.5f + throttle.x;
             m_Angle             = std::fmod(m_Angle + deltaSeconds * m_Speed, kTau);

@@ -1,30 +1,96 @@
 #include <vultra/scene/node.hpp>
+#include <vultra/scene/scene_tree.hpp>
 
-#include <algorithm>
-#include <cmath>
 #include <stdexcept>
 #include <utility>
 
 namespace vultra
 {
-    Node::Node(std::string name, NodeId id) :
-        m_PersistentId(id),
-        m_Name(std::move(name))
+    NodeId Node::ownerId() const
     {
-        if (!id.value.valid() || m_Name.empty())
+        return owner() ? owner()->idInScene() : NodeId {};
+    }
+
+    void Node::setOwnerId(NodeId id)
+    {
+        if (!id.value.valid())
+        {
+            setOwner(nullptr);
+            return;
+        }
+        auto* target = tree() ? tree()->find(id) : nullptr;
+        if (!target)
+        {
+            throw std::invalid_argument("Owner reference does not belong to this world");
+        }
+        setOwner(target);
+    }
+
+    Node::Node(std::string name, NodeId id) :
+        m_Detached(std::make_unique<DetachedState>())
+    {
+        if (!id.value.valid() || name.empty())
         {
             throw std::invalid_argument("Scene node requires a stable ID and name");
+        }
+        m_Detached->metadata = {this->id(), this, id, std::move(name)};
+    }
+
+    Node::~Node() = default;
+
+    SceneNode& Node::metadata()
+    {
+        return m_Tree ? m_Tree->registry().get<SceneNode>(m_Entity) : m_Detached->metadata;
+    }
+
+    const SceneNode& Node::metadata() const
+    {
+        return m_Tree ? std::as_const(*m_Tree).registry().get<SceneNode>(m_Entity) : m_Detached->metadata;
+    }
+
+    SceneProcess& Node::processState()
+    {
+        return m_Tree ? m_Tree->registry().get<SceneProcess>(m_Entity) : m_Detached->process;
+    }
+
+    const SceneProcess& Node::processState() const
+    {
+        return m_Tree ? std::as_const(*m_Tree).registry().get<SceneProcess>(m_Entity) : m_Detached->process;
+    }
+
+    void Node::attachComponents(entt::registry& registry, entt::entity entity)
+    {
+        registry.emplace<SceneNode>(entity, m_Detached->metadata);
+        registry.emplace<SceneProcess>(entity, m_Detached->process);
+        m_Detached.reset();
+    }
+
+    void Node::detachComponents(entt::registry& registry, entt::entity entity)
+    {
+        if (!m_Detached)
+        {
+            m_Detached = std::make_unique<DetachedState>();
+        }
+        if (const auto* value = registry.try_get<SceneNode>(entity))
+        {
+            m_Detached->metadata = *value;
+        }
+        if (const auto* value = registry.try_get<SceneProcess>(entity))
+        {
+            m_Detached->process               = *value;
+            m_Detached->process.behavior      = nullptr;
+            m_Detached->process.behaviorReady = false;
         }
     }
 
     NodeId Node::idInScene() const
     {
-        return m_PersistentId;
+        return metadata().persistentId;
     }
 
     const std::string& Node::name() const
     {
-        return m_Name;
+        return metadata().name;
     }
 
     void Node::setName(std::string name)
@@ -33,127 +99,166 @@ namespace vultra
         {
             throw std::invalid_argument("Scene node name is empty");
         }
-        if (name != m_Name)
+        if (name != metadata().name)
         {
-            m_Name = std::move(name);
+            metadata().name = std::move(name);
             markChanged(SceneChange::eMetadata);
         }
     }
 
-    const glm::mat4& Node::localTransform() const
-    {
-        return m_Transform;
-    }
-
-    void Node::setLocalTransform(const glm::mat4& transform)
-    {
-        for (int column = 0; column < 4; ++column)
-        {
-            for (int row = 0; row < 4; ++row)
-            {
-                if (!std::isfinite(transform[column][row]))
-                {
-                    throw std::invalid_argument("Scene node transform has a non-finite value");
-                }
-            }
-        }
-        if (transform != m_Transform)
-        {
-            m_Transform = transform;
-            markChanged(SceneChange::eTransform);
-        }
-    }
-
-    glm::mat4 Node::globalTransform() const
-    {
-        return m_Parent ? m_Parent->globalTransform() * m_Transform : m_Transform;
-    }
-
     Node* Node::parent() const
     {
-        return m_Parent;
+        if (!m_Tree)
+        {
+            return m_Detached->parent;
+        }
+        const auto parent = m_Tree->registry().get<SceneHierarchy>(m_Entity).parent;
+        return parent == entt::null ? nullptr : m_Tree->registry().get<SceneNode>(parent).node;
     }
 
-    const std::vector<std::unique_ptr<Node>>& Node::children() const
+    Node* Node::owner() const
     {
-        return m_Children;
+        if (!m_Tree)
+        {
+            return m_Detached->owner;
+        }
+        const auto owner = m_Tree->registry().get<SceneHierarchy>(m_Entity).owner;
+        return owner == entt::null ? nullptr : m_Tree->registry().get<SceneNode>(owner).node;
+    }
+
+    void Node::setOwner(Node* owner)
+    {
+        if (owner)
+        {
+            auto* ancestor = parent();
+            while (ancestor && ancestor != owner)
+            {
+                ancestor = ancestor->parent();
+            }
+            if (!ancestor)
+            {
+                throw std::invalid_argument("Scene owner must be an ancestor of the node");
+            }
+        }
+        if (this->owner() != owner)
+        {
+            if (m_Tree)
+            {
+                m_Tree->registry().get<SceneHierarchy>(m_Entity).owner = owner ? owner->entity() : entt::null;
+            }
+            else
+            {
+                m_Detached->owner = owner;
+            }
+            markChanged(SceneChange::eMetadata);
+        }
+    }
+
+    size_t Node::childCount() const
+    {
+        return m_Tree ? m_Tree->registry().get<SceneHierarchy>(m_Entity).children.size() : m_Detached->children.size();
+    }
+
+    Node* Node::childAt(size_t index) const
+    {
+        if (!m_Tree)
+        {
+            return m_Detached->children[index].get();
+        }
+        const auto child = m_Tree->registry().get<SceneHierarchy>(m_Entity).children[index];
+        return m_Tree->registry().get<SceneNode>(child).node;
     }
 
     NodeKind Node::kind() const
     {
-        return NodeKind::eGroup;
+        return NodeKind::eNode;
+    }
+
+    std::string_view Node::typeName() const
+    {
+        return "Node";
     }
 
     void Node::markChanged(SceneChange change)
     {
-        if (m_Changes)
+        if (m_Tree)
         {
-            m_Changes->mark(change);
+            m_Tree->markChanged(change);
         }
     }
 
-    MeshInstanceNode::MeshInstanceNode(std::string name, AssetId model, NodeId id) :
-        Node(std::move(name), id),
-        m_Model(model)
+    SceneTree* Node::tree() const
     {
-        if (!model.value.valid())
+        return m_Tree;
+    }
+
+    entt::entity Node::entity() const
+    {
+        return m_Entity;
+    }
+
+    bool Node::isInsideTree() const
+    {
+        return processState().insideTree;
+    }
+
+    bool Node::isReady() const
+    {
+        return processState().ready && isInsideTree();
+    }
+
+    bool Node::isQueuedForDeletion() const
+    {
+        return processState().queuedForDeletion;
+    }
+
+    ProcessMode Node::processMode() const
+    {
+        return processState().mode;
+    }
+
+    void Node::setProcessMode(ProcessMode mode)
+    {
+        if (mode < ProcessMode::eInherit || mode > ProcessMode::eDisabled)
         {
-            throw std::invalid_argument("Mesh instance requires a model asset ID");
+            throw std::invalid_argument("Invalid node process mode");
+        }
+        if (processState().mode != mode)
+        {
+            processState().mode = mode;
+            markChanged(SceneChange::eMetadata);
         }
     }
 
-    NodeKind MeshInstanceNode::kind() const
+    int32_t Node::processPriority() const
     {
-        return NodeKind::eMeshInstance;
+        return processState().priority;
     }
 
-    AssetId MeshInstanceNode::model() const
+    void Node::setProcessPriority(int32_t priority)
     {
-        return m_Model;
-    }
-
-    void MeshInstanceNode::setModel(AssetId model)
-    {
-        if (!model.value.valid())
+        if (processState().priority != priority)
         {
-            throw std::invalid_argument("Mesh instance model asset ID is empty");
-        }
-        if (model != m_Model)
-        {
-            m_Model = model;
-            markChanged(SceneChange::eStructure);
+            processState().priority = priority;
+            markChanged(SceneChange::eMetadata);
         }
     }
 
-    const std::vector<MeshMaterialOverride>& MeshInstanceNode::materialOverrides() const
+    bool Node::canProcess() const
     {
-        return m_MaterialOverrides;
+        if (!isInsideTree() || isQueuedForDeletion())
+        {
+            return false;
+        }
+        return m_Tree->canProcess(m_Entity);
     }
 
-    void MeshInstanceNode::setMaterial(uint32_t slot, AssetId material)
+    void Node::queueFree()
     {
-        const auto found = std::ranges::find(m_MaterialOverrides, slot, &MeshMaterialOverride::slot);
-        if (!material.value.valid())
+        if (!m_Tree)
         {
-            if (found != m_MaterialOverrides.end())
-            {
-                m_MaterialOverrides.erase(found);
-                markChanged(SceneChange::eMaterial);
-            }
+            throw std::logic_error("Queue deletion requires an attached node");
         }
-        else if (found != m_MaterialOverrides.end())
-        {
-            if (found->material != material)
-            {
-                found->material = material;
-                markChanged(SceneChange::eMaterial);
-            }
-        }
-        else
-        {
-            m_MaterialOverrides.push_back({slot, material});
-            std::ranges::sort(m_MaterialOverrides, {}, &MeshMaterialOverride::slot);
-            markChanged(SceneChange::eMaterial);
-        }
+        m_Tree->queueFree(id());
     }
 } // namespace vultra

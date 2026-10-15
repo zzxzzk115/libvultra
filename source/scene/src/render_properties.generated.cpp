@@ -5,6 +5,163 @@
 
 namespace vultra
 {
+    const ObjectTypeInfo& camera3DType()
+    {
+        static constexpr std::array<int64_t, 5>        processModeValues  = {0, 1, 2, 3, 4};
+        static constexpr std::array<PropertyChoice, 5> processModeChoices = {
+            {{"Inherit", 0}, {"Pausable", 1}, {"WhenPaused", 2}, {"Always", 3}, {"Disabled", 4}}};
+        static const std::array<PropertyInfo, 5> properties = {{
+            {"name",
+             "Name",
+             "Camera3D.name",
+             "/name",
+             PropertyKind::eString,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<const Camera3D*>(object)->name();
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Camera3D*>(object)->setName(std::get<std::string>(value));
+             },
+             []() -> PropertyValue
+             {
+                 return std::string {};
+             },
+             PropertyKind::eString,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"ownerId",
+             "Owner",
+             "Camera3D.ownerId",
+             "/owner",
+             PropertyKind::eReference,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyReference {(static_cast<const Camera3D*>(object)->ownerId()).value};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Camera3D*>(object)->setOwnerId(NodeId {std::get<PropertyReference>(value).id});
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyReference {(NodeId {}).value};
+             },
+             PropertyKind::eReference,
+             ObjectCategory::eNode,
+             "Node",
+             true},
+            {"processMode",
+             "Process mode",
+             "Camera3D.processMode",
+             "/process_mode",
+             PropertyKind::eEnum,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             processModeChoices,
+             processModeValues,
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyEnum {static_cast<int64_t>(static_cast<const Camera3D*>(object)->processMode())};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Camera3D*>(object)->setProcessMode(
+                     static_cast<ProcessMode>(std::get<PropertyEnum>(value).value));
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyEnum {static_cast<int64_t>(ProcessMode::eInherit)};
+             },
+             PropertyKind::eEnum,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"processPriority",
+             "Process priority",
+             "Camera3D.processPriority",
+             "/process_priority",
+             PropertyKind::eInt,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eDrag,
+             32,
+             -2147483648,
+             2147483647,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<int64_t>(static_cast<const Camera3D*>(object)->processPriority());
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Camera3D*>(object)->setProcessPriority(static_cast<int32_t>(std::get<int64_t>(value)));
+             },
+             []() -> PropertyValue
+             {
+                 return static_cast<int64_t>(0);
+             },
+             PropertyKind::eInt,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"localTransform",
+             "Local transform",
+             "Camera3D.localTransform",
+             "/transform",
+             PropertyKind::eMatrix4,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<const Camera3D*>(object)->localTransform();
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Camera3D*>(object)->setLocalTransform(std::get<glm::mat4>(value));
+             },
+             []() -> PropertyValue
+             {
+                 return glm::mat4 {1};
+             },
+             PropertyKind::eMatrix4,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+        }};
+        static const ObjectTypeInfo              type = {"Camera3D", properties, &node3DType(), ObjectCategory::eNode};
+        return type;
+    }
+
     const ObjectTypeInfo& cameraSettingsType()
     {
         static const std::array<PropertyInfo, 3> properties = {{
@@ -32,7 +189,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return CameraSettings {}.verticalFov;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"nearPlane",
              "Near plane",
              "CameraSettings.nearPlane",
@@ -57,7 +218,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return CameraSettings {}.nearPlane;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"farPlane",
              "Far plane",
              "CameraSettings.farPlane",
@@ -82,9 +247,13 @@ namespace vultra
              []() -> PropertyValue
              {
                  return CameraSettings {}.farPlane;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
         }};
-        static const ObjectTypeInfo              type       = {"CameraSettings", properties};
+        static const ObjectTypeInfo              type = {"CameraSettings", properties, nullptr, ObjectCategory::eValue};
         return type;
     }
 
@@ -115,9 +284,170 @@ namespace vultra
              []() -> PropertyValue
              {
                  return EnvironmentSettings {}.intensity;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
         }};
-        static const ObjectTypeInfo              type       = {"EnvironmentSettings", properties};
+        static const ObjectTypeInfo type = {"EnvironmentSettings", properties, nullptr, ObjectCategory::eValue};
+        return type;
+    }
+
+    const ObjectTypeInfo& light3DType()
+    {
+        static constexpr std::array<int64_t, 5>        processModeValues  = {0, 1, 2, 3, 4};
+        static constexpr std::array<PropertyChoice, 5> processModeChoices = {
+            {{"Inherit", 0}, {"Pausable", 1}, {"WhenPaused", 2}, {"Always", 3}, {"Disabled", 4}}};
+        static const std::array<PropertyInfo, 5> properties = {{
+            {"name",
+             "Name",
+             "Light3D.name",
+             "/name",
+             PropertyKind::eString,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<const Light3D*>(object)->name();
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Light3D*>(object)->setName(std::get<std::string>(value));
+             },
+             []() -> PropertyValue
+             {
+                 return std::string {};
+             },
+             PropertyKind::eString,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"ownerId",
+             "Owner",
+             "Light3D.ownerId",
+             "/owner",
+             PropertyKind::eReference,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyReference {(static_cast<const Light3D*>(object)->ownerId()).value};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Light3D*>(object)->setOwnerId(NodeId {std::get<PropertyReference>(value).id});
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyReference {(NodeId {}).value};
+             },
+             PropertyKind::eReference,
+             ObjectCategory::eNode,
+             "Node",
+             true},
+            {"processMode",
+             "Process mode",
+             "Light3D.processMode",
+             "/process_mode",
+             PropertyKind::eEnum,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             processModeChoices,
+             processModeValues,
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyEnum {static_cast<int64_t>(static_cast<const Light3D*>(object)->processMode())};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Light3D*>(object)->setProcessMode(
+                     static_cast<ProcessMode>(std::get<PropertyEnum>(value).value));
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyEnum {static_cast<int64_t>(ProcessMode::eInherit)};
+             },
+             PropertyKind::eEnum,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"processPriority",
+             "Process priority",
+             "Light3D.processPriority",
+             "/process_priority",
+             PropertyKind::eInt,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eDrag,
+             32,
+             -2147483648,
+             2147483647,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<int64_t>(static_cast<const Light3D*>(object)->processPriority());
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Light3D*>(object)->setProcessPriority(static_cast<int32_t>(std::get<int64_t>(value)));
+             },
+             []() -> PropertyValue
+             {
+                 return static_cast<int64_t>(0);
+             },
+             PropertyKind::eInt,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"localTransform",
+             "Local transform",
+             "Light3D.localTransform",
+             "/transform",
+             PropertyKind::eMatrix4,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<const Light3D*>(object)->localTransform();
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Light3D*>(object)->setLocalTransform(std::get<glm::mat4>(value));
+             },
+             []() -> PropertyValue
+             {
+                 return glm::mat4 {1};
+             },
+             PropertyKind::eMatrix4,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+        }};
+        static const ObjectTypeInfo              type = {"Light3D", properties, &node3DType(), ObjectCategory::eNode};
         return type;
     }
 
@@ -148,7 +478,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return LightSettings {}.red;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"green",
              "Green",
              "LightSettings.green",
@@ -173,7 +507,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return LightSettings {}.green;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"blue",
              "Blue",
              "LightSettings.blue",
@@ -198,7 +536,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return LightSettings {}.blue;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"intensity",
              "Intensity",
              "LightSettings.intensity",
@@ -223,7 +565,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return LightSettings {}.intensity;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"range",
              "Range",
              "LightSettings.range",
@@ -248,7 +594,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return LightSettings {}.range;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"innerCone",
              "Inner cone (rad)",
              "LightSettings.innerCone",
@@ -273,7 +623,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return LightSettings {}.innerCone;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"outerCone",
              "Outer cone (rad)",
              "LightSettings.outerCone",
@@ -298,9 +652,645 @@ namespace vultra
              []() -> PropertyValue
              {
                  return LightSettings {}.outerCone;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
         }};
-        static const ObjectTypeInfo              type       = {"LightSettings", properties};
+        static const ObjectTypeInfo              type = {"LightSettings", properties, nullptr, ObjectCategory::eValue};
+        return type;
+    }
+
+    const ObjectTypeInfo& meshInstance3DType()
+    {
+        static constexpr std::array<int64_t, 5>        processModeValues  = {0, 1, 2, 3, 4};
+        static constexpr std::array<PropertyChoice, 5> processModeChoices = {
+            {{"Inherit", 0}, {"Pausable", 1}, {"WhenPaused", 2}, {"Always", 3}, {"Disabled", 4}}};
+        static const std::array<PropertyInfo, 6> properties = {{
+            {"name",
+             "Name",
+             "MeshInstance3D.name",
+             "/name",
+             PropertyKind::eString,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<const MeshInstance3D*>(object)->name();
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<MeshInstance3D*>(object)->setName(std::get<std::string>(value));
+             },
+             []() -> PropertyValue
+             {
+                 return std::string {};
+             },
+             PropertyKind::eString,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"ownerId",
+             "Owner",
+             "MeshInstance3D.ownerId",
+             "/owner",
+             PropertyKind::eReference,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyReference {(static_cast<const MeshInstance3D*>(object)->ownerId()).value};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<MeshInstance3D*>(object)->setOwnerId(NodeId {std::get<PropertyReference>(value).id});
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyReference {(NodeId {}).value};
+             },
+             PropertyKind::eReference,
+             ObjectCategory::eNode,
+             "Node",
+             true},
+            {"processMode",
+             "Process mode",
+             "MeshInstance3D.processMode",
+             "/process_mode",
+             PropertyKind::eEnum,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             processModeChoices,
+             processModeValues,
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyEnum {static_cast<int64_t>(static_cast<const MeshInstance3D*>(object)->processMode())};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<MeshInstance3D*>(object)->setProcessMode(
+                     static_cast<ProcessMode>(std::get<PropertyEnum>(value).value));
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyEnum {static_cast<int64_t>(ProcessMode::eInherit)};
+             },
+             PropertyKind::eEnum,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"processPriority",
+             "Process priority",
+             "MeshInstance3D.processPriority",
+             "/process_priority",
+             PropertyKind::eInt,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eDrag,
+             32,
+             -2147483648,
+             2147483647,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<int64_t>(static_cast<const MeshInstance3D*>(object)->processPriority());
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<MeshInstance3D*>(object)->setProcessPriority(
+                     static_cast<int32_t>(std::get<int64_t>(value)));
+             },
+             []() -> PropertyValue
+             {
+                 return static_cast<int64_t>(0);
+             },
+             PropertyKind::eInt,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"localTransform",
+             "Local transform",
+             "MeshInstance3D.localTransform",
+             "/transform",
+             PropertyKind::eMatrix4,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<const MeshInstance3D*>(object)->localTransform();
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<MeshInstance3D*>(object)->setLocalTransform(std::get<glm::mat4>(value));
+             },
+             []() -> PropertyValue
+             {
+                 return glm::mat4 {1};
+             },
+             PropertyKind::eMatrix4,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"model",
+             "Model",
+             "MeshInstance3D.model",
+             "/model",
+             PropertyKind::eReference,
+             PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyReference {(static_cast<const MeshInstance3D*>(object)->model()).value};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<MeshInstance3D*>(object)->setModel(AssetId {std::get<PropertyReference>(value).id});
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyReference {(AssetId {}).value};
+             },
+             PropertyKind::eReference,
+             ObjectCategory::eResource,
+             "ModelResource",
+             false},
+        }};
+        static const ObjectTypeInfo type = {"MeshInstance3D", properties, &node3DType(), ObjectCategory::eNode};
+        return type;
+    }
+
+    const ObjectTypeInfo& nodeType()
+    {
+        static constexpr std::array<int64_t, 5>        processModeValues  = {0, 1, 2, 3, 4};
+        static constexpr std::array<PropertyChoice, 5> processModeChoices = {
+            {{"Inherit", 0}, {"Pausable", 1}, {"WhenPaused", 2}, {"Always", 3}, {"Disabled", 4}}};
+        static const std::array<PropertyInfo, 4> properties = {{
+            {"name",
+             "Name",
+             "Node.name",
+             "/name",
+             PropertyKind::eString,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<const Node*>(object)->name();
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Node*>(object)->setName(std::get<std::string>(value));
+             },
+             []() -> PropertyValue
+             {
+                 return std::string {};
+             },
+             PropertyKind::eString,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"ownerId",
+             "Owner",
+             "Node.ownerId",
+             "/owner",
+             PropertyKind::eReference,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyReference {(static_cast<const Node*>(object)->ownerId()).value};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Node*>(object)->setOwnerId(NodeId {std::get<PropertyReference>(value).id});
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyReference {(NodeId {}).value};
+             },
+             PropertyKind::eReference,
+             ObjectCategory::eNode,
+             "Node",
+             true},
+            {"processMode",
+             "Process mode",
+             "Node.processMode",
+             "/process_mode",
+             PropertyKind::eEnum,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             processModeChoices,
+             processModeValues,
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyEnum {static_cast<int64_t>(static_cast<const Node*>(object)->processMode())};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Node*>(object)->setProcessMode(
+                     static_cast<ProcessMode>(std::get<PropertyEnum>(value).value));
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyEnum {static_cast<int64_t>(ProcessMode::eInherit)};
+             },
+             PropertyKind::eEnum,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"processPriority",
+             "Process priority",
+             "Node.processPriority",
+             "/process_priority",
+             PropertyKind::eInt,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eDrag,
+             32,
+             -2147483648,
+             2147483647,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<int64_t>(static_cast<const Node*>(object)->processPriority());
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Node*>(object)->setProcessPriority(static_cast<int32_t>(std::get<int64_t>(value)));
+             },
+             []() -> PropertyValue
+             {
+                 return static_cast<int64_t>(0);
+             },
+             PropertyKind::eInt,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+        }};
+        static const ObjectTypeInfo              type       = {"Node", properties, nullptr, ObjectCategory::eNode};
+        return type;
+    }
+
+    const ObjectTypeInfo& node3DType()
+    {
+        static constexpr std::array<int64_t, 5>        processModeValues  = {0, 1, 2, 3, 4};
+        static constexpr std::array<PropertyChoice, 5> processModeChoices = {
+            {{"Inherit", 0}, {"Pausable", 1}, {"WhenPaused", 2}, {"Always", 3}, {"Disabled", 4}}};
+        static const std::array<PropertyInfo, 5> properties = {{
+            {"name",
+             "Name",
+             "Node3D.name",
+             "/name",
+             PropertyKind::eString,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<const Node3D*>(object)->name();
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Node3D*>(object)->setName(std::get<std::string>(value));
+             },
+             []() -> PropertyValue
+             {
+                 return std::string {};
+             },
+             PropertyKind::eString,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"ownerId",
+             "Owner",
+             "Node3D.ownerId",
+             "/owner",
+             PropertyKind::eReference,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyReference {(static_cast<const Node3D*>(object)->ownerId()).value};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Node3D*>(object)->setOwnerId(NodeId {std::get<PropertyReference>(value).id});
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyReference {(NodeId {}).value};
+             },
+             PropertyKind::eReference,
+             ObjectCategory::eNode,
+             "Node",
+             true},
+            {"processMode",
+             "Process mode",
+             "Node3D.processMode",
+             "/process_mode",
+             PropertyKind::eEnum,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             processModeChoices,
+             processModeValues,
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyEnum {static_cast<int64_t>(static_cast<const Node3D*>(object)->processMode())};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Node3D*>(object)->setProcessMode(
+                     static_cast<ProcessMode>(std::get<PropertyEnum>(value).value));
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyEnum {static_cast<int64_t>(ProcessMode::eInherit)};
+             },
+             PropertyKind::eEnum,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"processPriority",
+             "Process priority",
+             "Node3D.processPriority",
+             "/process_priority",
+             PropertyKind::eInt,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eDrag,
+             32,
+             -2147483648,
+             2147483647,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<int64_t>(static_cast<const Node3D*>(object)->processPriority());
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Node3D*>(object)->setProcessPriority(static_cast<int32_t>(std::get<int64_t>(value)));
+             },
+             []() -> PropertyValue
+             {
+                 return static_cast<int64_t>(0);
+             },
+             PropertyKind::eInt,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"localTransform",
+             "Local transform",
+             "Node3D.localTransform",
+             "/transform",
+             PropertyKind::eMatrix4,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<const Node3D*>(object)->localTransform();
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<Node3D*>(object)->setLocalTransform(std::get<glm::mat4>(value));
+             },
+             []() -> PropertyValue
+             {
+                 return glm::mat4 {1};
+             },
+             PropertyKind::eMatrix4,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+        }};
+        static const ObjectTypeInfo              type = {"Node3D", properties, &nodeType(), ObjectCategory::eNode};
+        return type;
+    }
+
+    const ObjectTypeInfo& worldEnvironmentType()
+    {
+        static constexpr std::array<int64_t, 5>        processModeValues  = {0, 1, 2, 3, 4};
+        static constexpr std::array<PropertyChoice, 5> processModeChoices = {
+            {{"Inherit", 0}, {"Pausable", 1}, {"WhenPaused", 2}, {"Always", 3}, {"Disabled", 4}}};
+        static const std::array<PropertyInfo, 5> properties = {{
+            {"name",
+             "Name",
+             "WorldEnvironment.name",
+             "/name",
+             PropertyKind::eString,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<const WorldEnvironment*>(object)->name();
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<WorldEnvironment*>(object)->setName(std::get<std::string>(value));
+             },
+             []() -> PropertyValue
+             {
+                 return std::string {};
+             },
+             PropertyKind::eString,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"ownerId",
+             "Owner",
+             "WorldEnvironment.ownerId",
+             "/owner",
+             PropertyKind::eReference,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyReference {(static_cast<const WorldEnvironment*>(object)->ownerId()).value};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<WorldEnvironment*>(object)->setOwnerId(NodeId {std::get<PropertyReference>(value).id});
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyReference {(NodeId {}).value};
+             },
+             PropertyKind::eReference,
+             ObjectCategory::eNode,
+             "Node",
+             true},
+            {"processMode",
+             "Process mode",
+             "WorldEnvironment.processMode",
+             "/process_mode",
+             PropertyKind::eEnum,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             processModeChoices,
+             processModeValues,
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyEnum {
+                     static_cast<int64_t>(static_cast<const WorldEnvironment*>(object)->processMode())};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<WorldEnvironment*>(object)->setProcessMode(
+                     static_cast<ProcessMode>(std::get<PropertyEnum>(value).value));
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyEnum {static_cast<int64_t>(ProcessMode::eInherit)};
+             },
+             PropertyKind::eEnum,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"processPriority",
+             "Process priority",
+             "WorldEnvironment.processPriority",
+             "/process_priority",
+             PropertyKind::eInt,
+             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eDrag,
+             32,
+             -2147483648,
+             2147483647,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return static_cast<int64_t>(static_cast<const WorldEnvironment*>(object)->processPriority());
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<WorldEnvironment*>(object)->setProcessPriority(
+                     static_cast<int32_t>(std::get<int64_t>(value)));
+             },
+             []() -> PropertyValue
+             {
+                 return static_cast<int64_t>(0);
+             },
+             PropertyKind::eInt,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
+            {"radianceAsset",
+             "Radiance",
+             "WorldEnvironment.radianceAsset",
+             "/radianceAsset",
+             PropertyKind::eReference,
+             PropertyFlags::eInspect | PropertyFlags::eBind,
+             PropertyWidget::eSlider,
+             0,
+             0,
+             0,
+             1,
+             {},
+             {},
+             [](const void* object) -> PropertyValue
+             {
+                 return PropertyReference {(static_cast<const WorldEnvironment*>(object)->radianceAsset()).value};
+             },
+             [](void* object, const PropertyValue& value)
+             {
+                 static_cast<WorldEnvironment*>(object)->setRadianceAsset(
+                     AssetId {std::get<PropertyReference>(value).id});
+             },
+             []() -> PropertyValue
+             {
+                 return PropertyReference {(AssetId {}).value};
+             },
+             PropertyKind::eReference,
+             ObjectCategory::eResource,
+             "Resource",
+             true},
+        }};
+        static const ObjectTypeInfo type = {"WorldEnvironment", properties, &nodeType(), ObjectCategory::eNode};
         return type;
     }
 

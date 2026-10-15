@@ -5,7 +5,7 @@ namespace
     class First final : public vultra::scripting::NativeScript
     {
     public:
-        void onUpdate(float) override
+        void onProcess(float) override
         {
             actor().setPosition({1.0f, 0.0f, 0.0f});
         }
@@ -14,7 +14,7 @@ namespace
     class Second final : public vultra::scripting::NativeScript
     {
     public:
-        void onUpdate(float) override
+        void onProcess(float) override
         {
             actor().setPosition({2.0f, 0.0f, 0.0f});
         }

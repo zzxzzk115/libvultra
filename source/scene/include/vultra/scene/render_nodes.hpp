@@ -1,87 +1,87 @@
 #pragma once
 
-#include <vultra/core/base/api_annotations.hpp>
-#include <vultra/scene/node.hpp>
-#include <vultra/servers/rendering/builtin/render_light.hpp>
+#include <vultra/scene/node_3d.hpp>
+#include <vultra/scene/render_components.hpp>
+
+#include <optional>
 
 namespace vultra
 {
-    struct VULTRA_REFLECT VULTRA_BIND_POD EnvironmentSettings
+    class VULTRA_REFLECT_NODE MeshInstance3D final : public Node3D
     {
-        VULTRA_PROPERTY("label=Intensity;min=0;max=4;json=/intensity")
-        float       intensity                                                          = 1;
-        friend bool operator==(const EnvironmentSettings&, const EnvironmentSettings&) = default;
+    public:
+        MeshInstance3D(std::string name, AssetId model, NodeId id = {StableId::generate()});
+        NodeKind         kind() const override;
+        std::string_view typeName() const override;
+        VULTRA_PROPERTY(
+            "label=Model;set=setModel;default=AssetId{};flags=inspect|bind;reference=ModelResource;nullable=false")
+        AssetId                                  model() const;
+        void                                     setModel(AssetId model);
+        const std::vector<MeshMaterialOverride>& materialOverrides() const;
+        // An invalid asset ID clears the override, restoring the imported model's parameters.
+        void setMaterial(uint32_t slot, AssetId material);
+
+    private:
+        void                     attachComponents(entt::registry& registry, entt::entity entity) override;
+        void                     detachComponents(entt::registry& registry, entt::entity entity) override;
+        SceneMesh&               data();
+        const SceneMesh&         data() const;
+        std::optional<SceneMesh> m_DetachedMesh;
     };
 
     // Non-spatial scene environment. An invalid asset ID selects the analytic studio environment.
-    class EnvironmentNode final : public Node
+    class VULTRA_REFLECT_NODE WorldEnvironment final : public Node
     {
     public:
-        explicit EnvironmentNode(std::string name, NodeId id = {StableId::generate()});
-        NodeKind                   kind() const override;
+        explicit WorldEnvironment(std::string name, NodeId id = {StableId::generate()});
+        NodeKind         kind() const override;
+        std::string_view typeName() const override;
+        VULTRA_PROPERTY("label=Radiance;set=setRadianceAsset;default=AssetId{};flags=inspect|bind;reference=Resource")
         AssetId                    radianceAsset() const;
         void                       setRadianceAsset(AssetId asset);
         const EnvironmentSettings& settings() const;
         void                       setSettings(EnvironmentSettings settings);
 
     private:
-        AssetId             m_RadianceAsset {};
-        EnvironmentSettings m_Settings;
+        void                            attachComponents(entt::registry& registry, entt::entity entity) override;
+        void                            detachComponents(entt::registry& registry, entt::entity entity) override;
+        SceneEnvironment&               data();
+        const SceneEnvironment&         data() const;
+        std::optional<SceneEnvironment> m_DetachedEnvironment {SceneEnvironment {}};
     };
 
-    struct VULTRA_REFLECT VULTRA_BIND_POD CameraSettings
-    {
-        VULTRA_PROPERTY("label=FOV (rad);min=0.01;max=3.13;json=/vertical_fov")
-        float verticalFov = 1.04719755f; // Radians; VRI's right-handed, Y-up, zero-to-one projection.
-        VULTRA_PROPERTY("label=Near plane;min=0.0001;max=1000000;widget=drag;speed=0.01;json=/near;api=NearPlane")
-        float nearPlane = 0.01f;
-        VULTRA_PROPERTY("label=Far plane;min=0.0001;max=1000000;widget=drag;speed=0.1;json=/far;api=FarPlane")
-        float       farPlane                                                 = 100;
-        friend bool operator==(const CameraSettings&, const CameraSettings&) = default;
-    };
-
-    struct VULTRA_REFLECT VULTRA_BIND_POD LightSettings
-    {
-        VULTRA_PROPERTY("label=Red;min=0;max=4;json=/color/0")
-        float red = 1;
-        VULTRA_PROPERTY("label=Green;min=0;max=4;json=/color/1")
-        float green = 1;
-        VULTRA_PROPERTY("label=Blue;min=0;max=4;json=/color/2")
-        float blue = 1;
-        VULTRA_PROPERTY("label=Intensity;min=0;max=100;widget=drag;speed=0.1;json=/intensity")
-        float intensity = 1;
-        VULTRA_PROPERTY("label=Range;min=0.001;max=1000000;widget=drag;speed=0.1;json=/range")
-        float range = 10;
-        VULTRA_PROPERTY("label=Inner cone (rad);min=0;max=1.56;json=/inner_cone")
-        float innerCone = 0.35f;
-        VULTRA_PROPERTY("label=Outer cone (rad);min=0.001;max=1.56;json=/outer_cone")
-        float       outerCone                                              = 0.6f;
-        friend bool operator==(const LightSettings&, const LightSettings&) = default;
-    };
-
-    class CameraNode final : public Node
+    class VULTRA_REFLECT_NODE Camera3D final : public Node3D
     {
     public:
-        explicit CameraNode(std::string name, NodeId id = {StableId::generate()});
+        explicit Camera3D(std::string name, NodeId id = {StableId::generate()});
         NodeKind              kind() const override;
+        std::string_view      typeName() const override;
         const CameraSettings& settings() const;
         void                  setSettings(CameraSettings settings);
 
     private:
-        CameraSettings m_Settings;
+        void                       attachComponents(entt::registry& registry, entt::entity entity) override;
+        void                       detachComponents(entt::registry& registry, entt::entity entity) override;
+        SceneCamera&               data();
+        const SceneCamera&         data() const;
+        std::optional<SceneCamera> m_DetachedCamera {SceneCamera {}};
     };
 
-    class LightNode final : public Node
+    class VULTRA_REFLECT_NODE Light3D final : public Node3D
     {
     public:
-        LightNode(std::string name, RenderLightKind lightKind, NodeId id = {StableId::generate()});
+        Light3D(std::string name, RenderLightKind lightKind, NodeId id = {StableId::generate()});
         NodeKind             kind() const override;
+        std::string_view     typeName() const override;
         RenderLightKind      lightKind() const;
         const LightSettings& settings() const;
         void                 setSettings(LightSettings settings);
 
     private:
-        RenderLightKind m_LightKind;
-        LightSettings   m_Settings;
+        void                      attachComponents(entt::registry& registry, entt::entity entity) override;
+        void                      detachComponents(entt::registry& registry, entt::entity entity) override;
+        SceneLight&               data();
+        const SceneLight&         data() const;
+        std::optional<SceneLight> m_DetachedLight;
     };
 } // namespace vultra

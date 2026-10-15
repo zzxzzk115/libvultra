@@ -201,49 +201,9 @@ namespace vultra
         {
             asset(*uiFont);
         }
-        if (research)
+        if (!nlohmann::json::parse(metadata).is_object())
         {
-            if (research->name.empty() || research->name.find_first_of("/\\:") != std::string::npos ||
-                research->name == "." || research->name == ".." || research->methods.empty() || research->width < 11 ||
-                research->height < 11 || research->width > 8192 || research->height > 8192)
-            {
-                throw std::invalid_argument("Research project requires a name, methods and valid eye extent");
-            }
-            if (research->renderPath != "forward" && research->renderPath != "deferred")
-            {
-                throw std::invalid_argument("Research render_path must be forward or deferred");
-            }
-            const auto renderer = nlohmann::json::parse(research->rendererSettings);
-            if (!renderer.is_object() || renderer.contains("path"))
-            {
-                throw std::invalid_argument("Research renderer must be an object; use render_path to select the path");
-            }
-            asset(research->comparison);
-            if (research->configurationLabel.empty() ||
-                (!research->referenceMethod.empty() &&
-                 (research->methods.size() < 2 ||
-                  std::ranges::find(research->methods, research->referenceMethod, &ResearchMethod::name) ==
-                      research->methods.end())))
-            {
-                throw std::invalid_argument(
-                    "Research reference method must name an existing method with an alternative");
-            }
-            for (size_t i = 0; i < research->methods.size(); ++i)
-            {
-                const auto& method = research->methods[i];
-                asset(method.graph);
-                if (method.name.empty())
-                {
-                    throw std::invalid_argument("Research method name is empty");
-                }
-                for (size_t j = 0; j < i; ++j)
-                {
-                    if (research->methods[j].name == method.name)
-                    {
-                        throw std::invalid_argument("Duplicate research method name");
-                    }
-                }
-            }
+            throw std::invalid_argument("Project metadata must be a JSON object");
         }
         for (size_t index = 0; index < extensions.size(); ++index)
         {
@@ -318,22 +278,10 @@ namespace vultra
             }
             document["scripts"].push_back(std::move(entry));
         }
-        if (research)
+        const auto settings = nlohmann::json::parse(metadata);
+        if (!settings.empty())
         {
-            auto& description = document["research"];
-            description       = {{"name", research->name},
-                                 {"size", {research->width, research->height}},
-                                 {"features", research->features},
-                                 {"render_path", research->renderPath},
-                                 {"reference_method", research->referenceMethod},
-                                 {"configuration_label", research->configurationLabel},
-                                 {"renderer", nlohmann::json::parse(research->rendererSettings)},
-                                 {"comparison", research->comparison.value.toString()},
-                                 {"methods", nlohmann::json::array()}};
-            for (const auto& method : research->methods)
-            {
-                description["methods"].push_back({{"name", method.name}, {"graph", method.graph.value.toString()}});
-            }
+            document["metadata"] = settings;
         }
         const auto text = document.dump(2) + "\n";
         writeFileAtomically(file, std::as_bytes(std::span(text)));
@@ -349,6 +297,16 @@ namespace vultra
             if (document.at("format") != "vultra.project" || document.at("version") != kProjectVersion)
             {
                 throw std::invalid_argument("Unsupported project manifest format or version");
+            }
+            for (const auto& field : document.items())
+            {
+                const auto& name = field.key();
+                if (name != "format" && name != "version" && name != "main_scene" && name != "assets" &&
+                    name != "extensions" && name != "scripts" && name != "environment" && name != "ui_document" &&
+                    name != "ui_font" && name != "metadata")
+                {
+                    throw std::invalid_argument("Unknown project manifest field: " + name);
+                }
             }
             ProjectManifest project;
             project.mainScene = projectPath(document.at("main_scene").get<std::string>());
@@ -418,26 +376,7 @@ namespace vultra
                 }
                 project.scripts.push_back(std::move(script));
             }
-            if (document.contains("research"))
-            {
-                const auto&     description = document.at("research");
-                ResearchProject research;
-                research.name               = description.at("name").get<std::string>();
-                research.width              = description.at("size").at(0).get<uint32_t>();
-                research.height             = description.at("size").at(1).get<uint32_t>();
-                research.features           = description.value("features", uint64_t(0));
-                research.renderPath         = description.value("render_path", std::string("forward"));
-                research.referenceMethod    = description.value("reference_method", std::string {});
-                research.configurationLabel = description.value("configuration_label", std::string("Configuration"));
-                research.rendererSettings   = description.value("renderer", nlohmann::json::object()).dump();
-                research.comparison         = parseAssetId(description.at("comparison").get<std::string>());
-                for (const auto& method : description.at("methods"))
-                {
-                    research.methods.push_back(
-                        {method.at("name").get<std::string>(), parseAssetId(method.at("graph").get<std::string>())});
-                }
-                project.research = std::move(research);
-            }
+            project.metadata = document.value("metadata", nlohmann::json::object()).dump();
             project.validate();
             return project;
         }

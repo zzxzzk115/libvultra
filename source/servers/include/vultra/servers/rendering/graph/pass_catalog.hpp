@@ -95,6 +95,7 @@ namespace vultra
     class PassCatalog
     {
     public:
+        // Starts empty. The caller installs only the pass definitions its experiment uses.
         explicit PassCatalog(Device& device);
         void add(PassDefinition definition);
         // Bind a context-owned scene factory without changing the port/parameter contract.

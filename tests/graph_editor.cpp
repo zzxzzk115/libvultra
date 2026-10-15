@@ -2,7 +2,8 @@
 #include "../examples/research/color_gain.hpp"
 
 #include <vultra/core/base/stable_id.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
+#include <vultra/servers/rendering/builtin/raster_passes.hpp>
 #include <vultra/ui/editor_gui.hpp>
 
 #include <imgui_internal.h>
@@ -31,6 +32,7 @@ try
     RenderingServer server(device);
     EditorGui       gui(device, VriFormat_RGBA8_UNORM, {.multiViewport = false, .persistLayout = false});
     PassCatalog     catalog(device);
+    installBuiltinRenderPasses(catalog);
     catalog.add(research::colorGainDefinition());
     GraphEditor                        editor(catalog);
     std::unique_ptr<ResearchWorkspace> workspace;

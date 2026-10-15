@@ -1,5 +1,6 @@
 #include "ray_scene.hpp"
-#include "upload.hpp"
+
+#include <vultra/drivers/rhi/buffer_upload.hpp>
 
 namespace sample
 {
@@ -52,7 +53,7 @@ namespace sample
             lightEmission     = glm::vec4(emission / lightArea, 0);
         }
         vertexCount = uint32_t(data.size());
-        vertices    = uploadBuffer(
+        vertices    = vultra::uploadBuffer(
             device,
             std::as_bytes(std::span(data)),
             VriBufferUsage_VertexBuffer | VriBufferUsage_StorageBuffer | VriBufferUsage_AccelerationBuildInput,
@@ -90,11 +91,11 @@ namespace sample
 
             static_assert(sizeof(Instance) == 64);
             instance.address = rt.GetAccelerationStructureDeviceAddress(m_Blas);
-            auto instances =
-                uploadBuffer(device,
-                             std::as_bytes(std::span(&instance, 1)),
-                             VriBufferUsage_AccelerationBuildInput,
-                             {VriAccess_AccelerationStructureRead, VriPipelineStage_AccelerationStructureBuild});
+            auto instances   = vultra::uploadBuffer(
+                device,
+                std::as_bytes(std::span(&instance, 1)),
+                VriBufferUsage_AccelerationBuildInput,
+                {VriAccess_AccelerationStructureRead, VriPipelineStage_AccelerationStructureBuild});
             VriAsGeometryDesc instanceGeometry {};
             instanceGeometry.type                     = VriAsGeometryType_Instances;
             instanceGeometry.instances.instanceBuffer = instances->handle;

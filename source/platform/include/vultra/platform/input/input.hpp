@@ -5,8 +5,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
+#include <variant>
+#include <vector>
 
 namespace vultra
 {
@@ -145,6 +148,45 @@ namespace vultra
         bool keyboard = false;
     };
 
+    struct KeyInput
+    {
+        KeyCode     key;
+        InputAction action;
+    };
+
+    struct MouseButtonInput
+    {
+        MouseCode button;
+        bool      held;
+    };
+
+    struct MouseMotionInput
+    {
+        glm::vec2 position;
+    };
+
+    struct MouseScrollInput
+    {
+        glm::vec2 delta;
+    };
+
+    struct TextInput
+    {
+        std::string text;
+    };
+
+    struct FocusInput
+    {
+        bool focused;
+    };
+
+    struct InputEvent
+    {
+        std::variant<KeyInput, MouseButtonInput, MouseMotionInput, MouseScrollInput, TextInput, FocusInput> value;
+        // Routing ownership does not change the raw Input state, especially held/release state.
+        bool consumed = false;
+    };
+
     class Input
     {
     public:
@@ -160,6 +202,9 @@ namespace vultra
         glm::vec2        mouseScrollDelta() const;
         bool             focused() const;
         std::string_view textInput() const;
+        // Published in backend order; borrowed until the next advanceFrame(). Headless sinks use the same setters.
+        std::span<InputEvent>       events();
+        std::span<const InputEvent> events() const;
 
         // Backend event sink. Accumulate even during event waits; publish once after polling.
         void setKey(KeyCode key, InputAction action);
@@ -190,8 +235,10 @@ namespace vultra
             bool                                          focused = true;
         };
 
-        State m_Current;
-        State m_Pending;
-        bool  m_HasPosition = false;
+        State                   m_Current;
+        State                   m_Pending;
+        bool                    m_HasPosition = false;
+        std::vector<InputEvent> m_Events;
+        std::vector<InputEvent> m_PendingEvents;
     };
 } // namespace vultra

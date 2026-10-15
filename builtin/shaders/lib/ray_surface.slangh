@@ -104,7 +104,8 @@ RaySurface raySurface(RayHit hit)
     TraceMaterial material = traceMaterials[materialIndex];
     float2 uv = a.uv * bary.x + b.uv * bary.y + c.uv * bary.z;
     float4 color = a.color * bary.x + b.color * bary.y + c.color * bary.z;
-    float3 normal = a.normal * bary.x + b.normal * bary.y + c.normal * bary.z;
+    // Preserve a constant vertex normal exactly before normalization.
+    float3 normal = a.normal + (b.normal - a.normal) * bary.y + (c.normal - a.normal) * bary.z;
     float4 tangent = a.tangent * bary.x + b.tangent * bary.y + c.tangent * bary.z;
     float sign = hit.frontFace ? 1 : -1;
     RaySurface surface;

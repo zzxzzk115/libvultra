@@ -1,8 +1,10 @@
 #include <vultra/api/plugin_session.hpp>
-#include <vultra/api/research_bridge.hpp>
 #include <vultra/core/base/stable_id.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
+#include <vultra/research/api/research_bridge.hpp>
+#include <vultra/research/research_project.hpp>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <fstream>
@@ -128,6 +130,84 @@ namespace
         output.exceptions(std::ios::failbit | std::ios::badbit);
         output << text;
     }
+
+    void checkExtensionTables(const VultraResearchApi& api)
+    {
+        VultraExtensionApi entry {"vultra.research",
+                                  sizeof("vultra.research") - 1,
+                                  VULTRA_ABI_VERSION,
+                                  sizeof(VultraResearchApi),
+                                  &api};
+        VultraHostApi      host {};
+        host.version     = VULTRA_ABI_VERSION;
+        host.struct_size = sizeof(VultraHostApi);
+        require(vultraGetResearchApi(&host) == nullptr, "Basic host unexpectedly provides research");
+        host.extensions      = &entry;
+        host.extension_count = 1;
+        require(vultraGetResearchApi(&host) == &api, "Named research table was not found");
+        ++entry.version;
+        require(vultraGetResearchApi(&host) == nullptr, "Wrong extension version accepted");
+        entry.version = VULTRA_ABI_VERSION;
+        --entry.struct_size;
+        require(vultraGetResearchApi(&host) == nullptr, "Stale extension table accepted");
+        entry.struct_size = sizeof(VultraResearchApi);
+        entry.name        = "project.custom";
+        entry.name_size   = sizeof("project.custom") - 1;
+        require(vultraGetResearchApi(&host) == nullptr, "Foreign extension treated as research");
+        entry.name      = "vultra.research";
+        entry.name_size = sizeof("vultra.research") - 1;
+        ++host.struct_size;
+        require(vultraGetResearchApi(&host) == nullptr, "Stale host layout accepted");
+
+        const auto initialize = +[](const VultraHostApi* incoming, VultraPluginApi* plugin)
+        {
+            const auto* research = vultraGetResearchApi(incoming);
+            const auto* expected = *static_cast<const VultraResearchApi**>(plugin->user_data);
+            if (research != expected)
+            {
+                return VULTRA_STATUS_INVALID_ARGUMENT;
+            }
+            plugin->user_data = research->context;
+            plugin->update    = [](void*, VultraSceneFrame, float)
+            {
+                return VULTRA_STATUS_OK;
+            };
+            plugin->on_gui = [](void*, VultraUiFrame)
+            {
+                return VULTRA_STATUS_OK;
+            };
+            plugin->stop = [](void*)
+            {
+                return VULTRA_STATUS_OK;
+            };
+            return VULTRA_STATUS_OK;
+        };
+        const auto*   expected = &api;
+        PluginSession session(initialize, nullptr, &expected, nullptr, nullptr, std::span(&entry, 1));
+        session.update(0);
+        session.stop();
+        bool stopped = false;
+        try
+        {
+            session.update(0);
+        }
+        catch (const std::logic_error&)
+        {
+            stopped = true;
+        }
+        require(stopped, "Stopped extension callback invoked");
+        const std::array duplicate {entry, entry};
+        bool             rejected = false;
+        try
+        {
+            PluginSession invalid(initialize, nullptr, &expected, nullptr, nullptr, duplicate);
+        }
+        catch (const std::invalid_argument&)
+        {
+            rejected = true;
+        }
+        require(rejected, "Duplicate extension domains accepted");
+    }
 } // namespace
 
 int main()
@@ -162,31 +242,35 @@ try
 
     Device          device;
     ProjectManifest project;
-    project.mainScene       = "scene.vscene";
-    const auto shaderId     = project.addAsset("gain.slang");
-    const auto graphId      = project.addAsset("method.vgraph");
-    const auto comparisonId = project.addAsset("comparison.vgraph");
-    project.research        = ResearchProject {"Native test", 17, 19, 0, {{"Reference", graphId}}, comparisonId};
-    project.research->rendererSettings = R"({"ibl":false,"lightIntensity":2})";
+    project.metadata             = R"({"project_note":42})";
+    project.mainScene            = "scene.vscene";
+    const auto      shaderId     = project.addAsset("gain.slang");
+    const auto      graphId      = project.addAsset("method.vgraph");
+    const auto      comparisonId = project.addAsset("comparison.vgraph");
+    ResearchProject research     = ResearchProject {"Native test", 17, 19, 0, {{"Reference", graphId}}, comparisonId};
+    research.rendererSettings    = R"({"ibl":false,"lightIntensity":2})";
+    research.write(project);
     project.save(directory / "project.vproject");
-    const auto loaded = ProjectManifest::load(directory / "project.vproject");
-    require(loaded.research && loaded.research->methods[0].graph == graphId &&
-                loaded.research->comparison == comparisonId &&
-                loaded.research->rendererSettings == project.research->rendererSettings,
+    const auto loadedProject = ProjectManifest::load(directory / "project.vproject");
+    const auto loaded        = ResearchProject::read(loadedProject);
+    require(loaded && loaded->methods[0].graph == graphId && loaded->comparison == comparisonId &&
+                loaded->rendererSettings == research.rendererSettings,
             "Research metadata roundtrip");
-    project.research->width  = 6254;
-    project.research->height = 2962;
+    require(loadedProject.metadata.find("\"project_note\":42") != std::string::npos,
+            "Research writer discarded another owner's project metadata");
+    research.width  = 6254;
+    research.height = 2962;
+    research.write(project);
     project.save(directory / "large-eye.vproject");
-    const auto largeEye = ProjectManifest::load(directory / "large-eye.vproject");
-    require(largeEye.research->width == 6254 && largeEye.research->height == 2962,
-            "Measured headset render extent rejected");
+    const auto largeEye = ResearchProject::read(ProjectManifest::load(directory / "large-eye.vproject"));
+    require(largeEye->width == 6254 && largeEye->height == 2962, "Measured headset render extent rejected");
     for (const char* invalid : {"[]", R"({"path":1})"})
     {
-        project.research->rendererSettings = invalid;
-        bool rejected                      = false;
+        research.rendererSettings = invalid;
+        bool rejected             = false;
         try
         {
-            project.save(directory / "invalid-renderer.vproject");
+            research.write(project);
         }
         catch (const std::invalid_argument&)
         {
@@ -194,21 +278,48 @@ try
         }
         require(rejected, "Invalid research renderer metadata accepted");
     }
-    project.research->width            = 17;
-    project.research->height           = 19;
-    project.research->rendererSettings = loaded.research->rendererSettings;
-    project.research->methods.push_back({"Reference", graphId});
+    research.width            = 17;
+    research.height           = 19;
+    research.rendererSettings = loaded->rendererSettings;
+    research.methods.push_back({"Reference", graphId});
     bool rejected = false;
     try
     {
-        project.save(directory / "invalid.vproject");
+        research.write(project);
     }
     catch (const std::exception&)
     {
         rejected = true;
     }
     require(rejected, "Duplicate method name accepted");
-    project.research->methods.pop_back();
+    research.methods.pop_back();
+    require(ResearchProject::read(project)->width == 6254, "Rejected edits changed the previous metadata");
+    ProjectManifest ordinary;
+    ordinary.mainScene = "scene.vscene";
+    require(!ResearchProject::read(ordinary), "Ordinary project acquired research settings");
+    ordinary.metadata = "[]";
+    rejected          = false;
+    try
+    {
+        ordinary.save(directory / "invalid-metadata.vproject");
+    }
+    catch (const std::invalid_argument&)
+    {
+        rejected = true;
+    }
+    require(rejected, "Core accepted non-object extension metadata");
+    ordinary.metadata = R"({"research":{"name":"Malformed"}})";
+    ordinary.save(directory / "malformed-research.vproject");
+    rejected = false;
+    try
+    {
+        ResearchProject::read(ProjectManifest::load(directory / "malformed-research.vproject"));
+    }
+    catch (const std::exception&)
+    {
+        rejected = true;
+    }
+    require(rejected, "Research owner accepted malformed settings preserved by the core");
     require(project.asset(shaderId).path == "gain.slang", "Shader asset identity");
 
     AssetSource assets(directory);
@@ -223,7 +334,8 @@ try
     }
     require(rejected, "Missing explicit SDK accepted");
     ResearchBridge bridge(device, project, assets, sdk);
-    Extension      extension;
+    checkExtensionTables(bridge.api());
+    Extension extension;
     extension.api                    = &bridge.api();
     const auto&                  api = bridge.api();
     const VriDescriptorRangeDesc ranges[2] {{0, 1, VriDescriptorType_Texture, VriShaderStage_Compute},

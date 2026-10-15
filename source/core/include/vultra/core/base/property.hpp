@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vultra/core/base/stable_id.hpp>
+
 #include <glm/glm.hpp>
 
 #include <cstdint>
@@ -24,7 +26,9 @@ namespace vultra
         eVector2,
         eVector3,
         eVector4,
-        eMatrix4
+        eMatrix4,
+        eReference,
+        eArray
     };
 
     struct PropertyEnum
@@ -33,18 +37,46 @@ namespace vultra
         friend bool operator==(PropertyEnum, PropertyEnum) = default;
     };
 
-    // Owned values; never store a view into a script instance or a GUI frame here.
-    using PropertyValue = std::variant<bool,
-                                       int64_t,
-                                       uint64_t,
-                                       float,
-                                       double,
-                                       std::string,
-                                       PropertyEnum,
-                                       glm::vec2,
-                                       glm::vec3,
-                                       glm::vec4,
-                                       glm::mat4>;
+    struct PropertyReference
+    {
+        StableId    id;
+        friend bool operator==(const PropertyReference&, const PropertyReference&) = default;
+    };
+
+    struct PropertyValue;
+
+    struct PropertyArray
+    {
+        std::vector<PropertyValue> values;
+        friend bool                operator==(const PropertyArray&, const PropertyArray&) = default;
+    };
+
+    // Owned values; references contain persistent identities, never pointers or registry slots.
+    struct PropertyValue : std::variant<bool,
+                                        int64_t,
+                                        uint64_t,
+                                        float,
+                                        double,
+                                        std::string,
+                                        PropertyEnum,
+                                        glm::vec2,
+                                        glm::vec3,
+                                        glm::vec4,
+                                        glm::mat4,
+                                        PropertyReference,
+                                        PropertyArray>
+    {
+        using variant::variant;
+        using variant::operator=;
+        friend bool operator==(const PropertyValue&, const PropertyValue&) = default;
+    };
+
+    enum class ObjectCategory
+    {
+        eValue,
+        eNode,
+        eResource
+    };
 
     enum class PropertyFlags : uint8_t
     {
@@ -94,6 +126,11 @@ namespace vultra
         PropertyValue (*get)(const void* object);
         void (*set)(void* object, const PropertyValue& value);
         PropertyValue (*defaultValue)();
+        // Array elements use the same scalar/reference contract; nested arrays are not supported.
+        PropertyKind   elementKind       = PropertyKind::eBool;
+        ObjectCategory referenceCategory = ObjectCategory::eResource;
+        const char*    referenceType     = nullptr;
+        bool           nullable          = true;
 
         PropertyValue read(const void* object) const;
         void          write(void* object, const PropertyValue& value) const;
@@ -104,8 +141,13 @@ namespace vultra
     {
         const char*                   name;
         std::span<const PropertyInfo> properties;
+        const ObjectTypeInfo*         base     = nullptr;
+        ObjectCategory                category = ObjectCategory::eValue;
+
+        // Generated descriptors contain effective inherited properties with correctly typed accessors.
 
         const PropertyInfo& property(std::string_view name) const;
+        bool                isA(std::string_view typeName) const;
     };
 
     // Descriptors are borrowed. Remove plugin descriptors before unloading their code.
@@ -123,5 +165,7 @@ namespace vultra
 
     std::string serializeProperties(const ObjectTypeInfo& type, const void* object);
     // Decode and validate all fields before mutation. Missing serialized fields use C++ defaults.
-    void deserializeProperties(const ObjectTypeInfo& type, std::string_view json, void* object);
+    void          deserializeProperties(const ObjectTypeInfo& type, std::string_view json, void* object);
+    std::string   serializeProperty(const PropertyInfo& property, const PropertyValue& value);
+    PropertyValue deserializeProperty(const PropertyInfo& property, std::string_view json);
 } // namespace vultra

@@ -1,4 +1,5 @@
 #include <vultra/assets/project_manifest.hpp>
+#include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/scene_tree.hpp>
 #include <vultra/scripting/script_host.hpp>
 
@@ -11,6 +12,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -21,16 +23,150 @@ namespace
             throw std::runtime_error(message);
         }
     }
+
+    void lifecycleParity(const std::filesystem::path& binaryDirectory)
+    {
+        using namespace vultra;
+        const auto name  = "lifecycle-" + StableId::generate().toString();
+        const auto trace = std::filesystem::path("build/.tmp") / (name + ".txt");
+        const auto lua   = std::filesystem::path("build/.tmp") / (name + ".lua");
+        SceneTree  scene(std::make_unique<Node>(name));
+        auto&      native  = scene.addChild(scene.root(), std::make_unique<Node3D>("Native"));
+        auto&      luaNode = scene.addChild(native, std::make_unique<Node3D>("Lua"));
+        auto&      managed = scene.addChild(luaNode, std::make_unique<Node3D>("Managed"));
+        std::ofstream(lua) << R"lua(
+local script = {}
+local function record(self, phase)
+    local file = assert(io.open('build/.tmp/' .. self.scene:root():name() .. '.txt', 'a'))
+    file:write(self.node:name() .. ':' .. phase .. '\n')
+    file:close()
+end
+function script:_enter_tree() record(self, 'enter') end
+function script:_ready()
+    local x, y, z = self.node:position()
+    self.node:set_position(x + 1, y, z)
+    self.node:set_process_priority(-7)
+    self.scene:set_time_scale(self.scene:time_scale())
+    assert(self.scene:time_scale() == 1)
+    assert(self.node:is_inside_tree() and self.node:get_process_priority() == -7)
+    record(self, 'ready')
+end
+function script:_physics_process(delta)
+    assert(math.abs(delta - 1 / 60) < 1e-7 and self.scene:physics_frame() > 0)
+    local action = self.scene:action("jump")
+    assert(action.held and action.pressed == (self.scene:physics_frame() == 1))
+    local x, y, z = self.node:position()
+    self.node:set_position(x, y + 1, z)
+    record(self, 'fixed')
+end
+function script:_process(delta)
+    local x, y, z = self.node:position()
+    self.node:set_position(x, y, z + 1)
+    record(self, 'process')
+end
+function script:_exit_tree()
+    assert(self.node:is_inside_tree())
+    record(self, 'exit')
+end
+return script
+)lua";
+#ifdef _WIN32
+        const auto nativeModule = binaryDirectory / "test-native-lifecycle-script.dll";
+#else
+        const auto nativeModule = binaryDirectory / "libtest-native-lifecycle-script.so";
+#endif
+        scene.input().bind("jump", KeyCode::eSpace);
+        Input replayInput;
+        replayInput.setKey(KeyCode::eSpace, InputAction::ePress);
+        replayInput.advanceFrame();
+        scene.input().update(replayInput.events());
+        ScriptHost host(scene);
+        // Deliberately attach in reverse tree order: the tree, not the language/registration order, dispatches.
+        host.add({ScriptModule::Language::eCSharp, {}, "VultraTests.LifecycleProbe", managed.idInScene().value},
+                 "build/.tmp/scripting-managed/Vultra.SceneScripts.dll");
+        host.add({ScriptModule::Language::eLua, {}, {}, luaNode.idInScene().value}, lua);
+        host.add({ScriptModule::Language::eNative, {}, "LifecycleProbe", native.idInScene().value}, nativeModule);
+        host.update(static_cast<float>(scene.fixedDelta()));
+        for (const auto* node : {&native, &luaNode, &managed})
+        {
+            require(node->localTransform()[3] == glm::vec4(1, 1, 1, 1), "Script lifecycle counters differ by language");
+        }
+        scene.setPaused(true);
+        host.update(static_cast<float>(scene.fixedDelta()));
+        for (const auto* node : {&native, &luaNode, &managed})
+        {
+            require(node->localTransform()[3] == glm::vec4(1, 1, 1, 1), "Paused scripts were still processed");
+        }
+        scene.stepPaused();
+        for (const auto* node : {&native, &luaNode, &managed})
+        {
+            require(node->localTransform()[3] == glm::vec4(1, 2, 1, 1), "Single-step did not reach every language");
+        }
+        host.stop();
+        std::ifstream            input(trace);
+        std::vector<std::string> lines;
+        for (std::string line; std::getline(input, line);)
+        {
+            lines.push_back(line);
+        }
+        require(lines == std::vector<std::string> {"Native:enter",
+                                                   "Lua:enter",
+                                                   "Managed:enter",
+                                                   "Managed:ready",
+                                                   "Lua:ready",
+                                                   "Native:ready",
+                                                   "Native:fixed",
+                                                   "Lua:fixed",
+                                                   "Managed:fixed",
+                                                   "Native:process",
+                                                   "Lua:process",
+                                                   "Managed:process",
+                                                   "Native:fixed",
+                                                   "Lua:fixed",
+                                                   "Managed:fixed",
+                                                   "Managed:exit",
+                                                   "Lua:exit",
+                                                   "Native:exit"},
+                "Native/Lua/C# lifecycle does not follow a shared tree/clock/order");
+    }
 } // namespace
 
 int main(int argc, char** argv)
 {
     require(argc > 0, "Missing executable path");
+    lifecycleParity(std::filesystem::absolute(argv[0]).parent_path());
+    {
+        const auto propertiesPath = std::filesystem::path("build/.tmp/skeleton-properties.lua");
+        std::ofstream(propertiesPath) << R"(return {
+            _ready = function(self)
+                assert(self.node:get_property("name") == self.node:name())
+                self.node:set_property("processPriority", 12)
+                assert(self.node:get_property("processPriority") == 12)
+                local transform = self.node:get_property("localTransform")
+                transform[13] = 3
+                self.node:set_property("localTransform", transform)
+                local ok = pcall(function() self.node:set_property("processPriority", false) end)
+                assert(not ok and self.node:get_property("processPriority") == 12)
+                local bad = pcall(function() self.node:set_property("localTransform", { bad = 4 }) end)
+                assert(not bad and self.node:get_property("localTransform")[13] == 3)
+            end
+        })";
+        vultra::SceneTree  propertyScene(std::make_unique<vultra::Node3D>("Properties"));
+        vultra::ScriptHost propertyHost(propertyScene);
+        propertyHost.add({vultra::ScriptModule::Language::eLua, {}}, propertiesPath);
+        propertyHost.update(0);
+        require(propertyScene.root().processPriority() == 12 &&
+                    static_cast<vultra::Node3D&>(propertyScene.root()).localTransform()[3].x == 3,
+                "Lua generic properties failed to update validated ECS values");
+    }
+
     auto  scene  = vultra::SceneTree(std::make_unique<vultra::Node>("Root"));
-    auto& ship   = scene.addChild(scene.root(), std::make_unique<vultra::Node>("Ship"));
-    auto& beacon = scene.addChild(scene.root(), std::make_unique<vultra::Node>("Beacon"));
+    auto& ship   = scene.addChild(scene.root(), std::make_unique<vultra::Node3D>("Ship"));
+    auto& beacon = scene.addChild(scene.root(), std::make_unique<vultra::Node3D>("Beacon"));
     beacon.setLocalTransform(glm::translate(glm::mat4(1), {0.68f * std::cos(0.6f), 0.68f * std::sin(0.6f), 0}));
-    auto& throttle = scene.addChild(scene.root(), std::make_unique<vultra::Node>("Throttle"));
+    auto& throttle = scene.addChild(
+        scene.root(),
+        std::make_unique<vultra::MeshInstance3D>("Throttle", vultra::AssetId {vultra::StableId::generate()}));
     throttle.setLocalTransform(glm::translate(glm::mat4(1), {0, -0.92f, 0}));
     const auto root = std::filesystem::current_path();
 #ifdef _WIN32
@@ -40,8 +176,8 @@ int main(int argc, char** argv)
 #endif
     {
         vultra::SceneTree  classScene(std::make_unique<vultra::Node>("Root"));
-        auto&              first  = classScene.addChild(classScene.root(), std::make_unique<vultra::Node>("First"));
-        auto&              second = classScene.addChild(classScene.root(), std::make_unique<vultra::Node>("Second"));
+        auto&              first  = classScene.addChild(classScene.root(), std::make_unique<vultra::Node3D>("First"));
+        auto&              second = classScene.addChild(classScene.root(), std::make_unique<vultra::Node3D>("Second"));
         vultra::ScriptHost classes(classScene);
         classes.addExtension(multiClass);
         classes.add({vultra::ScriptModule::Language::eNative, {}, "First", first.idInScene().value}, multiClass);
@@ -121,9 +257,9 @@ int main(int argc, char** argv)
         vultra::ProjectManifest project;
         const auto              selectedModel = project.addAsset("models/selected.glb");
         auto& firstMesh  = structuralScene.addChild(structuralScene.root(),
-                                                    std::make_unique<vultra::MeshInstanceNode>("First", firstModel));
+                                                    std::make_unique<vultra::MeshInstance3D>("First", firstModel));
         auto& secondMesh = structuralScene.addChild(structuralScene.root(),
-                                                    std::make_unique<vultra::MeshInstanceNode>("Second", secondModel));
+                                                    std::make_unique<vultra::MeshInstance3D>("Second", secondModel));
         std::ofstream(structuralScript) << "return { _ready = function(self) "
                                            "local root = self.scene:root(); "
                                            "self.copy = root:get_child(0):duplicate_mesh(root); "
@@ -137,9 +273,9 @@ int main(int argc, char** argv)
         structuralHost.add({vultra::ScriptModule::Language::eLua, {}}, structuralScript);
         structuralHost.update(0.01f);
         require(structuralScene.root().children().size() == 3 &&
-                    static_cast<const vultra::MeshInstanceNode&>(*structuralScene.root().children()[2]).model() ==
+                    static_cast<const vultra::MeshInstance3D&>(*structuralScene.root().children()[2]).model() ==
                         firstModel &&
-                    static_cast<const vultra::MeshInstanceNode&>(secondMesh).model() == selectedModel &&
+                    static_cast<const vultra::MeshInstance3D&>(secondMesh).model() == selectedModel &&
                     firstMesh.idInScene() != structuralScene.root().children()[2]->idInScene(),
                 "Lua scene edits did not duplicate a mesh and replace its model");
         structuralHost.stop();
@@ -153,13 +289,13 @@ int main(int argc, char** argv)
         std::ofstream(compositionScript)
             << "return { _ready = function(self) "
                "local root = self.scene:root(); "
-               "local group = root:create_child('Group'); "
+               "local group = root:create_child_3d('Group'); "
                "group:set_position(1, 2, 0); "
                "local failed = pcall(function() root:create_mesh_child('Bad', 'bad') end); "
                "assert(not failed); "
                "local mesh = root:create_mesh_child('Created', '"
             << model.value.toString()
-            << "'); mesh:set_position(0, 0, 3); mesh:reparent(group) "
+            << "'); mesh:set_position(0, 0, 3); mesh:reparent(group, false) "
                "end, _process = function(self, dt) end }\n";
         vultra::ScriptHost compositionHost(composed, false, &project);
         compositionHost.add({vultra::ScriptModule::Language::eLua, {}}, compositionScript);
@@ -167,7 +303,7 @@ int main(int argc, char** argv)
         require(composed.root().children().size() == 1 && composed.root().children()[0]->children().size() == 1,
                 "Lua scene composition left an invalid or misplaced node");
         const auto& group = *composed.root().children()[0];
-        const auto& mesh  = static_cast<const vultra::MeshInstanceNode&>(*group.children()[0]);
+        const auto& mesh  = static_cast<const vultra::MeshInstance3D&>(*group.children()[0]);
         require(mesh.model() == model && mesh.localTransform()[3].z == 3 && mesh.globalTransform()[3].x == 1 &&
                     mesh.globalTransform()[3].y == 2,
                 "Lua scene composition lost model selection or parent transforms");
@@ -237,6 +373,78 @@ int main(int argc, char** argv)
     require(invalidRejected, "Lua scene query accepted a foreign ObjectId");
     bad.stop();
 
+    {
+        const auto        identityName = "identity-world-" + vultra::StableId::generate().toString();
+        const auto        exitMarker   = root / "build/.tmp" / (identityName + "-exits.txt");
+        vultra::SceneTree identityScene(std::make_unique<vultra::Node>(identityName));
+        auto&      first     = identityScene.addChild(identityScene.root(), std::make_unique<vultra::Node3D>("First"));
+        auto&      second    = identityScene.addChild(identityScene.root(), std::make_unique<vultra::Node3D>("Second"));
+        const auto source    = root / "build/.tmp/scripting-managed/Vultra.SceneScripts.dll";
+        const auto directory = root / "build/.tmp" / ("identity-reload-" + vultra::StableId::generate().toString());
+        std::filesystem::create_directories(directory);
+        const auto assembly = directory / source.filename();
+        std::filesystem::copy_file(source, assembly);
+        for (const auto* sidecar :
+             {"Vultra.ManagedHost.dll", "Vultra.Scripting.dll", "Vultra.ManagedHost.runtimeconfig.json"})
+        {
+            std::filesystem::copy_file(source.parent_path() / sidecar, directory / sidecar);
+        }
+        vultra::ScriptHost identities(identityScene, true);
+        identities.add(
+            {vultra::ScriptModule::Language::eCSharp, {}, "VultraTests.IdentityProbe", first.idInScene().value},
+            assembly);
+        identities.add(
+            {vultra::ScriptModule::Language::eCSharp, {}, "VultraTests.IdentityProbe", second.idInScene().value},
+            assembly);
+        bool duplicateAttachmentRejected = false;
+        try
+        {
+            identities.add(
+                {vultra::ScriptModule::Language::eCSharp, {}, "VultraTests.IdentityProbe", first.idInScene().value},
+                assembly);
+        }
+        catch (const std::invalid_argument&)
+        {
+            duplicateAttachmentRejected = true;
+        }
+        require(duplicateAttachmentRejected, "A node accepted two script attachments");
+        identities.update(0.25f);
+        require(first.localTransform()[3].x == 1 && second.localTransform()[3].x == 2,
+                "Managed scripts do not share canonical scene/node identities");
+        std::ofstream(assembly, std::ios::binary | std::ios::trunc) << "invalid managed assembly";
+        require(identities.reloadChanged() == 0 && !identities.lastReloadError().empty(),
+                "Invalid managed cohort replacement was accepted");
+        identities.update(0.25f);
+        require(first.localTransform()[3].x == 1 && second.localTransform()[3].x == 2,
+                "Failed managed replacement damaged active identities");
+        std::filesystem::copy_file(root / "build/.tmp/scripting-managed-identity-replacement/Vultra.SceneScripts.dll",
+                                   assembly,
+                                   std::filesystem::copy_options::overwrite_existing);
+        require(identities.reloadChanged() == 2 && identities.lastReloadError().empty(),
+                "Valid managed module did not replace both instances");
+        identities.update(0.25f);
+        require(first.localTransform()[3].x == 3 && second.localTransform()[3].x == 4,
+                "Reloaded managed instances lost shared type/node identity");
+        require(!std::filesystem::exists(exitMarker), "Managed reload incorrectly exited the live scene nodes");
+        identities.stop();
+        require(std::filesystem::file_size(exitMarker) == 2, "Managed nodes did not exit exactly once at stop");
+        bool wrongBaseRejected = false;
+        try
+        {
+            vultra::ScriptHost invalid(identityScene);
+            invalid.add({vultra::ScriptModule::Language::eCSharp,
+                         {},
+                         "VultraTests.IdentityProbe",
+                         identityScene.root().idInScene().value},
+                        assembly);
+        }
+        catch (const std::runtime_error&)
+        {
+            wrongBaseRejected = true;
+        }
+        require(wrongBaseRejected, "A Node3D script was attached to a non-spatial Node");
+    }
+
     const auto scratch =
         root / "build/.tmp" /
         ("script-reload-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
@@ -245,8 +453,8 @@ int main(int argc, char** argv)
     std::filesystem::copy_file(multiClass, classCopy);
     {
         vultra::SceneTree  classScene(std::make_unique<vultra::Node>("Root"));
-        auto&              first  = classScene.addChild(classScene.root(), std::make_unique<vultra::Node>("First"));
-        auto&              second = classScene.addChild(classScene.root(), std::make_unique<vultra::Node>("Second"));
+        auto&              first  = classScene.addChild(classScene.root(), std::make_unique<vultra::Node3D>("First"));
+        auto&              second = classScene.addChild(classScene.root(), std::make_unique<vultra::Node3D>("Second"));
         vultra::ScriptHost hotClasses(classScene, true);
         hotClasses.addExtension(classCopy);
         hotClasses.add({vultra::ScriptModule::Language::eNative, {}, "First", first.idInScene().value}, classCopy);

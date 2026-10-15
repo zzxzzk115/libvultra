@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <string_view>
 
 namespace vultra
 {
@@ -16,6 +17,12 @@ namespace vultra
 
     bool parseCommandLine(argparse::ArgumentParser& parser, int argc, char** argv)
     {
+        // argparse checks required positionals before our manual help flag.
+        if (argc == 2 && (std::string_view(argv[1]) == "--help" || std::string_view(argv[1]) == "-h"))
+        {
+            std::cout << parser;
+            return false;
+        }
         try
         {
             parser.parse_args(argc, argv);

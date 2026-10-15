@@ -1,4 +1,5 @@
 #include <vultra/servers/rendering/builtin/raster_passes.hpp>
+#include <vultra/servers/rendering/builtin/tone_mapping_pass.hpp>
 
 #include <algorithm>
 #include <array>
@@ -6,6 +7,15 @@
 
 namespace vultra
 {
+    void installBuiltinRenderPasses(PassCatalog& catalog)
+    {
+        catalog.add(toneMappingDefinition());
+        for (auto definition : builtinRasterPassDefinitions())
+        {
+            catalog.add(std::move(definition));
+        }
+    }
+
     namespace
     {
         enum class RasterStage
