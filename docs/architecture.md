@@ -1,81 +1,298 @@
-# Early Engine Architecture
+# Architecture
 
-Vultra has two entry paths. A C++ research program links `vultra` and uses VRI, shaders, RenderGraph, asset import or the built-in renderer directly. A packaged project uses `vultra-runtime` with an external VPK or appends that VPK to a copy of the executable. The scene tree, script host and separate editor do not sit between direct C++ code and VRI.
+Vultra is a small C++23 framework built by selecting capabilities around the public `vultra` static library.
+A GPU study can use VRI directly; graph, shader, asset, renderer, ECS world, UI and language hosts are additions.
+Research and engine features are optional consumers of the same lower layers.
 
-The implementation order and acceptance gates are in the
-[unified roadmap](research_milestones.md#editable-engine-core-implementation-order). JSON remains the scene,
-resource and workspace format. Keep each format at version `1` before release and update both ends of a
-breaking change without compatibility readers. Fixed updates, attachments, PackedScene, undo/redo and independent
-offscreen Play are planned there; their inclusion in the roadmap does not make them current features.
+Feature composition follows [Bevy](https://bevy.org/learn/quick-start/getting-started/);
+authoring/lifecycle organization follows [Godot](https://docs.godotengine.org/en/4.5/engine_details/architecture/godot_architecture_diagram.html).
+EnTT is the runtime world store. Batching and GPU submission are Vultra implementation choices.
+VRI is the only graphics abstraction; RenderGraph is the only graph executor.
 
-## Generated properties
+## Feature selection
 
-`PropertyValue` in `core` owns a typed scalar, string, enum, vector or matrix value. `PropertyInfo` describes
-the name, JSON path, editor hints, serialization/inspection/binding/reload flags and generated typed accessors.
-`ObjectTypeInfo` groups properties; `ObjectTypeCatalog` belongs to a context or direct C++ caller. Descriptors
-are borrowed, so registrations must end before a defining module unloads. There is no global type registry.
+`libvultra_features` is a comma-separated dependency union controlling sources, packages and targets.
+Embedded projects default to `gpu`; the repository defaults to `all` for development.
+Example requirements extend the union, and each example compiles only its selected modes.
 
-Camera, light, environment, material and renderer settings use generated descriptors in their owning modules.
-Scene JSON and EditorGuiInspector consume the same descriptors. JSON decoding validates the complete input before
-writing fields, rejects unknown keys/type errors and fills missing fields from C++ defaults. Numeric UI ranges are
-hints; apply an edited settings value through the scene setter to validate semantic relationships and mark changes.
-The Inspector does not own the edited object. Current descriptors cover value settings, not arbitrary Node factories,
-script-class metadata, persistent references or variable-length property arrays.
-
-The existing libclang IR also generates safe C# camera/light/environment/material value records, native defaults,
-color-vector grouping and conversion to the generated C ABI PODs. `VultraValues.g.cs` contains no unsafe code;
-`VultraBindings.g.cs` remains private interop. Native defaults are used by `new SettingsType()`; CLR `default`
-still zero-initializes a value type. General node wrappers and managed reload metadata are subsequent work.
-
-## Modules and identity
-
-| Module | Responsibility |
+| Capability | Selected features |
 | --- | --- |
-| `core`, `platform` | Values, property/type contracts, diagnostics, files, windows and input. |
-| `drivers` | VRI device/resources/swapchain, profiling and OpenXR GPU integration. |
-| `assets` | CPU `SceneData`, import/cache, project manifests and stable asset IDs. |
-| `servers` | RenderGraph, GPU scene ownership and `RenderingServer` RIDs. |
-| `scene` | Optional Node/Resource tree, runtime `ObjectId` and persistent node IDs. |
-| `ui`, `main` | EditorGui/VGui and the application frame lifecycle. |
-| `api` | Generated C UI/scene/experiment tables, language layouts and Inspector adapters. |
-| `scripting` | Optional native, Lua and C# host, linked as `vultra-scripting`. |
+| Basic values/diagnostics | `foundation`, with optional `math`, `json`, `properties`, `image` and image I/O/metrics. |
+| GPU and desktop | `gpu`; add `window`/`input`, `swapchain`/`desktop`, `capture` or `xr` as needed. |
+| Graph and shaders | `graph`/`graph_json`, native `shader`, `blit`, typed `material_values` and `game_shader`. |
+| Assets and rendering | Byte `asset_source`, `project`/`resource_pack`, CPU asset values/import, `rendering` and camera controls. |
+| Engine world | `world` for CPU ECS/authoring; `scene_rendering` adds render extraction, `asset_export` adds cooking/export. |
+| UI and scripts | Independent `editor_gui`/`vgui`, scene/UI ABI domains and Native/Lua/C# hosts. |
 
-A RenderGraph resource is valid only inside its graph. A server RID identifies a live GPU resource in one rendering context; it is never serialized. `ObjectId` identifies a live scene object, while VPKs persist separate asset and node IDs. `RuntimeContext` owns Window, Device, Swapchain/Frame and RenderingServer in dependency order. The packaged renderer bakes mesh geometry, updates GPU instance transforms after script callbacks, and rebuilds geometry after mesh membership or model changes at a completed-frame boundary. Scripted group/mesh creation and reparenting use the same scene tree; reparenting preserves local transforms. Camera/light nodes remain CPU-owned by the tree. A reused `SceneRenderState` resolves their global transforms and selected camera into frame data consumed by both renderer paths, without rebuilding geometry or graphs. Scene-owned material resources persist by stable asset ID; mesh overrides resolve into per-instance numeric slots while retaining imported texture bindings. Their changes synchronize existing constants after GPU completion without reuploading geometry. Removing a resource clears references and invalidates its runtime handle. An explicitly selected non-spatial EnvironmentNode owns CPU HDR asset/intensity settings. Source changes replace preprocessed lighting at a completed-frame boundary while retaining the renderer and graph; scalar intensity changes reuse textures. Camera/light/material/environment value layouts and C wrappers are generated from the same annotated declarations. Direct C++ renderers can bypass the scene tree or pass an explicit light span to the renderer.
+`interactive`, `engine`, `research`, `runtime`, `editor` and `scripting` are convenience unions.
+`engine` needs no window/VM/UI. `runtime` adds desktop, VGui, common script hosting and builtin resources;
+language adapters and debug UI remain explicit. `editor` selects the current research workbench, not a completed
+gameplay editor. Research tools and stereo have their own selectors.
 
-SceneTree owns per-domain `SceneChanges` revisions; attached nodes/resources borrow stable notification storage that survives tree moves. Detached subtrees stop notifying the former tree. Consumers keep independent revision snapshots, so synchronization never drains events. `SceneGpuSync` applies transforms/materials to one upload, matching mesh ranges by persistent node ID; `SceneRenderState` refreshes camera/light data only for relevant changes or a new extent. Structure revisions also invalidate dependent selection/state. Failed synchronization does not advance its cursor. Runtime, Research and the workbench share these helpers at completed-frame boundaries. Geometry membership/model changes require reimport; plain reparenting does not. Revisions are process-local and stay out of version-1 scene documents.
+[scripts/build_features.lua](../scripts/build_features.lua) owns the dependency closure;
+[examples/selection.lua](../examples/selection.lua) owns example requirements.
+VGui, scripting and research use opt-in companion libraries against the same selected core.
+No consumer builds another hidden core with different public layouts. Commands live in [BUILD.md](../BUILD.md).
 
-## Extension and script boundary
+## Source ownership
 
-The editor's SceneInspector retains only object IDs and resolves tree/resource ownership each frame. Its containers, transforms and asset references are explicit C++; numeric camera/light/environment/material rows are generated alongside RenderSettings from the same annotated declarations and libclang IR. They edit value snapshots and commit through scene setters. Context-owned property drawers can customize these rows without a global registry. Pending HDR selection is scoped to a scene root's runtime ID and applied at frame completion; scene replacement cancels old operations. Transform deltas retain shear/signed scale. The Inspector remains editor code and does not add a scene dependency to the GUI layer or a second binding pipeline.
+Each `source/<module>` owns `include/vultra/<module>` and `src`. Public includes remain `<vultra/...>`.
+Directory ownership and build selection are separate.
 
-The research frontend uses the context-owned `PassCatalog` and version-1 `GraphDefinition` to compile project passes into the existing RenderGraph. The Research compute example verifies the same pass through direct C++ and JSON connections. `vultra-app` owns the editing draft separately from the active scene and graph: it compiles a candidate before retiring GUI texture descriptors and replacing the graph at a completed-frame boundary. Failed edits keep the active graph and renderer settings. Pass and material parameter changes reuse GPU state; project or changed scene snapshots stage a new scene. Saved workspaces embed current SceneTree state while project assets remain external, so edited materials survive reopening without modifying source project scenes. The same panel and VRI GUI renderer support an offline UI capture without a window. The editor target remains separate from the library/player. Broader built-in pass contracts, Python and the reference path tracer follow the [research milestones](research_milestones.md).
+Principal dependencies are shown below; arrows point toward the dependency. Dashed edges apply only to selected
+adapters/consumers. A CPU world has no GPU dependency until scene rendering is selected.
 
-The binding direction is annotated C++ API → deterministic IR → versioned C ABI → language-specific author API. The C boundary passes fixed-width values, borrowed callback-scoped scene/UI frames and status codes; it does not pass C++ or ImGui objects. Native C plugins can use that boundary directly. Ordinary C++ applications do not need the script host.
+```mermaid
+flowchart BT
+    Core["core"]
+    Platform["platform"]
+    Drivers["drivers / VRI"]
+    Assets["assets / CPU data"]
+    Servers["servers / graph and renderer"]
+    Scene["scene / CPU ECS world"]
+    UI["ui / EditorGui and VGui"]
+    Main["main / desktop lifecycle"]
+    API["api and scripting"]
+    Research["extensions/research / rendering sessions"]
+    Apps["examples / tools / runtime / editor"]
 
-A `VultraExtension` is a project-declared native library with load, update, GUI and stop callbacks. It is independent of scene nodes. A native C++ script is a class instance attached to a persistent node ID; an extension can register several such classes and the host loads their library once. This follows the separation between Godot's [GDExtension C boundary](https://docs.godotengine.org/en/4.4/tutorials/scripting/gdextension/gdextension_cpp_example.html) and [node scripting model](https://docs.godotengine.org/en/stable/getting_started/step_by_step/scripting_first_script.html). Lua modules also attach to nodes, using a script table with `_ready`, `_process`, `_editor_gui` and `_exit_tree` methods; Lua remains Lua, not a GDScript interpreter.
+    Platform --> Core
+    Drivers --> Core
+    Drivers --> Platform
+    Assets --> Core
+    Servers --> Drivers
+    Servers --> Assets
+    Scene --> Assets
+    Scene --> Platform
+    Scene -. "scene_rendering" .-> Servers
+    UI --> Drivers
+    UI --> Platform
+    Main --> Drivers
+    Main --> Platform
+    Main -. "ImGuiApp" .-> UI
+    API -. "scene domain" .-> Scene
+    API -. "UI domain" .-> UI
+    Research --> Servers
+    Research -. "scene sessions" .-> Scene
+    Apps -. "desktop" .-> Main
+    Apps -. "languages / ABI" .-> API
+    Apps -. "research" .-> Research
+    Apps -. "direct GPU" .-> Drivers
+```
 
-C# scripts reference the safe `Vultra.Scripting` assembly, derive from `Node` or `Node3D`, and override `_Ready()`, `_Process(double)`, `_EditorGui` or `_ExitTree`. They can use inherited `Position` without `unsafe`. `Vultra.ManagedHost` handles the native entry and collectible loading; `VultraBindings.g.cs` contains internal ABI layouts. This borrows Godot's [node-subclass syntax](https://docs.godotengine.org/en/4.4/tutorials/scripting/c_sharp/c_sharp_basics.html) and its separation of [public API from native interop](https://github.com/godotengine/godot/blob/master/modules/mono/glue/GodotSharp/GodotSharp/GodotSharp.csproj), but it is an early slice: public node bindings are still handwritten, and managed node wrappers do not yet share object identity across scripts.
+| Directory | Responsibility |
+| --- | --- |
+| `core` | Diagnostics, identifiers, math/images, typed properties and basic values. |
+| `platform` | Desktop windows/input, files/processes and OS integration. |
+| `drivers` | VRI Device/resources/Swapchain, GPU profiling and XR GPU integration. |
+| `assets` | CPU model/material values, byte sources, import/cache, project manifests and package export. |
+| `servers` | RenderGraph, GPU scene ownership/RIDs, raster rendering and texture blits. |
+| `scene` | Optional ECS world, Node/Resource authoring, cameras and scene-render adapters. |
+| `ui` | EditorGui/ImGui and VGui/RmlUi integration; no editor application dependency. |
+| `main` | BaseApp/DesktopApp/ImGuiApp, desktop context and package bootstrap. |
+| `api`, `scripting` | Generated ABI domains, borrowed callback sessions and selected language adapters. |
+| `extensions/research` | Experiment sessions, reference transport, quality/reports, tracks, stereo and research SDK. |
+| `editor`, `tools`, `runtime`, `examples` | Application policy/entry points. Lower libraries do not depend on them. |
 
-Ready/start runs before the first update; scene reads and writes are valid only during ready/process. The separate GUI callback can show state and queue changes for the next update. Exit/stop has no scene frame. There is no fixed-step callback, `[Export]` persistence, generated signals or cross-language event bus. C# manifests currently name the fully qualified class. A complete binding pipeline needs two distinct generators: libclang IR for public engine API members, and a Roslyn source generator on user `partial` scripts for script paths and property/signal metadata. Godot's [script-path generator](https://github.com/godotengine/godot/blob/master/modules/mono/editor/Godot.NET.Sdk/Godot.SourceGenerators/ScriptPathAttributeGenerator.cs) illustrates the second role.
+## Ownership and frame lifecycle
 
-`ScriptHost(scene, true)` checks module files between callbacks. It stages replacement extensions and their dependent C++ script instances before stopping the old callbacks, then unloads the old library. A bad replacement leaves the old code active. Lua VMs and C# collectible contexts are replaced similarly. Lua and native script-local state resets on reload; the C# host restores supported user fields. Scene data remains owned by the host. Future callbacks that retain GPU resources will also need an explicit GPU retirement point.
+RuntimeContext hides desktop construction behind `unique_ptr<Impl>` and owns
+Window → Device → Swapchain → Frame → Profiler. Applications own optional renderers, servers and pass catalogs.
+DesktopApp keeps update, UI construction, command recording, submission, completed-frame callbacks and
+presentation distinct. UI is never constructed during update. Offline programs own their GPU services directly.
 
-## Package contract and open boundaries
+The successful acquisition path is:
 
-The runtime statically links its engine libraries and the optional Lua host. A project VPK carries its native modules, C# assemblies and assets. Offline sessions and the project runtime own an explicit `AssetSource` and read project CPU assets directly from checked VPK entries. VGui reads documents, relative stylesheets, fonts and PNGs through that same source; only script files and declared native/managed sidecars are materialized. The embedded engine-shader bootstrap still uses extracted files. C# projects also need an installed .NET 10 runtime. On Linux, system Vulkan, display-stack and libc libraries remain required, so “single executable” does not mean a fully static ELF.
+```mermaid
+sequenceDiagram
+    participant App as DesktopApp
+    participant UI as ImGuiApp / EditorGui
+    participant Swap as Swapchain
+    participant Frame as Frame / VRI
 
-Before the first public release, every serialized-data and file-structure version stays at `1`; format edits are breaking changes across writer, reader, examples and tests. The C ABI version also remains `1`; rebuild native and managed modules after breaking API changes. SDK bootstrap checks require exact table sizes. No compatibility adapters are provided. Stream-backed embedded-engine bootstrap, Lua module loading and broader resource/server/editor bindings remain open. The current `vultra-app` is a static-scene research workbench, not a complete engine editor. The optional Python adapter exposes experiment sessions and owned NumPy images; batch scene/action calls for AI simulation remain future work. [Infernux](https://infernux-engine.com/) is a reference for that use case.
+    loop Each rendered frame
+        App->>App: Poll input, pre/update/postUpdate
+        App->>Swap: acquire()
+        Swap-->>App: Target texture
+        App->>App: onResize if needed, onPreRender
+        opt ImGuiApp
+            App->>UI: begin, onImGui, upload draw data
+        end
+        App->>Frame: begin()
+        App->>App: onRender: record scene and optional GUI
+        App->>Frame: submitAndWait()
+        Frame-->>App: Submission complete
+        App->>App: onPostRender: optional readback
+        App->>Swap: present()
+        opt Detached ImGui viewports
+            App->>UI: onPostPresent: renderPlatformWindows()
+        end
+        App->>App: onFrameComplete: timings and reports
+    end
+```
 
-## Offline research ownership
+Minimized/unavailable main targets skip recording; detached ImGui windows can still update through
+`onRenderSkipped()`. Offline paths record/submit/wait without a swapchain or native UI.
 
-`ExperimentSession` belongs to the public static core and borrows a Device; it owns its scene/server, GPU upload,
-renderer, pass instances, graph, frame and profiler. Rendering is synchronous with one completed frame before the
-next update. The optional `ExperimentHost` adds scripts, context-checked session IDs and the generated experiment
-ABI. `vultra-research` owns a native Device and exposes that table to the safe Python package; Python remains outside
-the core/player. Both the batch tool and Python consume the native version-1 `ExperimentDescription` loader.
+One frame is in flight. Graphs/scene handles expire before their pass/server owners, and those expire before Device.
+CPU destruction is not GPU completion: release resources, views and cached UI textures only after their final use.
+Module unload also stops callbacks and removes borrowed descriptors/passes before releasing code.
 
-`ReferencePathTracer` composes ordinary RenderGraph passes and explicit history with the existing renderer's shared
-ToneMappingPass. It borrows the same GpuScene and Environment, retaining BLAS geometry while updating the TLAS after
-transforms. The graph must be discarded before pass/tracer owners. Camera/material/light/transform/environment/seed
-and shader changes reset accumulation. Exact-description transient reuse is opt-in; it never aliases imports,
-exports or history. See [reference rendering and diagnostics](reference_renderer.md) for the material/AOV boundary.
+| Identity | Meaning |
+| --- | --- |
+| Graph resource | Local to one graph; never persisted or retained by scripts. |
+| Server RID | Live GPU resource in one server/context; never persisted. |
+| ObjectId | Live CPU object in one world; foreign/retired references are rejected. |
+| Asset/node ID | Stable authored identity stored in project/scene/package documents. |
+
+## GPU, graph and rendering
+
+Use VRI descriptors/commands directly; do not reinterpret its handles as Vulkan objects or add another RHI.
+CPU/shader layouts, resource states, color spaces, projection/depth and UV conventions follow verified VRI and
+shader contracts. Native interop remains inside declared platform/XR/plugin boundaries.
+
+RenderGraph supports imports, transients, explicit history and exports. `addPass()` remains the direct C++ path.
+PassDefinition adds stable type names, typed ports, numeric parameters, extent/format constraints and capability
+requirements. PassCatalog starts empty; a caller explicitly installs builtin/project definitions.
+Version-1 JSON `.vgraph` connections compile to that same executor and reject invalid graphs before GPU recording.
+
+History is graph-owned and explicitly reset by its caller. Optional transient reuse shares whole VRI resources
+only for identical descriptions and disjoint active lifetimes; imports/exports/history are excluded.
+The reused plan is immutable. The current executor uses one graphics queue.
+
+SceneData → GpuScene → BuiltinRenderer works without SceneTree. RenderingServer offers the same upload/render
+implementation through owned, move-only handles and checked RIDs, with GPU-complete retirement.
+The raster paths are NaiveDeferred and NaiveForward, with the current opaque OpenPBR subset, IBL and shadows.
+Task/mesh shaders, ray queries and ray pipelines require explicit device capabilities, without silent emulation.
+
+## Shaders and assets
+
+Native `.slang` exposes compilation/reflection/cooking without game metadata. Game `.vshader` adds typed material
+properties, named variants, Surface templates and explicit passes; ANTLR belongs only to this selected path.
+A scoped compiler reuses module IR/program caches; Device owns VRI pipeline caches.
+Cooked `.vshaderc` programs support source-free delivery. Failed reload retains the last valid shader/pipeline.
+
+CPU SceneData/material/texture values own no GPU resources. Import preserves source files and caches derived data
+under `.vultra/assets/`, validating actual source/dependency hashes. Static glTF/GLB, OBJ and FBX geometry and
+material textures are supported; skinning, morphs, animation and blended transparency remain outside this importer.
+AssetSource supplies filesystem or checked VPK entry bytes. Persistent references use asset/node IDs, never RIDs.
+
+## World, objects and properties
+
+SceneTree owns authoritative EnTT identity/hierarchy/lifecycle, transforms and render components.
+Attached Node facades retain a world/entity locator; detached subtrees own staging values.
+Native systems can query custom components and runtime-only entities without Node wrappers. No per-frame
+Node-to-ECS copy exists. GPU/render data is derived from independent SceneChanges revisions; transform/light/material
+edits reuse geometry, while topology/model changes require safe reimport.
+
+```mermaid
+flowchart LR
+    API["Node / script API"] -->|"Validated edits"| World["SceneTree / EnTT"]
+    World -->|"Components and revisions"| Sync["SceneGpuSync / SceneRenderState"]
+    Sync -->|"Transforms / materials"| GPU["GpuScene: direct or server-owned"]
+    Sync -->|"Camera / lights / environment"| Renderer["BuiltinRenderer"]
+    Assets["CPU SceneData / ImportedAsset"] -->|"Upload"| GPU
+    Direct["Direct C++ rendering"] -->|"Own / update"| GPU
+    GPU --> Renderer
+    Renderer --> Graph["RenderGraph"]
+    Graph --> VRI["VRI commands"]
+```
+
+The world owns CPU state; GPU scenes and render constants are derived data. The direct C++ route can upload
+assets and record rendering without constructing a world.
+
+Node is non-spatial; Node3D adds affine transforms. A plain direct parent breaks spatial inheritance.
+Authoring `owner` is an ancestor reference distinct from parent/lifetime ownership.
+Reparenting preserves world transforms by default. Resources and script instances have separate owners.
+
+Enter is parent-first; Ready is children-first and runs once; Exit is children-first with reverse sibling order.
+A 60 Hz fixed clock, variable process, pause/step/time scale, stable priorities and deferred FIFO structural changes
+share one execution path. Failed process/deferred operations stop and report errors. GUI construction is separate.
+World InputMap actions preserve ordered input and fixed-tick edges; general scene input/signal routing is pending.
+
+Typed descriptors drive Inspector, JSON and bindings; semantic setters still validate writes and notify revisions.
+Type/property catalogs belong to contexts, with borrowed registration records/code kept alive.
+Snapshot persistence uses explicit Node/type codecs and rejects runtime-only entities rather than silently losing them.
+
+## Bindings and scripting
+
+One pipeline: annotated C++ → libclang IR → reflection/C ABI → language APIs.
+Checked-in generated output keeps normal builds independent of Python/libclang.
+
+```mermaid
+flowchart LR
+    subgraph Generation["Development: one generator"]
+        CPP["Annotated C++"] -->|"libclang"| IR["Deterministic IR"]
+        IR --> Properties["Property descriptors"]
+        IR --> Wrappers["C headers / wrappers"]
+        IR --> Values["Language layouts / marshaling"]
+    end
+    subgraph Runtime["Runtime: shared object semantics"]
+        Native["Native C / C++ SDK"] --> ABI["Version-1 domain tables"]
+        Lua["Lua host"] --> ABI
+        Managed["C# host: safe public API"] --> ABI
+        ABI --> Context["Explicit host context: scene / UI"]
+    end
+    Wrappers -. "Implements" .-> ABI
+    Values -. "Consumed by" .-> Lua
+    Values -. "Consumed by" .-> Managed
+    Properties -. "Used by" .-> Context
+```
+
+Version-1 function tables require exact `struct_size`; fixed-width PODs, UTF-8 pointer/length strings and
+callback-scoped opaque borrows cross the boundary. C++ classes, exceptions and ImGui types do not.
+
+Native extensions consume the header-only SDK without linking another core. Native C++ scripts use the script
+adapter and its entry macro; ordinary C++ applications may call the library directly.
+Lua and safe C# author APIs share world identity and enter/ready/fixed/process/exit semantics.
+Unsafe managed interop stays internal; .NET 10 hosting is optional. Absent UI domains are null.
+
+Replacement stages new code/state before stopping old callbacks; failure preserves active code.
+Native/Lua local fields currently reset on reload. Managed field restoration does not yet provide a common
+export schema or restore script-instance references. Arbitrary native extension unload with live C++ objects is invalid.
+
+## UI and applications
+
+EditorGui wraps upstream Dear ImGui with frame/window/layout and left-label/right-control Inspector rows.
+The GUI context owns property drawers; callback data/code must survive registration and active frames.
+VGui wraps RmlUi for authored game documents and embedded PNG control skins.
+The current backend lacks advanced transforms, clip masks, layers and effects. Layouts are isolated by AppName.
+
+The workbench owns authored scene/graph/workspace documents. Valid candidates replace active GPU state only at
+frame completion; failed edits keep the preceding valid graph. Numeric drag changes affect the next frame.
+Undo, scene instancing and an independent Play world remain roadmap work; the current app is a research frontend.
+
+## Research and delivery
+
+Optional ExperimentSession borrows Device and owns scene/server, renderer, pass/graph, Frame and Profiler.
+Batch and Python consume this same session; fixed-step scripts run before rendering, with no GUI callbacks/reload.
+Owned NumPy readbacks survive host/session closure. The host is thread-affine; concurrent scans use processes.
+
+Reference transport uses VRI ray queries and ordinary graph history/AOVs. It samples the declared opaque material
+subset, analytic/emissive/environment lights with MIS; current texture filtering is bilinear mip zero.
+Radiance/albedo/normal/depth/motion/sample/ray counts are marked outputs. Depth is positive view depth (miss zero);
+motion is previous minus current unjittered pixel position, top-left origin. Relevant camera/scene/seed/shader changes
+reset accumulation. PNG is display output; PFM/NumPy retain linear/signed values. Same-device determinism is tested.
+Environment sampling follows [PBRT's infinite-area light model](https://pbr-book.org/4ed/Light_Sources/Infinite_Area_Lights).
+
+Reports associate build/device/input/shader identifiers, graph parameters, images/resources/producers and nested
+CPU/GPU timings. Workbench previews/probes map separate textures and never overwrite raw experiment data.
+Ordinary batch/workbench UI capture is offline; tracked stereo projects still require desktop/XR.
+[Research sources](../extensions/research/README.md) contain the reusable extension entry points.
+
+ProjectManifest owns extension JSON metadata; extensions interpret their keys. Project, scene, graph, workspace,
+experiment, cache, shader-package, VPK and ABI version fields stay `1` before release. Breaking changes update
+writers/readers/bindings/examples/tests together; no compatibility readers or migration paths.
+Checked examples define the current document shapes: [project](../resources/research.vproject),
+[scene](../resources/scenes/research.vscene) and [graph](../examples/research/color_gain.vgraph).
+
+The base player embeds engine resources and reads external or appended VPKs. Export uses built APIs/tools without
+xmake. Scene/model/HDR/UI/game-shader entries can be read directly; engine shader bootstrap still uses temporary
+files, and native/managed modules are materialized selectively. Static engine/Lua does not imply a fully static
+Linux executable: system graphics/display/libc remain dependencies. Native plugins/C# have explicit sidecars/runtime
+requirements. Python/research/editor code does not enter the base player.
+
+Remaining gates and optional servers/vendor plugins are in [roadmap.md](roadmap.md).
+[Mainframe](https://github.com/Mainframe-Games/mainframe-engine/tree/2fcdb6c4f4d1760f0aab60bd1f687574b252f293)
+informs engine organization; [Falcor](https://github.com/NVIDIAGameWorks/Falcor/blob/master/docs/getting-started.md)
+informs research workflow. Neither reference is an imported implementation.

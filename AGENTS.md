@@ -53,7 +53,7 @@ An explicit user request may change a corresponding constraint. An agent must no
 
 ## 7. Workflow and Verification
 
-- Read relevant implementations, callers and documented contracts, and inspect workspace changes before editing. Do not guess APIs from their names. Platform scope, build commands and limitations are documented in the [README](README.md) and [development guide](docs/guide.md).
+- Read relevant implementations, callers and documented contracts, and inspect workspace changes before editing. Do not guess APIs from their names. Platform scope, build commands and limitations are documented in [BUILD.md](BUILD.md) and the [architecture](docs/architecture.md); the [README](README.md) provides the entry points.
 - Update affected callers, examples and necessary documentation when changing an API. Do not disable examples, weaken assertions, relax image-error thresholds or suppress diagnostics to make checks pass.
 - Build affected targets and run formatting and clang-tidy checks on modified project code. Tests should establish observable behavior or a real regression, not mechanically duplicate the implementation. Do not launch GPU tests for documentation-only changes.
 - Rendering changes require finite-frame runs, GPU diagnostic checks and relevant image readback. Persistence and hot-reload changes need failure/recovery coverage. Compilation or a successful exit code alone does not prove correct rendering.
