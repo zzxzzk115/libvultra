@@ -1,9 +1,9 @@
 #include "window_events.hpp"
 
 #include <vultra/core/base/logger.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/drivers/rhi/swapchain.hpp>
 #include <vultra/platform/window.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/ui/editor_gui.hpp>
 
 #include <chrono>

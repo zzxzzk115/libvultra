@@ -7,6 +7,10 @@
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
 #include <vultra/ui/vgui.hpp>
 
+#ifdef VULTRA_VGUI_WINDOW
+#include <vultra/platform/os/window.hpp>
+#endif
+
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/ElementText.h>
 #include <RmlUi/Core/Elements/ElementFormControl.h>
@@ -298,8 +302,8 @@ namespace vultra
                     makeBuffer(vertices.data(), vertices.size() * sizeof(Rml::Vertex), VriBufferUsage_VertexBuffer);
                 std::vector<uint32_t> unsignedIndices(indices.begin(), indices.end());
                 geometry->indices    = makeBuffer(unsignedIndices.data(),
-                                               unsignedIndices.size() * sizeof(uint32_t),
-                                               VriBufferUsage_IndexBuffer);
+                                                  unsignedIndices.size() * sizeof(uint32_t),
+                                                  VriBufferUsage_IndexBuffer);
                 geometry->indexCount = uint32_t(indices.size());
                 auto* pointer        = geometry.get();
                 m_Geometries.emplace(pointer, std::move(geometry));
@@ -704,6 +708,7 @@ namespace vultra
         {
             Rml::RemoveContext(name);
             listeners.clear();
+#ifdef VULTRA_VGUI_WINDOW
             if (textInputActive && window)
             {
                 try
@@ -715,6 +720,7 @@ namespace vultra
                     Logger::app().error("Stop VGUI text input: {}", error.what());
                 }
             }
+#endif
             Rml::Shutdown();
         }
 
@@ -730,10 +736,17 @@ namespace vultra
         bool                                        textInputActive = false;
     };
 
+#ifdef VULTRA_VGUI_WINDOW
     VGui::VGui(Device& device, Window& window, VriFormat targetFormat, const AssetSource* source) :
         m_Impl(std::make_unique<Impl>(device, &window, window.size(), targetFormat, source))
     {
     }
+#else
+    VGui::VGui(Device&, Window&, VriFormat, const AssetSource*)
+    {
+        throw std::invalid_argument("Window-backed VGui requires the window feature");
+    }
+#endif
 
     VGui::VGui(Device& device, Extent size, VriFormat targetFormat, const AssetSource* source) :
         m_Impl(std::make_unique<Impl>(device, nullptr, size, targetFormat, source))
@@ -894,7 +907,13 @@ namespace vultra
 
     void VGui::update(const Input& input, Extent framebuffer)
     {
-        const auto size = m_Impl->window ? m_Impl->window->size() : framebuffer;
+        auto size = framebuffer;
+#ifdef VULTRA_VGUI_WINDOW
+        if (m_Impl->window)
+        {
+            size = m_Impl->window->size();
+        }
+#endif
         if (size.empty() || framebuffer.empty())
         {
             return;
@@ -949,10 +968,12 @@ namespace vultra
         m_Impl->capture.keyboard = focused && focused != m_Impl->document;
         if (textFocused != m_Impl->textInputActive)
         {
+#ifdef VULTRA_VGUI_WINDOW
             if (m_Impl->window)
             {
                 m_Impl->window->setTextInputEnabled(textFocused);
             }
+#endif
             m_Impl->textInputActive = textFocused;
         }
         m_Impl->renderer.beginFrame(logical, framebuffer);

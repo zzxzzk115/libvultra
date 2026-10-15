@@ -1,6 +1,7 @@
 #include "script_module.hpp"
 
 #include <vultra/api/plugin_session.hpp>
+#include <vultra/scene/scene_tree.hpp>
 
 #include <cstdio>
 #include <cstdlib>
@@ -228,6 +229,9 @@ namespace vultra
             const char* typeName;
             uint64_t    typeNameSize;
             uint64_t    nodeId;
+            const char* nodeType;
+            uint64_t    nodeTypeSize;
+            void*       peer;
             void*       previous;
             void*       instance;
         };
@@ -240,7 +244,8 @@ namespace vultra
                          ObjectId                     node,
                          std::string_view             typeName,
                          const DotNetScript*          previous,
-                         const ProjectManifest*       project)
+                         const ProjectManifest*       project,
+                         const DotNetScript*          peer)
             {
                 const auto bridge = std::filesystem::absolute(path).parent_path() / "Vultra.ManagedHost.dll";
                 if (!std::filesystem::is_regular_file(bridge))
@@ -255,11 +260,15 @@ namespace vultra
                 const auto         config     = std::filesystem::path(bridge).replace_extension(".runtimeconfig.json");
                 const auto         initialize = dotNetRuntime(config).entry(bridge);
                 const auto         assembly   = std::filesystem::absolute(path).u8string();
+                const auto         nativeType = scene.find(node)->typeName();
                 ManagedLoadRequest request {reinterpret_cast<const char*>(assembly.data()),
                                             assembly.size(),
                                             typeName.data(),
                                             typeName.size(),
                                             node.value,
+                                            nativeType.data(),
+                                            nativeType.size(),
+                                            peer ? peer->m_State : nullptr,
                                             previous ? previous->m_State : nullptr,
                                             nullptr};
                 m_Session = std::make_unique<PluginSession>(initialize, &scene, &request, nullptr, project);
@@ -269,6 +278,11 @@ namespace vultra
             void update(float deltaSeconds) override
             {
                 m_Session->update(deltaSeconds);
+            }
+
+            void notify(VultraSceneEvent event, float deltaSeconds) override
+            {
+                m_Session->notify(event, deltaSeconds);
             }
 
             void gui(EditorGui& gui) override
@@ -292,13 +306,15 @@ namespace vultra
                                                      ObjectId                     node,
                                                      std::string_view             typeName,
                                                      const ScriptInstance*        previous,
-                                                     const ProjectManifest*       project)
+                                                     const ProjectManifest*       project,
+                                                     const ScriptInstance*        peer)
     {
         return std::make_unique<DotNetScript>(path,
                                               scene,
                                               node,
                                               typeName,
                                               static_cast<const DotNetScript*>(previous),
-                                              project);
+                                              project,
+                                              static_cast<const DotNetScript*>(peer));
     }
 } // namespace vultra

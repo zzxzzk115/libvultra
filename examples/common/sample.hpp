@@ -2,8 +2,7 @@
 
 #include <vultra/core/base/command_line.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/main/app/desktop_app.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 
 #include <filesystem>
 #include <optional>

@@ -1,4 +1,5 @@
 #include <vultra/core/base/logger.hpp>
+#include <vultra/scene/render_components.hpp>
 #include <vultra/scene/scene_shader_materials.hpp>
 #include <vultra/servers/rendering/shader_runtime.hpp>
 #include <vultra/servers/rendering/texture_upload.hpp>
@@ -226,8 +227,8 @@ namespace vultra
         std::map<uint32_t, ShaderMaterial*> slots;
         for (const auto& instance : instances)
         {
-            const auto& mesh = static_cast<const MeshInstanceNode&>(*tree.find(instance.node));
-            for (const auto& override : mesh.materialOverrides())
+            const auto& mesh = tree.registry().get<SceneMesh>(tree.entity(instance.node));
+            for (const auto& override : mesh.materials)
             {
                 const auto& resource = *tree.findMaterial(override.material);
                 if (resource.kind() == MaterialResource::Kind::eShader)

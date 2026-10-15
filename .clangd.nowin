@@ -1,4 +1,4 @@
 If:
-  PathMatch: (source|examples|tests)/.*
+  PathMatch: (source|extensions|editor|tools|runtime|examples|tests)/.*\.(cpp|hpp|cc|cxx|hxx)$
 CompileFlags:
   Add: ['-std=c++23']

@@ -32,7 +32,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.baseRed;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"baseGreen",
              "Base green",
              "MaterialParameters.baseGreen",
@@ -57,7 +61,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.baseGreen;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"baseBlue",
              "Base blue",
              "MaterialParameters.baseBlue",
@@ -82,7 +90,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.baseBlue;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"baseAlpha",
              "Base alpha",
              "MaterialParameters.baseAlpha",
@@ -107,7 +119,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.baseAlpha;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"baseWeight",
              "Base weight",
              "MaterialParameters.baseWeight",
@@ -132,7 +148,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.baseWeight;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"baseMetalness",
              "Metalness",
              "MaterialParameters.baseMetalness",
@@ -157,7 +177,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.baseMetalness;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"baseDiffuseRoughness",
              "Diffuse roughness",
              "MaterialParameters.baseDiffuseRoughness",
@@ -182,7 +206,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.baseDiffuseRoughness;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"specularWeight",
              "Specular weight",
              "MaterialParameters.specularWeight",
@@ -207,7 +235,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.specularWeight;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"specularRed",
              "Specular red",
              "MaterialParameters.specularRed",
@@ -232,7 +264,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.specularRed;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"specularGreen",
              "Specular green",
              "MaterialParameters.specularGreen",
@@ -257,7 +293,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.specularGreen;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"specularBlue",
              "Specular blue",
              "MaterialParameters.specularBlue",
@@ -282,7 +322,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.specularBlue;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"specularRoughness",
              "Roughness",
              "MaterialParameters.specularRoughness",
@@ -307,7 +351,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.specularRoughness;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"specularIor",
              "Specular IOR",
              "MaterialParameters.specularIor",
@@ -332,7 +380,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.specularIor;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"coatWeight",
              "Coat weight",
              "MaterialParameters.coatWeight",
@@ -357,7 +409,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.coatWeight;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"coatRoughness",
              "Coat roughness",
              "MaterialParameters.coatRoughness",
@@ -382,7 +438,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.coatRoughness;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"coatIor",
              "Coat IOR",
              "MaterialParameters.coatIor",
@@ -407,7 +467,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.coatIor;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"emissionRed",
              "Emission red",
              "MaterialParameters.emissionRed",
@@ -432,7 +496,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.emissionRed;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"emissionGreen",
              "Emission green",
              "MaterialParameters.emissionGreen",
@@ -457,7 +525,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.emissionGreen;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"emissionBlue",
              "Emission blue",
              "MaterialParameters.emissionBlue",
@@ -482,7 +554,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.emissionBlue;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"emissionLuminance",
              "Emission luminance",
              "MaterialParameters.emissionLuminance",
@@ -507,7 +583,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.emissionLuminance;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"normalScale",
              "Normal scale",
              "MaterialParameters.normalScale",
@@ -532,7 +612,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.normalScale;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"occlusionStrength",
              "Occlusion strength",
              "MaterialParameters.occlusionStrength",
@@ -557,7 +641,11 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.occlusionStrength;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
             {"alphaCutoff",
              "Alpha cutoff",
              "MaterialParameters.alphaCutoff",
@@ -582,9 +670,13 @@ namespace vultra
              []() -> PropertyValue
              {
                  return MaterialParameters {}.alphaCutoff;
-             }},
+             },
+             PropertyKind::eFloat,
+             ObjectCategory::eResource,
+             nullptr,
+             true},
         }};
-        static const ObjectTypeInfo               type       = {"MaterialParameters", properties};
+        static const ObjectTypeInfo type = {"MaterialParameters", properties, nullptr, ObjectCategory::eValue};
         return type;
     }
 

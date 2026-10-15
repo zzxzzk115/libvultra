@@ -1,68 +1,15 @@
 #pragma once
 
-#include <vultra/assets/project_manifest.hpp>
+#include <vultra/assets/material_instance.hpp>
 #include <vultra/drivers/rhi/shader_program.hpp>
 
 #include <array>
 #include <functional>
 #include <map>
 #include <optional>
-#include <variant>
 
 namespace vultra
 {
-    enum class ShaderPropertyType
-    {
-        eFloat,
-        eRange,
-        eInteger,
-        eBoolean,
-        eVector,
-        eColor,
-        eTexture2D,
-        eTexture2DArray,
-        eTexture3D,
-        eTextureCube,
-        eTextureCubeArray
-    };
-
-    struct ShaderTextureValue
-    {
-        AssetId              asset {};
-        std::string          builtin;
-        std::array<float, 4> scaleOffset {1, 1, 0, 0};
-        friend bool          operator==(const ShaderTextureValue&, const ShaderTextureValue&) = default;
-    };
-
-    using ShaderPropertyValue = std::variant<float, int32_t, bool, std::array<float, 4>, ShaderTextureValue>;
-
-    struct ShaderSourceLocation
-    {
-        std::filesystem::path file;
-        uint32_t              line   = 1;
-        uint32_t              column = 1;
-        std::string           describe() const;
-    };
-
-    struct ShaderProperty
-    {
-        std::string                                  name;
-        std::string                                  label;
-        ShaderPropertyType                           type          = ShaderPropertyType::eFloat;
-        ShaderPropertyValue                          defaultValue  = 0.0f;
-        bool                                         hdr           = false;
-        bool                                         normal        = false;
-        bool                                         srgb          = false;
-        bool                                         hidden        = false;
-        bool                                         noScaleOffset = false;
-        double                                       minimum       = 0;
-        double                                       maximum       = 1;
-        std::vector<std::pair<std::string, int32_t>> enumeration;
-        ShaderSourceLocation                         location;
-        bool                                         isTexture() const;
-        void                                         validate(const ShaderPropertyValue& value) const;
-    };
-
     struct ShaderStateValue
     {
         std::string value;
@@ -181,27 +128,4 @@ namespace vultra
         std::string                         generatedPassSource(uint32_t subshader, uint32_t pass) const;
     };
 
-    // Serializable CPU overrides. Setters use the selected asset's property definitions.
-    class MaterialInstance
-    {
-    public:
-        AssetId                                                        shader {};
-        std::string                                                    variant = "Default";
-        const std::map<std::string, ShaderPropertyValue, std::less<>>& overrides() const;
-        ShaderPropertyValue value(const ShaderAsset& asset, std::string_view name) const;
-        void                set(const ShaderAsset& asset, std::string_view name, ShaderPropertyValue value);
-        void                reset(std::string_view name);
-        void                setVariant(const ShaderAsset& asset, std::string value);
-        void                validate(const ShaderAsset& asset) const;
-        void                assign(const ShaderAsset& asset, const MaterialInstance& source);
-        void     reconcile(const ShaderAsset& previous, const ShaderAsset& candidate, std::string& diagnostics);
-        uint64_t revision() const;
-        std::vector<std::byte>  uniformData(const ShaderAsset& asset, const ShaderProgram& program) const;
-        std::string             serialize() const;
-        static MaterialInstance parse(std::string_view text);
-
-    private:
-        std::map<std::string, ShaderPropertyValue, std::less<>> m_Overrides;
-        uint64_t                                                m_Revision = 0;
-    };
 } // namespace vultra

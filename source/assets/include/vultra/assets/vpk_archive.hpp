@@ -1,17 +1,22 @@
 #pragma once
 
-#include <vultra/drivers/rhi/shader_program.hpp>
-
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace vultra
 {
+    struct VpkFile
+    {
+        std::string           path; // Canonical relative UTF-8 entry name.
+        std::filesystem::path source;
+    };
+
     // Versioned, uncompressed project package. Paths are project-relative UTF-8.
     class VpkArchive
     {
@@ -25,13 +30,11 @@ namespace vultra
         std::vector<std::byte> read(std::string_view path) const;
         void                   extractTo(const std::filesystem::path& directory) const;
 
-        static void packProject(const std::filesystem::path& projectFile,
-                                const std::filesystem::path& output,
-                                const ShaderCompileOptions&  shaders = {});
-        static void packBuiltins(const std::filesystem::path& engineRoot, const std::filesystem::path& output);
-        static void embedProject(const std::filesystem::path& executable,
-                                 const std::filesystem::path& projectPack,
-                                 const std::filesystem::path& output);
+        // Packs explicit files without interpreting their contents. Output must be a new path.
+        static void                      pack(std::span<const VpkFile> files, const std::filesystem::path& output);
+        static void                      embedProject(const std::filesystem::path& executable,
+                                                      const std::filesystem::path& projectPack,
+                                                      const std::filesystem::path& output);
         static std::optional<VpkArchive> embeddedProject(const std::filesystem::path& executable);
 
     private:

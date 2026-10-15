@@ -7,7 +7,7 @@ namespace
     class LightingController final : public NativeScript
     {
     public:
-        void onStart() override
+        void onReady() override
         {
             auto light = actor().createLightChild("Script light", LightKind::ePoint);
             light.setPosition({0, 0, 2});
@@ -29,7 +29,7 @@ namespace
             environment.makeEnvironmentCurrent();
         }
 
-        void onUpdate(float deltaSeconds) override
+        void onProcess(float deltaSeconds) override
         {
             auto light         = actor().child(1);
             auto settings      = light.lightSettings();

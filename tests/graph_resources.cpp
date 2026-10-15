@@ -1,5 +1,5 @@
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/servers/rendering/graph/render_graph.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 
 #include <array>
 #include <iostream>

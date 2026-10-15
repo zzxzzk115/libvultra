@@ -1,6 +1,7 @@
 #pragma once
 
-#include <vultra/servers/rendering/scene.hpp>
+#include <vultra/assets/scene_data.hpp>
+#include <vultra/drivers/rhi/resources.hpp>
 
 #include <vri/ext/vri_ext_raytracing.h>
 

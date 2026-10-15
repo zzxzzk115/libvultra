@@ -1,11 +1,15 @@
 #include "script_module.hpp"
 
 #include <vultra/api/scene_bridge.hpp>
+#ifdef VULTRA_SCRIPT_GUI
 #include <vultra/api/ui_bridge.hpp>
+#include <vultra/ui/editor_gui.hpp>
+#endif
 #include <vultra/core/base/logger.hpp>
 #include <vultra/scene/scene_tree.hpp>
 #include <vultra/scripting/lua_values.generated.hpp>
-#include <vultra/ui/editor_gui.hpp>
+
+#include <nlohmann/json.hpp>
 
 extern "C"
 {
@@ -14,6 +18,7 @@ extern "C"
 #include <lualib.h>
 }
 
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -47,9 +52,26 @@ namespace vultra
                     bind("child_count", childCount);
                     bind("child_id", childId);
                     bind("node_name", nodeName);
+                    bind("get_property", getProperty);
+                    bind("set_property", setProperty);
+                    lua_pushlightuserdata(m_State, nullptr);
+                    lua_setfield(m_State, -2, "null");
+                    bind("node_type", nodeType);
+                    bind("node_parent_id", nodeParentId);
+                    bind("node_owner_id", nodeOwnerId);
+                    bind("set_node_owner", setNodeOwner);
+                    bind("node_execution", nodeExecution);
+                    bind("set_node_process_mode", setNodeProcessMode);
+                    bind("set_node_process_priority", setNodeProcessPriority);
+                    bind("queue_free", queueFree);
+                    bind("execution", execution);
+                    bind("action", actionState);
+                    bind("set_paused", setPaused);
+                    bind("set_time_scale", setTimeScale);
                     bind("node_translation", nodeTranslation);
                     bind("set_node_translation", setNodeTranslation);
                     bind("create_node", createNode);
+                    bind("create_node3d", createNode3D);
                     bind("create_mesh", createMesh);
                     bind("reparent_node", reparentNode);
                     bind("duplicate_mesh", duplicateMesh);
@@ -124,12 +146,7 @@ namespace vultra
                 m_SceneFrame    = {&m_Access, m_Access.serial};
                 try
                 {
-                    if (!m_Ready)
-                    {
-                        call("_ready", false);
-                        m_Ready = true;
-                    }
-                    call("_process", true, deltaSeconds);
+                    call("_process", false, deltaSeconds);
                 }
                 catch (...)
                 {
@@ -143,6 +160,7 @@ namespace vultra
 
             void gui(EditorGui& gui) override
             {
+#ifdef VULTRA_SCRIPT_GUI
                 if (!gui.frameActive())
                 {
                     throw std::logic_error("Lua UI requires an active GUI frame");
@@ -158,6 +176,46 @@ namespace vultra
                     throw;
                 }
                 m_UiFrame = {};
+#else
+                throw std::logic_error("Lua UI requires the api_ui feature");
+#endif
+            }
+
+            void notify(VultraSceneEvent event, float deltaSeconds) override
+            {
+                ++m_Access.serial;
+                m_Access.active = true;
+                m_SceneFrame    = {&m_Access, m_Access.serial};
+                try
+                {
+                    switch (event)
+                    {
+                        case VULTRA_SCENE_ENTER_TREE:
+                            call("_enter_tree", false);
+                            break;
+                        case VULTRA_SCENE_READY:
+                            call("_ready", false);
+                            break;
+                        case VULTRA_SCENE_PHYSICS_PROCESS:
+                            call("_physics_process", false, deltaSeconds);
+                            break;
+                        case VULTRA_SCENE_EXIT_TREE:
+                            call("_exit_tree", false);
+                            break;
+                        case VULTRA_SCENE_RELOADED:
+                            break;
+                        default:
+                            throw std::invalid_argument("Unknown Lua scene event");
+                    }
+                }
+                catch (...)
+                {
+                    m_Access.active = false;
+                    m_SceneFrame    = {};
+                    throw;
+                }
+                m_Access.active = false;
+                m_SceneFrame    = {};
             }
 
             void stop() noexcept override
@@ -169,17 +227,6 @@ namespace vultra
                 m_Access.active = false;
                 m_SceneFrame    = {};
                 m_UiFrame       = {};
-                try
-                {
-                    if (m_Ready)
-                    {
-                        call("_exit_tree", false);
-                    }
-                }
-                catch (const std::exception& error)
-                {
-                    Logger::app().warn("Lua stop callback failed: {}", error.what());
-                }
                 lua_close(m_State);
                 m_State = nullptr;
             }
@@ -254,6 +301,105 @@ namespace vultra
                 return result(state, status);
             }
 
+            static int nodeExecution(lua_State* state)
+            {
+                const auto frame    = self(state)->m_SceneFrame;
+                const auto id       = static_cast<uint64_t>(luaL_checkinteger(state, 1));
+                uint64_t   mode     = 0;
+                int32_t    priority = 0;
+                uint64_t   inside   = 0;
+                uint64_t   queued   = 0;
+                auto       status   = sceneApi().node_process_mode(frame, id, &mode);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    status = sceneApi().node_process_priority(frame, id, &priority);
+                }
+                if (status == VULTRA_STATUS_OK)
+                {
+                    status = sceneApi().node_inside_tree(frame, id, &inside);
+                }
+                if (status == VULTRA_STATUS_OK)
+                {
+                    status = sceneApi().node_queued_for_deletion(frame, id, &queued);
+                }
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(mode));
+                    lua_pushinteger(state, priority);
+                    lua_pushboolean(state, inside != 0);
+                    lua_pushboolean(state, queued != 0);
+                }
+                return result(state, status, 4);
+            }
+
+            static int setNodeProcessMode(lua_State* state)
+            {
+                return result(state,
+                              sceneApi().set_node_process_mode(self(state)->m_SceneFrame,
+                                                               static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                               static_cast<uint64_t>(luaL_checkinteger(state, 2))),
+                              0);
+            }
+
+            static int setNodeProcessPriority(lua_State* state)
+            {
+                const auto priority = luaL_checkinteger(state, 2);
+                if (priority < INT32_MIN || priority > INT32_MAX)
+                {
+                    return luaL_error(state, "Process priority must fit int32");
+                }
+                return result(state,
+                              sceneApi().set_node_process_priority(self(state)->m_SceneFrame,
+                                                                   static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                                   static_cast<int32_t>(priority)),
+                              0);
+            }
+
+            static int queueFree(lua_State* state)
+            {
+                return result(state,
+                              sceneApi().queue_free(self(state)->m_SceneFrame,
+                                                    static_cast<uint64_t>(luaL_checkinteger(state, 1))),
+                              0);
+            }
+
+            static int execution(lua_State* state)
+            {
+                const auto frame  = self(state)->m_SceneFrame;
+                uint64_t   paused = 0;
+                uint64_t   tick   = 0;
+                double     scale  = 0;
+                auto       status = sceneApi().paused(frame, &paused);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    status = sceneApi().physics_frame(frame, &tick);
+                }
+                if (status == VULTRA_STATUS_OK)
+                {
+                    status = sceneApi().time_scale(frame, &scale);
+                }
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushboolean(state, paused != 0);
+                    lua_pushinteger(state, static_cast<lua_Integer>(tick));
+                    lua_pushnumber(state, scale);
+                }
+                return result(state, status, 3);
+            }
+
+            static int setPaused(lua_State* state)
+            {
+                luaL_checktype(state, 1, LUA_TBOOLEAN);
+                return result(state, sceneApi().set_paused(self(state)->m_SceneFrame, lua_toboolean(state, 1)), 0);
+            }
+
+            static int setTimeScale(lua_State* state)
+            {
+                return result(state,
+                              sceneApi().set_time_scale(self(state)->m_SceneFrame, luaL_checknumber(state, 1)),
+                              0);
+            }
+
             static int childCount(lua_State* state)
             {
                 auto*      script = self(state);
@@ -261,6 +407,34 @@ namespace vultra
                 const auto status = sceneApi().child_count(script->m_SceneFrame,
                                                            static_cast<uint64_t>(luaL_checkinteger(state, 1)),
                                                            &value);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(value));
+                }
+                return result(state, status);
+            }
+
+            static int nodeParentId(lua_State* state)
+            {
+                auto*      script = self(state);
+                uint64_t   value  = 0;
+                const auto status = sceneApi().node_parent_id(script->m_SceneFrame,
+                                                              static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                              &value);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(value));
+                }
+                return result(state, status);
+            }
+
+            static int nodeOwnerId(lua_State* state)
+            {
+                auto*      script = self(state);
+                uint64_t   value  = 0;
+                const auto status = sceneApi().node_owner_id(script->m_SceneFrame,
+                                                             static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                             &value);
                 if (status == VULTRA_STATUS_OK)
                 {
                     lua_pushinteger(state, static_cast<lua_Integer>(value));
@@ -296,6 +470,31 @@ namespace vultra
                 {
                     lua_pushlstring(state, data, size);
                 }
+                return result(state, status);
+            }
+
+            static int nodeType(lua_State* state)
+            {
+                auto*       script = self(state);
+                const char* data   = nullptr;
+                uint64_t    size   = 0;
+                const auto  status = sceneApi().node_type(script->m_SceneFrame,
+                                                          static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                                          &data,
+                                                          &size);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushlstring(state, data, size);
+                }
+                return result(state, status);
+            }
+
+            static int setNodeOwner(lua_State* state)
+            {
+                auto*      script = self(state);
+                const auto node   = static_cast<uint64_t>(luaL_checkinteger(state, 1));
+                const auto owner  = lua_isnoneornil(state, 2) ? 0 : static_cast<uint64_t>(luaL_checkinteger(state, 2));
+                const auto status = sceneApi().set_node_owner(script->m_SceneFrame, node, owner);
                 return result(state, status);
             }
 
@@ -346,6 +545,21 @@ namespace vultra
                 return result(state, status);
             }
 
+            static int createNode3D(lua_State* state)
+            {
+                auto*       script = self(state);
+                const auto  parent = static_cast<uint64_t>(luaL_checkinteger(state, 1));
+                size_t      size   = 0;
+                const char* name   = luaL_checklstring(state, 2, &size);
+                uint64_t    value  = 0;
+                const auto  status = sceneApi().create_node3d(script->m_SceneFrame, parent, name, size, &value);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(value));
+                }
+                return result(state, status);
+            }
+
             static int createMesh(lua_State* state)
             {
                 auto*       script    = self(state);
@@ -367,9 +581,11 @@ namespace vultra
             static int reparentNode(lua_State* state)
             {
                 auto*      script = self(state);
-                const auto status = sceneApi().reparent_node(script->m_SceneFrame,
-                                                             static_cast<uint64_t>(luaL_checkinteger(state, 1)),
-                                                             static_cast<uint64_t>(luaL_checkinteger(state, 2)));
+                const auto status =
+                    sceneApi().reparent_node(script->m_SceneFrame,
+                                             static_cast<uint64_t>(luaL_checkinteger(state, 1)),
+                                             static_cast<uint64_t>(luaL_checkinteger(state, 2)),
+                                             lua_isnoneornil(state, 3) || lua_toboolean(state, 3) ? 1 : 0);
                 if (status != VULTRA_STATUS_OK)
                 {
                     return luaL_error(state, "Vultra API status %d", int(status));
@@ -461,6 +677,200 @@ namespace vultra
                 }
                 scripting::detail::pushLuaValue(state, value);
                 return 1;
+            }
+
+            static void pushProperty(lua_State* state, const nlohmann::json& value, bool arrayElement = false)
+            {
+                if (value.is_null())
+                {
+                    if (arrayElement)
+                    {
+                        lua_pushlightuserdata(state, nullptr);
+                    }
+                    else
+                    {
+                        lua_pushnil(state);
+                    }
+                }
+                else if (value.is_boolean())
+                {
+                    lua_pushboolean(state, value.get<bool>());
+                }
+                else if (value.is_number_integer())
+                {
+                    if (value.is_number_unsigned() && value.get<uint64_t>() > uint64_t(INT64_MAX))
+                    {
+                        throw std::invalid_argument("Property exceeds Lua's signed integer range");
+                    }
+                    lua_pushinteger(state, value.get<int64_t>());
+                }
+                else if (value.is_number())
+                {
+                    lua_pushnumber(state, value.get<double>());
+                }
+                else if (value.is_string())
+                {
+                    const auto& text = value.get_ref<const std::string&>();
+                    lua_pushlstring(state, text.data(), text.size());
+                }
+                else if (value.is_array())
+                {
+                    lua_createtable(state, int(value.size()), 0);
+                    for (size_t index = 0; index < value.size(); ++index)
+                    {
+                        pushProperty(state, value[index], true);
+                        lua_rawseti(state, -2, lua_Integer(index + 1));
+                    }
+                }
+                else
+                {
+                    throw std::invalid_argument("Unsupported Lua property value");
+                }
+            }
+
+            static nlohmann::json readProperty(lua_State* state, int index, int depth = 0)
+            {
+                switch (lua_type(state, index))
+                {
+                    case LUA_TNIL:
+                        return nullptr;
+                    case LUA_TBOOLEAN:
+                        return lua_toboolean(state, index) != 0;
+                    case LUA_TNUMBER:
+                        if (lua_isinteger(state, index))
+                        {
+                            return lua_tointeger(state, index);
+                        }
+                        if (!std::isfinite(lua_tonumber(state, index)))
+                        {
+                            throw std::invalid_argument("Property requires finite numbers");
+                        }
+                        return lua_tonumber(state, index);
+                    case LUA_TLIGHTUSERDATA:
+                        if (!lua_touserdata(state, index))
+                        {
+                            return nullptr;
+                        }
+                        throw std::invalid_argument("Invalid Lua property sentinel");
+                    case LUA_TSTRING: {
+                        size_t      size = 0;
+                        const auto* text = lua_tolstring(state, index, &size);
+                        return std::string(text, size);
+                    }
+                    case LUA_TTABLE: {
+                        if (depth >= 2)
+                        {
+                            throw std::invalid_argument("Property tables must be scalar/vector arrays");
+                        }
+                        index           = lua_absindex(state, index);
+                        const auto size = lua_rawlen(state, index);
+                        size_t     keys = 0;
+                        lua_pushnil(state);
+                        while (lua_next(state, index))
+                        {
+                            const auto key = lua_isinteger(state, -2) ? lua_tointeger(state, -2) : 0;
+                            if (key < 1 || uint64_t(key) > size)
+                            {
+                                throw std::invalid_argument("Property tables require consecutive array indices");
+                            }
+                            ++keys;
+                            lua_pop(state, 1);
+                        }
+                        if (keys != size)
+                        {
+                            throw std::invalid_argument("Property arrays cannot contain holes");
+                        }
+                        auto result = nlohmann::json::array();
+                        for (size_t item = 1; item <= size; ++item)
+                        {
+                            lua_rawgeti(state, index, lua_Integer(item));
+                            result.push_back(readProperty(state, -1, depth + 1));
+                            lua_pop(state, 1);
+                        }
+                        return result;
+                    }
+                    default:
+                        throw std::invalid_argument("Property requires a scalar, UUID or array");
+                }
+            }
+
+            static int getProperty(lua_State* state)
+            {
+                auto*       script = self(state);
+                const auto  node   = uint64_t(luaL_checkinteger(state, 1));
+                size_t      length = 0;
+                const auto* name   = luaL_checklstring(state, 2, &length);
+                // Raise Lua errors only after owned C++ temporaries have unwound.
+                {
+                    try
+                    {
+                        uint64_t    size = 0;
+                        const auto& api  = sceneApi();
+                        if (api.read_property(script->m_SceneFrame, node, name, length, nullptr, 0, &size) !=
+                            VULTRA_STATUS_OK)
+                        {
+                            throw std::invalid_argument("Read scene property failed");
+                        }
+                        std::string json(size, '\0');
+                        if (api.read_property(script->m_SceneFrame, node, name, length, json.data(), size, &size) !=
+                            VULTRA_STATUS_OK)
+                        {
+                            throw std::invalid_argument("Read scene property failed");
+                        }
+                        pushProperty(state, nlohmann::json::parse(json));
+                        return 1;
+                    }
+                    catch (const std::exception& error)
+                    {
+                        lua_pushstring(state, error.what());
+                    }
+                }
+                return lua_error(state);
+            }
+
+            static int actionState(lua_State* state)
+            {
+                size_t      size   = 0;
+                const auto* name   = luaL_checklstring(state, 1, &size);
+                uint64_t    value  = 0;
+                const auto  status = sceneApi().action_state(self(state)->m_SceneFrame, name, size, &value);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_createtable(state, 0, 3);
+                    lua_pushboolean(state, (value & 1) != 0);
+                    lua_setfield(state, -2, "held");
+                    lua_pushboolean(state, (value & 2) != 0);
+                    lua_setfield(state, -2, "pressed");
+                    lua_pushboolean(state, (value & 4) != 0);
+                    lua_setfield(state, -2, "released");
+                }
+                return result(state, status);
+            }
+
+            static int setProperty(lua_State* state)
+            {
+                auto*       script = self(state);
+                const auto  node   = uint64_t(luaL_checkinteger(state, 1));
+                size_t      length = 0;
+                const auto* name   = luaL_checklstring(state, 2, &length);
+                {
+                    try
+                    {
+                        const auto json = readProperty(state, 3).dump();
+                        if (sceneApi()
+                                .write_property(script->m_SceneFrame, node, name, length, json.data(), json.size()) !=
+                            VULTRA_STATUS_OK)
+                        {
+                            throw std::invalid_argument("Write scene property failed");
+                        }
+                        return 0;
+                    }
+                    catch (const std::exception& error)
+                    {
+                        lua_pushstring(state, error.what());
+                    }
+                }
+                return lua_error(state);
             }
 
             static int setCameraSettings(lua_State* state)
@@ -683,6 +1093,7 @@ namespace vultra
 
             static int uiText(lua_State* state)
             {
+#ifdef VULTRA_SCRIPT_GUI
                 auto*       script = self(state);
                 size_t      size   = 0;
                 const char* data   = luaL_checklstring(state, 1, &size);
@@ -692,10 +1103,14 @@ namespace vultra
                     return luaL_error(state, "Vultra API status %d", int(status));
                 }
                 return 0;
+#else
+                return luaL_error(state, "Lua UI requires the api_ui feature");
+#endif
             }
 
             static int uiButton(lua_State* state)
             {
+#ifdef VULTRA_SCRIPT_GUI
                 auto*       script  = self(state);
                 size_t      size    = 0;
                 const char* data    = luaL_checklstring(state, 1, &size);
@@ -706,6 +1121,9 @@ namespace vultra
                     lua_pushboolean(state, clicked != 0);
                 }
                 return result(state, status);
+#else
+                return luaL_error(state, "Lua UI requires the api_ui feature");
+#endif
             }
 
             static constexpr const char* kLuaPrelude = R"lua(
@@ -715,15 +1133,39 @@ node.__index = node
 function node:get_child(index) return setmetatable({ id = scene_api.child_id(self.id, index) }, node) end
 function node:child_count() return scene_api.child_count(self.id) end
 function node:name() return scene_api.node_name(self.id) end
+function node:get_property(name) return scene_api.get_property(self.id, name) end
+function node:set_property(name, value) return scene_api.set_property(self.id, name, value) end
+function node:get_class() return scene_api.node_type(self.id) end
+function node:get_process_mode() local mode = scene_api.node_execution(self.id); return mode end
+function node:get_process_priority() local _, priority = scene_api.node_execution(self.id); return priority end
+function node:is_inside_tree() local _, _, inside = scene_api.node_execution(self.id); return inside end
+function node:is_queued_for_deletion() local _, _, _, queued = scene_api.node_execution(self.id); return queued end
+function node:set_process_mode(mode) return scene_api.set_node_process_mode(self.id, mode) end
+function node:set_process_priority(priority) return scene_api.set_node_process_priority(self.id, priority) end
+function node:queue_free() return scene_api.queue_free(self.id) end
+function node:get_parent()
+    local id = scene_api.node_parent_id(self.id)
+    if id == 0 then return nil end
+    return setmetatable({ id = id }, node)
+end
+function node:get_owner()
+    local id = scene_api.node_owner_id(self.id)
+    if id == 0 then return nil end
+    return setmetatable({ id = id }, node)
+end
+function node:set_owner(owner) return scene_api.set_node_owner(self.id, owner and owner.id or 0) end
 function node:position() return scene_api.node_translation(self.id) end
 function node:set_position(x, y, z) return scene_api.set_node_translation(self.id, x, y, z) end
 function node:create_child(name)
     return setmetatable({ id = scene_api.create_node(self.id, name) }, node)
 end
+function node:create_child_3d(name)
+    return setmetatable({ id = scene_api.create_node3d(self.id, name) }, node)
+end
 function node:create_mesh_child(name, asset_id)
     return setmetatable({ id = scene_api.create_mesh(self.id, name, asset_id) }, node)
 end
-function node:reparent(parent) return scene_api.reparent_node(self.id, parent.id) end
+function node:reparent(parent, keep_global) return scene_api.reparent_node(self.id, parent.id, keep_global) end
 function node:duplicate_mesh(parent)
     return setmetatable({ id = scene_api.duplicate_mesh(self.id, parent.id) }, node)
 end
@@ -751,7 +1193,7 @@ function node:set_environment_asset(asset_id) return scene_api.set_environment_a
 function node:make_environment_current() return scene_api.set_current_environment(self.id) end
 function node:light_settings() return scene_api.light_settings(self.id) end
 function node:set_light_settings(settings) return scene_api.set_light_settings(self.id, settings) end
-local world = {}
+local world = { null = scene_api.null }
 local material = {}
 material.__index = material
 function material:name() return scene_api.material_name(self.id) end
@@ -768,6 +1210,12 @@ function world:create_material(name)
     return setmetatable({ id = scene_api.create_material(name) }, material)
 end
 function world:root() return setmetatable({ id = scene_api.root_id() }, node) end
+function world:action(name) return scene_api.action(name) end
+function world:is_paused() local paused = scene_api.execution(); return paused end
+function world:physics_frame() local _, tick = scene_api.execution(); return tick end
+function world:time_scale() local _, _, scale = scene_api.execution(); return scale end
+function world:set_paused(paused) return scene_api.set_paused(paused) end
+function world:set_time_scale(scale) return scene_api.set_time_scale(scale) end
 function world:clear_current_camera() return scene_api.set_current_camera(0) end
 function world:clear_current_environment() return scene_api.set_current_environment(0) end
 local editor = {}
@@ -784,7 +1232,6 @@ scene, gui = nil, nil
             lua_State*       m_State     = nullptr;
             int              m_ScriptRef = LUA_NOREF;
             uint64_t         m_NodeId    = 0;
-            bool             m_Ready     = false;
             SceneAccess      m_Access;
             VultraSceneFrame m_SceneFrame {};
             VultraUiFrame    m_UiFrame {};

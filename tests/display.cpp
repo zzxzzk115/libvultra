@@ -2,8 +2,8 @@
 #include "../examples/common/triangle.hpp"
 
 #include <vultra/core/base/logger.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/main/app/imgui_app.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/servers/rendering/texture_blit.hpp>
 
 #include <cmath>

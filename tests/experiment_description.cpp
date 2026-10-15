@@ -1,5 +1,5 @@
 #include <vultra/core/base/stable_id.hpp>
-#include <vultra/main/experiment_description.hpp>
+#include <vultra/research/experiment_description.hpp>
 
 #include <nlohmann/json.hpp>
 

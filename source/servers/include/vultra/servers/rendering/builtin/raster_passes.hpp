@@ -6,7 +6,9 @@
 namespace vultra
 {
     std::vector<PassDefinition> builtinRasterPassDefinitions();
-    bool                        usesBuiltinRasterPasses(const GraphDefinition& definition);
+    // Explicit opt-in for raster stages and tone mapping; leaves project definitions untouched.
+    void installBuiltinRenderPasses(PassCatalog& catalog);
+    bool usesBuiltinRasterPasses(const GraphDefinition& definition);
     // Renderer and bindings must outlive the catalog, built passes and the graph's last GPU use.
     // One geometry/shadow/skybox stage per renderer view; independent views use independent renderers.
     void bindBuiltinRasterPasses(PassCatalog&              catalog,

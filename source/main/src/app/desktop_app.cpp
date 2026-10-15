@@ -1,5 +1,4 @@
 #include <vultra/main/app/desktop_app.hpp>
-#include <vultra/servers/rendering/rendering_server.hpp>
 
 #include <chrono>
 
@@ -85,7 +84,6 @@ namespace vultra
             device.core.CmdEndDebugGroup(cmd);
             const auto afterRecord = std::chrono::steady_clock::now();
             frame.submitAndWait();
-            m_Context->rendering().collectCompletedFrame();
             const auto afterWait = std::chrono::steady_clock::now();
             profiler.collect();
             onPostRender(*target);

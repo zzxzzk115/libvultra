@@ -2,6 +2,7 @@
 #include <vultra/api/scene_bridge.hpp>
 #include <vultra/api/ui_bridge.hpp>
 #include <vultra/assets/project_manifest.hpp>
+#include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/scene_tree.hpp>
 #include <vultra/scripting/native_script.hpp>
 
@@ -81,7 +82,7 @@ int main(int argc, char** argv)
     require(ui.button({nullptr, 0}, "x", 1, &changed) == VULTRA_STATUS_INVALID_ARGUMENT,
             "UI ABI accepted a null frame");
     vultra::SceneTree scene(std::make_unique<vultra::Node>("Root"));
-    auto&             child    = scene.addChild(scene.root(), std::make_unique<vultra::Node>("Child"));
+    auto&             child    = scene.addChild(scene.root(), std::make_unique<vultra::Node3D>("Child"));
     const auto&       sceneApi = vultra::sceneApi();
     require(sceneApi.version == VULTRA_ABI_VERSION && sceneApi.struct_size == sizeof(VultraSceneApi),
             "Scene ABI metadata mismatch");
@@ -104,7 +105,39 @@ int main(int argc, char** argv)
     require(sceneApi.node_name(frame, first, &name, &nameSize) == VULTRA_STATUS_OK &&
                 std::string_view(name, nameSize) == "Child",
             "Scene ABI did not return the child name");
+    uint64_t propertySize = 0;
+    require(sceneApi.read_property(frame, first, "name", 4, nullptr, 0, &propertySize) == VULTRA_STATUS_OK &&
+                propertySize == 7,
+            "Owned property ABI did not return its exact byte count");
+    std::array<char, 7> propertyText {};
+    propertyText.fill('x');
+    require(sceneApi.read_property(frame, first, "name", 4, propertyText.data(), 1, &propertySize) ==
+                    VULTRA_STATUS_BUFFER_TOO_SMALL &&
+                propertyText[0] == 'x',
+            "Small property buffer was partially overwritten");
+    require(sceneApi.read_property(frame, first, "name", 4, propertyText.data(), propertyText.size(), &propertySize) ==
+                    VULTRA_STATUS_OK &&
+                std::string_view(propertyText.data(), propertySize) == R"("Child")",
+            "Owned property ABI returned the wrong value");
+    require(sceneApi.write_property(frame, first, "processPriority", 15, "10", 2) == VULTRA_STATUS_OK &&
+                child.processPriority() == 10,
+            "Generated property ABI failed to edit an inherited semantic property");
+    require(sceneApi.write_property(frame, first, "processPriority", 15, "false", 5) ==
+                    VULTRA_STATUS_INVALID_ARGUMENT &&
+                child.processPriority() == 10,
+            "Invalid property value changed native state");
     VultraSceneTranslation position {};
+    require(sceneApi.node_type(frame, root, &name, &nameSize) == VULTRA_STATUS_OK &&
+                std::string_view(name, nameSize) == "Node" &&
+                sceneApi.node_translation(frame, root, &position) == VULTRA_STATUS_INVALID_ARGUMENT,
+            "Scene ABI treated a non-spatial Node as Node3D");
+    uint64_t owner = 0;
+    require(sceneApi.node_parent_id(frame, first, &owner) == VULTRA_STATUS_OK && owner == root &&
+                sceneApi.set_node_owner(frame, first, root) == VULTRA_STATUS_OK &&
+                sceneApi.node_owner_id(frame, first, &owner) == VULTRA_STATUS_OK && owner == root &&
+                sceneApi.set_node_owner(frame, first, first) == VULTRA_STATUS_INVALID_ARGUMENT &&
+                child.owner() == &scene.root(),
+            "Scene ABI confused authoring ownership with parenthood or accepted a non-ancestor");
     require(sceneApi.node_translation(frame, first, &position) == VULTRA_STATUS_OK && position.x == 0,
             "Scene ABI did not read local translation");
     require(sceneApi.set_node_translation(frame, first, {1, 2, 3}) == VULTRA_STATUS_OK &&
@@ -113,10 +146,10 @@ int main(int argc, char** argv)
             "Scene ABI did not write local translation");
     const vultra::AssetId firstModel {vultra::StableId::generate()};
     const vultra::AssetId secondModel {vultra::StableId::generate()};
-    auto&                 sourceMesh = static_cast<vultra::MeshInstanceNode&>(
-        scene.addChild(scene.root(), std::make_unique<vultra::MeshInstanceNode>("Source", firstModel)));
-    auto& targetMesh = static_cast<vultra::MeshInstanceNode&>(
-        scene.addChild(scene.root(), std::make_unique<vultra::MeshInstanceNode>("Target", secondModel)));
+    auto&                 sourceMesh = static_cast<vultra::MeshInstance3D&>(
+        scene.addChild(scene.root(), std::make_unique<vultra::MeshInstance3D>("Source", firstModel)));
+    auto& targetMesh = static_cast<vultra::MeshInstance3D&>(
+        scene.addChild(scene.root(), std::make_unique<vultra::MeshInstance3D>("Target", secondModel)));
     uint64_t duplicate = 0;
     require(sceneApi.duplicate_mesh(frame, sourceMesh.id().value, root, &duplicate) == VULTRA_STATUS_OK &&
                 duplicate != sourceMesh.id().value && scene.find(vultra::ObjectId {duplicate}) &&
@@ -144,7 +177,7 @@ int main(int argc, char** argv)
             "Scene ABI changed the model after an invalid asset ID");
     uint64_t groupId = 0;
     uint64_t meshId  = 0;
-    require(sceneApi.create_node(frame, root, "Group", 5, &groupId) == VULTRA_STATUS_OK &&
+    require(sceneApi.create_node3d(frame, root, "Group", 5, &groupId) == VULTRA_STATUS_OK &&
                 scene.find(vultra::ObjectId {groupId})->name() == "Group",
             "Scene ABI did not create a group node");
     require(
@@ -152,15 +185,15 @@ int main(int argc, char** argv)
             sceneApi.create_mesh(frame, root, "Spawned", 7, selectableText.data(), selectableText.size(), &meshId) ==
                 VULTRA_STATUS_OK,
         "Scene ABI did not create a mesh from the project asset catalog");
-    auto& createdMesh = static_cast<vultra::MeshInstanceNode&>(*scene.find(vultra::ObjectId {meshId}));
+    auto& createdMesh = static_cast<vultra::MeshInstance3D&>(*scene.find(vultra::ObjectId {meshId}));
     require(createdMesh.model() == selectableModel &&
                 sceneApi.set_node_translation(frame, meshId, {0, 1, 0}) == VULTRA_STATUS_OK &&
-                sceneApi.reparent_node(frame, meshId, groupId) == VULTRA_STATUS_OK &&
+                sceneApi.reparent_node(frame, meshId, groupId, 0) == VULTRA_STATUS_OK &&
                 createdMesh.parent()->id().value == groupId && createdMesh.localTransform()[3].y == 1 &&
                 createdMesh.globalTransform()[3].x == 2,
             "Scene ABI did not preserve local transform and inherit the new parent transform");
-    require(sceneApi.reparent_node(frame, groupId, meshId) == VULTRA_STATUS_INVALID_ARGUMENT &&
-                sceneApi.reparent_node(frame, root, groupId) == VULTRA_STATUS_INVALID_ARGUMENT &&
+    require(sceneApi.reparent_node(frame, groupId, meshId, 1) == VULTRA_STATUS_INVALID_ARGUMENT &&
+                sceneApi.reparent_node(frame, root, groupId, 1) == VULTRA_STATUS_INVALID_ARGUMENT &&
                 createdMesh.parent()->id().value == groupId,
             "Scene ABI allowed a cycle or root reparent");
     require(sceneApi.create_node(frame, root, "", 0, &duplicate) == VULTRA_STATUS_INVALID_ARGUMENT &&

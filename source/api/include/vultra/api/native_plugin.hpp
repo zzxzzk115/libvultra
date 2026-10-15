@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <span>
 
 namespace vultra
 {
@@ -15,17 +16,18 @@ namespace vultra
     class NativePlugin
     {
     public:
-        explicit NativePlugin(const std::filesystem::path&       path,
-                              SceneTree*                         scene    = nullptr,
-                              void*                              initData = nullptr,
-                              const VultraScriptRegistrationApi* scripts  = nullptr,
-                              const ProjectManifest*             project  = nullptr,
-                              const VultraResearchApi*           research = nullptr);
+        explicit NativePlugin(const std::filesystem::path&        path,
+                              SceneTree*                          scene      = nullptr,
+                              void*                               initData   = nullptr,
+                              const VultraScriptRegistrationApi*  scripts    = nullptr,
+                              const ProjectManifest*              project    = nullptr,
+                              std::span<const VultraExtensionApi> extensions = {});
         ~NativePlugin();
         NativePlugin(const NativePlugin&)            = delete;
         NativePlugin& operator=(const NativePlugin&) = delete;
 
         void update(float deltaSeconds);
+        void notify(VultraSceneEvent event, float deltaSeconds = 0);
         void gui(EditorGui& gui);
         void stop() noexcept;
 

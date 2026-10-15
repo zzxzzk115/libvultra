@@ -50,16 +50,101 @@ namespace
         return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
     }
 
+    void testNodeSemantics()
+    {
+        using namespace vultra;
+        SceneTree tree(std::make_unique<Node3D>("Root"));
+        auto&     root = static_cast<Node3D&>(tree.root());
+        root.setLocalTransform(glm::translate(glm::mat4(1), {10, 0, 0}));
+        auto& rig = tree.addChild(root, std::make_unique<Node3D>("Rig"));
+        rig.setLocalTransform(glm::translate(glm::mat4(1), {2, 0, 0}));
+        auto& spatial = tree.addChild(rig, std::make_unique<Node3D>("Spatial"));
+        spatial.setLocalTransform(glm::translate(glm::mat4(1), {3, 0, 0}));
+        auto& group       = tree.addChild(rig, std::make_unique<Node>("Logic"));
+        auto& independent = tree.addChild(group, std::make_unique<Camera3D>("Camera"));
+        independent.setLocalTransform(spatial.localTransform());
+        tree.setCurrentCamera(independent.id());
+        require(spatial.globalTransform()[3].x == 15 && independent.globalTransform()[3].x == 3 &&
+                    independent.parentNode3D() == nullptr && spatial.parentNode3D() == &rig,
+                "A non-spatial Node must break direct Node3D transform inheritance");
+        SceneRenderState state;
+        state.update(tree, {64, 64});
+        require(state.camera && glm::inverse(state.camera->view)[3].x == 3,
+                "Rendering traversal disagrees with Node3D hierarchy semantics");
+        spatial.setOwner(&rig);
+        group.setOwner(&root);
+        independent.setOwner(&group);
+        requireFailure(
+            [&]
+            {
+                group.setOwner(&independent);
+            },
+            "A descendant became the authoring owner");
+        requireFailure(
+            [&]
+            {
+                group.setOwner(&group);
+            },
+            "A node became its own authoring owner");
+        tree.reparent(spatial, group);
+        require(spatial.globalTransform()[3].x == 15 && spatial.localTransform()[3].x == 15 && spatial.owner() == &rig,
+                "Reparent did not preserve world transform and a still-reachable owner");
+        tree.reparent(spatial, root, false);
+        require(spatial.localTransform()[3].x == 15 && spatial.globalTransform()[3].x == 25 && !spatial.owner(),
+                "Explicit local preservation or invalid-owner cleanup failed");
+        auto& singular = tree.addChild(root, std::make_unique<Node3D>("Singular"));
+        singular.setLocalTransform(glm::scale(glm::mat4(1), {0, 1, 1}));
+        const auto before = spatial.localTransform();
+        requireFailure(
+            [&]
+            {
+                tree.reparent(spatial, singular);
+            },
+            "Singular reparent was accepted");
+        require(spatial.parent() == &root && spatial.localTransform() == before,
+                "Rejected reparent partially changed the tree");
+        const auto serialized = tree.serialize();
+        auto       copy       = SceneTree::parse(serialized);
+        require(copy.serialize() == serialized &&
+                    copy.find(independent.idInScene())->owner() == copy.find(group.idInScene()),
+                "Scene owner identity was not restored after constructing the hierarchy");
+        auto invalid             = nlohmann::json::parse(serialized);
+        invalid["root"]["owner"] = group.idInScene().value.toString();
+        requireFailure(
+            [&]
+            {
+                SceneTree::parse(invalid.dump());
+            },
+            "A non-ancestor persisted owner was accepted");
+        invalid = nlohmann::json::parse(serialized);
+        invalid["root"].erase("owner");
+        requireFailure(
+            [&]
+            {
+                SceneTree::parse(invalid.dump());
+            },
+            "Old owner-less scene format was accepted");
+        requireFailure(
+            [&]
+            {
+                sceneSetNodeTranslation(tree, group.id(), {1, 2, 3});
+            },
+            "A non-spatial Node accepted a position");
+        auto detached = tree.remove(group);
+        require(!detached->owner() && independent.owner() == detached.get(),
+                "Detach lost a subtree-local owner or retained an external owner");
+    }
+
     void testMaterialResources(const std::filesystem::path& root)
     {
         using namespace vultra;
         ProjectManifest project;
         const auto      model = project.addAsset("first.obj");
         SceneTree       tree(std::make_unique<Node>("Materials"));
-        auto&           first = static_cast<MeshInstanceNode&>(
-            tree.addChild(tree.root(), std::make_unique<MeshInstanceNode>("First", model)));
-        auto& second = static_cast<MeshInstanceNode&>(
-            tree.addChild(tree.root(), std::make_unique<MeshInstanceNode>("Second", model)));
+        auto&           first =
+            static_cast<MeshInstance3D&>(tree.addChild(tree.root(), std::make_unique<MeshInstance3D>("First", model)));
+        auto& second =
+            static_cast<MeshInstance3D&>(tree.addChild(tree.root(), std::make_unique<MeshInstance3D>("Second", model)));
         auto& red             = tree.addMaterial(std::make_unique<MaterialResource>("Red"));
         auto  parameters      = red.parameters();
         parameters.baseGreen  = 0;
@@ -151,14 +236,14 @@ namespace
         vultra::ProjectManifest project;
         const auto              first  = project.addAsset("first.obj");
         const auto              second = project.addAsset("second.obj");
-        vultra::SceneTree       scene(std::make_unique<vultra::Node>("World"));
-        scene.root().setLocalTransform(glm::translate(glm::mat4(1), {1, 0, 0}));
-        auto& group = scene.addChild(scene.root(), std::make_unique<vultra::Node>("Group"));
+        vultra::SceneTree       scene(std::make_unique<vultra::Node3D>("World"));
+        static_cast<vultra::Node3D&>(scene.root()).setLocalTransform(glm::translate(glm::mat4(1), {1, 0, 0}));
+        auto& group = scene.addChild(scene.root(), std::make_unique<vultra::Node3D>("Group"));
         group.setLocalTransform(glm::translate(glm::mat4(1), {0, 2, 0}));
-        scene.addChild(group, std::make_unique<vultra::MeshInstanceNode>("First", first));
-        auto& reflected = scene.addChild(group, std::make_unique<vultra::MeshInstanceNode>("Reflected", first));
+        scene.addChild(group, std::make_unique<vultra::MeshInstance3D>("First", first));
+        auto& reflected = scene.addChild(group, std::make_unique<vultra::MeshInstance3D>("Reflected", first));
         reflected.setLocalTransform(glm::scale(glm::mat4(1), {-1, 1, 1}));
-        auto& other = scene.addChild(group, std::make_unique<vultra::MeshInstanceNode>("Other", second));
+        auto& other = scene.addChild(group, std::make_unique<vultra::MeshInstance3D>("Other", second));
         other.setLocalTransform(glm::translate(glm::mat4(1), {0, 0, 3}));
 
         vultra::AssetImportOptions options;
@@ -173,14 +258,14 @@ namespace
         group.setLocalTransform(glm::translate(glm::mat4(1), {0, 3, 0}));
         require(vultra::sceneMeshTopologyMatches(scene, instances), "A transform edit changed mesh topology");
         group.setLocalTransform(glm::translate(glm::mat4(1), {0, 2, 0}));
-        static_cast<vultra::MeshInstanceNode&>(other).setModel(first);
+        static_cast<vultra::MeshInstance3D&>(other).setModel(first);
         require(!vultra::sceneMeshTopologyMatches(scene, instances), "A model swap kept stale GPU geometry");
-        static_cast<vultra::MeshInstanceNode&>(other).setModel(second);
+        static_cast<vultra::MeshInstance3D&>(other).setModel(second);
         auto removed = scene.remove(other);
         require(!vultra::sceneMeshTopologyMatches(scene, instances), "A removed mesh kept stale GPU geometry");
         scene.addChild(group, std::move(removed));
         require(vultra::sceneMeshTopologyMatches(scene, instances), "Reattached mesh changed import order");
-        auto& added = scene.addChild(group, std::make_unique<vultra::MeshInstanceNode>("Added", first));
+        auto& added = scene.addChild(group, std::make_unique<vultra::MeshInstance3D>("Added", first));
         require(!vultra::sceneMeshTopologyMatches(scene, instances), "An added mesh was not detected");
         scene.remove(added);
         require(vultra::sceneMeshTopologyMatches(scene, instances), "Removing a new mesh did not restore topology");
@@ -224,14 +309,14 @@ namespace
     {
         using namespace vultra;
         SceneTree tree(std::make_unique<Node>("Notifications"));
-        auto&     group = tree.addChild(tree.root(), std::make_unique<Node>("Group"));
-        auto&     mesh  = static_cast<MeshInstanceNode&>(
-            tree.addChild(group, std::make_unique<MeshInstanceNode>("Mesh", AssetId {StableId::generate()})));
-        auto& camera = static_cast<CameraNode&>(tree.addChild(group, std::make_unique<CameraNode>("Camera")));
-        auto& light  = static_cast<LightNode&>(
-            tree.addChild(group, std::make_unique<LightNode>("Light", RenderLightKind::ePoint)));
+        auto&     group = tree.addChild(tree.root(), std::make_unique<Node3D>("Group"));
+        auto&     mesh  = static_cast<MeshInstance3D&>(
+            tree.addChild(group, std::make_unique<MeshInstance3D>("Mesh", AssetId {StableId::generate()})));
+        auto& camera = static_cast<Camera3D&>(tree.addChild(group, std::make_unique<Camera3D>("Camera")));
+        auto& light =
+            static_cast<Light3D&>(tree.addChild(group, std::make_unique<Light3D>("Light", RenderLightKind::ePoint)));
         auto& environment =
-            static_cast<EnvironmentNode&>(tree.addChild(group, std::make_unique<EnvironmentNode>("Environment")));
+            static_cast<WorldEnvironment&>(tree.addChild(group, std::make_unique<WorldEnvironment>("Environment")));
         auto& material = tree.addMaterial(std::make_unique<MaterialResource>("Material"));
         tree.setCurrentCamera(camera.id());
         tree.setCurrentEnvironment(environment.id());
@@ -426,7 +511,7 @@ namespace
                 SceneTree::parse(invalid.dump());
             },
             "Invalid persisted intensity was accepted");
-        auto& environment = static_cast<EnvironmentNode&>(*tree.find(id));
+        auto& environment = static_cast<WorldEnvironment&>(*tree.find(id));
         environment.setRadianceAsset(model);
         requireFailure(
             [&]
@@ -446,9 +531,9 @@ namespace
     {
         using namespace vultra;
         SceneTree tree(std::make_unique<Node>("World"));
-        auto&     group = tree.addChild(tree.root(), std::make_unique<Node>("Camera rig"));
+        auto&     group = tree.addChild(tree.root(), std::make_unique<Node3D>("Camera rig"));
         group.setLocalTransform(glm::translate(glm::mat4(1), {1, 2, 0}) * glm::scale(glm::mat4(1), {2, 3, 4}));
-        auto& camera = static_cast<CameraNode&>(tree.addChild(group, std::make_unique<CameraNode>("Camera")));
+        auto& camera = static_cast<Camera3D&>(tree.addChild(group, std::make_unique<Camera3D>("Camera")));
         camera.setLocalTransform(glm::translate(glm::mat4(1), {0, 0, 3}));
         tree.setCurrentCamera(camera.id());
         SceneRenderState state;
@@ -523,8 +608,8 @@ namespace
                 "Corrected camera transform did not recover synchronization");
         auto removedRig = tree.remove(group);
         require(tree.currentCamera().value == 0, "Removing an ancestor left a current camera handle");
-        auto& light = static_cast<LightNode&>(
-            tree.addChild(tree.root(), std::make_unique<LightNode>("Light", RenderLightKind::eSpot)));
+        auto& light = static_cast<Light3D&>(
+            tree.addChild(tree.root(), std::make_unique<Light3D>("Light", RenderLightKind::eSpot)));
         require(tree.usesSceneLighting(), "Adding a light did not enable authored scene lighting");
         auto invalid      = light.settings();
         invalid.outerCone = invalid.innerCone;
@@ -554,7 +639,7 @@ namespace
                 "Removing/saving the last light restored default sunlight");
         for (uint32_t i = 0; i <= kMaxRenderLights; ++i)
         {
-            reopened.addChild(reopened.root(), std::make_unique<LightNode>("Light", RenderLightKind::ePoint));
+            reopened.addChild(reopened.root(), std::make_unique<Light3D>("Light", RenderLightKind::ePoint));
         }
         requireFailure(
             [&]
@@ -569,6 +654,7 @@ int main()
 try
 {
     namespace fs = std::filesystem;
+    testNodeSemantics();
     testRenderNodes();
     testSceneNotifications();
     testEnvironmentNodes();
@@ -588,9 +674,9 @@ try
     project.save(projectFile);
     const auto savedProject = readText(projectFile);
 
-    vultra::SceneTree scene(std::make_unique<vultra::Node>("World"));
-    auto&      modelNode    = scene.addChild(scene.root(), std::make_unique<vultra::MeshInstanceNode>("Helmet", model));
-    const auto stableNodeId = modelNode.idInScene();
+    vultra::SceneTree scene(std::make_unique<vultra::Node3D>("World"));
+    auto&      modelNode     = scene.addChild(scene.root(), std::make_unique<vultra::MeshInstance3D>("Helmet", model));
+    const auto stableNodeId  = modelNode.idInScene();
     const auto runtimeNodeId = modelNode.id();
     modelNode.setLocalTransform(glm::translate(glm::mat4(1), {2, 3, 4}));
     scene.validateAssets(project);
@@ -611,7 +697,8 @@ try
     auto* restored = restoredScene.find(stableNodeId);
     require(restored && restored->id() != runtimeNodeId, "Persisted node reused a runtime ObjectId");
     require(restored->parent() == &restoredScene.root(), "Scene parent was not restored");
-    require(restored->globalTransform()[3][0] == 2 && restored->globalTransform()[3][1] == 3,
+    require(static_cast<vultra::Node3D&>(*restored).globalTransform()[3][0] == 2 &&
+                static_cast<vultra::Node3D&>(*restored).globalTransform()[3][1] == 3,
             "Scene transform was not restored");
     require(restoredScene.serialize() == savedScene, "Scene serialization is not deterministic");
     requireFailure(
@@ -627,7 +714,7 @@ try
             "Reparenting changed the stable node ID");
 
     auto invalidScene = savedScene;
-    invalidScene.replace(invalidScene.find("MeshInstance"), 12, "UnknownThing");
+    invalidScene.replace(invalidScene.find("MeshInstance3D"), 14, "UnknownThing");
     requireFailure(
         [&]
         {
@@ -662,7 +749,7 @@ try
         },
         "Normalized project path traversal was accepted");
     const vultra::AssetId missing {vultra::StableId::generate()};
-    auto invalidTree = vultra::SceneTree(std::make_unique<vultra::MeshInstanceNode>("Missing", missing));
+    auto                  invalidTree = vultra::SceneTree(std::make_unique<vultra::MeshInstance3D>("Missing", missing));
     requireFailure(
         [&]
         {

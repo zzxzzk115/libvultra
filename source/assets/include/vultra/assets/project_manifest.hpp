@@ -40,26 +40,6 @@ namespace vultra
         std::optional<StableId> node;     // Persistent scene node ID, resolved when the module starts.
     };
 
-    struct ResearchMethod
-    {
-        std::string name;
-        AssetId     graph;
-    };
-
-    struct ResearchProject
-    {
-        std::string                 name;
-        uint32_t                    width    = 640;
-        uint32_t                    height   = 480;
-        uint64_t                    features = 0;
-        std::vector<ResearchMethod> methods;
-        AssetId                     comparison;
-        std::string                 renderPath = "forward";
-        std::string                 referenceMethod;
-        std::string                 configurationLabel = "Configuration";
-        std::string                 rendererSettings = "{}"; // Reflected RenderSettings JSON; interpreted by the host.
-    };
-
     // The project's stable path-to-ID map. Renaming an entry preserves references in scenes.
     class ProjectManifest
     {
@@ -70,7 +50,7 @@ namespace vultra
         std::optional<AssetId>             uiFont;
         std::vector<std::filesystem::path> extensions;
         std::vector<ScriptModule>          scripts;
-        std::optional<ResearchProject>     research;
+        std::string                        metadata = "{}"; // JSON object interpreted by optional app/extension code.
 
         AssetId addAsset(const std::filesystem::path& path, std::optional<FbxImportOptions> fbx = std::nullopt);
         void    renameAsset(AssetId id, const std::filesystem::path& path);

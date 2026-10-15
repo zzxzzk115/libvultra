@@ -41,21 +41,6 @@ namespace vultra
             return m_Context->device();
         }
 
-        RenderingServer& getRenderingServer()
-        {
-            return m_Context->rendering();
-        }
-
-        PassCatalog& getPassCatalog()
-        {
-            return m_Context->passes();
-        }
-
-        ObjectTypeCatalog& getObjectTypeCatalog()
-        {
-            return m_Context->types();
-        }
-
         Swapchain& getSwapchain()
         {
             return m_Context->swapchain();

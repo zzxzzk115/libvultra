@@ -8,12 +8,12 @@
 #include <vultra/core/base/logger.hpp>
 #include <vultra/drivers/profiling/benchmark.hpp>
 #include <vultra/drivers/profiling/renderdoc_capture.hpp>
-#include <vultra/main/experiment_description.hpp>
 #include <vultra/main/packaged_resources.hpp>
 #include <vultra/platform/os/file.hpp>
+#include <vultra/research/experiment_description.hpp>
+#include <vultra/research/graph_report.hpp>
 #include <vultra/scene/scene_render_state.hpp>
 #include <vultra/scripting/script_host.hpp>
-#include <vultra/servers/rendering/research/graph_report.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -213,8 +213,8 @@ try
     ScopedWorkingDirectory cwd(resources.engineRoot());
     sessionConfig.importOptions.cacheDirectory = resources.engineRoot().parent_path() / "cache";
     Device            device(true,
-                  nullptr,
-                  path == RenderPath::eReferencePathTracing ? VriFeature_RayQuery | VriFeature_Bindless : 0);
+                             nullptr,
+                             path == RenderPath::eReferencePathTracing ? VriFeature_RayQuery | VriFeature_Bindless : 0);
     ExperimentSession session(device, sessionConfig);
     session.passes().add(research::colorGainDefinition());
     if (definition)

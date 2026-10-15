@@ -1,3 +1,4 @@
+#include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/scene_api.hpp>
 
 #include <limits>
@@ -7,6 +8,12 @@
 
 namespace vultra
 {
+    uint64_t sceneActionState(const SceneTree& scene, std::string_view name)
+    {
+        const auto action = scene.action(name);
+        return uint64_t(action.held) | (uint64_t(action.pressed) << 1) | (uint64_t(action.released) << 2);
+    }
+
     namespace
     {
         Node& requireNode(SceneTree& scene, ObjectId id)
@@ -29,6 +36,26 @@ namespace vultra
             return *node;
         }
 
+        Node3D& requireNode3D(SceneTree& scene, ObjectId id)
+        {
+            auto* node = dynamic_cast<Node3D*>(&requireNode(scene, id));
+            if (!node)
+            {
+                throw std::invalid_argument("Scene node is not a Node3D");
+            }
+            return *node;
+        }
+
+        const Node3D& requireNode3D(const SceneTree& scene, ObjectId id)
+        {
+            const auto* node = dynamic_cast<const Node3D*>(&requireNode(scene, id));
+            if (!node)
+            {
+                throw std::invalid_argument("Scene node is not a Node3D");
+            }
+            return *node;
+        }
+
         AssetId requireModelAsset(const ProjectManifest& project, std::string_view text)
         {
             const auto parsed = StableId::parse(text);
@@ -45,24 +72,24 @@ namespace vultra
             return id;
         }
 
-        MeshInstanceNode& requireMesh(SceneTree& scene, ObjectId id)
+        MeshInstance3D& requireMesh(SceneTree& scene, ObjectId id)
         {
             auto& node = requireNode(scene, id);
             if (node.kind() != NodeKind::eMeshInstance)
             {
                 throw std::invalid_argument("ObjectId is not a mesh instance");
             }
-            return static_cast<MeshInstanceNode&>(node);
+            return static_cast<MeshInstance3D&>(node);
         }
 
-        const MeshInstanceNode& requireMesh(const SceneTree& scene, ObjectId id)
+        const MeshInstance3D& requireMesh(const SceneTree& scene, ObjectId id)
         {
             const auto& node = requireNode(scene, id);
             if (node.kind() != NodeKind::eMeshInstance)
             {
                 throw std::invalid_argument("ObjectId is not a mesh instance");
             }
-            return static_cast<const MeshInstanceNode&>(node);
+            return static_cast<const MeshInstance3D&>(node);
         }
 
         MaterialResource& requireMaterial(const SceneTree& scene, ObjectId id)
@@ -110,15 +137,131 @@ namespace vultra
         return requireNode(scene, node).name();
     }
 
+    std::string_view sceneNodeType(const SceneTree& scene, ObjectId node)
+    {
+        return requireNode(scene, node).typeName();
+    }
+
+    std::string sceneReadProperty(const SceneTree& scene, ObjectId node, std::string_view property)
+    {
+        const auto& target = requireNode(scene, node);
+        const auto& info   = scene.types().objects().type(target.typeName()).property(property);
+        if (!hasPropertyFlag(info.flags, PropertyFlags::eBind))
+        {
+            throw std::invalid_argument("Property is not exposed to bindings");
+        }
+        return serializeProperty(info, scene.readProperty(node, property));
+    }
+
+    void sceneWriteProperty(SceneTree&             scene,
+                            const ProjectManifest* project,
+                            ObjectId               node,
+                            std::string_view       property,
+                            std::string_view       json)
+    {
+        const auto& target = requireNode(scene, node);
+        const auto& info   = scene.types().objects().type(target.typeName()).property(property);
+        if (!hasPropertyFlag(info.flags, PropertyFlags::eBind))
+        {
+            throw std::invalid_argument("Property is not exposed to bindings");
+        }
+        scene.writeProperty(node, property, deserializeProperty(info, json), project);
+    }
+
+    ObjectId sceneNodeParentId(const SceneTree& scene, ObjectId node)
+    {
+        const auto* parent = requireNode(scene, node).parent();
+        return parent ? parent->id() : ObjectId {};
+    }
+
+    ObjectId sceneNodeOwnerId(const SceneTree& scene, ObjectId node)
+    {
+        const auto* owner = requireNode(scene, node).owner();
+        return owner ? owner->id() : ObjectId {};
+    }
+
+    void sceneSetNodeOwner(SceneTree& scene, ObjectId node, ObjectId owner)
+    {
+        requireNode(scene, node).setOwner(owner.value ? &requireNode(scene, owner) : nullptr);
+    }
+
     SceneTranslation sceneNodeTranslation(const SceneTree& scene, ObjectId node)
     {
-        const auto& transform = requireNode(scene, node).localTransform();
+        const auto& transform = requireNode3D(scene, node).localTransform();
         return {transform[3].x, transform[3].y, transform[3].z};
+    }
+
+    uint64_t sceneNodeInsideTree(const SceneTree& scene, ObjectId node)
+    {
+        return requireNode(scene, node).isInsideTree();
+    }
+
+    uint64_t sceneNodeQueuedForDeletion(const SceneTree& scene, ObjectId node)
+    {
+        return requireNode(scene, node).isQueuedForDeletion();
+    }
+
+    uint64_t sceneNodeProcessMode(const SceneTree& scene, ObjectId node)
+    {
+        return static_cast<uint64_t>(requireNode(scene, node).processMode());
+    }
+
+    void sceneSetNodeProcessMode(SceneTree& scene, ObjectId node, uint64_t mode)
+    {
+        if (mode > static_cast<uint64_t>(ProcessMode::eDisabled))
+        {
+            throw std::invalid_argument("Invalid node process mode");
+        }
+        requireNode(scene, node).setProcessMode(static_cast<ProcessMode>(mode));
+    }
+
+    int32_t sceneNodeProcessPriority(const SceneTree& scene, ObjectId node)
+    {
+        return requireNode(scene, node).processPriority();
+    }
+
+    void sceneSetNodeProcessPriority(SceneTree& scene, ObjectId node, int32_t priority)
+    {
+        requireNode(scene, node).setProcessPriority(priority);
+    }
+
+    void sceneQueueFree(SceneTree& scene, ObjectId node)
+    {
+        scene.queueFree(node);
+    }
+
+    uint64_t scenePaused(const SceneTree& scene)
+    {
+        return scene.paused();
+    }
+
+    void sceneSetPaused(SceneTree& scene, uint64_t paused)
+    {
+        if (paused > 1)
+        {
+            throw std::invalid_argument("Pause flag must be zero or one");
+        }
+        scene.setPaused(paused != 0);
+    }
+
+    uint64_t scenePhysicsFrame(const SceneTree& scene)
+    {
+        return scene.physicsFrame();
+    }
+
+    double sceneTimeScale(const SceneTree& scene)
+    {
+        return scene.timeScale();
+    }
+
+    void sceneSetTimeScale(SceneTree& scene, double scale)
+    {
+        scene.setTimeScale(scale);
     }
 
     void sceneSetNodeTranslation(SceneTree& scene, ObjectId node, SceneTranslation translation)
     {
-        auto& target    = requireNode(scene, node);
+        auto& target    = requireNode3D(scene, node);
         auto  transform = target.localTransform();
         transform[3].x  = translation.x;
         transform[3].y  = translation.y;
@@ -131,6 +274,11 @@ namespace vultra
         return scene.addChild(requireNode(scene, parent), std::make_unique<Node>(std::string(name))).id();
     }
 
+    ObjectId sceneCreateNode3D(SceneTree& scene, ObjectId parent, std::string_view name)
+    {
+        return scene.addChild(requireNode(scene, parent), std::make_unique<Node3D>(std::string(name))).id();
+    }
+
     ObjectId sceneCreateMesh(SceneTree&             scene,
                              const ProjectManifest& project,
                              ObjectId               parent,
@@ -138,19 +286,30 @@ namespace vultra
                              std::string_view       assetId)
     {
         const auto model = requireModelAsset(project, assetId);
-        return scene.addChild(requireNode(scene, parent), std::make_unique<MeshInstanceNode>(std::string(name), model))
+        return scene.addChild(requireNode(scene, parent), std::make_unique<MeshInstance3D>(std::string(name), model))
             .id();
     }
 
-    void sceneReparentNode(SceneTree& scene, ObjectId node, ObjectId newParent)
+    void sceneReparentNode(SceneTree& scene, ObjectId node, ObjectId newParent, uint64_t keepGlobal)
     {
-        scene.reparent(requireNode(scene, node), requireNode(scene, newParent));
+        if (keepGlobal > 1)
+        {
+            throw std::invalid_argument("Keep-global-transform flag must be zero or one");
+        }
+        if (scene.dispatching())
+        {
+            scene.deferReparent(node, newParent, keepGlobal != 0);
+        }
+        else
+        {
+            scene.reparent(requireNode(scene, node), requireNode(scene, newParent), keepGlobal != 0);
+        }
     }
 
     ObjectId sceneDuplicateMesh(SceneTree& scene, ObjectId source, ObjectId parent)
     {
         const auto& mesh      = requireMesh(scene, source);
-        auto        duplicate = std::make_unique<MeshInstanceNode>(mesh.name() + " Copy", mesh.model());
+        auto        duplicate = std::make_unique<MeshInstance3D>(mesh.name() + " Copy", mesh.model());
         duplicate->setLocalTransform(mesh.localTransform());
         for (const auto& entry : mesh.materialOverrides())
         {
@@ -173,12 +332,19 @@ namespace vultra
 
     void sceneRemoveNode(SceneTree& scene, ObjectId node)
     {
-        scene.remove(requireNode(scene, node));
+        if (scene.dispatching())
+        {
+            scene.queueFree(node);
+        }
+        else
+        {
+            scene.remove(requireNode(scene, node));
+        }
     }
 
     ObjectId sceneCreateCamera(SceneTree& scene, ObjectId parent, std::string_view name)
     {
-        return scene.addChild(requireNode(scene, parent), std::make_unique<CameraNode>(std::string(name))).id();
+        return scene.addChild(requireNode(scene, parent), std::make_unique<Camera3D>(std::string(name))).id();
     }
 
     CameraSettings sceneCameraSettings(const SceneTree& scene, ObjectId node)
@@ -188,7 +354,7 @@ namespace vultra
         {
             throw std::invalid_argument("ObjectId is not a camera node");
         }
-        return static_cast<const CameraNode&>(camera).settings();
+        return static_cast<const Camera3D&>(camera).settings();
     }
 
     void sceneSetCameraSettings(SceneTree& scene, ObjectId node, CameraSettings settings)
@@ -198,7 +364,7 @@ namespace vultra
         {
             throw std::invalid_argument("ObjectId is not a camera node");
         }
-        static_cast<CameraNode&>(camera).setSettings(settings);
+        static_cast<Camera3D&>(camera).setSettings(settings);
     }
 
     ObjectId sceneCurrentCamera(const SceneTree& scene)
@@ -218,7 +384,7 @@ namespace vultra
             throw std::invalid_argument("Unknown light kind");
         }
         return scene
-            .addChild(requireNode(scene, parent), std::make_unique<LightNode>(std::string(name), RenderLightKind(kind)))
+            .addChild(requireNode(scene, parent), std::make_unique<Light3D>(std::string(name), RenderLightKind(kind)))
             .id();
     }
 
@@ -229,7 +395,7 @@ namespace vultra
         {
             throw std::invalid_argument("ObjectId is not a light node");
         }
-        return uint64_t(static_cast<const LightNode&>(light).lightKind());
+        return uint64_t(static_cast<const Light3D&>(light).lightKind());
     }
 
     LightSettings sceneLightSettings(const SceneTree& scene, ObjectId node)
@@ -239,7 +405,7 @@ namespace vultra
         {
             throw std::invalid_argument("ObjectId is not a light node");
         }
-        return static_cast<const LightNode&>(light).settings();
+        return static_cast<const Light3D&>(light).settings();
     }
 
     void sceneSetLightSettings(SceneTree& scene, ObjectId node, LightSettings settings)
@@ -249,12 +415,12 @@ namespace vultra
         {
             throw std::invalid_argument("ObjectId is not a light node");
         }
-        static_cast<LightNode&>(light).setSettings(settings);
+        static_cast<Light3D&>(light).setSettings(settings);
     }
 
     ObjectId sceneCreateEnvironment(SceneTree& scene, ObjectId parent, std::string_view name)
     {
-        return scene.addChild(requireNode(scene, parent), std::make_unique<EnvironmentNode>(std::string(name))).id();
+        return scene.addChild(requireNode(scene, parent), std::make_unique<WorldEnvironment>(std::string(name))).id();
     }
 
     EnvironmentSettings sceneEnvironmentSettings(const SceneTree& scene, ObjectId node)
@@ -264,7 +430,7 @@ namespace vultra
         {
             throw std::invalid_argument("ObjectId is not an environment node");
         }
-        return static_cast<const EnvironmentNode&>(environment).settings();
+        return static_cast<const WorldEnvironment&>(environment).settings();
     }
 
     void sceneSetEnvironmentSettings(SceneTree& scene, ObjectId node, EnvironmentSettings settings)
@@ -274,7 +440,7 @@ namespace vultra
         {
             throw std::invalid_argument("ObjectId is not an environment node");
         }
-        static_cast<EnvironmentNode&>(environment).setSettings(settings);
+        static_cast<WorldEnvironment&>(environment).setSettings(settings);
     }
 
     void
@@ -295,7 +461,7 @@ namespace vultra
             }
             asset = {*parsed};
         }
-        static_cast<EnvironmentNode&>(environment).setRadianceAsset(asset);
+        static_cast<WorldEnvironment&>(environment).setRadianceAsset(asset);
     }
 
     ObjectId sceneCurrentEnvironment(const SceneTree& scene)

@@ -1,5 +1,5 @@
 If:
-  PathMatch: (source|examples|tests)/.*
+  PathMatch: (source|extensions|editor|tools|runtime|examples|tests)/.*\.(cpp|hpp|cc|cxx|hxx)$
 CompileFlags:
   # Older clangd versions can drop /std:c++latest when borrowing a header's command.
   # https://github.com/clangd/clangd/issues/1850

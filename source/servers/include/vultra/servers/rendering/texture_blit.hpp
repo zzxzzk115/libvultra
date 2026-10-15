@@ -19,6 +19,7 @@ namespace vultra
         // Update descriptors before recording draws; one slot per source used in that submission.
         void setSource(uint32_t slot, Texture& source);
         // Set encodeSrgb only when writing linear samples to a display UNORM target.
+        // Begins and ends its own rendering scope; call outside an active rendering pass.
         void draw(VriCommandBuffer*        cmd,
                   Texture&                 target,
                   VriRect                  rectangle,

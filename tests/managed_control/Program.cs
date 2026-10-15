@@ -9,14 +9,14 @@ using Vultra.Scripting;
 internal static unsafe class Program
 {
     private static VultraSceneTranslation s_Throttle = new() { Y = -0.92f };
-    private static bool s_ClickFaster;
-    private static bool s_ClickAuto;
-    private static bool s_CopiedModel;
-    private static bool s_RemovedCopy;
-    private static bool s_SelectedModel;
-    private static bool s_CreatedGroup;
-    private static bool s_CreatedMesh;
-    private static bool s_ReparentedMesh;
+    private static bool                   s_ClickFaster;
+    private static bool                   s_ClickAuto;
+    private static bool                   s_CopiedModel;
+    private static bool                   s_RemovedCopy;
+    private static bool                   s_SelectedModel;
+    private static bool                   s_CreatedGroup;
+    private static bool                   s_CreatedMesh;
+    private static bool                   s_ReparentedMesh;
 
     private static void Main()
     {
@@ -28,47 +28,57 @@ internal static unsafe class Program
                 "Generated safe material conversion lost grouped color or scalar fields");
         var light = new LightSettings();
         Require(light.Color == System.Numerics.Vector3.One && light.Intensity == 1 && light.Range == 10 &&
-                LightSettings.FromAbi(light.ToAbi()) == light,
+                    LightSettings.FromAbi(light.ToAbi()) == light,
                 "Generated light defaults/conversion differ from the native property model");
         Require(new EnvironmentSettings().Intensity == 1,
                 "Generated environment default differs from the native property model");
-        var scene = new VultraSceneApi
-        {
-            Version = VultraAbi.Version,
-            StructSize = (uint)sizeof(VultraSceneApi),
-            RootId = &RootId,
-            ChildId = &ChildId,
-            CopyMeshModel = &CopyMeshModel,
-            CreateNode = &CreateNode,
-            CreateMesh = &CreateMesh,
-            ReparentNode = &ReparentNode,
-            DuplicateMesh = &DuplicateMesh,
-            RemoveNode = &RemoveNode,
-            SetMeshModel = &SetMeshModel,
-            NodeTranslation = &NodeTranslation,
-            SetNodeTranslation = &SetNodeTranslation
-        };
-        var ui = new VultraUiApi
-        {
-            Version = VultraAbi.Version,
-            StructSize = (uint)sizeof(VultraUiApi),
-            Text = &Text,
-            Button = &Button
-        };
-        var world = new ScriptScene(&scene);
+        var scene  = new VultraSceneApi { Version            = VultraAbi.Version,
+                                          StructSize         = (uint)sizeof(VultraSceneApi),
+                                          RootId             = &RootId,
+                                          NodeType           = &NodeType,
+                                          ChildId            = &ChildId,
+                                          CopyMeshModel      = &CopyMeshModel,
+                                          CreateNode         = &CreateNode,
+                                          CreateMesh         = &CreateMesh,
+                                          ReparentNode       = &ReparentNode,
+                                          DuplicateMesh      = &DuplicateMesh,
+                                          RemoveNode         = &RemoveNode,
+                                          SetMeshModel       = &SetMeshModel,
+                                          NodeTranslation    = &NodeTranslation,
+                                          SetNodeTranslation = &SetNodeTranslation };
+        var ui     = new VultraUiApi { Version    = VultraAbi.Version,
+                                       StructSize = (uint)sizeof(VultraUiApi),
+                                       Text       = &Text,
+                                       Button     = &Button };
+        var world  = new ScriptScene(&scene);
         var script = new ThrottleController();
         script.Attach(world, 2);
+        world.RegisterScript(script);
         world.Begin(default);
+        Require(ReferenceEquals(world.Root, world.Root) && world.Root.GetType() == typeof(Node),
+                "Root lookup is not a canonical non-spatial Node");
+        Require(ReferenceEquals(world.Root.GetChild<ThrottleController>(2), script),
+                "Node lookup did not return the attached script instance");
+        bool invalidBase = false;
+        try
+        {
+            ScriptScene.ValidateScriptBase(script, "Node"u8);
+        }
+        catch (InvalidOperationException)
+        {
+            invalidBase = true;
+        }
+        Require(invalidBase, "A spatial script attached to a non-spatial native node");
         script._Ready();
-        var copy = script.DuplicateMesh(world.Root);
-        copy.CopyMeshModel(script);
+        var mesh = world.Root.CreateMeshChild("Mesh", "8fc32ebe-cf5e-45b6-b93f-05c1ae8f165b");
+        var copy = mesh.DuplicateMesh(world.Root);
+        copy.CopyMeshModel(mesh);
         copy.SetMeshModel("8fc32ebe-cf5e-45b6-b93f-05c1ae8f165b");
         copy.Remove();
         var group = world.Root.CreateChild("Group");
-        var mesh = world.Root.CreateMeshChild("Mesh", "8fc32ebe-cf5e-45b6-b93f-05c1ae8f165b");
         mesh.Reparent(group);
-        Require(copy.Id == 3 && group.Id == 4 && mesh.Id == 5 && s_CopiedModel && s_SelectedModel &&
-                s_RemovedCopy && s_CreatedGroup && s_CreatedMesh && s_ReparentedMesh,
+        Require(copy.Id == 3 && group.Id == 4 && mesh.Id == 5 && s_CopiedModel && s_SelectedModel && s_RemovedCopy &&
+                    s_CreatedGroup && s_CreatedMesh && s_ReparentedMesh,
                 "Managed scene composition did not use the generated scene ABI");
         world.End();
         Process(script, world, 1.0f);
@@ -101,13 +111,14 @@ internal static unsafe class Program
             Process(script, world, 1.0f / 60.0f);
         }
         var updateBytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        before = GC.GetAllocatedBytesForCurrentThread();
+        before          = GC.GetAllocatedBytesForCurrentThread();
         for (var index = 0; index < 1024; index++)
         {
             script._EditorGui(new EditorGui(&ui, default));
         }
         var guiBytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        Require(updateBytes == 0 && guiBytes == 0, $"Managed callbacks allocated: process {updateBytes}, UI {guiBytes}");
+        Require(updateBytes == 0 && guiBytes == 0,
+                $"Managed callbacks allocated: process {updateBytes}, UI {guiBytes}");
         script._ExitTree();
         bool expired = false;
         try
@@ -127,6 +138,8 @@ internal static unsafe class Program
         try
         {
             script._Process(deltaSeconds);
+            Require(ReferenceEquals(world.Root.GetChild<ThrottleController>(2), script),
+                    "Repeated lookup lost script identity");
         }
         finally
         {
@@ -142,7 +155,30 @@ internal static unsafe class Program
         }
     }
 
+    private static readonly byte[] s_NodeType = PinnedUtf8("Node"u8);
+    private static readonly byte[] s_MeshType = PinnedUtf8("MeshInstance3D"u8);
+
+    private static byte[] PinnedUtf8(ReadOnlySpan<byte> value)
+    {
+        var bytes = GC.AllocateArray<byte>(value.Length, pinned: true);
+        value.CopyTo(bytes);
+        return bytes;
+    }
+
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+
+    private static VultraStatus NodeType(VultraSceneFrame frame, ulong node, byte** value, ulong* size)
+    {
+        if (node == 3 && s_RemovedCopy)
+            return VultraStatus.InvalidArgument;
+        var bytes                        = node == 1 || node == 4 ? s_NodeType : s_MeshType;
+        fixed(byte* data = bytes)* value = data;
+        *size                            = (ulong)bytes.Length;
+        return VultraStatus.Ok;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+
     private static VultraStatus RootId(VultraSceneFrame frame, ulong* value)
     {
         *value = 1;
@@ -150,6 +186,7 @@ internal static unsafe class Program
     }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+
     private static VultraStatus ChildId(VultraSceneFrame frame, ulong parent, ulong index, ulong* value)
     {
         if (parent != 1 || index != 2)
@@ -161,20 +198,27 @@ internal static unsafe class Program
     }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+
     private static VultraStatus CreateNode(VultraSceneFrame frame, ulong parent, byte* data, ulong size, ulong* value)
     {
         if (parent != 1 || Encoding.UTF8.GetString(new ReadOnlySpan<byte>(data, checked((int)size))) != "Group")
         {
             return VultraStatus.InvalidArgument;
         }
-        *value = 4;
+        *value         = 4;
         s_CreatedGroup = true;
         return VultraStatus.Ok;
     }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
-    private static VultraStatus CreateMesh(VultraSceneFrame frame, ulong parent, byte* name, ulong nameSize,
-                                           byte* assetId, ulong assetSize, ulong* value)
+
+    private static VultraStatus CreateMesh(VultraSceneFrame frame,
+                                           ulong            parent,
+                                           byte*            name,
+                                           ulong            nameSize,
+                                           byte*            assetId,
+                                           ulong            assetSize,
+                                           ulong*           value)
     {
         if (parent != 1 || Encoding.UTF8.GetString(new ReadOnlySpan<byte>(name, checked((int)nameSize))) != "Mesh" ||
             Encoding.UTF8.GetString(new ReadOnlySpan<byte>(assetId, checked((int)assetSize))) !=
@@ -182,13 +226,14 @@ internal static unsafe class Program
         {
             return VultraStatus.InvalidArgument;
         }
-        *value = 5;
+        *value        = 5;
         s_CreatedMesh = true;
         return VultraStatus.Ok;
     }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
-    private static VultraStatus ReparentNode(VultraSceneFrame frame, ulong node, ulong newParent)
+
+    private static VultraStatus ReparentNode(VultraSceneFrame frame, ulong node, ulong newParent, ulong keepGlobal)
     {
         if (node != 5 || newParent != 4)
         {
@@ -199,9 +244,10 @@ internal static unsafe class Program
     }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+
     private static VultraStatus DuplicateMesh(VultraSceneFrame frame, ulong source, ulong parent, ulong* value)
     {
-        if (source != 2 || parent != 1)
+        if (source != 5 || parent != 1)
         {
             return VultraStatus.InvalidArgument;
         }
@@ -210,9 +256,10 @@ internal static unsafe class Program
     }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+
     private static VultraStatus CopyMeshModel(VultraSceneFrame frame, ulong target, ulong source)
     {
-        if (target != 3 || source != 2)
+        if (target != 3 || source != 5)
         {
             return VultraStatus.InvalidArgument;
         }
@@ -221,10 +268,11 @@ internal static unsafe class Program
     }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+
     private static VultraStatus SetMeshModel(VultraSceneFrame frame, ulong node, byte* data, ulong size)
     {
         if (node != 3 || Encoding.UTF8.GetString(new ReadOnlySpan<byte>(data, checked((int)size))) !=
-            "8fc32ebe-cf5e-45b6-b93f-05c1ae8f165b")
+                             "8fc32ebe-cf5e-45b6-b93f-05c1ae8f165b")
         {
             return VultraStatus.InvalidArgument;
         }
@@ -233,6 +281,7 @@ internal static unsafe class Program
     }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+
     private static VultraStatus RemoveNode(VultraSceneFrame frame, ulong node)
     {
         if (node != 3)
@@ -244,6 +293,7 @@ internal static unsafe class Program
     }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+
     private static VultraStatus NodeTranslation(VultraSceneFrame frame, ulong node, VultraSceneTranslation* value)
     {
         if (node != 2)
@@ -255,6 +305,7 @@ internal static unsafe class Program
     }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+
     private static VultraStatus SetNodeTranslation(VultraSceneFrame frame, ulong node, VultraSceneTranslation value)
     {
         if (node != 2)
@@ -269,19 +320,20 @@ internal static unsafe class Program
     private static VultraStatus Text(VultraUiFrame frame, byte* data, ulong size) => VultraStatus.Ok;
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+
     private static VultraStatus Button(VultraUiFrame frame, byte* data, ulong size, byte* clicked)
     {
         var label = new ReadOnlySpan<byte>(data, checked((int)size));
-        *clicked = 0;
+        *clicked  = 0;
         if (label.SequenceEqual("Faster"u8) && s_ClickFaster)
         {
             s_ClickFaster = false;
-            *clicked = 1;
+            *clicked      = 1;
         }
         if (label.SequenceEqual("Auto throttle"u8) && s_ClickAuto)
         {
             s_ClickAuto = false;
-            *clicked = 1;
+            *clicked    = 1;
         }
         return VultraStatus.Ok;
     }

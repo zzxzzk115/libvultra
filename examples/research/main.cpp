@@ -6,21 +6,22 @@
 #include <vultra/core/base/property.hpp>
 #include <vultra/drivers/profiling/benchmark.hpp>
 #include <vultra/drivers/profiling/profiler.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/main/app/imgui_app.hpp>
 #include <vultra/scene/camera/orbit_camera.hpp>
 #include <vultra/scene/scene_import.hpp>
 #include <vultra/scene/scene_render_state.hpp>
 #include <vultra/scene/scene_tree.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
+#include <vultra/servers/rendering/builtin/raster_passes.hpp>
+#include <vultra/servers/rendering/builtin/render_properties.generated.hpp>
 #include <vultra/servers/rendering/graph/graph_definition.hpp>
 #include <vultra/servers/rendering/graph/render_graph.hpp>
 #include <vultra/servers/rendering/rendering_server.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/ui/editor_gui_inspector.hpp>
 
 #include <algorithm>
 #include <array>
-#include <cfloat>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -188,6 +189,8 @@ public:
                   .renderDocFrame = cli.present<uint64_t>("--renderdoc-frame")},
                  {.persistLayout = !cli.present<std::string>("--benchmark").has_value(),
                   .iniFile       = cli.present<std::string>("--layout-file").value_or("")}),
+        m_Server(getDevice()),
+        m_Passes(getDevice()),
         m_DumpDirectory(cli.present<std::string>("--dump").value_or("")),
         m_CapturePath(cli.present<std::string>("--capture").value_or("")),
         m_ReferencePath(cli.present<std::string>("--compare").value_or("")),
@@ -203,7 +206,8 @@ public:
         m_Profiler(getDevice()),
         m_FixedCamera(cli.get<bool>("--fixed-camera"))
     {
-        getPassCatalog().add(research::colorGainDefinition());
+        installBuiltinRenderPasses(m_Passes);
+        m_Passes.add(research::colorGainDefinition());
         if (const auto definition = cli.present<std::string>("--graph"))
         {
             m_GraphDefinitionPath = *definition;
@@ -232,7 +236,7 @@ public:
                             importScene(*m_SceneTree, *m_Project, m_ProjectPath.parent_path(), {}, &m_SceneInstances) :
                             importAsset(m_ModelPath);
         m_AssetCachePath = asset.cachePath;
-        m_GpuScene       = getRenderingServer().uploadScene(asset);
+        m_GpuScene       = m_Server.uploadScene(asset);
         m_Renderer =
             std::make_unique<BuiltinRenderer>(getDevice(), *m_GpuScene, *m_Environment, getSwapchain().format());
         m_Renderer->settings.path =
@@ -399,7 +403,7 @@ private:
                 auto& settings = m_Renderer->settings;
                 if (EditorGuiInspector inspector(getEditorGui(), "Settings"); inspector)
                 {
-                    inspector.properties(getObjectTypeCatalog().type("RenderSettings"), &settings);
+                    inspector.properties(renderSettingsType(), &settings);
                 }
                 m_Screenshot = ui.button("Save scene PNG");
                 ui.sameLine();
@@ -562,17 +566,17 @@ private:
                 if (m_GraphDefinitionPath.empty())
                 {
                     const std::array inputs {m_Outputs.hdr};
-                    auto             pass = getPassCatalog().build(*m_Graph,
-                                                                   "research.color_gain",
-                                                                   "gain",
-                                                                   inputs,
-                                                                   m_GraphDefinition->passes.front().parameters);
+                    auto             pass = m_Passes.build(*m_Graph,
+                                                           "research.color_gain",
+                                                           "gain",
+                                                           inputs,
+                                                           m_GraphDefinition->passes.front().parameters);
                     m_GraphDefinitionState.outputs.push_back({"gain.color", pass.outputs.front()});
                     m_GraphDefinitionState.passes.push_back(std::move(pass));
                 }
                 else
                 {
-                    m_GraphDefinitionState = m_GraphDefinition->build(*m_Graph, getPassCatalog(), imports);
+                    m_GraphDefinitionState = m_GraphDefinition->build(*m_Graph, m_Passes, imports);
                 }
                 if (m_GraphDefinitionState.outputs.size() != 1)
                 {
@@ -718,6 +722,7 @@ private:
 
     void onPostRender(Texture&) override
     {
+        m_Server.collectCompletedFrame();
         m_Profiler.collect();
         if (m_IntermediateRequested)
         {
@@ -767,6 +772,9 @@ private:
         m_Benchmark.add(frame, m_Profiler.timings());
     }
 
+    // Handles and graph callbacks are destroyed before their server/catalog, then the base-owned Device.
+    RenderingServer                      m_Server;
+    PassCatalog                          m_Passes;
     std::filesystem::path                m_DumpDirectory;
     std::filesystem::path                m_CapturePath;
     std::filesystem::path                m_ReferencePath;

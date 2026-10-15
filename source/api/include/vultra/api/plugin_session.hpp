@@ -3,6 +3,8 @@
 #include <vultra/api/native_plugin.h>
 #include <vultra/api/scene_bridge.hpp>
 
+#include <span>
+
 namespace vultra
 {
     class EditorGui;
@@ -14,17 +16,18 @@ namespace vultra
     {
     public:
         // initData is borrowed only by initialize; the plugin must replace user_data before returning.
-        PluginSession(VultraPluginInit                   initialize,
-                      SceneTree*                         scene,
-                      void*                              initData = nullptr,
-                      const VultraScriptRegistrationApi* scripts  = nullptr,
-                      const ProjectManifest*             project  = nullptr,
-                      const VultraResearchApi*           research = nullptr);
+        PluginSession(VultraPluginInit                    initialize,
+                      SceneTree*                          scene,
+                      void*                               initData   = nullptr,
+                      const VultraScriptRegistrationApi*  scripts    = nullptr,
+                      const ProjectManifest*              project    = nullptr,
+                      std::span<const VultraExtensionApi> extensions = {});
         ~PluginSession();
         PluginSession(const PluginSession&)            = delete;
         PluginSession& operator=(const PluginSession&) = delete;
 
         void update(float deltaSeconds);
+        void notify(VultraSceneEvent event, float deltaSeconds = 0);
         void gui(EditorGui& gui);
         void stop() noexcept;
         bool active() const;

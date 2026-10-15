@@ -1,12 +1,12 @@
 #include <vultra/api/scene_bridge.hpp>
 #include <vultra/core/base/stable_id.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/scene_import.hpp>
 #include <vultra/scene/scene_render_state.hpp>
 #include <vultra/scripting/script_host.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
 #include <vultra/servers/rendering/rendering_server.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 
 #include <glm/ext/matrix_transform.hpp>
 
@@ -147,7 +147,7 @@ namespace
                 "Stopped callback retained environment access");
     }
 
-    void materialBoundaries(SceneTree& scene, MeshInstanceNode& mesh, MaterialResource& material)
+    void materialBoundaries(SceneTree& scene, MeshInstance3D& mesh, MaterialResource& material)
     {
         const auto&              api = sceneApi();
         SceneAccess              access {&scene, 31, true};
@@ -225,8 +225,8 @@ try
         const auto*   hdrTexture = graph.getTexture(outputs.hdr).handle;
         SceneTree     tree(std::make_unique<Node>("World"));
         const AssetId model {StableId::generate()};
-        auto&         mesh = static_cast<MeshInstanceNode&>(
-            tree.addChild(tree.root(), std::make_unique<MeshInstanceNode>("Quad", model)));
+        auto&         mesh =
+            static_cast<MeshInstance3D&>(tree.addChild(tree.root(), std::make_unique<MeshInstance3D>("Quad", model)));
         std::vector<SceneMeshInstance> instances {{mesh.idInScene(),
                                                    model,
                                                    glm::mat4(1),
@@ -235,7 +235,7 @@ try
                                                    1,
                                                    0,
                                                    {MaterialParameters::fromMaterial(quad().materials.front())}}};
-        auto& camera = static_cast<CameraNode&>(tree.addChild(tree.root(), std::make_unique<CameraNode>("Camera")));
+        auto& camera = static_cast<Camera3D&>(tree.addChild(tree.root(), std::make_unique<Camera3D>("Camera")));
         camera.setLocalTransform(glm::translate(glm::mat4(1), {0, 0, 3}));
         tree.setCurrentCamera(camera.id());
         SceneRenderState state;
@@ -256,7 +256,18 @@ try
                     "The lighting probe missed the test geometry");
             return readback(device, graph.getTexture(outputs.hdr));
         };
-        const auto preset = render();
+        const auto                 preset          = render();
+        const auto                 meshTransform   = mesh.localTransform();
+        const auto                 cameraTransform = camera.localTransform();
+        const SceneTransformUpdate batchTransforms[] {{mesh.id(), glm::translate(glm::mat4(1), {0.2f, 0, 0})},
+                                                      {camera.id(), glm::translate(glm::mat4(1), {0.1f, 0, 3})}};
+        tree.setLocalTransforms(batchTransforms);
+        require(render().rgba != preset.rgba && gpu.rid() == rid && gpu->vertices->handle == vertices &&
+                    graph.getTexture(outputs.hdr).handle == hdrTexture,
+                "Batch component transforms did not reach rendering or recreated stable GPU resources");
+        const SceneTransformUpdate restoreTransforms[] {{mesh.id(), meshTransform}, {camera.id(), cameraTransform}};
+        tree.setLocalTransforms(restoreTransforms);
+        require(render().rgba == preset.rgba, "Restoring component transforms changed the baseline image");
         mesh.setModel({StableId::generate()});
         require(gpuSync.needsImport(tree, instances), "Model replacement did not request geometry reimport");
         expectError(
@@ -277,7 +288,7 @@ try
         tree.addChild(tree.root(), std::move(detachedMesh));
         require(!gpuSync.needsImport(tree, instances) && render().rgba == preset.rgba,
                 "Reattaching the same mesh did not recover synchronization");
-        auto& addedMesh = tree.addChild(tree.root(), std::make_unique<MeshInstanceNode>("Added quad", model));
+        auto& addedMesh = tree.addChild(tree.root(), std::make_unique<MeshInstance3D>("Added quad", model));
         require(gpuSync.needsImport(tree, instances), "A new mesh was not detected before recording");
         expectError(
             [&]
@@ -299,22 +310,77 @@ try
         parallelGraph.compile();
         require(!gpuSync.update(tree, instances, *gpu) && !state.update(tree, extent),
                 "Unchanged frame repeated scene synchronization");
-        auto& rig = tree.addChild(tree.root(), std::make_unique<Node>("Mesh rig"));
+        auto& rig = tree.addChild(tree.root(), std::make_unique<Node3D>("Mesh rig"));
         rig.setLocalTransform(glm::translate(glm::mat4(1), {0.6f, 0, 0}));
-        tree.reparent(mesh, rig);
+        tree.reparent(mesh, rig, false);
         require(!gpuSync.needsImport(tree, instances) && render().rgba != preset.rgba && gpu.rid() == rid &&
                     gpu->vertices->handle == vertices && graph.getTexture(outputs.hdr).handle == hdrTexture,
                 "Reparented mesh or inherited motion rebuilt geometry or failed to render");
-        tree.reparent(mesh, tree.root());
+        tree.reparent(mesh, tree.root(), false);
         tree.remove(rig);
         require(!gpuSync.needsImport(tree, instances) && render().rgba == preset.rgba,
                 "Restoring mesh parent changed its original image or required reimport");
-        auto& sun = static_cast<LightNode&>(
-            tree.addChild(tree.root(), std::make_unique<LightNode>("Sun", RenderLightKind::eDirectional)));
+        auto& sun = static_cast<Light3D&>(
+            tree.addChild(tree.root(), std::make_unique<Light3D>("Sun", RenderLightKind::eDirectional)));
         auto sunSettings      = sun.settings();
         sunSettings.intensity = 2;
         sun.setSettings(sunSettings);
         require(render().rgba == preset.rgba && center(preset) > 0.1f, "Scene sun differs from direct C++ lighting");
+        const auto meshNode     = instances.front().node;
+        auto       authoredMesh = tree.remove(mesh);
+        auto       authoredSun  = tree.remove(sun);
+        const auto rawMesh      = tree.createEntity("ECS mesh");
+        const auto rawLight     = tree.createEntity("ECS light");
+        const auto rawCamera    = tree.createEntity("ECS camera");
+        tree.registry().emplace<SceneMesh>(tree.entity(rawMesh), model);
+        tree.registry().emplace<SceneTransform>(tree.entity(rawMesh));
+        tree.registry().emplace<SceneLight>(tree.entity(rawLight), RenderLightKind::eDirectional, sunSettings);
+        tree.registry().emplace<SceneTransform>(tree.entity(rawLight));
+        tree.registry().emplace<SceneCamera>(tree.entity(rawCamera), camera.settings());
+        tree.registry().emplace<SceneTransform>(tree.entity(rawCamera), camera.localTransform());
+        instances.front().node = tree.registry().get<SceneNode>(tree.entity(rawMesh)).persistentId;
+        tree.setCurrentCamera(rawCamera);
+        require(!tree.find(rawMesh) && !tree.find(rawLight) && !tree.find(rawCamera) &&
+                    !gpuSync.needsImport(tree, instances) && render().rgba == preset.rgba,
+                "ECS-only mesh/light/camera did not produce the authored scene's image");
+        tree.registry().patch<SceneLight>(tree.entity(rawLight),
+                                          [](SceneLight& value)
+                                          {
+                                              value.settings.intensity *= 2;
+                                          });
+        const auto doubled = render();
+        require(std::abs(center(doubled) - center(preset) * 2) < 0.002f && gpu.rid() == rid &&
+                    gpu->vertices->handle == vertices && graph.getTexture(outputs.hdr).handle == hdrTexture,
+                "Native ECS light patch failed to change pixels or recreated stable GPU resources");
+        tree.registry().remove<SceneCamera>(tree.entity(rawCamera));
+        state.update(tree, extent);
+        require(!tree.currentCamera().value && !state.camera,
+                "Removing a selected camera component left stale render-state access");
+        tree.registry().emplace<SceneCamera>(tree.entity(rawCamera), camera.settings());
+        require(!tree.currentCamera().value, "Replacing a camera component implicitly reselected it");
+        tree.setCurrentCamera(camera.id());
+        require(render().rgba == doubled.rgba, "Selecting another live camera changed the existing image");
+        tree.setCurrentCamera(rawCamera);
+        require(render().rgba == doubled.rgba, "Explicit camera reselection changed the existing image");
+        const auto rawEnvironment = tree.createEntity("ECS environment");
+        tree.registry().emplace<SceneEnvironment>(tree.entity(rawEnvironment), AssetId {}, EnvironmentSettings {2});
+        tree.setCurrentEnvironment(rawEnvironment);
+        render();
+        require(state.environmentIntensity == 2, "ECS environment selection did not reach render state");
+        tree.registry().remove<SceneEnvironment>(tree.entity(rawEnvironment));
+        render();
+        require(!tree.currentEnvironment().value && state.environmentIntensity == 1,
+                "Removing a selected environment component retained stale render state");
+        tree.destroyEntity(rawEnvironment);
+        tree.destroyEntity(rawMesh);
+        tree.destroyEntity(rawLight);
+        tree.destroyEntity(rawCamera);
+        require(!tree.currentCamera().value, "Deleted ECS camera retained an active selection");
+        instances.front().node = meshNode;
+        tree.addChild(tree.root(), std::move(authoredMesh));
+        tree.addChild(tree.root(), std::move(authoredSun));
+        tree.setCurrentCamera(camera.id());
+        require(render().rgba == preset.rgba, "Restoring authored facades after ECS-only rendering changed the image");
         auto& material            = tree.addMaterial(std::make_unique<MaterialResource>("Live material"));
         auto  parameters          = instances.front().importedMaterials.front();
         parameters.baseRed        = 0.25f;
@@ -360,8 +426,8 @@ try
         sun.setSettings(sunSettings);
         require(unlitCenter(render()), "Disabled direct lighting retained the renderer preset");
 
-        auto& point = static_cast<LightNode&>(
-            tree.addChild(tree.root(), std::make_unique<LightNode>("Point", RenderLightKind::ePoint)));
+        auto& point = static_cast<Light3D&>(
+            tree.addChild(tree.root(), std::make_unique<Light3D>("Point", RenderLightKind::ePoint)));
         point.setLocalTransform(glm::translate(glm::mat4(1), {0, 0, 2}));
         auto pointSettings      = point.settings();
         pointSettings.intensity = 10;
@@ -378,8 +444,8 @@ try
         pointSettings.intensity = 0;
         point.setSettings(pointSettings);
 
-        auto& spot = static_cast<LightNode&>(
-            tree.addChild(tree.root(), std::make_unique<LightNode>("Spot", RenderLightKind::eSpot)));
+        auto& spot = static_cast<Light3D&>(
+            tree.addChild(tree.root(), std::make_unique<Light3D>("Spot", RenderLightKind::eSpot)));
         spot.setLocalTransform(glm::translate(glm::mat4(1), {0, 0, 2}));
         auto spotSettings      = spot.settings();
         spotSettings.intensity = 10;
@@ -412,8 +478,8 @@ try
 
         renderer.settings.ibl    = true;
         renderer.settings.skybox = true;
-        auto& worldEnvironment   = static_cast<EnvironmentNode&>(
-            tree.addChild(tree.root(), std::make_unique<EnvironmentNode>("Live environment")));
+        auto& worldEnvironment   = static_cast<WorldEnvironment&>(
+            tree.addChild(tree.root(), std::make_unique<WorldEnvironment>("Live environment")));
         tree.setCurrentEnvironment(worldEnvironment.id());
         const auto* radiance = environment.radiance->handle;
         worldEnvironment.setSettings({0.5f});
@@ -461,8 +527,8 @@ try
                                                 "VultraTests.LightingController"}};
         for (size_t i = 0; i < modules.size(); ++i)
         {
-            tree                   = SceneTree(std::make_unique<Node>("Script world"));
-            auto& scriptMesh       = tree.addChild(tree.root(), std::make_unique<MeshInstanceNode>("Quad", model));
+            tree                   = SceneTree(std::make_unique<Node3D>("Script world"));
+            auto& scriptMesh       = tree.addChild(tree.root(), std::make_unique<MeshInstance3D>("Quad", model));
             instances.front().node = scriptMesh.idInScene();
             auto module            = modules[i];
             module.node            = tree.root().idInScene().value;

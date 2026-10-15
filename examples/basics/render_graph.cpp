@@ -2,6 +2,7 @@
 #include "../common/sample.hpp"
 
 #include <vultra/drivers/profiling/profiler.hpp>
+#include <vultra/main/app/desktop_app.hpp>
 #include <vultra/servers/rendering/graph/render_graph.hpp>
 
 class GraphApp final : public vultra::DesktopApp

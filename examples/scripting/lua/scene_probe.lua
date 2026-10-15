@@ -9,6 +9,9 @@ function BeaconPickup:_ready()
 end
 
 function BeaconPickup:_process(delta_seconds)
+    if not self.ship then
+        self.ship = self.scene:root():get_child(0)
+    end
     local ship_x, ship_y = self.ship:position()
     local beacon_x, beacon_y = self.node:position()
     local dx, dy = ship_x - beacon_x, ship_y - beacon_y

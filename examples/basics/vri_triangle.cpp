@@ -1,6 +1,8 @@
 #include "../common/colored_mesh.hpp"
 #include "../common/sample.hpp"
 
+#include <vultra/main/app/desktop_app.hpp>
+
 class TriangleApp final : public vultra::DesktopApp
 {
 public:

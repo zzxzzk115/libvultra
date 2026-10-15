@@ -1,6 +1,6 @@
 #pragma once
+#include <vultra/core/math/extent.hpp>
 #include <vultra/drivers/rhi/device.hpp>
-#include <vultra/platform/os/window.hpp>
 
 #include <vector>
 

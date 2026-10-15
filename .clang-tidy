@@ -10,7 +10,7 @@ Checks: >
   readability-avoid-nested-conditional-operator,
   readability-identifier-naming
 WarningsAsErrors: 'readability-*'
-HeaderFilterRegex: '(source|editor|examples|tests)[\\/].*\.hpp$'
+HeaderFilterRegex: '(source|extensions|editor|tools|examples|tests)[\\/].*\.hpp$'
 FormatStyle: file
 CheckOptions:
   readability-braces-around-statements.ShortStatementLines: 0

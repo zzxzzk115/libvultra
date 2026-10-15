@@ -1,9 +1,11 @@
 #include <vultra/assets/asset_source.hpp>
 #include <vultra/assets/vpk_archive.hpp>
-#include <vultra/main/experiment_session.hpp>
+#include <vultra/assets/vpk_export.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/platform/os/file.hpp>
+#include <vultra/research/experiment_session.hpp>
+#include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/scene_tree.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 
 #include <cstdio>
 #include <stdexcept>
@@ -34,7 +36,7 @@ try
     const auto      shader = project.addAsset("painted.vshader");
     SceneTree       tree(std::make_unique<Node>("Game shader project"));
     auto&           mesh =
-        static_cast<MeshInstanceNode&>(tree.addChild(tree.root(), std::make_unique<MeshInstanceNode>("Helmet", model)));
+        static_cast<MeshInstance3D&>(tree.addChild(tree.root(), std::make_unique<MeshInstance3D>("Helmet", model)));
     auto&            resource = tree.addMaterial(std::make_unique<MaterialResource>("Painted metal"));
     MaterialInstance instance;
     instance.shader = shader;
@@ -88,7 +90,7 @@ try
     ShaderCompileOptions options;
     options.includeDirectories = {"builtin/shaders", "external"};
     const auto pack            = root / "game.vpk";
-    VpkArchive::packProject(root / "project.vproject", pack, options);
+    packProject(root / "project.vproject", pack, options);
     // Exercise native DLL classification without requiring a Windows loader on this machine.
     const std::string moduleProbe = "native module materialization probe";
     writeFileAtomically(root / "platform.dll", std::as_bytes(std::span(moduleProbe)));
@@ -96,7 +98,7 @@ try
     probeProject.extensions.push_back("platform.dll");
     probeProject.save(root / "probe.vproject");
     const auto probePack = root / "native-module.vpk";
-    VpkArchive::packProject(root / "probe.vproject", probePack, options);
+    packProject(root / "probe.vproject", probePack, options);
     VpkArchive archive(pack);
     require(archive.contains("painted.vshaderc") && !archive.contains("painted.vshader"),
             "Game VPK retained shader source");

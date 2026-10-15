@@ -1,9 +1,9 @@
 #include <vultra/assets/asset_pipeline.hpp>
 #include <vultra/core/base/stable_id.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
-#include <vultra/servers/rendering/builtin/environment_sampling.hpp>
-#include <vultra/servers/rendering/builtin/reference_path_tracer.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/research/environment_sampling.hpp>
+#include <vultra/research/reference_path_tracer.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
@@ -310,13 +310,13 @@ try
     RenderGraph         graph(device);
     const auto          outputs = tracer.addPasses(graph, {17, 13});
     const std::array    aovs {outputs.radiance,
-                           outputs.hdr,
-                           outputs.albedo,
-                           outputs.normal,
-                           outputs.depth,
-                           outputs.motion,
-                           outputs.sampleCount,
-                           outputs.rayCount};
+                              outputs.hdr,
+                              outputs.albedo,
+                              outputs.normal,
+                              outputs.depth,
+                              outputs.motion,
+                              outputs.sampleCount,
+                              outputs.rayCount};
     for (const auto resource : aovs)
     {
         graph.exportResource(resource);

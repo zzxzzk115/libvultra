@@ -1,5 +1,6 @@
 #include "../upload.hpp"
-#include "openpbr_luts.hpp"
+
+#include <vultra/servers/rendering/builtin/openpbr_luts.hpp>
 
 #include <glm/glm.hpp>
 #include <interop/openpbr_interop.h>

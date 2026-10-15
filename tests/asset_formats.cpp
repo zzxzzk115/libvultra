@@ -1,9 +1,10 @@
 #include <vultra/assets/asset_pipeline.hpp>
 #include <vultra/assets/asset_source.hpp>
+#include <vultra/assets/vpk_export.hpp>
 #include <vultra/core/base/logger.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/scene/scene_tree.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/servers/rendering/scene.hpp>
 #include <vultra/servers/rendering/texture_blit.hpp>
 
@@ -453,7 +454,7 @@ Connections: {
             wrongTypeRejected = true;
         }
         require(wrongTypeRejected, "FBX import settings were accepted for a DDS asset");
-        VpkArchive::packProject(root / "orca.vproject", root / "orca.vpk");
+        packProject(root / "orca.vproject", root / "orca.vpk");
         AssetSource source {VpkArchive(root / "orca.vpk")};
         const auto  packedProject = ProjectManifest::load(source.resolve("project.vproject"), &source);
         require(packedProject.asset(model).fbx == project.asset(model).fbx, "VPK lost its FBX import settings");
@@ -614,7 +615,7 @@ try
     }
     project.save(root / "project.vproject");
     const auto package = root / "assets.vpk";
-    vultra::VpkArchive::packProject(root / "project.vproject", package);
+    vultra::packProject(root / "project.vproject", package);
     vultra::AssetSource assets {vultra::VpkArchive(package)};
     for (const auto& asset : project.assets())
     {

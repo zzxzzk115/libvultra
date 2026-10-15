@@ -88,10 +88,12 @@ function main(projectDir)
     end
     local required = {
         ["clangd.arguments"] = {
-            "--compile-commands-dir=.vscode",
+            "--compile-commands-dir=.",
             "--header-insertion=never",
             "--fallback-style=none"
         },
+        ["xmake.compileCommandsBackend"] = "clangd",
+        ["xmake.compileCommandsDirectory"] = ".",
         ["slang.additionalSearchPaths"] = searchPaths,
         ["vultra.shader.includeDirectories"] = searchPaths,
         ["slang.searchInAllWorkspaceDirectories"] = false

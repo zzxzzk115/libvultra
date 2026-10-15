@@ -1,10 +1,11 @@
 #include <vultra/assets/asset_source.hpp>
 #include <vultra/assets/project_manifest.hpp>
 #include <vultra/assets/vpk_archive.hpp>
-#include <vultra/main/experiment_session.hpp>
+#include <vultra/assets/vpk_export.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/platform/os/file.hpp>
+#include <vultra/research/experiment_session.hpp>
 #include <vultra/scene/scene_tree.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
 #include <vultra/ui/vgui.hpp>
 
 #include <RmlUi/Core.h>
@@ -177,7 +178,7 @@ try
     SceneTree(std::make_unique<Node>("UI test")).save(root / project.mainScene);
     project.save(root / "project.vproject");
     const auto pack = run / "ui.vpk";
-    VpkArchive::packProject(root / "project.vproject", pack);
+    packProject(root / "project.vproject", pack);
     Device      device;
     AssetSource authored(root);
     const auto  baseline = renderUi(device, &authored, "ui/main.rml", "ui/font.ttf");
@@ -225,7 +226,7 @@ try
     require(embeddedImage.rgba == baseline.rgba, "Embedded VPK UI changed pixels");
     require(Rml::GetFileInterface() == nullptr, "Destroyed VGUI retained its file interface");
     const auto researchPack = run / "research.vpk";
-    VpkArchive::packProject("resources/research.vproject", researchPack);
+    packProject("resources/research.vproject", researchPack);
     {
         const Extent     size {1024, 768};
         ExperimentConfig config {.input = researchPack, .size = size};

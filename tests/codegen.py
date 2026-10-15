@@ -1,6 +1,7 @@
 """Tool-side reflection checks; requires the same Python/libclang setup as xmake codegen."""
 
 from pathlib import Path
+import json
 import sys
 import tempfile
 import unittest
@@ -70,6 +71,76 @@ class CompileCommandTests(unittest.TestCase):
 
 
 class ReflectionTests(unittest.TestCase):
+    def test_collection_accessors_compile_with_project_arguments(self):
+        database = json.loads((codegen.ROOT / "compile_commands.json").read_text())
+        original = next(row for row in database if codegen.source_path(row["file"]).endswith(codegen.SOURCES["scene"]))
+        with tempfile.TemporaryDirectory(dir=codegen.ROOT / "build/.tmp") as directory:
+            root = Path(directory)
+            include = root / "include"
+            header = include / "vultra/collection_probe.hpp"
+            header.parent.mkdir(parents=True)
+            header.write_text('''#include <vultra/core/base/property.hpp>
+#include <vultra/core/base/api_annotations.hpp>
+namespace vultra {
+struct NodeId { StableId value; };
+struct VULTRA_REFLECT CollectionProbe {
+    VULTRA_PROPERTY("reference=Node;flags=serialize|bind") std::vector<NodeId> links;
+    VULTRA_PROPERTY("flags=serialize|bind") std::vector<uint32_t> counts;
+}; }''', encoding="utf-8")
+            source = root / "collection_probe.cpp"
+            source.write_text("#include <vultra/collection_probe.hpp>\n", encoding="utf-8")
+            command = dict(original)
+            command["file"] = source.as_posix()
+            command["arguments"] = [source.as_posix() if item == original["file"] else item
+                                    for item in original["arguments"]]
+            command["arguments"][1:1] = ["-I" + include.as_posix()]
+            types = codegen.parse_reflection(codegen.translation_unit([command], "collection_probe.cpp"))
+            self.assertEqual(types[0]["fields"][1]["integer_bits"], 32)
+            (include / "vultra/collection_properties.hpp").write_text(codegen.property_header(types), encoding="utf-8")
+            source.write_text(codegen.property_source(types, "vultra/collection_properties.hpp"), encoding="utf-8")
+            codegen.translation_unit([command], "collection_probe.cpp", skip_bodies=False)
+
+    def test_semantic_accessors_and_inherited_schema(self):
+        source = '''namespace vultra {
+class [[clang::annotate("vultra.reflect.node")]] Base {
+public:
+    [[clang::annotate("vultra.property:label=Enabled;set=setEnabled;default=false")]] bool enabled() const;
+    void setEnabled(bool value);
+};
+class [[clang::annotate("vultra.reflect.node")]] Derived : public Base {
+public:
+    [[clang::annotate("vultra.property:label=Visible;set=setVisible;default=true")]] bool visible() const;
+    void setVisible(bool value);
+}; }'''
+        types = parse(source)
+        self.assertEqual([field["name"] for field in types[1]["fields"]], ["enabled", "visible"])
+        generated = codegen.property_source(types, "vultra/probe.hpp")
+        self.assertIn("static_cast<const Derived*>(object)->enabled()", generated)
+        self.assertIn("static_cast<Derived*>(object)->setEnabled", generated)
+        self.assertIn("&baseType()", generated)
+        with self.assertRaises(RuntimeError):
+            parse(source.replace("void setVisible(bool value)", "void setVisible(int value)"))
+        with self.assertRaises(RuntimeError):
+            parse(source.replace("visible()", "enabled()"))
+
+    def test_reference_and_collection_contracts(self):
+        source = '''namespace std { template<class T> class vector {}; }
+namespace vultra { struct NodeId {};
+struct [[clang::annotate("vultra.reflect")]] Links {
+    [[clang::annotate("vultra.property:reference=Node;flags=serialize|bind")]] std::vector<NodeId> targets;
+}; }'''
+        types = parse(source)
+        field = types[0]["fields"][0]
+        self.assertEqual(field["kind"], "eArray")
+        self.assertEqual(field["element_kind"], "eReference")
+        generated = codegen.property_source(types, "vultra/probe.hpp")
+        self.assertIn("NodeId{std::get<PropertyReference>(element).id}", generated)
+        self.assertIn("ObjectCategory::eNode", generated)
+        with self.assertRaises(RuntimeError):
+            parse(source.replace("reference=Node;", ""))
+        with self.assertRaises(RuntimeError):
+            parse(source.replace("reference=Node;", "reference=Node;nullable=maybe;"))
+
     def test_macro_annotated_defaults_reach_safe_managed_values(self):
         source = '''#define PROPERTY [[clang::annotate("vultra.property:label=Gain;min=-2;max=2")]]
 namespace vultra {

@@ -1,5 +1,6 @@
 #include "colored_mesh.hpp"
-#include "upload.hpp"
+
+#include <vultra/drivers/rhi/buffer_upload.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -15,14 +16,14 @@ namespace sample
         device(owner),
         indexCount(uint32_t(indexData.size()))
     {
-        vertices = uploadBuffer(device,
-                                std::as_bytes(vertexData),
-                                VriBufferUsage_VertexBuffer,
-                                {VriAccess_VertexBufferRead, VriPipelineStage_VertexInput});
-        indices  = uploadBuffer(device,
-                               std::as_bytes(indexData),
-                               VriBufferUsage_IndexBuffer,
-                                {VriAccess_IndexBufferRead, VriPipelineStage_VertexInput});
+        vertices = vultra::uploadBuffer(device,
+                                        std::as_bytes(vertexData),
+                                        VriBufferUsage_VertexBuffer,
+                                        {VriAccess_VertexBufferRead, VriPipelineStage_VertexInput});
+        indices  = vultra::uploadBuffer(device,
+                                        std::as_bytes(indexData),
+                                        VriBufferUsage_IndexBuffer,
+                                        {VriAccess_IndexBufferRead, VriPipelineStage_VertexInput});
         VriPushConstantDesc   push {0, sizeof(Parameters), VriShaderStage_Vertex | VriShaderStage_Fragment};
         VriPipelineLayoutDesc layoutDesc {};
         layoutDesc.pushConstants   = &push;

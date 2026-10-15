@@ -1,6 +1,6 @@
 #include <vultra/assets/asset_pipeline.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/servers/rendering/scene.hpp>
 #include <vultra/servers/rendering/texture_blit.hpp>
 
@@ -339,7 +339,7 @@ namespace
             {
                 const std::string message = error.what();
                 rejected                  = message.contains("invalid glTF tangent") && message.contains("vertex 0") &&
-                           message.contains(source.string());
+                                            message.contains(source.string());
             }
             require(rejected, "Invalid tangent values were not rejected with source/vertex context");
         }

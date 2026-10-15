@@ -4,6 +4,8 @@
 
 #include <vultra/drivers/openxr/openxr.hpp>
 #include <vultra/drivers/profiling/profiler.hpp>
+#include <vultra/drivers/rhi/swapchain.hpp>
+#include <vultra/main/app/base_app.hpp>
 #include <vultra/servers/rendering/texture_blit.hpp>
 #include <vultra/ui/editor_gui.hpp>
 

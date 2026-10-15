@@ -2,8 +2,9 @@
 #include "../examples/research/color_gain.hpp"
 
 #include <vultra/core/base/stable_id.hpp>
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/scene/render_nodes.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
+#include <vultra/servers/rendering/builtin/raster_passes.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -69,6 +70,7 @@ try
     Device          device;
     RenderingServer server(device);
     PassCatalog     catalog(device);
+    installBuiltinRenderPasses(catalog);
     catalog.add(research::colorGainDefinition());
     ResearchWorkspace workspace(device, server, catalog);
     ResearchDocument  document;
@@ -281,15 +283,17 @@ try
     document.camera.reset();
     document.settings.ibl = false;
     workspace.replace(document, retire);
-    const auto lightingImage     = render();
-    const auto lightingRid       = workspace.sceneRid();
-    auto*      lightingGraph     = &workspace.graph();
-    auto*      lightingTexture   = lightingGraph->graph.getTexture(lightingGraph->rendererOutputs.hdr).handle;
-    auto&      mesh              = **std::ranges::find_if(workspace.scene().root().children(),
-                                                          [](const auto& child)
-                                                          {
-                                            return child->kind() == NodeKind::eMeshInstance;
-                                                          });
+    const auto lightingImage   = render();
+    const auto lightingRid     = workspace.sceneRid();
+    auto*      lightingGraph   = &workspace.graph();
+    auto*      lightingTexture = lightingGraph->graph.getTexture(lightingGraph->rendererOutputs.hdr).handle;
+    auto       sceneChildren   = workspace.scene().root().children();
+    auto&      mesh =
+        static_cast<MeshInstance3D&>(**std::ranges::find_if(sceneChildren,
+                                                            [](const auto& child)
+                                                            {
+                                                                return child->kind() == NodeKind::eMeshInstance;
+                                                            }));
     const auto originalTransform = mesh.localTransform();
     auto       transform         = originalTransform;
     transform[3].x += 0.6f;
@@ -298,15 +302,15 @@ try
                 &workspace.graph() == lightingGraph,
             "Workbench mesh transform notification did not update rendering without reimport");
     mesh.setLocalTransform(originalTransform);
-    auto& rig      = workspace.scene().addChild(workspace.scene().root(), std::make_unique<Node>("Rig"));
+    auto& rig      = workspace.scene().addChild(workspace.scene().root(), std::make_unique<Node3D>("Rig"));
     transform      = glm::mat4(1);
     transform[3].x = 0.6f;
     rig.setLocalTransform(transform);
-    workspace.scene().reparent(mesh, rig);
+    workspace.scene().reparent(mesh, rig, false);
     require(render().rgba != lightingImage.rgba && workspace.sceneRid() == lightingRid &&
                 &workspace.graph() == lightingGraph,
             "Workbench mesh reparent failed to retain the upload and update inherited motion");
-    workspace.scene().reparent(mesh, workspace.scene().root());
+    workspace.scene().reparent(mesh, workspace.scene().root(), false);
     workspace.scene().remove(rig);
     require(render().rgba == lightingImage.rgba, "Restored mesh parent retained a stale GPU transform");
     auto&      material           = *workspace.scene().materials().front();
@@ -365,7 +369,7 @@ try
     lightingTexture               = lightingGraph->graph.getTexture(lightingGraph->rendererOutputs.hdr).handle;
     const auto currentLightingRid = workspace.sceneRid();
     const auto sunId              = NodeId {StableId::parse("91c7f6ec-2d3e-4083-9873-24a877fcfba1").value()};
-    auto&      sun                = static_cast<LightNode&>(*workspace.scene().find(sunId));
+    auto&      sun                = static_cast<Light3D&>(*workspace.scene().find(sunId));
     auto       settings           = sun.settings();
     settings.intensity            = 4;
     sun.setSettings(settings);
@@ -373,7 +377,7 @@ try
                 &workspace.graph() == lightingGraph &&
                 lightingGraph->graph.getTexture(lightingGraph->rendererOutputs.hdr).handle == lightingTexture,
             "Workspace scene light edit failed to reuse geometry and graph resources");
-    auto& environment = static_cast<EnvironmentNode&>(*workspace.scene().find(workspace.scene().currentEnvironment()));
+    auto& environment = static_cast<WorldEnvironment&>(*workspace.scene().find(workspace.scene().currentEnvironment()));
     environment.setSettings({0.25f});
     const auto dimEnvironment = render();
     environment.setSettings({1});

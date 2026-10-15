@@ -1,13 +1,13 @@
 #include "research_workspace.hpp"
 
+#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
 #include <vultra/platform/os/file.hpp>
+#include <vultra/research/graph_report.hpp>
 #include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/scene_import.hpp>
 #include <vultra/servers/rendering/builtin/raster_passes.hpp>
 #include <vultra/servers/rendering/builtin/render_properties.generated.hpp>
-#include <vultra/servers/rendering/research/capture.hpp>
-#include <vultra/servers/rendering/research/graph_report.hpp>
 
 #include <glm/gtc/constants.hpp>
 #include <nlohmann/json.hpp>
@@ -400,9 +400,9 @@ namespace vultra
 
     void ResearchWorkspace::setEnvironment(ObjectId node, AssetId radiance)
     {
-        auto&            tree        = scene();
-        EnvironmentNode* environment = nullptr;
-        AssetId          asset {};
+        auto&             tree        = scene();
+        WorldEnvironment* environment = nullptr;
+        AssetId           asset {};
         if (node.value)
         {
             auto* candidate = tree.find(node);
@@ -410,7 +410,7 @@ namespace vultra
             {
                 throw std::invalid_argument("Select an environment node in the active scene");
             }
-            environment = static_cast<EnvironmentNode*>(candidate);
+            environment = static_cast<WorldEnvironment*>(candidate);
             asset       = radiance;
         }
         else if (m_Scene->project.environment)

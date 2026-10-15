@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vultra/assets/shader_asset.hpp>
+#include <vultra/assets/material_instance.hpp>
 
 #include <nlohmann/json.hpp>
 

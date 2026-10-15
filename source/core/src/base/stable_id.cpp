@@ -1,13 +1,18 @@
 #include <vultra/core/base/stable_id.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
+#include <limits>
 #include <random>
+#include <stdexcept>
 
 namespace vultra
 {
     namespace
     {
+        std::atomic<uint64_t> nextObjectId {1};
+
         int hexDigit(char value)
         {
             if (value >= '0' && value <= '9')
@@ -21,6 +26,22 @@ namespace vultra
             return -1;
         }
     } // namespace
+
+    ObjectId ObjectId::generate()
+    {
+        auto value = nextObjectId.load(std::memory_order_relaxed);
+        for (;;)
+        {
+            if (value == 0 || value == std::numeric_limits<uint64_t>::max())
+            {
+                throw std::overflow_error("Runtime object ID space exhausted");
+            }
+            if (nextObjectId.compare_exchange_weak(value, value + 1, std::memory_order_relaxed))
+            {
+                return {value};
+            }
+        }
+    }
 
     StableId StableId::generate()
     {

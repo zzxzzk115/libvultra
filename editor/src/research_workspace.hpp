@@ -2,13 +2,13 @@
 
 #include <vultra/assets/project_manifest.hpp>
 #include <vultra/drivers/profiling/profiler.hpp>
+#include <vultra/research/reference_path_tracer.hpp>
 #include <vultra/scene/camera/orbit_camera.hpp>
 #include <vultra/scene/scene_import.hpp>
 #include <vultra/scene/scene_render_state.hpp>
 #include <vultra/scene/scene_shader_materials.hpp>
 #include <vultra/scene/scene_tree.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
-#include <vultra/servers/rendering/builtin/reference_path_tracer.hpp>
 #include <vultra/servers/rendering/graph/graph_definition.hpp>
 #include <vultra/servers/rendering/rendering_server.hpp>
 

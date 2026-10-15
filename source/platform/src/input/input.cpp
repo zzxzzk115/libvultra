@@ -62,6 +62,16 @@ namespace vultra
         return m_Current.focused;
     }
 
+    std::span<InputEvent> Input::events()
+    {
+        return m_Events;
+    }
+
+    std::span<const InputEvent> Input::events() const
+    {
+        return m_Events;
+    }
+
     void Input::setKey(KeyCode key, InputAction action)
     {
         if (key == KeyCode::eUnknown || key >= KeyCode::eCount || !m_Pending.focused)
@@ -69,6 +79,7 @@ namespace vultra
             return;
         }
         auto& state = m_Pending.keys[size_t(key)];
+        m_PendingEvents.push_back({KeyInput {key, action}});
         switch (action)
         {
             case InputAction::ePress:
@@ -92,6 +103,7 @@ namespace vultra
             return;
         }
         auto& state = m_Pending.buttons[size_t(button)];
+        m_PendingEvents.push_back({MouseButtonInput {button, held}});
         state.pressed |= held && !state.held;
         state.released |= !held && state.held;
         state.held = held;
@@ -99,6 +111,7 @@ namespace vultra
 
     void Input::setMousePosition(glm::vec2 position)
     {
+        m_PendingEvents.push_back({MouseMotionInput {position}});
         if (m_HasPosition && m_Pending.focused)
         {
             m_Pending.delta += position - m_Pending.position;
@@ -112,6 +125,7 @@ namespace vultra
         if (m_Pending.focused)
         {
             m_Pending.scroll += delta;
+            m_PendingEvents.push_back({MouseScrollInput {delta}});
         }
     }
 
@@ -120,11 +134,13 @@ namespace vultra
         if (m_Pending.focused)
         {
             m_Pending.text.append(utf8);
+            m_PendingEvents.push_back({TextInput {std::string(utf8)}});
         }
     }
 
     void Input::setFocused(bool focused)
     {
+        m_PendingEvents.push_back({FocusInput {focused}});
         m_Pending.focused = focused;
         m_HasPosition     = false;
         if (!focused)
@@ -149,6 +165,8 @@ namespace vultra
 
     void Input::advanceFrame()
     {
+        m_Events.swap(m_PendingEvents);
+        m_PendingEvents.clear();
         m_Current             = m_Pending;
         const auto clearEdges = [](auto& buttons)
         {

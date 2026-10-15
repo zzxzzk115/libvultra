@@ -1,7 +1,7 @@
 #pragma once
 
+#include <vultra/assets/material_instance.hpp>
 #include <vultra/assets/material_parameters.hpp>
-#include <vultra/assets/shader_asset.hpp>
 #include <vultra/scene/resource.hpp>
 #include <vultra/scene/scene_changes.hpp>
 

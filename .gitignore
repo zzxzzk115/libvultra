@@ -30,8 +30,8 @@ compile_commands.json
 # Python tooling and research package artifacts
 __pycache__/
 *.pyc
-source/api/python/*.egg-info/
-source/api/python/dist/
+extensions/research/python/*.egg-info/
+extensions/research/python/dist/
 
 # Runtime artifacts
 .vultra/
@@ -43,9 +43,5 @@ source/scripting/managed/bin/
 source/scripting/managed/obj/
 examples/scripting/csharp/bin/
 examples/scripting/csharp/obj/
-tests/managed_reload/bin/
-tests/managed_reload/obj/
-tests/managed_control/bin/
-tests/managed_control/obj/
-tests/scene_scripts/bin/
-tests/scene_scripts/obj/
+tests/**/bin/
+tests/**/obj/

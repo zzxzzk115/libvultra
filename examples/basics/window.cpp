@@ -1,5 +1,7 @@
 #include "../common/sample.hpp"
 
+#include <vultra/main/app/desktop_app.hpp>
+
 class WindowApp final : public vultra::DesktopApp
 {
 public:

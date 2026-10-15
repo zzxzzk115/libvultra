@@ -52,12 +52,12 @@ namespace vultra
         }
     } // namespace
 
-    NativePlugin::NativePlugin(const std::filesystem::path&       path,
-                               SceneTree*                         scene,
-                               void*                              initData,
-                               const VultraScriptRegistrationApi* scripts,
-                               const ProjectManifest*             project,
-                               const VultraResearchApi*           research)
+    NativePlugin::NativePlugin(const std::filesystem::path&        path,
+                               SceneTree*                          scene,
+                               void*                               initData,
+                               const VultraScriptRegistrationApi*  scripts,
+                               const ProjectManifest*              project,
+                               std::span<const VultraExtensionApi> extensions)
     {
         void* module = openModule(path);
         if (!module)
@@ -71,7 +71,7 @@ namespace vultra
             {
                 throw std::runtime_error("Find vultra_plugin_init in " + path.string() + ": " + moduleError());
             }
-            m_Session = std::make_unique<PluginSession>(initialize, scene, initData, scripts, project, research);
+            m_Session = std::make_unique<PluginSession>(initialize, scene, initData, scripts, project, extensions);
             m_Module  = module;
             m_Entry   = initialize;
         }
@@ -94,6 +94,11 @@ namespace vultra
     void NativePlugin::update(float deltaSeconds)
     {
         m_Session->update(deltaSeconds);
+    }
+
+    void NativePlugin::notify(VultraSceneEvent event, float deltaSeconds)
+    {
+        m_Session->notify(event, deltaSeconds);
     }
 
     void NativePlugin::gui(EditorGui& gui)

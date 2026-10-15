@@ -2,6 +2,8 @@
 #include "../common/sample.hpp"
 
 #include <vultra/main/app/imgui_app.hpp>
+#include <vultra/platform/input/input_map.hpp>
+#include <vultra/scene/node_3d.hpp>
 #include <vultra/scene/scene_tree.hpp>
 #include <vultra/scripting/script_host.hpp>
 #include <vultra/ui/editor_gui.hpp>
@@ -87,9 +89,9 @@ namespace
             m_ShipMesh(getDevice(), getSwapchain().format(), kShipVertices, kShipIndices),
             m_Diamond(getDevice(), getSwapchain().format(), kDiamondVertices, kDiamondIndices)
         {
-            m_Ship     = &m_Scene.addChild(m_Scene.root(), std::make_unique<vultra::Node>("Ship"));
-            m_Beacon   = &m_Scene.addChild(m_Scene.root(), std::make_unique<vultra::Node>("Beacon"));
-            m_Throttle = &m_Scene.addChild(m_Scene.root(), std::make_unique<vultra::Node>("Throttle"));
+            m_Ship     = &m_Scene.addChild(m_Scene.root(), std::make_unique<vultra::Node3D>("Ship"));
+            m_Beacon   = &m_Scene.addChild(m_Scene.root(), std::make_unique<vultra::Node3D>("Beacon"));
+            m_Throttle = &m_Scene.addChild(m_Scene.root(), std::make_unique<vultra::Node3D>("Throttle"));
             m_Ship->setLocalTransform(glm::translate(glm::mat4(1), {kOrbitRadius, 0, 0}));
             m_Beacon->setLocalTransform(
                 glm::translate(glm::mat4(1), {kOrbitRadius * std::cos(0.6f), kOrbitRadius * std::sin(0.6f), 0}));
@@ -109,6 +111,8 @@ namespace
 #else
             const auto nativeModule = binaryDirectory / "libexample-native-cpp-plugin.so";
 #endif
+            m_Scene.input().bind("pause", vultra::KeyCode::eSpace);
+            m_Scene.input().bind("step", vultra::KeyCode::ePeriod);
             m_Scripts.addExtension(nativeModule);
             m_Scripts.add({vultra::ScriptModule::Language::eNative, {}, "ShipOrbit", m_Ship->idInScene().value},
                           nativeModule);
@@ -119,6 +123,15 @@ namespace
     private:
         void onUpdate(float deltaSeconds) override
         {
+            m_Scene.input().update(getWindow().input().events(), getEditorGui().inputCapture());
+            if (m_Scene.input().action("pause").pressed)
+            {
+                m_Scene.setPaused(!m_Scene.paused());
+            }
+            if (m_Scene.input().action("step").pressed && m_Scene.paused())
+            {
+                m_Scene.stepPaused();
+            }
             if (m_CheckNow)
             {
                 m_CheckNow = false;
@@ -141,6 +154,7 @@ namespace
                 ui.separator();
                 m_Scripts.gui(getEditorGui());
                 ui.separator();
+                ui.textUnformatted("Space: pause/resume. Period: one fixed step.");
                 ui.textUnformatted("Edit Lua or rebuild a plugin to hot reload.");
                 if (ui.button("Retry failed reloads"))
                 {
@@ -195,9 +209,9 @@ namespace
         sample::ColoredMesh m_Guides;
         sample::ColoredMesh m_ShipMesh;
         sample::ColoredMesh m_Diamond;
-        vultra::Node*       m_Ship     = nullptr;
-        vultra::Node*       m_Beacon   = nullptr;
-        vultra::Node*       m_Throttle = nullptr;
+        vultra::Node3D*     m_Ship     = nullptr;
+        vultra::Node3D*     m_Beacon   = nullptr;
+        vultra::Node3D*     m_Throttle = nullptr;
         bool                m_CheckNow = false;
     };
 } // namespace
