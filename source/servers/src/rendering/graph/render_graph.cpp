@@ -102,9 +102,8 @@ namespace vultra
                             VriLayout_DepthStencilAttachment,
                             VriPipelineStage_EarlyFragmentTests | VriPipelineStage_LateFragmentTests};
                 case Usage::eDepthRead:
-                    return {VriAccess_DepthStencilAttachmentRead,
-                            VriLayout_DepthStencilAttachment,
-                            VriPipelineStage_EarlyFragmentTests | VriPipelineStage_LateFragmentTests};
+                    // VRI stores bound depth even with pipeline writes disabled. Preserve read-only dataflow
+                    // for pass culling, but synchronize that attachment store at execution.
                 case Usage::eDepthReadWrite:
                     return {VriAccess_DepthStencilAttachmentRead | VriAccess_DepthStencilAttachmentWrite,
                             VriLayout_DepthStencilAttachment,
@@ -744,11 +743,11 @@ namespace vultra
         {
             const auto& entry    = m_Resources[i];
             const bool  exported = std::any_of(m_Exports.begin(),
-                                              m_Exports.end(),
-                                              [i](Resource resource)
-                                              {
+                                               m_Exports.end(),
+                                               [i](Resource resource)
+                                               {
                                                   return resource.index == i;
-                                              });
+                                               });
             result.resources.push_back({entry.name,
                                         entry.imported,
                                         exported,
@@ -824,10 +823,10 @@ namespace vultra
         }
         const auto& entry    = m_Resources[resource.index];
         const bool  exported = std::ranges::any_of(m_Exports,
-                                                  [resource](Resource value)
-                                                  {
+                                                   [resource](Resource value)
+                                                   {
                                                       return value.index == resource.index;
-                                                  });
+                                                   });
         bool        active   = m_Compiled && exported;
         if (m_Compiled && !active)
         {

@@ -165,6 +165,7 @@ clang-tidy -p . path/to/changed.cpp
 After annotation changes run `xmake codegen` first. Use the current configuration's `compile_commands.json`;
 changing backends requires regeneration. Use a complete LLVM installation with matching resource headers.
 Scoped tests and finite-frame image readback must cover changed behavior; expected failure tests still report errors.
+Normal xmake tests reject GPU validation errors on stdout or stderr even when the program exits successfully.
 
 Explicit offscreen variants avoid native windows:
 
