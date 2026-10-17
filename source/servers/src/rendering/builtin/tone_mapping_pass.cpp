@@ -107,7 +107,9 @@ namespace vultra
                           const VriDescriptor*               view = current.getTexture(source).view();
                           const VriDescriptorRangeUpdateDesc update {&view, 1};
                           m_Device.core.UpdateDescriptorRanges(m_Set, 0, 1, &update);
-                          beginColorPass(m_Device, cmd, current.getTexture(output).view(), size);
+                          // This pass fully initializes its output; LOAD would require an undeclared attachment read.
+                          const float clear[4] {};
+                          beginColorPass(m_Device, cmd, current.getTexture(output).view(), size, clear);
                           m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
                           m_Device.core.CmdSetPipeline(cmd, m_Pipeline->handle());
                           m_Device.core.CmdSetDescriptorSet(cmd, 0, m_Set);

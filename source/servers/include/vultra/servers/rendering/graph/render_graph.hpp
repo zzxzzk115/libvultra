@@ -16,6 +16,7 @@ namespace vultra
         eColorWrite,
         eColorReadWrite,
         eDepthWrite,
+        // Preserves depth values; attachment STORE still needs write synchronization.
         eDepthRead,
         eDepthReadWrite,
         eSampled,
