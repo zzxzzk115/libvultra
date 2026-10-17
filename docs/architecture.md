@@ -155,6 +155,9 @@ RenderGraph supports imports, transients, explicit history and exports. `addPass
 PassDefinition adds stable type names, typed ports, numeric parameters, extent/format constraints and capability
 requirements. PassCatalog starts empty; a caller explicitly installs builtin/project definitions.
 Version-1 JSON `.vgraph` connections compile to that same executor and reject invalid graphs before GPU recording.
+Color attachments declared write-only must clear/discard prior content; LOAD or blending requires read/write usage.
+Depth-test-only draws use `eDepthRead` to preserve read-only graph dataflow and pass culling. The pinned VRI
+attachment API still stores depth, so execution barriers include that write even with pipeline depth writes disabled.
 
 History is graph-owned and explicitly reset by its caller. Optional transient reuse shares whole VRI resources
 only for identical descriptions and disjoint active lifetimes; imports/exports/history are excluded.
@@ -171,6 +174,13 @@ Native `.slang` exposes compilation/reflection/cooking without game metadata. Ga
 properties, named variants, Surface templates and explicit passes; ANTLR belongs only to this selected path.
 A scoped compiler reuses module IR/program caches; Device owns VRI pipeline caches.
 Cooked `.vshaderc` programs support source-free delivery. Failed reload retains the last valid shader/pipeline.
+
+Material parameters are shader-defined; OpenPBR is one builtin material schema. MaterialInstance already stores
+typed shader-property overrides, and ShaderMaterial owns their reflected GPU bindings. The planned MaterialBlock
+contract separates immutable reflected layout, instance-owned CPU values/revisions and renderer-owned GPU storage
+and descriptors within the optional material/shader features. Layout and allocation follow Slang reflection and VRI
+requirements. Generalizing the remaining fixed OpenPBR scene/ABI interfaces is still roadmap work;
+the generic block implementation is not complete.
 
 CPU SceneData/material/texture values own no GPU resources. Import preserves source files and caches derived data
 under `.vultra/assets/`, validating actual source/dependency hashes. Static glTF/GLB, OBJ and FBX geometry and
@@ -213,6 +223,15 @@ World InputMap actions preserve ordered input and fixed-tick edges; general scen
 Typed descriptors drive Inspector, JSON and bindings; semantic setters still validate writes and notify revisions.
 Type/property catalogs belong to contexts, with borrowed registration records/code kept alive.
 Snapshot persistence uses explicit Node/type codecs and rejects runtime-only entities rather than silently losing them.
+
+Resource uses the same generated descriptor/category contract as Node. SceneTypeCatalog registers resource codecs
+and validates factory type/asset identity; SceneTree owns loaded resources, while its material span is borrowed.
+The version-1 scene `resources` array stores `{id, type, data}` records. All inline resources are constructed before
+typed references are resolved, allowing forward references. External model/asset references are checked against
+ProjectManifest before use. Runtime ObjectIds are regenerated on load and rejected after removal or in another world.
+Generic resource properties/factories use the existing generated scene ABI and Native/Lua/safe C# adapters.
+Imported ModelResource data has type metadata but is not an inline scene factory; standalone resource files,
+component metadata and script-class export metadata remain roadmap work.
 
 ## Bindings and scripting
 

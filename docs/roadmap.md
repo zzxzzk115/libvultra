@@ -20,11 +20,11 @@ one undo action per gesture, save/reload, deferred deletion and successful/faile
 
 | Gate | Current boundary | Remaining work and acceptance |
 | --- | --- | --- |
-| E0 — types/properties | Generated values, references/arrays, inherited Node accessors and explicit static type catalogs. | General Resource/component/script-class metadata; shared factories/bindings must reject wrong, foreign and retired identities. |
+| E0 — types/properties | Generated Node/Resource/value schemas, references/arrays, explicit type catalogs and typed resource factories; common scene ABI rejects wrong, foreign and retired resource identities. | Component/script-class metadata, script-facing schema discovery and common export schemas; extend the same contracts without introducing another registry or binding pipeline. |
 | E1 — script attachments | Project-declared instances and common hosts work; Native/Lua reset local state on reload. | Scene-owned module/class/exports; one attachment per node, exports applied before entry, separate transient reload state. Two instances must save/reload independently; failed replacement preserves active code. |
 | E2 — execution | Shared enter/ready/exit, fixed/variable clock, pause/step, priorities, deferred mutations and world input actions. | Signals, scene input/unhandled-input routing and seeded simulation streams. Define ordering/reentrancy and owner-scoped disconnect; all languages agree and stopped owners receive no callbacks. |
 | E3 — documents | Generated Inspector and staged scene/graph editing work. | Topology/attachment authoring and undo/redo. Apply drag values immediately, merge the gesture, roll back failed composite edits and keep deleted subtrees owned by history. |
-| E4 — resources/scenes | Authored snapshots, stable IDs and VPK byte sources work. | Version-1 resource documents, PackedScene templates/nesting, stable instance mappings, sparse overrides and explicit MakeUnique. Validate references/cycles before activation; finish Lua stream loading and engine shader bootstrap without extraction. |
+| E4 — resources/scenes | Authored snapshots, typed inline resources with forward references, stable IDs and VPK byte sources work. | Standalone version-1 resource documents, PackedScene templates/nesting, stable instance mappings, sparse overrides and explicit MakeUnique. Validate cycles before activation; finish Lua stream loading and engine shader bootstrap without extraction. |
 | E5 — views/game UI | Raster synchronization, output probes and ordinary VGui controls work. | Independent RenderViews/history, object picking, RmlUi transforms/masks/layers/effects. Test input, pixels and teardown; unsupported operations fail explicitly. |
 | E6 — independent Play | Offline rendering is available; browser streaming is absent. | Separate player/world with pause/step/stop/logs. Keep authored state unchanged; bounded preview defaults to 15 fps/two queued frames, drops oldest and owns cancellation. Native windows are explicit. |
 | E7 — delivery | Built pack/export APIs, external/embedded VPK and copied no-xmake tools work locally. | Export-template/dependency validation and separate-machine Linux/Windows acceptance; preserve direct C++, optional languages and the base single-EXE player. |
@@ -56,8 +56,14 @@ Current image fixtures establish their declared subset and same-device behavior,
 
 ## Shader system
 
-Retain native Slang and game materials. The next design adds finite Boolean/Enum keywords with explicit
-Material/Pipeline/Pass ownership, legal-selection validation and named presets. Keep selection, compiled program,
+Retain native Slang and game materials. Unify shader-defined material parameters through MaterialBlock: reflected
+layout, typed instance values and GPU bindings have separate ownership. Keep OpenPBR as a builtin schema;
+scene persistence, Inspector and the generated ABI must support custom shader properties through the same path.
+Accept two different shader layouts with save/reload, live edits, type/layout rejection and image
+readback before declaring this complete. Existing MaterialInstance/ShaderMaterial are the implementation base.
+
+Add finite Boolean/Enum keywords with explicit Material/Pipeline/Pass ownership, legal-selection validation and
+named presets. Keep selection, compiled program,
 layout and pipeline identities distinct. Cooking retains used or all-legal combinations with an explicit policy;
 equivalent selections deduplicate programs. Dynamic values remain properties/uniforms, with no global keywords.
 Accept typed diagnostics, deterministic cooking, packaged coverage and last-valid reload before expanding editor UI.
