@@ -221,8 +221,10 @@ target("vultra")
         add_files("scene/src/object.cpp", "scene/src/resource.cpp", "scene/src/material_resource.cpp",
                   "scene/src/node.cpp", "scene/src/node_3d.cpp", "scene/src/render_nodes.cpp",
                   "scene/src/render_properties.generated.cpp", "scene/src/scene_api.cpp", "scene/src/scene_changes.cpp",
+                  "scene/src/resource_properties.generated.cpp",
                   "scene/src/scene_components.cpp", "scene/src/scene_execution.cpp", "scene/src/scene_properties.cpp",
                   "scene/src/scene_storage.cpp", "scene/src/scene_tree.cpp", "scene/src/scene_types.cpp",
+                  "scene/src/scene_resources.cpp", "scene/src/scene_resource_types.cpp",
                   "scene/src/scene_render_state.cpp")
         add_packages("entt", {public = true})
     end

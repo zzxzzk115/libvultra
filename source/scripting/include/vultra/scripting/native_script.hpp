@@ -57,6 +57,7 @@ namespace vultra::scripting
     };
 
     class NativeScript;
+    class SceneResource;
     class SceneMaterial;
 
     struct NativeScriptClass
@@ -124,19 +125,18 @@ namespace vultra::scripting
         uint64_t            m_Id;
     };
 
-    class SceneMaterial
+    class SceneResource
     {
     public:
-        MaterialParameters parameters() const;
-        void               setParameters(MaterialParameters parameters) const;
-        std::string_view   name() const;
-        void               remove() const;
+        std::string_view typeName() const;
+        std::string      propertyJson(std::string_view name) const;
+        void             setPropertyJson(std::string_view name, std::string_view json) const;
+        void             remove() const;
 
-    private:
+    protected:
         friend class NativeScript;
-        friend class SceneNode;
 
-        SceneMaterial(const NativeScript& script, uint64_t id) :
+        SceneResource(const NativeScript& script, uint64_t id) :
             m_Script(script),
             m_Id(id)
         {
@@ -144,6 +144,23 @@ namespace vultra::scripting
 
         const NativeScript& m_Script;
         uint64_t            m_Id;
+    };
+
+    class SceneMaterial : public SceneResource
+    {
+    public:
+        MaterialParameters parameters() const;
+        void               setParameters(MaterialParameters parameters) const;
+        std::string_view   name() const;
+
+    private:
+        friend class NativeScript;
+        friend class SceneNode;
+
+        SceneMaterial(const NativeScript& script, uint64_t id) :
+            SceneResource(script, id)
+        {
+        }
     };
 
     class EditorGui
@@ -219,7 +236,9 @@ namespace vultra::scripting
         }
 
     protected:
-        SceneMaterial createMaterial(std::string_view name) const;
+        SceneMaterial                createMaterial(std::string_view name) const;
+        SceneResource                createResource(std::string_view type, std::string_view state = "{}") const;
+        std::optional<SceneResource> findResource(std::string_view assetId) const;
 
         bool paused() const
         {
@@ -277,8 +296,12 @@ namespace vultra::scripting
     private:
         friend class SceneNode;
         friend class SceneMaterial;
+        friend class SceneResource;
         friend VultraStatus
         initializeNativeModule(const VultraHostApi*, VultraPluginApi*, std::span<const NativeScriptClass>);
+
+        std::string readPropertyJson(uint64_t id, std::string_view name) const;
+        void        writePropertyJson(uint64_t id, std::string_view name, std::string_view json) const;
 
         static void check(VultraStatus status)
         {
@@ -449,11 +472,6 @@ namespace vultra::scripting
         uint64_t    size = 0;
         NativeScript::check(m_Script.m_Host.scene->material_name(m_Script.m_Frame, m_Id, &data, &size));
         return {data, size};
-    }
-
-    inline void SceneMaterial::remove() const
-    {
-        NativeScript::check(m_Script.m_Host.scene->remove_material(m_Script.m_Frame, m_Id));
     }
 
     inline std::optional<SceneMaterial> SceneNode::material(uint64_t slot) const
@@ -675,23 +693,65 @@ namespace vultra::scripting
         return {data, size};
     }
 
-    inline std::string SceneNode::propertyJson(std::string_view name) const
+    inline std::string NativeScript::readPropertyJson(uint64_t id, std::string_view name) const
     {
         uint64_t size = 0;
-        NativeScript::check(
-            m_Script.m_Host.scene->read_property(m_Script.m_Frame, m_Id, name.data(), name.size(), nullptr, 0, &size));
+        check(m_Host.scene->read_property(m_Frame, id, name.data(), name.size(), nullptr, 0, &size));
         std::string result(size, '\0');
-        NativeScript::check(
-            m_Script.m_Host.scene
-                ->read_property(m_Script.m_Frame, m_Id, name.data(), name.size(), result.data(), result.size(), &size));
+        check(m_Host.scene->read_property(m_Frame, id, name.data(), name.size(), result.data(), result.size(), &size));
         return result;
+    }
+
+    inline void NativeScript::writePropertyJson(uint64_t id, std::string_view name, std::string_view json) const
+    {
+        check(m_Host.scene->write_property(m_Frame, id, name.data(), name.size(), json.data(), json.size()));
+    }
+
+    inline std::string SceneNode::propertyJson(std::string_view name) const
+    {
+        return m_Script.readPropertyJson(m_Id, name);
     }
 
     inline void SceneNode::setPropertyJson(std::string_view name, std::string_view json) const
     {
-        NativeScript::check(
-            m_Script.m_Host.scene
-                ->write_property(m_Script.m_Frame, m_Id, name.data(), name.size(), json.data(), json.size()));
+        m_Script.writePropertyJson(m_Id, name, json);
+    }
+
+    inline std::string SceneResource::propertyJson(std::string_view name) const
+    {
+        return m_Script.readPropertyJson(m_Id, name);
+    }
+
+    inline void SceneResource::setPropertyJson(std::string_view name, std::string_view json) const
+    {
+        m_Script.writePropertyJson(m_Id, name, json);
+    }
+
+    inline std::string_view SceneResource::typeName() const
+    {
+        const char* data = nullptr;
+        uint64_t    size = 0;
+        NativeScript::check(m_Script.m_Host.scene->object_type(m_Script.m_Frame, m_Id, &data, &size));
+        return {data, size};
+    }
+
+    inline void SceneResource::remove() const
+    {
+        NativeScript::check(m_Script.m_Host.scene->remove_resource(m_Script.m_Frame, m_Id));
+    }
+
+    inline SceneResource NativeScript::createResource(std::string_view type, std::string_view state) const
+    {
+        uint64_t id = 0;
+        check(m_Host.scene->create_resource(m_Frame, type.data(), type.size(), state.data(), state.size(), &id));
+        return {*this, id};
+    }
+
+    inline std::optional<SceneResource> NativeScript::findResource(std::string_view assetId) const
+    {
+        uint64_t id = 0;
+        check(m_Host.scene->find_resource(m_Frame, assetId.data(), assetId.size(), &id));
+        return id ? std::optional<SceneResource>(SceneResource(*this, id)) : std::nullopt;
     }
 
     template<std::derived_from<NativeScript> T>

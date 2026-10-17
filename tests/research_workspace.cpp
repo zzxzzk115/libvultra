@@ -343,11 +343,11 @@ try
     require(render().rgba == lightingImage.rgba, "Restoring material parameters changed the original image");
     workspace.replace(materialDocument, retire);
     require(render().rgba == materialImage.rgba, "Reopened material-edited experiment changed rendering");
-    auto invalidSnapshot                            = materialDocument;
-    auto data                                       = Json::parse(invalidSnapshot.sceneSnapshot);
-    data["materials"][0]["parameters"]["roughness"] = -1;
-    invalidSnapshot.sceneSnapshot                   = data.dump();
-    const auto materialRid                          = workspace.sceneRid();
+    auto invalidSnapshot                                    = materialDocument;
+    auto data                                               = Json::parse(invalidSnapshot.sceneSnapshot);
+    data["resources"][0]["data"]["parameters"]["roughness"] = -1;
+    invalidSnapshot.sceneSnapshot                           = data.dump();
+    const auto materialRid                                  = workspace.sceneRid();
     expectError(
         [&]
         {

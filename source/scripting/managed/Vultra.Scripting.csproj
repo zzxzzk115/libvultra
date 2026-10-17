@@ -9,6 +9,7 @@
     <Compile Include="Node.cs" />
     <Compile Include="ScriptScene.cs" />
     <Compile Include="Material.cs" />
+    <Compile Include="Resource.cs" />
     <Compile Include="EditorGui.cs" />
     <Compile Include="../../api/csharp/VultraValues.g.cs" Link="VultraValues.g.cs" />
     <Compile Include="../../api/csharp/VultraBindings.g.cs" Link="VultraBindings.g.cs" />

@@ -999,6 +999,23 @@
       "scene_mutable": true
     },
     {
+      "arguments": [
+        {
+          "name": "type",
+          "type": "std::string_view"
+        },
+        {
+          "name": "state",
+          "type": "std::string_view"
+        }
+      ],
+      "name": "sceneCreateResource",
+      "project_optional": false,
+      "project_required": false,
+      "return": "ObjectId",
+      "scene_mutable": true
+    },
+    {
       "arguments": [],
       "name": "sceneCurrentCamera",
       "project_optional": false,
@@ -1042,6 +1059,19 @@
       "project_optional": false,
       "project_required": false,
       "return": "EnvironmentSettings",
+      "scene_mutable": false
+    },
+    {
+      "arguments": [
+        {
+          "name": "assetId",
+          "type": "std::string_view"
+        }
+      ],
+      "name": "sceneFindResource",
+      "project_optional": false,
+      "project_required": false,
+      "return": "ObjectId",
       "scene_mutable": false
     },
     {
@@ -1231,6 +1261,19 @@
       "scene_mutable": false
     },
     {
+      "arguments": [
+        {
+          "name": "object",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneObjectType",
+      "project_optional": false,
+      "project_required": false,
+      "return": "std::string_view",
+      "scene_mutable": false
+    },
+    {
       "arguments": [],
       "name": "scenePaused",
       "project_optional": false,
@@ -1297,6 +1340,19 @@
         }
       ],
       "name": "sceneRemoveNode",
+      "project_optional": false,
+      "project_required": false,
+      "return": "void",
+      "scene_mutable": true
+    },
+    {
+      "arguments": [
+        {
+          "name": "resource",
+          "type": "ObjectId"
+        }
+      ],
+      "name": "sceneRemoveResource",
       "project_optional": false,
       "project_required": false,
       "return": "void",
@@ -2530,6 +2586,32 @@
       "name": "MaterialParameters"
     },
     {
+      "base": "Resource",
+      "category": "eResource",
+      "fields": [
+        {
+          "accessor": true,
+          "choices": [],
+          "default": "std::string{}",
+          "default_cpp": "std::string{}",
+          "element_kind": "eString",
+          "element_type": "std::string",
+          "enum_values": [],
+          "flag_bits": 7,
+          "flags": "serialize|inspect|bind",
+          "integer_bits": 0,
+          "json_path": "/name",
+          "kind": "eString",
+          "label": "Name",
+          "name": "name",
+          "set": "setName",
+          "type": "std::string"
+        }
+      ],
+      "header": "vultra/scene/material_resource.hpp",
+      "name": "MaterialResource"
+    },
+    {
       "base": "Node3D",
       "category": "eNode",
       "fields": [
@@ -2683,6 +2765,13 @@
       ],
       "header": "vultra/scene/render_nodes.hpp",
       "name": "MeshInstance3D"
+    },
+    {
+      "base": "Resource",
+      "category": "eResource",
+      "fields": [],
+      "header": "vultra/scene/resource.hpp",
+      "name": "ModelResource"
     },
     {
       "base": null,
@@ -3360,6 +3449,13 @@
       ],
       "header": "vultra/servers/rendering/builtin/builtin_renderer.hpp",
       "name": "RenderSettings"
+    },
+    {
+      "base": null,
+      "category": "eResource",
+      "fields": [],
+      "header": "vultra/scene/resource.hpp",
+      "name": "Resource"
     },
     {
       "base": "Node",

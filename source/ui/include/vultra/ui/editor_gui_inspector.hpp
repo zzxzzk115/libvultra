@@ -44,12 +44,13 @@ namespace vultra
         bool floatSlider(EditorGuiProperty property, float* value, float min, float max);
         bool choice(EditorGuiProperty property, int* index, const char* const* items, int count);
         bool property(EditorGuiProperty property, void* value, EditorGuiPropertyDrawer drawer);
+        // Draw an owned value; the caller applies edits through its world/resource semantic setter.
+        bool valueField(const PropertyInfo& property, PropertyValue& value);
         bool properties(const ObjectTypeInfo& type, void* object);
 
     private:
         void                beginRow(EditorGuiProperty property);
         std::optional<bool> drawCustom(EditorGuiProperty property, void* value);
-        bool                drawValue(const PropertyInfo& property, PropertyValue& value);
 
         EditorGui& m_Gui;
         bool       m_Visible;

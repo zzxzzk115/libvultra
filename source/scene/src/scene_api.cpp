@@ -144,8 +144,7 @@ namespace vultra
 
     std::string sceneReadProperty(const SceneTree& scene, ObjectId node, std::string_view property)
     {
-        const auto& target = requireNode(scene, node);
-        const auto& info   = scene.types().objects().type(target.typeName()).property(property);
+        const auto& info = scene.objectType(node).property(property);
         if (!hasPropertyFlag(info.flags, PropertyFlags::eBind))
         {
             throw std::invalid_argument("Property is not exposed to bindings");
@@ -159,8 +158,7 @@ namespace vultra
                             std::string_view       property,
                             std::string_view       json)
     {
-        const auto& target = requireNode(scene, node);
-        const auto& info   = scene.types().objects().type(target.typeName()).property(property);
+        const auto& info = scene.objectType(node).property(property);
         if (!hasPropertyFlag(info.flags, PropertyFlags::eBind))
         {
             throw std::invalid_argument("Property is not exposed to bindings");
@@ -472,6 +470,47 @@ namespace vultra
     void sceneSetCurrentEnvironment(SceneTree& scene, ObjectId node)
     {
         scene.setCurrentEnvironment(node);
+    }
+
+    std::string_view sceneObjectType(const SceneTree& scene, ObjectId object)
+    {
+        return scene.objectType(object).name;
+    }
+
+    ObjectId sceneFindResource(const SceneTree& scene, std::string_view assetId)
+    {
+        const auto parsed = StableId::parse(assetId);
+        if (!parsed)
+        {
+            throw std::invalid_argument("Invalid resource asset ID");
+        }
+        const auto* resource = scene.findResource(AssetId {*parsed});
+        return resource ? resource->id() : ObjectId {};
+    }
+
+    ObjectId sceneCreateResource(SceneTree& scene, std::string_view type, std::string_view state)
+    {
+        auto& resource = scene.addResource(scene.types().createResource(type, {StableId::generate()}, state));
+        try
+        {
+            scene.validateReferences();
+        }
+        catch (...)
+        {
+            scene.removeResource(resource);
+            throw;
+        }
+        return resource.id();
+    }
+
+    void sceneRemoveResource(SceneTree& scene, ObjectId id)
+    {
+        auto* resource = scene.findResource(id);
+        if (!resource)
+        {
+            throw std::invalid_argument("Resource does not belong to this scene");
+        }
+        scene.removeResource(*resource);
     }
 
     ObjectId sceneCreateMaterial(SceneTree& scene, std::string_view name)

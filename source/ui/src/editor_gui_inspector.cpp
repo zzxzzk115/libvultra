@@ -173,7 +173,7 @@ namespace vultra
                 continue;
             }
             auto value = property.read(object);
-            if (drawValue(property, value))
+            if (valueField(property, value))
             {
                 property.write(object, value);
                 changed = true;
@@ -182,8 +182,9 @@ namespace vultra
         return changed;
     }
 
-    bool EditorGuiInspector::drawValue(const PropertyInfo& info, PropertyValue& value)
+    bool EditorGuiInspector::valueField(const PropertyInfo& info, PropertyValue& value)
     {
+        info.validate(value);
         const EditorGuiProperty property {info.drawerId, info.label};
         if (info.kind == PropertyKind::eBool)
         {

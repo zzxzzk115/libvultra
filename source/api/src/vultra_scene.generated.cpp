@@ -364,6 +364,40 @@ abiSceneCreateNode3D(VultraSceneFrame frame, uint64_t parent, const char* name, 
     }
 }
 
+static VultraStatus abiSceneCreateResource(VultraSceneFrame frame,
+                                           const char*      type,
+                                           uint64_t         typeSize,
+                                           const char*      state,
+                                           uint64_t         stateSize,
+                                           uint64_t*        value)
+{
+    if (!frame.context || !value || (!type && typeSize != 0) || (!state && stateSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        *value = vultra::sceneCreateResource(*access->scene,
+                                             std::string_view {type ? type : "", static_cast<size_t>(typeSize)},
+                                             std::string_view {state ? state : "", static_cast<size_t>(stateSize)})
+                     .value;
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus abiSceneCurrentCamera(VultraSceneFrame frame, uint64_t* value)
 {
     if (!frame.context || !value)
@@ -457,6 +491,35 @@ static VultraStatus abiSceneEnvironmentSettings(VultraSceneFrame frame, uint64_t
     {
         const auto result = vultra::sceneEnvironmentSettings(*access->scene, vultra::ObjectId {node});
         *value            = {result.intensity};
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus
+abiSceneFindResource(VultraSceneFrame frame, const char* assetId, uint64_t assetIdSize, uint64_t* value)
+{
+    if (!frame.context || !value || (!assetId && assetIdSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        *value = vultra::sceneFindResource(*access->scene,
+                                           std::string_view {assetId ? assetId : "", static_cast<size_t>(assetIdSize)})
+                     .value;
         return VULTRA_STATUS_OK;
     }
     catch (const std::invalid_argument&)
@@ -866,6 +929,34 @@ static VultraStatus abiSceneNodeType(VultraSceneFrame frame, uint64_t node, cons
     }
 }
 
+static VultraStatus abiSceneObjectType(VultraSceneFrame frame, uint64_t object, const char** data, uint64_t* size)
+{
+    if (!frame.context || !data || !size)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        const auto result = vultra::sceneObjectType(*access->scene, vultra::ObjectId {object});
+        *data             = result.data();
+        *size             = result.size();
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus abiScenePaused(VultraSceneFrame frame, uint64_t* value)
 {
     if (!frame.context || !value)
@@ -1029,6 +1120,32 @@ static VultraStatus abiSceneRemoveNode(VultraSceneFrame frame, uint64_t node)
     try
     {
         vultra::sceneRemoveNode(*access->scene, vultra::ObjectId {node});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneRemoveResource(VultraSceneFrame frame, uint64_t resource)
+{
+    if (!frame.context)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        vultra::sceneRemoveResource(*access->scene, vultra::ObjectId {resource});
         return VULTRA_STATUS_OK;
     }
     catch (const std::invalid_argument&)
@@ -1620,10 +1737,12 @@ namespace vultra
                                          abiSceneCreateMesh,
                                          abiSceneCreateNode,
                                          abiSceneCreateNode3D,
+                                         abiSceneCreateResource,
                                          abiSceneCurrentCamera,
                                          abiSceneCurrentEnvironment,
                                          abiSceneDuplicateMesh,
                                          abiSceneEnvironmentSettings,
+                                         abiSceneFindResource,
                                          abiSceneLightKind,
                                          abiSceneLightSettings,
                                          abiSceneMaterialName,
@@ -1638,12 +1757,14 @@ namespace vultra
                                          abiSceneNodeQueuedForDeletion,
                                          abiSceneNodeTranslation,
                                          abiSceneNodeType,
+                                         abiSceneObjectType,
                                          abiScenePaused,
                                          abiScenePhysicsFrame,
                                          abiSceneQueueFree,
                                          abiSceneReadProperty,
                                          abiSceneRemoveMaterial,
                                          abiSceneRemoveNode,
+                                         abiSceneRemoveResource,
                                          abiSceneReparentNode,
                                          abiSceneRootId,
                                          abiSceneSetCameraSettings,

@@ -112,10 +112,20 @@ extern "C"
                                       const char*      name,
                                       uint64_t         nameSize,
                                       uint64_t*        value);
+        VultraStatus (*create_resource)(VultraSceneFrame frame,
+                                        const char*      type,
+                                        uint64_t         typeSize,
+                                        const char*      state,
+                                        uint64_t         stateSize,
+                                        uint64_t*        value);
         VultraStatus (*current_camera)(VultraSceneFrame frame, uint64_t* value);
         VultraStatus (*current_environment)(VultraSceneFrame frame, uint64_t* value);
         VultraStatus (*duplicate_mesh)(VultraSceneFrame frame, uint64_t source, uint64_t parent, uint64_t* value);
         VultraStatus (*environment_settings)(VultraSceneFrame frame, uint64_t node, VultraEnvironmentSettings* value);
+        VultraStatus (*find_resource)(VultraSceneFrame frame,
+                                      const char*      assetId,
+                                      uint64_t         assetIdSize,
+                                      uint64_t*        value);
         VultraStatus (*light_kind)(VultraSceneFrame frame, uint64_t node, uint64_t* value);
         VultraStatus (*light_settings)(VultraSceneFrame frame, uint64_t node, VultraLightSettings* value);
         VultraStatus (*material_name)(VultraSceneFrame frame, uint64_t material, const char** data, uint64_t* size);
@@ -130,6 +140,7 @@ extern "C"
         VultraStatus (*node_queued_for_deletion)(VultraSceneFrame frame, uint64_t node, uint64_t* value);
         VultraStatus (*node_translation)(VultraSceneFrame frame, uint64_t node, VultraSceneTranslation* value);
         VultraStatus (*node_type)(VultraSceneFrame frame, uint64_t node, const char** data, uint64_t* size);
+        VultraStatus (*object_type)(VultraSceneFrame frame, uint64_t object, const char** data, uint64_t* size);
         VultraStatus (*paused)(VultraSceneFrame frame, uint64_t* value);
         VultraStatus (*physics_frame)(VultraSceneFrame frame, uint64_t* value);
         VultraStatus (*queue_free)(VultraSceneFrame frame, uint64_t node);
@@ -142,6 +153,7 @@ extern "C"
                                       uint64_t*        size);
         VultraStatus (*remove_material)(VultraSceneFrame frame, uint64_t material);
         VultraStatus (*remove_node)(VultraSceneFrame frame, uint64_t node);
+        VultraStatus (*remove_resource)(VultraSceneFrame frame, uint64_t resource);
         VultraStatus (*reparent_node)(VultraSceneFrame frame, uint64_t node, uint64_t newParent, uint64_t keepGlobal);
         VultraStatus (*root_id)(VultraSceneFrame frame, uint64_t* value);
         VultraStatus (*set_camera_settings)(VultraSceneFrame frame, uint64_t node, VultraCameraSettings settings);

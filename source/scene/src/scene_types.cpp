@@ -164,6 +164,7 @@ namespace vultra
 
     SceneTypeCatalog::SceneTypeCatalog()
     {
+        addBuiltinResources();
         for (const auto& record : kBuiltinNodes)
         {
             if (&record.type == &kDirectional)

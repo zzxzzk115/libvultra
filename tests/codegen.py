@@ -71,6 +71,29 @@ class CompileCommandTests(unittest.TestCase):
 
 
 class ReflectionTests(unittest.TestCase):
+    def test_resource_categories_and_empty_identity_bases(self):
+        source = '''namespace vultra {
+class [[clang::annotate("vultra.reflect.resource")]] Resource {
+public:
+    Resource(int id);
+};
+class [[clang::annotate("vultra.reflect.resource")]] Settings : public Resource {
+public:
+    [[clang::annotate("vultra.property:set=setGain;default=1.0f;min=0;max=2")]] float gain() const;
+    void setGain(float value);
+}; }'''
+        types = parse(source)
+        self.assertEqual([item["category"] for item in types], ["eResource", "eResource"])
+        self.assertEqual(types[0]["fields"], [])
+        self.assertEqual(types[1]["base"], "Resource")
+        generated = codegen.property_source(types, "vultra/probe.hpp")
+        self.assertIn("ObjectCategory::eResource", generated)
+        self.assertIn("std::array<PropertyInfo, 0>", generated)
+        with self.assertRaisesRegex(RuntimeError, "category differs"):
+            parse(source.replace('resource")]] Settings', 'node")]] Settings'))
+        with self.assertRaisesRegex(RuntimeError, "no annotated properties"):
+            parse('namespace vultra { struct [[clang::annotate("vultra.reflect")]] Empty {}; }')
+
     def test_collection_accessors_compile_with_project_arguments(self):
         database = json.loads((codegen.ROOT / "compile_commands.json").read_text())
         original = next(row for row in database if codegen.source_path(row["file"]).endswith(codegen.SOURCES["scene"]))

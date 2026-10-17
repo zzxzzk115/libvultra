@@ -220,7 +220,7 @@ def main():
         session.set_environment_settings(environment_id, environment_settings)
         rejected(lambda: session.set_environment_settings(environment_id,
                  replace(environment_settings, intensity=float("nan"))), "finite numeric")
-        material = session.scene["materials"][0]["id"]
+        material = session.scene["resources"][0]["id"]
         material_settings = session.material_parameters(material)
         session.set_material_parameters(material, replace(material_settings, base_red=0.05, coat_weight=0.5))
         session.step()

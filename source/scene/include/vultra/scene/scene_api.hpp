@@ -84,6 +84,10 @@ namespace vultra
     sceneSetEnvironmentAsset(SceneTree& scene, const ProjectManifest& project, ObjectId node, std::string_view assetId);
     VULTRA_BIND_SCENE ObjectId sceneCurrentEnvironment(const SceneTree& scene);
     VULTRA_BIND_SCENE void     sceneSetCurrentEnvironment(SceneTree& scene, ObjectId node);
+    VULTRA_BIND_SCENE std::string_view sceneObjectType(const SceneTree& scene, ObjectId object);
+    VULTRA_BIND_SCENE ObjectId         sceneFindResource(const SceneTree& scene, std::string_view assetId);
+    VULTRA_BIND_SCENE ObjectId sceneCreateResource(SceneTree& scene, std::string_view type, std::string_view state);
+    VULTRA_BIND_SCENE void     sceneRemoveResource(SceneTree& scene, ObjectId resource);
     VULTRA_BIND_SCENE ObjectId sceneCreateMaterial(SceneTree& scene, std::string_view name);
     VULTRA_BIND_SCENE std::string_view   sceneMaterialName(const SceneTree& scene, ObjectId material);
     VULTRA_BIND_SCENE MaterialParameters sceneMaterialParameters(const SceneTree& scene, ObjectId material);

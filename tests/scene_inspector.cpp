@@ -8,6 +8,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <misc/cpp/imgui_stdlib.h>
 
 #include <array>
 #include <cfloat>
@@ -56,6 +57,25 @@ namespace
             changed |= ImGui::SliderFloat("##value", &number, probe.min, probe.max);
             probe.position = itemCenter();
             return changed;
+        }
+    };
+
+    struct TextProbe
+    {
+        std::optional<std::string> assigned;
+
+        static bool draw(vultra::EditorGuiProperty, void* value, void* data)
+        {
+            auto& probe   = *static_cast<TextProbe*>(data);
+            auto& text    = *static_cast<std::string*>(value);
+            bool  changed = false;
+            if (auto assigned = std::exchange(probe.assigned, std::nullopt))
+            {
+                text    = *assigned;
+                changed = true;
+            }
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            return ImGui::InputText("##title", &text) || changed;
         }
     };
 
@@ -138,6 +158,7 @@ try
     FloatProbe       red;
     BoolProbe        cameraSelection;
     BoolProbe        environmentSelection;
+    TextProbe        materialName;
     Device           device;
     RenderingServer  server(device);
     EditorGui        gui(device, VriFormat_RGBA8_UNORM, {.multiViewport = false, .persistLayout = false});
@@ -150,6 +171,7 @@ try
         std::pair {"LightSettings.intensity", EditorGuiPropertyDrawer {FloatProbe::draw, &intensity}},
         std::pair {"EnvironmentSettings.intensity", EditorGuiPropertyDrawer {FloatProbe::draw, &environmentIntensity}},
         std::pair {"MaterialParameters.baseRed", EditorGuiPropertyDrawer {FloatProbe::draw, &red}},
+        std::pair {"MaterialResource.name", EditorGuiPropertyDrawer {TextProbe::draw, &materialName}},
         std::pair {"Camera.current", EditorGuiPropertyDrawer {BoolProbe::draw, &cameraSelection}},
         std::pair {"Environment.current", EditorGuiPropertyDrawer {BoolProbe::draw, &environmentSelection}}};
     for (const auto& [id, drawer] : drawers)
@@ -349,6 +371,16 @@ try
     render();
     click(lastTreeItem);
     const auto beforeMaterial = image();
+    materialName.assigned     = std::string {};
+    render();
+    require(status.empty() && material.name() == "Shared material",
+            "Rejected resource input damaged the document or escaped the editor boundary");
+    materialName.assigned = "Renamed material";
+    render();
+    require(status.empty() && material.name() == "Renamed material",
+            "Generated resource field did not recover through the world setter");
+    render();
+    savePng(readback(device, target), directory / "resource_inspector.png");
     hold(red.position);
     require(ImGui::GetIO().MouseDown[0] && image().rgba != beforeMaterial.rgba,
             "Generated material field did not preview while held");

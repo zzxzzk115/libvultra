@@ -1,21 +1,19 @@
 namespace Vultra.Scripting;
 
-public sealed class Material
+public sealed class Material : Resource
 {
-    internal ScriptScene Scene { get; }
-    internal ulong Id { get; }
-
-    internal Material(ScriptScene scene, ulong id)
+    internal Material(ScriptScene scene, ulong id) : base(scene, id)
     {
-        Scene = scene;
-        Id = id;
     }
 
-    public string Name => Scene.MaterialName(Id);
+    public string Name
+    {
+        get => Scene.MaterialName(Id);
+        set => SetProperty("name", value);
+    }
     public MaterialParameters Parameters
     {
         get => Scene.MaterialParameters(Id);
         set => Scene.SetMaterialParameters(Id, value);
     }
-    public void Remove() => Scene.RemoveMaterial(Id);
 }

@@ -39,7 +39,9 @@ namespace vultra
         const SceneChanges&     changes() const;
         Node*                   find(ObjectId id) const;
         Node*                   find(NodeId id) const;
+        Object*                 findObject(ObjectId id) const;
         const SceneTypeCatalog& types() const;
+        const ObjectTypeInfo&   objectType(ObjectId id) const;
         PropertyValue           readProperty(ObjectId node, std::string_view property) const;
         // Resolve persistent references in this world/project before calling the generated semantic setter.
         void writeProperty(ObjectId               node,
@@ -111,14 +113,23 @@ namespace vultra
         void     setCurrentEnvironment(ObjectId id);
         bool     usesSceneLighting() const;
         void     validateAssets(const ProjectManifest& project) const;
+        // Inline/node references resolve immediately; external assets resolve when their project is available.
+        void validateReferences(const ProjectManifest* project = nullptr) const;
 
-        MaterialResource&                                     addMaterial(std::unique_ptr<MaterialResource> material);
-        MaterialResource*                                     findMaterial(ObjectId id) const;
-        MaterialResource*                                     findMaterial(AssetId id) const;
-        const std::vector<std::unique_ptr<MaterialResource>>& materials() const;
+        MaterialResource& addMaterial(std::unique_ptr<MaterialResource> material);
+        MaterialResource* findMaterial(ObjectId id) const;
+        MaterialResource* findMaterial(AssetId id) const;
+        // Borrowed indices; adding/removing resources can invalidate these spans, not the resource objects.
+        std::span<MaterialResource* const> materials() const;
         // Clears mesh references before invalidating the resource's ObjectId.
         void removeMaterial(MaterialResource& material);
         void validateMaterials() const;
+
+        Resource&                                  addResource(std::unique_ptr<Resource> resource);
+        Resource*                                  findResource(ObjectId id) const;
+        Resource*                                  findResource(AssetId id) const;
+        std::span<const std::unique_ptr<Resource>> resources() const;
+        void                                       removeResource(Resource& resource);
 
         std::string      serialize() const;
         std::string      serialize(const SceneTypeCatalog& types) const;
@@ -131,28 +142,34 @@ namespace vultra
         load(const std::filesystem::path& file, const SceneTypeCatalog& types, const AssetSource* source = nullptr);
 
     private:
-        static void               clearInvalidOwners(Node& node);
-        void                      bindTree(Node& node, SceneTree* tree);
-        void                      enterBranch(Node& node);
-        void                      readyBranch(Node& node);
-        void                      exitBranch(Node& node) noexcept;
-        void                      dispatchProcess(double deltaSeconds, bool physics);
-        void                      requireStructuralBoundary(const Node* parent = nullptr) const;
-        void                      requireIdle() const;
-        void                      requireMovable() const;
-        void                      connectComponentSignals();
-        void                      disconnectComponentSignals();
-        void                      transformChanged(entt::registry& registry, entt::entity entity);
-        void                      transformRemoved(entt::registry& registry, entt::entity entity);
-        void                      hierarchyChanged(entt::registry& registry, entt::entity entity);
-        void                      meshChanged(entt::registry& registry, entt::entity entity);
-        void                      cameraChanged(entt::registry& registry, entt::entity entity);
-        void                      cameraRemoved(entt::registry& registry, entt::entity entity);
-        void                      lightChanged(entt::registry& registry, entt::entity entity);
-        void                      environmentChanged(entt::registry& registry, entt::entity entity);
-        void                      environmentRemoved(entt::registry& registry, entt::entity entity);
-        void                      processChanged(entt::registry& registry, entt::entity entity);
-        void                      dispatchSystems(double deltaSeconds, ScenePhase phase);
+        static void clearInvalidOwners(Node& node);
+        void        bindTree(Node& node, SceneTree* tree);
+        void        enterBranch(Node& node);
+        void        readyBranch(Node& node);
+        void        exitBranch(Node& node) noexcept;
+        void        dispatchProcess(double deltaSeconds, bool physics);
+        void        requireStructuralBoundary(const Node* parent = nullptr) const;
+        void        requireIdle() const;
+        void        requireMovable() const;
+        void        validateReferences(const SceneTypeCatalog& types, const ProjectManifest* project) const;
+        void        validatePropertyValue(const SceneTypeCatalog& types,
+                                          const PropertyInfo&     property,
+                                          const PropertyValue&    value,
+                                          const ProjectManifest*  project,
+                                          bool                    deferExternalAssets) const;
+        void        connectComponentSignals();
+        void        disconnectComponentSignals();
+        void        transformChanged(entt::registry& registry, entt::entity entity);
+        void        transformRemoved(entt::registry& registry, entt::entity entity);
+        void        hierarchyChanged(entt::registry& registry, entt::entity entity);
+        void        meshChanged(entt::registry& registry, entt::entity entity);
+        void        cameraChanged(entt::registry& registry, entt::entity entity);
+        void        cameraRemoved(entt::registry& registry, entt::entity entity);
+        void        lightChanged(entt::registry& registry, entt::entity entity);
+        void        environmentChanged(entt::registry& registry, entt::entity entity);
+        void        environmentRemoved(entt::registry& registry, entt::entity entity);
+        void        processChanged(entt::registry& registry, entt::entity entity);
+        void        dispatchSystems(double deltaSeconds, ScenePhase phase);
         std::vector<entt::entity> branchEntities(entt::entity root) const;
         void                      retireRuntimeEntities(std::span<const entt::entity> entities);
 
@@ -199,7 +216,8 @@ namespace vultra
         std::map<std::array<uint8_t, 16>, entt::entity>     m_PersistentEntities;
         std::unordered_map<uint64_t, std::unique_ptr<Node>> m_Nodes;
         std::unique_ptr<Node>                               m_Root;
-        std::vector<std::unique_ptr<MaterialResource>>      m_Materials;
+        std::vector<std::unique_ptr<Resource>>              m_Resources;
+        std::vector<MaterialResource*>                      m_Materials;
         NodeId                                              m_CurrentCamera {};
         NodeId                                              m_CurrentEnvironment {};
         // Adding a light enables authored lighting; removing the last light leaves a valid unlit scene.

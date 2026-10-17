@@ -5,6 +5,8 @@
 #include <vultra/scene/render_nodes.hpp>
 #include <vultra/ui/editor_gui_frame.hpp>
 
+#include <string>
+
 namespace vultra
 {
     class EditorGui;
@@ -29,11 +31,13 @@ namespace vultra
         };
 
         void drawTransform(EditorGuiFrame& ui, Node3D& node);
+        void drawResourceProperties(EditorGuiFrame& ui, ResearchWorkspace& workspace, Resource& resource);
         void drawMesh(EditorGuiFrame& ui, ResearchWorkspace& workspace, MeshInstance3D& mesh);
         void drawEnvironment(EditorGuiFrame& ui, ResearchWorkspace& workspace, WorldEnvironment& environment);
 
         EditorGui&                     m_Gui;
         ObjectId                       m_Selected {};
         std::optional<EnvironmentEdit> m_EnvironmentEdit;
+        std::string                    m_PropertyError;
     };
 } // namespace vultra

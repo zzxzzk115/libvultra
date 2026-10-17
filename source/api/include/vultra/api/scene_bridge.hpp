@@ -7,7 +7,7 @@ namespace vultra
     class SceneTree;
     class ProjectManifest;
 
-    // Owned by one plugin; its borrowed frame is active only during update().
+    // Owned by one host instance; its frame is borrowed only during an active scene callback.
     struct SceneAccess
     {
         SceneTree*             scene   = nullptr;

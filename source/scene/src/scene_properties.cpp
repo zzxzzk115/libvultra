@@ -10,15 +10,34 @@ namespace vultra
         return m_Types;
     }
 
-    PropertyValue SceneTree::readProperty(ObjectId id, std::string_view name) const
+    Object* SceneTree::findObject(ObjectId id) const
     {
-        const auto* node = find(id);
-        if (!node)
+        if (auto* node = find(id))
+        {
+            return node;
+        }
+        return findResource(id);
+    }
+
+    const ObjectTypeInfo& SceneTree::objectType(ObjectId id) const
+    {
+        const auto* object = findObject(id);
+        if (!object)
         {
             throw std::invalid_argument("Property target does not belong to this world");
         }
-        const auto& property = m_Types.objects().type(node->typeName()).property(name);
-        return property.read(dynamic_cast<const void*>(node));
+        return m_Types.objects().type(object->typeName());
+    }
+
+    PropertyValue SceneTree::readProperty(ObjectId id, std::string_view name) const
+    {
+        const auto* object = findObject(id);
+        if (!object)
+        {
+            throw std::invalid_argument("Property target does not belong to this world");
+        }
+        const auto& property = m_Types.objects().type(object->typeName()).property(name);
+        return property.read(dynamic_cast<const void*>(object));
     }
 
     void SceneTree::writeProperty(ObjectId               id,
@@ -26,12 +45,22 @@ namespace vultra
                                   const PropertyValue&   value,
                                   const ProjectManifest* project)
     {
-        auto* node = find(id);
-        if (!node)
+        auto* object = findObject(id);
+        if (!object)
         {
             throw std::invalid_argument("Property target does not belong to this world");
         }
-        const auto& property = m_Types.objects().type(node->typeName()).property(name);
+        const auto& property = m_Types.objects().type(object->typeName()).property(name);
+        validatePropertyValue(m_Types, property, value, project, false);
+        property.write(dynamic_cast<void*>(object), value);
+    }
+
+    void SceneTree::validatePropertyValue(const SceneTypeCatalog& types,
+                                          const PropertyInfo&     property,
+                                          const PropertyValue&    value,
+                                          const ProjectManifest*  project,
+                                          bool                    deferExternalAssets) const
+    {
         property.validate(value);
         auto validateReference = [&](const PropertyValue& item)
         {
@@ -43,7 +72,7 @@ namespace vultra
             if (property.referenceCategory == ObjectCategory::eNode)
             {
                 const auto* target = find(NodeId {reference.id});
-                if (!target || !m_Types.objects().type(target->typeName()).isA(property.referenceType))
+                if (!target || !types.objects().type(target->typeName()).isA(property.referenceType))
                 {
                     throw std::invalid_argument("Reference requires a live " + std::string(property.referenceType) +
                                                 " in this world");
@@ -51,13 +80,21 @@ namespace vultra
             }
             else if (property.referenceCategory == ObjectCategory::eResource)
             {
-                if (findMaterial(AssetId {reference.id}))
+                if (const auto* target = findResource(AssetId {reference.id}))
                 {
-                    if (std::string_view(property.referenceType) != "MaterialResource" &&
-                        std::string_view(property.referenceType) != "Resource")
+                    if (!types.objects().type(target->typeName()).isA(property.referenceType))
                     {
                         throw std::invalid_argument("Reference has the wrong resource type");
                     }
+                    return;
+                }
+                const auto externalType = std::string_view(property.referenceType);
+                if (externalType != "ModelResource" && externalType != "Resource")
+                {
+                    throw std::invalid_argument("Reference requires a loaded " + std::string(externalType));
+                }
+                if (!project && deferExternalAssets)
+                {
                     return;
                 }
                 if (!project)
@@ -65,17 +102,13 @@ namespace vultra
                     throw std::invalid_argument("External resource references require the owning project catalog");
                 }
                 const auto& asset = project->asset(AssetId {reference.id});
-                if (std::string_view(property.referenceType) == "ModelResource")
+                if (externalType == "ModelResource")
                 {
                     const auto extension = asset.path.extension();
                     if (extension != ".gltf" && extension != ".glb" && extension != ".obj" && extension != ".fbx")
                     {
                         throw std::invalid_argument("Reference is not an importable model asset");
                     }
-                }
-                else if (std::string_view(property.referenceType) != "Resource")
-                {
-                    throw std::invalid_argument("External resource type is not registered");
                 }
             }
         };
@@ -90,6 +123,40 @@ namespace vultra
                 validateReference(item);
             }
         }
-        property.write(dynamic_cast<void*>(node), value);
+    }
+
+    void SceneTree::validateReferences(const ProjectManifest* project) const
+    {
+        validateReferences(m_Types, project);
+    }
+
+    void SceneTree::validateReferences(const SceneTypeCatalog& types, const ProjectManifest* project) const
+    {
+        auto validate = [&](const Object& object)
+        {
+            const auto& type = types.objects().type(object.typeName());
+            for (const auto& property : type.properties)
+            {
+                if (hasPropertyFlag(property.flags, PropertyFlags::eSerialize))
+                {
+                    validatePropertyValue(types,
+                                          property,
+                                          property.read(dynamic_cast<const void*>(&object)),
+                                          project,
+                                          true);
+                }
+            }
+        };
+        for (const auto handle : orderedEntities())
+        {
+            if (const auto* node = m_Registry->get<SceneNode>(handle).node)
+            {
+                validate(*node);
+            }
+        }
+        for (const auto& resource : m_Resources)
+        {
+            validate(*resource);
+        }
     }
 } // namespace vultra

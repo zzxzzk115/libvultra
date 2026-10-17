@@ -2,6 +2,7 @@
 #include <vultra/api/scene_properties.generated.hpp>
 #include <vultra/assets/material_properties.generated.hpp>
 #include <vultra/scene/render_properties.generated.hpp>
+#include <vultra/scene/resource_properties.generated.hpp>
 
 namespace vultra
 {
@@ -35,9 +36,19 @@ namespace vultra
         return inspector.properties(materialParametersType(), &settings);
     }
 
+    bool drawMaterialResource(EditorGuiInspector& inspector, MaterialResource& settings)
+    {
+        return inspector.properties(materialResourceType(), &settings);
+    }
+
     bool drawMeshInstance3D(EditorGuiInspector& inspector, MeshInstance3D& settings)
     {
         return inspector.properties(meshInstance3DType(), &settings);
+    }
+
+    bool drawModelResource(EditorGuiInspector& inspector, ModelResource& settings)
+    {
+        return inspector.properties(modelResourceType(), &settings);
     }
 
     bool drawNode(EditorGuiInspector& inspector, Node& settings)
@@ -48,6 +59,11 @@ namespace vultra
     bool drawNode3D(EditorGuiInspector& inspector, Node3D& settings)
     {
         return inspector.properties(node3DType(), &settings);
+    }
+
+    bool drawResource(EditorGuiInspector& inspector, Resource& settings)
+    {
+        return inspector.properties(resourceType(), &settings);
     }
 
     bool drawWorldEnvironment(EditorGuiInspector& inspector, WorldEnvironment& settings)

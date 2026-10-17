@@ -181,7 +181,7 @@ namespace
                         copy.findMaterial(red.assetId())->id(),
                 "Material persistence lost shared stable identity or retained a runtime ObjectId");
         auto invalid = nlohmann::json::parse(serialized);
-        invalid["materials"].push_back(invalid["materials"][0]);
+        invalid["resources"].push_back(invalid["resources"][0]);
         requireFailure(
             [&]
             {
@@ -189,15 +189,15 @@ namespace
             },
             "Duplicate material asset ID was accepted");
         invalid = nlohmann::json::parse(serialized);
-        invalid.erase("materials");
+        invalid.erase("resources");
         requireFailure(
             [&]
             {
                 SceneTree::parse(invalid.dump());
             },
             "Missing required materials table was accepted");
-        invalid                                            = nlohmann::json::parse(serialized);
-        invalid["materials"][0]["parameters"]["roughness"] = -1;
+        invalid                                                    = nlohmann::json::parse(serialized);
+        invalid["resources"][0]["data"]["parameters"]["roughness"] = -1;
         requireFailure(
             [&]
             {
