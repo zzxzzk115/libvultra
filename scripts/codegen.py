@@ -346,10 +346,10 @@ def parse_reflection(unit):
     records = {}
     for cursor in walk(unit.cursor):
         category = next((value for value in annotations(cursor)
-                         if value in ("vultra.reflect", "vultra.reflect.node")), None)
+                         if value in ("vultra.reflect", "vultra.reflect.node", "vultra.reflect.resource")), None)
         if cursor.kind not in (cindex.CursorKind.STRUCT_DECL, cindex.CursorKind.CLASS_DECL) or not category:
             continue
-        object_type = category == "vultra.reflect.node"
+        object_type = category != "vultra.reflect"
         if not object_type and any(child.kind == cindex.CursorKind.CONSTRUCTOR for child in cursor.get_children()):
             raise RuntimeError(f"Reflected settings require field initializers, not constructors: {cursor.spelling}")
         fields = []
@@ -418,12 +418,13 @@ def parse_reflection(unit):
                            "flag_bits": sum(PROPERTY_FLAGS[flag] for flag in flags), "json_path": path,
                            "choices": choices, "enum_values": enum_values,
                            "integer_bits": scalar_clang_type.get_size() * 8 if scalar_kind in ("eInt", "eUInt") else 0})
-        if not fields and not bases:
+        if not fields and not bases and not object_type:
             raise RuntimeError(f"Reflected type has no annotated properties: {cursor.spelling}")
         header = source_path(cursor.location.file.name).split("/include/", 1)[1]
         records[cursor.spelling] = {"name": cursor.spelling, "header": header, "fields": fields,
                                     "base": bases[0].type.get_declaration().spelling if bases else None,
-                                    "category": "eNode" if object_type else "eValue"}
+                                    "category": {"vultra.reflect": "eValue", "vultra.reflect.node": "eNode",
+                                                 "vultra.reflect.resource": "eResource"}[category]}
 
     resolved = {}
     def resolve(name, visiting):
@@ -1112,6 +1113,8 @@ def reflection_source(types, header):
         result += "#include <vultra/assets/material_properties.generated.hpp>\n"
     if names & {"CameraSettings", "LightSettings", "EnvironmentSettings"}:
         result += "#include <vultra/scene/render_properties.generated.hpp>\n"
+    if any(item.get("category") == "eResource" for item in types):
+        result += "#include <vultra/scene/resource_properties.generated.hpp>\n"
     if "RenderSettings" in names:
         result += "#include <vultra/servers/rendering/builtin/render_properties.generated.hpp>\n"
     result += "\nnamespace vultra\n{\n"
@@ -1384,7 +1387,9 @@ def main():
         ("assets", "material_properties", "vultra/assets/material_properties.generated.hpp",
          [item for item in scene_types if item["name"] == "MaterialParameters"]),
         ("scene", "render_properties", "vultra/scene/render_properties.generated.hpp",
-         [item for item in scene_types if item["name"] != "MaterialParameters"]),
+         [item for item in scene_types if item["name"] != "MaterialParameters" and item["category"] != "eResource"]),
+        ("scene", "resource_properties", "vultra/scene/resource_properties.generated.hpp",
+         [item for item in scene_types if item["category"] == "eResource"]),
         ("servers", "rendering/builtin/render_properties", "vultra/servers/rendering/builtin/render_properties.generated.hpp",
          render_types),
     )

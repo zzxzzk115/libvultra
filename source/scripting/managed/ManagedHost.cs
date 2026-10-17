@@ -103,7 +103,7 @@ public static unsafe class Entry
             try
             {
                 var value = field.GetValue(script);
-                if (value is Node or Material)
+                if (value is Node or Resource)
                 {
                     if (value.GetType().Assembly != typeof(Node).Assembly)
                     {

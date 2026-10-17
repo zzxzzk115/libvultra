@@ -479,6 +479,47 @@ public sealed class ScriptScene
         return new Material(this, id);
     }
 
+    public unsafe Resource CreateResource(string type, string state = "{}")
+    {
+        ArgumentException.ThrowIfNullOrEmpty(type);
+        ArgumentNullException.ThrowIfNull(state);
+        var typeBytes = Encoding.UTF8.GetBytes(type);
+        var stateBytes = Encoding.UTF8.GetBytes(state);
+        ulong id;
+        fixed (byte* name = typeBytes)
+        fixed (byte* data = stateBytes)
+        {
+            Check(((VultraSceneApi*)_api)->CreateResource(Frame, name, (ulong)typeBytes.Length,
+                                                        data, (ulong)stateBytes.Length, &id));
+        }
+        return WrapResource(id);
+    }
+
+    public unsafe Resource? FindResource(string assetId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(assetId);
+        var bytes = Encoding.UTF8.GetBytes(assetId);
+        ulong id;
+        fixed (byte* data = bytes)
+        {
+            Check(((VultraSceneApi*)_api)->FindResource(Frame, data, (ulong)bytes.Length, &id));
+        }
+        return id == 0 ? null : WrapResource(id);
+    }
+
+    private Resource WrapResource(ulong id) =>
+        ObjectType(id) == "MaterialResource" ? new Material(this, id) : new Resource(this, id);
+
+    internal unsafe string ObjectType(ulong id)
+    {
+        byte* data;
+        ulong length;
+        Check(((VultraSceneApi*)_api)->ObjectType(Frame, id, &data, &length));
+        return Encoding.UTF8.GetString(new ReadOnlySpan<byte>(data, checked((int)length)));
+    }
+
+    internal unsafe void RemoveResource(ulong id) => Check(((VultraSceneApi*)_api)->RemoveResource(Frame, id));
+
     internal unsafe Material? MeshMaterial(ulong node, int slot)
     {
         if (slot < 0)
@@ -518,8 +559,6 @@ public sealed class ScriptScene
     {
         Check(((VultraSceneApi*)_api)->SetMaterialParameters(Frame, id, value.ToAbi()));
     }
-
-    internal unsafe void RemoveMaterial(ulong id) => Check(((VultraSceneApi*)_api)->RemoveMaterial(Frame, id));
 
     internal unsafe LightKind LightKind(ulong node)
     {

@@ -76,8 +76,8 @@ namespace vultra
                                                                    });
         }
 
-        virtual NodeKind         kind() const;
-        virtual std::string_view typeName() const;
+        virtual NodeKind kind() const;
+        std::string_view typeName() const override;
 
         SceneTree* tree() const;
         // Registry-local and never serialized; null while the node is detached.

@@ -1,6 +1,7 @@
 #include "scene_inspector.hpp"
 
 #include <vultra/api/scene_properties.generated.hpp>
+#include <vultra/core/base/logger.hpp>
 #include <vultra/scene/render_nodes.hpp>
 #include <vultra/scene/scene_api.hpp>
 #include <vultra/ui/editor_gui.hpp>
@@ -77,7 +78,7 @@ namespace vultra
 
     void SceneInspector::drawTree(EditorGuiFrame& ui, const SceneTree& tree)
     {
-        if (!tree.find(m_Selected) && !tree.findMaterial(m_Selected))
+        if (!tree.findObject(m_Selected))
         {
             m_Selected = tree.root().id();
         }
@@ -101,6 +102,7 @@ namespace vultra
             if (ui.isItemClicked())
             {
                 m_Selected = node.id();
+                m_PropertyError.clear();
             }
             if (open && !node.children().empty())
             {
@@ -112,21 +114,24 @@ namespace vultra
             }
         };
         visit(visit, tree.root());
-        if (!tree.materials().empty())
+        if (!tree.resources().empty())
         {
             ui.separatorText("Resources");
-            for (const auto& material : tree.materials())
+            for (const auto& resource : tree.resources())
             {
-                const auto id = std::format("resource-{}", material->id().value);
+                const auto  id       = std::format("resource-{}", resource->id().value);
+                const auto* material = dynamic_cast<const MaterialResource*>(resource.get());
+                const auto  label    = material ? material->name() : resource->assetId().value.toString();
                 ui.treeNodeEx(id.c_str(),
                               ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen |
                                   ImGuiTreeNodeFlags_SpanAvailWidth |
-                                  (material->id() == m_Selected ? ImGuiTreeNodeFlags_Selected : 0),
+                                  (resource->id() == m_Selected ? ImGuiTreeNodeFlags_Selected : 0),
                               "%s",
-                              material->name().c_str());
+                              label.c_str());
                 if (ui.isItemClicked())
                 {
-                    m_Selected = material->id();
+                    m_Selected = resource->id();
+                    m_PropertyError.clear();
                 }
             }
         }
@@ -214,7 +219,7 @@ namespace vultra
                 for (const auto& entry : workspace.scene().materials())
                 {
                     ui.pushId(entry->assetId().value.toString().c_str());
-                    if (ui.selectable(entry->name().c_str(), entry.get() == material))
+                    if (ui.selectable(entry->name().c_str(), entry == material))
                     {
                         mesh.setMaterial(slot, entry->assetId());
                     }
@@ -279,6 +284,45 @@ namespace vultra
         }
     }
 
+    void SceneInspector::drawResourceProperties(EditorGuiFrame& ui, ResearchWorkspace& workspace, Resource& resource)
+    {
+        auto& tree = workspace.scene();
+        {
+            EditorGuiInspector inspector(m_Gui, "resource-properties");
+            if (inspector)
+            {
+                for (const auto& property : tree.objectType(resource.id()).properties)
+                {
+                    if (!hasPropertyFlag(property.flags, PropertyFlags::eInspect))
+                    {
+                        continue;
+                    }
+                    auto value = tree.readProperty(resource.id(), property.name);
+                    if (inspector.valueField(property, value))
+                    {
+                        try
+                        {
+                            tree.writeProperty(resource.id(), property.name, value, &workspace.project());
+                            m_PropertyError.clear();
+                        }
+                        catch (const std::invalid_argument& error)
+                        {
+                            m_PropertyError = error.what();
+                            Logger::app().warn("Edit resource {} property {}: {}",
+                                               resource.assetId().value.toString(),
+                                               property.name,
+                                               m_PropertyError);
+                        }
+                    }
+                }
+            }
+        }
+        if (!m_PropertyError.empty())
+        {
+            ui.textWrapped("%s", m_PropertyError.c_str());
+        }
+    }
+
     void SceneInspector::drawProperties(EditorGuiFrame& ui, ResearchWorkspace& workspace)
     {
         auto&      tree = workspace.scene();
@@ -288,6 +332,7 @@ namespace vultra
         if (auto* material = tree.findMaterial(m_Selected))
         {
             ui.text("%s | Material", material->name().c_str());
+            drawResourceProperties(ui, workspace, *material);
             if (material->kind() == MaterialResource::Kind::eShader)
             {
                 auto instance = material->shaderMaterial();
@@ -307,6 +352,13 @@ namespace vultra
             {
                 material->setParameters(parameters);
             }
+            return;
+        }
+        if (auto* resource = tree.findResource(m_Selected))
+        {
+            const auto type = resource->typeName();
+            ui.textDisabled("%.*s", int(type.size()), type.data());
+            drawResourceProperties(ui, workspace, *resource);
             return;
         }
         auto* node = tree.find(m_Selected);

@@ -20,11 +20,29 @@ namespace vultra
         return m_Name;
     }
 
+    std::string_view MaterialResource::typeName() const
+    {
+        return "MaterialResource";
+    }
+
+    void MaterialResource::setName(std::string name)
+    {
+        if (name.empty())
+        {
+            throw std::invalid_argument("Material resource name is empty");
+        }
+        if (m_Name != name)
+        {
+            m_Name = std::move(name);
+            markChanged(SceneChange::eMaterial);
+        }
+    }
+
     const MaterialParameters& MaterialResource::parameters() const
     {
         if (kind() != Kind::eOpenPbr)
         {
-            throw std::invalid_argument("Shader material has no legacy OpenPBR parameters: " + m_Name);
+            throw std::invalid_argument("Shader material has no OpenPBR parameters: " + m_Name);
         }
         return std::get<MaterialParameters>(m_Data);
     }
@@ -35,10 +53,7 @@ namespace vultra
         if (parameters != this->parameters())
         {
             m_Data = parameters;
-            if (m_Changes)
-            {
-                m_Changes->mark(SceneChange::eMaterial);
-            }
+            markChanged(SceneChange::eMaterial);
         }
     }
 
@@ -62,10 +77,7 @@ namespace vultra
         if (kind() != Kind::eShader || shaderMaterial().serialize() != encoded)
         {
             m_Data = std::move(material);
-            if (m_Changes)
-            {
-                m_Changes->mark(SceneChange::eMaterial);
-            }
+            markChanged(SceneChange::eMaterial);
         }
     }
 } // namespace vultra

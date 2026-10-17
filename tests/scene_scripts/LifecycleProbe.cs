@@ -16,6 +16,19 @@ public sealed class LifecycleProbe : Node3D
     {
         Position += Vector3.UnitX;
         ProcessPriority = -7;
+        var resource = Scene.CreateResource("Resource");
+        if (resource.TypeName != "Resource")
+        {
+            throw new InvalidOperationException("Managed resource factory returned a different type");
+        }
+        resource.Remove();
+        var material = Scene.CreateMaterial("Before");
+        material.Name = "After";
+        if (material.TypeName != "MaterialResource" || material.GetProperty<string>("name") != "After")
+        {
+            throw new InvalidOperationException("Managed resource properties bypass the shared ABI");
+        }
+        material.Remove();
         Scene.TimeScale = Scene.TimeScale;
         if (!IsInsideTree || ProcessPriority != -7 || Scene.TimeScale != 1)
         {

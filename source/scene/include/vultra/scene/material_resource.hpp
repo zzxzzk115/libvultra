@@ -10,11 +10,14 @@
 namespace vultra
 {
     // Scene-owned embedded asset; its stable asset ID is shared by mesh material overrides.
-    class MaterialResource final : public Resource
+    class VULTRA_REFLECT_RESOURCE MaterialResource final : public Resource
     {
     public:
         explicit MaterialResource(std::string name, AssetId id = {StableId::generate()});
+        std::string_view typeName() const override;
+        VULTRA_PROPERTY("label=Name;set=setName;default=std::string{};flags=serialize|inspect|bind")
         const std::string&        name() const;
+        void                      setName(std::string name);
         const MaterialParameters& parameters() const;
         void                      setParameters(MaterialParameters parameters);
         enum class Kind
@@ -27,9 +30,7 @@ namespace vultra
         void                    setShaderMaterial(MaterialInstance material);
 
     private:
-        friend class SceneTree;
         std::string                                        m_Name;
         std::variant<MaterialParameters, MaterialInstance> m_Data;
-        SceneChanges*                                      m_Changes = nullptr;
     };
 } // namespace vultra

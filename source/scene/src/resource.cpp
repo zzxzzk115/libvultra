@@ -19,6 +19,19 @@ namespace vultra
         return m_AssetId;
     }
 
+    std::string_view Resource::typeName() const
+    {
+        return "Resource";
+    }
+
+    void Resource::markChanged(SceneChange change)
+    {
+        if (m_Changes)
+        {
+            m_Changes->mark(change);
+        }
+    }
+
     ModelResource::ModelResource(AssetId asset, ImportedAsset data) :
         Resource(asset),
         m_Data(std::move(data))
@@ -28,5 +41,10 @@ namespace vultra
     const ImportedAsset& ModelResource::data() const
     {
         return m_Data;
+    }
+
+    std::string_view ModelResource::typeName() const
+    {
+        return "ModelResource";
     }
 } // namespace vultra

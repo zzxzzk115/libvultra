@@ -42,6 +42,6 @@
   },
   "current_camera": null,
   "scene_lighting": false,
-  "materials": [],
-  "current_environment": null
+  "current_environment": null,
+  "resources": []
 }

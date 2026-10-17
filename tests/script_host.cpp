@@ -43,6 +43,13 @@ local function record(self, phase)
 end
 function script:_enter_tree() record(self, 'enter') end
 function script:_ready()
+    local resource = self.scene:create_resource("Resource")
+    assert(resource:get_class() == "Resource")
+    resource:remove()
+    local material = self.scene:create_material("Before")
+    material:set_property("name", "After")
+    assert(material:get_class() == "MaterialResource" and material:get_property("name") == "After")
+    material:remove()
     local x, y, z = self.node:position()
     self.node:set_position(x + 1, y, z)
     self.node:set_process_priority(-7)

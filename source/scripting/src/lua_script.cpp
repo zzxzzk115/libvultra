@@ -91,11 +91,14 @@ namespace vultra
                     bind("light_kind", lightKind);
                     bind("light_settings", lightSettings);
                     bind("set_light_settings", setLightSettings);
+                    bind("object_type", objectType);
+                    bind("create_resource", createResource);
+                    bind("find_resource", findResource);
+                    bind("remove_resource", removeResource);
                     bind("create_material", createMaterial);
                     bind("material_name", materialName);
                     bind("material_parameters", materialParameters);
                     bind("set_material_parameters", setMaterialParameters);
-                    bind("remove_material", removeMaterial);
                     bind("mesh_material", meshMaterial);
                     bind("set_mesh_material", setMeshMaterial);
                     lua_setglobal(m_State, "scene");
@@ -1007,6 +1010,58 @@ namespace vultra
                               0);
             }
 
+            static int objectType(lua_State* state)
+            {
+                const char* name   = nullptr;
+                uint64_t    size   = 0;
+                const auto  status = sceneApi().object_type(self(state)->m_SceneFrame,
+                                                            uint64_t(luaL_checkinteger(state, 1)),
+                                                            &name,
+                                                            &size);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushlstring(state, name, size);
+                }
+                return result(state, status);
+            }
+
+            static int createResource(lua_State* state)
+            {
+                size_t      typeSize  = 0;
+                size_t      stateSize = 0;
+                const auto* type      = luaL_checklstring(state, 1, &typeSize);
+                const auto* data      = luaL_checklstring(state, 2, &stateSize);
+                uint64_t    id        = 0;
+                const auto  status =
+                    sceneApi().create_resource(self(state)->m_SceneFrame, type, typeSize, data, stateSize, &id);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(id));
+                }
+                return result(state, status);
+            }
+
+            static int findResource(lua_State* state)
+            {
+                size_t      size   = 0;
+                const auto* asset  = luaL_checklstring(state, 1, &size);
+                uint64_t    id     = 0;
+                const auto  status = sceneApi().find_resource(self(state)->m_SceneFrame, asset, size, &id);
+                if (status == VULTRA_STATUS_OK)
+                {
+                    lua_pushinteger(state, static_cast<lua_Integer>(id));
+                }
+                return result(state, status);
+            }
+
+            static int removeResource(lua_State* state)
+            {
+                return result(
+                    state,
+                    sceneApi().remove_resource(self(state)->m_SceneFrame, uint64_t(luaL_checkinteger(state, 1))),
+                    0);
+            }
+
             static int createMaterial(lua_State* state)
             {
                 size_t      size   = 0;
@@ -1056,14 +1111,6 @@ namespace vultra
                               sceneApi().set_material_parameters(self(state)->m_SceneFrame,
                                                                  static_cast<uint64_t>(luaL_checkinteger(state, 1)),
                                                                  value),
-                              0);
-            }
-
-            static int removeMaterial(lua_State* state)
-            {
-                return result(state,
-                              sceneApi().remove_material(self(state)->m_SceneFrame,
-                                                         static_cast<uint64_t>(luaL_checkinteger(state, 1))),
                               0);
             }
 
@@ -1194,18 +1241,31 @@ function node:make_environment_current() return scene_api.set_current_environmen
 function node:light_settings() return scene_api.light_settings(self.id) end
 function node:set_light_settings(settings) return scene_api.set_light_settings(self.id, settings) end
 local world = { null = scene_api.null }
-local material = {}
+local resource = {}
+resource.__index = resource
+function resource:get_class() return scene_api.object_type(self.id) end
+function resource:get_property(name) return scene_api.get_property(self.id, name) end
+function resource:set_property(name, value) return scene_api.set_property(self.id, name, value) end
+function resource:remove() return scene_api.remove_resource(self.id) end
+local material = setmetatable({}, { __index = resource })
 material.__index = material
 function material:name() return scene_api.material_name(self.id) end
 function material:parameters() return scene_api.material_parameters(self.id) end
 function material:set_parameters(parameters) return scene_api.set_material_parameters(self.id, parameters) end
-function material:remove() return scene_api.remove_material(self.id) end
 function node:material(slot)
     local id = scene_api.mesh_material(self.id, slot)
     if id == 0 then return nil end
     return setmetatable({ id = id }, material)
 end
 function node:set_material(slot, value) return scene_api.set_mesh_material(self.id, slot, value and value.id or 0) end
+local function wrap_resource(id)
+    if id == 0 then return nil end
+    return setmetatable({ id = id }, scene_api.object_type(id) == "MaterialResource" and material or resource)
+end
+function world:create_resource(type_name, state_json)
+    return wrap_resource(scene_api.create_resource(type_name, state_json or "{}"))
+end
+function world:find_resource(asset_id) return wrap_resource(scene_api.find_resource(asset_id)) end
 function world:create_material(name)
     return setmetatable({ id = scene_api.create_material(name) }, material)
 end

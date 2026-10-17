@@ -206,42 +206,45 @@
   },
   "scene_lighting": true,
   "current_camera": "41d8442c-0b34-4893-a64c-aec8ac28026e",
-  "materials": [
+  "current_environment": "7fbba8ae-4914-460f-b37a-66c36fd1259e",
+  "resources": [
     {
       "id": "e3835c7c-6d37-4b3a-b9f7-91f1d6b5a04c",
-      "name": "Helmet finish",
-      "parameters": {
-        "base_color": [
-          1,
-          1,
-          1,
-          1
-        ],
-        "base_weight": 1,
-        "metalness": 1,
-        "diffuse_roughness": 0,
-        "specular_weight": 1,
-        "specular_color": [
-          1,
-          1,
-          1
-        ],
-        "roughness": 0.5,
-        "specular_ior": 1.5,
-        "coat_weight": 0,
-        "coat_roughness": 0.1,
-        "coat_ior": 1.5,
-        "emission_color": [
-          1,
-          1,
-          1
-        ],
-        "emission_luminance": 1,
-        "normal_scale": 1,
-        "occlusion_strength": 1,
-        "alpha_cutoff": -1
+      "type": "MaterialResource",
+      "data": {
+        "name": "Helmet finish",
+        "parameters": {
+          "base_color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "base_weight": 1,
+          "metalness": 1,
+          "diffuse_roughness": 0,
+          "specular_weight": 1,
+          "specular_color": [
+            1,
+            1,
+            1
+          ],
+          "roughness": 0.5,
+          "specular_ior": 1.5,
+          "coat_weight": 0,
+          "coat_roughness": 0.1,
+          "coat_ior": 1.5,
+          "emission_color": [
+            1,
+            1,
+            1
+          ],
+          "emission_luminance": 1,
+          "normal_scale": 1,
+          "occlusion_strength": 1,
+          "alpha_cutoff": -1
+        }
       }
     }
-  ],
-  "current_environment": "7fbba8ae-4914-460f-b37a-66c36fd1259e"
+  ]
 }

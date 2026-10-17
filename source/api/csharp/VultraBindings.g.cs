@@ -128,10 +128,12 @@ internal unsafe struct VultraSceneApi
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, byte*, ulong, ulong*, VultraStatus> CreateMesh;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, ulong*, VultraStatus> CreateNode;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, ulong*, VultraStatus> CreateNode3D;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, byte*, ulong, byte*, ulong, ulong*, VultraStatus> CreateResource;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong*, VultraStatus> CurrentCamera;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong*, VultraStatus> CurrentEnvironment;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, ulong*, VultraStatus> DuplicateMesh;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraEnvironmentSettings*, VultraStatus> EnvironmentSettings;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, byte*, ulong, ulong*, VultraStatus> FindResource;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong*, VultraStatus> LightKind;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraLightSettings*, VultraStatus> LightSettings;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte**, ulong*, VultraStatus> MaterialName;
@@ -146,12 +148,14 @@ internal unsafe struct VultraSceneApi
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong*, VultraStatus> NodeQueuedForDeletion;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraSceneTranslation*, VultraStatus> NodeTranslation;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte**, ulong*, VultraStatus> NodeType;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte**, ulong*, VultraStatus> ObjectType;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong*, VultraStatus> Paused;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong*, VultraStatus> PhysicsFrame;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraStatus> QueueFree;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, byte*, ulong, byte*, ulong, ulong*, VultraStatus> ReadProperty;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraStatus> RemoveMaterial;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraStatus> RemoveNode;
+    public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraStatus> RemoveResource;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, ulong, ulong, VultraStatus> ReparentNode;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong*, VultraStatus> RootId;
     public delegate* unmanaged[Cdecl]<VultraSceneFrame, ulong, VultraCameraSettings, VultraStatus> SetCameraSettings;

@@ -20,6 +20,19 @@ namespace
             value.x += 1;
             actor().setPosition(value);
             actor().setProcessPriority(-7);
+            auto resource = createResource("Resource");
+            if (resource.typeName() != "Resource")
+            {
+                throw std::runtime_error("Native resource factory returned a different type");
+            }
+            resource.remove();
+            auto material = createMaterial("Before");
+            material.setPropertyJson("name", "\"After\"");
+            if (material.typeName() != "MaterialResource" || material.propertyJson("name") != "\"After\"")
+            {
+                throw std::runtime_error("Native resource properties bypass the shared ABI");
+            }
+            material.remove();
             setTimeScale(timeScale());
             if (!actor().isInsideTree() || actor().processPriority() != -7 || timeScale() != 1)
             {

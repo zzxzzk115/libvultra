@@ -1,4 +1,3 @@
-#include <vultra/assets/material_properties.generated.hpp>
 #include <vultra/assets/source_file.hpp>
 #include <vultra/platform/os/file.hpp>
 #include <vultra/scene/render_nodes.hpp>
@@ -147,19 +146,6 @@ namespace vultra
                 readOwners(tree, *node.children()[index], data.at("children").at(index));
             }
         }
-
-        Json writeParameters(const MaterialParameters& value)
-        {
-            return Json::parse(serializeProperties(materialParametersType(), &value));
-        }
-
-        MaterialParameters readParameters(const Json& data)
-        {
-            MaterialParameters value;
-            deserializeProperties(materialParametersType(), data.dump(), &value);
-            return value;
-        }
-
     } // namespace
 
     SceneTree::SceneTree(std::unique_ptr<Node> root) :
@@ -182,6 +168,8 @@ namespace vultra
         disconnectComponentSignals();
         m_Nodes.clear();
         m_Root.reset();
+        m_Materials.clear();
+        m_Resources.clear();
         for (auto& systems : m_Systems)
         {
             systems.clear();
@@ -212,6 +200,7 @@ namespace vultra
             m_Nodes.clear();
             m_Root.reset();
             m_Materials.clear();
+            m_Resources.clear();
             m_Changes            = std::move(other.m_Changes);
             m_Registry           = std::move(other.m_Registry);
             m_NodeEntities       = std::move(other.m_NodeEntities);
@@ -227,6 +216,7 @@ namespace vultra
             m_Systems            = std::move(other.m_Systems);
             m_NextSystemId       = other.m_NextSystemId;
             m_Root               = std::move(other.m_Root);
+            m_Resources          = std::move(other.m_Resources);
             m_Materials          = std::move(other.m_Materials);
             m_CurrentCamera      = other.m_CurrentCamera;
             m_CurrentEnvironment = other.m_CurrentEnvironment;
@@ -573,6 +563,7 @@ namespace vultra
 
     void SceneTree::validateAssets(const ProjectManifest& project) const
     {
+        validateReferences(&project);
         for (const auto& [entity, node, mesh] : m_Registry->view<const SceneNode, const SceneMesh>().each())
         {
             project.asset(mesh.model);
@@ -609,67 +600,6 @@ namespace vultra
         }
     }
 
-    MaterialResource& SceneTree::addMaterial(std::unique_ptr<MaterialResource> material)
-    {
-        if (!material || findMaterial(material->assetId()))
-        {
-            throw std::invalid_argument("Material requires a unique asset ID in this scene");
-        }
-        m_Materials.push_back(std::move(material));
-        m_Materials.back()->m_Changes = m_Changes.get();
-        m_Changes->mark(SceneChange::eMaterial);
-        return *m_Materials.back();
-    }
-
-    MaterialResource* SceneTree::findMaterial(ObjectId id) const
-    {
-        const auto found = std::ranges::find_if(m_Materials,
-                                                [id](const auto& value)
-                                                {
-                                                    return value->id() == id;
-                                                });
-        return found == m_Materials.end() ? nullptr : found->get();
-    }
-
-    MaterialResource* SceneTree::findMaterial(AssetId id) const
-    {
-        const auto found = std::ranges::find_if(m_Materials,
-                                                [id](const auto& value)
-                                                {
-                                                    return value->assetId() == id;
-                                                });
-        return found == m_Materials.end() ? nullptr : found->get();
-    }
-
-    const std::vector<std::unique_ptr<MaterialResource>>& SceneTree::materials() const
-    {
-        return m_Materials;
-    }
-
-    void SceneTree::removeMaterial(MaterialResource& material)
-    {
-        if (findMaterial(material.id()) != &material)
-        {
-            throw std::invalid_argument("Material does not belong to this scene");
-        }
-        const auto asset = material.assetId();
-        for (auto&& [entity, mesh] : m_Registry->view<SceneMesh>().each())
-        {
-            std::erase_if(mesh.materials,
-                          [asset](const MeshMaterialOverride& entry)
-                          {
-                              return entry.material == asset;
-                          });
-        }
-        const auto* target = &material;
-        std::erase_if(m_Materials,
-                      [target](const auto& value)
-                      {
-                          return value.get() == target;
-                      });
-        m_Changes->mark(SceneChange::eMaterial);
-    }
-
     void SceneTree::validateMaterials() const
     {
         for (const auto& [entity, node, mesh] : m_Registry->view<const SceneNode, const SceneMesh>().each())
@@ -691,6 +621,7 @@ namespace vultra
 
     std::string SceneTree::serialize(const SceneTypeCatalog& types) const
     {
+        validateReferences(types, nullptr);
         for (const auto& [entity, node] : m_Registry->view<const SceneNode>().each())
         {
             if (!node.node)
@@ -706,19 +637,12 @@ namespace vultra
                        {"scene_lighting", m_SceneLighting},
                        {"current_camera", nullptr},
                        {"current_environment", nullptr},
-                       {"materials", Json::array()}};
-        for (const auto& material : m_Materials)
+                       {"resources", Json::array()}};
+        for (const auto& resource : m_Resources)
         {
-            Json entry {{"id", material->assetId().value.toString()}, {"name", material->name()}};
-            if (material->kind() == MaterialResource::Kind::eShader)
-            {
-                entry["shader_material"] = Json::parse(material->shaderMaterial().serialize());
-            }
-            else
-            {
-                entry["parameters"] = writeParameters(material->parameters());
-            }
-            document["materials"].push_back(std::move(entry));
+            document["resources"].push_back({{"id", resource->assetId().value.toString()},
+                                             {"type", resource->typeName()},
+                                             {"data", Json::parse(types.serialize(*resource))}});
         }
         if (m_CurrentCamera.value.valid())
         {
@@ -749,27 +673,15 @@ namespace vultra
             SceneTree   tree(readNode(rootData, types), types);
             readChildren(tree, tree.root(), rootData, types);
             readOwners(tree, tree.root(), rootData);
-            if (!document.at("materials").is_array())
+            if (!document.at("resources").is_array())
             {
-                throw std::invalid_argument("Scene materials must be an array");
+                throw std::invalid_argument("Scene resources must be an array");
             }
-            for (const auto& entry : document.at("materials"))
+            for (const auto& entry : document.at("resources"))
             {
-                auto material = std::make_unique<MaterialResource>(entry.at("name").get<std::string>(),
-                                                                   parseAssetId(entry.at("id").get<std::string>()));
-                if (entry.contains("parameters") == entry.contains("shader_material"))
-                {
-                    throw std::invalid_argument("Material requires exactly one data category");
-                }
-                if (entry.contains("shader_material"))
-                {
-                    material->setShaderMaterial(MaterialInstance::parse(entry.at("shader_material").dump()));
-                }
-                else
-                {
-                    material->setParameters(readParameters(entry.at("parameters")));
-                }
-                tree.addMaterial(std::move(material));
+                tree.addResource(types.createResource(entry.at("type").get<std::string>(),
+                                                      parseAssetId(entry.at("id").get<std::string>()),
+                                                      entry.at("data").dump()));
             }
             tree.validateMaterials();
             if (!document.at("current_camera").is_null())
@@ -796,6 +708,7 @@ namespace vultra
                 throw std::invalid_argument("Authored lights require scene lighting");
             }
             tree.m_SceneLighting = lighting;
+            tree.validateReferences();
             return tree;
         }
         catch (const std::exception& error)
@@ -806,7 +719,7 @@ namespace vultra
 
     void SceneTree::save(const std::filesystem::path& file) const
     {
-        save(file, SceneTypeCatalog {});
+        save(file, m_Types);
     }
 
     void SceneTree::save(const std::filesystem::path& file, const SceneTypeCatalog& types) const
