@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="org.vultra.platformprobe" android:versionCode="1" android:versionName="1">
+    <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="35" />
+    <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00401000" android:required="true" />
+    <application android:label="Vultra Platform Probe" android:hasCode="false" android:debuggable="true"
+                 android:extractNativeLibs="false">
+        <activity android:name="android.app.NativeActivity" android:exported="true"
+                  android:configChanges="orientation|screenSize|keyboardHidden">
+            <meta-data android:name="android.app.lib_name" android:value="platform-render" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,8 +1,14 @@
+#include "shader_archive.hpp"
+#ifdef VULTRA_WITH_SHADER_COMPILER
 #include "shader_cache.hpp"
+#endif
 
+#include <vultra/assets/asset_source.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/drivers/rhi/shader_compiler.hpp>
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
+
+#ifdef VULTRA_WITH_SHADER_COMPILER
+#include <vultra/drivers/rhi/shader_compiler.hpp>
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -11,6 +17,8 @@
 #include <FileWatch.hpp>
 #ifdef _MSC_VER
 #pragma warning(pop)
+#endif
+
 #endif
 
 #include <xxhash.h>
@@ -22,6 +30,7 @@
 
 namespace vultra
 {
+#ifdef VULTRA_WITH_SHADER_COMPILER
     struct ShaderPipeline::Watch
     {
         std::atomic<uint64_t>                 revision {0};
@@ -94,12 +103,15 @@ namespace vultra
         }
     };
 
+#endif
+
     ShaderPipeline::ShaderPipeline(Device&                            device,
                                    std::filesystem::path              file,
                                    std::vector<ShaderEntry>           entries,
                                    Builder                            builder,
                                    std::filesystem::path              watchDirectory,
-                                   std::vector<std::filesystem::path> includeDirectories) :
+                                   std::vector<std::filesystem::path> includeDirectories,
+                                   const AssetSource*                 source) :
         ShaderPipeline(
             device,
             std::move(file),
@@ -112,7 +124,9 @@ namespace vultra
                 return options;
             }(),
             std::move(builder),
-            std::move(watchDirectory))
+            std::move(watchDirectory),
+            ".vultra/shaders",
+            source)
     {
     }
 
@@ -121,9 +135,11 @@ namespace vultra
                                    ShaderCompileOptions  options,
                                    Builder               builder,
                                    std::filesystem::path watchDirectory,
-                                   std::filesystem::path cacheDirectory) :
+                                   std::filesystem::path cacheDirectory,
+                                   const AssetSource*    source) :
         m_Device(device),
-        m_File(std::filesystem::absolute(file)),
+        m_AssetSource(source),
+        m_File(source ? source->resolve(file) : std::filesystem::absolute(file)),
         m_CompileOptions(std::move(options)),
         m_Builder(std::move(builder))
     {
@@ -131,7 +147,7 @@ namespace vultra
         {
             throw std::invalid_argument("Shader entry points cannot be empty");
         }
-        if (m_File.extension() == ".slang" && !std::filesystem::exists(m_File))
+        if (m_File.extension() == ".slang" && (source || !std::filesystem::exists(m_File)))
         {
             m_File.replace_extension(".vshaderc");
         }
@@ -145,10 +161,14 @@ namespace vultra
         }
         if (m_File.extension() == ".slang")
         {
+#ifdef VULTRA_WITH_SHADER_COMPILER
             m_Compiler = std::make_unique<ShaderCompiler>(std::move(cacheDirectory));
             m_Watch    = std::make_unique<Watch>();
             m_Watch->roots.insert(watchDirectory.empty() ? m_File.parent_path() :
                                                            std::filesystem::absolute(watchDirectory));
+#else
+            throw std::invalid_argument("This build loads cooked .vshaderc programs; compile Slang on the host");
+#endif
         }
         if (!reload())
         {
@@ -158,8 +178,10 @@ namespace vultra
 
     ShaderPipeline::~ShaderPipeline()
     {
+#ifdef VULTRA_WITH_SHADER_COMPILER
         m_Watch.reset();
-        m_Device.waitIdle();
+#endif
+        m_Device.waitIdleForDestruction();
         if (m_Pipeline)
         {
             m_Device.core.DestroyPipeline(m_Pipeline);
@@ -168,6 +190,7 @@ namespace vultra
 
     bool ShaderPipeline::poll()
     {
+#ifdef VULTRA_WITH_SHADER_COMPILER
         if (!m_Watch)
         {
             return false;
@@ -187,6 +210,9 @@ namespace vultra
         m_Watch->pending = false;
         m_Watch->refreshDirectories();
         return reload();
+#else
+        return false;
+#endif
     }
 
     bool ShaderPipeline::reload()
@@ -194,18 +220,25 @@ namespace vultra
         m_Diagnostics.clear();
         try
         {
-            const auto& desc = *m_Device.core.GetDeviceDesc(m_Device.handle);
-            if (desc.graphicsAPI != VriGraphicsAPI_Vulkan)
+            if (m_File.empty())
             {
-                throw std::invalid_argument("SPIR-V shader programs require a Vulkan device");
+                throw std::logic_error("An in-memory shader pipeline has no file to reload");
             }
-            const auto program = m_File.extension() == ".vshaderc" ? ShaderProgram::load(m_File) :
-                                                                     m_Compiler->compile(m_File, m_CompileOptions);
-            m_Diagnostics      = program.diagnostics;
-            if (program.rayQuery && !desc.hasRayQuery)
+            ShaderProgram program;
+            if (m_AssetSource)
             {
-                throw std::invalid_argument("Shader program requires ray query: " + m_File.string());
+                program = ShaderProgram::load(m_AssetSource->read(m_File), m_File);
             }
+            else
+            {
+#ifdef VULTRA_WITH_SHADER_COMPILER
+                program = m_Compiler ? m_Compiler->compile(m_File, m_CompileOptions) : ShaderProgram::load(m_File);
+#else
+                program = ShaderProgram::load(m_File);
+#endif
+            }
+            m_Diagnostics = program.diagnostics;
+#ifdef VULTRA_WITH_SHADER_COMPILER
             if (m_Watch)
             {
                 // Recurse the shader tree, not every third-party search root for every pipeline.
@@ -213,29 +246,8 @@ namespace vultra
                     detail::shaderWatchDirectories(program.dependencies, m_File, m_CompileOptions);
                 m_Watch->refreshDirectories();
             }
-            const auto             shaders = program.descriptors(m_CompileOptions.entries);
-            ShaderPipelineIdentity identity {m_File, program.compileKey, 0, program.dependencies};
-            for (const auto& shader : shaders)
-            {
-                const std::string_view entry = shader.entryPointName ? shader.entryPointName : "main";
-                identity.spirvHash = XXH3_64bits_withSeed(&shader.stage, sizeof(shader.stage), identity.spirvHash);
-                identity.spirvHash = XXH3_64bits_withSeed(entry.data(), entry.size(), identity.spirvHash);
-                identity.spirvHash = XXH3_64bits_withSeed(shader.bytecode, shader.bytecodeSize, identity.spirvHash);
-            }
-            VriPipeline* replacement = m_Builder(shaders);
-            if (!replacement)
-            {
-                throw std::runtime_error("Pipeline builder returned null");
-            }
-            m_Device.core.SetDebugName(replacement, m_File.filename().string().c_str());
-            m_Device.waitIdle();
-            if (m_Pipeline)
-            {
-                m_Device.core.DestroyPipeline(m_Pipeline);
-            }
-            m_Pipeline = replacement;
-            m_Identity = std::move(identity);
-            ++m_Generation;
+#endif
+            replace(program);
             return true;
         }
         catch (const std::exception& error)
@@ -244,5 +256,45 @@ namespace vultra
             Logger::core().error("[Shader] {}", m_Diagnostics);
             return false;
         }
+    }
+
+    ShaderPipeline::ShaderPipeline(Device&                  device,
+                                   const ShaderProgram&     program,
+                                   std::vector<ShaderEntry> entries,
+                                   Builder                  builder) :
+        m_Device(device),
+        m_Builder(std::move(builder))
+    {
+        m_CompileOptions.entries = std::move(entries);
+        replace(program);
+    }
+
+    void ShaderPipeline::replace(const ShaderProgram& program)
+    {
+        const auto& desc = *m_Device.core.GetDeviceDesc(m_Device.handle);
+        detail::validateShaderProgram(program, desc);
+        const auto             shaders = program.descriptors(m_CompileOptions.entries);
+        ShaderPipelineIdentity identity {m_File, program.compileKey, 0, program.dependencies};
+        for (const auto& shader : shaders)
+        {
+            const std::string_view entry = shader.entryPointName ? shader.entryPointName : "main";
+            identity.bytecodeHash = XXH3_64bits_withSeed(&shader.stage, sizeof(shader.stage), identity.bytecodeHash);
+            identity.bytecodeHash = XXH3_64bits_withSeed(entry.data(), entry.size(), identity.bytecodeHash);
+            identity.bytecodeHash = XXH3_64bits_withSeed(shader.bytecode, shader.bytecodeSize, identity.bytecodeHash);
+        }
+        VriPipeline* replacement = m_Builder(shaders);
+        if (!replacement)
+        {
+            throw std::runtime_error("Pipeline builder returned null");
+        }
+        m_Device.core.SetDebugName(replacement, m_File.filename().string().c_str());
+        m_Device.waitIdle();
+        if (m_Pipeline)
+        {
+            m_Device.core.DestroyPipeline(m_Pipeline);
+        }
+        m_Pipeline = replacement;
+        m_Identity = std::move(identity);
+        ++m_Generation;
     }
 } // namespace vultra

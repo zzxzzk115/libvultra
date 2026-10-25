@@ -1,15 +1,10 @@
 #include "../common/colored_mesh.hpp"
 #include "../common/sample.hpp"
 
-#ifdef VULTRA_EXAMPLE_NATIVE_PLUGIN
-#include <vultra/api/native_plugin.hpp>
-#endif
 #include <vultra/main/app/imgui_app.hpp>
 #include <vultra/ui/vgui.hpp>
 
 #include <imgui.h>
-
-#include <cstdlib>
 
 class UiShowcaseApp final : public vultra::ImGuiApp
 {
@@ -111,12 +106,6 @@ public:
                            {
                                m_VGui->setText("kenney-status", "Player: " + m_VGui->value("kenney-player"));
                            });
-#ifdef VULTRA_EXAMPLE_NATIVE_PLUGIN
-        if (const char* pluginPath = std::getenv("VULTRA_NATIVE_PLUGIN"); pluginPath && *pluginPath)
-        {
-            m_Plugin = std::make_unique<vultra::NativePlugin>(pluginPath);
-        }
-#endif
     }
 
     ~UiShowcaseApp() override
@@ -139,14 +128,9 @@ private:
 
     void onUpdate([[maybe_unused]] float deltaSeconds) override
     {
-        m_Triangle.pipeline->poll();
-#ifdef VULTRA_EXAMPLE_NATIVE_PLUGIN
-        if (m_Plugin)
-        {
-            m_Plugin->update(deltaSeconds);
-        }
-#endif
         m_SaveTarget = false;
+        m_VGui->processInput(getWindow().input(), getWindow().framebufferSize(), getEditorGui().inputCapture());
+        m_Triangle.pipeline->poll();
     }
 
     void onImGui() override
@@ -204,17 +188,6 @@ private:
                 ui.textWrapped("%s", m_Triangle.pipeline->diagnostics().c_str());
             }
         }
-#ifdef VULTRA_EXAMPLE_NATIVE_PLUGIN
-        if (m_Plugin)
-        {
-            ui.setNextWindowPos({left + 1038.0f, top + 340.0f}, ImGuiCond_Always);
-            ui.setNextWindowSize({330, 110}, ImGuiCond_Always);
-            if (vultra::EditorGuiWindow window(ui, "Native Plugin"); window)
-            {
-                m_Plugin->gui(getEditorGui());
-            }
-        }
-#endif
         if (m_ShowDemo)
         {
             ui.showDemoWindow(&m_ShowDemo);
@@ -243,7 +216,7 @@ private:
         m_VGui->setChecked("preview-toggle", m_ShowTarget);
         m_VGui->setChecked("tint-toggle", m_WarmTint);
         m_VGui->setText("preview-state", m_ShowTarget ? "Preview visible" : "Preview hidden");
-        m_VGui->update(getWindow().input(), getSwapchain().size());
+        m_VGui->update(getSwapchain().size());
     }
 
     void onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
@@ -281,14 +254,11 @@ private:
     sample::ColoredMesh              m_Triangle;
     std::unique_ptr<vultra::Texture> m_Target;
     std::unique_ptr<vultra::VGui>    m_VGui;
-#ifdef VULTRA_EXAMPLE_NATIVE_PLUGIN
-    std::unique_ptr<vultra::NativePlugin> m_Plugin;
-#endif
-    bool  m_ShowDemo   = false;
-    bool  m_ShowTarget = true;
-    bool  m_WarmTint   = false;
-    bool  m_SaveTarget = false;
-    float m_Clear[4] {0, 0, 0, 1};
+    bool                             m_ShowDemo   = false;
+    bool                             m_ShowTarget = true;
+    bool                             m_WarmTint   = false;
+    bool                             m_SaveTarget = false;
+    float                            m_Clear[4] {0, 0, 0, 1};
 };
 
 int main(int argc, char** argv)
@@ -299,12 +269,6 @@ try
     {
         return 0;
     }
-#ifndef VULTRA_EXAMPLE_NATIVE_PLUGIN
-    if (const char* pluginPath = std::getenv("VULTRA_NATIVE_PLUGIN"); pluginPath && *pluginPath)
-    {
-        throw std::invalid_argument("Native UI plugin requires the ui.native example selection");
-    }
-#endif
     UiShowcaseApp app(*options);
     app.run(options->frames);
     vultra::Logger::app().info("UI showcase: {} frames", app.frameCount());

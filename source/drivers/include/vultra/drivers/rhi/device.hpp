@@ -19,11 +19,24 @@ namespace vultra
     class Device
     {
     public:
-        explicit Device(bool validation = true, const void* nativeCreateInfo = nullptr, uint64_t features = 0);
+        explicit Device(const VriDeviceCreationDesc& desc);
+        // Convenience construction preserves the builtin shaders' Y-up authoring convention.
+        // Strict feature requirements by default; bestEffort enables explicit capability-based selection.
+        explicit Device(bool        validation       = true,
+                        const void* nativeCreateInfo = nullptr,
+                        uint64_t    features         = 0,
+                        bool        bestEffort       = false);
+        explicit Device(VriGraphicsAPI api,
+                        bool           validation       = true,
+                        const void*    nativeCreateInfo = nullptr,
+                        uint64_t       features         = 0,
+                        bool           bestEffort       = false);
         ~Device();
         Device(const Device&)            = delete;
         Device& operator=(const Device&) = delete;
         void    waitIdle() const;
+        // Destructors report completion errors without throwing during stack unwinding.
+        void waitIdleForDestruction() const noexcept;
 
         VriDevice*            handle   = nullptr;
         uint64_t              features = 0;

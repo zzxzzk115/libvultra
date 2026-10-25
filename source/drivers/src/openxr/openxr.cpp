@@ -383,7 +383,7 @@ namespace vultra
 
     void OpenXRSession::cleanup() noexcept
     {
-        m_Device.waitIdle();
+        m_Device.waitIdleForDestruction();
         // Pair an interrupted frame with zero layers where the runtime still permits it.
         m_Frame.shouldRender = false;
         if (m_Frame.begun)

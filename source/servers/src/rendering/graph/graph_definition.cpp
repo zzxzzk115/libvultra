@@ -138,7 +138,7 @@ namespace vultra
             {
                 throw std::invalid_argument("Invalid or duplicate pass instance: " + pass.id);
             }
-            catalog.definition(pass.type);
+            catalog.definition(pass.type).parameterValues(pass.id, pass.parameters);
             for (const auto& input : imports)
             {
                 if (endpoint(input.name).first == pass.id)
@@ -200,13 +200,35 @@ namespace vultra
                 }
             }
         }
+        std::vector<bool>   live(passes.size());
+        std::vector<size_t> pending;
+        for (size_t i = 0; i < passes.size(); ++i)
+        {
+            if (catalog.definition(passes[i].type).sideEffect)
+            {
+                pending.push_back(i);
+            }
+        }
         std::set<std::string> outputNames;
         for (const auto& output : outputs)
         {
-            validateSource(output);
+            if (const auto producer = validateSource(output))
+            {
+                pending.push_back(*producer);
+            }
             if (!outputNames.insert(output).second)
             {
                 throw std::invalid_argument("Duplicate graph output: " + output);
+            }
+        }
+        while (!pending.empty())
+        {
+            const auto index = pending.back();
+            pending.pop_back();
+            if (!live[index])
+            {
+                live[index] = true;
+                pending.insert(pending.end(), dependencies[index].begin(), dependencies[index].end());
             }
         }
         // Keep file order for independent passes, while resolving explicit dependencies first.
@@ -235,6 +257,10 @@ namespace vultra
         GraphBuild built;
         for (const auto index : order)
         {
+            if (!live[index])
+            {
+                continue;
+            }
             const auto&                        pass = passes[index];
             const auto&                        desc = catalog.definition(pass.type);
             std::vector<RenderGraph::Resource> inputs;

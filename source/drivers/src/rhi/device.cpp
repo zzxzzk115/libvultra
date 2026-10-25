@@ -20,33 +20,67 @@ namespace vultra
             }
             Logger::core().log(level, "[VRI] {}", message ? message : "");
         }
+
+        VriDeviceCreationDesc creationDesc(VriGraphicsAPI api,
+                                           bool           validation,
+                                           const void*    nativeCreateInfo,
+                                           uint64_t       features,
+                                           bool           bestEffort)
+        {
+            auto desc             = vriDefaultDeviceCreationDesc();
+            desc.graphicsAPI      = api;
+            desc.enableValidation = validation;
+            desc.nativeCreateInfo = nativeCreateInfo;
+            desc.enabledFeatures  = features;
+            desc.bestEffort       = bestEffort;
+            // Builtin shaders and cameras are authored Y-up; VRI's own default remains Vulkan Y-down.
+            desc.coordinates.clipSpaceY = VriClipSpaceY_Up;
+            return desc;
+        }
     } // namespace
 
-    Device::Device(bool validation, const void* nativeCreateInfo, uint64_t features)
+    Device::Device(bool validation, const void* nativeCreateInfo, uint64_t features, bool bestEffort) :
+        Device(VULTRA_GRAPHICS_API, validation, nativeCreateInfo, features, bestEffort)
     {
-        this->features = features;
+    }
+
+    Device::Device(VriGraphicsAPI api,
+                   bool           validation,
+                   const void*    nativeCreateInfo,
+                   uint64_t       features,
+                   bool           bestEffort) :
+        Device(creationDesc(api, validation, nativeCreateInfo, features, bestEffort))
+    {
+    }
+
+    Device::Device(const VriDeviceCreationDesc& requested)
+    {
         static const VriCallbackInterface callbacks {.MessageCallback = log};
-        VriDeviceCreationDesc             desc {};
-        desc.graphicsAPI       = VriGraphicsAPI_Vulkan;
-        desc.enableValidation  = validation;
-        desc.nativeCreateInfo  = nativeCreateInfo;
-        desc.enabledFeatures   = features;
-        desc.callbackInterface = &callbacks;
+        auto                              desc = requested;
+        if (!desc.callbackInterface)
+        {
+            desc.callbackInterface = &callbacks;
+        }
         check(vriCreateDevice(&desc, &handle), "Create device");
         try
         {
             check(vriGetInterface(handle, VRI_INTERFACE_CORE, sizeof(core), &core), "Get core interface");
+            this->features = core.GetDeviceDesc(handle)->enabledFeatures;
             check(vriGetInterface(handle, VRI_INTERFACE_SWAPCHAIN, sizeof(swap), &swap), "Get swapchain interface");
             if (!swap.GetSwapChainExtent)
             {
                 throw std::runtime_error("VRI does not expose the actual swapchain extent");
             }
             check(core.GetQueue(handle, VriQueueType_Graphics, 0, &queue), "Get graphics queue");
-            check(
-                vriGetInterface(handle, VRI_INTERFACE_PIPELINE_CACHE, sizeof(m_PipelineCacheApi), &m_PipelineCacheApi),
-                "Get pipeline cache interface");
-            check(m_PipelineCacheApi.CreatePipelineCache(handle, nullptr, 0, &pipelineCache),
-                  "Create device pipeline cache");
+            const auto cacheResult =
+                vriGetInterface(handle, VRI_INTERFACE_PIPELINE_CACHE, sizeof(m_PipelineCacheApi), &m_PipelineCacheApi);
+            // WebGPU owns pipeline compilation internally and exposes no application cache interface.
+            if (cacheResult != VriResult_Unsupported)
+            {
+                check(cacheResult, "Get pipeline cache interface");
+                check(m_PipelineCacheApi.CreatePipelineCache(handle, nullptr, 0, &pipelineCache),
+                      "Create device pipeline cache");
+            }
         }
         catch (...)
         {
@@ -57,14 +91,26 @@ namespace vultra
 
     Device::~Device()
     {
-        waitIdle();
-        m_PipelineCacheApi.DestroyPipelineCache(pipelineCache);
+        waitIdleForDestruction();
+        if (pipelineCache)
+        {
+            m_PipelineCacheApi.DestroyPipelineCache(pipelineCache);
+        }
         vriDestroyDevice(handle);
     }
 
     void Device::waitIdle() const
     {
-        core.DeviceWaitIdle(handle);
+        check(core.DeviceWaitIdle(handle), "Wait for device idle");
+    }
+
+    void Device::waitIdleForDestruction() const noexcept
+    {
+        const auto result = core.DeviceWaitIdle(handle);
+        if (result != VriResult_Success)
+        {
+            Logger::core().error("Wait for device idle during destruction failed: {}", int(result));
+        }
     }
 
     Frame::Frame(Device& device) :
@@ -86,7 +132,7 @@ namespace vultra
 
     Frame::~Frame()
     {
-        m_Device.waitIdle();
+        m_Device.waitIdleForDestruction();
         m_Device.core.DestroyFence(m_Fence);
         m_Device.core.DestroyCommandAllocator(m_Allocator);
     }
@@ -108,9 +154,9 @@ namespace vultra
         submit.commandBufferNum = 1;
         submit.signalFences     = &signal;
         submit.signalFenceNum   = 1;
-        c.QueueSubmit(m_Device.queue, &submit);
+        check(c.QueueSubmit(m_Device.queue, &submit), "Submit frame");
         const auto waitStart = std::chrono::steady_clock::now();
-        c.Wait(m_Fence, m_Value);
+        check(c.WaitForFence(m_Fence, m_Value, UINT64_MAX), "Wait for frame completion");
         m_WaitMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - waitStart).count();
     }
 } // namespace vultra

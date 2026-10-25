@@ -4,7 +4,7 @@
 
 namespace vultra
 {
-    struct DesktopAppConfig;
+    struct AppConfig;
     class Window;
     class Device;
     class Swapchain;
@@ -15,7 +15,7 @@ namespace vultra
     class RuntimeContext
     {
     public:
-        explicit RuntimeContext(const DesktopAppConfig& config);
+        explicit RuntimeContext(const AppConfig& config);
         ~RuntimeContext();
         RuntimeContext(const RuntimeContext&)            = delete;
         RuntimeContext& operator=(const RuntimeContext&) = delete;

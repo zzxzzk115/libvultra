@@ -2,7 +2,7 @@
 #include "../../examples/common/triangle.hpp"
 #endif
 #ifdef TEST_GRAPH_SHADER
-#include "../../examples/research/color_gain.hpp"
+#include "../../examples/offline/color_gain.hpp"
 #endif
 
 #include <vultra/core/base/logger.hpp>
@@ -113,7 +113,7 @@ namespace
         ShaderCompileOptions options;
         options.includeDirectories = {"builtin/shaders", "examples/common"};
         ShaderCompiler compiler(directory / "shader-cache");
-        const auto     program = compiler.compile("examples/research/shaders/triangle.slang", options);
+        const auto     program = compiler.compile("examples/offline/shaders/triangle.slang", options);
         const auto     cooked  = directory / "triangle.vshaderc";
         program.save(cooked);
         const auto restored = ShaderProgram::load(cooked);

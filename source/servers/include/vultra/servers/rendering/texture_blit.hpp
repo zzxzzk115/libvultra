@@ -11,7 +11,10 @@ namespace vultra
     class TextureBlit
     {
     public:
-        TextureBlit(Device& device, VriFormat targetFormat, uint32_t sourceCount = 1);
+        TextureBlit(Device&              device,
+                    VriFormat            targetFormat,
+                    uint32_t             sourceCount = 1,
+                    const ShaderProgram* program     = nullptr);
         ~TextureBlit();
         TextureBlit(const TextureBlit&)            = delete;
         TextureBlit& operator=(const TextureBlit&) = delete;

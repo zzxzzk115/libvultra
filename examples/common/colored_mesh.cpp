@@ -12,7 +12,8 @@ namespace sample
                              std::span<const ColoredVertex> vertexData,
                              std::span<const uint32_t>      indexData,
                              VriPrimitiveTopology           topology,
-                             bool                           depthTest) :
+                             bool                           depthTest,
+                             const vultra::ShaderProgram*   program) :
         device(owner),
         indexCount(uint32_t(indexData.size()))
     {
@@ -33,47 +34,55 @@ namespace sample
                       "Create colored mesh layout");
         try
         {
-            pipeline = std::make_unique<vultra::ShaderPipeline>(
-                device,
-                "examples/common/colored_mesh.slang",
-                std::vector<vultra::ShaderEntry> {{"vertexMain", VriShaderStage_Vertex},
-                                                  {"fragmentMain", VriShaderStage_Fragment}},
-                [this, format, topology, depthTest](std::span<const VriShaderDesc> shaders)
-                {
-                    VriVertexStreamDesc    stream {sizeof(ColoredVertex), 0, VriVertexStepRate_PerVertex};
-                    VriVertexAttributeDesc attributes[2] {};
-                    attributes[0].format = VriFormat_RGB32_SFLOAT;
-                    attributes[0].offset = offsetof(ColoredVertex, position);
-                    attributes[1].format = VriFormat_RGB32_SFLOAT;
-                    attributes[1].offset = offsetof(ColoredVertex, color);
-                    VriColorAttachmentDesc color {};
-                    color.format         = format;
-                    color.colorWriteMask = VriColorWrite_RGBA;
+            const std::vector<vultra::ShaderEntry> entries {{"vertexMain", VriShaderStage_Vertex},
+                                                            {"fragmentMain", VriShaderStage_Fragment}};
+            const auto build = [this, format, topology, depthTest](std::span<const VriShaderDesc> shaders)
+            {
+                VriVertexStreamDesc    stream {sizeof(ColoredVertex), 0, VriVertexStepRate_PerVertex};
+                VriVertexAttributeDesc attributes[2] {};
+                attributes[0].format = VriFormat_RGB32_SFLOAT;
+                attributes[0].offset = offsetof(ColoredVertex, position);
+                attributes[1].format = VriFormat_RGB32_SFLOAT;
+                attributes[1].offset = offsetof(ColoredVertex, color);
+                VriColorAttachmentDesc color {};
+                color.format         = format;
+                color.colorWriteMask = VriColorWrite_RGBA;
 
-                    VriGraphicsPipelineDesc desc {};
-                    desc.pipelineCache           = device.pipelineCache;
-                    desc.pipelineLayout          = layout;
-                    desc.shaders                 = shaders.data();
-                    desc.shaderNum               = uint32_t(shaders.size());
-                    desc.vertexInput             = {attributes, 2, &stream, 1};
-                    desc.inputAssembly.topology  = topology;
-                    desc.rasterization.cullMode  = VriCullMode_None;
-                    desc.rasterization.lineWidth = 1;
-                    desc.multisample.sampleNum   = 1;
-                    desc.outputMerger.colors     = &color;
-                    desc.outputMerger.colorNum   = 1;
-                    if (depthTest)
-                    {
-                        desc.depthStencil.depthTest          = VRI_TRUE;
-                        desc.depthStencil.depthWrite         = VRI_FALSE;
-                        desc.depthStencil.depthCompareOp     = VriCompareOp_LessOrEqual;
-                        desc.outputMerger.depthStencilFormat = VriFormat_D32_SFLOAT;
-                    }
-                    VriPipeline* result = nullptr;
-                    vultra::check(device.core.CreateGraphicsPipeline(device.handle, &desc, &result),
-                                  "Create colored mesh pipeline");
-                    return result;
-                });
+                VriGraphicsPipelineDesc desc {};
+                desc.pipelineCache           = device.pipelineCache;
+                desc.pipelineLayout          = layout;
+                desc.shaders                 = shaders.data();
+                desc.shaderNum               = uint32_t(shaders.size());
+                desc.vertexInput             = {attributes, 2, &stream, 1};
+                desc.inputAssembly.topology  = topology;
+                desc.rasterization.cullMode  = VriCullMode_None;
+                desc.rasterization.lineWidth = 1;
+                desc.multisample.sampleNum   = 1;
+                desc.outputMerger.colors     = &color;
+                desc.outputMerger.colorNum   = 1;
+                if (depthTest)
+                {
+                    desc.depthStencil.depthTest          = VRI_TRUE;
+                    desc.depthStencil.depthWrite         = VRI_FALSE;
+                    desc.depthStencil.depthCompareOp     = VriCompareOp_LessOrEqual;
+                    desc.outputMerger.depthStencilFormat = VriFormat_D32_SFLOAT;
+                }
+                VriPipeline* result = nullptr;
+                vultra::check(device.core.CreateGraphicsPipeline(device.handle, &desc, &result),
+                              "Create colored mesh pipeline");
+                return result;
+            };
+            if (program)
+            {
+                pipeline = std::make_unique<vultra::ShaderPipeline>(device, *program, entries, build);
+            }
+            else
+            {
+                pipeline = std::make_unique<vultra::ShaderPipeline>(device,
+                                                                    "examples/common/colored_mesh.slang",
+                                                                    entries,
+                                                                    build);
+            }
         }
         catch (...)
         {

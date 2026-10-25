@@ -57,7 +57,7 @@ namespace vultra
 
     Profiler::~Profiler()
     {
-        m_Device.waitIdle();
+        m_Device.waitIdleForDestruction();
         if (m_Pool)
         {
             m_Api.DestroyQueryPool(m_Pool);

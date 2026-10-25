@@ -1,5 +1,8 @@
 #pragma once
 
+#include <vultra/core/base/logger.hpp>
+#include <vultra/main/app/app_launch.hpp>
+
 #include <cstdio>
 #include <span>
 #include <string_view>
@@ -11,10 +14,10 @@ namespace sample
     {
         std::string_view name;
         std::string_view description;
-        int (*run)(int, char**);
+        int (*run)(const vultra::AppLaunch&, int, char**);
     };
 
-    inline int runMode(int argc, char** argv, std::span<const Mode> modes)
+    inline int runMode(const vultra::AppLaunch& launch, int argc, char** argv, std::span<const Mode> modes)
     {
         const std::string_view requested   = argc > 1 ? argv[1] : "";
         const std::string_view programPath = argv[0];
@@ -48,14 +51,9 @@ namespace sample
                 forwarded.push_back(argv[index]);
             }
             forwarded.push_back(nullptr);
-            return mode.run(int(forwarded.size()) - 1, forwarded.data());
+            return mode.run(launch, int(forwarded.size()) - 1, forwarded.data());
         }
-        std::fprintf(stderr,
-                     "Unknown %.*s mode: %.*s (run --help for modes)\n",
-                     int(program.size()),
-                     program.data(),
-                     int(name.size()),
-                     name.data());
+        vultra::Logger::app().error("Unknown {} mode: {} (run --help for modes)", program, name);
         return 1;
     }
 } // namespace sample

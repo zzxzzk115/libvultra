@@ -5,6 +5,8 @@
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -71,12 +73,8 @@ namespace vultra
         friend bool operator==(const PropertyValue&, const PropertyValue&) = default;
     };
 
-    enum class ObjectCategory
-    {
-        eValue,
-        eNode,
-        eResource
-    };
+    // Applications define category names; the library does not prescribe an object model.
+    using ObjectCategory = std::string;
 
     enum class PropertyFlags : uint8_t
     {
@@ -104,37 +102,57 @@ namespace vultra
 
     struct PropertyChoice
     {
-        const char* label;
+        std::string label;
         int64_t     value;
     };
 
-    struct PropertyInfo
+    // An optional behavior-type constraint. The owner defines the module origin; core does not load it.
+    struct PropertyClassId
     {
-        const char*                     name;
-        const char*                     label;
-        const char*                     drawerId;
-        const char*                     jsonPath;
-        PropertyKind                    kind;
-        PropertyFlags                   flags;
-        PropertyWidget                  widget;
-        uint8_t                         integerBits;
-        double                          min;
-        double                          max;
-        float                           speed;
-        std::span<const PropertyChoice> choices;
-        std::span<const int64_t>        enumValues;
-        PropertyValue (*get)(const void* object);
-        void (*set)(void* object, const PropertyValue& value);
-        PropertyValue (*defaultValue)();
+        std::string module;
+        std::string name;
+        friend bool operator==(const PropertyClassId&, const PropertyClassId&) = default;
+    };
+
+    // Owned metadata has no native object address or accessor lifetime. Language hosts own their field storage.
+    struct PropertySchema
+    {
+        std::string                 name;
+        std::string                 label;
+        std::string                 drawerId;
+        std::string                 jsonPath;
+        PropertyKind                kind   = PropertyKind::eBool;
+        PropertyFlags               flags  = PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind;
+        PropertyWidget              widget = PropertyWidget::eDrag;
+        uint8_t                     integerBits = 0;
+        double                      min         = 0;
+        double                      max         = 0;
+        float                       speed       = 1;
+        std::vector<PropertyChoice> choices;
+        std::vector<int64_t>        enumValues;
+        PropertyValue               defaultValue;
         // Array elements use the same scalar/reference contract; nested arrays are not supported.
-        PropertyKind   elementKind       = PropertyKind::eBool;
-        ObjectCategory referenceCategory = ObjectCategory::eResource;
-        const char*    referenceType     = nullptr;
-        bool           nullable          = true;
+        PropertyKind                   elementKind       = PropertyKind::eBool;
+        ObjectCategory                 referenceCategory = "object";
+        std::string                    referenceType;
+        bool                           nullable = true;
+        std::optional<PropertyClassId> referenceClass {};
+
+        void validate(const PropertyValue& value) const;
+        void validateDefinition() const;
+
+    private:
+        void validateKind(PropertyKind expectedKind, const PropertyValue& value, bool declarationDefault) const;
+    };
+
+    // Native bindings add accessors to the same schema used by VM-owned fields; extension bindings own captures.
+    struct PropertyInfo : PropertySchema
+    {
+        std::function<PropertyValue(const void* object)>              get;
+        std::function<void(void* object, const PropertyValue& value)> set;
 
         PropertyValue read(const void* object) const;
         void          write(void* object, const PropertyValue& value) const;
-        void          validate(const PropertyValue& value) const;
     };
 
     struct ObjectTypeInfo
@@ -142,7 +160,7 @@ namespace vultra
         const char*                   name;
         std::span<const PropertyInfo> properties;
         const ObjectTypeInfo*         base     = nullptr;
-        ObjectCategory                category = ObjectCategory::eValue;
+        ObjectCategory                category = "value";
 
         // Generated descriptors contain effective inherited properties with correctly typed accessors.
 
@@ -164,8 +182,14 @@ namespace vultra
     };
 
     std::string serializeProperties(const ObjectTypeInfo& type, const void* object);
+    // Owned version-1 metadata, without object access or callback pointers. Defaults describe declarations;
+    // required constructor inputs/references can still make those defaults unsuitable for a live instance.
+    std::string serializeTypeDescription(const ObjectTypeInfo& type);
+    // The same version-1 field description, owned and usable without native accessors or a live object.
+    std::string    serializePropertySchema(const PropertySchema& schema);
+    PropertySchema parsePropertySchema(std::string_view json);
     // Decode and validate all fields before mutation. Missing serialized fields use C++ defaults.
     void          deserializeProperties(const ObjectTypeInfo& type, std::string_view json, void* object);
-    std::string   serializeProperty(const PropertyInfo& property, const PropertyValue& value);
-    PropertyValue deserializeProperty(const PropertyInfo& property, std::string_view json);
+    std::string   serializeProperty(const PropertySchema& property, const PropertyValue& value);
+    PropertyValue deserializeProperty(const PropertySchema& property, std::string_view json);
 } // namespace vultra

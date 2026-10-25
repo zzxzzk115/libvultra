@@ -1,141 +1,79 @@
 {
-  "experiment_functions": [
+  "callback_tables": [],
+  "compute_functions": [
     {
       "arguments": [
         {
-          "name": "session",
+          "name": "count",
           "type": "uint64_t"
         },
         {
-          "name": "node",
+          "name": "scalarType",
           "type": "std::string_view"
         }
       ],
-      "host_mutable": true,
-      "name": "cameraSettings",
-      "return": "CameraSettings"
+      "const": false,
+      "header": "vultra/drivers/compute/compute_context.hpp",
+      "name": "createBuffer",
+      "qualified_name": "vultra::ComputeContext::createBuffer",
+      "return": "uint64_t",
+      "signature": {
+        "domain": "compute",
+        "outputs": [
+          [
+            "uint64_t*",
+            "value"
+          ]
+        ],
+        "parameters": [
+          {
+            "cpp_type": "uint64_t",
+            "direction": "in",
+            "fields": [
+              [
+                "uint64_t",
+                "count"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "count"
+          },
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "scalarType"
+              ],
+              [
+                "uint64_t",
+                "scalarTypeSize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "scalarType"
+          }
+        ],
+        "receiver_lifetime": "context",
+        "result_transport": "value"
+      }
     },
     {
       "arguments": [
         {
-          "name": "session",
-          "type": "uint64_t"
-        }
-      ],
-      "host_mutable": true,
-      "name": "close",
-      "return": "void"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "node",
-          "type": "std::string_view"
-        }
-      ],
-      "host_mutable": true,
-      "name": "environmentSettings",
-      "return": "EnvironmentSettings"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "output",
-          "type": "std::string_view"
-        }
-      ],
-      "host_mutable": true,
-      "name": "imageInfo",
-      "return": "ExperimentImageInfo"
-    },
-    {
-      "arguments": [],
-      "host_mutable": false,
-      "name": "lastError",
-      "return": "std::string_view"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
+          "name": "kernel",
           "type": "uint64_t"
         },
         {
-          "name": "node",
-          "type": "std::string_view"
-        }
-      ],
-      "host_mutable": true,
-      "name": "lightSettings",
-      "return": "LightSettings"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
+          "name": "buffers",
+          "type": "std::span<const uint64_t>"
         },
         {
-          "name": "material",
-          "type": "std::string_view"
-        }
-      ],
-      "host_mutable": true,
-      "name": "materialParameters",
-      "return": "MaterialParameters"
-    },
-    {
-      "arguments": [
-        {
-          "name": "input",
-          "type": "std::string_view"
-        },
-        {
-          "name": "width",
-          "type": "uint32_t"
-        },
-        {
-          "name": "height",
-          "type": "uint32_t"
-        },
-        {
-          "name": "path",
-          "type": "uint32_t"
-        },
-        {
-          "name": "timeStep",
-          "type": "float"
-        },
-        {
-          "name": "environment",
-          "type": "std::string_view"
-        },
-        {
-          "name": "seed",
-          "type": "uint32_t"
-        }
-      ],
-      "host_mutable": true,
-      "name": "open",
-      "return": "uint64_t"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "output",
-          "type": "std::string_view"
+          "name": "constants",
+          "type": "std::span<const std::byte>"
         },
         {
           "name": "x",
@@ -144,2025 +82,417 @@
         {
           "name": "y",
           "type": "uint32_t"
-        }
-      ],
-      "host_mutable": true,
-      "name": "probePixel",
-      "return": "ExperimentPixel"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        }
-      ],
-      "host_mutable": false,
-      "name": "progress",
-      "return": "ExperimentProgress"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "output",
-          "type": "std::string_view"
-        },
-        {
-          "name": "pixels",
-          "type": "std::span<float>"
-        }
-      ],
-      "host_mutable": true,
-      "name": "readImage",
-      "return": "void"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "output",
-          "type": "std::string_view"
-        },
-        {
-          "name": "channel",
-          "type": "uint32_t"
-        },
-        {
-          "name": "minimum",
-          "type": "float"
-        },
-        {
-          "name": "maximum",
-          "type": "float"
-        },
-        {
-          "name": "pixels",
-          "type": "std::span<float>"
-        }
-      ],
-      "host_mutable": true,
-      "name": "readPreview",
-      "return": "void"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "node",
-          "type": "std::string_view"
-        },
-        {
-          "name": "values",
-          "type": "std::span<float>"
-        }
-      ],
-      "host_mutable": true,
-      "name": "readTransform",
-      "return": "void"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        }
-      ],
-      "host_mutable": true,
-      "name": "reportSnapshot",
-      "return": "std::string_view"
-    },
-    {
-      "arguments": [
-        {
-          "name": "file",
-          "type": "std::string_view"
-        }
-      ],
-      "host_mutable": true,
-      "name": "runDescription",
-      "return": "uint64_t"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        }
-      ],
-      "host_mutable": true,
-      "name": "sceneSnapshot",
-      "return": "std::string_view"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "node",
-          "type": "std::string_view"
-        },
-        {
-          "name": "settings",
-          "type": "CameraSettings"
-        }
-      ],
-      "host_mutable": true,
-      "name": "setCameraSettings",
-      "return": "void"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "node",
-          "type": "std::string_view"
-        },
-        {
-          "name": "settings",
-          "type": "EnvironmentSettings"
-        }
-      ],
-      "host_mutable": true,
-      "name": "setEnvironmentSettings",
-      "return": "void"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "definition",
-          "type": "std::string_view"
-        }
-      ],
-      "host_mutable": true,
-      "name": "setGraph",
-      "return": "void"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "node",
-          "type": "std::string_view"
-        },
-        {
-          "name": "settings",
-          "type": "LightSettings"
-        }
-      ],
-      "host_mutable": true,
-      "name": "setLightSettings",
-      "return": "void"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "material",
-          "type": "std::string_view"
-        },
-        {
-          "name": "parameters",
-          "type": "MaterialParameters"
-        }
-      ],
-      "host_mutable": true,
-      "name": "setMaterialParameters",
-      "return": "void"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "pass",
-          "type": "std::string_view"
-        },
-        {
-          "name": "parameter",
-          "type": "std::string_view"
-        },
-        {
-          "name": "value",
-          "type": "double"
-        }
-      ],
-      "host_mutable": true,
-      "name": "setParameter",
-      "return": "void"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "node",
-          "type": "std::string_view"
-        },
-        {
-          "name": "values",
-          "type": "std::span<float>"
-        }
-      ],
-      "host_mutable": true,
-      "name": "setTransform",
-      "return": "void"
-    },
-    {
-      "arguments": [
-        {
-          "name": "session",
-          "type": "uint64_t"
-        },
-        {
-          "name": "frames",
-          "type": "uint64_t"
-        }
-      ],
-      "host_mutable": true,
-      "name": "step",
-      "return": "void"
-    }
-  ],
-  "experiment_pods": [
-    {
-      "fields": [
-        {
-          "name": "verticalFov",
-          "type": "float"
-        },
-        {
-          "name": "nearPlane",
-          "type": "float"
-        },
-        {
-          "name": "farPlane",
-          "type": "float"
-        }
-      ],
-      "name": "CameraSettings"
-    },
-    {
-      "fields": [
-        {
-          "name": "intensity",
-          "type": "float"
-        }
-      ],
-      "name": "EnvironmentSettings"
-    },
-    {
-      "fields": [
-        {
-          "name": "width",
-          "type": "uint32_t"
-        },
-        {
-          "name": "height",
-          "type": "uint32_t"
-        },
-        {
-          "name": "floatCount",
-          "type": "uint64_t"
-        }
-      ],
-      "name": "ExperimentImageInfo"
-    },
-    {
-      "fields": [
-        {
-          "name": "red",
-          "type": "float"
-        },
-        {
-          "name": "green",
-          "type": "float"
-        },
-        {
-          "name": "blue",
-          "type": "float"
-        },
-        {
-          "name": "alpha",
-          "type": "float"
-        }
-      ],
-      "name": "ExperimentPixel"
-    },
-    {
-      "fields": [
-        {
-          "name": "frames",
-          "type": "uint64_t"
-        },
-        {
-          "name": "seconds",
-          "type": "double"
-        },
-        {
-          "name": "timeStep",
-          "type": "float"
-        }
-      ],
-      "name": "ExperimentProgress"
-    },
-    {
-      "fields": [
-        {
-          "name": "red",
-          "type": "float"
-        },
-        {
-          "name": "green",
-          "type": "float"
-        },
-        {
-          "name": "blue",
-          "type": "float"
-        },
-        {
-          "name": "intensity",
-          "type": "float"
-        },
-        {
-          "name": "range",
-          "type": "float"
-        },
-        {
-          "name": "innerCone",
-          "type": "float"
-        },
-        {
-          "name": "outerCone",
-          "type": "float"
-        }
-      ],
-      "name": "LightSettings"
-    },
-    {
-      "fields": [
-        {
-          "name": "baseRed",
-          "type": "float"
-        },
-        {
-          "name": "baseGreen",
-          "type": "float"
-        },
-        {
-          "name": "baseBlue",
-          "type": "float"
-        },
-        {
-          "name": "baseAlpha",
-          "type": "float"
-        },
-        {
-          "name": "baseWeight",
-          "type": "float"
-        },
-        {
-          "name": "baseMetalness",
-          "type": "float"
-        },
-        {
-          "name": "baseDiffuseRoughness",
-          "type": "float"
-        },
-        {
-          "name": "specularWeight",
-          "type": "float"
-        },
-        {
-          "name": "specularRed",
-          "type": "float"
-        },
-        {
-          "name": "specularGreen",
-          "type": "float"
-        },
-        {
-          "name": "specularBlue",
-          "type": "float"
-        },
-        {
-          "name": "specularRoughness",
-          "type": "float"
-        },
-        {
-          "name": "specularIor",
-          "type": "float"
-        },
-        {
-          "name": "coatWeight",
-          "type": "float"
-        },
-        {
-          "name": "coatRoughness",
-          "type": "float"
-        },
-        {
-          "name": "coatIor",
-          "type": "float"
-        },
-        {
-          "name": "emissionRed",
-          "type": "float"
-        },
-        {
-          "name": "emissionGreen",
-          "type": "float"
-        },
-        {
-          "name": "emissionBlue",
-          "type": "float"
-        },
-        {
-          "name": "emissionLuminance",
-          "type": "float"
-        },
-        {
-          "name": "normalScale",
-          "type": "float"
-        },
-        {
-          "name": "occlusionStrength",
-          "type": "float"
-        },
-        {
-          "name": "alphaCutoff",
-          "type": "float"
-        }
-      ],
-      "name": "MaterialParameters"
-    }
-  ],
-  "format": "vultra.api",
-  "pods": [
-    {
-      "fields": [
-        {
-          "name": "verticalFov",
-          "type": "float"
-        },
-        {
-          "name": "nearPlane",
-          "type": "float"
-        },
-        {
-          "name": "farPlane",
-          "type": "float"
-        }
-      ],
-      "name": "CameraSettings"
-    },
-    {
-      "fields": [
-        {
-          "name": "intensity",
-          "type": "float"
-        }
-      ],
-      "name": "EnvironmentSettings"
-    },
-    {
-      "fields": [
-        {
-          "name": "red",
-          "type": "float"
-        },
-        {
-          "name": "green",
-          "type": "float"
-        },
-        {
-          "name": "blue",
-          "type": "float"
-        },
-        {
-          "name": "intensity",
-          "type": "float"
-        },
-        {
-          "name": "range",
-          "type": "float"
-        },
-        {
-          "name": "innerCone",
-          "type": "float"
-        },
-        {
-          "name": "outerCone",
-          "type": "float"
-        }
-      ],
-      "name": "LightSettings"
-    },
-    {
-      "fields": [
-        {
-          "name": "baseRed",
-          "type": "float"
-        },
-        {
-          "name": "baseGreen",
-          "type": "float"
-        },
-        {
-          "name": "baseBlue",
-          "type": "float"
-        },
-        {
-          "name": "baseAlpha",
-          "type": "float"
-        },
-        {
-          "name": "baseWeight",
-          "type": "float"
-        },
-        {
-          "name": "baseMetalness",
-          "type": "float"
-        },
-        {
-          "name": "baseDiffuseRoughness",
-          "type": "float"
-        },
-        {
-          "name": "specularWeight",
-          "type": "float"
-        },
-        {
-          "name": "specularRed",
-          "type": "float"
-        },
-        {
-          "name": "specularGreen",
-          "type": "float"
-        },
-        {
-          "name": "specularBlue",
-          "type": "float"
-        },
-        {
-          "name": "specularRoughness",
-          "type": "float"
-        },
-        {
-          "name": "specularIor",
-          "type": "float"
-        },
-        {
-          "name": "coatWeight",
-          "type": "float"
-        },
-        {
-          "name": "coatRoughness",
-          "type": "float"
-        },
-        {
-          "name": "coatIor",
-          "type": "float"
-        },
-        {
-          "name": "emissionRed",
-          "type": "float"
-        },
-        {
-          "name": "emissionGreen",
-          "type": "float"
-        },
-        {
-          "name": "emissionBlue",
-          "type": "float"
-        },
-        {
-          "name": "emissionLuminance",
-          "type": "float"
-        },
-        {
-          "name": "normalScale",
-          "type": "float"
-        },
-        {
-          "name": "occlusionStrength",
-          "type": "float"
-        },
-        {
-          "name": "alphaCutoff",
-          "type": "float"
-        }
-      ],
-      "name": "MaterialParameters"
-    },
-    {
-      "fields": [
-        {
-          "name": "x",
-          "type": "float"
-        },
-        {
-          "name": "y",
-          "type": "float"
         },
         {
           "name": "z",
-          "type": "float"
+          "type": "uint32_t"
         }
       ],
-      "name": "SceneTranslation"
-    }
-  ],
-  "scene_functions": [
-    {
-      "arguments": [
-        {
-          "name": "action",
-          "type": "std::string_view"
-        }
-      ],
-      "name": "sceneActionState",
-      "project_optional": false,
-      "project_required": false,
-      "return": "uint64_t",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneCameraSettings",
-      "project_optional": false,
-      "project_required": false,
-      "return": "CameraSettings",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "parent",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneChildCount",
-      "project_optional": false,
-      "project_required": false,
-      "return": "uint64_t",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "parent",
-          "type": "ObjectId"
-        },
-        {
-          "name": "index",
-          "type": "uint64_t"
-        }
-      ],
-      "name": "sceneChildId",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "target",
-          "type": "ObjectId"
-        },
-        {
-          "name": "source",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneCopyMeshModel",
-      "project_optional": false,
-      "project_required": false,
+      "const": false,
+      "header": "vultra/drivers/compute/compute_context.hpp",
+      "name": "dispatch",
+      "qualified_name": "vultra::ComputeContext::dispatch",
       "return": "void",
-      "scene_mutable": true
+      "signature": {
+        "domain": "compute",
+        "outputs": [],
+        "parameters": [
+          {
+            "cpp_type": "uint64_t",
+            "direction": "in",
+            "fields": [
+              [
+                "uint64_t",
+                "kernel"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "kernel"
+          },
+          {
+            "cpp_type": "std::span<const uint64_t>",
+            "direction": "in",
+            "element": "const uint64_t",
+            "fields": [
+              [
+                "const uint64_t*",
+                "buffers"
+              ],
+              [
+                "uint64_t",
+                "buffersCount"
+              ]
+            ],
+            "kind": "span",
+            "lifetime": "call",
+            "name": "buffers"
+          },
+          {
+            "cpp_type": "std::span<const std::byte>",
+            "direction": "in",
+            "element": "const std::byte",
+            "fields": [
+              [
+                "const void*",
+                "constants"
+              ],
+              [
+                "uint64_t",
+                "constantsCount"
+              ]
+            ],
+            "kind": "span",
+            "lifetime": "call",
+            "name": "constants"
+          },
+          {
+            "cpp_type": "uint32_t",
+            "direction": "in",
+            "fields": [
+              [
+                "uint32_t",
+                "x"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "x"
+          },
+          {
+            "cpp_type": "uint32_t",
+            "direction": "in",
+            "fields": [
+              [
+                "uint32_t",
+                "y"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "y"
+          },
+          {
+            "cpp_type": "uint32_t",
+            "direction": "in",
+            "fields": [
+              [
+                "uint32_t",
+                "z"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "z"
+          }
+        ],
+        "receiver_lifetime": "context",
+        "result_transport": "value"
+      }
     },
     {
       "arguments": [
         {
-          "name": "parent",
-          "type": "ObjectId"
-        },
-        {
-          "name": "name",
-          "type": "std::string_view"
-        }
-      ],
-      "name": "sceneCreateCamera",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "parent",
-          "type": "ObjectId"
-        },
-        {
-          "name": "name",
-          "type": "std::string_view"
-        }
-      ],
-      "name": "sceneCreateEnvironment",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "parent",
-          "type": "ObjectId"
-        },
-        {
-          "name": "name",
-          "type": "std::string_view"
-        },
-        {
-          "name": "kind",
+          "name": "kernel",
           "type": "uint64_t"
         }
       ],
-      "name": "sceneCreateLight",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "name",
-          "type": "std::string_view"
-        }
-      ],
-      "name": "sceneCreateMaterial",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "parent",
-          "type": "ObjectId"
-        },
-        {
-          "name": "name",
-          "type": "std::string_view"
-        },
-        {
-          "name": "assetId",
-          "type": "std::string_view"
-        }
-      ],
-      "name": "sceneCreateMesh",
-      "project_optional": false,
-      "project_required": true,
-      "return": "ObjectId",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "parent",
-          "type": "ObjectId"
-        },
-        {
-          "name": "name",
-          "type": "std::string_view"
-        }
-      ],
-      "name": "sceneCreateNode",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "parent",
-          "type": "ObjectId"
-        },
-        {
-          "name": "name",
-          "type": "std::string_view"
-        }
-      ],
-      "name": "sceneCreateNode3D",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "type",
-          "type": "std::string_view"
-        },
-        {
-          "name": "state",
-          "type": "std::string_view"
-        }
-      ],
-      "name": "sceneCreateResource",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [],
-      "name": "sceneCurrentCamera",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [],
-      "name": "sceneCurrentEnvironment",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "source",
-          "type": "ObjectId"
-        },
-        {
-          "name": "parent",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneDuplicateMesh",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneEnvironmentSettings",
-      "project_optional": false,
-      "project_required": false,
-      "return": "EnvironmentSettings",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "assetId",
-          "type": "std::string_view"
-        }
-      ],
-      "name": "sceneFindResource",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneLightKind",
-      "project_optional": false,
-      "project_required": false,
-      "return": "uint64_t",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneLightSettings",
-      "project_optional": false,
-      "project_required": false,
-      "return": "LightSettings",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "material",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneMaterialName",
-      "project_optional": false,
-      "project_required": false,
-      "return": "std::string_view",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "material",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneMaterialParameters",
-      "project_optional": false,
-      "project_required": false,
-      "return": "MaterialParameters",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        },
-        {
-          "name": "slot",
-          "type": "uint64_t"
-        }
-      ],
-      "name": "sceneMeshMaterial",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneNodeInsideTree",
-      "project_optional": false,
-      "project_required": false,
-      "return": "uint64_t",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneNodeName",
-      "project_optional": false,
-      "project_required": false,
-      "return": "std::string_view",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneNodeOwnerId",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneNodeParentId",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneNodeProcessMode",
-      "project_optional": false,
-      "project_required": false,
-      "return": "uint64_t",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneNodeProcessPriority",
-      "project_optional": false,
-      "project_required": false,
-      "return": "int32_t",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneNodeQueuedForDeletion",
-      "project_optional": false,
-      "project_required": false,
-      "return": "uint64_t",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneNodeTranslation",
-      "project_optional": false,
-      "project_required": false,
-      "return": "SceneTranslation",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneNodeType",
-      "project_optional": false,
-      "project_required": false,
-      "return": "std::string_view",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "object",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneObjectType",
-      "project_optional": false,
-      "project_required": false,
-      "return": "std::string_view",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [],
-      "name": "scenePaused",
-      "project_optional": false,
-      "project_required": false,
-      "return": "uint64_t",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [],
-      "name": "scenePhysicsFrame",
-      "project_optional": false,
-      "project_required": false,
-      "return": "uint64_t",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneQueueFree",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        },
-        {
-          "name": "property",
-          "type": "std::string_view"
-        }
-      ],
-      "name": "sceneReadProperty",
-      "project_optional": false,
-      "project_required": false,
+      "const": true,
+      "header": "vultra/drivers/compute/compute_context.hpp",
+      "name": "kernelLayout",
+      "qualified_name": "vultra::ComputeContext::kernelLayout",
       "return": "std::string",
-      "scene_mutable": false
+      "signature": {
+        "domain": "compute",
+        "outputs": [
+          [
+            "char*",
+            "data"
+          ],
+          [
+            "uint64_t",
+            "capacity"
+          ],
+          [
+            "uint64_t*",
+            "size"
+          ]
+        ],
+        "parameters": [
+          {
+            "cpp_type": "uint64_t",
+            "direction": "in",
+            "fields": [
+              [
+                "uint64_t",
+                "kernel"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "kernel"
+          }
+        ],
+        "receiver_lifetime": "context",
+        "result_transport": "copied_utf8"
+      }
     },
     {
       "arguments": [
         {
-          "name": "material",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneRemoveMaterial",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneRemoveNode",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "resource",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneRemoveResource",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        },
-        {
-          "name": "newParent",
-          "type": "ObjectId"
-        },
-        {
-          "name": "keepGlobal",
-          "type": "uint64_t"
-        }
-      ],
-      "name": "sceneReparentNode",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [],
-      "name": "sceneRootId",
-      "project_optional": false,
-      "project_required": false,
-      "return": "ObjectId",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        },
-        {
-          "name": "settings",
-          "type": "CameraSettings"
-        }
-      ],
-      "name": "sceneSetCameraSettings",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneSetCurrentCamera",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneSetCurrentEnvironment",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        },
-        {
-          "name": "assetId",
-          "type": "std::string_view"
-        }
-      ],
-      "name": "sceneSetEnvironmentAsset",
-      "project_optional": false,
-      "project_required": true,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        },
-        {
-          "name": "settings",
-          "type": "EnvironmentSettings"
-        }
-      ],
-      "name": "sceneSetEnvironmentSettings",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        },
-        {
-          "name": "settings",
-          "type": "LightSettings"
-        }
-      ],
-      "name": "sceneSetLightSettings",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "material",
-          "type": "ObjectId"
-        },
-        {
-          "name": "parameters",
-          "type": "MaterialParameters"
-        }
-      ],
-      "name": "sceneSetMaterialParameters",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        },
-        {
-          "name": "slot",
-          "type": "uint64_t"
-        },
-        {
-          "name": "material",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneSetMeshMaterial",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "target",
-          "type": "ObjectId"
-        },
-        {
-          "name": "assetId",
-          "type": "std::string_view"
-        }
-      ],
-      "name": "sceneSetMeshModel",
-      "project_optional": false,
-      "project_required": true,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        },
-        {
-          "name": "owner",
-          "type": "ObjectId"
-        }
-      ],
-      "name": "sceneSetNodeOwner",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        },
-        {
-          "name": "mode",
-          "type": "uint64_t"
-        }
-      ],
-      "name": "sceneSetNodeProcessMode",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        },
-        {
-          "name": "priority",
-          "type": "int32_t"
-        }
-      ],
-      "name": "sceneSetNodeProcessPriority",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        },
-        {
-          "name": "translation",
-          "type": "SceneTranslation"
-        }
-      ],
-      "name": "sceneSetNodeTranslation",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "paused",
-          "type": "uint64_t"
-        }
-      ],
-      "name": "sceneSetPaused",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [
-        {
-          "name": "scale",
-          "type": "double"
-        }
-      ],
-      "name": "sceneSetTimeScale",
-      "project_optional": false,
-      "project_required": false,
-      "return": "void",
-      "scene_mutable": true
-    },
-    {
-      "arguments": [],
-      "name": "sceneTimeScale",
-      "project_optional": false,
-      "project_required": false,
-      "return": "double",
-      "scene_mutable": false
-    },
-    {
-      "arguments": [
-        {
-          "name": "node",
-          "type": "ObjectId"
-        },
-        {
-          "name": "property",
+          "name": "path",
           "type": "std::string_view"
         },
         {
-          "name": "json",
+          "name": "entry",
           "type": "std::string_view"
         }
       ],
-      "name": "sceneWriteProperty",
-      "project_optional": true,
-      "project_required": false,
+      "const": false,
+      "header": "vultra/drivers/compute/compute_context.hpp",
+      "name": "loadKernel",
+      "qualified_name": "vultra::ComputeContext::loadKernel",
+      "return": "uint64_t",
+      "signature": {
+        "domain": "compute",
+        "outputs": [
+          [
+            "uint64_t*",
+            "value"
+          ]
+        ],
+        "parameters": [
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "path"
+              ],
+              [
+                "uint64_t",
+                "pathSize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "path"
+          },
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "entry"
+              ],
+              [
+                "uint64_t",
+                "entrySize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "entry"
+          }
+        ],
+        "receiver_lifetime": "context",
+        "result_transport": "value"
+      }
+    },
+    {
+      "arguments": [
+        {
+          "name": "buffer",
+          "type": "uint64_t"
+        },
+        {
+          "name": "data",
+          "type": "std::span<std::byte>"
+        }
+      ],
+      "const": false,
+      "header": "vultra/drivers/compute/compute_context.hpp",
+      "name": "readBuffer",
+      "qualified_name": "vultra::ComputeContext::readBuffer",
       "return": "void",
-      "scene_mutable": true
+      "signature": {
+        "domain": "compute",
+        "outputs": [],
+        "parameters": [
+          {
+            "cpp_type": "uint64_t",
+            "direction": "in",
+            "fields": [
+              [
+                "uint64_t",
+                "buffer"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "buffer"
+          },
+          {
+            "cpp_type": "std::span<std::byte>",
+            "direction": "out",
+            "element": "std::byte",
+            "fields": [
+              [
+                "void*",
+                "data"
+              ],
+              [
+                "uint64_t",
+                "dataCount"
+              ]
+            ],
+            "kind": "span",
+            "lifetime": "call",
+            "name": "data"
+          }
+        ],
+        "receiver_lifetime": "context",
+        "result_transport": "value"
+      }
+    },
+    {
+      "arguments": [
+        {
+          "name": "buffer",
+          "type": "uint64_t"
+        }
+      ],
+      "const": false,
+      "header": "vultra/drivers/compute/compute_context.hpp",
+      "name": "releaseBuffer",
+      "qualified_name": "vultra::ComputeContext::releaseBuffer",
+      "return": "void",
+      "signature": {
+        "domain": "compute",
+        "outputs": [],
+        "parameters": [
+          {
+            "cpp_type": "uint64_t",
+            "direction": "in",
+            "fields": [
+              [
+                "uint64_t",
+                "buffer"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "buffer"
+          }
+        ],
+        "receiver_lifetime": "context",
+        "result_transport": "value"
+      }
+    },
+    {
+      "arguments": [
+        {
+          "name": "kernel",
+          "type": "uint64_t"
+        }
+      ],
+      "const": false,
+      "header": "vultra/drivers/compute/compute_context.hpp",
+      "name": "releaseKernel",
+      "qualified_name": "vultra::ComputeContext::releaseKernel",
+      "return": "void",
+      "signature": {
+        "domain": "compute",
+        "outputs": [],
+        "parameters": [
+          {
+            "cpp_type": "uint64_t",
+            "direction": "in",
+            "fields": [
+              [
+                "uint64_t",
+                "kernel"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "kernel"
+          }
+        ],
+        "receiver_lifetime": "context",
+        "result_transport": "value"
+      }
+    },
+    {
+      "arguments": [
+        {
+          "name": "buffer",
+          "type": "uint64_t"
+        },
+        {
+          "name": "data",
+          "type": "std::span<const std::byte>"
+        }
+      ],
+      "const": false,
+      "header": "vultra/drivers/compute/compute_context.hpp",
+      "name": "writeBuffer",
+      "qualified_name": "vultra::ComputeContext::writeBuffer",
+      "return": "void",
+      "signature": {
+        "domain": "compute",
+        "outputs": [],
+        "parameters": [
+          {
+            "cpp_type": "uint64_t",
+            "direction": "in",
+            "fields": [
+              [
+                "uint64_t",
+                "buffer"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "buffer"
+          },
+          {
+            "cpp_type": "std::span<const std::byte>",
+            "direction": "in",
+            "element": "const std::byte",
+            "fields": [
+              [
+                "const void*",
+                "data"
+              ],
+              [
+                "uint64_t",
+                "dataCount"
+              ]
+            ],
+            "kind": "span",
+            "lifetime": "call",
+            "name": "data"
+          }
+        ],
+        "receiver_lifetime": "context",
+        "result_transport": "value"
+      }
     }
   ],
+  "enums": [],
+  "experiment_functions": [],
+  "experiment_pods": [],
+  "fingerprints": {
+    "compute": "c509666f0f6388dd",
+    "ui": "1ad1a64402bc94c0"
+  },
+  "format": "vultra.api",
+  "pods": [],
+  "scene_functions": [],
   "types": [
-    {
-      "base": "Node3D",
-      "category": "eNode",
-      "fields": [
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "std::string{}",
-          "default_cpp": "std::string{}",
-          "element_kind": "eString",
-          "element_type": "std::string",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json_path": "/name",
-          "kind": "eString",
-          "label": "Name",
-          "name": "name",
-          "set": "setName",
-          "type": "std::string"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "NodeId{}",
-          "default_cpp": "NodeId{}",
-          "element_kind": "eReference",
-          "element_type": "NodeId",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/owner",
-          "json_path": "/owner",
-          "kind": "eReference",
-          "label": "Owner",
-          "name": "ownerId",
-          "reference": "Node",
-          "set": "setOwnerId",
-          "type": "NodeId"
-        },
-        {
-          "accessor": true,
-          "choices": [
-            {
-              "label": "Inherit",
-              "value": 0
-            },
-            {
-              "label": "Pausable",
-              "value": 1
-            },
-            {
-              "label": "WhenPaused",
-              "value": 2
-            },
-            {
-              "label": "Always",
-              "value": 3
-            },
-            {
-              "label": "Disabled",
-              "value": 4
-            }
-          ],
-          "default": "ProcessMode::eInherit",
-          "default_cpp": "ProcessMode::eInherit",
-          "element_kind": "eEnum",
-          "element_type": "ProcessMode",
-          "enum_values": [
-            0,
-            1,
-            2,
-            3,
-            4
-          ],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/process_mode",
-          "json_path": "/process_mode",
-          "kind": "eEnum",
-          "label": "Process mode",
-          "name": "processMode",
-          "options": "Inherit|Pausable|WhenPaused|Always|Disabled",
-          "set": "setProcessMode",
-          "type": "ProcessMode"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "0",
-          "default_cpp": "0",
-          "element_kind": "eInt",
-          "element_type": "int32_t",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 32,
-          "json": "/process_priority",
-          "json_path": "/process_priority",
-          "kind": "eInt",
-          "label": "Process priority",
-          "max": "2147483647",
-          "min": "-2147483648",
-          "name": "processPriority",
-          "set": "setProcessPriority",
-          "speed": "1",
-          "type": "int32_t",
-          "widget": "drag"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "glm::mat4{1}",
-          "default_cpp": "glm::mat4{1}",
-          "element_kind": "eMatrix4",
-          "element_type": "glm::mat4",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/transform",
-          "json_path": "/transform",
-          "kind": "eMatrix4",
-          "label": "Local transform",
-          "name": "localTransform",
-          "set": "setLocalTransform",
-          "type": "glm::mat4"
-        }
-      ],
-      "header": "vultra/scene/render_nodes.hpp",
-      "name": "Camera3D"
-    },
-    {
-      "base": null,
-      "category": "eValue",
-      "fields": [
-        {
-          "accessor": false,
-          "choices": [],
-          "default_cpp": "1.04719755f",
-          "element_kind": "eFloat",
-          "element_type": "float",
-          "enum_values": [],
-          "flag_bits": 7,
-          "integer_bits": 0,
-          "json": "/vertical_fov",
-          "json_path": "/vertical_fov",
-          "kind": "eFloat",
-          "label": "FOV (rad)",
-          "max": "3.13",
-          "min": "0.01",
-          "name": "verticalFov",
-          "type": "float"
-        },
-        {
-          "accessor": false,
-          "api": "NearPlane",
-          "choices": [],
-          "default_cpp": "0.01f",
-          "element_kind": "eFloat",
-          "element_type": "float",
-          "enum_values": [],
-          "flag_bits": 7,
-          "integer_bits": 0,
-          "json": "/near",
-          "json_path": "/near",
-          "kind": "eFloat",
-          "label": "Near plane",
-          "max": "1000000",
-          "min": "0.0001",
-          "name": "nearPlane",
-          "speed": "0.01",
-          "type": "float",
-          "widget": "drag"
-        },
-        {
-          "accessor": false,
-          "api": "FarPlane",
-          "choices": [],
-          "default_cpp": "100",
-          "element_kind": "eFloat",
-          "element_type": "float",
-          "enum_values": [],
-          "flag_bits": 7,
-          "integer_bits": 0,
-          "json": "/far",
-          "json_path": "/far",
-          "kind": "eFloat",
-          "label": "Far plane",
-          "max": "1000000",
-          "min": "0.0001",
-          "name": "farPlane",
-          "speed": "0.1",
-          "type": "float",
-          "widget": "drag"
-        }
-      ],
-      "header": "vultra/scene/render_components.hpp",
-      "name": "CameraSettings"
-    },
-    {
-      "base": null,
-      "category": "eValue",
-      "fields": [
-        {
-          "accessor": false,
-          "choices": [],
-          "default_cpp": "1",
-          "element_kind": "eFloat",
-          "element_type": "float",
-          "enum_values": [],
-          "flag_bits": 7,
-          "integer_bits": 0,
-          "json": "/intensity",
-          "json_path": "/intensity",
-          "kind": "eFloat",
-          "label": "Intensity",
-          "max": "4",
-          "min": "0",
-          "name": "intensity",
-          "type": "float"
-        }
-      ],
-      "header": "vultra/scene/render_components.hpp",
-      "name": "EnvironmentSettings"
-    },
-    {
-      "base": "Node3D",
-      "category": "eNode",
-      "fields": [
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "std::string{}",
-          "default_cpp": "std::string{}",
-          "element_kind": "eString",
-          "element_type": "std::string",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json_path": "/name",
-          "kind": "eString",
-          "label": "Name",
-          "name": "name",
-          "set": "setName",
-          "type": "std::string"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "NodeId{}",
-          "default_cpp": "NodeId{}",
-          "element_kind": "eReference",
-          "element_type": "NodeId",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/owner",
-          "json_path": "/owner",
-          "kind": "eReference",
-          "label": "Owner",
-          "name": "ownerId",
-          "reference": "Node",
-          "set": "setOwnerId",
-          "type": "NodeId"
-        },
-        {
-          "accessor": true,
-          "choices": [
-            {
-              "label": "Inherit",
-              "value": 0
-            },
-            {
-              "label": "Pausable",
-              "value": 1
-            },
-            {
-              "label": "WhenPaused",
-              "value": 2
-            },
-            {
-              "label": "Always",
-              "value": 3
-            },
-            {
-              "label": "Disabled",
-              "value": 4
-            }
-          ],
-          "default": "ProcessMode::eInherit",
-          "default_cpp": "ProcessMode::eInherit",
-          "element_kind": "eEnum",
-          "element_type": "ProcessMode",
-          "enum_values": [
-            0,
-            1,
-            2,
-            3,
-            4
-          ],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/process_mode",
-          "json_path": "/process_mode",
-          "kind": "eEnum",
-          "label": "Process mode",
-          "name": "processMode",
-          "options": "Inherit|Pausable|WhenPaused|Always|Disabled",
-          "set": "setProcessMode",
-          "type": "ProcessMode"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "0",
-          "default_cpp": "0",
-          "element_kind": "eInt",
-          "element_type": "int32_t",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 32,
-          "json": "/process_priority",
-          "json_path": "/process_priority",
-          "kind": "eInt",
-          "label": "Process priority",
-          "max": "2147483647",
-          "min": "-2147483648",
-          "name": "processPriority",
-          "set": "setProcessPriority",
-          "speed": "1",
-          "type": "int32_t",
-          "widget": "drag"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "glm::mat4{1}",
-          "default_cpp": "glm::mat4{1}",
-          "element_kind": "eMatrix4",
-          "element_type": "glm::mat4",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/transform",
-          "json_path": "/transform",
-          "kind": "eMatrix4",
-          "label": "Local transform",
-          "name": "localTransform",
-          "set": "setLocalTransform",
-          "type": "glm::mat4"
-        }
-      ],
-      "header": "vultra/scene/render_nodes.hpp",
-      "name": "Light3D"
-    },
-    {
-      "base": null,
-      "category": "eValue",
-      "fields": [
-        {
-          "accessor": false,
-          "choices": [],
-          "default_cpp": "1",
-          "element_kind": "eFloat",
-          "element_type": "float",
-          "enum_values": [],
-          "flag_bits": 7,
-          "integer_bits": 0,
-          "json": "/color/0",
-          "json_path": "/color/0",
-          "kind": "eFloat",
-          "label": "Red",
-          "max": "4",
-          "min": "0",
-          "name": "red",
-          "type": "float"
-        },
-        {
-          "accessor": false,
-          "choices": [],
-          "default_cpp": "1",
-          "element_kind": "eFloat",
-          "element_type": "float",
-          "enum_values": [],
-          "flag_bits": 7,
-          "integer_bits": 0,
-          "json": "/color/1",
-          "json_path": "/color/1",
-          "kind": "eFloat",
-          "label": "Green",
-          "max": "4",
-          "min": "0",
-          "name": "green",
-          "type": "float"
-        },
-        {
-          "accessor": false,
-          "choices": [],
-          "default_cpp": "1",
-          "element_kind": "eFloat",
-          "element_type": "float",
-          "enum_values": [],
-          "flag_bits": 7,
-          "integer_bits": 0,
-          "json": "/color/2",
-          "json_path": "/color/2",
-          "kind": "eFloat",
-          "label": "Blue",
-          "max": "4",
-          "min": "0",
-          "name": "blue",
-          "type": "float"
-        },
-        {
-          "accessor": false,
-          "choices": [],
-          "default_cpp": "1",
-          "element_kind": "eFloat",
-          "element_type": "float",
-          "enum_values": [],
-          "flag_bits": 7,
-          "integer_bits": 0,
-          "json": "/intensity",
-          "json_path": "/intensity",
-          "kind": "eFloat",
-          "label": "Intensity",
-          "max": "100",
-          "min": "0",
-          "name": "intensity",
-          "speed": "0.1",
-          "type": "float",
-          "widget": "drag"
-        },
-        {
-          "accessor": false,
-          "choices": [],
-          "default_cpp": "10",
-          "element_kind": "eFloat",
-          "element_type": "float",
-          "enum_values": [],
-          "flag_bits": 7,
-          "integer_bits": 0,
-          "json": "/range",
-          "json_path": "/range",
-          "kind": "eFloat",
-          "label": "Range",
-          "max": "1000000",
-          "min": "0.001",
-          "name": "range",
-          "speed": "0.1",
-          "type": "float",
-          "widget": "drag"
-        },
-        {
-          "accessor": false,
-          "choices": [],
-          "default_cpp": "0.35f",
-          "element_kind": "eFloat",
-          "element_type": "float",
-          "enum_values": [],
-          "flag_bits": 7,
-          "integer_bits": 0,
-          "json": "/inner_cone",
-          "json_path": "/inner_cone",
-          "kind": "eFloat",
-          "label": "Inner cone (rad)",
-          "max": "1.56",
-          "min": "0",
-          "name": "innerCone",
-          "type": "float"
-        },
-        {
-          "accessor": false,
-          "choices": [],
-          "default_cpp": "0.6f",
-          "element_kind": "eFloat",
-          "element_type": "float",
-          "enum_values": [],
-          "flag_bits": 7,
-          "integer_bits": 0,
-          "json": "/outer_cone",
-          "json_path": "/outer_cone",
-          "kind": "eFloat",
-          "label": "Outer cone (rad)",
-          "max": "1.56",
-          "min": "0.001",
-          "name": "outerCone",
-          "type": "float"
-        }
-      ],
-      "header": "vultra/scene/render_components.hpp",
-      "name": "LightSettings"
-    },
     {
       "base": null,
       "category": "eValue",
@@ -2183,6 +513,7 @@
           "max": "4",
           "min": "0",
           "name": "baseRed",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2201,6 +532,7 @@
           "max": "4",
           "min": "0",
           "name": "baseGreen",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2219,6 +551,7 @@
           "max": "4",
           "min": "0",
           "name": "baseBlue",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2237,6 +570,7 @@
           "max": "1",
           "min": "0",
           "name": "baseAlpha",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2255,6 +589,7 @@
           "max": "1",
           "min": "0",
           "name": "baseWeight",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2273,6 +608,7 @@
           "max": "1",
           "min": "0",
           "name": "baseMetalness",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2291,6 +627,7 @@
           "max": "1",
           "min": "0",
           "name": "baseDiffuseRoughness",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2309,6 +646,7 @@
           "max": "1",
           "min": "0",
           "name": "specularWeight",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2327,6 +665,7 @@
           "max": "4",
           "min": "0",
           "name": "specularRed",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2345,6 +684,7 @@
           "max": "4",
           "min": "0",
           "name": "specularGreen",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2363,6 +703,7 @@
           "max": "4",
           "min": "0",
           "name": "specularBlue",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2381,6 +722,7 @@
           "max": "1",
           "min": "0",
           "name": "specularRoughness",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2399,6 +741,7 @@
           "max": "3",
           "min": "1",
           "name": "specularIor",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2417,6 +760,7 @@
           "max": "1",
           "min": "0",
           "name": "coatWeight",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2435,6 +779,7 @@
           "max": "1",
           "min": "0",
           "name": "coatRoughness",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2453,6 +798,7 @@
           "max": "3",
           "min": "1",
           "name": "coatIor",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2471,6 +817,7 @@
           "max": "4",
           "min": "0",
           "name": "emissionRed",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2489,6 +836,7 @@
           "max": "4",
           "min": "0",
           "name": "emissionGreen",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2507,6 +855,7 @@
           "max": "4",
           "min": "0",
           "name": "emissionBlue",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2525,6 +874,7 @@
           "max": "100",
           "min": "0",
           "name": "emissionLuminance",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2543,6 +893,7 @@
           "max": "4",
           "min": "0",
           "name": "normalScale",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2561,6 +912,7 @@
           "max": "1",
           "min": "0",
           "name": "occlusionStrength",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -2579,450 +931,12 @@
           "max": "1",
           "min": "-1",
           "name": "alphaCutoff",
+          "reference_category": "object",
           "type": "float"
         }
       ],
       "header": "vultra/assets/material_parameters.hpp",
       "name": "MaterialParameters"
-    },
-    {
-      "base": "Resource",
-      "category": "eResource",
-      "fields": [
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "std::string{}",
-          "default_cpp": "std::string{}",
-          "element_kind": "eString",
-          "element_type": "std::string",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json_path": "/name",
-          "kind": "eString",
-          "label": "Name",
-          "name": "name",
-          "set": "setName",
-          "type": "std::string"
-        }
-      ],
-      "header": "vultra/scene/material_resource.hpp",
-      "name": "MaterialResource"
-    },
-    {
-      "base": "Node3D",
-      "category": "eNode",
-      "fields": [
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "std::string{}",
-          "default_cpp": "std::string{}",
-          "element_kind": "eString",
-          "element_type": "std::string",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json_path": "/name",
-          "kind": "eString",
-          "label": "Name",
-          "name": "name",
-          "set": "setName",
-          "type": "std::string"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "NodeId{}",
-          "default_cpp": "NodeId{}",
-          "element_kind": "eReference",
-          "element_type": "NodeId",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/owner",
-          "json_path": "/owner",
-          "kind": "eReference",
-          "label": "Owner",
-          "name": "ownerId",
-          "reference": "Node",
-          "set": "setOwnerId",
-          "type": "NodeId"
-        },
-        {
-          "accessor": true,
-          "choices": [
-            {
-              "label": "Inherit",
-              "value": 0
-            },
-            {
-              "label": "Pausable",
-              "value": 1
-            },
-            {
-              "label": "WhenPaused",
-              "value": 2
-            },
-            {
-              "label": "Always",
-              "value": 3
-            },
-            {
-              "label": "Disabled",
-              "value": 4
-            }
-          ],
-          "default": "ProcessMode::eInherit",
-          "default_cpp": "ProcessMode::eInherit",
-          "element_kind": "eEnum",
-          "element_type": "ProcessMode",
-          "enum_values": [
-            0,
-            1,
-            2,
-            3,
-            4
-          ],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/process_mode",
-          "json_path": "/process_mode",
-          "kind": "eEnum",
-          "label": "Process mode",
-          "name": "processMode",
-          "options": "Inherit|Pausable|WhenPaused|Always|Disabled",
-          "set": "setProcessMode",
-          "type": "ProcessMode"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "0",
-          "default_cpp": "0",
-          "element_kind": "eInt",
-          "element_type": "int32_t",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 32,
-          "json": "/process_priority",
-          "json_path": "/process_priority",
-          "kind": "eInt",
-          "label": "Process priority",
-          "max": "2147483647",
-          "min": "-2147483648",
-          "name": "processPriority",
-          "set": "setProcessPriority",
-          "speed": "1",
-          "type": "int32_t",
-          "widget": "drag"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "glm::mat4{1}",
-          "default_cpp": "glm::mat4{1}",
-          "element_kind": "eMatrix4",
-          "element_type": "glm::mat4",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/transform",
-          "json_path": "/transform",
-          "kind": "eMatrix4",
-          "label": "Local transform",
-          "name": "localTransform",
-          "set": "setLocalTransform",
-          "type": "glm::mat4"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "AssetId{}",
-          "default_cpp": "AssetId{}",
-          "element_kind": "eReference",
-          "element_type": "AssetId",
-          "enum_values": [],
-          "flag_bits": 6,
-          "flags": "inspect|bind",
-          "integer_bits": 0,
-          "json_path": "/model",
-          "kind": "eReference",
-          "label": "Model",
-          "name": "model",
-          "nullable": "false",
-          "reference": "ModelResource",
-          "set": "setModel",
-          "type": "AssetId"
-        }
-      ],
-      "header": "vultra/scene/render_nodes.hpp",
-      "name": "MeshInstance3D"
-    },
-    {
-      "base": "Resource",
-      "category": "eResource",
-      "fields": [],
-      "header": "vultra/scene/resource.hpp",
-      "name": "ModelResource"
-    },
-    {
-      "base": null,
-      "category": "eNode",
-      "fields": [
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "std::string{}",
-          "default_cpp": "std::string{}",
-          "element_kind": "eString",
-          "element_type": "std::string",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json_path": "/name",
-          "kind": "eString",
-          "label": "Name",
-          "name": "name",
-          "set": "setName",
-          "type": "std::string"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "NodeId{}",
-          "default_cpp": "NodeId{}",
-          "element_kind": "eReference",
-          "element_type": "NodeId",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/owner",
-          "json_path": "/owner",
-          "kind": "eReference",
-          "label": "Owner",
-          "name": "ownerId",
-          "reference": "Node",
-          "set": "setOwnerId",
-          "type": "NodeId"
-        },
-        {
-          "accessor": true,
-          "choices": [
-            {
-              "label": "Inherit",
-              "value": 0
-            },
-            {
-              "label": "Pausable",
-              "value": 1
-            },
-            {
-              "label": "WhenPaused",
-              "value": 2
-            },
-            {
-              "label": "Always",
-              "value": 3
-            },
-            {
-              "label": "Disabled",
-              "value": 4
-            }
-          ],
-          "default": "ProcessMode::eInherit",
-          "default_cpp": "ProcessMode::eInherit",
-          "element_kind": "eEnum",
-          "element_type": "ProcessMode",
-          "enum_values": [
-            0,
-            1,
-            2,
-            3,
-            4
-          ],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/process_mode",
-          "json_path": "/process_mode",
-          "kind": "eEnum",
-          "label": "Process mode",
-          "name": "processMode",
-          "options": "Inherit|Pausable|WhenPaused|Always|Disabled",
-          "set": "setProcessMode",
-          "type": "ProcessMode"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "0",
-          "default_cpp": "0",
-          "element_kind": "eInt",
-          "element_type": "int32_t",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 32,
-          "json": "/process_priority",
-          "json_path": "/process_priority",
-          "kind": "eInt",
-          "label": "Process priority",
-          "max": "2147483647",
-          "min": "-2147483648",
-          "name": "processPriority",
-          "set": "setProcessPriority",
-          "speed": "1",
-          "type": "int32_t",
-          "widget": "drag"
-        }
-      ],
-      "header": "vultra/scene/node.hpp",
-      "name": "Node"
-    },
-    {
-      "base": "Node",
-      "category": "eNode",
-      "fields": [
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "std::string{}",
-          "default_cpp": "std::string{}",
-          "element_kind": "eString",
-          "element_type": "std::string",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json_path": "/name",
-          "kind": "eString",
-          "label": "Name",
-          "name": "name",
-          "set": "setName",
-          "type": "std::string"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "NodeId{}",
-          "default_cpp": "NodeId{}",
-          "element_kind": "eReference",
-          "element_type": "NodeId",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/owner",
-          "json_path": "/owner",
-          "kind": "eReference",
-          "label": "Owner",
-          "name": "ownerId",
-          "reference": "Node",
-          "set": "setOwnerId",
-          "type": "NodeId"
-        },
-        {
-          "accessor": true,
-          "choices": [
-            {
-              "label": "Inherit",
-              "value": 0
-            },
-            {
-              "label": "Pausable",
-              "value": 1
-            },
-            {
-              "label": "WhenPaused",
-              "value": 2
-            },
-            {
-              "label": "Always",
-              "value": 3
-            },
-            {
-              "label": "Disabled",
-              "value": 4
-            }
-          ],
-          "default": "ProcessMode::eInherit",
-          "default_cpp": "ProcessMode::eInherit",
-          "element_kind": "eEnum",
-          "element_type": "ProcessMode",
-          "enum_values": [
-            0,
-            1,
-            2,
-            3,
-            4
-          ],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/process_mode",
-          "json_path": "/process_mode",
-          "kind": "eEnum",
-          "label": "Process mode",
-          "name": "processMode",
-          "options": "Inherit|Pausable|WhenPaused|Always|Disabled",
-          "set": "setProcessMode",
-          "type": "ProcessMode"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "0",
-          "default_cpp": "0",
-          "element_kind": "eInt",
-          "element_type": "int32_t",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 32,
-          "json": "/process_priority",
-          "json_path": "/process_priority",
-          "kind": "eInt",
-          "label": "Process priority",
-          "max": "2147483647",
-          "min": "-2147483648",
-          "name": "processPriority",
-          "set": "setProcessPriority",
-          "speed": "1",
-          "type": "int32_t",
-          "widget": "drag"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "glm::mat4{1}",
-          "default_cpp": "glm::mat4{1}",
-          "element_kind": "eMatrix4",
-          "element_type": "glm::mat4",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/transform",
-          "json_path": "/transform",
-          "kind": "eMatrix4",
-          "label": "Local transform",
-          "name": "localTransform",
-          "set": "setLocalTransform",
-          "type": "glm::mat4"
-        }
-      ],
-      "header": "vultra/scene/node_3d.hpp",
-      "name": "Node3D"
     },
     {
       "base": null,
@@ -3055,6 +969,7 @@
           "label": "Path",
           "name": "path",
           "options": "NaiveDeferred|NaiveForward",
+          "reference_category": "object",
           "type": "RenderPath"
         },
         {
@@ -3071,6 +986,7 @@
           "kind": "eVector3",
           "label": "directionToLight",
           "name": "directionToLight",
+          "reference_category": "object",
           "type": "glm::vec3"
         },
         {
@@ -3087,6 +1003,7 @@
           "kind": "eVector3",
           "label": "lightColor",
           "name": "lightColor",
+          "reference_category": "object",
           "type": "glm::vec3"
         },
         {
@@ -3103,6 +1020,7 @@
           "kind": "eVector3",
           "label": "Ambient color",
           "name": "ambientColor",
+          "reference_category": "object",
           "type": "glm::vec3"
         },
         {
@@ -3120,6 +1038,7 @@
           "max": "10",
           "min": "0",
           "name": "lightIntensity",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -3136,6 +1055,7 @@
           "kind": "eFloat",
           "label": "environmentIntensity",
           "name": "environmentIntensity",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -3153,6 +1073,7 @@
           "max": "4",
           "min": "-4",
           "name": "exposure",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -3186,6 +1107,7 @@
           "label": "Tone operator",
           "name": "toneOperator",
           "options": "Aces|None|Reinhard",
+          "reference_category": "object",
           "type": "ToneOperator"
         },
         {
@@ -3201,6 +1123,7 @@
           "kind": "eBool",
           "label": "IBL",
           "name": "ibl",
+          "reference_category": "object",
           "type": "bool"
         },
         {
@@ -3216,6 +1139,7 @@
           "kind": "eBool",
           "label": "Skybox",
           "name": "skybox",
+          "reference_category": "object",
           "type": "bool"
         },
         {
@@ -3232,6 +1156,7 @@
           "kind": "eBool",
           "label": "meshShading",
           "name": "meshShading",
+          "reference_category": "object",
           "type": "bool"
         },
         {
@@ -3248,6 +1173,7 @@
           "kind": "eBool",
           "label": "meshletCulling",
           "name": "meshletCulling",
+          "reference_category": "object",
           "type": "bool"
         },
         {
@@ -3264,6 +1190,7 @@
           "kind": "eBool",
           "label": "meshletColors",
           "name": "meshletColors",
+          "reference_category": "object",
           "type": "bool"
         },
         {
@@ -3285,6 +1212,7 @@
           "kind": "eEnum",
           "label": "shadowFilter",
           "name": "shadowFilter",
+          "reference_category": "object",
           "type": "ShadowFilter"
         },
         {
@@ -3300,6 +1228,7 @@
           "kind": "eBool",
           "label": "Cache static shadows",
           "name": "cacheShadows",
+          "reference_category": "object",
           "type": "bool"
         },
         {
@@ -3316,6 +1245,7 @@
           "kind": "eUInt",
           "label": "shadowResolution",
           "name": "shadowResolution",
+          "reference_category": "object",
           "type": "uint32_t"
         },
         {
@@ -3332,6 +1262,7 @@
           "kind": "eFloat",
           "label": "splitLambda",
           "name": "splitLambda",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -3348,6 +1279,7 @@
           "kind": "eFloat",
           "label": "shadowBias",
           "name": "shadowBias",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -3364,6 +1296,7 @@
           "kind": "eFloat",
           "label": "normalBias",
           "name": "normalBias",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -3380,6 +1313,7 @@
           "kind": "eFloat",
           "label": "sunAngularRadius",
           "name": "sunAngularRadius",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -3396,6 +1330,7 @@
           "kind": "eFloat",
           "label": "cascadeBlend",
           "name": "cascadeBlend",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -3412,6 +1347,7 @@
           "kind": "eFloat",
           "label": "roughnessOverride",
           "name": "roughnessOverride",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -3428,6 +1364,7 @@
           "kind": "eFloat",
           "label": "metalnessOverride",
           "name": "metalnessOverride",
+          "reference_category": "object",
           "type": "float"
         },
         {
@@ -3444,169 +1381,58 @@
           "kind": "eUInt",
           "label": "debugMode",
           "name": "debugMode",
+          "reference_category": "object",
           "type": "uint32_t"
         }
       ],
       "header": "vultra/servers/rendering/builtin/builtin_renderer.hpp",
       "name": "RenderSettings"
-    },
-    {
-      "base": null,
-      "category": "eResource",
-      "fields": [],
-      "header": "vultra/scene/resource.hpp",
-      "name": "Resource"
-    },
-    {
-      "base": "Node",
-      "category": "eNode",
-      "fields": [
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "std::string{}",
-          "default_cpp": "std::string{}",
-          "element_kind": "eString",
-          "element_type": "std::string",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json_path": "/name",
-          "kind": "eString",
-          "label": "Name",
-          "name": "name",
-          "set": "setName",
-          "type": "std::string"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "NodeId{}",
-          "default_cpp": "NodeId{}",
-          "element_kind": "eReference",
-          "element_type": "NodeId",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/owner",
-          "json_path": "/owner",
-          "kind": "eReference",
-          "label": "Owner",
-          "name": "ownerId",
-          "reference": "Node",
-          "set": "setOwnerId",
-          "type": "NodeId"
-        },
-        {
-          "accessor": true,
-          "choices": [
-            {
-              "label": "Inherit",
-              "value": 0
-            },
-            {
-              "label": "Pausable",
-              "value": 1
-            },
-            {
-              "label": "WhenPaused",
-              "value": 2
-            },
-            {
-              "label": "Always",
-              "value": 3
-            },
-            {
-              "label": "Disabled",
-              "value": 4
-            }
-          ],
-          "default": "ProcessMode::eInherit",
-          "default_cpp": "ProcessMode::eInherit",
-          "element_kind": "eEnum",
-          "element_type": "ProcessMode",
-          "enum_values": [
-            0,
-            1,
-            2,
-            3,
-            4
-          ],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 0,
-          "json": "/process_mode",
-          "json_path": "/process_mode",
-          "kind": "eEnum",
-          "label": "Process mode",
-          "name": "processMode",
-          "options": "Inherit|Pausable|WhenPaused|Always|Disabled",
-          "set": "setProcessMode",
-          "type": "ProcessMode"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "0",
-          "default_cpp": "0",
-          "element_kind": "eInt",
-          "element_type": "int32_t",
-          "enum_values": [],
-          "flag_bits": 7,
-          "flags": "serialize|inspect|bind",
-          "integer_bits": 32,
-          "json": "/process_priority",
-          "json_path": "/process_priority",
-          "kind": "eInt",
-          "label": "Process priority",
-          "max": "2147483647",
-          "min": "-2147483648",
-          "name": "processPriority",
-          "set": "setProcessPriority",
-          "speed": "1",
-          "type": "int32_t",
-          "widget": "drag"
-        },
-        {
-          "accessor": true,
-          "choices": [],
-          "default": "AssetId{}",
-          "default_cpp": "AssetId{}",
-          "element_kind": "eReference",
-          "element_type": "AssetId",
-          "enum_values": [],
-          "flag_bits": 6,
-          "flags": "inspect|bind",
-          "integer_bits": 0,
-          "json_path": "/radianceAsset",
-          "kind": "eReference",
-          "label": "Radiance",
-          "name": "radianceAsset",
-          "reference": "Resource",
-          "set": "setRadianceAsset",
-          "type": "AssetId"
-        }
-      ],
-      "header": "vultra/scene/render_nodes.hpp",
-      "name": "WorldEnvironment"
     }
   ],
   "ui_functions": [
     {
-      "argument": "label",
       "arguments": [
         {
           "name": "label",
           "type": "std::string_view"
         }
       ],
+      "header": "vultra/ui/editor_gui_frame.hpp",
       "name": "guiButton",
-      "return": "bool"
+      "qualified_name": "vultra::guiButton",
+      "return": "bool",
+      "signature": {
+        "domain": "ui",
+        "outputs": [
+          [
+            "uint8_t*",
+            "changed"
+          ]
+        ],
+        "parameters": [
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "label"
+              ],
+              [
+                "uint64_t",
+                "labelSize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "label"
+          }
+        ],
+        "receiver_lifetime": "callback",
+        "result_transport": "value"
+      }
     },
     {
-      "argument": "label",
       "arguments": [
         {
           "name": "label",
@@ -3617,11 +1443,55 @@
           "type": "uint8_t &"
         }
       ],
+      "header": "vultra/ui/editor_gui_frame.hpp",
       "name": "guiCheckbox",
-      "return": "bool"
+      "qualified_name": "vultra::guiCheckbox",
+      "return": "bool",
+      "signature": {
+        "domain": "ui",
+        "outputs": [
+          [
+            "uint8_t*",
+            "changed"
+          ]
+        ],
+        "parameters": [
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "label"
+              ],
+              [
+                "uint64_t",
+                "labelSize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "label"
+          },
+          {
+            "cpp_type": "uint8_t &",
+            "direction": "inout",
+            "fields": [
+              [
+                "uint8_t*",
+                "value"
+              ]
+            ],
+            "kind": "reference",
+            "lifetime": "call",
+            "name": "value"
+          }
+        ],
+        "receiver_lifetime": "callback",
+        "result_transport": "value"
+      }
     },
     {
-      "argument": "label",
       "arguments": [
         {
           "name": "label",
@@ -3636,11 +1506,72 @@
           "type": "std::string_view"
         }
       ],
+      "header": "vultra/ui/editor_gui_frame.hpp",
       "name": "guiCombo",
-      "return": "bool"
+      "qualified_name": "vultra::guiCombo",
+      "return": "bool",
+      "signature": {
+        "domain": "ui",
+        "outputs": [
+          [
+            "uint8_t*",
+            "changed"
+          ]
+        ],
+        "parameters": [
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "label"
+              ],
+              [
+                "uint64_t",
+                "labelSize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "label"
+          },
+          {
+            "cpp_type": "int32_t &",
+            "direction": "inout",
+            "fields": [
+              [
+                "int32_t*",
+                "value"
+              ]
+            ],
+            "kind": "reference",
+            "lifetime": "call",
+            "name": "value"
+          },
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "items"
+              ],
+              [
+                "uint64_t",
+                "itemsSize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "items"
+          }
+        ],
+        "receiver_lifetime": "callback",
+        "result_transport": "value"
+      }
     },
     {
-      "argument": "label",
       "arguments": [
         {
           "name": "label",
@@ -3651,11 +1582,55 @@
           "type": "int32_t"
         }
       ],
+      "header": "vultra/ui/editor_gui_frame.hpp",
       "name": "guiHeader",
-      "return": "bool"
+      "qualified_name": "vultra::guiHeader",
+      "return": "bool",
+      "signature": {
+        "domain": "ui",
+        "outputs": [
+          [
+            "uint8_t*",
+            "changed"
+          ]
+        ],
+        "parameters": [
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "label"
+              ],
+              [
+                "uint64_t",
+                "labelSize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "label"
+          },
+          {
+            "cpp_type": "int32_t",
+            "direction": "in",
+            "fields": [
+              [
+                "int32_t",
+                "initiallyOpen"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "initiallyOpen"
+          }
+        ],
+        "receiver_lifetime": "callback",
+        "result_transport": "value"
+      }
     },
     {
-      "argument": "label",
       "arguments": [
         {
           "name": "label",
@@ -3674,22 +1649,118 @@
           "type": "int32_t"
         }
       ],
+      "header": "vultra/ui/editor_gui_frame.hpp",
       "name": "guiIntegerSlider",
-      "return": "bool"
+      "qualified_name": "vultra::guiIntegerSlider",
+      "return": "bool",
+      "signature": {
+        "domain": "ui",
+        "outputs": [
+          [
+            "uint8_t*",
+            "changed"
+          ]
+        ],
+        "parameters": [
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "label"
+              ],
+              [
+                "uint64_t",
+                "labelSize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "label"
+          },
+          {
+            "cpp_type": "int32_t &",
+            "direction": "inout",
+            "fields": [
+              [
+                "int32_t*",
+                "value"
+              ]
+            ],
+            "kind": "reference",
+            "lifetime": "call",
+            "name": "value"
+          },
+          {
+            "cpp_type": "int32_t",
+            "direction": "in",
+            "fields": [
+              [
+                "int32_t",
+                "minimum"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "minimum"
+          },
+          {
+            "cpp_type": "int32_t",
+            "direction": "in",
+            "fields": [
+              [
+                "int32_t",
+                "maximum"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "maximum"
+          }
+        ],
+        "receiver_lifetime": "callback",
+        "result_transport": "value"
+      }
     },
     {
-      "argument": "label",
       "arguments": [
         {
           "name": "label",
           "type": "std::string_view"
         }
       ],
+      "header": "vultra/ui/editor_gui_frame.hpp",
       "name": "guiSeparator",
-      "return": "void"
+      "qualified_name": "vultra::guiSeparator",
+      "return": "void",
+      "signature": {
+        "domain": "ui",
+        "outputs": [],
+        "parameters": [
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "label"
+              ],
+              [
+                "uint64_t",
+                "labelSize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "label"
+          }
+        ],
+        "receiver_lifetime": "callback",
+        "result_transport": "value"
+      }
     },
     {
-      "argument": "label",
       "arguments": [
         {
           "name": "label",
@@ -3708,41 +1779,190 @@
           "type": "double"
         }
       ],
+      "header": "vultra/ui/editor_gui_frame.hpp",
       "name": "guiSlider",
-      "return": "bool"
+      "qualified_name": "vultra::guiSlider",
+      "return": "bool",
+      "signature": {
+        "domain": "ui",
+        "outputs": [
+          [
+            "uint8_t*",
+            "changed"
+          ]
+        ],
+        "parameters": [
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "label"
+              ],
+              [
+                "uint64_t",
+                "labelSize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "label"
+          },
+          {
+            "cpp_type": "double &",
+            "direction": "inout",
+            "fields": [
+              [
+                "double*",
+                "value"
+              ]
+            ],
+            "kind": "reference",
+            "lifetime": "call",
+            "name": "value"
+          },
+          {
+            "cpp_type": "double",
+            "direction": "in",
+            "fields": [
+              [
+                "double",
+                "minimum"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "minimum"
+          },
+          {
+            "cpp_type": "double",
+            "direction": "in",
+            "fields": [
+              [
+                "double",
+                "maximum"
+              ]
+            ],
+            "kind": "value",
+            "lifetime": "value",
+            "name": "maximum"
+          }
+        ],
+        "receiver_lifetime": "callback",
+        "result_transport": "value"
+      }
     },
     {
-      "argument": "text",
       "arguments": [
         {
           "name": "text",
           "type": "std::string_view"
         }
       ],
+      "header": "vultra/ui/editor_gui_frame.hpp",
       "name": "guiText",
-      "return": "void"
+      "qualified_name": "vultra::guiText",
+      "return": "void",
+      "signature": {
+        "domain": "ui",
+        "outputs": [],
+        "parameters": [
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "text"
+              ],
+              [
+                "uint64_t",
+                "textSize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "text"
+          }
+        ],
+        "receiver_lifetime": "callback",
+        "result_transport": "value"
+      }
     },
     {
-      "argument": "text",
       "arguments": [
         {
           "name": "text",
           "type": "std::string_view"
         }
       ],
+      "header": "vultra/ui/editor_gui_frame.hpp",
       "name": "guiTextWrapped",
-      "return": "void"
+      "qualified_name": "vultra::guiTextWrapped",
+      "return": "void",
+      "signature": {
+        "domain": "ui",
+        "outputs": [],
+        "parameters": [
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "text"
+              ],
+              [
+                "uint64_t",
+                "textSize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "text"
+          }
+        ],
+        "receiver_lifetime": "callback",
+        "result_transport": "value"
+      }
     },
     {
-      "argument": "text",
       "arguments": [
         {
           "name": "text",
           "type": "std::string_view"
         }
       ],
+      "header": "vultra/ui/editor_gui_frame.hpp",
       "name": "guiTooltip",
-      "return": "void"
+      "qualified_name": "vultra::guiTooltip",
+      "return": "void",
+      "signature": {
+        "domain": "ui",
+        "outputs": [],
+        "parameters": [
+          {
+            "cpp_type": "std::string_view",
+            "direction": "in",
+            "fields": [
+              [
+                "const char*",
+                "text"
+              ],
+              [
+                "uint64_t",
+                "textSize"
+              ]
+            ],
+            "kind": "utf8",
+            "lifetime": "call",
+            "name": "text"
+          }
+        ],
+        "receiver_lifetime": "callback",
+        "result_transport": "value"
+      }
     }
   ],
   "version": 1

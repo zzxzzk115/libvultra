@@ -1,4 +1,4 @@
-#include "../examples/research/color_gain.hpp"
+#include "../examples/offline/color_gain.hpp"
 
 #include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/servers/rendering/builtin/raster_passes.hpp>
@@ -46,6 +46,119 @@ namespace
         return {{{"final", "research.color_gain", {{"gain", 0.25}}}, {"boost", "research.color_gain", {{"gain", 2}}}},
                 {{"scene.hdr", "boost.source"}, {"boost.color", "final.source"}},
                 {"final.color"}};
+    }
+
+    class ObservationPass final : public GraphPass
+    {
+    public:
+        explicit ObservationPass(int& calls) :
+            m_Calls(calls)
+        {
+        }
+
+        std::vector<RenderGraph::Resource> addPasses(RenderGraph&                           graph,
+                                                     std::string_view                       name,
+                                                     std::span<const RenderGraph::Resource> inputs,
+                                                     std::span<const double>) override
+        {
+            // The catalog's sideEffect declaration must retain this command pass without a graph output.
+            graph.addPass(std::string(name),
+                          {{inputs[0], Usage::eSampled}},
+                          [this](auto*, auto&)
+                          {
+                              ++m_Calls;
+                          });
+            return {};
+        }
+
+    private:
+        int& m_Calls;
+    };
+
+    void pruneBeforeConstruction(Device& device)
+    {
+        int         created         = 0;
+        int         observed        = 0;
+        int         inactiveCreated = 0;
+        PassCatalog catalog(device);
+        catalog.add(research::colorGainDefinition());
+        auto inactive   = research::colorGainDefinition();
+        inactive.type   = "unused";
+        inactive.create = [&](Device&) -> std::unique_ptr<GraphPass>
+        {
+            ++inactiveCreated;
+            throw std::runtime_error("Unused pass initialized its GPU implementation");
+        };
+        catalog.add(std::move(inactive));
+        auto unavailable             = research::colorGainDefinition();
+        unavailable.type             = "unsupported";
+        unavailable.requiredFeatures = uint64_t(1) << 63;
+        catalog.add(std::move(unavailable));
+        PassDefinition observation;
+        observation.type       = "observation";
+        observation.inputs     = {{"source", PassResourceKind::eTexture, VriFormat_RGBA16_SFLOAT}};
+        observation.sideEffect = true;
+        observation.create     = [&](Device&) -> std::unique_ptr<GraphPass>
+        {
+            ++created;
+            return std::make_unique<ObservationPass>(observed);
+        };
+        catalog.add(std::move(observation));
+        auto definition           = chain();
+        definition.passes[0].type = "unused";
+        definition.passes.push_back({"record", "observation", {}});
+        definition.passes.push_back({"unavailable", "unsupported", {}});
+        definition.edges.push_back({"boost.color", "record.source"});
+        definition.edges.push_back({"scene.hdr", "unavailable.source"});
+        definition.outputs = {"scene.hdr"};
+        GraphBuild  state;
+        RenderGraph graph(device);
+        const auto  source = graph.createTexture("source", colorTexture({8, 8}, VriFormat_RGBA16_SFLOAT));
+        graph.addPass("Source",
+                      {{source, Usage::eColorWrite}},
+                      [&](auto* cmd, auto& current)
+                      {
+                          const float color[4] {0.25f, 0.5f, 1, 1};
+                          beginColorPass(device, cmd, current.getTexture(source).view(), {8, 8}, color);
+                          device.core.CmdEndRendering(cmd);
+                      });
+        const std::array imports {GraphBinding {"scene.hdr", source}};
+        state = definition.build(graph, catalog, imports);
+        graph.compile();
+        require(created == 1 && inactiveCreated == 0 && state.passes.size() == 2,
+                "Definition constructed unused or unsupported GPU passes");
+        require(graph.activePasses() == std::vector<std::string> {"Source", "boost", "record"},
+                "Declared side effect or its input producer was culled");
+        Frame frame(device);
+        graph.execute(frame.begin());
+        frame.submitAndWait();
+        require(observed == 1 && readback(device, graph.getTexture(state.passes[0].outputs[0])).rgba[0] == 0.5f,
+                "Side-effect input was not produced by its retained compute pass");
+        // Reachability must not hide malformed file metadata or disable capability checks on live nodes.
+        definition.passes[0].parameters["gaim"] = 1;
+        expectError(
+            [&]
+            {
+                RenderGraph      candidate(device);
+                const auto       input = candidate.importResource("input", graph.getTexture(source));
+                const std::array bindings {GraphBinding {"scene.hdr", input}};
+                definition.build(candidate, catalog, bindings);
+            },
+            "gaim");
+        definition.passes[0].parameters.erase("gaim");
+        definition.outputs = {"unavailable.color"};
+        expectError(
+            [&]
+            {
+                RenderGraph      candidate(device);
+                const auto       input = candidate.importResource("input", graph.getTexture(source));
+                const std::array bindings {GraphBinding {"scene.hdr", input}};
+                definition.build(candidate, catalog, bindings);
+            },
+            "VRI features");
+        graph.execute(frame.begin());
+        frame.submitAndWait();
+        require(observed == 2 && inactiveCreated == 0, "Failed replacement damaged the preceding live graph");
     }
 
     Image render(Device& device, const PassCatalog& catalog, const GraphDefinition* definition)
@@ -329,7 +442,8 @@ namespace
 int main()
 try
 {
-    Device      device;
+    Device device;
+    pruneBeforeConstruction(device);
     PassCatalog catalog(device);
     require(catalog.definitions().empty(), "A graph catalog must not implicitly install a renderer");
     catalog.add(research::colorGainDefinition());

@@ -1,9 +1,6 @@
 #include <vultra/assets/asset_source.hpp>
 #include <vultra/assets/source_file.hpp>
 #include <vultra/assets/vpk_archive.hpp>
-#ifdef TEST_PROJECT
-#include <vultra/assets/project_manifest.hpp>
-#endif
 #include <vultra/platform/os/file.hpp>
 #include <vultra/platform/os/process.hpp>
 
@@ -137,27 +134,6 @@ try
         {
             VpkArchive::embedProject(embedded, package, directory / "twice");
         });
-#ifdef TEST_PROJECT
-    ProjectManifest project;
-    project.mainScene = "main.vscene";
-    project.metadata  = R"({"seed":17})";
-    const auto id     = project.addAsset("data/source");
-    project.save(directory / "config.vproject");
-    const auto restored = ProjectManifest::load(directory / "config.vproject");
-    require(restored.asset(id).path == "data/source" && restored.metadata == project.metadata,
-            "CPU project persistence changed its asset identity or metadata");
-    project.renameAsset(id, "data/renamed");
-    project.save(directory / "renamed.vproject");
-    require(ProjectManifest::load(directory / "renamed.vproject").asset(id).path == "data/renamed",
-            "CPU project rename lost persistent asset identity");
-    project.metadata = "[]";
-    reject(
-        [&]
-        {
-            project.save(directory / "invalid.vproject");
-        });
-    require(!std::filesystem::exists(directory / "invalid.vproject"), "Invalid project left output behind");
-#endif
     std::cout << "CPU asset source passed: bytes, paths, checksums, materialization and embedded VPK\n";
     return 0;
 }

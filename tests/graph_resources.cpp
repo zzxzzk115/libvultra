@@ -27,6 +27,186 @@ namespace
         device.core.CmdCopyTexture(cmd, to.handle, from.handle, &desc);
     }
 
+    void clearPass(Device&               device,
+                   RenderGraph&          graph,
+                   const char*           name,
+                   RenderGraph::Resource target,
+                   std::array<float, 4>  color)
+    {
+        graph.addPass(name,
+                      {{target, Usage::eColorWrite, true}},
+                      [&, target, color](auto* cmd, auto& current)
+                      {
+                          beginColorPass(device, cmd, current.getTexture(target).view(), {8, 8}, color.data());
+                          device.core.CmdEndRendering(cmd);
+                      });
+    }
+
+    void overwrittenContent(Device& device)
+    {
+        RenderGraph graph(device);
+        const auto  texture = graph.createTexture("color", colorTexture({8, 8}));
+        const auto  unused  = graph.createTexture("unused", colorTexture({8, 8}));
+        clearPass(device, graph, "Old content", texture, {1, 0, 0, 1});
+        graph.addPass("Unused reader",
+                      {{texture, Usage::eCopySource}, {unused, Usage::eCopyDestination}},
+                      [&](auto* cmd, auto& current)
+                      {
+                          copy(device, cmd, current.getTexture(texture), current.getTexture(unused));
+                      });
+        clearPass(device, graph, "Replacement", texture, {0, 0, 1, 1});
+        graph.exportResource(texture);
+        graph.compile();
+        require(graph.activePasses() == std::vector<std::string> {"Replacement"},
+                "Ordering hazards retained overwritten content or an unused reader");
+        const auto plan = graph.snapshot();
+        require(plan.passes[2].dependencies == std::vector<size_t> {0, 1} &&
+                    plan.passes[2].contentDependencies.empty() && !graph.resourceInfo(unused).active,
+                "Ordering and content dependencies were not distinguished");
+        Frame frame(device);
+        graph.execute(frame.begin());
+        frame.submitAndWait();
+        const auto image = readback(device, graph.getTexture(texture));
+        require(image.rgba[0] == 0 && image.rgba[2] == 1, "Replacement output contains discarded data");
+    }
+
+    void preservingContent(Device& device)
+    {
+        RenderGraph graph(device);
+        const auto  texture = graph.createTexture("color", colorTexture({8, 8}));
+        clearPass(device, graph, "Original", texture, {1, 0, 0, 1});
+        graph.addPass("Preserve attachment",
+                      {{texture, Usage::eColorReadWrite}},
+                      [&](auto* cmd, auto& current)
+                      {
+                          beginColorPass(device, cmd, current.getTexture(texture).view(), {8, 8});
+                          device.core.CmdEndRendering(cmd);
+                      });
+        graph.exportResource(texture);
+        graph.compile();
+        require(graph.activePasses() == std::vector<std::string> {"Original", "Preserve attachment"},
+                "Read/write attachment lost the writer supplying its loaded content");
+        Frame frame(device);
+        graph.execute(frame.begin());
+        frame.submitAndWait();
+        require(readback(device, graph.getTexture(texture)).rgba[0] == 1, "Attachment LOAD lost previous content");
+    }
+
+    void sideEffectReader(Device& device)
+    {
+        RenderGraph graph(device);
+        const auto  texture  = graph.createTexture("color", colorTexture({8, 8}));
+        const auto  observed = graph.createTexture("observation", colorTexture({8, 8}));
+        clearPass(device, graph, "Original", texture, {1, 0, 0, 1});
+        int calls = 0;
+        graph.addPass(
+            "Observation",
+            {{texture, Usage::eCopySource}, {observed, Usage::eCopyDestination}},
+            [&](auto* cmd, auto& current)
+            {
+                ++calls;
+                copy(device, cmd, current.getTexture(texture), current.getTexture(observed));
+            },
+            true);
+        clearPass(device, graph, "Replacement", texture, {0, 0, 1, 1});
+        graph.exportResource(texture);
+        graph.compile();
+        require(graph.activePasses().size() == 3, "Side-effect reader lost its content producer");
+        Frame frame(device);
+        graph.execute(frame.begin());
+        frame.submitAndWait();
+        require(calls == 1 && readback(device, graph.getTexture(observed)).rgba[0] == 1 &&
+                    readback(device, graph.getTexture(texture)).rgba[2] == 1,
+                "Write-after-read ordering changed an observed earlier value");
+    }
+
+    void overwrittenHistory(Device& device)
+    {
+        RenderGraph graph(device);
+        auto        desc = colorTexture({8, 8}, VriFormat_RGBA32_SFLOAT);
+        desc.usage |= VriTextureUsage_ShaderResourceStorage;
+        const auto retained = graph.createHistoryTexture("history", desc);
+        clearPass(device, graph, "Old history", retained, {1, 0, 0, 1});
+        clearPass(device, graph, "Next frame history", retained, {0, 0, 1, 1});
+        graph.compile(true);
+        require(graph.activePasses() == std::vector<std::string> {"Next frame history"},
+                "History retained a write overwritten before any observation");
+        Frame frame(device);
+        for (int i = 0; i < 2; ++i)
+        {
+            graph.execute(frame.begin());
+            frame.submitAndWait();
+            const auto image = readback(device, graph.getTexture(retained));
+            require(image.rgba[0] == 0 && image.rgba[2] == 1, "History did not retain its final live writer");
+        }
+    }
+
+    void partialCopy(Device& device)
+    {
+        RenderGraph graph(device);
+        const auto  target = graph.createTexture("target", colorTexture({8, 8}));
+        const auto  patch  = graph.createTexture("patch", colorTexture({8, 8}));
+        clearPass(device, graph, "Initial content", target, {1, 0, 0, 1});
+        clearPass(device, graph, "Patch data", patch, {0, 0, 1, 1});
+        graph.addPass("Partial copy",
+                      {{patch, Usage::eCopySource}, {target, Usage::eCopyDestination}},
+                      [&](auto* cmd, auto& current)
+                      {
+                          VriTextureCopyDesc region {};
+                          region.src.layerNum = 1;
+                          region.src.aspect   = VriImageAspect_Color;
+                          region.src.width    = 4;
+                          region.src.height   = 8;
+                          region.src.depth    = 1;
+                          region.dst          = region.src;
+                          region.dst.x        = 4;
+                          device.core.CmdCopyTexture(cmd,
+                                                     current.getTexture(target).handle,
+                                                     current.getTexture(patch).handle,
+                                                     &region);
+                      });
+        graph.exportResource(target);
+        graph.compile();
+        require(graph.activePasses().size() == 3, "Partial write discarded untouched destination content");
+        Frame frame(device);
+        graph.execute(frame.begin());
+        frame.submitAndWait();
+        const auto image = readback(device, graph.getTexture(target));
+        for (uint32_t y = 0; y < 8; ++y)
+        {
+            for (uint32_t x = 0; x < 8; ++x)
+            {
+                const auto pixel = imagePixel(image, x, y);
+                require(pixel[0] == (x < 4 ? 1 : 0) && pixel[2] == (x < 4 ? 0 : 1),
+                        "Partial copy lost previous content or used the wrong region");
+            }
+        }
+    }
+
+    void invalidDiscard(Device& device)
+    {
+        for (const auto usage : {Usage::eColorReadWrite, Usage::eSampled, Usage::eCopySource})
+        {
+            RenderGraph graph(device);
+            const auto  texture = graph.createTexture("invalid", colorTexture({8, 8}));
+            graph.addPass("Contradictory access",
+                          {{texture, usage, true}},
+                          [](auto*, auto&)
+                          {
+                          });
+            bool rejected = false;
+            try
+            {
+                graph.compile();
+            }
+            catch (const std::invalid_argument& error)
+            {
+                rejected = std::string_view(error.what()).find("discardPrevious") != std::string_view::npos;
+            }
+            require(rejected, "Read access accepted a declaration that discards its input content");
+        }
+    }
+
     void history(Device& device)
     {
         auto desc = colorTexture({8, 8}, VriFormat_RGBA32_SFLOAT);
@@ -158,6 +338,12 @@ int main()
 try
 {
     vultra::Device device;
+    overwrittenContent(device);
+    preservingContent(device);
+    sideEffectReader(device);
+    overwrittenHistory(device);
+    partialCopy(device);
+    invalidDiscard(device);
     history(device);
     const auto separate = transientReuse(device, false);
     const auto aliased  = transientReuse(device, true);

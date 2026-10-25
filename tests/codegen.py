@@ -39,6 +39,39 @@ def parse(source):
 
 
 class CompileCommandTests(unittest.TestCase):
+    def test_relative_paths_use_each_compile_command_directory(self):
+        with tempfile.TemporaryDirectory(dir=codegen.ROOT / "build/.tmp") as directory:
+            project = Path(directory)
+            include = project / "include/vultra"
+            include.mkdir(parents=True)
+            (include / "probe.hpp").write_text(declaration("CorrectProject"), encoding="utf-8")
+            (project / "probe.cpp").write_text("#include <vultra/probe.hpp>\n", encoding="utf-8")
+            command = {"directory": str(project), "file": "probe.cpp",
+                       "arguments": ["clang", "-Iinclude", "-std=c++23", "-c", "probe.cpp"]}
+            parsed = codegen.translation_unit([command], "probe.cpp")
+            self.assertEqual([item["name"] for item in codegen.parse_reflection(parsed)], ["CorrectProject"])
+
+    def test_scene_c_names_preserve_word_boundaries(self):
+        self.assertEqual(codegen.c_name("sceneRandomUInt"), "random_uint")
+        self.assertEqual(codegen.c_name("sceneRandomBoundedUInt"), "random_bounded_uint")
+        self.assertEqual(codegen.c_name("sceneMenuInterval"), "menu_interval")
+        self.assertEqual(codegen.c_name("sceneCreateNode3D"), "create_node3d")
+
+    def test_declarations_regenerate_without_stale_layout_assertions(self):
+        with tempfile.TemporaryDirectory(dir=codegen.ROOT / "build/.tmp") as directory:
+            root = Path(directory)
+            header = root / "include/vultra/reflection_probe.hpp"
+            header.parent.mkdir(parents=True)
+            header.write_text(declaration(), encoding="utf-8")
+            source = root / "command_probe.cpp"
+            source.write_text('#include "include/vultra/reflection_probe.hpp"\nstatic_assert(false, "stale layout");\n', encoding="utf-8")
+            command = {"file": source.as_posix(),
+                       "arguments": ["clang", "-c", "-std=c++23", source.as_posix()]}
+            with self.assertRaisesRegex(RuntimeError, "stale layout"):
+                codegen.translation_unit([command], "command_probe.cpp")
+            parsed = codegen.translation_unit([command], "command_probe.cpp", declaration=header)
+            self.assertEqual([item["name"] for item in codegen.parse_reflection(parsed)], ["Probe"])
+
     def test_cl_and_gnu_commands_read_the_same_annotations(self):
         with tempfile.TemporaryDirectory(dir=codegen.ROOT / "build/.tmp") as directory:
             root = Path(directory)
@@ -70,7 +103,153 @@ class CompileCommandTests(unittest.TestCase):
                     self.assertEqual(types[0]["fields"][0]["label"], "Gain")
 
 
+class SceneAbiTests(unittest.TestCase):
+    def test_mixed_fields_keep_native_offsets_and_integer_marshalling(self):
+        source = """using uint64_t = unsigned long long; using uint32_t = unsigned int;
+namespace vultra { struct [[clang::annotate("vultra.bind.pod")]] Event {
+uint64_t serial; uint32_t kind; float x;
+}; }"""
+        pods = codegen.parse_pods(unit(source))
+        self.assertEqual(pods[0]["size"], 16)
+        self.assertEqual(pods[0]["alignment"], 8)
+        self.assertEqual([field["offset"] for field in pods[0]["fields"]], [0, 8, 12])
+        ir = {"pods": pods, "types": [], "enums": [], "ui_functions": [], "scene_functions": [], "callback_tables": []}
+        self.assertIn("uint64_t serial;", codegen.scene_header(ir))
+        self.assertIn("public ulong Serial;", codegen.csharp_bindings(ir))
+        self.assertIn("public uint Kind;", codegen.csharp_bindings(ir))
+        self.assertIn("offsetof(VultraEvent, kind) == 8", codegen.scene_source(ir))
+        self.assertIn("lua_pushinteger(state, value.serial)", codegen.lua_values(ir))
+        self.assertIn("Value exceeds Lua integer range: serial", codegen.lua_values(ir))
+        self.assertNotIn("lua_pushnumber(state, value.serial)", codegen.lua_values(ir))
+        with self.assertRaisesRegex(RuntimeError, "Unsupported ABI POD"):
+            codegen.parse_pods(unit(source.replace("}; }", "} __attribute__((packed)); }")))
+        with self.assertRaisesRegex(RuntimeError, "Unsupported ABI POD"):
+            codegen.parse_pods(unit(source.replace("float x;", "double x;")))
+        with self.assertRaisesRegex(RuntimeError, "Unsupported ABI POD"):
+            codegen.parse_pods(unit(source.replace("uint64_t serial;", "private: uint64_t serial;")))
+
+    def test_enums_share_native_c_managed_and_lua_values(self):
+        source = """using uint32_t = unsigned int;
+namespace vultra { enum class [[clang::annotate("vultra.bind.enum")]] Mode : uint32_t {
+eKey = 0, eMouse = 8, eText = 11
+}; }"""
+        enums = codegen.parse_enums(unit(source))
+        self.assertEqual(enums[0]["values"][2], {"name": "Text", "value": 11})
+        ir = {"enums": enums, "pods": [], "types": [], "scene_functions": []}
+        self.assertIn("VULTRA_MODE_MOUSE = 8", codegen.scene_header(ir))
+        self.assertIn("public enum Mode : uint", codegen.csharp_values(ir))
+        self.assertIn("Text = 11", codegen.csharp_values(ir))
+        self.assertIn('lua_setglobal(state, "Mode")', codegen.lua_values(ir))
+        with self.assertRaisesRegex(RuntimeError, "Unsupported ABI enum"):
+            codegen.parse_enums(unit(source.replace("uint32_t {", "int {")))
+
+
+class CallbackTableTests(unittest.TestCase):
+    def test_registration_uses_generated_table_pointers_and_opaque_state(self):
+        source = '''using uint32_t = unsigned int;
+using uint64_t = unsigned long long;
+enum VultraStatus { Ok };
+struct VultraSceneFrame { void* context; uint64_t serial; };
+namespace vultra {
+struct [[clang::annotate("vultra.abi_table")]] TypeApi {
+    uint32_t version;
+    uint32_t structSize;
+    VultraStatus (*create)(void*, const char*, uint64_t, void**);
+    VultraStatus (*event)(void*, VultraSceneFrame, uint64_t, uint32_t, double);
+};
+struct [[clang::annotate("vultra.abi_table")]] RegistrationApi {
+    uint32_t version;
+    uint32_t structSize;
+    void* context;
+    VultraStatus (*add)(void*, const TypeApi*);
+}; }'''
+        ir = {"callback_tables": codegen.parse_callback_tables(unit(source))}
+        header = codegen.callback_header(ir)
+        self.assertIn("typedef struct VultraTypeApi VultraTypeApi;", header)
+        self.assertIn("VultraStatus (VULTRA_ABI_CALL *add)(void*, const VultraTypeApi*)", header)
+        self.assertIn("VultraStatus (VULTRA_ABI_CALL *create)(void*, const char*, uint64_t, void**)", header)
+        managed = codegen.callback_csharp(ir)
+        self.assertIn("public void* Context", managed)
+        self.assertIn("delegate* unmanaged[Cdecl]<void*, VultraTypeApi*, VultraStatus>", managed)
+        self.assertIn("VultraSceneFrame, ulong, uint, double, VultraStatus>", managed)
+        with self.assertRaisesRegex(RuntimeError, "Unsupported ABI callback"):
+            codegen.parse_callback_tables(unit(source.replace("const TypeApi*", "const double*")))
+
+    def test_tables_share_c_and_managed_layouts(self):
+        source = '''using uint32_t = unsigned int;
+using uint64_t = unsigned long long;
+enum VultraStatus { Ok };
+struct VultraSceneFrame { void* context; uint64_t serial; };
+namespace vultra {
+struct [[clang::annotate("vultra.abi_table")]] ProbeApi {
+    uint32_t version;
+    uint32_t structSize;
+    VultraStatus (*read)(void*, VultraSceneFrame, const char*, uint64_t);
+}; }'''
+        tables = codegen.parse_callback_tables(unit(source))
+        self.assertEqual(tables[0]["fields"][2]["arguments"],
+                         ["void*", "VultraSceneFrame", "const char*", "uint64_t"])
+        ir = {"callback_tables": tables}
+        self.assertIn("uint32_t struct_size", codegen.callback_header(ir))
+        self.assertIn("VultraStatus (VULTRA_ABI_CALL *read)(void*, VultraSceneFrame, const char*, uint64_t)",
+                      codegen.callback_header(ir))
+        self.assertIn("delegate* unmanaged[Cdecl]<void*, VultraSceneFrame, byte*, ulong, VultraStatus>",
+                      codegen.callback_csharp(ir))
+        with self.assertRaisesRegex(RuntimeError, "Unsupported ABI callback"):
+            codegen.parse_callback_tables(unit(source.replace("VultraStatus (*read)", "int (*read)")))
+        with self.assertRaisesRegex(RuntimeError, "Unsupported ABI callback"):
+            codegen.parse_callback_tables(unit(source.replace("const char*", "double*")))
+        with self.assertRaisesRegex(RuntimeError, "version/structSize"):
+            codegen.parse_callback_tables(unit(source.replace("uint32_t structSize;", "")))
+        with self.assertRaisesRegex(RuntimeError, "Unsupported ABI callback"):
+            codegen.parse_callback_tables(unit(source.replace("const char*, uint64_t);", "const char*, uint64_t, ...);")))
+        with self.assertRaisesRegex(RuntimeError, "Unsupported ABI table layout"):
+            codegen.parse_callback_tables(unit(source.replace("uint32_t version;", "virtual void extra(); uint32_t version;")))
+        with self.assertRaisesRegex(RuntimeError, "Unsupported ABI table layout"):
+            codegen.parse_callback_tables(unit(source.replace("}; }", "} __attribute__((packed)); }")))
+
+
 class ReflectionTests(unittest.TestCase):
+    def test_reference_categories_come_from_the_id_attribute(self):
+        source = '''namespace vultra {
+struct StableId {};
+struct [[clang::annotate("vultra.reference:document")]] ItemKey { StableId value; };
+struct [[clang::annotate("vultra.reflect")]] Selection {
+    [[clang::annotate("vultra.property:reference=Page;flags=serialize|bind")]] ItemKey selected;
+}; }'''
+        types = parse(source)
+        self.assertEqual(types[0]["fields"][0]["reference_category"], "document")
+        self.assertIn('"document", "Page", true', codegen.property_source(types, "vultra/probe.hpp"))
+        with self.assertRaisesRegex(RuntimeError, "public StableId"):
+            parse(source.replace("StableId value;", "int value;"))
+
+    def test_component_fields_compose_value_schemas(self):
+        source = '''namespace vultra {
+struct [[clang::annotate("vultra.reflect")]] Settings {
+    [[clang::annotate("vultra.property:min=0;max=2")]] float gain = 0.5f;
+};
+struct [[clang::annotate("vultra.reflect.component")]] Component {
+    [[clang::annotate("vultra.property:flatten=true;json=/settings")]] Settings settings{1.25f};
+};
+struct [[clang::annotate("vultra.reflect.component")]] EngineOwned {};
+}'''
+        types = parse(source)
+        field = types[1]["fields"][0]
+        self.assertEqual(types[1]["category"], "eComponent")
+        self.assertEqual(field["name"], "settings.gain")
+        self.assertEqual(field["json_path"], "/settings/gain")
+        generated = codegen.property_source(types, "vultra/probe.hpp")
+        self.assertIn("Component{}.settings.gain", generated)
+        self.assertIn("static_cast<Component*>(object)->settings.gain =", generated)
+        self.assertEqual(types[2]["fields"], [])
+        with self.assertRaisesRegex(RuntimeError, "Flatten requires"):
+            parse(source.replace('flatten=true;json=/settings', 'flatten=false;json=/settings'))
+        with self.assertRaisesRegex(RuntimeError, "Flatten requires"):
+            parse(source.replace('flatten=true;json=/settings', 'flatten=true;label=Settings'))
+        with self.assertRaisesRegex(RuntimeError, "Duplicate/overlapping"):
+            parse(source.replace('Settings settings{1.25f};', '''Settings settings{1.25f};
+    [[clang::annotate("vultra.property:min=0;max=2;json=/settings/gain")]] float duplicate = 1;'''))
+
     def test_resource_categories_and_empty_identity_bases(self):
         source = '''namespace vultra {
 class [[clang::annotate("vultra.reflect.resource")]] Resource {
@@ -87,7 +266,8 @@ public:
         self.assertEqual(types[0]["fields"], [])
         self.assertEqual(types[1]["base"], "Resource")
         generated = codegen.property_source(types, "vultra/probe.hpp")
-        self.assertIn("ObjectCategory::eResource", generated)
+        self.assertIn('nullptr, "resource"', generated)
+        self.assertIn('&resourceType(), "resource"', generated)
         self.assertIn("std::array<PropertyInfo, 0>", generated)
         with self.assertRaisesRegex(RuntimeError, "category differs"):
             parse(source.replace('resource")]] Settings', 'node")]] Settings'))
@@ -96,7 +276,8 @@ public:
 
     def test_collection_accessors_compile_with_project_arguments(self):
         database = json.loads((codegen.ROOT / "compile_commands.json").read_text())
-        original = next(row for row in database if codegen.source_path(row["file"]).endswith(codegen.SOURCES["scene"]))
+        source_root = "source/core/src/base/property.cpp"
+        original = next(row for row in database if codegen.source_path(row["file"]).endswith(source_root))
         with tempfile.TemporaryDirectory(dir=codegen.ROOT / "build/.tmp") as directory:
             root = Path(directory)
             include = root / "include"
@@ -105,10 +286,18 @@ public:
             header.write_text('''#include <vultra/core/base/property.hpp>
 #include <vultra/core/base/api_annotations.hpp>
 namespace vultra {
-struct NodeId { StableId value; };
+struct VULTRA_REFERENCE("node") NodeId { StableId value; };
 struct VULTRA_REFLECT CollectionProbe {
     VULTRA_PROPERTY("reference=Node;flags=serialize|bind") std::vector<NodeId> links;
     VULTRA_PROPERTY("flags=serialize|bind") std::vector<uint32_t> counts;
+};
+enum class NestedMode { eFirst, eSecond };
+struct VULTRA_REFLECT NestedSettings {
+    VULTRA_PROPERTY("min=0;max=2") float gain = 0.5f;
+    VULTRA_PROPERTY("options=First|Second") NestedMode mode = NestedMode::eFirst;
+};
+struct VULTRA_REFLECT_COMPONENT ComponentProbe {
+    VULTRA_PROPERTY("flatten=true;json=/settings") NestedSettings settings{1.25f, NestedMode::eSecond};
 }; }''', encoding="utf-8")
             source = root / "collection_probe.cpp"
             source.write_text("#include <vultra/collection_probe.hpp>\n", encoding="utf-8")
@@ -148,7 +337,7 @@ public:
 
     def test_reference_and_collection_contracts(self):
         source = '''namespace std { template<class T> class vector {}; }
-namespace vultra { struct NodeId {};
+namespace vultra { struct StableId {}; struct [[clang::annotate("vultra.reference:node")]] NodeId { StableId value; };
 struct [[clang::annotate("vultra.reflect")]] Links {
     [[clang::annotate("vultra.property:reference=Node;flags=serialize|bind")]] std::vector<NodeId> targets;
 }; }'''
@@ -158,7 +347,7 @@ struct [[clang::annotate("vultra.reflect")]] Links {
         self.assertEqual(field["element_kind"], "eReference")
         generated = codegen.property_source(types, "vultra/probe.hpp")
         self.assertIn("NodeId{std::get<PropertyReference>(element).id}", generated)
-        self.assertIn("ObjectCategory::eNode", generated)
+        self.assertIn('PropertyKind::eReference, "node", "Node", true', generated)
         with self.assertRaises(RuntimeError):
             parse(source.replace("reference=Node;", ""))
         with self.assertRaises(RuntimeError):

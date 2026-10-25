@@ -1,7 +1,7 @@
-#include "upload.hpp"
-
-#include <vultra/assets/asset_pipeline.hpp>
+#include <vultra/assets/scene_render_data.hpp>
+#include <vultra/drivers/rhi/buffer_upload.hpp>
 #include <vultra/servers/rendering/scene.hpp>
+#include <vultra/servers/rendering/texture_upload.hpp>
 
 #include <glm/gtc/matrix_inverse.hpp>
 
@@ -121,31 +121,30 @@ namespace vultra
         }
     } // namespace
 
-    GpuScene::GpuScene(Device& device, const SceneData& scene, bool meshShading, uint32_t workers) :
-        GpuScene(device,
-                 scene,
-                 prepareTextures(scene, {.compression = TextureCompression::eNone}),
-                 meshShading,
-                 workers)
-    {
-    }
-
-    GpuScene::GpuScene(Device& device, const ImportedAsset& asset, bool meshShading, uint32_t workers) :
-        GpuScene(device, asset.scene, asset.textures, meshShading, workers)
-    {
-    }
-
     GpuScene::GpuScene(Device&                 device,
                        const SceneData&        scene,
                        const PreparedTextures& prepared,
-                       bool                    meshShading,
-                       uint32_t                workers) :
+                       const MeshletData*      prebuiltMeshlets) :
         materials(scene.materials),
         primitives(scene.primitives),
         center(scene.center),
         radius(scene.radius),
         m_Device(device)
     {
+        if (prepared.materials.size() != materials.size())
+        {
+            throw std::invalid_argument("Material texture table size mismatch");
+        }
+        for (const auto& table : prepared.materials)
+        {
+            for (const auto index : table)
+            {
+                if (index >= prepared.images.size())
+                {
+                    throw std::invalid_argument("Material texture index exceeds its prepared payload");
+                }
+            }
+        }
         samplers.reserve(scene.samplers.size());
         for (const auto& sampler : scene.samplers)
         {
@@ -238,27 +237,24 @@ namespace vultra
         const VriBufferUsageFlags accelerationUsage = rayFeatures ? VriBufferUsage_AccelerationBuildInput : 0u;
         const VriBufferUsageFlags vertexUsage =
             VriBufferUsage_VertexBuffer | VriBufferUsage_StorageBuffer | accelerationUsage;
-        const VriAccessStage vertexReady {
-            VriAccess_VertexBufferRead | (meshShading ? VriAccess_ShaderResourceRead : 0ull),
-            VriPipelineStage_VertexInput | (meshShading ? VriPipelineStage_MeshShader : 0ull)};
+        const VriAccessStage vertexReady {VriAccess_VertexBufferRead, VriPipelineStage_VertexInput};
         vertices = uploadBuffer(device, std::as_bytes(vertexData), vertexUsage, vertexReady);
         indices  = uploadBuffer(device,
-                               std::as_bytes(indexData),
-                               VriBufferUsage_IndexBuffer | VriBufferUsage_StorageBuffer | accelerationUsage,
+                                std::as_bytes(indexData),
+                                VriBufferUsage_IndexBuffer | VriBufferUsage_StorageBuffer | accelerationUsage,
                                 {VriAccess_IndexBufferRead, VriPipelineStage_VertexInput},
-                               sizeof(uint32_t));
-        if (meshShading)
+                                sizeof(uint32_t));
+        if (prebuiltMeshlets)
         {
-            meshlets = std::make_unique<GpuMeshlets>(device, *vertices, scene, workers);
-        }
-        if (prepared.materials.size() != materials.size())
-        {
-            throw std::invalid_argument("Material texture table size mismatch");
+            if (prebuiltMeshlets->primitives.size() != primitives.size())
+            {
+                throw std::invalid_argument("Meshlet primitive table does not match its scene");
+            }
+            meshlets = std::make_unique<GpuMeshlets>(device, *vertices, *prebuiltMeshlets);
         }
         for (const auto& image : prepared.images)
         {
-            textures.push_back(
-                uploadTexture(device, image.format, asset_detail::textureLayout(image.format).bytes, image.levels));
+            textures.push_back(uploadTextureAsset(device, image));
         }
         for (const auto& indices : prepared.materials)
         {

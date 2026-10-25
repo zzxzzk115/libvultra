@@ -11,6 +11,8 @@ namespace vultra
     class GpuScene;
     struct SceneData;
     struct ImportedAsset;
+    struct PreparedTextures;
+    struct MeshletData;
     class RenderingServer;
 
     struct GpuSceneRid
@@ -53,11 +55,15 @@ namespace vultra
         RenderingServer(const RenderingServer&)            = delete;
         RenderingServer& operator=(const RenderingServer&) = delete;
 
+        GpuSceneHandle
+        uploadScene(const SceneData& scene, const PreparedTextures& textures, const MeshletData* meshlets = nullptr);
+#ifdef VULTRA_WITH_SCENE_PREPARATION
         GpuSceneHandle uploadScene(const SceneData& scene, bool meshShading = false, uint32_t workers = 0);
         GpuSceneHandle uploadScene(const ImportedAsset& asset, bool meshShading = false, uint32_t workers = 0);
-        GpuScene&      scene(GpuSceneRid rid) const;
-        bool           release(GpuSceneRid rid) noexcept;
-        bool           alive(GpuSceneRid rid) const;
+#endif
+        GpuScene& scene(GpuSceneRid rid) const;
+        bool      release(GpuSceneRid rid) noexcept;
+        bool      alive(GpuSceneRid rid) const;
         // Call only after the last submitted frame has completed.
         void collectCompletedFrame();
 

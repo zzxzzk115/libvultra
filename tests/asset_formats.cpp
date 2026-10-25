@@ -1,9 +1,8 @@
 #include <vultra/assets/asset_pipeline.hpp>
 #include <vultra/assets/asset_source.hpp>
-#include <vultra/assets/vpk_export.hpp>
+#include <vultra/assets/vpk_archive.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/drivers/rhi/image_readback.hpp>
-#include <vultra/scene/scene_tree.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
 #include <vultra/servers/rendering/scene.hpp>
 #include <vultra/servers/rendering/texture_blit.hpp>
@@ -410,59 +409,15 @@ Connections: {
         require(emission.rgba[center] > 0.2f && emission.rgba[center] < 0.3f && emission.rgba[center + 3] == 1,
                 "GPU emission multiplier or reserved ORCA AO channel is incorrect");
 
-        SceneTree       tree(std::make_unique<Node>("ORCA"));
-        ProjectManifest project;
-        project.mainScene = "orca.vscene";
-        const auto model =
-            project.addAsset("orca.FbX", FbxImportOptions {FbxMaterialConvention::eOrcaMetallicRoughness, true});
-        project.addAsset("color.dds");
-        tree.save(root / project.mainScene);
-        project.save(root / "orca.vproject");
-        const auto loaded = ProjectManifest::load(root / "orca.vproject");
-        require(loaded.asset(model).fbx == project.asset(model).fbx, "FBX import settings did not roundtrip");
-        std::ifstream manifest(root / "orca.vproject");
-        const auto    document = nlohmann::json::parse(manifest);
-        for (const auto& invalid : {nlohmann::json {{"materials", "unknown"}},
-                                    nlohmann::json {{"normal_maps", "unknown"}},
-                                    nlohmann::json {{"materials", 1}},
-                                    nlohmann::json {{"normal_map", "directx"}}})
-        {
-            auto rejected                       = document;
-            rejected["assets"][0]["fbx_import"] = invalid;
-            writeText(root / "invalid-orca.vproject", rejected.dump());
-            bool failed = false;
-            try
-            {
-                ProjectManifest::load(root / "invalid-orca.vproject");
-            }
-            catch (const std::exception&)
-            {
-                failed = true;
-            }
-            require(failed, "Invalid FBX import settings were accepted");
-        }
-        auto wrongType                 = document;
-        wrongType["assets"][0]["path"] = "color.dds";
-        writeText(root / "invalid-orca.vproject", wrongType.dump());
-        bool wrongTypeRejected = false;
-        try
-        {
-            ProjectManifest::load(root / "invalid-orca.vproject");
-        }
-        catch (const std::exception&)
-        {
-            wrongTypeRejected = true;
-        }
-        require(wrongTypeRejected, "FBX import settings were accepted for a DDS asset");
-        packProject(root / "orca.vproject", root / "orca.vpk");
+        const std::array files {VpkFile {"orca.FbX", root / "orca.FbX"},
+                                VpkFile {"color.dds", root / "color.dds"},
+                                VpkFile {"Textures/packed.dds", root / "Textures/packed.dds"},
+                                VpkFile {"Textures/normal.dds", root / "Textures/normal.dds"},
+                                VpkFile {"Textures/emission.dds", root / "Textures/emission.dds"}};
+        VpkArchive::pack(files, root / "orca.vpk");
         AssetSource source {VpkArchive(root / "orca.vpk")};
-        const auto  packedProject = ProjectManifest::load(source.resolve("project.vproject"), &source);
-        require(packedProject.asset(model).fbx == project.asset(model).fbx, "VPK lost its FBX import settings");
-        require(source.contains("Textures/packed.dds") && source.contains("Textures/normal.dds") &&
-                    source.contains("Textures/emission.dds"),
-                "VPK omitted referenced FBX texture dependencies");
         options.cacheDirectory = root / "orca-package-cache";
-        options.fbx            = *packedProject.asset(model).fbx;
+        options.fbx            = {FbxMaterialConvention::eOrcaMetallicRoughness, true};
         const auto packedAsset = importAsset(source.resolve("orca.FbX"), options, &source);
         require(packedAsset.scene.materials[0].baseMetalness == 1 &&
                     packedAsset.textures.images[packedAsset.textures.materials[0][2]].levels[0].bytes ==
@@ -603,23 +558,19 @@ try
 
     writeText(root / "triangle.obj", "mtllib paint.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl paint\nf 1 2 3\n");
     writeText(root / "paint.mtl", "newmtl paint\nKd 0.2 0.4 0.8\n");
-    const auto              object = vultra::loadObj(root / "triangle.obj");
-    const auto              gltf   = vultra::loadGltf(root / "dds.gltf");
-    vultra::SceneTree       packagedTree(std::make_unique<vultra::Node>("Resources"));
-    vultra::ProjectManifest project;
-    project.mainScene = "main.vscene";
-    packagedTree.save(root / project.mainScene);
+    const auto                   object = vultra::loadObj(root / "triangle.obj");
+    const auto                   gltf   = vultra::loadGltf(root / "dds.gltf");
+    std::vector<vultra::VpkFile> files;
     for (const auto* path : {"model.fbx", "color.dds", "dds.gltf", "triangle.bin", "triangle.obj", "paint.mtl"})
     {
-        project.addAsset(path);
+        files.push_back({path, root / path});
     }
-    project.save(root / "project.vproject");
     const auto package = root / "assets.vpk";
-    vultra::packProject(root / "project.vproject", package);
+    vultra::VpkArchive::pack(files, package);
     vultra::AssetSource assets {vultra::VpkArchive(package)};
-    for (const auto& asset : project.assets())
+    for (const auto& file : files)
     {
-        std::filesystem::remove(root / asset.path);
+        std::filesystem::remove(file.source);
     }
     sameScene(parallel, vultra::loadFbx(assets.resolve("model.fbx"), {}, 4, &assets));
     sameScene(gltf, vultra::loadGltf(assets.resolve("dds.gltf"), {}, 4, &assets));

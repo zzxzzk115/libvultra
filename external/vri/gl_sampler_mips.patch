@@ -1,0 +1,22 @@
+--- a/source/backend_gl/core_gl_resource.inc
++++ b/source/backend_gl/core_gl_resource.inc
+@@ -484,7 +484,18 @@
+ #endif
+         glGenSamplers(1, &s);
+     glSamplerParameteri(s, GL_TEXTURE_MAG_FILTER, desc->magFilter == VriFilter_Linear ? GL_LINEAR : GL_NEAREST);
+-    glSamplerParameteri(s, GL_TEXTURE_MIN_FILTER, desc->minFilter == VriFilter_Linear ? GL_LINEAR : GL_NEAREST);
++    GLint minFilter;
++    if (desc->minFilter == VriFilter_Linear)
++    {
++        minFilter = desc->mipmapMode == VriMipmapMode_Linear ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR_MIPMAP_NEAREST;
++    }
++    else
++    {
++        minFilter = desc->mipmapMode == VriMipmapMode_Linear ? GL_NEAREST_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_NEAREST;
++    }
++    glSamplerParameteri(s, GL_TEXTURE_MIN_FILTER, minFilter);
++    glSamplerParameterf(s, GL_TEXTURE_MIN_LOD, desc->minLod);
++    glSamplerParameterf(s, GL_TEXTURE_MAX_LOD, desc->maxLod);
+     glSamplerParameteri(s, GL_TEXTURE_WRAP_S, ToGLAddress(desc->addressModeU));
+     glSamplerParameteri(s, GL_TEXTURE_WRAP_T, ToGLAddress(desc->addressModeV));
+     glSamplerParameteri(s, GL_TEXTURE_WRAP_R, ToGLAddress(desc->addressModeW));

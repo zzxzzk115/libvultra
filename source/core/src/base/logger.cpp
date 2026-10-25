@@ -1,7 +1,11 @@
 #include <vultra/core/base/logger.hpp>
 
 #include <spdlog/sinks/basic_file_sink.h>
+#if defined(__ANDROID__)
+#include <spdlog/sinks/android_sink.h>
+#else
 #include <spdlog/sinks/stdout_color_sinks.h>
+#endif
 
 #include <vector>
 
@@ -11,8 +15,13 @@ namespace vultra
     {
         struct Loggers
         {
+#if defined(__ANDROID__)
+            std::shared_ptr<spdlog::sinks::android_sink_mt> console =
+                std::make_shared<spdlog::sinks::android_sink_mt>("Vultra");
+#else
             std::shared_ptr<spdlog::sinks::stderr_color_sink_mt> console =
                 std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+#endif
             spdlog::logger core {"Vultra", console};
             spdlog::logger app {"App", console};
         };

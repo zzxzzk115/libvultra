@@ -1,18 +1,10 @@
 #include "shader_archive.hpp"
-#include "shader_cache.hpp"
-#include "shader_toolchain_key.hpp"
 
-#include <vultra/core/base/logger.hpp>
-#include <vultra/drivers/rhi/shader_compiler.hpp>
-#include <vultra/platform/os/file.hpp>
+#include <vultra/drivers/rhi/shader_program.hpp>
 
 #include <nlohmann/json.hpp>
-#include <slang.h>
-#include <xxhash.h>
 
 #include <algorithm>
-#include <array>
-#include <fstream>
 #include <set>
 #include <stdexcept>
 
@@ -35,8 +27,32 @@ namespace vultra
 
     } // namespace
 
+    void detail::validateShaderProgram(const ShaderProgram& program, const VriDeviceDesc& device)
+    {
+        // VRI's GL backends consume SPIR-V through their own SPIRV-Cross path.
+        const bool compatible = program.profile == "wgsl" ? device.graphicsAPI == VriGraphicsAPI_WebGPU :
+                                                            (device.graphicsAPI == VriGraphicsAPI_Vulkan ||
+                                                             device.graphicsAPI == VriGraphicsAPI_OpenGL ||
+                                                             device.graphicsAPI == VriGraphicsAPI_OpenGLES);
+        if (!compatible)
+        {
+            throw std::invalid_argument("Device backend cannot consume shader target: " + program.profile);
+        }
+        validateShaderProgram(program);
+        if (program.rayQuery && !device.hasRayQuery)
+        {
+            throw std::invalid_argument("Shader program requires ray query");
+        }
+    }
+
     void detail::validateShaderProgram(const ShaderProgram& program)
     {
+        const bool wgsl = program.profile == "wgsl";
+        if ((!wgsl && !program.profile.starts_with("spirv_")) || program.profile.size() > 64 ||
+            (wgsl && program.rayQuery))
+        {
+            throw std::invalid_argument("Unsupported shader target: " + program.profile);
+        }
         if (program.shaders.empty() || program.shaders.size() > 256)
         {
             throw std::invalid_argument("Shader program needs between 1 and 256 entries");
@@ -50,43 +66,22 @@ namespace vultra
             {
                 throw std::invalid_argument("Invalid or duplicate shader entry: " + name);
             }
-            if (shader.words.size() < 5 || shader.words.front() != 0x07230203 ||
-                shader.words.size() > kMaxFileSize / sizeof(uint32_t))
+            if (wgsl)
+            {
+                if (!shader.words.empty() || shader.wgsl.empty() || shader.wgsl.size() > kMaxFileSize ||
+                    shader.wgsl.find(char(0)) != std::string::npos ||
+                    (shader.entry.stage != VriShaderStage_Vertex && shader.entry.stage != VriShaderStage_Fragment &&
+                     shader.entry.stage != VriShaderStage_Compute))
+                {
+                    throw std::invalid_argument("Invalid WGSL shader: " + name);
+                }
+            }
+            else if (!shader.wgsl.empty() || shader.words.size() < 5 || shader.words.front() != 0x07230203 ||
+                     shader.words.size() > kMaxFileSize / sizeof(uint32_t))
             {
                 throw std::invalid_argument("Invalid SPIR-V bytecode: " + name);
             }
         }
-    }
-
-    ShaderProgram ShaderProgram::compile(const std::filesystem::path&           file,
-                                         std::span<const ShaderEntry>           requested,
-                                         std::span<const std::filesystem::path> includeDirectories,
-                                         bool                                   rayQuery)
-    {
-        ShaderCompileOptions options;
-        options.entries.assign(requested.begin(), requested.end());
-        options.includeDirectories.assign(includeDirectories.begin(), includeDirectories.end());
-        options.rayQuery = rayQuery;
-        return compile(file, options);
-    }
-
-    ShaderProgram ShaderProgram::compile(const std::filesystem::path& file, const ShaderCompileOptions& options)
-    {
-        std::ifstream input(file, std::ios::binary);
-        if (!input)
-        {
-            throw std::runtime_error("Open Slang source: " + file.string());
-        }
-        const std::string source {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
-        return compileSource(file, source, options);
-    }
-
-    ShaderProgram ShaderProgram::compileSource(const std::filesystem::path& file,
-                                               std::string_view             text,
-                                               const ShaderCompileOptions&  options)
-    {
-        ShaderCompiler compiler;
-        return compiler.compileSource(file, text, options);
     }
 
     std::vector<VriShaderDesc> ShaderProgram::descriptors(std::span<const ShaderEntry> entries) const
@@ -110,62 +105,22 @@ namespace vultra
                 throw std::invalid_argument("Shader program has no matching entry/stage: " + entry.name);
             }
             VriShaderDesc desc {};
-            desc.stage          = found->entry.stage;
-            desc.bytecode       = found->words.data();
-            desc.bytecodeSize   = found->words.size() * sizeof(uint32_t);
+            desc.stage = found->entry.stage;
+            if (profile == "wgsl")
+            {
+                // VRI's WebGPU backend consumes NUL-terminated WGSL. The owned string provides that terminator.
+                desc.bytecode     = found->wgsl.c_str();
+                desc.bytecodeSize = found->wgsl.size() + 1;
+            }
+            else
+            {
+                desc.bytecode     = found->words.data();
+                desc.bytecodeSize = found->words.size() * sizeof(uint32_t);
+            }
             desc.entryPointName = found->entry.name.c_str();
             result.push_back(desc);
         }
         return result;
-    }
-
-    std::string ShaderProgram::compilerVersion()
-    {
-        std::string identity = std::string(spGetBuildTagString()) + ";" + kShaderToolchainKey;
-#ifdef NDEBUG
-        identity += ";debug=none";
-#else
-        identity += ";debug=standard";
-#endif
-        return identity;
-    }
-
-    bool ShaderProgram::cook(const std::filesystem::path& source,
-                             const std::filesystem::path& output,
-                             const ShaderCompileOptions&  options)
-    {
-        std::ifstream input(source, std::ios::binary);
-        if (!input)
-        {
-            throw std::runtime_error("Open Slang source: " + source.string());
-        }
-        const std::string text {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
-        const auto        key = detail::shaderCompileKey(source, text, options);
-        if (std::filesystem::is_regular_file(output))
-        {
-            try
-            {
-                const auto previous = load(output);
-                if (previous.compileKey == key &&
-                    detail::shaderDependenciesCurrent(previous.dependencies, source, options))
-                {
-                    Logger::core().info("Shader cache hit: {}", source.string());
-                    return false;
-                }
-            }
-            catch (const std::exception& error)
-            {
-                Logger::core().warn("Rebuilding unreadable shader cache {}: {}", output.string(), error.what());
-            }
-        }
-        Logger::core().info("Cooking raw Slang shader: {}", source.string());
-        auto candidate = compileSource(source, text, options);
-        candidate.save(output);
-        if (!candidate.diagnostics.empty())
-        {
-            Logger::core().warn("{}", candidate.diagnostics);
-        }
-        return true;
     }
 
     void ShaderProgram::save(const std::filesystem::path& file) const
@@ -183,6 +138,18 @@ namespace vultra
         if (document.at("kind") != "raw_slang")
         {
             throw std::invalid_argument("ShaderProgram requires a raw Slang artifact: " + file.string());
+        }
+        auto program = detail::decodeShaderProgram(document);
+        detail::validateShaderProgram(program);
+        return program;
+    }
+
+    ShaderProgram ShaderProgram::load(std::span<const std::byte> bytes, const std::filesystem::path& identity)
+    {
+        const auto document = detail::readShaderArchive(bytes, identity);
+        if (document.at("kind") != "raw_slang")
+        {
+            throw std::invalid_argument("ShaderProgram requires a raw Slang artifact: " + identity.string());
         }
         auto program = detail::decodeShaderProgram(document);
         detail::validateShaderProgram(program);

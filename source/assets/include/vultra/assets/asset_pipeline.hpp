@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vultra/assets/imported_asset.hpp>
 #include <vultra/assets/texture_import.hpp>
 
 namespace vultra
@@ -12,21 +13,6 @@ namespace vultra
         uint32_t              workers  = 0; // Maximum import concurrency; zero selects automatically.
         bool                  cache    = true;
         bool                  reimport = false;
-    };
-
-    struct AssetDependency
-    {
-        std::filesystem::path path;
-        std::string           hash; // XXH3-64 of the exact bytes consumed by the importer.
-    };
-
-    struct ImportedAsset
-    {
-        SceneData                    scene;
-        PreparedTextures             textures;
-        bool                         cacheHit = false;
-        std::filesystem::path        cachePath;
-        std::vector<AssetDependency> dependencies;
     };
 
     // Source files stay untouched. Changed dependencies/options invalidate the derived cache.

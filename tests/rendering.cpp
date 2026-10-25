@@ -40,7 +40,7 @@ namespace
         RenderGraph captureGraph(device);
         const auto  mutableColor = captureGraph.createTexture("mutable", colorTexture({8, 8}));
         captureGraph.addPass("First color",
-                             {{mutableColor, Usage::eColorWrite}},
+                             {{mutableColor, Usage::eColorWrite, true}},
                              [&](auto* cmd, auto& g)
                              {
                                  const float red[4] {1, 0, 0, 1};
@@ -48,7 +48,7 @@ namespace
                                  device.core.CmdEndRendering(cmd);
                              });
         captureGraph.addPass("Second color",
-                             {{mutableColor, Usage::eColorWrite}},
+                             {{mutableColor, Usage::eColorWrite, true}},
                              [&](auto* cmd, auto& g)
                              {
                                  const float blue[4] {0, 0, 1, 1};

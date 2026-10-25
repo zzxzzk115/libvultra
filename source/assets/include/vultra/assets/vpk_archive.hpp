@@ -21,8 +21,15 @@ namespace vultra
     class VpkArchive
     {
     public:
-        explicit VpkArchive(std::filesystem::path file);
+        // Require a canonical relative entry name; return an owned copy without accessing the filesystem.
+        static std::string canonicalPath(std::string_view path);
 
+        explicit VpkArchive(std::filesystem::path file);
+        // Borrow immutable embedded bytes. They must outlive this archive and every copy/source using it.
+        // Identity is a virtual absolute root for asset resolution; it need not exist on disk.
+        VpkArchive(std::filesystem::path identity, std::span<const std::byte> bytes);
+
+        // Physical archive path, or the virtual identity supplied with embedded bytes.
         const std::filesystem::path& file() const;
 
         bool                   contains(std::string_view path) const;
@@ -47,10 +54,11 @@ namespace vultra
         };
 
         VpkArchive(std::filesystem::path file, uint64_t offset, uint64_t length);
-        void                  load(uint64_t offset, uint64_t length);
-        const Entry&          entry(std::string_view path) const;
-        std::filesystem::path m_File;
-        uint64_t              m_Offset = 0;
-        std::vector<Entry>    m_Entries;
+        void                       load(uint64_t offset, uint64_t length);
+        const Entry&               entry(std::string_view path) const;
+        std::filesystem::path      m_File;
+        std::span<const std::byte> m_Bytes;
+        uint64_t                   m_Offset = 0;
+        std::vector<Entry>         m_Entries;
     };
 } // namespace vultra

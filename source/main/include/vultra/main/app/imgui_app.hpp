@@ -9,7 +9,7 @@ namespace vultra
     class ImGuiApp : public DesktopApp
     {
     public:
-        explicit ImGuiApp(const DesktopAppConfig& config = {}, const EditorGuiConfig& guiConfig = {});
+        explicit ImGuiApp(const AppConfig& config = {}, const EditorGuiConfig& guiConfig = {});
 
     protected:
         // Call the base first to finalize UI capture; raw input comes from getWindow().input().

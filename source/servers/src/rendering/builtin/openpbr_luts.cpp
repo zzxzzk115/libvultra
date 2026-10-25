@@ -1,6 +1,5 @@
-#include "../upload.hpp"
-
 #include <vultra/servers/rendering/builtin/openpbr_luts.hpp>
+#include <vultra/servers/rendering/texture_upload.hpp>
 
 #include <glm/glm.hpp>
 #include <interop/openpbr_interop.h>
@@ -9,6 +8,10 @@
 #define OPENPBR_USE_TEXTURE_LUTS 0
 #include <impl/data/openpbr_energy_arrays.h>
 #include <impl/data/openpbr_ltc_array.h>
+
+#include <cstring>
+#include <span>
+#include <utility>
 
 namespace vultra
 {
@@ -56,6 +59,9 @@ namespace vultra
         level.size = {32, uint32_t(pixels.size() / 32)};
         level.bytes.resize(pixels.size() * sizeof(glm::vec4));
         std::memcpy(level.bytes.data(), pixels.data(), level.bytes.size());
-        return uploadTexture(device, TextureFormat::eRgba32Sfloat, sizeof(glm::vec4), {level});
+        TextureData data;
+        data.format = TextureFormat::eRgba32Sfloat;
+        data.levels.push_back(std::move(level));
+        return uploadTextureAsset(device, data);
     }
 } // namespace vultra

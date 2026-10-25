@@ -32,12 +32,10 @@ namespace vultra
 
     EditorGuiInspector::EditorGuiInspector(EditorGui& gui, const char* id, float labelFraction) :
         m_Gui(gui),
+        m_Serial(gui.frameSerial()),
         m_Visible(false)
     {
-        if (!gui.frameActive())
-        {
-            throw std::logic_error("EditorGuiInspector requires an active GUI frame");
-        }
+        m_Gui.requireFrame(m_Serial);
         const float labelWidth = ImGui::GetContentRegionAvail().x * labelFraction;
         m_Visible              = ImGui::BeginTable(id, 2, ImGuiTableFlags_NoSavedSettings);
         if (m_Visible)
@@ -57,6 +55,7 @@ namespace vultra
 
     void EditorGuiInspector::beginRow(EditorGuiProperty property)
     {
+        m_Gui.requireFrame(m_Serial);
         assert(m_Visible);
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
@@ -153,6 +152,7 @@ namespace vultra
 
     std::optional<bool> EditorGuiInspector::drawCustom(EditorGuiProperty property, void* value)
     {
+        m_Gui.requireFrame(m_Serial);
         const auto drawer = m_Gui.propertyDrawer(property.id);
         if (!drawer)
         {
@@ -182,10 +182,11 @@ namespace vultra
         return changed;
     }
 
-    bool EditorGuiInspector::valueField(const PropertyInfo& info, PropertyValue& value)
+    bool EditorGuiInspector::valueField(const PropertySchema& info, PropertyValue& value)
     {
         info.validate(value);
-        const EditorGuiProperty property {info.drawerId, info.label};
+        const EditorGuiProperty property {info.drawerId.empty() ? info.name.c_str() : info.drawerId.c_str(),
+                                          info.label.empty() ? info.name.c_str() : info.label.c_str()};
         if (info.kind == PropertyKind::eBool)
         {
             return boolField(property, &std::get<bool>(value));
@@ -221,11 +222,11 @@ namespace vultra
             ImGui::SetNextItemWidth(-FLT_MIN);
             const auto choice  = std::ranges::find(info.choices, enumeration.value, &PropertyChoice::value);
             bool       changed = false;
-            if (ImGui::BeginCombo("##value", choice == info.choices.end() ? "" : choice->label))
+            if (ImGui::BeginCombo("##value", choice == info.choices.end() ? "" : choice->label.c_str()))
             {
                 for (const auto& option : info.choices)
                 {
-                    if (ImGui::Selectable(option.label, enumeration.value == option.value))
+                    if (ImGui::Selectable(option.label.c_str(), enumeration.value == option.value))
                     {
                         enumeration.value = option.value;
                         changed           = true;

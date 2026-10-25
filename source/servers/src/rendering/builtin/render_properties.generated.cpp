@@ -7,27 +7,25 @@ namespace vultra
 {
     const ObjectTypeInfo& renderSettingsType()
     {
-        static constexpr std::array<int64_t, 3>        pathValues  = {0, 1, 2};
-        static constexpr std::array<PropertyChoice, 2> pathChoices = {{{"NaiveDeferred", 0}, {"NaiveForward", 1}}};
-        static constexpr std::array<int64_t, 3>        toneOperatorValues  = {0, 1, 2};
-        static constexpr std::array<PropertyChoice, 3> toneOperatorChoices = {
-            {{"Aces", 0}, {"None", 1}, {"Reinhard", 2}}};
-        static constexpr std::array<int64_t, 4>        shadowFilterValues  = {0, 1, 2, 3};
-        static constexpr std::array<PropertyChoice, 0> shadowFilterChoices = {{}};
-        static const std::array<PropertyInfo, 24>      properties          = {{
-            {"path",
-             "Path",
-             "path",
-             "/path",
-             PropertyKind::eEnum,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             pathChoices,
-             pathValues,
+        static const std::array<PropertyInfo, 24> properties = {{
+            {{"path",
+              "Path",
+              "path",
+              "/path",
+              PropertyKind::eEnum,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {{"NaiveDeferred", 0}, {"NaiveForward", 1}},
+              {0, 1, 2},
+              PropertyValue {PropertyEnum {static_cast<int64_t>(RenderSettings {}.path)}},
+              PropertyKind::eEnum,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return PropertyEnum {static_cast<int64_t>(static_cast<const RenderSettings*>(object)->path)};
@@ -36,28 +34,25 @@ namespace vultra
              {
                  static_cast<RenderSettings*>(object)->path =
                      static_cast<RenderPath>(std::get<PropertyEnum>(value).value);
-             },
-             []() -> PropertyValue
-             {
-                 return PropertyEnum {static_cast<int64_t>(RenderSettings {}.path)};
-             },
-             PropertyKind::eEnum,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"directionToLight",
-             "directionToLight",
-             "directionToLight",
-             "/directionToLight",
-             PropertyKind::eVector3,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"directionToLight",
+              "directionToLight",
+              "directionToLight",
+              "/directionToLight",
+              PropertyKind::eVector3,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.directionToLight},
+              PropertyKind::eVector3,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->directionToLight;
@@ -65,28 +60,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->directionToLight = std::get<glm::vec3>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.directionToLight;
-             },
-             PropertyKind::eVector3,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"lightColor",
-             "lightColor",
-             "lightColor",
-             "/lightColor",
-             PropertyKind::eVector3,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"lightColor",
+              "lightColor",
+              "lightColor",
+              "/lightColor",
+              PropertyKind::eVector3,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.lightColor},
+              PropertyKind::eVector3,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->lightColor;
@@ -94,28 +86,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->lightColor = std::get<glm::vec3>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.lightColor;
-             },
-             PropertyKind::eVector3,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"ambientColor",
-             "Ambient color",
-             "ambientColor",
-             "/ambientColor",
-             PropertyKind::eVector3,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"ambientColor",
+              "Ambient color",
+              "ambientColor",
+              "/ambientColor",
+              PropertyKind::eVector3,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.ambientColor},
+              PropertyKind::eVector3,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->ambientColor;
@@ -123,28 +112,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->ambientColor = std::get<glm::vec3>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.ambientColor;
-             },
-             PropertyKind::eVector3,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"lightIntensity",
-             "Sun intensity",
-             "lightIntensity",
-             "/lightIntensity",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             10,
-             1,
-             {},
-             {},
+             }},
+            {{"lightIntensity",
+              "Sun intensity",
+              "lightIntensity",
+              "/lightIntensity",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              10,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.lightIntensity},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->lightIntensity;
@@ -152,28 +138,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->lightIntensity = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.lightIntensity;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"environmentIntensity",
-             "environmentIntensity",
-             "environmentIntensity",
-             "/environmentIntensity",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"environmentIntensity",
+              "environmentIntensity",
+              "environmentIntensity",
+              "/environmentIntensity",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.environmentIntensity},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->environmentIntensity;
@@ -181,28 +164,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->environmentIntensity = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.environmentIntensity;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"exposure",
-             "Exposure (EV)",
-             "exposure",
-             "/exposure",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             -4,
-             4,
-             1,
-             {},
-             {},
+             }},
+            {{"exposure",
+              "Exposure (EV)",
+              "exposure",
+              "/exposure",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              -4,
+              4,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.exposure},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->exposure;
@@ -210,28 +190,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->exposure = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.exposure;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"toneOperator",
-             "Tone operator",
-             "toneOperator",
-             "/toneOperator",
-             PropertyKind::eEnum,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             toneOperatorChoices,
-             toneOperatorValues,
+             }},
+            {{"toneOperator",
+              "Tone operator",
+              "toneOperator",
+              "/toneOperator",
+              PropertyKind::eEnum,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {{"Aces", 0}, {"None", 1}, {"Reinhard", 2}},
+              {0, 1, 2},
+              PropertyValue {PropertyEnum {static_cast<int64_t>(RenderSettings {}.toneOperator)}},
+              PropertyKind::eEnum,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return PropertyEnum {static_cast<int64_t>(static_cast<const RenderSettings*>(object)->toneOperator)};
@@ -240,28 +217,25 @@ namespace vultra
              {
                  static_cast<RenderSettings*>(object)->toneOperator =
                      static_cast<ToneOperator>(std::get<PropertyEnum>(value).value);
-             },
-             []() -> PropertyValue
-             {
-                 return PropertyEnum {static_cast<int64_t>(RenderSettings {}.toneOperator)};
-             },
-             PropertyKind::eEnum,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"ibl",
-             "IBL",
-             "ibl",
-             "/ibl",
-             PropertyKind::eBool,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"ibl",
+              "IBL",
+              "ibl",
+              "/ibl",
+              PropertyKind::eBool,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.ibl},
+              PropertyKind::eBool,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->ibl;
@@ -269,28 +243,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->ibl = std::get<bool>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.ibl;
-             },
-             PropertyKind::eBool,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"skybox",
-             "Skybox",
-             "skybox",
-             "/skybox",
-             PropertyKind::eBool,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"skybox",
+              "Skybox",
+              "skybox",
+              "/skybox",
+              PropertyKind::eBool,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.skybox},
+              PropertyKind::eBool,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->skybox;
@@ -298,28 +269,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->skybox = std::get<bool>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.skybox;
-             },
-             PropertyKind::eBool,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"meshShading",
-             "meshShading",
-             "meshShading",
-             "/meshShading",
-             PropertyKind::eBool,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"meshShading",
+              "meshShading",
+              "meshShading",
+              "/meshShading",
+              PropertyKind::eBool,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.meshShading},
+              PropertyKind::eBool,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->meshShading;
@@ -327,28 +295,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->meshShading = std::get<bool>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.meshShading;
-             },
-             PropertyKind::eBool,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"meshletCulling",
-             "meshletCulling",
-             "meshletCulling",
-             "/meshletCulling",
-             PropertyKind::eBool,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"meshletCulling",
+              "meshletCulling",
+              "meshletCulling",
+              "/meshletCulling",
+              PropertyKind::eBool,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.meshletCulling},
+              PropertyKind::eBool,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->meshletCulling;
@@ -356,28 +321,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->meshletCulling = std::get<bool>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.meshletCulling;
-             },
-             PropertyKind::eBool,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"meshletColors",
-             "meshletColors",
-             "meshletColors",
-             "/meshletColors",
-             PropertyKind::eBool,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"meshletColors",
+              "meshletColors",
+              "meshletColors",
+              "/meshletColors",
+              PropertyKind::eBool,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.meshletColors},
+              PropertyKind::eBool,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->meshletColors;
@@ -385,28 +347,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->meshletColors = std::get<bool>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.meshletColors;
-             },
-             PropertyKind::eBool,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"shadowFilter",
-             "shadowFilter",
-             "shadowFilter",
-             "/shadowFilter",
-             PropertyKind::eEnum,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             shadowFilterChoices,
-             shadowFilterValues,
+             }},
+            {{"shadowFilter",
+              "shadowFilter",
+              "shadowFilter",
+              "/shadowFilter",
+              PropertyKind::eEnum,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {0, 1, 2, 3},
+              PropertyValue {PropertyEnum {static_cast<int64_t>(RenderSettings {}.shadowFilter)}},
+              PropertyKind::eEnum,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return PropertyEnum {static_cast<int64_t>(static_cast<const RenderSettings*>(object)->shadowFilter)};
@@ -415,28 +374,25 @@ namespace vultra
              {
                  static_cast<RenderSettings*>(object)->shadowFilter =
                      static_cast<ShadowFilter>(std::get<PropertyEnum>(value).value);
-             },
-             []() -> PropertyValue
-             {
-                 return PropertyEnum {static_cast<int64_t>(RenderSettings {}.shadowFilter)};
-             },
-             PropertyKind::eEnum,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"cacheShadows",
-             "Cache static shadows",
-             "cacheShadows",
-             "/cacheShadows",
-             PropertyKind::eBool,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"cacheShadows",
+              "Cache static shadows",
+              "cacheShadows",
+              "/cacheShadows",
+              PropertyKind::eBool,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.cacheShadows},
+              PropertyKind::eBool,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->cacheShadows;
@@ -444,28 +400,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->cacheShadows = std::get<bool>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.cacheShadows;
-             },
-             PropertyKind::eBool,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"shadowResolution",
-             "shadowResolution",
-             "shadowResolution",
-             "/shadowResolution",
-             PropertyKind::eUInt,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             32,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"shadowResolution",
+              "shadowResolution",
+              "shadowResolution",
+              "/shadowResolution",
+              PropertyKind::eUInt,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              32,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {static_cast<uint64_t>(RenderSettings {}.shadowResolution)},
+              PropertyKind::eUInt,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<uint64_t>(static_cast<const RenderSettings*>(object)->shadowResolution);
@@ -474,28 +427,25 @@ namespace vultra
              {
                  static_cast<RenderSettings*>(object)->shadowResolution =
                      static_cast<uint32_t>(std::get<uint64_t>(value));
-             },
-             []() -> PropertyValue
-             {
-                 return static_cast<uint64_t>(RenderSettings {}.shadowResolution);
-             },
-             PropertyKind::eUInt,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"splitLambda",
-             "splitLambda",
-             "splitLambda",
-             "/splitLambda",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"splitLambda",
+              "splitLambda",
+              "splitLambda",
+              "/splitLambda",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.splitLambda},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->splitLambda;
@@ -503,28 +453,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->splitLambda = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.splitLambda;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"shadowBias",
-             "shadowBias",
-             "shadowBias",
-             "/shadowBias",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"shadowBias",
+              "shadowBias",
+              "shadowBias",
+              "/shadowBias",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.shadowBias},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->shadowBias;
@@ -532,28 +479,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->shadowBias = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.shadowBias;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"normalBias",
-             "normalBias",
-             "normalBias",
-             "/normalBias",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"normalBias",
+              "normalBias",
+              "normalBias",
+              "/normalBias",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.normalBias},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->normalBias;
@@ -561,28 +505,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->normalBias = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.normalBias;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"sunAngularRadius",
-             "sunAngularRadius",
-             "sunAngularRadius",
-             "/sunAngularRadius",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"sunAngularRadius",
+              "sunAngularRadius",
+              "sunAngularRadius",
+              "/sunAngularRadius",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.sunAngularRadius},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->sunAngularRadius;
@@ -590,28 +531,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->sunAngularRadius = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.sunAngularRadius;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"cascadeBlend",
-             "cascadeBlend",
-             "cascadeBlend",
-             "/cascadeBlend",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"cascadeBlend",
+              "cascadeBlend",
+              "cascadeBlend",
+              "/cascadeBlend",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.cascadeBlend},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->cascadeBlend;
@@ -619,28 +557,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->cascadeBlend = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.cascadeBlend;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"roughnessOverride",
-             "roughnessOverride",
-             "roughnessOverride",
-             "/roughnessOverride",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"roughnessOverride",
+              "roughnessOverride",
+              "roughnessOverride",
+              "/roughnessOverride",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.roughnessOverride},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->roughnessOverride;
@@ -648,28 +583,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->roughnessOverride = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.roughnessOverride;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"metalnessOverride",
-             "metalnessOverride",
-             "metalnessOverride",
-             "/metalnessOverride",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"metalnessOverride",
+              "metalnessOverride",
+              "metalnessOverride",
+              "/metalnessOverride",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {RenderSettings {}.metalnessOverride},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const RenderSettings*>(object)->metalnessOverride;
@@ -677,28 +609,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->metalnessOverride = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return RenderSettings {}.metalnessOverride;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"debugMode",
-             "debugMode",
-             "debugMode",
-             "/debugMode",
-             PropertyKind::eUInt,
-             PropertyFlags::eSerialize | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             32,
-             0,
-             0,
-             1,
-             {},
-             {},
+             }},
+            {{"debugMode",
+              "debugMode",
+              "debugMode",
+              "/debugMode",
+              PropertyKind::eUInt,
+              PropertyFlags::eSerialize | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              32,
+              0,
+              0,
+              1,
+              {},
+              {},
+              PropertyValue {static_cast<uint64_t>(RenderSettings {}.debugMode)},
+              PropertyKind::eUInt,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<uint64_t>(static_cast<const RenderSettings*>(object)->debugMode);
@@ -706,17 +635,9 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<RenderSettings*>(object)->debugMode = static_cast<uint32_t>(std::get<uint64_t>(value));
-             },
-             []() -> PropertyValue
-             {
-                 return static_cast<uint64_t>(RenderSettings {}.debugMode);
-             },
-             PropertyKind::eUInt,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
+             }},
         }};
-        static const ObjectTypeInfo type = {"RenderSettings", properties, nullptr, ObjectCategory::eValue};
+        static const ObjectTypeInfo               type       = {"RenderSettings", properties, nullptr, "value"};
         return type;
     }
 

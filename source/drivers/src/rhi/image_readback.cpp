@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <numeric>
 
 namespace vultra
 {
@@ -55,7 +56,7 @@ namespace vultra
 
     namespace
     {
-        VriBufferDesc readbackBuffer(Texture& texture, uint32_t mip)
+        VriBufferDesc readbackBuffer(Device& device, Texture& texture, uint32_t mip)
         {
             if (!(texture.desc.usage & VriTextureUsage_TransferSrc) || texture.desc.sampleNum != 1 ||
                 texture.desc.layerNum != 1 || mip >= texture.desc.mipNum || texture.state.layout == VriLayout_Undefined)
@@ -63,25 +64,38 @@ namespace vultra
                 throw std::invalid_argument(
                     "Readback requires an initialized single-sample, single-layer TransferSrc mip");
             }
-            const uint64_t bytes = uint64_t(std::max(texture.desc.width >> mip, 1u)) *
-                                   std::max(texture.desc.height >> mip, 1u) * texelSize(texture.desc.format);
-            return {bytes, 0, VriBufferUsage_TransferDst, VriMemoryLocation_HostReadback};
+            const auto  texelBytes  = texelSize(texture.desc.format);
+            const auto* description = device.core.GetDeviceDesc(device.handle);
+            // VRI describes buffer/texture rows in texels; the backend supplies their byte alignment.
+            const auto alignment =
+                std::lcm(uint64_t(texelBytes), uint64_t(std::max(description->uploadBufferTextureRowAlignment, 1u)));
+            const auto tight    = uint64_t(std::max(texture.desc.width >> mip, 1u)) * texelBytes;
+            const auto rowBytes = (tight + alignment - 1) / alignment * alignment;
+            if (rowBytes / texelBytes > UINT32_MAX)
+            {
+                throw std::invalid_argument("Readback row length exceeds the VRI copy layout");
+            }
+            return {rowBytes * std::max(texture.desc.height >> mip, 1u),
+                    0,
+                    VriBufferUsage_TransferDst,
+                    VriMemoryLocation_HostReadback};
         }
     } // namespace
 
     ImageReadback::ImageReadback(Device& device, Texture& texture, uint32_t mip) :
         m_Device(device),
-        m_Staging(device, readbackBuffer(texture, mip)),
+        m_Staging(device, readbackBuffer(device, texture, mip)),
         m_Size {std::max(texture.desc.width >> mip, 1u), std::max(texture.desc.height >> mip, 1u)},
         m_Format(texture.desc.format),
         m_Mip(mip),
-        m_TexelBytes(texelSize(texture.desc.format))
+        m_TexelBytes(texelSize(texture.desc.format)),
+        m_RowBytes(m_Staging.desc.size / m_Size.height)
     {
     }
 
     void ImageReadback::record(VriCommandBuffer* cmd, Texture& texture)
     {
-        readbackBuffer(texture, m_Mip);
+        readbackBuffer(m_Device, texture, m_Mip);
         if (texture.desc.format != m_Format || m_Mip >= texture.desc.mipNum ||
             m_Size != Extent {std::max(texture.desc.width >> m_Mip, 1u), std::max(texture.desc.height >> m_Mip, 1u)} ||
             texture.state.layout == VriLayout_Undefined || m_Recorded)
@@ -92,6 +106,7 @@ namespace vultra
         const auto previous = texture.state;
         texture.transition(cmd, {VriAccess_CopySourceRead, VriLayout_CopySource, VriPipelineStage_Transfer});
         VriBufferTextureCopyDesc region {};
+        region.bufferRowLength  = uint32_t(m_RowBytes / m_TexelBytes);
         region.texture.layerNum = 1;
         region.texture.aspect   = m_Format == VriFormat_D32_SFLOAT ? VriImageAspect_Depth : VriImageAspect_Color;
         region.texture.mip      = m_Mip;
@@ -110,7 +125,7 @@ namespace vultra
             throw std::logic_error("Readback has not been recorded");
         }
         const auto size   = m_Size;
-        const auto bytes  = uint64_t(size.width) * size.height * m_TexelBytes;
+        const auto bytes  = m_Staging.desc.size;
         const bool depth  = m_Format == VriFormat_D32_SFLOAT;
         const bool bgra   = m_Format == VriFormat_BGRA8_UNORM || m_Format == VriFormat_BGRA8_SRGB;
         auto&      device = m_Device;
@@ -120,35 +135,38 @@ namespace vultra
         {
             throw std::runtime_error("Map capture buffer failed");
         }
-        if (m_TexelBytes == 16)
+        for (uint32_t row = 0; row < size.height; ++row)
         {
-            std::memcpy(image.rgba.data(), data, bytes);
-        }
-        else
-        {
-            for (size_t i = 0; i < image.rgba.size(); ++i)
+            const auto* sourceRow   = data + size_t(row * m_RowBytes);
+            auto*       destination = image.rgba.data() + size_t(row) * size.width * 4;
+            if (m_TexelBytes == 16)
+            {
+                std::memcpy(destination, sourceRow, size_t(size.width) * m_TexelBytes);
+                continue;
+            }
+            for (size_t i = 0; i < size_t(size.width) * 4; ++i)
             {
                 if (depth)
                 {
                     float value;
-                    std::memcpy(&value, data + (i / 4) * 4, 4);
-                    image.rgba[i] = i % 4 == 3 ? 1 : value;
+                    std::memcpy(&value, sourceRow + (i / 4) * 4, 4);
+                    destination[i] = i % 4 == 3 ? 1 : value;
                 }
                 else if (m_TexelBytes == 4)
                 {
                     const size_t channel = i % 4;
                     const size_t source  = bgra && (channel == 0 || channel == 2) ? i - channel + (2 - channel) : i;
-                    image.rgba[i]        = float(data[source]) / 255;
+                    destination[i]       = float(sourceRow[source]) / 255;
                 }
                 else if (m_TexelBytes == 8)
                 {
                     uint16_t value;
-                    std::memcpy(&value, data + i * 2, 2);
-                    image.rgba[i] = half(value);
+                    std::memcpy(&value, sourceRow + i * 2, 2);
+                    destination[i] = half(value);
                 }
                 else
                 {
-                    std::memcpy(&image.rgba[i], data + i * 4, 4);
+                    std::memcpy(&destination[i], sourceRow + i * 4, 4);
                 }
             }
         }

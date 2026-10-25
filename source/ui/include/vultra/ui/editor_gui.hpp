@@ -56,6 +56,8 @@ namespace vultra
             return m_FrameSerial;
         }
 
+        bool isCurrentFrame(uint64_t serial) const;
+
         void                                   setPropertyDrawer(std::string id, EditorGuiPropertyDrawer drawer);
         void                                   removePropertyDrawer(std::string_view id);
         std::optional<EditorGuiPropertyDrawer> propertyDrawer(std::string_view id) const;
@@ -82,6 +84,9 @@ namespace vultra
         void renderPlatformWindows();
 
     private:
+        friend class EditorGuiFrame;
+        friend class EditorGuiInspector;
+        void requireFrame(uint64_t serial) const;
         EditorGui(Device& device, Window* window, VriFormat targetFormat, const EditorGuiConfig& config);
         void beginFrame();
         struct Viewport;

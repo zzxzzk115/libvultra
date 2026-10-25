@@ -1,6 +1,7 @@
 #include <vultra/assets/shader_asset.hpp>
 #include <vultra/platform/os/file.hpp>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -68,6 +69,61 @@ ENDSLANG
         }
     }
 })";
+
+    void variantBindings(const std::filesystem::path& root)
+    {
+        using namespace vultra;
+        const auto asset  = ShaderAsset::compileSource(root / "variant_bindings.vshader", R"(
+Shader "Tests/VariantBindings"
+{
+    Variant "Base" { Defines { EXTRA = 0 } }
+    Variant "Extra" { Defines { EXTRA = 1 } }
+    SubShader
+    {
+        Pass
+        {
+            Name "Compute"
+            Compute computeMain
+            SLANGPROGRAM
+            [[vk::binding(0, 3)]] RWStructuredBuffer<float> output;
+            #if EXTRA
+            [[vk::binding(1, 3)]] StructuredBuffer<float> extra;
+            #endif
+            [numthreads(1, 1, 1)]
+            void computeMain(uint3 index : SV_DispatchThreadID)
+            {
+                output[index.x] = 1;
+                #if EXTRA
+                output[index.x] += extra[index.x];
+                #endif
+            }
+            ENDSLANG
+        }
+    }
+})");
+        const auto cooked = root / "variant_bindings.vshaderc";
+        asset.save(cooked);
+        const auto restored = ShaderAsset::load(cooked);
+        // A variant can change descriptor layout, not just code; the archive must preserve that distinction.
+        for (const auto* candidate : {&asset, &restored})
+        {
+            const auto& pass   = candidate->subshaders.front().passes.front();
+            const auto  base   = pass.program("Base").resourceBindings();
+            const auto  extra  = pass.program("Extra").resourceBindings();
+            const auto  output = std::ranges::find(base, "output", &ShaderResourceBinding::name);
+            const auto  added  = std::ranges::find(extra, "extra", &ShaderResourceBinding::name);
+            require(output != base.end() && output->set == 3 && output->binding == 0 &&
+                        output->type == VriDescriptorType_StorageBuffer,
+                    "Base variant lost its storage buffer binding");
+            require(std::ranges::find(base, "extra", &ShaderResourceBinding::name) == base.end(),
+                    "Base variant acquired a descriptor from another variant");
+            require(extra.size() == base.size() + 1 && added != extra.end() && added->set == 3 && added->binding == 1 &&
+                        added->type == VriDescriptorType_StructuredBuffer,
+                    "Variant-specific descriptor was lost during compilation or cooking");
+            require(pass.program("Base").compileKey != pass.program("Extra").compileKey,
+                    "Variant defines did not distinguish compiled program identities");
+        }
+    }
 } // namespace
 
 int main()
@@ -235,6 +291,7 @@ ENDSLANG
 
     const auto root = std::filesystem::path("build/.tmp/shader-authoring") / StableId::generate().toString();
     std::filesystem::create_directories(root);
+    variantBindings(root);
     const auto source = root / "material.vshader";
     const auto cooked = root / "material.vshaderc";
     writeFileAtomically(source, std::as_bytes(std::span(kSource.data(), kSource.size())));

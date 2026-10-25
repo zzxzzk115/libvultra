@@ -21,8 +21,9 @@ namespace
                              {"columns", parameter.columns},
                              {"column_major", parameter.columnMajor},
                              {"matrix_stride", parameter.matrixStride},
-                             {"shape", parameter.resourceShape},
-                             {"access", parameter.resourceAccess},
+                             {"descriptor_type",
+                              parameter.descriptorType ? nlohmann::json(*parameter.descriptorType) : nlohmann::json()},
+                             {"view_type", parameter.viewType},
                              {"offsets", nlohmann::json::array()},
                              {"fields", nlohmann::json::array()}};
         for (const auto& offset : parameter.offsets)
@@ -58,7 +59,7 @@ try
     cli.add_argument("--define").append().help("Preprocessor macro NAME=VALUE; may be repeated");
     cli.add_argument("--capability").append().help("Explicit Slang target capability; may be repeated");
     cli.add_argument("--link").append().help("Additional Slang link module; may be repeated");
-    cli.add_argument("--profile").default_value(std::string("spirv_1_5")).help("Slang SPIR-V target profile");
+    cli.add_argument("--profile").default_value(std::string("spirv_1_5")).help("SPIR-V target profile or wgsl");
     cli.add_argument("--ray-query").flag().help("Enable the SPIR-V ray-query capability");
     cli.add_argument("--project-source").help("Write generated Slang documents and source maps for editor services");
     cli.add_argument("--input-text").help("Read unsaved source text from this file using the original source path");

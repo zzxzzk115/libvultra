@@ -5,6 +5,7 @@
 #include <imgui.h>
 
 #include <cstdarg>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -17,6 +18,8 @@ namespace vultra
     {
     public:
         explicit EditorGuiFrame(EditorGui& gui);
+        // Call before mixing raw ImGui commands into this borrowed frame.
+        void requireActive() const;
 
         void   setNextWindowPos(ImVec2 position, ImGuiCond condition = 0);
         void   setNextWindowSize(ImVec2 size, ImGuiCond condition = 0);
@@ -65,6 +68,7 @@ namespace vultra
 
     private:
         EditorGui& m_Gui;
+        uint64_t   m_Serial;
     };
 
     // Shared two-column property layout. Controls live in the right column.

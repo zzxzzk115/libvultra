@@ -186,10 +186,11 @@ namespace vultra
         }
     } // namespace
 
-    BuiltinRenderer::BuiltinRenderer(Device&      device,
-                                     GpuScene&    scene,
-                                     Environment& environment,
-                                     VriFormat    outputFormat) :
+    BuiltinRenderer::BuiltinRenderer(Device&            device,
+                                     GpuScene&          scene,
+                                     Environment&       environment,
+                                     VriFormat          outputFormat,
+                                     const AssetSource* shaders) :
         m_Device(device),
         m_Scene(scene),
         m_Environment(environment),
@@ -356,7 +357,8 @@ namespace vultra
                                               mirrored);
                     },
                     "builtin/shaders",
-                    std::vector<std::filesystem::path> {"builtin/shaders", "external"});
+                    std::vector<std::filesystem::path> {"builtin/shaders", "external"},
+                    shaders);
             };
             for (uint32_t variant = 0; variant < 4; ++variant)
             {
@@ -390,7 +392,8 @@ namespace vultra
                                                   stage == 0 ? VriCompareOp_Less : VriCompareOp_Equal);
                         },
                         "builtin/shaders",
-                        std::vector<std::filesystem::path> {"builtin/shaders", "external"});
+                        std::vector<std::filesystem::path> {"builtin/shaders", "external"},
+                        shaders);
                 }
                 if (scene.meshlets)
                 {
@@ -412,11 +415,12 @@ namespace vultra
                                                   mirrored);
                         },
                         "builtin/shaders",
-                        std::vector<std::filesystem::path> {"builtin/shaders", "external"});
+                        std::vector<std::filesystem::path> {"builtin/shaders", "external"},
+                        shaders);
                 }
             }
             m_Skybox           = pipeline("skybox.slang", false, false, VriFormat_RGBA16_SFLOAT, true);
-            m_ToneMapping      = std::make_unique<ToneMappingPass>(device, m_OutputFormat);
+            m_ToneMapping      = std::make_unique<ToneMappingPass>(device, m_OutputFormat, shaders);
             m_DeferredLighting = pipeline("deferred_lighting.slang", false, false, VriFormat_RGBA16_SFLOAT, true);
         }
         catch (...)
@@ -428,7 +432,7 @@ namespace vultra
 
     BuiltinRenderer::~BuiltinRenderer()
     {
-        m_Device.waitIdle();
+        m_Device.waitIdleForDestruction();
         release();
     }
 

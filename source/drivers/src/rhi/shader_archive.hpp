@@ -12,6 +12,7 @@ namespace slang
 namespace vultra::detail
 {
     void            validateShaderProgram(const ShaderProgram& program);
+    void            validateShaderProgram(const ShaderProgram& program, const VriDeviceDesc& device);
     ShaderParameter reflectShaderParameters(slang::VariableLayoutReflection* globals);
     nlohmann::json  encodeShaderProgram(const ShaderProgram& program);
     ShaderProgram   decodeShaderProgram(const nlohmann::json& document);

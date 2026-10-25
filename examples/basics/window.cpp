@@ -1,13 +1,14 @@
 #include "../common/sample.hpp"
 
-#include <vultra/main/app/desktop_app.hpp>
+#include <vultra/main/app/platform_app.hpp>
 
-class WindowApp final : public vultra::DesktopApp
+class WindowApp final : public vultra::PlatformApp
 {
 public:
     explicit WindowApp(const sample::Options& options) :
-        vultra::DesktopApp(
-            {.title = "Vultra | Window - Clear", .size = {1024, 768}, .swapchainFormat = VriFormat_BGRA8_SRGB}),
+        vultra::PlatformApp(
+            {.title = "Vultra | Window - Clear", .size = {1024, 768}, .swapchainFormat = VriFormat_BGRA8_SRGB},
+            options.launch),
         m_Options(options)
     {
     }
@@ -31,10 +32,10 @@ private:
     sample::Options m_Options;
 };
 
-int runWindow(int argc, char** argv)
+int runWindow(const vultra::AppLaunch& launch, int argc, char** argv)
 try
 {
-    const auto options = sample::readOptions(argc, argv);
+    const auto options = sample::readOptions(argc, argv, launch);
     if (!options)
     {
         return 0;

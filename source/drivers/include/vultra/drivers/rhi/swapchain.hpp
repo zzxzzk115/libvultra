@@ -1,18 +1,25 @@
 #pragma once
 #include <vultra/drivers/rhi/resources.hpp>
-#include <vultra/platform/os/window.hpp>
 
+#include <vri/ext/vri_ext_swapchain.h>
+
+#include <functional>
 #include <memory>
 #include <vector>
 
 namespace vultra
 {
+    class Window;
+
     class Swapchain
     {
     public:
         // sRGB attachments accept linear shader/clear colors. UNORM accepts display-encoded output.
         Swapchain(Device& device, Window& window, VriFormat format = VriFormat_BGRA8_SRGB);
+        // The host keeps the native surface alive through destruction and publishes size changes explicitly.
+        Swapchain(Device& device, VriWindowHandle window, Extent size, VriFormat format);
         ~Swapchain();
+        void resize(Extent size);
         Swapchain(const Swapchain&)            = delete;
         Swapchain& operator=(const Swapchain&) = delete;
         // nullptr means minimized or temporarily out of date. Retry on the next iteration.
@@ -36,10 +43,13 @@ namespace vultra
         }
 
     private:
+        bool                                  prepare(Extent size);
         void                                  refresh();
         void                                  create();
         Device&                               m_Device;
-        Window&                               m_Window;
+        VriWindowHandle                       m_Window;
+        Extent                                m_NativeSize;
+        std::function<Extent()>               m_WindowSize;
         VriSwapChain*                         m_Handle = nullptr;
         VriFormat                             m_Format;
         Extent                                m_Extent {};

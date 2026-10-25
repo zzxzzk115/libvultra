@@ -1,6 +1,7 @@
 -- One dependency closure drives source files, package requirements and standalone targets.
 local requirements = {
     foundation = {},
+    random = {"foundation"},
     math = {"foundation"},
     json = {"foundation"},
     input = {"math"},
@@ -11,67 +12,48 @@ local requirements = {
     gpu = {"image"},
     window = {"input"},
     capture = {"gpu"},
-    swapchain = {"gpu", "window"},
-    desktop = {"swapchain", "capture"},
+    swapchain = {"gpu"},
+    render_app = {"swapchain"},
+    desktop = {"render_app", "window", "capture"},
+    android_entry = {"foundation"},
+    android_app = {"render_app", "input", "android_entry", "capture"},
+    web_app = {"render_app", "input"},
     graph = {"gpu"},
     graph_json = {"graph", "json"},
-    shader = {"gpu", "json"},
-    blit = {"shader"},
+    shader_runtime = {"gpu", "json", "asset_source"},
+    shader = {"shader_runtime"},
+    compute = {"shader"},
+    blit = {"shader_runtime"},
     properties = {"math", "json"},
     editor_gui = {"gpu", "input", "properties"},
     asset_source = {"foundation"},
-    project = {"asset_source", "json"},
-    asset_values = {"properties"},
+    texture_values = {"foundation"},
+    asset_values = {"properties", "texture_values"},
+    asset_jobs = {"asset_values"},
+    meshlet_build = {"asset_jobs"},
+    texture_upload = {"gpu", "texture_values"},
+    gpu_scene = {"asset_values", "texture_upload"},
+    scene_prepare = {"gpu_scene", "texture_import", "meshlet_build"},
     material_values = {"json"},
-    texture_import = {"asset_values", "image_io", "asset_source"},
+    texture_import = {"asset_jobs", "image_io", "asset_source"},
     asset_import = {"texture_import"},
-    game_shader = {"shader", "material_values", "asset_source"},
-    shader_inspector = {"editor_gui", "game_shader", "project"},
+    game_shader_runtime = {"shader_runtime", "material_values", "asset_source"},
+    game_shader = {"game_shader_runtime", "shader"},
+    shader_material = {"game_shader_runtime"},
+    shader_inspector = {"editor_gui", "game_shader", "shader_material"},
     camera = {"input"},
-    rendering = {"graph", "game_shader", "texture_import", "blit"},
-    world = {"asset_values", "material_values", "project", "input_actions"},
-    scene_rendering = {"world", "rendering", "asset_import"},
-    asset_export = {"world", "game_shader", "asset_import"},
+    render_values = {"math"},
+    rendering = {"render_values", "graph", "gpu_scene", "shader_material", "blit", "image_io"},
     resource_pack = {"asset_source"},
     benchmark = {"gpu"},
     dialogs = {"window"},
-    api_scene = {"world"},
-    api_ui = {"editor_gui"},
-    api_host = {"api_scene"},
-    native_sdk = {"foundation"},
-    native_plugin = {"api_host", "native_sdk"},
-    script_host = {"api_host"},
-    script_native = {"script_host", "native_plugin"},
-    script_lua = {"script_host"},
-    script_csharp = {"script_host"},
-    scripting = {"script_native", "script_lua", "script_csharp", "api_ui"},
     xr = {"desktop"},
-    vgui = {"shader", "input", "image_io", "asset_source"},
+    vgui = {"shader_runtime", "input", "image_io", "asset_source"},
     interactive = {"desktop", "shader", "image_io"},
-    engine = {"scene_rendering", "resource_pack"},
-    research_quality = {"image_metrics", "math"},
-    research_graph = {"graph", "json"},
-    research_camera = {"math", "json"},
-    research_project = {"project"},
-    research_reference = {"rendering"},
-    research_experiment = {"scene_rendering", "graph_json", "camera", "research_reference"},
-    research_api = {"rendering", "project", "native_sdk"},
-    research_stereo = {"rendering", "graph_json", "camera", "research_camera", "xr"},
-    research = {"research_quality", "research_graph", "research_camera", "research_project", "research_reference",
-                "research_experiment", "research_api"},
-    research_host = {"research_experiment", "research_graph", "resource_pack", "image_metrics", "script_host"},
     tool_import = {"asset_import"},
     tool_shader = {"game_shader"},
-    tool_pack = {"asset_export"},
-    tool_sdk = {"gpu", "native_sdk"},
-    builtin_pack = {"tool_pack", "tool_sdk", "resource_pack"},
-    tool_batch = {"research_experiment", "research_graph", "benchmark", "capture", "image_metrics", "builtin_pack",
-                  "script_host"},
-    tool_python = {"research_host", "builtin_pack"},
-    tools = {"tool_import", "tool_shader", "tool_pack", "tool_sdk", "tool_batch", "tool_python"},
-    runtime = {"engine", "desktop", "camera", "vgui", "script_host", "builtin_pack"},
-    editor = {"engine", "desktop", "camera", "api_ui", "native_plugin", "shader_inspector", "dialogs", "benchmark", "asset_export",
-              "research", "builtin_pack"}
+    builtin_pack = {"shader", "resource_pack"},
+    tools = {"tool_import", "tool_shader"}
 }
 local root = path.directory(os.scriptdir())
 
@@ -115,11 +97,13 @@ function vultraFeatures()
         name = name:trim()
         count = count + 1
         if name == "all" then
-            for _, feature in ipairs({"editor", "runtime", "tools", "scripting"}) do
-                enable(feature)
-            end
-            if has_config("libvultra_with_openxr") then
-                enable("research_stereo")
+            for feature in pairs(requirements) do
+                local android = feature == "android_entry" or feature == "android_app"
+                local web = feature == "web_app"
+                if (not android or is_plat("android")) and (not web or is_plat("wasm")) and
+                   (feature ~= "xr" or has_config("libvultra_with_openxr")) then
+                    enable(feature)
+                end
             end
         else
             enable(name)
@@ -138,9 +122,6 @@ function vultraFeatures()
     -- Detached GUI windows use real swapchains; offscreen GUI never selects a window backend.
     if selected.editor_gui and selected.window then
         enable("swapchain")
-    end
-    if selected.editor and selected.xr then
-        enable("research_stereo")
     end
     return selected, failure
 end

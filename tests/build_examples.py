@@ -21,17 +21,6 @@ CASES = {
     'mesh': ('basics.mesh-shading', {'example-basics'}, {'graph', 'world', 'editor_gui', 'asset_import'}),
     'offline': ('offline', {'example-offline'}, {'window', 'world', 'editor_gui', 'asset_import', 'rendering'}),
     'ui': ('ui', {'example-ui'}, {'world', 'api_host', 'asset_import', 'game_shader'}),
-    'ui_native': ('ui.native', {'example-ui'}, {'asset_import', 'game_shader', 'script_host'}),
-    'scene': ('scene', {'example-scene'}, {'world', 'api_host', 'script_host', 'research'}),
-    'scene_helmet': ('scene.helmet', {'example-scene'}, {'world', 'script_host', 'research'}),
-    'ray_triangle': ('ray.triangle', {'example-ray'}, {'rendering', 'asset_import', 'world', 'game_shader'}),
-    'ray_cornell': ('ray.cornell', {'example-ray'}, {'rendering', 'world', 'game_shader'}),
-    'ray_query': ('ray.query', {'example-ray'}, {'blit', 'rendering', 'world', 'game_shader'}),
-    'xr_triangle': ('xr.triangle', {'example-xr'}, {'rendering', 'asset_import', 'world', 'game_shader'}),
-    'xr_sponza': ('xr.sponza', {'example-xr'}, {'world', 'script_host', 'research'}),
-    'shader': ('shader', {'example-shader'}, {'world', 'asset_import', 'script_host', 'research'}),
-    'research': ('research', {'example-research'}, {'script_host', 'research', 'research_reference', 'editor'}),
-    'scripting': ('scripting', {'example-scripting'}, {'rendering', 'asset_import', 'research', 'editor'}),
     'mixed': ('basics.window,offline,ui', {'example-basics', 'example-offline', 'example-ui'}, {'world', 'asset_import'}),
 }
 
@@ -57,7 +46,7 @@ def offline(binary, directory, env):
         return output
 
     for label, options in (
-        ('direct', []), ('graph', ['--graph', 'examples/research/color_gain.vgraph']), ('full', ['--gain', '1']),
+        ('direct', []), ('graph', ['--graph', 'examples/offline/color_gain.vgraph']), ('full', ['--gain', '1']),
     ):
         invoke(label, ['--frames', '2', '--output', str(directory / label), *options])
     for name in ('linear.pfm', 'display.png'):
@@ -98,6 +87,7 @@ def main():
         if unknown:
             raise ValueError(f'Unknown example cases: {sorted(unknown)}')
         cases = {name: cases[name] for name in sys.argv[1:]}
+    (ROOT / "build/.tmp").mkdir(parents=True, exist_ok=True)
     evidence = Path(tempfile.mkdtemp(prefix='examples-', dir=ROOT / 'build/.tmp'))
     report_script = evidence / 'report.lua'
     report_script.write_text(REPORT)
@@ -125,25 +115,21 @@ def main():
         assert packages == expected, (name, packages, expected)
         targets = report['targets']
         actual = {target for target, entry in targets.items() if target.startswith('example-') and entry['kind'] == 'binary'}
-        assert actual == binaries, (name, actual, binaries)
+        expected = set(binaries)
+        if 'example-offline' in binaries and 'shader' in features:
+            expected.add('example-offline-cook')
+        assert actual == expected, (name, actual, expected)
         assert not any(target.startswith('test-') or target in ('vultra-runtime', 'vultra-app', 'vultra-batch', 'vultra-research')
                        for target in targets), name
         sources = [str((ROOT / file).resolve()) for file in targets['vultra']['sources']]
         verify_sources(features, sources)
-        if name == 'scene_helmet':
-            assert 'asset-sponza' not in targets and 'asset-damaged-helmet' in targets
-            assert not any('sponza' in file for file in targets['example-scene']['sources'])
         if name == 'window':
             assert 'example-common' not in targets
-        if name == 'ray_query':
-            assert not any('ray_tracing_app' in file for file in targets['example-ray-common']['sources'])
-        if name == 'ui':
-            assert 'example-native-plugin' not in targets
         for target in sorted(binaries):
             binary = (ROOT / targets[target]['file']).resolve()
             verify_dependencies(binary, features, directory / (target + '-dynamic.log'), case_env)
             help_text = run([str(binary), '--help'], directory / (target + '-help.log'), env=case_env, cwd=ROOT)
-            if target in ('example-basics', 'example-scene', 'example-ray', 'example-xr'):
+            if target in ('example-basics',):
                 group = target.removeprefix('example-')
                 modes = [line.split()[0] for line in help_text.splitlines() if line.startswith('  ')]
                 wanted = [id.split('.', 1)[1] for id in selection.split(',') if id.startswith(group + '.')]
@@ -153,13 +139,8 @@ def main():
                     run([str(binary), mode, '--help'], directory / (mode + '-help.log'), env=case_env, cwd=ROOT)
             if target == 'example-offline':
                 offline(binary, directory, case_env)
-            if name == 'ui':
-                text = run([str(binary), '--frames', '1'], directory / 'missing-plugin.log', succeeds=False,
-                           env=case_env | {'VULTRA_NATIVE_PLUGIN': 'unused.so'}, cwd=ROOT)
-                assert 'requires the ui.native' in text
         print(f'{name}: real example sources, packages, modes and CLI verified', flush=True)
-    for selection, message in (('missing', 'Unknown Vultra example selection'),
-                               ('xr.triangle', 'XR examples require libvultra_with_openxr=true')):
+    for selection, message in (('missing', 'Unknown Vultra example selection'),):
         output = run(['xmake', 'f', '-y', '-c', '--libvultra_features=foundation', '--libvultra_build_tests=n',
                       '--libvultra_build_examples=y', '--libvultra_examples=' + selection, '--libvultra_with_openxr=n'],
                      evidence / (selection + '-rejected.log'), succeeds=False,

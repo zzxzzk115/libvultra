@@ -22,8 +22,14 @@ namespace vultra
     class GpuScene
     {
     public:
+        GpuScene(Device&                 device,
+                 const SceneData&        scene,
+                 const PreparedTextures& textures,
+                 const MeshletData*      meshlets = nullptr);
+#ifdef VULTRA_WITH_SCENE_PREPARATION
         GpuScene(Device& device, const SceneData& scene, bool meshShading = false, uint32_t workers = 0);
         GpuScene(Device& device, const ImportedAsset& asset, bool meshShading = false, uint32_t workers = 0);
+#endif
         // The caller writes only after the previous frame completes.
         void                   setPrimitiveTransforms(uint32_t first, uint32_t count, const glm::mat4& transform);
         bool                   primitiveMirrored(uint32_t index) const;
@@ -44,11 +50,6 @@ namespace vultra
         std::unique_ptr<GpuMeshlets>                             meshlets;
 
     private:
-        GpuScene(Device&                 device,
-                 const SceneData&        scene,
-                 const PreparedTextures& prepared,
-                 bool                    meshShading,
-                 uint32_t                workers);
         Device&                      m_Device;
         std::vector<uint8_t>         m_Mirrored;
         std::vector<glm::mat4>       m_Transforms;

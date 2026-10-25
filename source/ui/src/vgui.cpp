@@ -23,6 +23,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -197,7 +198,7 @@ namespace vultra
         class RmlRenderer final : public Rml::RenderInterface
         {
         public:
-            RmlRenderer(Device& device, VriFormat targetFormat, RmlFiles& files) :
+            RmlRenderer(Device& device, VriFormat targetFormat, RmlFiles& files, const AssetSource* shaders) :
                 m_Device(device),
                 m_Files(files)
             {
@@ -266,7 +267,8 @@ namespace vultra
                             return result;
                         },
                         "builtin/shaders",
-                        std::vector<std::filesystem::path> {"builtin/shaders"});
+                        std::vector<std::filesystem::path> {"builtin/shaders"},
+                        shaders);
                     const std::array<Rml::byte, 4> white {255, 255, 255, 255};
                     m_White = reinterpret_cast<UiTexture*>(GenerateTexture({white.data(), white.size()}, {1, 1}));
                 }
@@ -582,7 +584,9 @@ namespace vultra
 
             void ProcessEvent(Rml::Event&) override
             {
-                m_Callback();
+                // A callback may replace its document and destroy this listener while it runs.
+                auto callback = m_Callback;
+                callback();
             }
 
         private:
@@ -633,23 +637,23 @@ namespace vultra
             }
         }
 
-        int modifiers(const Input& input)
+        int modifiers(uint32_t flags)
         {
             using namespace Rml::Input;
             int result = 0;
-            if (input.isKeyHeld(KeyCode::eLCtrl) || input.isKeyHeld(KeyCode::eRCtrl))
+            if ((flags & uint32_t(InputModifier::eControl)) != 0)
             {
                 result |= KM_CTRL;
             }
-            if (input.isKeyHeld(KeyCode::eLShift) || input.isKeyHeld(KeyCode::eRShift))
+            if ((flags & uint32_t(InputModifier::eShift)) != 0)
             {
                 result |= KM_SHIFT;
             }
-            if (input.isKeyHeld(KeyCode::eLAlt) || input.isKeyHeld(KeyCode::eRAlt))
+            if ((flags & uint32_t(InputModifier::eAlt)) != 0)
             {
                 result |= KM_ALT;
             }
-            if (input.isKeyHeld(KeyCode::eLGUI) || input.isKeyHeld(KeyCode::eRGUI))
+            if ((flags & uint32_t(InputModifier::eMeta)) != 0)
             {
                 result |= KM_META;
             }
@@ -659,11 +663,16 @@ namespace vultra
 
     struct VGui::Impl
     {
-        Impl(Device& device, Window* window, Extent size, VriFormat format, const AssetSource* source) :
+        Impl(Device&            device,
+             Window*            window,
+             Extent             size,
+             VriFormat          format,
+             const AssetSource* source,
+             const AssetSource* shaders) :
             window(window),
             source(source),
             files(source),
-            renderer(device, format, files)
+            renderer(device, format, files, shaders)
         {
             if (size.empty())
             {
@@ -724,6 +733,164 @@ namespace vultra
             Rml::Shutdown();
         }
 
+        Rml::Vector2i dimensions(Extent framebuffer)
+        {
+            auto size = framebuffer;
+#ifdef VULTRA_VGUI_WINDOW
+            if (window)
+            {
+                size = window->size();
+            }
+#endif
+            if (size.empty() || framebuffer.empty())
+            {
+                return {};
+            }
+            const Rml::Vector2i logical {int(size.width), int(size.height)};
+            context->SetDimensions(logical);
+            return logical;
+        }
+
+        bool ownsKeyboard() const
+        {
+            const auto* focused = context->GetFocusElement();
+            return focused && document && focused != document && focused->GetOwnerDocument() == document;
+        }
+
+        void cancelPointer()
+        {
+            context->ProcessMouseLeave();
+            if (context->IsMouseInteracting())
+            {
+                context->ProcessMouseButtonUp(0, 0);
+            }
+            if (context->IsMouseInteracting())
+            {
+                // RmlUi 6.2 autoscroll ends on mouse-down. After leave, this balanced click targets no element.
+                context->ProcessMouseButtonDown(0, 0);
+                context->ProcessMouseButtonUp(0, 0);
+            }
+        }
+
+        void clearControlFocus()
+        {
+            if (auto* focused = context->GetFocusElement(); focused && focused != document)
+            {
+                // Element::Blur only moves focus to its parent, which may still be an interactive panel.
+                if (document && focused->GetOwnerDocument() == document)
+                {
+                    document->Focus();
+                }
+            }
+        }
+
+        void refreshCapture(bool visible)
+        {
+            capture.mouse = visible && inputFocused && !higherCapture.mouse &&
+                            (frameCapture.mouse || context->IsMouseInteracting());
+            capture.keyboard =
+                visible && inputFocused && !higherCapture.keyboard && (frameCapture.keyboard || ownsKeyboard());
+            const auto* focused     = context->GetFocusElement();
+            bool        textFocused = false;
+            if (capture.keyboard && focused)
+            {
+                if (focused->GetTagName() == "textarea")
+                {
+                    textFocused = true;
+                }
+                else if (focused->GetTagName() == "input")
+                {
+                    const auto type = focused->GetAttribute<Rml::String>("type", "text");
+                    textFocused     = type == "text" || type == "password";
+                }
+            }
+            if (textFocused != textInputActive)
+            {
+#ifdef VULTRA_VGUI_WINDOW
+                if (window)
+                {
+                    window->setTextInputEnabled(textFocused);
+                }
+#endif
+                textInputActive = textFocused;
+            }
+        }
+
+        void processEvent(InputEvent& event)
+        {
+            std::visit(
+                [&](const auto& value)
+                {
+                    using Event = std::decay_t<decltype(value)>;
+                    if constexpr (std::is_same_v<Event, KeyInput>)
+                    {
+                        const auto key     = toRmlKey(value.key);
+                        const bool focused = ownsKeyboard();
+                        if (key != Rml::Input::KI_UNKNOWN)
+                        {
+                            const bool propagate = value.action == InputAction::eRelease ?
+                                                       context->ProcessKeyUp(key, modifiers(value.modifiers)) :
+                                                       context->ProcessKeyDown(key, modifiers(value.modifiers));
+                            event.consumed       = focused || !propagate || ownsKeyboard();
+                        }
+                        else
+                        {
+                            event.consumed = focused;
+                        }
+                    }
+                    else if constexpr (std::is_same_v<Event, TextInput>)
+                    {
+                        const bool focused   = ownsKeyboard();
+                        const bool propagate = context->ProcessTextInput(value.text);
+                        event.consumed       = focused || !propagate || ownsKeyboard();
+                    }
+                    else if constexpr (std::is_same_v<Event, MouseMotionInput>)
+                    {
+                        event.consumed = !context->ProcessMouseMove(int(value.position.x),
+                                                                    int(value.position.y),
+                                                                    modifiers(value.modifiers));
+                    }
+                    else if constexpr (std::is_same_v<Event, MouseButtonInput>)
+                    {
+                        int button = -1;
+                        switch (value.button)
+                        {
+                            case MouseCode::eLeft:
+                                button = 0;
+                                break;
+                            case MouseCode::eRight:
+                                button = 1;
+                                break;
+                            case MouseCode::eMiddle:
+                                button = 2;
+                                break;
+                            default:
+                                break;
+                        }
+                        if (button >= 0)
+                        {
+                            const int mods = modifiers(value.modifiers);
+                            context->ProcessMouseMove(int(value.position.x), int(value.position.y), mods);
+                            if (value.held && button == 0 && !context->IsMouseInteracting())
+                            {
+                                clearControlFocus();
+                            }
+                            event.consumed = value.held ? !context->ProcessMouseButtonDown(button, mods) :
+                                                          !context->ProcessMouseButtonUp(button, mods);
+                        }
+                    }
+                    else if constexpr (std::is_same_v<Event, MouseScrollInput>)
+                    {
+                        const int mods = modifiers(value.modifiers);
+                        context->ProcessMouseMove(int(value.position.x), int(value.position.y), mods);
+                        const bool mouse     = context->IsMouseInteracting();
+                        const bool propagate = context->ProcessMouseWheel({-value.delta.x, -value.delta.y}, mods);
+                        event.consumed       = mouse || !propagate;
+                    }
+                },
+                event.value);
+        }
+
         Window*                                     window;
         const AssetSource*                          source;
         RmlFiles                                    files;
@@ -733,23 +900,34 @@ namespace vultra
         Rml::ElementDocument*                       document = nullptr;
         std::vector<std::unique_ptr<EventListener>> listeners;
         InputCapture                                capture;
+        InputCapture                                higherCapture;
+        InputCapture                                frameCapture;
+        bool                                        inputFocused    = true;
         bool                                        textInputActive = false;
     };
 
 #ifdef VULTRA_VGUI_WINDOW
-    VGui::VGui(Device& device, Window& window, VriFormat targetFormat, const AssetSource* source) :
-        m_Impl(std::make_unique<Impl>(device, &window, window.size(), targetFormat, source))
+    VGui::VGui(Device&            device,
+               Window&            window,
+               VriFormat          targetFormat,
+               const AssetSource* source,
+               const AssetSource* shaders) :
+        m_Impl(std::make_unique<Impl>(device, &window, window.size(), targetFormat, source, shaders))
     {
     }
 #else
-    VGui::VGui(Device&, Window&, VriFormat, const AssetSource*)
+    VGui::VGui(Device&, Window&, VriFormat, const AssetSource*, const AssetSource*)
     {
         throw std::invalid_argument("Window-backed VGui requires the window feature");
     }
 #endif
 
-    VGui::VGui(Device& device, Extent size, VriFormat targetFormat, const AssetSource* source) :
-        m_Impl(std::make_unique<Impl>(device, nullptr, size, targetFormat, source))
+    VGui::VGui(Device&            device,
+               Extent             size,
+               VriFormat          targetFormat,
+               const AssetSource* source,
+               const AssetSource* shaders) :
+        m_Impl(std::make_unique<Impl>(device, nullptr, size, targetFormat, source, shaders))
     {
     }
 
@@ -905,77 +1083,84 @@ namespace vultra
         }
     }
 
-    void VGui::update(const Input& input, Extent framebuffer)
+    void VGui::processInput(Input& input, Extent framebuffer, InputCapture earlierCapture)
     {
-        auto size = framebuffer;
-#ifdef VULTRA_VGUI_WINDOW
-        if (m_Impl->window)
+        m_Impl->higherCapture = earlierCapture;
+        m_Impl->frameCapture  = {};
+        const auto logical    = m_Impl->dimensions(framebuffer);
+        const bool visible    = logical.x > 0 && logical.y > 0;
+        if (!visible)
         {
-            size = m_Impl->window->size();
-        }
-#endif
-        if (size.empty() || framebuffer.empty())
-        {
+            m_Impl->cancelPointer();
+            m_Impl->clearControlFocus();
+            m_Impl->inputFocused = input.focused();
+            m_Impl->refreshCapture(false);
             return;
         }
-        const Rml::Vector2i logical {int(size.width), int(size.height)};
-        m_Impl->context->SetDimensions(logical);
-        const int mods = modifiers(input);
-        for (int index = int(KeyCode::eA); index < int(KeyCode::eCount); ++index)
+        // Retained hit-test layout must include document/size changes before the first input event.
+        m_Impl->context->Update();
+        if (earlierCapture.mouse)
         {
-            const auto key        = KeyCode(index);
-            const auto translated = toRmlKey(key);
-            if (translated == Rml::Input::KI_UNKNOWN)
+            m_Impl->cancelPointer();
+        }
+        if (earlierCapture.keyboard)
+        {
+            m_Impl->clearControlFocus();
+        }
+        for (auto& event : input.events())
+        {
+            if (const auto* focus = std::get_if<FocusInput>(&event.value))
+            {
+                m_Impl->inputFocused = focus->focused;
+                if (!focus->focused)
+                {
+                    m_Impl->cancelPointer();
+                    m_Impl->clearControlFocus();
+                }
+                continue;
+            }
+            if (!m_Impl->inputFocused)
             {
                 continue;
             }
-            if (input.isKeyPressed(key) || input.isKeyRepeated(key))
+            const bool pointer = std::holds_alternative<MouseMotionInput>(event.value) ||
+                                 std::holds_alternative<MouseButtonInput>(event.value) ||
+                                 std::holds_alternative<MouseScrollInput>(event.value);
+            if (inputCaptured(event, earlierCapture))
             {
-                m_Impl->context->ProcessKeyDown(translated, mods);
+                if (pointer)
+                {
+                    m_Impl->cancelPointer();
+                }
+                continue;
             }
-            if (input.isKeyReleased(key))
+            m_Impl->processEvent(event);
+            if (event.consumed)
             {
-                m_Impl->context->ProcessKeyUp(translated, mods);
-            }
-        }
-        if (!input.textInput().empty())
-        {
-            m_Impl->context->ProcessTextInput(std::string(input.textInput()));
-        }
-        const auto mouse = input.mousePosition();
-        m_Impl->context->ProcessMouseMove(int(mouse.x), int(mouse.y), mods);
-        for (const auto [button, index] :
-             {std::pair {MouseCode::eLeft, 0}, std::pair {MouseCode::eRight, 1}, std::pair {MouseCode::eMiddle, 2}})
-        {
-            if (input.isMouseButtonPressed(button))
-            {
-                m_Impl->context->ProcessMouseButtonDown(index, mods);
-            }
-            if (input.isMouseButtonReleased(button))
-            {
-                m_Impl->context->ProcessMouseButtonUp(index, mods);
+                m_Impl->frameCapture.mouse |= pointer;
+                m_Impl->frameCapture.keyboard |= !pointer;
             }
         }
-        const auto wheel = input.mouseScrollDelta();
-        if (wheel.x != 0 || wheel.y != 0)
+        if (!input.focused())
         {
-            m_Impl->context->ProcessMouseWheel({-wheel.x, -wheel.y}, mods);
+            m_Impl->cancelPointer();
+            m_Impl->clearControlFocus();
+        }
+        m_Impl->inputFocused = input.focused();
+        m_Impl->refreshCapture(true);
+        m_Impl->files.check();
+    }
+
+    void VGui::update(Extent framebuffer)
+    {
+        const auto logical = m_Impl->dimensions(framebuffer);
+        if (logical.x <= 0 || logical.y <= 0)
+        {
+            m_Impl->refreshCapture(false);
+            return;
         }
         m_Impl->context->Update();
-        m_Impl->capture.mouse    = m_Impl->context->IsMouseInteracting();
-        const auto* focused      = m_Impl->context->GetFocusElement();
-        const bool  textFocused  = focused && (focused->GetTagName() == "input" || focused->GetTagName() == "textarea");
-        m_Impl->capture.keyboard = focused && focused != m_Impl->document;
-        if (textFocused != m_Impl->textInputActive)
-        {
-#ifdef VULTRA_VGUI_WINDOW
-            if (m_Impl->window)
-            {
-                m_Impl->window->setTextInputEnabled(textFocused);
-            }
-#endif
-            m_Impl->textInputActive = textFocused;
-        }
+        m_Impl->refreshCapture(true);
         m_Impl->renderer.beginFrame(logical, framebuffer);
         m_Impl->context->Render();
         m_Impl->files.check();

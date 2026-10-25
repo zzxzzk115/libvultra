@@ -1,4 +1,4 @@
-"""Verify standalone tool/player selections and run their windowless delivery operations."""
+"""Verify library cooking tools and run copied executables without xmake on PATH."""
 
 import json
 import os
@@ -37,24 +37,19 @@ REPORT = """function main(output)
 end
 """
 CONSUMERS = {
-    "tool_import": "vultra-import", "tool_shader": "vultra-shader", "tool_pack": "vultra-pack",
-    "tool_sdk": "vultra-sdk", "tool_batch": "vultra-batch", "tool_python": "vultra-research",
-    "runtime": "vultra-runtime", "editor": "vultra-app", "builtin_pack": "vultra-builtin-pack",
+    "tool_import": "vultra-import", "tool_shader": "vultra-shader", "builtin_pack": "vultra-builtins",
 }
 
 
 def main():
+    (ROOT / "build/.tmp").mkdir(parents=True, exist_ok=True)
     evidence = Path(tempfile.mkdtemp(prefix="tools-", dir=ROOT / "build/.tmp"))
     report_script = evidence / "report.lua"
     report_script.write_text(REPORT)
     env = os.environ.copy()
     for name in ("DISPLAY", "WAYLAND_DISPLAY"):
         env.pop(name, None)
-    cases = {
-        "tool_import": "tool_import", "tool_shader": "tool_shader", "tool_pack": "tool_pack",
-        "tool_sdk": "tool_sdk", "tool_batch": "tool_batch", "tool_python": "tool_python",
-        "runtime": "runtime", "runtime_ui": "runtime,api_ui", "editor": "editor",
-    }
+    cases = {feature: feature for feature in CONSUMERS}
     if len(sys.argv) > 1:
         unknown = set(sys.argv[1:]) - cases.keys()
         if unknown:
@@ -91,20 +86,12 @@ def main():
         verify_sources(features, sources)
         if any("extensions" in Path(file).parts for file in sources):
             raise RuntimeError(f"{name} compiled research code into the core")
-        if "runtime" in features:
-            dependencies = targets["vultra-runtime"]["deps"]
-            if any("research" in dep or dep == "vultra-app" for dep in dependencies):
-                raise RuntimeError(f"Player acquired a research/editor dependency: {dependencies}")
-            if "research" in features or "editor" in features or "tools" in features:
-                raise RuntimeError("Player selected the research/editor/tool convenience groups")
-        if "script_csharp" not in features and "vultra-managed-host" in targets:
-            raise RuntimeError(f"{name} registered an unselected managed build")
         for target, description in targets.items():
             if description["kind"] not in ("binary", "shared"):
                 continue
             executable = (ROOT / description["file"]).resolve()
             verify_dependencies(executable, features, directory / (target + "-dynamic.log"), case_env)
-            if description["kind"] == "binary":
+            if description["kind"] == "binary" and target != "vultra-builtins":
                 # Copy the built CLI outside its build tree and remove xmake from the process PATH.
                 delivered = directory / executable.name
                 shutil.copy2(executable, delivered)
@@ -120,8 +107,8 @@ def main():
                 raise RuntimeError("Delivered importer did not reuse its asset cache")
         if name == "tool_shader":
             binary = directory / Path(targets["vultra-shader"]["file"]).name
-            for label, source in (("native", "examples/research/shaders/triangle.slang"),
-                                  ("game", "examples/shader/painted_metal.vshader")):
+            for label, source in (("native", "examples/offline/shaders/triangle.slang"),
+                                  ("game", "tests/platform/material.vshader")):
                 artifact = directory / (label + ".vshaderc")
                 run([str(binary), str(ROOT / source), "--output", str(artifact), "--include",
                      str(ROOT / "builtin/shaders"), "--include", str(ROOT / "external"), "--include",
@@ -129,32 +116,15 @@ def main():
                     directory / (label + ".log"), env=case_env | {"PATH": str(directory)}, cwd=directory)
                 if not artifact.is_file() or artifact.stat().st_size == 0:
                     raise RuntimeError("Delivered shader tool did not cook an artifact")
-        if name == "tool_pack":
-            binary = directory / Path(targets["vultra-pack"]["file"]).name
-            package = directory / "research.vpk"
-            delivered_env = case_env | {"PATH": str(directory)}
-            run([str(binary), str(ROOT / "resources/research.vproject"), str(package), "--engine", str(ROOT)],
-                directory / "pack.log", env=delivered_env, cwd=directory)
-            embedded = directory / "embedded-packer"
-            run([str(binary), "--embed", str(binary), str(package), str(embedded)],
-                directory / "embed.log", env=delivered_env, cwd=directory)
-            run([str(embedded), "--help"], directory / "embedded.log", env=delivered_env, cwd=directory)
-        if name == "tool_sdk":
-            source = directory / "sdk.c"
-            source.write_text('#include <vultra/api/native_plugin.h>\n'
-                              '#include <vultra/research/api/research_host.h>\n'
-                              '#include <vultra/research/api/research_api.h>\n'
-                              'int main(void) { VultraHostApi host = {0}; return host.ui != 0; }\n')
-            binary = directory / "sdk-probe"
-            run(["cc", "-std=c11", "-Werror", "-I", str(ROOT / "build/sdk/include"), str(source), "-o", str(binary)],
-                directory / "sdk-compile.log", env=case_env, cwd=directory)
-            run([str(binary)], directory / "sdk-run.log", env=case_env | {"PATH": str(directory)}, cwd=directory)
-        if name == "runtime":
-            binary = directory / Path(targets["vultra-runtime"]["file"]).name
-            output = run([str(binary), "--debug-ui"], directory / "missing-ui.log", succeeds=False,
-                         env=case_env | {"PATH": str(directory)}, cwd=directory)
-            if "requires the api_ui feature" not in output:
-                raise RuntimeError("Player did not reject unavailable UI before creating a window")
+        if name == "builtin_pack":
+            executable = (ROOT / targets["vultra-builtins"]["file"]).resolve()
+            delivered = directory / executable.name
+            shutil.copy2(executable, delivered)
+            package = directory / "builtin.vpk"
+            run([str(delivered), str(ROOT), str(package)], directory / "cook.log",
+                env=case_env | {"PATH": str(directory)}, cwd=directory)
+            if not package.is_file() or package.stat().st_size == 0:
+                raise RuntimeError("Delivered builtin cooker did not create a package")
         print(f"{name}: selected sources/packages/consumers and delivered CLI checks passed", flush=True)
     print(f"Tool delivery evidence: {evidence}", flush=True)
 

@@ -89,14 +89,10 @@ namespace vultra
 
     RenderingServer::~RenderingServer() = default;
 
-    GpuSceneHandle RenderingServer::uploadScene(const SceneData& scene, bool meshShading, uint32_t workers)
+    GpuSceneHandle
+    RenderingServer::uploadScene(const SceneData& scene, const PreparedTextures& textures, const MeshletData* meshlets)
     {
-        return insert(std::make_unique<GpuScene>(m_Device, scene, meshShading, workers));
-    }
-
-    GpuSceneHandle RenderingServer::uploadScene(const ImportedAsset& asset, bool meshShading, uint32_t workers)
-    {
-        return insert(std::make_unique<GpuScene>(m_Device, asset, meshShading, workers));
+        return insert(std::make_unique<GpuScene>(m_Device, scene, textures, meshlets));
     }
 
     GpuSceneHandle RenderingServer::insert(std::unique_ptr<GpuScene> scene)

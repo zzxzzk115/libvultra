@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="35" />
+    <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00401000" android:required="true" />
+    <application android:label="Vultra Example" android:theme="@style/Theme.AppCompat.NoActionBar">
+        <activity android:name="com.google.androidgamesdk.GameActivity" android:exported="true"
+                  android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|density">
+            <meta-data android:name="android.app.lib_name" android:value="VULTRA_LIBRARY" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

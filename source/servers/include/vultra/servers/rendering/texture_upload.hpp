@@ -9,4 +9,5 @@ namespace vultra
 {
     // Uploads every authored subresource; the caller must establish completion before replacing a live texture.
     std::unique_ptr<Texture> uploadTextureAsset(Device& device, const TextureAssetData& data);
+    std::unique_ptr<Texture> uploadTextureAsset(Device& device, const TextureData& data);
 } // namespace vultra

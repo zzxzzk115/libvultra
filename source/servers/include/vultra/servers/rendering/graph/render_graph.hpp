@@ -43,6 +43,8 @@ namespace vultra
         {
             Resource resource;
             Usage    usage;
+            // A write fully replaces the resource. The callback must not load or preserve its old content.
+            bool discardPrevious = false;
         };
 
         struct ResourceInfo
@@ -66,6 +68,7 @@ namespace vultra
         {
             uint32_t resourceIndex;
             Usage    usage;
+            bool     discardPrevious = false;
         };
 
         struct PassInfo
@@ -74,6 +77,8 @@ namespace vultra
             bool                     active = false;
             std::vector<size_t>      dependencies;
             std::vector<PassUseInfo> uses;
+            // Data producers needed for this pass, excluding write-after-read/write ordering alone.
+            std::vector<size_t> contentDependencies;
         };
 
         struct Snapshot
@@ -120,6 +125,8 @@ namespace vultra
         Snapshot                 snapshot() const; // compiled pass/resource plan; no GPU readback
 
     private:
+        friend class PassCatalog;
+
         struct Entry
         {
             std::string              name;
@@ -147,6 +154,7 @@ namespace vultra
             bool                sideEffect = false;
             bool                live       = false;
             std::vector<size_t> dependencies;
+            std::vector<size_t> contentDependencies;
         };
 
         Entry&                lookup(Resource resource);

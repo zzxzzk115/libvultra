@@ -28,11 +28,16 @@ namespace vultra
         ShaderMaterial&    material(uint32_t index);
         uint64_t           generation() const;
         const std::string& diagnostics() const;
-        bool               compiling() const;
+#ifdef VULTRA_WITH_GAME_SHADER_COMPILER
+        bool compiling() const;
+#endif
 
         // Call after GPU completion. The callback binds current host resources and prepares required candidate passes.
         // References obtained from instance()/material() expire on successful publication.
+#ifdef VULTRA_WITH_GAME_SHADER_COMPILER
+        // Host source watching/compilation is separate from cooked material ownership.
         bool poll(const PrepareCandidate& prepare = {});
+#endif
         bool reload(const PrepareCandidate& prepare = {});
 
     private:

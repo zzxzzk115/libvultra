@@ -56,45 +56,44 @@ namespace vultra
                 }
             }
         }
-
-        std::vector<double>
-        parameterValues(const PassDefinition& definition, std::string_view name, const PassParameters& parameters)
-        {
-            for (const auto& [key, value] : parameters)
-            {
-                if (!std::ranges::any_of(definition.parameters,
-                                         [&](const auto& parameter)
-                                         {
-                                             return parameter.name == key;
-                                         }))
-                {
-                    throw std::invalid_argument(std::string(name) + ": unknown parameter: " + key);
-                }
-            }
-            std::vector<double> values;
-            values.reserve(definition.parameters.size());
-            for (const auto& parameter : definition.parameters)
-            {
-                const auto found = parameters.find(parameter.name);
-                const auto value = found == parameters.end() ? parameter.defaultValue : found->second;
-                if (!std::isfinite(value) || value < parameter.minimum || value > parameter.maximum)
-                {
-                    throw std::invalid_argument(std::string(name) + ": parameter out of range: " + parameter.name);
-                }
-                if ((parameter.control == PassControl::eCheckbox && value != 0 && value != 1) ||
-                    (!parameter.choices.empty() && !std::ranges::any_of(parameter.choices,
-                                                                        [&](const auto& choice)
-                                                                        {
-                                                                            return choice.value == value;
-                                                                        })))
-                {
-                    throw std::invalid_argument(std::string(name) + ": invalid discrete parameter: " + parameter.name);
-                }
-                values.push_back(value);
-            }
-            return values;
-        }
     } // namespace
+
+    std::vector<double> PassDefinition::parameterValues(std::string_view instance, const PassParameters& supplied) const
+    {
+        for (const auto& [key, value] : supplied)
+        {
+            if (!std::ranges::any_of(parameters,
+                                     [&](const auto& parameter)
+                                     {
+                                         return parameter.name == key;
+                                     }))
+            {
+                throw std::invalid_argument(std::string(instance) + ": unknown parameter: " + key);
+            }
+        }
+        std::vector<double> values;
+        values.reserve(parameters.size());
+        for (const auto& parameter : parameters)
+        {
+            const auto found = supplied.find(parameter.name);
+            const auto value = found == supplied.end() ? parameter.defaultValue : found->second;
+            if (!std::isfinite(value) || value < parameter.minimum || value > parameter.maximum)
+            {
+                throw std::invalid_argument(std::string(instance) + ": parameter out of range: " + parameter.name);
+            }
+            if ((parameter.control == PassControl::eCheckbox && value != 0 && value != 1) ||
+                (!parameter.choices.empty() && !std::ranges::any_of(parameter.choices,
+                                                                    [&](const auto& choice)
+                                                                    {
+                                                                        return choice.value == value;
+                                                                    })))
+            {
+                throw std::invalid_argument(std::string(instance) + ": invalid discrete parameter: " + parameter.name);
+            }
+            values.push_back(value);
+        }
+        return values;
+    }
 
     PassCatalog::PassCatalog(Device& device) :
         m_Device(device)
@@ -145,7 +144,7 @@ namespace vultra
                 }
             }
         }
-        parameterValues(definition, definition.type, {});
+        definition.parameterValues(definition.type);
         m_Definitions.push_back(std::move(definition));
     }
 
@@ -204,13 +203,23 @@ namespace vultra
         BuiltPass result;
         result.name            = name;
         result.type            = type;
-        result.parameterValues = parameterValues(desc, name, parameters);
+        result.parameterValues = desc.parameterValues(name, parameters);
         result.instance        = desc.create(m_Device);
         if (!result.instance)
         {
             throw std::runtime_error(std::string(name) + ": pass factory returned no instance");
         }
-        result.outputs = result.instance->addPasses(graph, name, inputs, result.parameterValues);
+        const auto firstPass = graph.m_Passes.size();
+        result.outputs       = result.instance->addPasses(graph, name, inputs, result.parameterValues);
+        for (size_t i = firstPass; i < graph.m_Passes.size(); ++i)
+        {
+            if (!desc.sideEffect && graph.m_Passes[i].sideEffect)
+            {
+                throw std::logic_error(std::string(name) + ": side effects must be declared in PassDefinition");
+            }
+            // A catalog instance may expand to several command passes, all owned by this construction scope.
+            graph.m_Passes[i].sideEffect = desc.sideEffect;
+        }
         if (result.outputs.size() != desc.outputs.size())
         {
             throw std::logic_error(std::string(name) + ": pass output count mismatch");
@@ -224,7 +233,7 @@ namespace vultra
 
     void PassCatalog::setParameters(BuiltPass& pass, const PassParameters& parameters) const
     {
-        const auto values = parameterValues(definition(pass.type), pass.name, parameters);
+        const auto values = definition(pass.type).parameterValues(pass.name, parameters);
         if (values.size() != pass.parameterValues.size())
         {
             throw std::logic_error(pass.name + ": compiled parameter layout changed");

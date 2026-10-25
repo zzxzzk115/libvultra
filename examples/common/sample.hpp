@@ -3,6 +3,7 @@
 #include <vultra/core/base/command_line.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/drivers/rhi/image_readback.hpp>
+#include <vultra/main/app/app_launch.hpp>
 
 #include <filesystem>
 #include <optional>
@@ -12,6 +13,7 @@ namespace sample
 {
     struct Options
     {
+        vultra::AppLaunch     launch;
         uint64_t              frames = 0;
         std::filesystem::path capture;
     };
@@ -21,25 +23,26 @@ namespace sample
         parser.add_argument("--capture").help("Save the last frame (first without --frames)");
     }
 
-    inline Options getOptions(const argparse::ArgumentParser& parser)
+    inline Options getOptions(const argparse::ArgumentParser& parser, const vultra::AppLaunch& launch = {})
     {
-        return {parser.present<uint64_t>("--frames").value_or(0),
+        return {launch,
+                parser.present<uint64_t>("--frames").value_or(0),
                 parser.present<std::string>("--capture").value_or("")};
     }
 
-    inline std::optional<Options> readOptions(int argc, char** argv)
+    inline std::optional<Options> readOptions(int argc, char** argv, const vultra::AppLaunch& launch = {})
     {
         argparse::ArgumentParser parser(std::filesystem::path(argv[0]).stem().string(),
                                         "0.1.0",
                                         argparse::default_arguments::none);
-        parser.add_description("Vultra desktop example");
+        parser.add_description("Vultra graphics example");
         vultra::addAppOptions(parser);
         addCaptureOption(parser);
         if (!vultra::parseCommandLine(parser, argc, argv))
         {
             return std::nullopt;
         }
-        return getOptions(parser);
+        return getOptions(parser, launch);
     }
 
     // Called after GPU completion and before presentation. Without --frames, capture the first frame.

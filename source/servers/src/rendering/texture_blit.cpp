@@ -2,7 +2,10 @@
 
 namespace vultra
 {
-    TextureBlit::TextureBlit(Device& device, VriFormat targetFormat, uint32_t sourceCount) :
+    TextureBlit::TextureBlit(Device&              device,
+                             VriFormat            targetFormat,
+                             uint32_t             sourceCount,
+                             const ShaderProgram* program) :
         m_Device(device),
         m_Sets(sourceCount),
         m_Sources(sourceCount)
@@ -40,34 +43,41 @@ namespace vultra
             check(device.core.CreateDescriptorPool(device.handle, &pool, &m_Pool), "Create blit pool");
             check(device.core.AllocateDescriptorSets(m_Pool, m_Layout, 0, m_Sets.data(), sourceCount),
                   "Allocate blit sets");
-            m_Pipeline = std::make_unique<ShaderPipeline>(
-                device,
-                "builtin/shaders/passes/texture_blit.slang",
-                std::vector<ShaderEntry> {{"screenVertex", VriShaderStage_Vertex},
-                                          {"blitMain", VriShaderStage_Fragment}},
-                [this, targetFormat](std::span<const VriShaderDesc> shaders)
-                {
-                    VriColorAttachmentDesc color {};
-                    color.format         = targetFormat;
-                    color.colorWriteMask = VriColorWrite_RGBA;
-                    VriGraphicsPipelineDesc desc {};
-                    desc.pipelineCache           = m_Device.pipelineCache;
-                    desc.pipelineLayout          = m_Layout;
-                    desc.shaders                 = shaders.data();
-                    desc.shaderNum               = uint32_t(shaders.size());
-                    desc.inputAssembly.topology  = VriPrimitiveTopology_TriangleList;
-                    desc.rasterization.cullMode  = VriCullMode_None;
-                    desc.rasterization.lineWidth = 1;
-                    desc.multisample.sampleNum   = 1;
-                    desc.outputMerger.colors     = &color;
-                    desc.outputMerger.colorNum   = 1;
-                    VriPipeline* result          = nullptr;
-                    check(m_Device.core.CreateGraphicsPipeline(m_Device.handle, &desc, &result),
-                          "Create blit pipeline");
-                    return result;
-                },
-                "builtin/shaders",
-                std::vector<std::filesystem::path> {"builtin/shaders"});
+            const std::vector<ShaderEntry> entries {{"screenVertex", VriShaderStage_Vertex},
+                                                    {"blitMain", VriShaderStage_Fragment}};
+            const auto                     build = [this, targetFormat](std::span<const VriShaderDesc> shaders)
+            {
+                VriColorAttachmentDesc color {};
+                color.format         = targetFormat;
+                color.colorWriteMask = VriColorWrite_RGBA;
+                VriGraphicsPipelineDesc desc {};
+                desc.pipelineCache           = m_Device.pipelineCache;
+                desc.pipelineLayout          = m_Layout;
+                desc.shaders                 = shaders.data();
+                desc.shaderNum               = uint32_t(shaders.size());
+                desc.inputAssembly.topology  = VriPrimitiveTopology_TriangleList;
+                desc.rasterization.cullMode  = VriCullMode_None;
+                desc.rasterization.lineWidth = 1;
+                desc.multisample.sampleNum   = 1;
+                desc.outputMerger.colors     = &color;
+                desc.outputMerger.colorNum   = 1;
+                VriPipeline* result          = nullptr;
+                check(m_Device.core.CreateGraphicsPipeline(m_Device.handle, &desc, &result), "Create blit pipeline");
+                return result;
+            };
+            if (program)
+            {
+                m_Pipeline = std::make_unique<ShaderPipeline>(device, *program, entries, build);
+            }
+            else
+            {
+                m_Pipeline = std::make_unique<ShaderPipeline>(device,
+                                                              "builtin/shaders/passes/texture_blit.slang",
+                                                              entries,
+                                                              build,
+                                                              "builtin/shaders",
+                                                              std::vector<std::filesystem::path> {"builtin/shaders"});
+            }
         }
         catch (...)
         {

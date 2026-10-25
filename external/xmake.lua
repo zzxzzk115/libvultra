@@ -1,11 +1,17 @@
 local features = vultraFeatures()
 
+if features.android_entry then
+    add_requires("game-activity 4.4.2")
+end
+
 if features.gpu then
     includes("vri")
 
-    add_requires("vri-vultra v0.1.17", {
+    local api = get_config("libvultra_graphics_api") or (is_plat("wasm") and "webgpu" or "vulkan")
+    add_requires("vri-vultra v0.2.0", {
         alias = "vri",
-        configs = {vulkan = true, gl = false, wgpu = false, d3d12 = false, metal = false}
+        configs = {vulkan = api == "vulkan", gl = api == "webgl2", wgpu = api == "webgpu",
+                   d3d12 = false, metal = false}
     })
 end
 
@@ -31,7 +37,7 @@ end
 if features.shader then
     add_requires("slang-static 2026.11")
 end
-if features.shader or features.asset_source then
+if features.shader_runtime or features.asset_source then
     add_requires("xxhash v0.8.3")
 end
 if features.editor_gui then
@@ -46,9 +52,7 @@ end
 if features.game_shader then
     add_requires("antlr4-runtime 4.13.2", {configs = {shared = false}, system = false})
 end
-if features.world then
-    add_requires("entt v3.15.0", {system = false})
-end
+
 if features.asset_import then
     add_requires("tinygltf v2.9.7")
     add_requires("tinyobjloader v2.0.0rc13")
@@ -57,22 +61,18 @@ if features.asset_import then
 end
 if features.texture_import then
     add_requires("directxtex 2025.07", {configs = {dx11 = false, dx12 = false}})
-    add_requires("vtask v0.1.0")
     add_requires("ispc 1.28.2", {host = true})
 end
-if features.rendering then
+if features.asset_jobs or (features.shader_material and features.game_shader) then
+    add_requires("vtask v0.1.0")
+end
+if features.meshlet_build then
     add_requires("meshoptimizer v0.24")
 end
 if features.dialogs and is_plat("linux") then
     add_requires("nativefiledialog-extended v1.3.0", {configs = {portal = true}})
 end
-if features.editor then
-    add_requires("imgui-node-editor 021aa0ea4da13fed864bafb2a92d4c5205076866")
-    add_requireconfs("imgui-node-editor.imgui", {
-        version = "v1.92.5-docking", override = true,
-        configs = {glfw = window_backend == "glfw", sdl3 = window_backend == "sdl3"}
-    })
-end
+
 if features.vgui then
     add_requires("rmlui 6.2", {configs = {shared = false, lua = false, svg = false, lottie = false}})
     add_requireconfs("rmlui.zlib", {system = false, configs = {shared = false}, override = true})
@@ -88,6 +88,16 @@ if features.xr then
 end
 
 -- Vendored libraries own their public include paths and build details here.
+if features.random then
+    target("pcg32")
+        set_kind("static")
+        set_default(false)
+        set_languages("c11")
+        add_files("pcg_basic/pcg_basic.c")
+        add_sysincludedirs("pcg_basic", {public = true})
+    target_end()
+end
+
 if features.shader then
     target("filewatch")
         set_kind("headeronly")
@@ -108,14 +118,7 @@ if features.texture_import then
     includes("bc7enc")
 end
 
-if features.research_quality then
-    target("flip")
-        set_kind("headeronly")
-        set_default(false)
-        add_headerfiles("flip/**.h")
-        add_sysincludedirs("flip", {public = true})
-    target_end()
-end
+
 
 if features.capture then
     target("renderdoc-api")
@@ -124,8 +127,4 @@ if features.capture then
         add_headerfiles("renderdoc/renderdoc_app.h")
         add_includedirs("renderdoc", {public = true})
     target_end()
-end
-
-if features.script_lua then
-    add_requires("lua v5.4.8", {configs = {shared = false}, system = false})
 end

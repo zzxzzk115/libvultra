@@ -1,5 +1,3 @@
-#include "vpk_format.hpp"
-
 #include <vultra/assets/vpk_archive.hpp>
 #include <vultra/core/base/stable_id.hpp>
 #include <vultra/platform/os/file.hpp>
@@ -9,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <memory>
@@ -94,7 +93,8 @@ namespace vultra
             {
                 throw std::runtime_error("Initialize embedded VPK checksum");
             }
-            std::array<char, 65536> buffer {};
+            // Keep package I/O buffers off the small default WebAssembly stack.
+            std::vector<char> buffer(65536);
             while (size > 0)
             {
                 const auto count = std::streamsize(std::min<uint64_t>(size, buffer.size()));
@@ -121,7 +121,7 @@ namespace vultra
         }
     } // namespace
 
-    std::string detail::canonicalVpkPath(std::string_view text)
+    std::string VpkArchive::canonicalPath(std::string_view text)
     {
         const std::u8string utf8(text.begin(), text.end());
         const auto          path = std::filesystem::path(utf8);
@@ -157,47 +157,98 @@ namespace vultra
         load(offset, length);
     }
 
+    VpkArchive::VpkArchive(std::filesystem::path identity, std::span<const std::byte> bytes) :
+        m_File(std::filesystem::absolute(identity).lexically_normal()),
+        m_Bytes(bytes)
+    {
+        if (identity.empty() || bytes.size() < kHeaderSize)
+        {
+            throw std::invalid_argument("Embedded VPK requires an identity and a complete header");
+        }
+        load(0, bytes.size());
+    }
+
     void VpkArchive::load(uint64_t offset, uint64_t length)
     {
-        std::ifstream input(m_File, std::ios::binary | std::ios::ate);
-        if (!input)
+        std::ifstream input;
+        uint64_t      fileLength = m_Bytes.size();
+        if (m_Bytes.empty())
         {
-            throw std::runtime_error("Open VPK: " + m_File.string());
+            input.open(m_File, std::ios::binary | std::ios::ate);
+            if (!input || input.tellg() < 0)
+            {
+                throw std::runtime_error("Open VPK: " + m_File.string());
+            }
+            fileLength = uint64_t(input.tellg());
+            input.seekg(std::streamoff(offset));
         }
-        const auto fileLength = input.tellg();
-        if (fileLength < 0 || offset > uint64_t(fileLength) || length > uint64_t(fileLength) - offset ||
-            length < kHeaderSize)
+        if (offset > fileLength || length > fileLength - offset || length < kHeaderSize)
         {
             throw std::runtime_error("VPK bounds or header are invalid");
         }
-        m_Offset = offset;
-        input.seekg(std::streamoff(offset));
+        m_Offset          = offset;
+        uint64_t position = 0;
+        // One bounded parser for files, executable regions and immutable embedded bytes.
+        const auto read = [&](std::span<char> output)
+        {
+            if (output.size() > length - position)
+            {
+                throw std::runtime_error("Truncated VPK index");
+            }
+            if (!m_Bytes.empty())
+            {
+                std::memcpy(output.data(), m_Bytes.data() + size_t(offset + position), output.size());
+            }
+            else
+            {
+                input.read(output.data(), std::streamsize(output.size()));
+                if (!input)
+                {
+                    throw std::runtime_error("Read VPK index: " + m_File.string());
+                }
+            }
+            position += output.size();
+        };
+        const auto number = [&](size_t count)
+        {
+            std::array<char, 8> data {};
+            read(std::span(data).first(count));
+            uint64_t value = 0;
+            for (size_t i = 0; i < count; ++i)
+            {
+                value |= uint64_t(uint8_t(data[i])) << (8 * i);
+            }
+            return value;
+        };
         std::array<char, 8> magic {};
-        input.read(magic.data(), std::streamsize(magic.size()));
-        if (magic != kMagic || readNumber(input, 4) != kVersion)
+        read(magic);
+        if (magic != kMagic || number(4) != kVersion)
         {
             throw std::runtime_error("Unsupported VPK format or version");
         }
-        const auto count       = readNumber(input, 4);
-        const auto indexOffset = readNumber(input, 8);
+        const auto count       = number(4);
+        const auto indexOffset = number(8);
         if (count > kMaxEntries || indexOffset < kHeaderSize || indexOffset > length)
         {
             throw std::runtime_error("Invalid VPK index bounds");
         }
-        input.seekg(std::streamoff(offset + indexOffset));
+        position = indexOffset;
+        if (input.is_open())
+        {
+            input.seekg(std::streamoff(offset + indexOffset));
+        }
         m_Entries.reserve(size_t(count));
         for (uint64_t i = 0; i < count; ++i)
         {
-            const auto pathSize = readNumber(input, 4);
-            if (pathSize == 0 || pathSize > kMaxPath || input.tellg() < 0 ||
-                uint64_t(input.tellg()) - offset + pathSize + 24 > length)
+            const auto pathSize = number(4);
+            if (pathSize == 0 || pathSize > kMaxPath || pathSize + 24 > length - position)
             {
                 throw std::runtime_error("Invalid VPK entry path size");
             }
             std::string path(size_t(pathSize), '\0');
-            input.read(path.data(), std::streamsize(pathSize));
-            const auto normalized = detail::canonicalVpkPath(path);
-            Entry      entry {normalized, readNumber(input, 8), readNumber(input, 8), readNumber(input, 8)};
+            read(path);
+            const auto normalized = VpkArchive::canonicalPath(path);
+            Entry      entry {normalized, number(8), number(8), number(8)};
             if (entry.offset < kHeaderSize || entry.offset > indexOffset || entry.size > indexOffset - entry.offset ||
                 std::ranges::any_of(m_Entries,
                                     [&](const Entry& existing)
@@ -213,7 +264,7 @@ namespace vultra
 
     const VpkArchive::Entry& VpkArchive::entry(std::string_view path) const
     {
-        const auto normalized = detail::canonicalVpkPath(path);
+        const auto normalized = VpkArchive::canonicalPath(path);
         const auto found      = std::ranges::find_if(m_Entries,
                                                      [&](const Entry& candidate)
                                                      {
@@ -233,7 +284,7 @@ namespace vultra
 
     bool VpkArchive::contains(std::string_view path) const
     {
-        const auto normalized = detail::canonicalVpkPath(path);
+        const auto normalized = VpkArchive::canonicalPath(path);
         return std::ranges::any_of(m_Entries,
                                    [&](const Entry& candidate)
                                    {
@@ -254,18 +305,29 @@ namespace vultra
         {
             throw std::runtime_error("VPK entry is too large: " + selected.path);
         }
-        std::ifstream input(m_File, std::ios::binary);
-        if (!input)
+        std::vector<std::byte> bytes(size_t(selected.size));
+        if (!m_Bytes.empty())
         {
-            throw std::runtime_error("Open VPK entry: " + selected.path);
+            const auto stored = m_Bytes.subspan(size_t(m_Offset + selected.offset), size_t(selected.size));
+            std::ranges::copy(stored, bytes.begin());
         }
-        input.seekg(std::streamoff(m_Offset + selected.offset));
-        std::vector<std::byte> bytes;
-        bytes.resize(size_t(selected.size));
-        input.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size()));
-        if (!input || XXH3_64bits(bytes.data(), bytes.size()) != selected.hash)
+        else
         {
-            throw std::runtime_error("VPK entry read or checksum failed: " + selected.path);
+            std::ifstream input(m_File, std::ios::binary);
+            if (!input)
+            {
+                throw std::runtime_error("Open VPK entry: " + selected.path);
+            }
+            input.seekg(std::streamoff(m_Offset + selected.offset));
+            input.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size()));
+            if (!input)
+            {
+                throw std::runtime_error("Read VPK entry: " + selected.path);
+            }
+        }
+        if (XXH3_64bits(bytes.data(), bytes.size()) != selected.hash)
+        {
+            throw std::runtime_error("VPK entry checksum failed: " + selected.path);
         }
         return bytes;
     }
@@ -299,7 +361,7 @@ namespace vultra
         std::vector<VpkFile> files(inputFiles.begin(), inputFiles.end());
         for (auto& file : files)
         {
-            file.path = detail::canonicalVpkPath(file.path);
+            file.path = VpkArchive::canonicalPath(file.path);
         }
         if (std::filesystem::exists(output))
         {
@@ -348,7 +410,8 @@ namespace vultra
         };
 
         std::vector<PackedEntry> entries;
-        std::array<char, 65536>  buffer {};
+        // Keep package I/O buffers off the small default WebAssembly stack.
+        std::vector<char> buffer(65536);
         for (const auto& [name, path] : files)
         {
             std::ifstream input(path, std::ios::binary);

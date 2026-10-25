@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vultra/assets/project_manifest.hpp>
+#include <vultra/assets/asset_id.hpp>
 
 #include <array>
 #include <cstdint>
