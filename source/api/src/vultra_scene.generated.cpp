@@ -7,6 +7,111 @@
 #include <stdexcept>
 #include <string_view>
 
+static_assert(sizeof(vultra::CameraSettings) == 12 && alignof(vultra::CameraSettings) == 4);
+static_assert(offsetof(vultra::CameraSettings, verticalFov) == 0);
+static_assert(offsetof(vultra::CameraSettings, nearPlane) == 4);
+static_assert(offsetof(vultra::CameraSettings, farPlane) == 8);
+static_assert(sizeof(VultraCameraSettings) == 12 && alignof(VultraCameraSettings) == 4);
+static_assert(offsetof(VultraCameraSettings, verticalFov) == 0);
+static_assert(offsetof(VultraCameraSettings, nearPlane) == 4);
+static_assert(offsetof(VultraCameraSettings, farPlane) == 8);
+static_assert(sizeof(vultra::EnvironmentSettings) == 4 && alignof(vultra::EnvironmentSettings) == 4);
+static_assert(offsetof(vultra::EnvironmentSettings, intensity) == 0);
+static_assert(sizeof(VultraEnvironmentSettings) == 4 && alignof(VultraEnvironmentSettings) == 4);
+static_assert(offsetof(VultraEnvironmentSettings, intensity) == 0);
+static_assert(sizeof(vultra::LightSettings) == 28 && alignof(vultra::LightSettings) == 4);
+static_assert(offsetof(vultra::LightSettings, red) == 0);
+static_assert(offsetof(vultra::LightSettings, green) == 4);
+static_assert(offsetof(vultra::LightSettings, blue) == 8);
+static_assert(offsetof(vultra::LightSettings, intensity) == 12);
+static_assert(offsetof(vultra::LightSettings, range) == 16);
+static_assert(offsetof(vultra::LightSettings, innerCone) == 20);
+static_assert(offsetof(vultra::LightSettings, outerCone) == 24);
+static_assert(sizeof(VultraLightSettings) == 28 && alignof(VultraLightSettings) == 4);
+static_assert(offsetof(VultraLightSettings, red) == 0);
+static_assert(offsetof(VultraLightSettings, green) == 4);
+static_assert(offsetof(VultraLightSettings, blue) == 8);
+static_assert(offsetof(VultraLightSettings, intensity) == 12);
+static_assert(offsetof(VultraLightSettings, range) == 16);
+static_assert(offsetof(VultraLightSettings, innerCone) == 20);
+static_assert(offsetof(VultraLightSettings, outerCone) == 24);
+static_assert(sizeof(vultra::MaterialParameters) == 92 && alignof(vultra::MaterialParameters) == 4);
+static_assert(offsetof(vultra::MaterialParameters, baseRed) == 0);
+static_assert(offsetof(vultra::MaterialParameters, baseGreen) == 4);
+static_assert(offsetof(vultra::MaterialParameters, baseBlue) == 8);
+static_assert(offsetof(vultra::MaterialParameters, baseAlpha) == 12);
+static_assert(offsetof(vultra::MaterialParameters, baseWeight) == 16);
+static_assert(offsetof(vultra::MaterialParameters, baseMetalness) == 20);
+static_assert(offsetof(vultra::MaterialParameters, baseDiffuseRoughness) == 24);
+static_assert(offsetof(vultra::MaterialParameters, specularWeight) == 28);
+static_assert(offsetof(vultra::MaterialParameters, specularRed) == 32);
+static_assert(offsetof(vultra::MaterialParameters, specularGreen) == 36);
+static_assert(offsetof(vultra::MaterialParameters, specularBlue) == 40);
+static_assert(offsetof(vultra::MaterialParameters, specularRoughness) == 44);
+static_assert(offsetof(vultra::MaterialParameters, specularIor) == 48);
+static_assert(offsetof(vultra::MaterialParameters, coatWeight) == 52);
+static_assert(offsetof(vultra::MaterialParameters, coatRoughness) == 56);
+static_assert(offsetof(vultra::MaterialParameters, coatIor) == 60);
+static_assert(offsetof(vultra::MaterialParameters, emissionRed) == 64);
+static_assert(offsetof(vultra::MaterialParameters, emissionGreen) == 68);
+static_assert(offsetof(vultra::MaterialParameters, emissionBlue) == 72);
+static_assert(offsetof(vultra::MaterialParameters, emissionLuminance) == 76);
+static_assert(offsetof(vultra::MaterialParameters, normalScale) == 80);
+static_assert(offsetof(vultra::MaterialParameters, occlusionStrength) == 84);
+static_assert(offsetof(vultra::MaterialParameters, alphaCutoff) == 88);
+static_assert(sizeof(VultraMaterialParameters) == 92 && alignof(VultraMaterialParameters) == 4);
+static_assert(offsetof(VultraMaterialParameters, baseRed) == 0);
+static_assert(offsetof(VultraMaterialParameters, baseGreen) == 4);
+static_assert(offsetof(VultraMaterialParameters, baseBlue) == 8);
+static_assert(offsetof(VultraMaterialParameters, baseAlpha) == 12);
+static_assert(offsetof(VultraMaterialParameters, baseWeight) == 16);
+static_assert(offsetof(VultraMaterialParameters, baseMetalness) == 20);
+static_assert(offsetof(VultraMaterialParameters, baseDiffuseRoughness) == 24);
+static_assert(offsetof(VultraMaterialParameters, specularWeight) == 28);
+static_assert(offsetof(VultraMaterialParameters, specularRed) == 32);
+static_assert(offsetof(VultraMaterialParameters, specularGreen) == 36);
+static_assert(offsetof(VultraMaterialParameters, specularBlue) == 40);
+static_assert(offsetof(VultraMaterialParameters, specularRoughness) == 44);
+static_assert(offsetof(VultraMaterialParameters, specularIor) == 48);
+static_assert(offsetof(VultraMaterialParameters, coatWeight) == 52);
+static_assert(offsetof(VultraMaterialParameters, coatRoughness) == 56);
+static_assert(offsetof(VultraMaterialParameters, coatIor) == 60);
+static_assert(offsetof(VultraMaterialParameters, emissionRed) == 64);
+static_assert(offsetof(VultraMaterialParameters, emissionGreen) == 68);
+static_assert(offsetof(VultraMaterialParameters, emissionBlue) == 72);
+static_assert(offsetof(VultraMaterialParameters, emissionLuminance) == 76);
+static_assert(offsetof(VultraMaterialParameters, normalScale) == 80);
+static_assert(offsetof(VultraMaterialParameters, occlusionStrength) == 84);
+static_assert(offsetof(VultraMaterialParameters, alphaCutoff) == 88);
+static_assert(sizeof(vultra::SceneInputData) == 40 && alignof(vultra::SceneInputData) == 8);
+static_assert(offsetof(vultra::SceneInputData, serial) == 0);
+static_assert(offsetof(vultra::SceneInputData, kind) == 8);
+static_assert(offsetof(vultra::SceneInputData, code) == 12);
+static_assert(offsetof(vultra::SceneInputData, action) == 16);
+static_assert(offsetof(vultra::SceneInputData, modifiers) == 20);
+static_assert(offsetof(vultra::SceneInputData, x) == 24);
+static_assert(offsetof(vultra::SceneInputData, y) == 28);
+static_assert(offsetof(vultra::SceneInputData, deltaX) == 32);
+static_assert(offsetof(vultra::SceneInputData, deltaY) == 36);
+static_assert(sizeof(VultraSceneInputData) == 40 && alignof(VultraSceneInputData) == 8);
+static_assert(offsetof(VultraSceneInputData, serial) == 0);
+static_assert(offsetof(VultraSceneInputData, kind) == 8);
+static_assert(offsetof(VultraSceneInputData, code) == 12);
+static_assert(offsetof(VultraSceneInputData, action) == 16);
+static_assert(offsetof(VultraSceneInputData, modifiers) == 20);
+static_assert(offsetof(VultraSceneInputData, x) == 24);
+static_assert(offsetof(VultraSceneInputData, y) == 28);
+static_assert(offsetof(VultraSceneInputData, deltaX) == 32);
+static_assert(offsetof(VultraSceneInputData, deltaY) == 36);
+static_assert(sizeof(vultra::SceneTranslation) == 12 && alignof(vultra::SceneTranslation) == 4);
+static_assert(offsetof(vultra::SceneTranslation, x) == 0);
+static_assert(offsetof(vultra::SceneTranslation, y) == 4);
+static_assert(offsetof(vultra::SceneTranslation, z) == 8);
+static_assert(sizeof(VultraSceneTranslation) == 12 && alignof(VultraSceneTranslation) == 4);
+static_assert(offsetof(VultraSceneTranslation, x) == 0);
+static_assert(offsetof(VultraSceneTranslation, y) == 4);
+static_assert(offsetof(VultraSceneTranslation, z) == 8);
+
 static VultraStatus
 abiSceneActionState(VultraSceneFrame frame, const char* action, uint64_t actionSize, uint64_t* value)
 {
@@ -23,6 +128,40 @@ abiSceneActionState(VultraSceneFrame frame, const char* action, uint64_t actionS
     {
         *value = vultra::sceneActionState(*access->scene,
                                           std::string_view {action ? action : "", static_cast<size_t>(actionSize)});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneAddComponent(VultraSceneFrame frame,
+                                         uint64_t         entity,
+                                         const char*      type,
+                                         uint64_t         typeSize,
+                                         const char*      state,
+                                         uint64_t         stateSize)
+{
+    if (!frame.context || (!type && typeSize != 0) || (!state && stateSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        vultra::sceneAddComponent(*access->scene,
+                                  vultra::ObjectId {entity},
+                                  std::string_view {type ? type : "", static_cast<size_t>(typeSize)},
+                                  std::string_view {state ? state : "", static_cast<size_t>(stateSize)});
         return VULTRA_STATUS_OK;
     }
     catch (const std::invalid_argument&)
@@ -102,6 +241,61 @@ static VultraStatus abiSceneChildId(VultraSceneFrame frame, uint64_t parent, uin
     try
     {
         *value = vultra::sceneChildId(*access->scene, vultra::ObjectId {parent}, index).value;
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneComponentCount(VultraSceneFrame frame, uint64_t entity, uint64_t* value)
+{
+    if (!frame.context || !value)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        *value = vultra::sceneComponentCount(*access->scene, vultra::ObjectId {entity});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus
+abiSceneComponentName(VultraSceneFrame frame, uint64_t entity, uint64_t index, const char** data, uint64_t* size)
+{
+    if (!frame.context || !data || !size)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        const auto result = vultra::sceneComponentName(*access->scene, vultra::ObjectId {entity}, index);
+        *data             = result.data();
+        *size             = result.size();
         return VULTRA_STATUS_OK;
     }
     catch (const std::invalid_argument&)
@@ -364,6 +558,46 @@ abiSceneCreateNode3D(VultraSceneFrame frame, uint64_t parent, const char* name, 
     }
 }
 
+static VultraStatus abiSceneCreateNodeType(VultraSceneFrame frame,
+                                           uint64_t         parent,
+                                           const char*      type,
+                                           uint64_t         typeSize,
+                                           const char*      name,
+                                           uint64_t         nameSize,
+                                           const char*      state,
+                                           uint64_t         stateSize,
+                                           uint64_t*        value)
+{
+    if (!frame.context || !value || (!type && typeSize != 0) || (!name && nameSize != 0) || (!state && stateSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        *value = vultra::sceneCreateNodeType(*access->scene,
+                                             access->project,
+                                             vultra::ObjectId {parent},
+                                             std::string_view {type ? type : "", static_cast<size_t>(typeSize)},
+                                             std::string_view {name ? name : "", static_cast<size_t>(nameSize)},
+                                             std::string_view {state ? state : "", static_cast<size_t>(stateSize)})
+                     .value;
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus abiSceneCreateResource(VultraSceneFrame frame,
                                            const char*      type,
                                            uint64_t         typeSize,
@@ -450,6 +684,49 @@ static VultraStatus abiSceneCurrentEnvironment(VultraSceneFrame frame, uint64_t*
     }
 }
 
+static VultraStatus abiSceneDescribeType(VultraSceneFrame frame,
+                                         const char*      type,
+                                         uint64_t         typeSize,
+                                         char*            data,
+                                         uint64_t         capacity,
+                                         uint64_t*        size)
+{
+    if (!frame.context || !size || (!data && capacity != 0) || (!type && typeSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        const auto result =
+            vultra::sceneDescribeType(*access->scene,
+                                      std::string_view {type ? type : "", static_cast<size_t>(typeSize)});
+        *size = result.size();
+        if (!data)
+        {
+            return VULTRA_STATUS_OK;
+        }
+        if (capacity < result.size())
+        {
+            return VULTRA_STATUS_BUFFER_TOO_SMALL;
+        }
+        std::copy(result.begin(), result.end(), data);
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus abiSceneDuplicateMesh(VultraSceneFrame frame, uint64_t source, uint64_t parent, uint64_t* value)
 {
     if (!frame.context || !value)
@@ -503,6 +780,34 @@ static VultraStatus abiSceneEnvironmentSettings(VultraSceneFrame frame, uint64_t
     }
 }
 
+static VultraStatus abiSceneFindNode(VultraSceneFrame frame, const char* nodeId, uint64_t nodeIdSize, uint64_t* value)
+{
+    if (!frame.context || !value || (!nodeId && nodeIdSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        *value = vultra::sceneFindNode(*access->scene,
+                                       std::string_view {nodeId ? nodeId : "", static_cast<size_t>(nodeIdSize)})
+                     .value;
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus
 abiSceneFindResource(VultraSceneFrame frame, const char* assetId, uint64_t assetIdSize, uint64_t* value)
 {
@@ -520,6 +825,102 @@ abiSceneFindResource(VultraSceneFrame frame, const char* assetId, uint64_t asset
         *value = vultra::sceneFindResource(*access->scene,
                                            std::string_view {assetId ? assetId : "", static_cast<size_t>(assetIdSize)})
                      .value;
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneInputActionState(VultraSceneFrame frame,
+                                             uint64_t         serial,
+                                             const char*      action,
+                                             uint64_t         actionSize,
+                                             uint64_t*        value)
+{
+    if (!frame.context || !value || (!action && actionSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        *value =
+            vultra::sceneInputActionState(*access->scene,
+                                          serial,
+                                          std::string_view {action ? action : "", static_cast<size_t>(actionSize)});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneInputEvent(VultraSceneFrame frame, VultraSceneInputData* value)
+{
+    if (!frame.context || !value)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        const auto result = vultra::sceneInputEvent(*access->scene);
+        *value            = {result.serial,
+                             result.kind,
+                             result.code,
+                             result.action,
+                             result.modifiers,
+                             result.x,
+                             result.y,
+                             result.deltaX,
+                             result.deltaY};
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneInputText(VultraSceneFrame frame, uint64_t serial, const char** data, uint64_t* size)
+{
+    if (!frame.context || !data || !size)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        const auto result = vultra::sceneInputText(*access->scene, serial);
+        *data             = result.data();
+        *size             = result.size();
         return VULTRA_STATUS_OK;
     }
     catch (const std::invalid_argument&)
@@ -678,6 +1079,32 @@ static VultraStatus abiSceneMeshMaterial(VultraSceneFrame frame, uint64_t node, 
     try
     {
         *value = vultra::sceneMeshMaterial(*access->scene, vultra::ObjectId {node}, slot).value;
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneNodeInputEnabled(VultraSceneFrame frame, uint64_t node, uint64_t* value)
+{
+    if (!frame.context || !value)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        *value = vultra::sceneNodeInputEnabled(*access->scene, vultra::ObjectId {node});
         return VULTRA_STATUS_OK;
     }
     catch (const std::invalid_argument&)
@@ -929,6 +1356,77 @@ static VultraStatus abiSceneNodeType(VultraSceneFrame frame, uint64_t node, cons
     }
 }
 
+static VultraStatus abiSceneNodeUnhandledInputEnabled(VultraSceneFrame frame, uint64_t node, uint64_t* value)
+{
+    if (!frame.context || !value)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        *value = vultra::sceneNodeUnhandledInputEnabled(*access->scene, vultra::ObjectId {node});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneObjectPersistentId(VultraSceneFrame frame,
+                                               uint64_t         object,
+                                               const char*      type,
+                                               uint64_t         typeSize,
+                                               char*            data,
+                                               uint64_t         capacity,
+                                               uint64_t*        size)
+{
+    if (!frame.context || !size || (!data && capacity != 0) || (!type && typeSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        const auto result =
+            vultra::sceneObjectPersistentId(*access->scene,
+                                            vultra::ObjectId {object},
+                                            std::string_view {type ? type : "", static_cast<size_t>(typeSize)});
+        *size = result.size();
+        if (!data)
+        {
+            return VULTRA_STATUS_OK;
+        }
+        if (capacity < result.size())
+        {
+            return VULTRA_STATUS_BUFFER_TOO_SMALL;
+        }
+        std::copy(result.begin(), result.end(), data);
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus abiSceneObjectType(VultraSceneFrame frame, uint64_t object, const char** data, uint64_t* size)
 {
     if (!frame.context || !data || !size)
@@ -1009,6 +1507,43 @@ static VultraStatus abiScenePhysicsFrame(VultraSceneFrame frame, uint64_t* value
     }
 }
 
+static VultraStatus
+abiScenePropertyList(VultraSceneFrame frame, uint64_t object, char* data, uint64_t capacity, uint64_t* size)
+{
+    if (!frame.context || !size || (!data && capacity != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        const auto result = vultra::scenePropertyList(*access->scene, vultra::ObjectId {object});
+        *size             = result.size();
+        if (!data)
+        {
+            return VULTRA_STATUS_OK;
+        }
+        if (capacity < result.size())
+        {
+            return VULTRA_STATUS_BUFFER_TOO_SMALL;
+        }
+        std::copy(result.begin(), result.end(), data);
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus abiSceneQueueFree(VultraSceneFrame frame, uint64_t node)
 {
     if (!frame.context)
@@ -1023,6 +1558,204 @@ static VultraStatus abiSceneQueueFree(VultraSceneFrame frame, uint64_t node)
     try
     {
         vultra::sceneQueueFree(*access->scene, vultra::ObjectId {node});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneRandomBoundedUInt(VultraSceneFrame frame,
+                                              const char*      stream,
+                                              uint64_t         streamSize,
+                                              uint64_t         bound,
+                                              uint64_t*        value)
+{
+    if (!frame.context || !value || (!stream && streamSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        *value =
+            vultra::sceneRandomBoundedUInt(*access->scene,
+                                           std::string_view {stream ? stream : "", static_cast<size_t>(streamSize)},
+                                           bound);
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneRandomSeed(VultraSceneFrame frame, uint64_t* value)
+{
+    if (!frame.context || !value)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        *value = vultra::sceneRandomSeed(*access->scene);
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneRandomState(VultraSceneFrame frame, char* data, uint64_t capacity, uint64_t* size)
+{
+    if (!frame.context || !size || (!data && capacity != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        const auto result = vultra::sceneRandomState(*access->scene);
+        *size             = result.size();
+        if (!data)
+        {
+            return VULTRA_STATUS_OK;
+        }
+        if (capacity < result.size())
+        {
+            return VULTRA_STATUS_BUFFER_TOO_SMALL;
+        }
+        std::copy(result.begin(), result.end(), data);
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneRandomUInt(VultraSceneFrame frame, const char* stream, uint64_t streamSize, uint64_t* value)
+{
+    if (!frame.context || !value || (!stream && streamSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        *value = vultra::sceneRandomUInt(*access->scene,
+                                         std::string_view {stream ? stream : "", static_cast<size_t>(streamSize)});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneRandomUnit(VultraSceneFrame frame, const char* stream, uint64_t streamSize, double* value)
+{
+    if (!frame.context || !value || (!stream && streamSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        *value = vultra::sceneRandomUnit(*access->scene,
+                                         std::string_view {stream ? stream : "", static_cast<size_t>(streamSize)});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneReadComponentProperty(VultraSceneFrame frame,
+                                                  uint64_t         entity,
+                                                  const char*      component,
+                                                  uint64_t         componentSize,
+                                                  const char*      property,
+                                                  uint64_t         propertySize,
+                                                  char*            data,
+                                                  uint64_t         capacity,
+                                                  uint64_t*        size)
+{
+    if (!frame.context || !size || (!data && capacity != 0) || (!component && componentSize != 0) ||
+        (!property && propertySize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        const auto result = vultra::sceneReadComponentProperty(
+            *access->scene,
+            vultra::ObjectId {entity},
+            std::string_view {component ? component : "", static_cast<size_t>(componentSize)},
+            std::string_view {property ? property : "", static_cast<size_t>(propertySize)});
+        *size = result.size();
+        if (!data)
+        {
+            return VULTRA_STATUS_OK;
+        }
+        if (capacity < result.size())
+        {
+            return VULTRA_STATUS_BUFFER_TOO_SMALL;
+        }
+        std::copy(result.begin(), result.end(), data);
         return VULTRA_STATUS_OK;
     }
     catch (const std::invalid_argument&)
@@ -1068,6 +1801,35 @@ static VultraStatus abiSceneReadProperty(VultraSceneFrame frame,
             return VULTRA_STATUS_BUFFER_TOO_SMALL;
         }
         std::copy(result.begin(), result.end(), data);
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus
+abiSceneRemoveComponent(VultraSceneFrame frame, uint64_t entity, const char* type, uint64_t typeSize)
+{
+    if (!frame.context || (!type && typeSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        vultra::sceneRemoveComponent(*access->scene,
+                                     vultra::ObjectId {entity},
+                                     std::string_view {type ? type : "", static_cast<size_t>(typeSize)});
         return VULTRA_STATUS_OK;
     }
     catch (const std::invalid_argument&)
@@ -1172,6 +1934,33 @@ static VultraStatus abiSceneReparentNode(VultraSceneFrame frame, uint64_t node, 
     try
     {
         vultra::sceneReparentNode(*access->scene, vultra::ObjectId {node}, vultra::ObjectId {newParent}, keepGlobal);
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneRestoreRandomState(VultraSceneFrame frame, const char* json, uint64_t jsonSize)
+{
+    if (!frame.context || (!json && jsonSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        vultra::sceneRestoreRandomState(*access->scene,
+                                        std::string_view {json ? json : "", static_cast<size_t>(jsonSize)});
         return VULTRA_STATUS_OK;
     }
     catch (const std::invalid_argument&)
@@ -1354,6 +2143,32 @@ abiSceneSetEnvironmentSettings(VultraSceneFrame frame, uint64_t node, VultraEnvi
     }
 }
 
+static VultraStatus abiSceneSetInputHandled(VultraSceneFrame frame, uint64_t serial)
+{
+    if (!frame.context)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        vultra::sceneSetInputHandled(*access->scene, serial);
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus abiSceneSetLightSettings(VultraSceneFrame frame, uint64_t node, VultraLightSettings settings)
 {
     if (!frame.context)
@@ -1499,6 +2314,32 @@ abiSceneSetMeshModel(VultraSceneFrame frame, uint64_t target, const char* assetI
     }
 }
 
+static VultraStatus abiSceneSetNodeInputEnabled(VultraSceneFrame frame, uint64_t node, uint64_t enabled)
+{
+    if (!frame.context)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        vultra::sceneSetNodeInputEnabled(*access->scene, vultra::ObjectId {node}, enabled);
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus abiSceneSetNodeOwner(VultraSceneFrame frame, uint64_t node, uint64_t owner)
 {
     if (!frame.context)
@@ -1606,6 +2447,32 @@ abiSceneSetNodeTranslation(VultraSceneFrame frame, uint64_t node, VultraSceneTra
     }
 }
 
+static VultraStatus abiSceneSetNodeUnhandledInputEnabled(VultraSceneFrame frame, uint64_t node, uint64_t enabled)
+{
+    if (!frame.context)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        vultra::sceneSetNodeUnhandledInputEnabled(*access->scene, vultra::ObjectId {node}, enabled);
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus abiSceneSetPaused(VultraSceneFrame frame, uint64_t paused)
 {
     if (!frame.context)
@@ -1620,6 +2487,32 @@ static VultraStatus abiSceneSetPaused(VultraSceneFrame frame, uint64_t paused)
     try
     {
         vultra::sceneSetPaused(*access->scene, paused);
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneSetRandomSeed(VultraSceneFrame frame, uint64_t seed)
+{
+    if (!frame.context)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        vultra::sceneSetRandomSeed(*access->scene, seed);
         return VULTRA_STATUS_OK;
     }
     catch (const std::invalid_argument&)
@@ -1684,6 +2577,100 @@ static VultraStatus abiSceneTimeScale(VultraSceneFrame frame, double* value)
     }
 }
 
+static VultraStatus abiSceneTypeCount(VultraSceneFrame frame, uint64_t* value)
+{
+    if (!frame.context || !value)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        *value = vultra::sceneTypeCount(*access->scene);
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneTypeName(VultraSceneFrame frame, uint64_t index, const char** data, uint64_t* size)
+{
+    if (!frame.context || !data || !size)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        const auto result = vultra::sceneTypeName(*access->scene, index);
+        *data             = result.data();
+        *size             = result.size();
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
+static VultraStatus abiSceneWriteComponentProperty(VultraSceneFrame frame,
+                                                   uint64_t         entity,
+                                                   const char*      component,
+                                                   uint64_t         componentSize,
+                                                   const char*      property,
+                                                   uint64_t         propertySize,
+                                                   const char*      json,
+                                                   uint64_t         jsonSize)
+{
+    if (!frame.context || (!component && componentSize != 0) || (!property && propertySize != 0) ||
+        (!json && jsonSize != 0))
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    auto* access = static_cast<vultra::SceneAccess*>(frame.context);
+    if (!access->active || access->serial != frame.serial || !access->scene)
+    {
+        return VULTRA_STATUS_INVALID_FRAME;
+    }
+    try
+    {
+        vultra::sceneWriteComponentProperty(
+            *access->scene,
+            access->project,
+            vultra::ObjectId {entity},
+            std::string_view {component ? component : "", static_cast<size_t>(componentSize)},
+            std::string_view {property ? property : "", static_cast<size_t>(propertySize)},
+            std::string_view {json ? json : "", static_cast<size_t>(jsonSize)});
+        return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
+    }
+    catch (...)
+    {
+        return VULTRA_STATUS_ERROR;
+    }
+}
+
 static VultraStatus abiSceneWriteProperty(VultraSceneFrame frame,
                                           uint64_t         node,
                                           const char*      property,
@@ -1726,9 +2713,12 @@ namespace vultra
         static const VultraSceneApi api {VULTRA_ABI_VERSION,
                                          sizeof(VultraSceneApi),
                                          abiSceneActionState,
+                                         abiSceneAddComponent,
                                          abiSceneCameraSettings,
                                          abiSceneChildCount,
                                          abiSceneChildId,
+                                         abiSceneComponentCount,
+                                         abiSceneComponentName,
                                          abiSceneCopyMeshModel,
                                          abiSceneCreateCamera,
                                          abiSceneCreateEnvironment,
@@ -1737,17 +2727,24 @@ namespace vultra
                                          abiSceneCreateMesh,
                                          abiSceneCreateNode,
                                          abiSceneCreateNode3D,
+                                         abiSceneCreateNodeType,
                                          abiSceneCreateResource,
                                          abiSceneCurrentCamera,
                                          abiSceneCurrentEnvironment,
+                                         abiSceneDescribeType,
                                          abiSceneDuplicateMesh,
                                          abiSceneEnvironmentSettings,
+                                         abiSceneFindNode,
                                          abiSceneFindResource,
+                                         abiSceneInputActionState,
+                                         abiSceneInputEvent,
+                                         abiSceneInputText,
                                          abiSceneLightKind,
                                          abiSceneLightSettings,
                                          abiSceneMaterialName,
                                          abiSceneMaterialParameters,
                                          abiSceneMeshMaterial,
+                                         abiSceneNodeInputEnabled,
                                          abiSceneNodeInsideTree,
                                          abiSceneNodeName,
                                          abiSceneNodeOwnerId,
@@ -1757,32 +2754,50 @@ namespace vultra
                                          abiSceneNodeQueuedForDeletion,
                                          abiSceneNodeTranslation,
                                          abiSceneNodeType,
+                                         abiSceneNodeUnhandledInputEnabled,
+                                         abiSceneObjectPersistentId,
                                          abiSceneObjectType,
                                          abiScenePaused,
                                          abiScenePhysicsFrame,
+                                         abiScenePropertyList,
                                          abiSceneQueueFree,
+                                         abiSceneRandomBoundedUInt,
+                                         abiSceneRandomSeed,
+                                         abiSceneRandomState,
+                                         abiSceneRandomUInt,
+                                         abiSceneRandomUnit,
+                                         abiSceneReadComponentProperty,
                                          abiSceneReadProperty,
+                                         abiSceneRemoveComponent,
                                          abiSceneRemoveMaterial,
                                          abiSceneRemoveNode,
                                          abiSceneRemoveResource,
                                          abiSceneReparentNode,
+                                         abiSceneRestoreRandomState,
                                          abiSceneRootId,
                                          abiSceneSetCameraSettings,
                                          abiSceneSetCurrentCamera,
                                          abiSceneSetCurrentEnvironment,
                                          abiSceneSetEnvironmentAsset,
                                          abiSceneSetEnvironmentSettings,
+                                         abiSceneSetInputHandled,
                                          abiSceneSetLightSettings,
                                          abiSceneSetMaterialParameters,
                                          abiSceneSetMeshMaterial,
                                          abiSceneSetMeshModel,
+                                         abiSceneSetNodeInputEnabled,
                                          abiSceneSetNodeOwner,
                                          abiSceneSetNodeProcessMode,
                                          abiSceneSetNodeProcessPriority,
                                          abiSceneSetNodeTranslation,
+                                         abiSceneSetNodeUnhandledInputEnabled,
                                          abiSceneSetPaused,
+                                         abiSceneSetRandomSeed,
                                          abiSceneSetTimeScale,
                                          abiSceneTimeScale,
+                                         abiSceneTypeCount,
+                                         abiSceneTypeName,
+                                         abiSceneWriteComponentProperty,
                                          abiSceneWriteProperty};
         return api;
     }

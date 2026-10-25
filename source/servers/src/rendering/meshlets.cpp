@@ -1,165 +1,62 @@
-#include "import_jobs.hpp"
-#include "upload.hpp"
-
-#include <vultra/core/base/logger.hpp>
+#include <vultra/assets/scene_data.hpp>
+#include <vultra/drivers/rhi/buffer_upload.hpp>
 #include <vultra/servers/rendering/meshlets.hpp>
-#include <vultra/servers/rendering/scene.hpp>
-
-#include <meshoptimizer.h>
 
 #include <algorithm>
-#include <limits>
+#include <cmath>
 
 namespace vultra
 {
-    static_assert(sizeof(Meshlet) == 32);
-
-    MeshletData buildMeshlets(const SceneData& scene, uint32_t workers)
-    {
-        if (scene.primitives.empty())
-        {
-            if (!scene.vertices.empty() || !scene.indices.empty())
-            {
-                throw std::invalid_argument("Meshlet geometry requires a primitive");
-            }
-            return {};
-        }
-        if (scene.vertices.empty())
-        {
-            throw std::invalid_argument("Meshlets require nonempty scene geometry");
-        }
-        for (uint32_t index : scene.indices)
-        {
-            if (index >= scene.vertices.size())
-            {
-                throw std::invalid_argument("Meshlet vertex index exceeds the scene");
-            }
-        }
-        size_t largestIndexCount = 0;
-        for (const auto& primitive : scene.primitives)
-        {
-            if (primitive.indexCount % 3 != 0 ||
-                uint64_t(primitive.firstIndex) + primitive.indexCount > scene.indices.size())
-            {
-                throw std::invalid_argument("Meshlets require valid triangle primitive ranges");
-            }
-            largestIndexCount = std::max(largestIndexCount, size_t(primitive.indexCount));
-        }
-
-        struct Job
-        {
-            std::vector<meshopt_Meshlet> meshlets;
-            std::vector<uint32_t>        vertices;
-            std::vector<unsigned char>   triangles;
-        };
-
-        std::vector<Job> jobs(scene.primitives.size());
-        const auto*      positions = &scene.vertices.front().position.x;
-        asset_detail::runImportJobs(
-            "Building meshlets",
-            uint32_t(jobs.size()),
-            workers,
-            scene.vertices.size() * 32 + largestIndexCount * 32,
-            [&](uint32_t jobIndex)
-            {
-                const auto& primitive = scene.primitives[jobIndex];
-                if (primitive.indexCount == 0)
-                {
-                    return;
-                }
-                auto& job = jobs[jobIndex];
-                // Keep dev's per-submesh clusterization. SceneData indices are global here,
-                // so rebase this primitive before passing it to meshoptimizer.
-                const auto sourceIndices = std::span(scene.indices).subspan(primitive.firstIndex, primitive.indexCount);
-                const auto [first, last] = std::minmax_element(sourceIndices.begin(), sourceIndices.end());
-                const uint32_t         baseVertex = *first;
-                std::vector<glm::vec3> positions(size_t(*last) - baseVertex + 1);
-                for (size_t i = 0; i < positions.size(); ++i)
-                {
-                    positions[i] = scene.vertices[baseVertex + i].position;
-                }
-                std::vector<uint32_t> indices(sourceIndices.begin(), sourceIndices.end());
-                for (auto& index : indices)
-                {
-                    index -= baseVertex;
-                }
-                const auto bound =
-                    meshopt_buildMeshletsBound(primitive.indexCount, kMeshletVertices, kMeshletTriangles);
-                job.meshlets.resize(bound);
-                job.vertices.resize(bound * kMeshletVertices);
-                job.triangles.resize(bound * kMeshletTriangles * 3);
-                const auto count = meshopt_buildMeshlets(job.meshlets.data(),
-                                                         job.vertices.data(),
-                                                         job.triangles.data(),
-                                                         indices.data(),
-                                                         indices.size(),
-                                                         &positions.front().x,
-                                                         positions.size(),
-                                                         sizeof(glm::vec3),
-                                                         kMeshletVertices,
-                                                         kMeshletTriangles,
-                                                         0.5f);
-                job.meshlets.resize(count);
-                if (!job.meshlets.empty())
-                {
-                    const auto& lastMeshlet = job.meshlets.back();
-                    job.vertices.resize(lastMeshlet.vertex_offset + lastMeshlet.vertex_count);
-                    job.triangles.resize(lastMeshlet.triangle_offset + ((lastMeshlet.triangle_count * 3 + 3) & ~3u));
-                }
-                for (auto& vertex : job.vertices)
-                {
-                    vertex += baseVertex;
-                }
-            });
-        MeshletData result;
-        for (const auto& job : jobs)
-        {
-            result.primitives.push_back({uint32_t(result.meshlets.size()), uint32_t(job.meshlets.size())});
-            for (const auto& meshlet : job.meshlets)
-            {
-                if (result.vertices.size() + meshlet.vertex_count > std::numeric_limits<uint32_t>::max() ||
-                    result.triangles.size() + meshlet.triangle_count > std::numeric_limits<uint32_t>::max())
-                {
-                    throw std::runtime_error("Meshlet data exceeds 32-bit indexing");
-                }
-                const auto* vertices  = job.vertices.data() + meshlet.vertex_offset;
-                const auto* triangles = job.triangles.data() + meshlet.triangle_offset;
-                const auto  bounds    = meshopt_computeMeshletBounds(vertices,
-                                                                 triangles,
-                                                                 meshlet.triangle_count,
-                                                                 positions,
-                                                                 scene.vertices.size(),
-                                                                 sizeof(SceneVertex));
-                result.meshlets.push_back({{uint32_t(result.vertices.size()),
-                                            uint32_t(result.triangles.size()),
-                                            meshlet.vertex_count,
-                                            meshlet.triangle_count},
-                                           {bounds.center[0], bounds.center[1], bounds.center[2], bounds.radius}});
-                result.vertices.insert(result.vertices.end(), vertices, vertices + meshlet.vertex_count);
-                for (uint32_t triangle = 0; triangle < meshlet.triangle_count; ++triangle)
-                {
-                    const auto* corners = triangles + triangle * 3;
-                    result.triangles.push_back(uint32_t(corners[0]) | (uint32_t(corners[1]) << 8) |
-                                               (uint32_t(corners[2]) << 16));
-                }
-            }
-        }
-        Logger::core().info("Built {} meshlets, {} triangles, {} primitive ranges ({} vertices / {} triangles max)",
-                            result.meshlets.size(),
-                            result.triangles.size(),
-                            result.primitives.size(),
-                            kMeshletVertices,
-                            kMeshletTriangles);
-        return result;
-    }
-
-    GpuMeshlets::GpuMeshlets(Device& device, Buffer& vertices, const SceneData& scene, uint32_t workers) :
+    GpuMeshlets::GpuMeshlets(Device& device, Buffer& vertices, const MeshletData& data) :
         m_Device(device)
     {
-        auto data  = buildMeshlets(scene, workers);
+        if (!(device.features & VriFeature_MeshShader))
+        {
+            throw std::invalid_argument("Meshlet upload requires the enabled mesh shader feature");
+        }
+        for (const auto& range : data.primitives)
+        {
+            if (uint64_t(range.first) + range.count > data.meshlets.size())
+            {
+                throw std::invalid_argument("Meshlet primitive range exceeds its payload");
+            }
+        }
+        for (const auto index : data.vertices)
+        {
+            if (index >= vertices.desc.size / sizeof(SceneVertex))
+            {
+                throw std::invalid_argument("Meshlet vertex exceeds its scene buffer");
+            }
+        }
+        for (const auto& meshlet : data.meshlets)
+        {
+            const auto geometry = meshlet.geometry;
+            if (geometry.z > kMeshletVertices || geometry.w > kMeshletTriangles ||
+                uint64_t(geometry.x) + geometry.z > data.vertices.size() ||
+                uint64_t(geometry.y) + geometry.w > data.triangles.size() || !std::isfinite(meshlet.bounds.x) ||
+                !std::isfinite(meshlet.bounds.y) || !std::isfinite(meshlet.bounds.z) ||
+                !std::isfinite(meshlet.bounds.w) || meshlet.bounds.w < 0)
+            {
+                throw std::invalid_argument("Invalid meshlet geometry or bounds");
+            }
+            for (uint32_t index = 0; index < geometry.w; ++index)
+            {
+                const auto triangle = data.triangles[geometry.y + index];
+                if ((triangle & 255) >= geometry.z || ((triangle >> 8) & 255) >= geometry.z ||
+                    ((triangle >> 16) & 255) >= geometry.z)
+                {
+                    throw std::invalid_argument("Meshlet triangle exceeds its local vertices");
+                }
+            }
+        }
+        Frame transition(device);
+        vertices.transition(transition.begin(),
+                            {VriAccess_VertexBufferRead | VriAccess_ShaderResourceRead,
+                             VriPipelineStage_VertexInput | VriPipelineStage_MeshShader});
+        transition.submitAndWait();
         count      = uint32_t(data.meshlets.size());
-        primitives = std::move(data.primitives);
-        const VriAccessStage                            ready {VriAccess_ShaderResourceRead,
+        primitives = data.primitives;
+        const VriAccessStage ready {VriAccess_ShaderResourceRead,
                                     VriPipelineStage_TaskShader | VriPipelineStage_MeshShader};
         const std::array<std::span<const std::byte>, 3> bytes {std::as_bytes(std::span(data.meshlets)),
                                                                std::as_bytes(std::span(data.vertices)),
@@ -203,7 +100,7 @@ namespace vultra
 
     GpuMeshlets::~GpuMeshlets()
     {
-        m_Device.waitIdle();
+        m_Device.waitIdleForDestruction();
         for (auto* view : views)
         {
             m_Device.core.DestroyDescriptor(view);

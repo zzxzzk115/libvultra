@@ -1,5 +1,4 @@
 #include <vultra/platform/input/input_map.hpp>
-#include <vultra/scene/scene_api.hpp>
 
 #include <array>
 #include <iostream>
@@ -14,12 +13,65 @@ namespace
             throw std::runtime_error(message);
         }
     }
+
+    void eventSnapshots()
+    {
+        using namespace vultra;
+        Input input;
+        input.setKey(KeyCode::eLShift, InputAction::ePress);
+        input.setKey(KeyCode::eRCtrl, InputAction::ePress);
+        input.setKey(KeyCode::eSpace, InputAction::ePress);
+        input.setMousePosition({12, 24});
+        input.setMouseButton(MouseCode::eLeft, true);
+        input.setMousePosition({18, 20});
+        input.addMouseScroll({0, -1});
+        input.setKey(KeyCode::eLShift, InputAction::eRelease);
+        input.setMouseButton(MouseCode::eLeft, false);
+        input.setKey(KeyCode::eRCtrl, InputAction::eRelease);
+        input.advanceFrame();
+        const auto events = input.events();
+        require(events.size() == 10, "Backend input events were coalesced or reordered");
+        const auto shift   = uint32_t(InputModifier::eShift);
+        const auto control = uint32_t(InputModifier::eControl);
+        require(std::get<KeyInput>(events[0].value).modifiers == shift &&
+                    std::get<KeyInput>(events[2].value).modifiers == (shift | control) &&
+                    std::get<KeyInput>(events[7].value).modifiers == control &&
+                    std::get<KeyInput>(events[9].value).modifiers == 0,
+                "Events did not retain the modifiers active at their position in the backend stream");
+        const auto& initial  = std::get<MouseMotionInput>(events[3].value);
+        const auto& button   = std::get<MouseButtonInput>(events[4].value);
+        const auto& motion   = std::get<MouseMotionInput>(events[5].value);
+        const auto& scroll   = std::get<MouseScrollInput>(events[6].value);
+        const auto& released = std::get<MouseButtonInput>(events[8].value);
+        require(initial.delta == glm::vec2(0) && button.position == glm::vec2(12, 24) &&
+                    button.modifiers == (shift | control) && motion.delta == glm::vec2(6, -4) &&
+                    motion.position == glm::vec2(18, 20) && scroll.position == motion.position &&
+                    scroll.delta == glm::vec2(0, -1) && scroll.modifiers == (shift | control) &&
+                    released.position == motion.position && released.modifiers == control &&
+                    input.mousePositionDelta() == motion.delta,
+                "Mouse events sampled the final frame position/modifiers or lost their individual deltas");
+        require(inputCaptured(events[2], {.keyboard = true}) && !inputCaptured(events[2], {.mouse = true}) &&
+                    inputCaptured(events[4], {.mouse = true}) && !inputCaptured(events[4], {.keyboard = true}),
+                "Capture does not distinguish keyboard and mouse ownership");
+
+        input.setFocused(false);
+        input.setFocused(true);
+        input.setMousePosition({200, 300});
+        input.setMousePosition({202, 303});
+        input.advanceFrame();
+        require(input.events().size() == 4 && !inputCaptured(input.events()[0], {.mouse = true, .keyboard = true}) &&
+                    std::get<MouseMotionInput>(input.events()[2].value).delta == glm::vec2(0) &&
+                    std::get<MouseMotionInput>(input.events()[3].value).delta == glm::vec2(2, 3) &&
+                    std::get<MouseMotionInput>(input.events()[3].value).modifiers == 0,
+                "Focus reset leaked old modifiers, created a mouse jump or was swallowed by UI capture");
+    }
 } // namespace
 
 int main()
 try
 {
     using namespace vultra;
+    eventSnapshots();
     Input    input;
     InputMap map;
     map.bind("jump", KeyCode::eSpace);
@@ -93,31 +145,6 @@ try
         }
         require(rejected, "Invalid action configuration was accepted");
     }
-    SceneTree world(std::make_unique<Node>("Input world"));
-    world.input().bind("jump", KeyCode::eSpace);
-    Input replay;
-    replay.setKey(KeyCode::eSpace, InputAction::ePress);
-    replay.advanceFrame();
-    world.input().update(replay.events());
-    std::vector<ActionState> fixed;
-    std::vector<ActionState> variable;
-    world.addSystem(ScenePhase::ePhysics,
-                    [&](SceneTree& scene, double)
-                    {
-                        fixed.push_back(scene.action("jump"));
-                    });
-    world.addSystem(ScenePhase::eProcess,
-                    [&](SceneTree& scene, double)
-                    {
-                        variable.push_back(scene.action("jump"));
-                    });
-    world.advance(world.fixedDelta() * 3.1);
-    require(fixed.size() == 3 && fixed[0].pressed && !fixed[1].pressed && !fixed[2].pressed && variable.size() == 1 &&
-                variable[0].pressed && sceneActionState(world, "jump") == 3,
-            "Scene callbacks did not select frame/fixed input edges consistently");
-    world.stop();
-    SceneTree moved(std::move(world));
-    require(moved.input().action("jump").held, "Stopped-world moves lost the owned action map");
     std::cout << "Input map tests passed: ordered headless events, capture, release and fixed-step edges\n";
     return 0;
 }

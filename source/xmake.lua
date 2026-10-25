@@ -3,8 +3,13 @@ local features = vultraFeatures()
 
 target("vultra")
     set_kind("static")
-    if is_plat("linux", "macosx") then
-        add_cxflags("-fPIC")
+    if is_plat("linux", "macosx", "android") then
+        add_cxflags("-fPIC", {force = true})
+    end
+    if is_plat("wasm") then
+        -- Library throws and consumer catch blocks must use the same Emscripten exception ABI.
+        add_cxxflags("-fexceptions", {public = true, force = true})
+        add_ldflags("-fexceptions", {public = true, force = true})
     end
     local names = {}
     for name in pairs(features) do
@@ -33,6 +38,10 @@ target("vultra")
         add_includedirs(module .. "/include", {public = true})
         add_headerfiles(module .. "/include/(vultra/**.hpp)")
     end
+    -- Opaque ABI declarations carry no GUI implementation or graphics dependency.
+    add_includedirs("api/include", {public = true})
+    add_headerfiles("api/include/(vultra/api/vultra_abi.generated.h)",
+                    "api/include/(vultra/api/vultra_ui.generated.h)")
     add_files("core/src/base/logger.cpp", "core/src/base/command_line.cpp", "core/src/base/stable_id.cpp")
     add_files("main/src/app/base_app.cpp")
     add_packages("argparse", "spdlog", {public = true})
@@ -42,16 +51,26 @@ target("vultra")
         add_defines("NOMINMAX", "WIN32_LEAN_AND_MEAN", {public = true})
     elseif is_plat("linux") then
         add_files("platform/src/linux/file.cpp", "platform/src/linux/process.cpp", "platform/src/linux/memory.cpp")
+    elseif is_plat("android") then
+        add_files("platform/src/linux/file.cpp", "platform/src/linux/process.cpp", "platform/src/linux/memory.cpp")
+        add_files("platform/src/android/asset.cpp")
+        add_syslinks("android", "log")
+    elseif is_plat("wasm") then
+        add_files("platform/src/linux/file.cpp")
     end
     if features.math then
         add_files("core/src/math/rigid_pose.cpp")
         add_packages("glm", {public = true})
     end
+    if features.random then
+        add_deps("pcg32")
+        add_files("core/src/math/random_stream.cpp")
+    end
     if features.json then
         add_packages("nlohmann_json")
     end
     if features.properties then
-        add_files("core/src/base/property.cpp")
+        add_files("core/src/base/property.cpp", "core/src/base/property_schema.cpp")
     end
     if features.input then
         add_files("platform/src/input/input.cpp")
@@ -69,7 +88,7 @@ target("vultra")
     if features.image_metrics then
         add_files("core/src/image/image_metrics.cpp")
     end
-    if features.asset_source or features.asset_values or features.material_values then
+    if features.asset_source or features.asset_values or features.material_values or features.texture_values then
         add_includedirs("assets/include", {public = true})
     end
     if features.asset_source then
@@ -79,36 +98,53 @@ target("vultra")
         add_files("assets/src/asset_source.cpp", "assets/src/source_file.cpp", "assets/src/vpk_archive.cpp")
         add_packages("xxhash")
     end
-    if features.project then
-        add_headerfiles("assets/include/(vultra/assets/project_manifest.hpp)")
-        add_files("assets/src/project_manifest.cpp")
+    if features.texture_values then
+        add_headerfiles("assets/include/(vultra/assets/texture_data.hpp)",
+                        "assets/include/(vultra/assets/texture_asset.hpp)",
+                        "assets/include/(vultra/assets/texture_format.hpp)")
+    end
+    if features.asset_jobs then
+        add_includedirs("assets/src")
+        add_files("assets/src/import_jobs.cpp")
+        add_packages("vtask")
+    end
+    if features.meshlet_build then
+        add_defines("VULTRA_WITH_MESHLET_BUILD", {public = true})
+        add_files("assets/src/meshlet_build.cpp")
+        add_packages("meshoptimizer")
     end
     if features.asset_values then
         add_headerfiles("assets/include/(vultra/assets/material_parameters.hpp)",
                         "assets/include/(vultra/assets/material_properties.generated.hpp)",
                         "assets/include/(vultra/assets/scene_data.hpp)",
-                        "assets/include/(vultra/assets/texture_asset.hpp)",
-                        "assets/include/(vultra/assets/texture_format.hpp)",
-                        "assets/include/(vultra/assets/texture_import.hpp)",
+                        "assets/include/(vultra/assets/scene_render_data.hpp)",
+                        "assets/include/(vultra/assets/imported_asset.hpp)",
+                        "assets/include/(vultra/assets/meshlet_data.hpp)",
                         "assets/include/(vultra/assets/fbx_import.hpp)",
                         "assets/include/(vultra/assets/source_file.hpp)")
         add_files("assets/src/material_parameters.cpp", "assets/src/material_properties.generated.cpp",
                   "assets/src/tangents.cpp")
     end
+    if features.render_values then
+        add_includedirs("servers/include", {public = true})
+        add_headerfiles("servers/include/(vultra/servers/rendering/builtin/render_light.hpp)")
+    end
     if features.material_values then
         add_headerfiles("assets/include/(vultra/assets/material_instance.hpp)",
+                        "assets/include/(vultra/assets/asset_id.hpp)",
                         "assets/include/(vultra/assets/shader_property.hpp)",
-                        "assets/include/(vultra/assets/project_manifest.hpp)",
+                        "assets/include/(vultra/assets/asset_entry.hpp)",
                         "assets/include/(vultra/assets/fbx_import.hpp)")
         add_files("assets/src/material_instance.cpp", "assets/src/shader_property.cpp")
     end
     if features.texture_import then
+        add_defines("VULTRA_WITH_TEXTURE_IMPORT", {public = true})
         add_headerfiles("assets/include/(vultra/assets/texture_import.hpp)")
         add_includedirs("assets/src")
-        add_files("assets/src/dds_loader.cpp", "assets/src/image_decode.cpp", "assets/src/import_jobs.cpp",
+        add_files("assets/src/dds_loader.cpp", "assets/src/image_decode.cpp",
                   "assets/src/texture_import.cpp")
         add_deps("bc7enc")
-        add_packages("directxtex", "vtask")
+        add_packages("directxtex")
     end
     if features.asset_import then
         add_headerfiles("assets/include/(vultra/assets/asset_options.hpp)",
@@ -118,13 +154,23 @@ target("vultra")
                   "assets/src/gltf_loader.cpp", "assets/src/obj_loader.cpp")
         add_packages("tinygltf", "tinyobjloader", "openfbx")
     end
-    if features.game_shader then
+    if features.game_shader_runtime then
         add_headerfiles("assets/include/(vultra/assets/shader_asset.hpp)")
         add_includedirs("assets/src", "drivers/src")
-        add_files("assets/src/shaders/**.cpp")
+        add_files("assets/src/shaders/shader_asset.cpp", "assets/src/shaders/shader_archive.cpp",
+                  "assets/src/shaders/material_instance.cpp")
+    end
+    if features.game_shader then
+        add_defines("VULTRA_WITH_GAME_SHADER_COMPILER", {public = true})
+        add_files("assets/src/shaders/shader_compiler.cpp", "assets/src/shaders/shader_parser.cpp",
+                  "assets/src/shaders/shader_source_map.cpp", "assets/src/shaders/generated/*.cpp")
         add_packages("antlr4-runtime")
     end
     if features.gpu then
+        local api = get_config("libvultra_graphics_api") or (is_plat("wasm") and "webgpu" or "vulkan")
+        local api_enum = {vulkan = "VriGraphicsAPI_Vulkan", webgpu = "VriGraphicsAPI_WebGPU",
+                          webgl2 = "VriGraphicsAPI_OpenGLES"}
+        add_defines("VULTRA_GRAPHICS_API=" .. api_enum[api])
         add_includedirs("drivers/include", {public = true})
         add_headerfiles("drivers/include/(vultra/**.hpp)")
         add_files("drivers/src/rhi/device.cpp", "drivers/src/rhi/resources.cpp")
@@ -133,6 +179,7 @@ target("vultra")
         add_packages("vri", {public = true})
     end
     if features.capture then
+        add_defines("VULTRA_WITH_RENDERDOC", {public = true})
         add_files("drivers/src/profiling/renderdoc_capture.cpp")
         add_deps("renderdoc-api")
         if is_plat("linux") then
@@ -147,6 +194,24 @@ target("vultra")
     end
     if features.swapchain then
         add_files("drivers/src/rhi/swapchain.cpp")
+    end
+    if features.swapchain and features.window then
+        add_files("drivers/src/rhi/swapchain_window.cpp")
+    end
+    if features.render_app then
+        add_files("main/src/app/render_app.cpp")
+    end
+    if features.android_app then
+        add_files("main/src/app/android_app.cpp", "platform/src/android/input.cpp")
+    end
+    if features.android_entry then
+        add_files("platform/src/android/arguments.cpp")
+        add_packages("game-activity", {public = true})
+        add_ldflags("-Wl,-u,GameActivity_onCreate", {public = true, force = true})
+    end
+    if features.web_app then
+        add_files("main/src/app/web_app.cpp", "platform/src/web/input.cpp")
+        add_ldflags("-sASYNCIFY", "-sALLOW_MEMORY_GROWTH=1", "-sGROWABLE_ARRAYBUFFERS=0", {public = true, force = true})
     end
     if features.desktop then
         add_files("main/src/runtime_context.cpp", "main/src/app/desktop_app.cpp")
@@ -164,8 +229,24 @@ target("vultra")
         add_headerfiles("servers/include/(vultra/servers/rendering/texture_blit.hpp)")
         add_files("servers/src/rendering/texture_blit.cpp")
     end
+    if features.shader_runtime then
+        add_files("drivers/src/rhi/shader_program.cpp", "drivers/src/rhi/shader_archive.cpp",
+                  "drivers/src/rhi/shader_parameters.cpp", "drivers/src/rhi/shader_bindings.cpp",
+                  "drivers/src/rhi/shader_pipeline.cpp")
+        add_packages("xxhash")
+    end
+    if features.compute then
+        add_includedirs("api/include", {public = true})
+        add_headerfiles("api/include/(vultra/api/compute_bridge.hpp)",
+                        "api/include/(vultra/api/vultra_compute.generated.h)",
+                        "api/include/(vultra/api/vultra_abi.generated.h)")
+        add_files("drivers/src/compute/compute_context.cpp", "api/src/compute_bridge.cpp",
+                  "api/src/vultra_compute.generated.cpp")
+    end
     if features.shader then
-        add_files("drivers/src/rhi/shader*.cpp")
+        add_defines("VULTRA_WITH_SHADER_COMPILER", {public = true})
+        add_files("drivers/src/rhi/shader_compiler.cpp", "drivers/src/rhi/shader_cache.cpp",
+                  "drivers/src/rhi/shader_program_compile.cpp", "drivers/src/rhi/shader_reflection.cpp")
         add_deps("filewatch")
         add_packages("slang-static", {public = true})
         add_packages("xxhash")
@@ -206,46 +287,48 @@ target("vultra")
             end
         end)
     end
-    if features.camera or features.world then
-        add_includedirs("scene/include", {public = true})
-        add_headerfiles("scene/include/(vultra/**.hpp)")
-    end
     if features.camera then
-        add_files("scene/src/camera/*.cpp")
+        add_files("main/src/camera/*.cpp")
     end
-    if features.world then
-        -- Camera/light descriptors are CPU values; this does not select GPU implementations.
+    if features.shader_material then
         add_includedirs("servers/include", {public = true})
-        add_headerfiles("assets/include/(vultra/assets/asset_pipeline.hpp)",
-                        "servers/include/(vultra/servers/rendering/builtin/render_light.hpp)")
-        add_files("scene/src/object.cpp", "scene/src/resource.cpp", "scene/src/material_resource.cpp",
-                  "scene/src/node.cpp", "scene/src/node_3d.cpp", "scene/src/render_nodes.cpp",
-                  "scene/src/render_properties.generated.cpp", "scene/src/scene_api.cpp", "scene/src/scene_changes.cpp",
-                  "scene/src/resource_properties.generated.cpp",
-                  "scene/src/scene_components.cpp", "scene/src/scene_execution.cpp", "scene/src/scene_properties.cpp",
-                  "scene/src/scene_storage.cpp", "scene/src/scene_tree.cpp", "scene/src/scene_types.cpp",
-                  "scene/src/scene_resources.cpp", "scene/src/scene_resource_types.cpp",
-                  "scene/src/scene_render_state.cpp")
-        add_packages("entt", {public = true})
+        add_headerfiles("servers/include/(vultra/servers/rendering/shader_material.hpp)",
+                        "servers/include/(vultra/servers/rendering/shader_runtime.hpp)")
+        add_files("servers/src/rendering/shader_material.cpp", "servers/src/rendering/shader_pass_state.cpp",
+                  "servers/src/rendering/shader_runtime.cpp")
+        if features.game_shader then
+            add_files("servers/src/rendering/shader_source_reload.cpp")
+            add_packages("vtask")
+        end
+    end
+    if features.texture_upload then
+        add_includedirs("assets/src")
+        add_includedirs("servers/include", {public = true})
+        add_headerfiles("servers/include/(vultra/servers/rendering/texture_upload.hpp)")
+        add_files("servers/src/rendering/texture_upload.cpp")
+    end
+    if features.gpu_scene then
+        add_headerfiles("servers/include/(vultra/servers/rendering/scene.hpp)",
+                        "servers/include/(vultra/servers/rendering/meshlets.hpp)",
+                        "servers/include/(vultra/servers/rendering/rendering_server.hpp)")
+        add_files("servers/src/rendering/meshlets.cpp", "servers/src/rendering/rendering_server.cpp",
+                  "servers/src/rendering/scene.cpp")
+    end
+    if features.scene_prepare then
+        add_defines("VULTRA_WITH_SCENE_PREPARATION", {public = true})
+        add_files("servers/src/rendering/scene_prepare.cpp")
     end
     if features.rendering then
         add_includedirs("assets/src", "drivers/src")
-        add_files("servers/src/rendering/meshlets.cpp", "servers/src/rendering/rendering_server.cpp",
-                  "servers/src/rendering/scene.cpp", "servers/src/rendering/shader_material.cpp",
-                  "servers/src/rendering/shader_pass_state.cpp", "servers/src/rendering/shader_runtime.cpp",
-                  "servers/src/rendering/texture_upload.cpp", "servers/src/rendering/builtin/*.cpp")
-        add_packages("meshoptimizer", "vtask")
+        add_files("servers/src/rendering/builtin/*.cpp")
         add_deps("openpbr")
-    end
-    if features.scene_rendering then
-        add_files("scene/src/scene_import.cpp", "scene/src/scene_shader_materials.cpp")
-    end
-    if features.asset_export then
-        add_headerfiles("assets/include/(vultra/assets/vpk_export.hpp)")
-        add_files("assets/src/vpk_export.cpp")
     end
     if features.resource_pack then
         add_files("main/src/packaged_resources.cpp", "main/src/working_directory.cpp")
+    end
+    if features.builtin_pack then
+        add_headerfiles("assets/include/(vultra/assets/builtin_pack.hpp)")
+        add_files("assets/src/builtin_pack.cpp")
     end
     if features.benchmark then
         add_files("drivers/src/profiling/benchmark.cpp")
@@ -261,9 +344,12 @@ target("vultra")
     end
     if features.editor_gui then
         add_includedirs("ui/include", {public = true})
+        add_includedirs("api/include", {public = true})
         add_headerfiles("ui/include/(vultra/ui/editor_gui*.hpp)")
+        add_headerfiles("api/include/(vultra/api/vultra_abi.generated.h)",
+                        "api/include/(vultra/api/vultra_ui.generated.h)", "api/include/(vultra/api/ui_bridge.hpp)")
         add_files("ui/src/editor_gui.cpp", "ui/src/editor_gui_frame.cpp", "ui/src/editor_gui_inspector.cpp",
-                  "ui/src/editor_gui_theme.cpp")
+                  "ui/src/editor_gui_theme.cpp", "api/src/vultra_ui.generated.cpp")
         add_packages("imgui", {public = true})
         if features.window then
             add_defines("VULTRA_EDITOR_GUI_WINDOW")
@@ -273,41 +359,6 @@ target("vultra")
             add_files("main/src/app/imgui_app.cpp")
         end
     end
-    if features.api_host then
-        add_headerfiles("api/include/(vultra/api/native_plugin.h)",
-                        "api/include/(vultra/api/vultra_ui.generated.h)",
-                        "api/include/(vultra/api/plugin_session.hpp)")
-        add_files("api/src/plugin_session.cpp")
-        if features.api_ui then
-            add_defines("VULTRA_API_UI")
-        end
-    end
-    if features.native_plugin then
-        add_headerfiles("api/include/(vultra/api/native_plugin.hpp)")
-        add_files("api/src/native_plugin.cpp")
-        if is_plat("linux") then
-            add_syslinks("dl")
-        end
-    end
-    if features.api_scene or features.api_ui or
-       (features.editor_gui and (features.world or features.rendering)) then
-        add_includedirs("api/include", {public = true})
-        add_headerfiles("api/include/(vultra/api/vultra_abi.generated.h)")
-    end
-    if features.api_scene then
-        add_headerfiles("api/include/(vultra/api/scene_bridge.hpp)",
-                        "api/include/(vultra/api/vultra_scene.generated.h)")
-        add_files("api/src/vultra_scene.generated.cpp")
-    end
-    if features.api_ui then
-        add_headerfiles("api/include/(vultra/api/ui_bridge.hpp)",
-                        "api/include/(vultra/api/vultra_ui.generated.h)")
-        add_files("api/src/vultra_ui.generated.cpp")
-    end
-    if features.editor_gui and features.world then
-        add_headerfiles("api/include/(vultra/api/scene_properties.generated.hpp)")
-        add_files("api/src/scene_properties.generated.cpp")
-    end
     if features.editor_gui and features.rendering then
         add_headerfiles("api/include/(vultra/api/render_settings.generated.hpp)")
         add_files("api/src/render_settings.generated.cpp")
@@ -315,45 +366,7 @@ target("vultra")
     if features.shader_inspector then
         add_files("ui/src/editor_gui_shader_material.cpp")
     end
-    if features.xr then
-        add_defines("VULTRA_WITH_OPENXR", {public = true})
-        add_files("drivers/src/openxr/**.cpp")
-        add_packages(is_plat("linux") and "openxr-static" or "openxr", "vulkan-headers", {public = true})
-    end
-target_end()
-
-if features.native_sdk then
-    target("vultra-native-sdk")
-        set_kind("headeronly")
-        set_default(false)
-        add_includedirs("api/include", "scripting/include", {public = true})
-        add_headerfiles("api/include/(vultra/api/native_plugin.h)",
-                        "api/include/(vultra/api/vultra_*.generated.h)",
-                        "scripting/include/(vultra/scripting/native_script.hpp)")
-    target_end()
-end
-
--- Compile the shared managed API once before either example or test script assemblies.
-if features.script_csharp and os.projectdir() == vultra_root then
-    target("vultra-managed-host")
-        set_kind("phony")
-        set_default(false)
-        set_policy("build.fence", true)
-        on_build(function ()
-            local output = path.join(os.projectdir(), "build", ".tmp", "scripting-managed")
-            local project = path.join(vultra_root, "source/scripting/managed/Vultra.ManagedHost.csproj")
-            os.execv("dotnet", {"build", project,
-                               "-c", "Release", "-o", output, "--nologo"})
-        end)
-    target_end()
-end
-
--- Authored in-game UI is opt-in; applications that only use VRI keep one vultra dependency.
-if features.vgui then
-    target("vultra-vgui")
-        set_kind("static")
-        set_default(false)
-        add_deps("vultra")
+    if features.vgui then
         add_includedirs("ui/include", {public = true})
         add_headerfiles("ui/include/vultra/ui/vgui.hpp")
         add_rules("utils.bin2c", {extensions = ".png"})
@@ -361,41 +374,11 @@ if features.vgui then
         if features.window then
             add_defines("VULTRA_VGUI_WINDOW")
         end
-        add_packages("rmlui", {public = true})
-    target_end()
-end
-
--- Project scripting is optional. The runtime links it statically, while C++ experiments may omit it.
-if features.script_host then
-    target("vultra-scripting")
-        set_kind("static")
-        set_default(false)
-        if is_plat("linux", "macosx") then
-            add_cxflags("-fPIC")
-        end
-        add_deps("vultra")
-        add_includedirs("scripting/include", {public = true})
-        add_headerfiles("scripting/include/(vultra/**.hpp)")
-        add_files("scripting/src/script_host.cpp")
-        if features.script_native then
-            add_defines("VULTRA_SCRIPT_NATIVE")
-            add_files("scripting/src/native_script.cpp")
-        end
-        if features.script_lua then
-            add_defines("VULTRA_SCRIPT_LUA")
-            add_files("scripting/src/lua_script.cpp")
-            add_packages("lua")
-        end
-        if features.script_csharp then
-            add_defines("VULTRA_SCRIPT_CSHARP")
-            add_files("scripting/src/dotnet_script.cpp")
-            if is_plat("linux") then
-                add_syslinks("dl")
-            end
-        end
-        if features.api_ui then
-            add_defines("VULTRA_SCRIPT_GUI")
-        end
-        add_packages("nlohmann_json")
-    target_end()
-end
+        add_packages("rmlui")
+    end
+    if features.xr then
+        add_defines("VULTRA_WITH_OPENXR", {public = true})
+        add_files("drivers/src/openxr/**.cpp")
+        add_packages(is_plat("linux") and "openxr-static" or "openxr", "vulkan-headers", {public = true})
+    end
+target_end()

@@ -3,19 +3,19 @@
 #include <array>
 
 #ifdef VULTRA_EXAMPLE_WINDOW
-int runWindow(int argc, char** argv);
+int runWindow(const vultra::AppLaunch& launch, int argc, char** argv);
 #endif
 #ifdef VULTRA_EXAMPLE_VRI
-int runVriTriangle(int argc, char** argv);
+int runVriTriangle(const vultra::AppLaunch& launch, int argc, char** argv);
 #endif
 #ifdef VULTRA_EXAMPLE_GRAPH
-int runRenderGraph(int argc, char** argv);
+int runRenderGraph(const vultra::AppLaunch& launch, int argc, char** argv);
 #endif
 #ifdef VULTRA_EXAMPLE_MESH_SHADING
-int runMeshShader(int argc, char** argv);
+int runMeshShader(const vultra::AppLaunch& launch, int argc, char** argv);
 #endif
 
-int main(int argc, char** argv)
+int runExample(const vultra::AppLaunch& launch, int argc, char** argv)
 {
     constexpr std::array modes {
 #ifdef VULTRA_EXAMPLE_WINDOW
@@ -31,5 +31,5 @@ int main(int argc, char** argv)
         sample::Mode {"mesh-shading", "Task and mesh shader triangle", runMeshShader},
 #endif
     };
-    return sample::runMode(argc, argv, modes);
+    return sample::runMode(launch, argc, argv, modes);
 }

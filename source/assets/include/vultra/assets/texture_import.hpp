@@ -1,25 +1,9 @@
 #pragma once
 
-#include <vultra/assets/scene_data.hpp>
-#include <vultra/assets/texture_format.hpp>
+#include <vultra/assets/scene_render_data.hpp>
 
 namespace vultra
 {
-    struct TextureLevel
-    {
-        Extent                 size;
-        std::vector<std::byte> bytes;
-    };
-
-    struct TextureData
-    {
-        TextureFormat             format = TextureFormat::eUnknown;
-        std::vector<TextureLevel> levels;
-        // Import provenance: leading authored mips are restored from the source, never cached.
-        int      sourceImage  = -1;
-        uint32_t sourceMipNum = 0;
-    };
-
     enum class TextureCompression
     {
         eNone,
@@ -31,12 +15,6 @@ namespace vultra
     {
         bool               mipmaps     = true;
         TextureCompression compression = TextureCompression::eBc7Linear;
-    };
-
-    struct PreparedTextures
-    {
-        std::vector<TextureData>                                 images;
-        std::vector<std::array<uint32_t, kMaterialTextureCount>> materials;
     };
 
     // Static 2D DDS with its authored mips and color-space metadata. Arrays/cubes/volumes are rejected.

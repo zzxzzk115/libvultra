@@ -27,21 +27,11 @@ vsxmake*/
 *.clangd
 compile_commands.json
 
-# Python tooling and research package artifacts
+# Python tooling
 __pycache__/
 *.pyc
-extensions/research/python/*.egg-info/
-extensions/research/python/dist/
 
 # Runtime artifacts
 .vultra/
 imgui.ini
 captures/
-
-# .NET scripting examples and bridge intermediates
-source/scripting/managed/bin/
-source/scripting/managed/obj/
-examples/scripting/csharp/bin/
-examples/scripting/csharp/obj/
-tests/**/bin/
-tests/**/obj/

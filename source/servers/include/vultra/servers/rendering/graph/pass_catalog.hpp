@@ -61,6 +61,7 @@ namespace vultra
     {
     public:
         virtual ~GraphPass() = default;
+        // Append this instance's command passes; do not edit command passes owned by preceding instances.
         // The parameter span stays valid with the owning BuiltPass. Read it when recording commands.
         virtual std::vector<RenderGraph::Resource> addPasses(RenderGraph&                           graph,
                                                              std::string_view                       name,
@@ -78,6 +79,11 @@ namespace vultra
         std::function<std::unique_ptr<GraphPass>(Device&)> create;
         std::string                                        displayName;
         std::string                                        description;
+        // Retain this instance and its inputs even if no marked output reaches it.
+        bool sideEffect = false;
+
+        // CPU-only schema validation; no device feature query, pipeline creation or resource allocation.
+        std::vector<double> parameterValues(std::string_view instance, const PassParameters& supplied = {}) const;
     };
 
     // Own this state until the graph's final submission completes and its callbacks are discarded.

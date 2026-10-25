@@ -1,4 +1,5 @@
 #include <vultra/drivers/rhi/swapchain.hpp>
+#include <vultra/platform/os/window.hpp>
 #include <vultra/ui/editor_gui.hpp>
 
 namespace vultra
@@ -21,7 +22,7 @@ namespace vultra
 
         ~Viewport()
         {
-            owner.m_Device.waitIdle();
+            owner.m_Device.waitIdleForDestruction();
             owner.m_Api.DestroyImguiViewport(geometry);
         }
 

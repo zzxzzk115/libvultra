@@ -1,25 +1,65 @@
+#include <vultra/core/base/logger.hpp>
 #include <vultra/drivers/rhi/swapchain.hpp>
-#include <vultra/platform/window.hpp>
 
 namespace vultra
 {
-    Swapchain::Swapchain(Device& device, Window& window, VriFormat format) :
+    Swapchain::Swapchain(Device& device, VriWindowHandle window, Extent size, VriFormat format) :
         m_Device(device),
         m_Window(window),
+        m_NativeSize(size),
         m_Format(format)
     {
-        if (format != VriFormat_BGRA8_SRGB && format != VriFormat_BGRA8_UNORM)
+        if (format != VriFormat_BGRA8_SRGB && format != VriFormat_BGRA8_UNORM && format != VriFormat_RGBA8_SRGB &&
+            format != VriFormat_RGBA8_UNORM)
         {
-            throw std::invalid_argument("Desktop swapchain format must be BGRA8_SRGB or BGRA8_UNORM");
+            throw std::invalid_argument("Swapchain requires an RGBA8 or BGRA8 UNORM/sRGB format");
+        }
+        if (!(device.core.GetFormatSupport(device.handle, m_Format) & VriFormatSupport_ColorAttachment))
+        {
+            VriFormat alternate = VriFormat_Unknown;
+            switch (m_Format)
+            {
+                case VriFormat_BGRA8_SRGB:
+                    alternate = VriFormat_RGBA8_SRGB;
+                    break;
+                case VriFormat_BGRA8_UNORM:
+                    alternate = VriFormat_RGBA8_UNORM;
+                    break;
+                case VriFormat_RGBA8_SRGB:
+                    alternate = VriFormat_BGRA8_SRGB;
+                    break;
+                case VriFormat_RGBA8_UNORM:
+                    alternate = VriFormat_BGRA8_UNORM;
+                    break;
+                default:
+                    break;
+            }
+            if (!(device.core.GetFormatSupport(device.handle, alternate) & VriFormatSupport_ColorAttachment))
+            {
+                throw std::runtime_error("No RGBA/BGRA swapchain target supports the requested color encoding");
+            }
+            Logger::core().info("Swapchain format {} is unsupported; using {} with the same color encoding",
+                                uint32_t(m_Format),
+                                uint32_t(alternate));
+            m_Format = alternate;
         }
         create();
     }
 
+    void Swapchain::resize(Extent size)
+    {
+        m_NativeSize = size;
+        if (!m_WindowSize && !size.empty())
+        {
+            prepare(size);
+        }
+    }
+
     void Swapchain::create()
     {
-        m_Requested = m_Window.framebufferSize();
+        m_Requested = (m_WindowSize ? m_WindowSize() : m_NativeSize);
         VriSwapChainDesc desc {};
-        desc.window      = platform::nativeWindow(m_Window);
+        desc.window      = m_Window;
         desc.queue       = m_Device.queue;
         desc.format      = m_Format;
         desc.width       = m_Requested.width;
@@ -41,7 +81,7 @@ namespace vultra
 
     Swapchain::~Swapchain()
     {
-        m_Device.waitIdle();
+        m_Device.waitIdleForDestruction();
         m_Images.clear();
         m_Device.swap.DestroySwapChain(m_Handle);
     }
@@ -49,7 +89,7 @@ namespace vultra
     void Swapchain::setVsync(bool enabled)
     {
         const auto mode = enabled ? VriPresentMode_Fifo : VriPresentMode_Immediate;
-        if (m_PresentMode == mode || m_Window.framebufferSize().empty())
+        if (m_PresentMode == mode || (m_WindowSize ? m_WindowSize() : m_NativeSize).empty())
         {
             return;
         }
@@ -88,13 +128,8 @@ namespace vultra
         }
     }
 
-    Texture* Swapchain::acquire()
+    bool Swapchain::prepare(Extent size)
     {
-        const auto size = m_Window.framebufferSize();
-        if (size.empty())
-        {
-            return nullptr;
-        }
         if (m_Rebuild || size != m_Requested)
         {
             m_Device.waitIdle();
@@ -103,11 +138,25 @@ namespace vultra
             m_Rebuild         = result == VriResult_OutOfDate;
             if (m_Rebuild)
             {
-                return nullptr;
+                return false;
             }
             check(result, "Resize swapchain");
             m_Requested = size;
             refresh();
+        }
+        return true;
+    }
+
+    Texture* Swapchain::acquire()
+    {
+        const auto size = (m_WindowSize ? m_WindowSize() : m_NativeSize);
+        if (size.empty())
+        {
+            return nullptr;
+        }
+        if (!prepare(size))
+        {
+            return nullptr;
         }
         uint32_t   index  = 0;
         const auto result = m_Device.swap.AcquireNextTexture(m_Handle, nullptr, 0, &index);
@@ -117,6 +166,12 @@ namespace vultra
             return nullptr;
         }
         check(result, "Acquire swapchain image");
+        if (m_Device.core.GetDeviceDesc(m_Device.handle)->graphicsAPI == VriGraphicsAPI_WebGPU)
+        {
+            // VRI reuses a texture handle for successive browser canvas images. Its views do not persist.
+            auto* image     = m_Images.at(index)->handle;
+            m_Images[index] = std::make_unique<Texture>(m_Device, colorTexture(m_Extent, format()), image);
+        }
         return m_Images.at(index).get();
     }
 

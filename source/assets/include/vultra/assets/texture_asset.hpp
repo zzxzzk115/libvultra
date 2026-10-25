@@ -1,6 +1,9 @@
 #pragma once
 
-#include <vultra/assets/texture_import.hpp>
+#include <vultra/assets/texture_data.hpp>
+#ifdef VULTRA_WITH_TEXTURE_IMPORT
+#include <vultra/assets/source_file.hpp>
+#endif
 
 namespace vultra
 {
@@ -32,8 +35,10 @@ namespace vultra
         std::vector<TextureSubresource> subresources;
     };
 
+#ifdef VULTRA_WITH_TEXTURE_IMPORT
     TextureAssetData loadTextureAsset(const std::filesystem::path& path,
                                       bool                         srgb,
                                       const SourceObserver&        observer = {},
                                       const AssetSource*           source   = nullptr);
+#endif
 } // namespace vultra

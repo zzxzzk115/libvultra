@@ -153,6 +153,11 @@ namespace vultra
         program.profile      = compileOptions.profile;
         program.rayQuery     = rayQuery;
         program.capabilities = compileOptions.capabilities;
+        const bool wgsl      = program.profile == "wgsl";
+        if (wgsl && rayQuery)
+        {
+            throw std::invalid_argument("WGSL does not support ray-query shaders");
+        }
         if (sourceText.find(char(0)) != std::string_view::npos)
         {
             throw std::invalid_argument("Shader source contains a NUL character: " + sourcePath.string());
@@ -215,19 +220,24 @@ namespace vultra
             diagnose(slang::createGlobalSession(global.writeRef()), {}, "Create Slang global session");
         }
         slang::TargetDesc target {};
-        target.format  = SLANG_SPIRV;
-        target.profile = global->findProfile(program.profile.c_str());
-        if (!program.profile.starts_with("spirv_") || target.profile == SLANG_PROFILE_UNKNOWN)
+        target.format  = wgsl ? SLANG_WGSL : SLANG_SPIRV;
+        target.profile = wgsl ? SLANG_PROFILE_UNKNOWN : global->findProfile(program.profile.c_str());
+        if (!wgsl && (!program.profile.starts_with("spirv_") || target.profile == SLANG_PROFILE_UNKNOWN))
         {
             throw std::invalid_argument("Unsupported SPIR-V profile: " + program.profile);
         }
-        std::vector<slang::CompilerOptionEntry> options(2);
-        options[0].name = slang::CompilerOptionName::VulkanUseEntryPointName;
-        options[1].name = slang::CompilerOptionName::EmitSpirvDirectly;
-        for (auto& option : options)
+        std::vector<slang::CompilerOptionEntry> options;
+        if (!wgsl)
         {
-            option.value.kind      = slang::CompilerOptionValueKind::Int;
-            option.value.intValue0 = 1;
+            for (const auto name :
+                 {slang::CompilerOptionName::VulkanUseEntryPointName, slang::CompilerOptionName::EmitSpirvDirectly})
+            {
+                slang::CompilerOptionEntry option {};
+                option.name            = name;
+                option.value.kind      = slang::CompilerOptionValueKind::Int;
+                option.value.intValue0 = 1;
+                options.push_back(option);
+            }
         }
 #ifndef NDEBUG
         slang::CompilerOptionEntry debugInfo {};
@@ -309,11 +319,7 @@ namespace vultra
         }
         frontendOptions.linkModules.clear();
         const auto frontendSignature = detail::shaderCompileSignature(source, sourceText, frontendOptions);
-        const auto previous          = std::ranges::find_if(m_Impl->modules,
-                                                   [&](const Impl::Module& item)
-                                                   {
-                                                       return item.signature == frontendSignature;
-                                                   });
+        const auto previous          = std::ranges::find(m_Impl->modules, frontendSignature, &Impl::Module::signature);
         std::vector<ShaderDependency> moduleDependencies;
         slang::IModule*               module = nullptr;
         ComPtr<ISlangBlob>            moduleCode;
@@ -419,9 +425,9 @@ namespace vultra
             diagnostics.setNull();
             const auto syntheticPath = source.parent_path() / (linkSource.name + ".slang");
             auto*      linkedModule  = session->loadModuleFromSourceString(linkSource.name.c_str(),
-                                                                     syntheticPath.string().c_str(),
-                                                                     linkSource.value.c_str(),
-                                                                     diagnostics.writeRef());
+                                                                           syntheticPath.string().c_str(),
+                                                                           linkSource.value.c_str(),
+                                                                           diagnostics.writeRef());
             diagnose(linkedModule ? SLANG_OK : SLANG_FAIL, diagnostics, "Load link-time Slang source");
             components.push_back(linkedModule);
         }
@@ -454,12 +460,26 @@ namespace vultra
             ComPtr<slang::IBlob> code;
             diagnostics.setNull();
             result = linked->getEntryPointCode(SlangInt(i), 0, code.writeRef(), diagnostics.writeRef());
-            diagnose(result, diagnostics, "Emit SPIR-V");
-            if (code->getBufferSize() % sizeof(uint32_t) != 0)
+            diagnose(result, diagnostics, wgsl ? "Emit WGSL" : "Emit SPIR-V");
+            if (!code || code->getBufferSize() == 0)
             {
-                throw std::runtime_error("Slang emitted misaligned SPIR-V: " + entry.name);
+                throw std::runtime_error("Slang emitted empty shader code: " + entry.name);
             }
-            CompiledShader shader {std::move(entry), std::vector<uint32_t>(code->getBufferSize() / sizeof(uint32_t))};
+            CompiledShader shader;
+            shader.entry = std::move(entry);
+            if (wgsl)
+            {
+                shader.wgsl.assign(static_cast<const char*>(code->getBufferPointer()), code->getBufferSize());
+            }
+            else
+            {
+                if (code->getBufferSize() % sizeof(uint32_t) != 0)
+                {
+                    throw std::runtime_error("Slang emitted misaligned SPIR-V: " + shader.entry.name);
+                }
+                shader.words.resize(code->getBufferSize() / sizeof(uint32_t));
+                std::memcpy(shader.words.data(), code->getBufferPointer(), code->getBufferSize());
+            }
             if (shader.entry.stage == VriShaderStage_Fragment)
             {
                 shader.colorOutputs = colorOutputs(reflection->getResultVarLayout());
@@ -479,7 +499,6 @@ namespace vultra
                     shader.threadGroup[axis] = uint32_t(sizes[axis]);
                 }
             }
-            std::memcpy(shader.words.data(), code->getBufferPointer(), code->getBufferSize());
             program.shaders.push_back(std::move(shader));
         }
         program.parameters             = detail::reflectShaderParameters(layout->getGlobalParamsVarLayout());
@@ -541,7 +560,7 @@ namespace vultra
         }
         statistics.totalMilliseconds = milliseconds(started);
         Logger::core().info(
-            "Shader compiled: {} | frontend {:.1f} ms{}, link {:.1f} ms, SPIR-V {:.1f} ms, total {:.1f} ms",
+            "Shader compiled: {} | frontend {:.1f} ms{}, link {:.1f} ms, codegen {:.1f} ms, total {:.1f} ms",
             source.string(),
             statistics.frontendMilliseconds,
             statistics.moduleCacheHit ? " (IR reused)" : "",

@@ -2,7 +2,7 @@
 
 namespace vultra
 {
-    ImGuiApp::ImGuiApp(const DesktopAppConfig& config, const EditorGuiConfig& guiConfig) :
+    ImGuiApp::ImGuiApp(const AppConfig& config, const EditorGuiConfig& guiConfig) :
         DesktopApp(config),
         m_Gui(getDevice(), getWindow(), getSwapchain().format(), guiConfig)
     {

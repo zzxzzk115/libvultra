@@ -12,43 +12,52 @@ extern "C"
         uint64_t serial;
     } VultraUiFrame;
 
+#define VULTRA_UI_API_FINGERPRINT UINT64_C(0x1ad1a64402bc94c0)
+
     typedef struct VultraUiApi
     {
         uint32_t version;
         uint32_t struct_size;
-        VultraStatus (*button)(VultraUiFrame frame, const char* label, uint64_t labelSize, uint8_t* changed);
-        VultraStatus (
-            *checkbox)(VultraUiFrame frame, const char* label, uint64_t labelSize, uint8_t* value, uint8_t* changed);
-        VultraStatus (*combo)(VultraUiFrame frame,
-                              const char*   label,
-                              uint64_t      labelSize,
-                              int32_t*      value,
-                              const char*   items,
-                              uint64_t      itemsSize,
-                              uint8_t*      changed);
-        VultraStatus (*header)(VultraUiFrame frame,
-                               const char*   label,
-                               uint64_t      labelSize,
-                               int32_t       initiallyOpen,
-                               uint8_t*      changed);
-        VultraStatus (*integerslider)(VultraUiFrame frame,
-                                      const char*   label,
-                                      uint64_t      labelSize,
-                                      int32_t*      value,
-                                      int32_t       minimum,
-                                      int32_t       maximum,
-                                      uint8_t*      changed);
-        VultraStatus (*separator)(VultraUiFrame frame, const char* label, uint64_t labelSize);
-        VultraStatus (*slider)(VultraUiFrame frame,
-                               const char*   label,
-                               uint64_t      labelSize,
-                               double*       value,
-                               double        minimum,
-                               double        maximum,
-                               uint8_t*      changed);
-        VultraStatus (*text)(VultraUiFrame frame, const char* text, uint64_t textSize);
-        VultraStatus (*textwrapped)(VultraUiFrame frame, const char* text, uint64_t textSize);
-        VultraStatus (*tooltip)(VultraUiFrame frame, const char* text, uint64_t textSize);
+        uint64_t fingerprint;
+        VultraStatus(VULTRA_ABI_CALL* button)(VultraUiFrame frame,
+                                              const char*   label,
+                                              uint64_t      labelSize,
+                                              uint8_t*      changed);
+        VultraStatus(VULTRA_ABI_CALL* checkbox)(VultraUiFrame frame,
+                                                const char*   label,
+                                                uint64_t      labelSize,
+                                                uint8_t*      value,
+                                                uint8_t*      changed);
+        VultraStatus(VULTRA_ABI_CALL* combo)(VultraUiFrame frame,
+                                             const char*   label,
+                                             uint64_t      labelSize,
+                                             int32_t*      value,
+                                             const char*   items,
+                                             uint64_t      itemsSize,
+                                             uint8_t*      changed);
+        VultraStatus(VULTRA_ABI_CALL* header)(VultraUiFrame frame,
+                                              const char*   label,
+                                              uint64_t      labelSize,
+                                              int32_t       initiallyOpen,
+                                              uint8_t*      changed);
+        VultraStatus(VULTRA_ABI_CALL* integerslider)(VultraUiFrame frame,
+                                                     const char*   label,
+                                                     uint64_t      labelSize,
+                                                     int32_t*      value,
+                                                     int32_t       minimum,
+                                                     int32_t       maximum,
+                                                     uint8_t*      changed);
+        VultraStatus(VULTRA_ABI_CALL* separator)(VultraUiFrame frame, const char* label, uint64_t labelSize);
+        VultraStatus(VULTRA_ABI_CALL* slider)(VultraUiFrame frame,
+                                              const char*   label,
+                                              uint64_t      labelSize,
+                                              double*       value,
+                                              double        minimum,
+                                              double        maximum,
+                                              uint8_t*      changed);
+        VultraStatus(VULTRA_ABI_CALL* text)(VultraUiFrame frame, const char* text, uint64_t textSize);
+        VultraStatus(VULTRA_ABI_CALL* textwrapped)(VultraUiFrame frame, const char* text, uint64_t textSize);
+        VultraStatus(VULTRA_ABI_CALL* tooltip)(VultraUiFrame frame, const char* text, uint64_t textSize);
     } VultraUiApi;
 #ifdef __cplusplus
 }

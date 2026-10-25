@@ -7,6 +7,7 @@
 
 #include <array>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string_view>
@@ -28,12 +29,12 @@ namespace
         writeFileAtomically(file, std::as_bytes(std::span(text)));
     }
 
-    Image render(Device& device, AssetSource& source)
+    Image render(Device& device, AssetSource& source, const AssetSource* shaders)
     {
         const Extent extent {320, 200};
         Texture      target(device, colorTexture(extent));
         Frame        frame(device);
-        VGui         gui(device, extent, VriFormat_RGBA8_UNORM, &source);
+        VGui         gui(device, extent, VriFormat_RGBA8_UNORM, &source, shaders);
         gui.loadFont("ui/font.ttf");
         gui.loadDocument("ui/main.rml");
         Input input;
@@ -46,7 +47,8 @@ namespace
         const auto draw = [&]
         {
             input.advanceFrame();
-            gui.update(input, extent);
+            gui.processInput(input, extent);
+            gui.update(extent);
             auto* cmd = frame.begin();
             target.transition(
                 cmd,
@@ -77,6 +79,17 @@ namespace
         draw();
         draw();
         require(readback(device, target).rgba == baseline.rgba, "VGui document reload changed its pixels");
+        int replacements = 0;
+        gui.bindChange("toggle",
+                       [&]
+                       {
+                           ++replacements;
+                           gui.loadDocument("ui/main.rml");
+                       });
+        gui.setChecked("toggle", true);
+        require(replacements == 1 && !gui.isChecked("toggle"), "Callback could not safely replace its document");
+        gui.setChecked("toggle", true);
+        require(replacements == 1, "Removed document callback was invoked again");
         return baseline;
     }
 } // namespace
@@ -84,7 +97,12 @@ namespace
 int main(int argc, char** argv)
 try
 {
-    require(argc == 2, "Pass an unused output directory");
+    require(argc == 2 || argc == 3, "Pass an unused output directory and optional cooked builtin.vpk");
+    std::optional<AssetSource> shaders;
+    if (argc == 3)
+    {
+        shaders.emplace(VpkArchive(argv[2]));
+    }
     const std::filesystem::path directory(argv[1]);
     require(!std::filesystem::exists(directory), "VGui output directory already exists");
     const auto root = directory / "source";
@@ -117,11 +135,11 @@ try
     VpkArchive::pack(files, package);
     Device      device;
     AssetSource authored(root);
-    const auto  baseline = render(device, authored);
+    const auto  baseline = render(device, authored, shaders ? &*shaders : nullptr);
     savePng(baseline, directory / "filesystem.png");
     std::filesystem::remove_all(root);
     AssetSource packaged {VpkArchive(package)};
-    const auto  result = render(device, packaged);
+    const auto  result = render(device, packaged, shaders ? &*shaders : nullptr);
     require(result.rgba == baseline.rgba, "Filesystem and VPK VGui output differ");
     savePng(result, directory / "packaged.png");
     std::cout << "Independent VGui passed: texture, stylesheet, checkbox input and filesystem/VPK parity\n";

@@ -44,8 +44,8 @@ namespace vultra::detail
                     {"rows", parameter.rows},
                     {"columns", parameter.columns},
                     {"column_major", parameter.columnMajor},
-                    {"shape", parameter.resourceShape},
-                    {"access", parameter.resourceAccess},
+                    {"descriptor_type", parameter.descriptorType ? Json(*parameter.descriptorType) : Json()},
+                    {"view_type", parameter.viewType},
                     {"offsets", offsets},
                     {"fields", fields}};
         }
@@ -66,17 +66,30 @@ namespace vultra::detail
             {
                 throw std::invalid_argument("Invalid cooked shader parameter type");
             }
-            parameter.kind           = ShaderParameterKind(kind);
-            parameter.scalar         = ShaderScalarType(scalar);
-            parameter.size           = document.at("size").get<uint64_t>();
-            parameter.stride         = document.at("stride").get<uint64_t>();
-            parameter.count          = document.at("count").get<uint64_t>();
-            parameter.matrixStride   = document.at("matrix_stride").get<uint64_t>();
-            parameter.rows           = document.at("rows").get<uint32_t>();
-            parameter.columns        = document.at("columns").get<uint32_t>();
-            parameter.columnMajor    = document.at("column_major").get<bool>();
-            parameter.resourceShape  = document.at("shape").get<uint32_t>();
-            parameter.resourceAccess = document.at("access").get<uint32_t>();
+            parameter.kind         = ShaderParameterKind(kind);
+            parameter.scalar       = ShaderScalarType(scalar);
+            parameter.size         = document.at("size").get<uint64_t>();
+            parameter.stride       = document.at("stride").get<uint64_t>();
+            parameter.count        = document.at("count").get<uint64_t>();
+            parameter.matrixStride = document.at("matrix_stride").get<uint64_t>();
+            parameter.rows         = document.at("rows").get<uint32_t>();
+            parameter.columns      = document.at("columns").get<uint32_t>();
+            parameter.columnMajor  = document.at("column_major").get<bool>();
+            if (!document.at("descriptor_type").is_null())
+            {
+                const auto descriptor = document.at("descriptor_type").get<uint32_t>();
+                if (descriptor > uint32_t(VriDescriptorType_AccelerationStructure))
+                {
+                    throw std::invalid_argument("Invalid cooked shader descriptor type");
+                }
+                parameter.descriptorType = VriDescriptorType(descriptor);
+            }
+            const auto view = document.at("view_type").get<uint32_t>();
+            if (view > uint32_t(VriTextureViewType_CubeArray))
+            {
+                throw std::invalid_argument("Invalid cooked shader texture view type");
+            }
+            parameter.viewType = VriTextureViewType(view);
             if (!document.at("offsets").is_array() || !document.at("fields").is_array())
             {
                 throw std::invalid_argument("Invalid cooked shader layout children");
@@ -123,7 +136,9 @@ namespace vultra::detail
                        {"dependencies", Json::array()}};
         for (const auto& shader : program.shaders)
         {
-            const auto           bytes = std::as_bytes(std::span(shader.words));
+            const auto           bytes = program.profile == "wgsl" ?
+                                             std::as_bytes(std::span(shader.wgsl.data(), shader.wgsl.size())) :
+                                             std::as_bytes(std::span(shader.words));
             std::vector<uint8_t> code(bytes.size());
             std::memcpy(code.data(), bytes.data(), bytes.size());
             document["entries"].push_back({{"name", shader.entry.name},
@@ -149,7 +164,8 @@ namespace vultra::detail
         {
             throw std::invalid_argument("Invalid cooked shader compiler metadata");
         }
-        if (!program.profile.starts_with("spirv_") || program.profile.size() > 64 ||
+        const bool wgsl = program.profile == "wgsl";
+        if ((!wgsl && !program.profile.starts_with("spirv_")) || program.profile.size() > 64 ||
             !document.at("ray_query").is_boolean() || !document.at("entries").is_array() ||
             document.at("entries").empty() || document.at("entries").size() > 256)
         {
@@ -164,20 +180,29 @@ namespace vultra::detail
             const auto& code  = entry.at("code").get_binary();
             if (name.empty() || name.size() > 4096 || name.find(char(0)) != std::string::npos ||
                 !names.insert(name).second || !stage.is_number_unsigned() || stage.get<uint64_t>() > UINT32_MAX ||
-                !validStage(stage.get<uint32_t>()) || code.size() < 20 || code.size() % sizeof(uint32_t) != 0)
+                !validStage(stage.get<uint32_t>()) || code.empty() ||
+                (!wgsl && (code.size() < 20 || code.size() % sizeof(uint32_t) != 0)))
             {
                 throw std::invalid_argument("Invalid cooked shader entry: " + name);
             }
-            CompiledShader shader {{name, VriShaderStageBits(stage.get<uint32_t>())},
-                                   std::vector<uint32_t>(code.size() / sizeof(uint32_t))};
-            std::memcpy(shader.words.data(), code.data(), code.size());
+            CompiledShader shader;
+            shader.entry = {name, VriShaderStageBits(stage.get<uint32_t>())};
+            if (wgsl)
+            {
+                shader.wgsl.assign(reinterpret_cast<const char*>(code.data()), code.size());
+            }
+            else
+            {
+                shader.words.resize(code.size() / sizeof(uint32_t));
+                std::memcpy(shader.words.data(), code.data(), code.size());
+            }
             shader.colorOutputs = entry.at("color_outputs").get<uint32_t>();
             shader.threadGroup  = entry.at("thread_group").get<std::array<uint32_t, 3>>();
             if (shader.colorOutputs > 8)
             {
                 throw std::invalid_argument("Invalid cooked fragment output count");
             }
-            if (shader.words.front() != 0x07230203)
+            if (!wgsl && shader.words.front() != 0x07230203)
             {
                 throw std::invalid_argument("Invalid cooked SPIR-V: " + name);
             }

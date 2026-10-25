@@ -28,6 +28,8 @@ namespace vultra
         void        remove(std::string_view action);
         void        update(std::span<const InputEvent> events, InputCapture capture = {});
         ActionState action(std::string_view name) const;
+        // Match one raw event, independently of aggregate frame edges and UI ownership.
+        ActionState eventAction(std::string_view name, const InputEvent& event) const;
         // Publish accumulated edges once, before each fixed step; catch-up steps do not repeat them.
         void            beginPhysicsTick();
         ActionState     physicsAction(std::string_view name) const;

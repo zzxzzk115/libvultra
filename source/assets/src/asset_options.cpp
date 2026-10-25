@@ -31,13 +31,13 @@ namespace vultra
     AssetImportOptions getAssetImportOptions(const argparse::ArgumentParser& cli)
     {
         AssetImportOptions options;
-        options.cacheDirectory         = cli.get<std::string>("--cache-dir");
-        options.cache                  = !cli.get<bool>("--no-cache");
-        options.reimport               = cli.get<bool>("--reimport");
-        options.textures.mipmaps       = !cli.get<bool>("--no-mipmaps");
-        options.workers                = cli.get<uint32_t>("--import-jobs");
-        options.textures.compression   = cli.get<std::string>("--compression") == "none" ? TextureCompression::eNone :
-                                                                                           TextureCompression::eBc7Linear;
+        options.cacheDirectory       = cli.get<std::string>("--cache-dir");
+        options.cache                = !cli.get<bool>("--no-cache");
+        options.reimport             = cli.get<bool>("--reimport");
+        options.textures.mipmaps     = !cli.get<bool>("--no-mipmaps");
+        options.workers              = cli.get<uint32_t>("--import-jobs");
+        options.textures.compression = cli.get<std::string>("--compression") == "none" ? TextureCompression::eNone :
+                                                                                         TextureCompression::eBc7Linear;
         options.fbx.materialConvention = cli.get<std::string>("--fbx-materials") == "orca" ?
                                              FbxMaterialConvention::eOrcaMetallicRoughness :
                                              FbxMaterialConvention::ePhong;

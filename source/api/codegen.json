@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "root": "../..",
+  "sources": {
+    "ui": "source/ui/src/editor_gui_frame.cpp",
+    "settings": "source/servers/src/rendering/builtin/builtin_renderer.cpp",
+    "materials": "source/assets/src/material_parameters.cpp",
+    "compute": "source/drivers/src/compute/compute_context.cpp"
+  },
+  "outputs": [
+    {
+      "path": "source/api/ir/api.json",
+      "emitter": "ir"
+    },
+    {
+      "path": "source/api/include/vultra/api/vultra_abi.generated.h",
+      "emitter": "common_header"
+    },
+    {
+      "path": "source/api/include/vultra/api/vultra_ui.generated.h",
+      "emitter": "c_header"
+    },
+    {
+      "path": "source/api/src/vultra_ui.generated.cpp",
+      "emitter": "c_source"
+    },
+    {
+      "path": "source/servers/include/vultra/servers/rendering/builtin/render_properties.generated.hpp",
+      "emitter": "property_header",
+      "declarations": [
+        "vultra/servers/rendering/builtin/builtin_renderer.hpp"
+      ]
+    },
+    {
+      "path": "source/servers/src/rendering/builtin/render_properties.generated.cpp",
+      "emitter": "property_source",
+      "header": "vultra/servers/rendering/builtin/render_properties.generated.hpp",
+      "declarations": [
+        "vultra/servers/rendering/builtin/builtin_renderer.hpp"
+      ]
+    },
+    {
+      "path": "source/assets/include/vultra/assets/material_properties.generated.hpp",
+      "emitter": "property_header",
+      "declarations": [
+        "vultra/assets/material_parameters.hpp"
+      ]
+    },
+    {
+      "path": "source/assets/src/material_properties.generated.cpp",
+      "emitter": "property_source",
+      "header": "vultra/assets/material_properties.generated.hpp",
+      "declarations": [
+        "vultra/assets/material_parameters.hpp"
+      ]
+    },
+    {
+      "path": "source/api/include/vultra/api/render_settings.generated.hpp",
+      "emitter": "reflection_header",
+      "declarations": [
+        "vultra/servers/rendering/builtin/builtin_renderer.hpp"
+      ]
+    },
+    {
+      "path": "source/api/src/render_settings.generated.cpp",
+      "emitter": "reflection_source",
+      "header": "render_settings.generated.hpp",
+      "declarations": [
+        "vultra/servers/rendering/builtin/builtin_renderer.hpp"
+      ]
+    },
+    {
+      "path": "source/api/include/vultra/api/vultra_compute.generated.h",
+      "emitter": "compute_header"
+    },
+    {
+      "path": "source/api/src/vultra_compute.generated.cpp",
+      "emitter": "compute_source"
+    }
+  ]
+}

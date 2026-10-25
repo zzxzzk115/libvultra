@@ -65,6 +65,52 @@ namespace
                 vultra::ShaderProgram::load(file);
             });
     }
+
+    void resourceViews(const std::filesystem::path& root)
+    {
+        using namespace vultra;
+        const auto program = ShaderProgram::compileSource(root / "resource_views.slang", R"(
+Texture1D<float4> line;
+Texture1DArray<float4> lines;
+Texture2D<float4> plane;
+Texture2DArray<float4> planes;
+Texture3D<float4> volume;
+TextureCube<float4> cube;
+TextureCubeArray<float4> cubes;
+SamplerState filter;
+RWStructuredBuffer<float4> output;
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void computeMain()
+{
+    output[0] = line.SampleLevel(filter, 0.5, 0) + lines.SampleLevel(filter, float2(0.5, 0), 0) +
+                plane.SampleLevel(filter, float2(0.5), 0) + planes.SampleLevel(filter, float3(0.5, 0.5, 0), 0) +
+                volume.SampleLevel(filter, float3(0.5), 0) + cube.SampleLevel(filter, float3(0, 0, 1), 0) +
+                cubes.SampleLevel(filter, float4(0, 0, 1, 0), 0);
+}
+)");
+        const auto file    = root / "resource_views.vshaderc";
+        program.save(file);
+        const auto       restored = ShaderProgram::load(file);
+        const std::array expected {std::pair {"line", VriTextureViewType_1D},
+                                   std::pair {"lines", VriTextureViewType_1DArray},
+                                   std::pair {"plane", VriTextureViewType_2D},
+                                   std::pair {"planes", VriTextureViewType_2DArray},
+                                   std::pair {"volume", VriTextureViewType_3D},
+                                   std::pair {"cube", VriTextureViewType_Cube},
+                                   std::pair {"cubes", VriTextureViewType_CubeArray}};
+        for (const auto* candidate : {&program, &restored})
+        {
+            const auto bindings = candidate->resourceBindings();
+            for (const auto& [name, view] : expected)
+            {
+                const auto binding = std::ranges::find(bindings, name, &ShaderResourceBinding::name);
+                require(binding != bindings.end() && binding->type == VriDescriptorType_Texture &&
+                            binding->viewType == view,
+                        "Compiler/cooked reflection lost a VRI texture dimension");
+            }
+        }
+    }
 } // namespace
 
 int main()
@@ -75,10 +121,11 @@ try
     const auto root = fs::path("build/.tmp/shader-program") /
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     fs::create_directories(root / "source");
+    resourceViews(root);
     const auto source = root / "source/triangle.slang";
     const auto cooked = root / "source/triangle.vshaderc";
-    fs::copy_file("examples/research/shaders/triangle.slang", source);
-    fs::copy_file("examples/research/shaders/color.slangh", root / "source/color.slangh");
+    fs::copy_file("examples/offline/shaders/triangle.slang", source);
+    fs::copy_file("examples/offline/shaders/color.slangh", root / "source/color.slangh");
     const std::array includes {fs::path("builtin/shaders"), fs::path("examples/common")};
     const std::array entries {ShaderEntry {"vertexMain", VriShaderStage_Vertex},
                               ShaderEntry {"fragmentMain", VriShaderStage_Fragment}};
@@ -93,8 +140,26 @@ try
     require(ShaderProgram::cook(source, cooked, defineOptions) && !ShaderProgram::cook(source, cooked, defineOptions),
             "Macro options did not invalidate/cache raw Slang");
     program.save(cooked);
-    const auto original = readBytes(cooked);
-    const auto restored = ShaderProgram::load(cooked);
+    const auto original   = readBytes(cooked);
+    const auto restored   = ShaderProgram::load(cooked);
+    const auto fromMemory = ShaderProgram::load(std::as_bytes(std::span(original)), "embedded/triangle.vshaderc");
+    require(fromMemory.shaders.size() == restored.shaders.size() &&
+                fromMemory.shaders[0].words == restored.shaders[0].words &&
+                fromMemory.shaders[1].words == restored.shaders[1].words &&
+                fromMemory.compileKey == restored.compileKey,
+            "Embedded shader archive differs from filesystem loading");
+    auto damaged = original;
+    damaged.back() ^= 1;
+    reject(
+        [&]
+        {
+            ShaderProgram::load(std::as_bytes(std::span(damaged)), "embedded/damaged.vshaderc");
+        });
+    reject(
+        [&]
+        {
+            ShaderProgram::load(std::as_bytes(std::span(original)).first(15), "embedded/truncated.vshaderc");
+        });
     require(restored.shaders.size() == program.shaders.size() &&
                 restored.shaders[0].words == program.shaders[0].words &&
                 restored.shaders[1].words == program.shaders[1].words,
@@ -217,6 +282,18 @@ void callableMain(inout Payload payload)
                   {
                       document["entries"][0]["code"] = nlohmann::json::binary({1, 2, 3});
                   });
+    alterDocument(cooked,
+                  original,
+                  [](auto& document)
+                  {
+                      document["parameters"]["descriptor_type"] = 99;
+                  });
+    alterDocument(cooked,
+                  original,
+                  [](auto& document)
+                  {
+                      document["parameters"]["view_type"] = 99;
+                  });
     writeFileAtomically(cooked, std::as_bytes(std::span(original)));
     auto invalid                = program;
     invalid.shaders[0].words[0] = 0;
@@ -227,7 +304,62 @@ void callableMain(inout Payload payload)
         });
     require(readBytes(cooked) == original, "Rejected shader save overwrote last good artifact");
 
-    Device      device;
+    Device               device;
+    ShaderCompileOptions wgslOptions;
+    wgslOptions.profile = "wgsl";
+    wgslOptions.includeDirectories.assign(includes.begin(), includes.end());
+    const auto wgsl = ShaderProgram::compile(source, wgslOptions);
+    require(wgsl.profile == "wgsl" && wgsl.compileKey != program.compileKey && wgsl.shaders.size() == 2,
+            "WGSL target shared the SPIR-V compiler identity or lost shader entries");
+    for (const auto& shader : wgsl.shaders)
+    {
+        require(shader.words.empty() && !shader.wgsl.empty(), "WGSL program retained the wrong target payload");
+    }
+    const auto wgslFile = root / "triangle-wgsl.vshaderc";
+    wgsl.save(wgslFile);
+    const auto wgslBytes = readBytes(wgslFile);
+    const auto wgslRestored =
+        ShaderProgram::load(std::as_bytes(std::span(wgslBytes)), "embedded/triangle-wgsl.vshaderc");
+    require(wgslRestored.profile == "wgsl" && wgslRestored.shaders[0].wgsl == wgsl.shaders[0].wgsl &&
+                wgslRestored.shaders[1].wgsl == wgsl.shaders[1].wgsl,
+            "Cooked WGSL changed during embedded archive loading");
+    const auto wgslDescriptors = wgslRestored.descriptors(entries);
+    require(std::string_view(static_cast<const char*>(wgslDescriptors[0].bytecode)) == wgsl.shaders[0].wgsl &&
+                wgslDescriptors[0].bytecodeSize == wgsl.shaders[0].wgsl.size() + 1,
+            "VRI did not receive owned, NUL-terminated WGSL");
+    alterDocument(wgslFile,
+                  wgslBytes,
+                  [](auto& document)
+                  {
+                      document["entries"][0]["code"].get_binary().push_back(0);
+                  });
+    auto invalidWgsl             = wgsl;
+    invalidWgsl.shaders[0].words = program.shaders[0].words;
+    reject(
+        [&]
+        {
+            invalidWgsl.save(wgslFile);
+        });
+    wgslOptions.rayQuery = true;
+    reject(
+        [&]
+        {
+            ShaderProgram::compile(source, wgslOptions);
+        });
+    bool builderCalled = false;
+    reject(
+        [&]
+        {
+            ShaderPipeline incompatible(device,
+                                        wgslRestored,
+                                        {entries.begin(), entries.end()},
+                                        [&](auto) -> VriPipeline*
+                                        {
+                                            builderCalled = true;
+                                            return nullptr;
+                                        });
+        });
+    require(!builderCalled, "A mismatched shader target reached the device pipeline builder");
     Frame       frame(device);
     Texture     target(device, colorTexture({129, 73}, VriFormat_BGRA8_UNORM));
     Image       baseline;

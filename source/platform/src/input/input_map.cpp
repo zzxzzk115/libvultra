@@ -164,7 +164,7 @@ namespace vultra
                         {
                             m_Keys[size_t(value.key)] = false;
                         }
-                        else if (value.action == InputAction::ePress && !event.consumed && !capture.keyboard)
+                        else if (value.action == InputAction::ePress && !inputCaptured(event, capture))
                         {
                             m_Keys[size_t(value.key)] = true;
                         }
@@ -175,7 +175,7 @@ namespace vultra
                         {
                             throw std::invalid_argument("Invalid injected action mouse button");
                         }
-                        if (!value.held || (!event.consumed && !capture.mouse))
+                        if (!value.held || !inputCaptured(event, capture))
                         {
                             m_Buttons[size_t(value.button)] = value.held;
                         }
@@ -202,6 +202,40 @@ namespace vultra
             throw std::invalid_argument("Unknown input action: " + std::string(name));
         }
         return found->second.frame;
+    }
+
+    ActionState InputMap::eventAction(std::string_view name, const InputEvent& event) const
+    {
+        const auto found = m_Actions.find(name);
+        if (found == m_Actions.end())
+        {
+            throw std::invalid_argument("Unknown input action: " + std::string(name));
+        }
+        return std::visit(
+            [&](const auto& value) -> ActionState
+            {
+                using Event = std::decay_t<decltype(value)>;
+                if constexpr (std::is_same_v<Event, KeyInput>)
+                {
+                    if (std::ranges::find(found->second.bindings, InputBinding(value.key)) !=
+                        found->second.bindings.end())
+                    {
+                        return {value.action != InputAction::eRelease,
+                                value.action == InputAction::ePress,
+                                value.action == InputAction::eRelease};
+                    }
+                }
+                else if constexpr (std::is_same_v<Event, MouseButtonInput>)
+                {
+                    if (std::ranges::find(found->second.bindings, InputBinding(value.button)) !=
+                        found->second.bindings.end())
+                    {
+                        return {value.held, value.held, !value.held};
+                    }
+                }
+                return {};
+            },
+            event.value);
     }
 
     void InputMap::beginPhysicsTick()

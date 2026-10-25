@@ -35,7 +35,8 @@ namespace sample
                     std::span<const ColoredVertex> vertices,
                     std::span<const uint32_t>      indices,
                     VriPrimitiveTopology           topology  = VriPrimitiveTopology_TriangleList,
-                    bool                           depthTest = false);
+                    bool                           depthTest = false,
+                    const vultra::ShaderProgram*   program   = nullptr);
         ~ColoredMesh();
         ColoredMesh(const ColoredMesh&)            = delete;
         ColoredMesh& operator=(const ColoredMesh&) = delete;

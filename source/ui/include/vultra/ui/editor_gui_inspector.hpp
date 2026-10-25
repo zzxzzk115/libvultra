@@ -2,6 +2,7 @@
 
 #include <vultra/core/base/property.hpp>
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -45,7 +46,7 @@ namespace vultra
         bool choice(EditorGuiProperty property, int* index, const char* const* items, int count);
         bool property(EditorGuiProperty property, void* value, EditorGuiPropertyDrawer drawer);
         // Draw an owned value; the caller applies edits through its world/resource semantic setter.
-        bool valueField(const PropertyInfo& property, PropertyValue& value);
+        bool valueField(const PropertySchema& property, PropertyValue& value);
         bool properties(const ObjectTypeInfo& type, void* object);
 
     private:
@@ -53,6 +54,7 @@ namespace vultra
         std::optional<bool> drawCustom(EditorGuiProperty property, void* value);
 
         EditorGui& m_Gui;
+        uint64_t   m_Serial;
         bool       m_Visible;
     };
 } // namespace vultra

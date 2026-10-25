@@ -11,56 +11,68 @@
 namespace vultra
 {
     EditorGuiFrame::EditorGuiFrame(EditorGui& gui) :
-        m_Gui(gui)
+        m_Gui(gui),
+        m_Serial(gui.frameSerial())
     {
-        if (!m_Gui.frameActive())
-        {
-            throw std::logic_error("GUI widgets require an active EditorGui frame");
-        }
+        requireActive();
+    }
+
+    void EditorGuiFrame::requireActive() const
+    {
+        m_Gui.requireFrame(m_Serial);
     }
 
     void EditorGuiFrame::setNextWindowPos(ImVec2 position, ImGuiCond condition)
     {
+        requireActive();
         ImGui::SetNextWindowPos(position, condition);
     }
 
     void EditorGuiFrame::setNextWindowSize(ImVec2 size, ImGuiCond condition)
     {
+        requireActive();
         ImGui::SetNextWindowSize(size, condition);
     }
 
     ImVec2 EditorGuiFrame::mainViewportPos() const
     {
+        requireActive();
         return ImGui::GetMainViewport()->Pos;
     }
 
     ImVec2 EditorGuiFrame::contentRegionAvail() const
     {
+        requireActive();
         return ImGui::GetContentRegionAvail();
     }
 
     bool EditorGuiFrame::beginWindow(const char* title, bool* open, ImGuiWindowFlags flags)
     {
+        requireActive();
         return ImGui::Begin(title, open, flags);
     }
 
     void EditorGuiFrame::endWindow()
     {
+        requireActive();
         ImGui::End();
     }
 
     bool EditorGuiFrame::beginChild(const char* id, ImVec2 size, ImGuiChildFlags flags)
     {
+        requireActive();
         return ImGui::BeginChild(id, size, flags);
     }
 
     void EditorGuiFrame::endChild()
     {
+        requireActive();
         ImGui::EndChild();
     }
 
     void EditorGuiFrame::text(const char* format, ...)
     {
+        requireActive();
         va_list args;
         va_start(args, format);
         ImGui::TextV(format, args);
@@ -69,6 +81,7 @@ namespace vultra
 
     void EditorGuiFrame::textWrapped(const char* format, ...)
     {
+        requireActive();
         va_list args;
         va_start(args, format);
         ImGui::TextWrappedV(format, args);
@@ -77,6 +90,7 @@ namespace vultra
 
     void EditorGuiFrame::textDisabled(const char* format, ...)
     {
+        requireActive();
         va_list args;
         va_start(args, format);
         ImGui::TextDisabledV(format, args);
@@ -85,6 +99,7 @@ namespace vultra
 
     void EditorGuiFrame::bulletText(const char* format, ...)
     {
+        requireActive();
         va_list args;
         va_start(args, format);
         ImGui::BulletTextV(format, args);
@@ -93,36 +108,43 @@ namespace vultra
 
     void EditorGuiFrame::textUnformatted(const char* value)
     {
+        requireActive();
         ImGui::TextUnformatted(value);
     }
 
     void EditorGuiFrame::separator()
     {
+        requireActive();
         ImGui::Separator();
     }
 
     void EditorGuiFrame::separatorText(const char* value)
     {
+        requireActive();
         ImGui::SeparatorText(value);
     }
 
     bool EditorGuiFrame::button(const char* label)
     {
+        requireActive();
         return ImGui::Button(label);
     }
 
     void EditorGuiFrame::sameLine()
     {
+        requireActive();
         ImGui::SameLine();
     }
 
     void EditorGuiFrame::image(ImTextureID texture, ImVec2 size)
     {
+        requireActive();
         ImGui::Image(texture, size);
     }
 
     void EditorGuiFrame::showDemoWindow(bool* open)
     {
+        requireActive();
         ImGui::ShowDemoWindow(open);
     }
 
@@ -152,6 +174,7 @@ namespace vultra
 
     bool EditorGuiFrame::checkbox(const char* label, bool* value)
     {
+        requireActive();
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -163,6 +186,7 @@ namespace vultra
 
     bool EditorGuiFrame::sliderFloat(const char* label, float* value, float min, float max, const char* format)
     {
+        requireActive();
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -174,6 +198,7 @@ namespace vultra
 
     bool EditorGuiFrame::inputText(const char* label, std::string* value)
     {
+        requireActive();
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -185,6 +210,7 @@ namespace vultra
 
     bool EditorGuiFrame::sliderDouble(const char* label, double* value, double min, double max)
     {
+        requireActive();
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -202,6 +228,7 @@ namespace vultra
 
     bool EditorGuiFrame::sliderFloat3(const char* label, float* value, float min, float max)
     {
+        requireActive();
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -213,6 +240,7 @@ namespace vultra
 
     bool EditorGuiFrame::colorEdit3(const char* label, float* color)
     {
+        requireActive();
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -224,6 +252,7 @@ namespace vultra
 
     bool EditorGuiFrame::combo(const char* label, int* selected, const char* items)
     {
+        requireActive();
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -235,11 +264,13 @@ namespace vultra
 
     bool EditorGuiFrame::comboValue(int* selected, const char* items)
     {
+        requireActive();
         return ImGui::Combo("##value", selected, items);
     }
 
     bool EditorGuiFrame::beginCombo(const char* label, const char* preview)
     {
+        requireActive();
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -254,22 +285,26 @@ namespace vultra
 
     void EditorGuiFrame::endCombo()
     {
+        requireActive();
         ImGui::EndCombo();
         EditorGuiLayout::endProperty();
     }
 
     bool EditorGuiFrame::selectable(const char* label, bool selected)
     {
+        requireActive();
         return ImGui::Selectable(label, selected);
     }
 
     bool EditorGuiFrame::collapsingHeader(const char* label)
     {
+        requireActive();
         return ImGui::CollapsingHeader(label);
     }
 
     bool EditorGuiFrame::treeNodeEx(const char* id, ImGuiTreeNodeFlags flags, const char* format, ...)
     {
+        requireActive();
         va_list args;
         va_start(args, format);
         const bool open = ImGui::TreeNodeExV(id, flags, format, args);
@@ -279,51 +314,61 @@ namespace vultra
 
     bool EditorGuiFrame::isItemClicked() const
     {
+        requireActive();
         return ImGui::IsItemClicked();
     }
 
     void EditorGuiFrame::treePop()
     {
+        requireActive();
         ImGui::TreePop();
     }
 
     void EditorGuiFrame::pushId(const char* id)
     {
+        requireActive();
         ImGui::PushID(id);
     }
 
     void EditorGuiFrame::pushId(int id)
     {
+        requireActive();
         ImGui::PushID(id);
     }
 
     void EditorGuiFrame::popId()
     {
+        requireActive();
         ImGui::PopID();
     }
 
     void EditorGuiFrame::pushItemWidth(float width)
     {
+        requireActive();
         ImGui::PushItemWidth(width);
     }
 
     void EditorGuiFrame::popItemWidth()
     {
+        requireActive();
         ImGui::PopItemWidth();
     }
 
     void EditorGuiFrame::setNextItemWidth(float width)
     {
+        requireActive();
         ImGui::SetNextItemWidth(width);
     }
 
     void EditorGuiFrame::beginDisabled(bool disabled)
     {
+        requireActive();
         ImGui::BeginDisabled(disabled);
     }
 
     void EditorGuiFrame::endDisabled()
     {
+        requireActive();
         ImGui::EndDisabled();
     }
 
@@ -332,8 +377,9 @@ namespace vultra
         return frame.button(std::string(label).c_str());
     }
 
-    void guiText(EditorGuiFrame&, std::string_view text)
+    void guiText(EditorGuiFrame& frame, std::string_view text)
     {
+        frame.requireActive();
         ImGui::TextUnformatted(text.data(), text.data() + text.size());
     }
 
@@ -347,16 +393,18 @@ namespace vultra
         frame.separatorText(std::string(label).c_str());
     }
 
-    void guiTooltip(EditorGuiFrame&, std::string_view text)
+    void guiTooltip(EditorGuiFrame& frame, std::string_view text)
     {
+        frame.requireActive();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         {
             ImGui::SetTooltip("%.*s", int(text.size()), text.data());
         }
     }
 
-    bool guiHeader(EditorGuiFrame&, std::string_view label, int32_t initiallyOpen)
+    bool guiHeader(EditorGuiFrame& frame, std::string_view label, int32_t initiallyOpen)
     {
+        frame.requireActive();
         if (initiallyOpen < 0 || initiallyOpen > 1)
         {
             throw std::invalid_argument("Header initial state must be zero or one");
@@ -386,8 +434,10 @@ namespace vultra
         return frame.sliderDouble(std::string(label).c_str(), &value, minimum, maximum);
     }
 
-    bool guiIntegerSlider(EditorGuiFrame&, std::string_view label, int32_t& value, int32_t minimum, int32_t maximum)
+    bool
+    guiIntegerSlider(EditorGuiFrame& frame, std::string_view label, int32_t& value, int32_t minimum, int32_t maximum)
     {
+        frame.requireActive();
         if (minimum > maximum || value < minimum || value > maximum)
         {
             throw std::invalid_argument("Integer slider values must be within their range");

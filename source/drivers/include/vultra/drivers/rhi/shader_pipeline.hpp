@@ -10,13 +10,14 @@
 
 namespace vultra
 {
+    class AssetSource;
     class ShaderCompiler;
 
     struct ShaderPipelineIdentity
     {
         std::filesystem::path         file;
         std::string                   compileKey;
-        uint64_t                      spirvHash = 0;
+        uint64_t                      bytecodeHash = 0;
         std::vector<ShaderDependency> dependencies;
     };
 
@@ -29,12 +30,14 @@ namespace vultra
         // absent, load its .vshaderc sibling. Invalid cooked files never fall back to compilation.
         // watchDirectory defaults to the entry's directory. Use a shared root for sibling lib/resources folders.
         // Search the entry directory first, then includeDirectories in order. Paths resolve at construction.
+        // An explicit source always loads cooked entry bytes and must outlive this pipeline and reload calls.
         ShaderPipeline(Device&                            device,
                        std::filesystem::path              file,
                        std::vector<ShaderEntry>           entries,
                        Builder                            builder,
                        std::filesystem::path              watchDirectory     = {},
-                       std::vector<std::filesystem::path> includeDirectories = {});
+                       std::vector<std::filesystem::path> includeDirectories = {},
+                       const AssetSource*                 source             = nullptr);
         // Source cache paths resolve at construction; an empty path disables the disk program cache.
         // Cooked programs do not create a compiler or cache.
         ShaderPipeline(Device&               device,
@@ -42,7 +45,11 @@ namespace vultra
                        ShaderCompileOptions  options,
                        Builder               builder,
                        std::filesystem::path watchDirectory = {},
-                       std::filesystem::path cacheDirectory = ".vultra/shaders");
+                       std::filesystem::path cacheDirectory = ".vultra/shaders",
+                       const AssetSource*    source         = nullptr);
+        // Builds synchronously from owned bytecode, for example an entry read from an embedded VPK.
+        // The program can be destroyed after construction; this pipeline has no file watcher.
+        ShaderPipeline(Device& device, const ShaderProgram& program, std::vector<ShaderEntry> entries, Builder builder);
         ~ShaderPipeline();
         ShaderPipeline(const ShaderPipeline&)            = delete;
         ShaderPipeline& operator=(const ShaderPipeline&) = delete;
@@ -70,16 +77,22 @@ namespace vultra
         }
 
     private:
+        void replace(const ShaderProgram& program);
+#ifdef VULTRA_WITH_SHADER_COMPILER
         struct Watch;
-        Device&                         m_Device;
-        std::filesystem::path           m_File;
-        ShaderCompileOptions            m_CompileOptions;
-        Builder                         m_Builder;
-        VriPipeline*                    m_Pipeline = nullptr;
-        std::string                     m_Diagnostics;
-        uint64_t                        m_Generation = 0;
-        ShaderPipelineIdentity          m_Identity;
+#endif
+        Device&                m_Device;
+        const AssetSource*     m_AssetSource = nullptr;
+        std::filesystem::path  m_File;
+        ShaderCompileOptions   m_CompileOptions;
+        Builder                m_Builder;
+        VriPipeline*           m_Pipeline = nullptr;
+        std::string            m_Diagnostics;
+        uint64_t               m_Generation = 0;
+        ShaderPipelineIdentity m_Identity;
+#ifdef VULTRA_WITH_SHADER_COMPILER
         std::unique_ptr<ShaderCompiler> m_Compiler;
         std::unique_ptr<Watch>          m_Watch;
+#endif
     };
 } // namespace vultra

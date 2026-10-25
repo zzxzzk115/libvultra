@@ -13,78 +13,74 @@ PROJECT = ROOT / "tests/modules"
 PACKAGE_FEATURES = {
     "vri": {"gpu"}, "glm": {"math"}, "nlohmann_json": {"json"}, "stb": {"image_io"},
     "slang-static": {"shader"}, "imgui": {"editor_gui"}, "rmlui": {"vgui"},
-    "xxhash": {"shader", "asset_source"}, "antlr4-runtime": {"game_shader"},
-    "libsdl3": {"window"}, "entt": {"world"}, "meshoptimizer": {"rendering"},
-    "directxtex": {"texture_import"}, "vtask": {"texture_import"}, "ispc": {"texture_import"},
+    "xxhash": {"shader_runtime", "asset_source"}, "antlr4-runtime": {"game_shader"},
+    "libsdl3": {"window"}, "meshoptimizer": {"meshlet_build"},
+    "directxtex": {"texture_import"}, "vtask": {"asset_jobs"}, "ispc": {"texture_import"},
     "tinygltf": {"asset_import"}, "tinyobjloader": {"asset_import"}, "openfbx": {"asset_import"},
-    "lua": {"script_lua"},
-    "nativefiledialog-extended": {"dialogs"}, "imgui-node-editor": {"editor"},
+    "nativefiledialog-extended": {"dialogs"},
     "openxr-static": {"xr"}, "vulkan-headers": {"xr"},
-}
-RESEARCH_SOURCES = {
-    "research_quality": {"quality.cpp"}, "research_graph": {"graph_report.cpp"},
-    "research_camera": {"camera_track.cpp"}, "research_project": {"research_project.cpp"},
-    "research_reference": {"environment_sampling.cpp", "reference_path_tracer.cpp"},
-    "research_experiment": {"experiment_description.cpp", "experiment_session.cpp"},
-    "research_api": {"research_bridge.cpp"},
-    "research_stereo": {"headset_profile.cpp", "stereo_views.cpp", "stereo_renderer.cpp", "research_configuration.cpp"},
-    "research_host": {"experiment_host.cpp", "experiment_api.generated.cpp"},
 }
 
 
 def verify_sources(features, sources):
     asset_files = {
         "asset_source": {"asset_source.cpp", "source_file.cpp", "vpk_archive.cpp"},
-        "project": {"project_manifest.cpp"},
+        "builtin_pack": {"builtin_pack.cpp"},
         "asset_values": {"material_parameters.cpp", "material_properties.generated.cpp", "tangents.cpp"},
         "material_values": {"material_instance.cpp", "shader_property.cpp"},
-        "texture_import": {"dds_loader.cpp", "image_decode.cpp", "import_jobs.cpp", "texture_import.cpp"},
+        "asset_jobs": {"import_jobs.cpp"},
+        "meshlet_build": {"meshlet_build.cpp"},
+        "texture_import": {"dds_loader.cpp", "image_decode.cpp", "texture_import.cpp"},
         "asset_import": {"asset_options.cpp", "asset_pipeline.cpp", "fbx_loader.cpp", "gltf_loader.cpp", "obj_loader.cpp"},
-        "asset_export": {"vpk_export.cpp"},
     }
     allowed_assets = {file for feature, files in asset_files.items() if feature in features for file in files}
     for file in sources:
         path = Path(file)
-        if "/extensions/" in file:
-            owners = {feature for feature, files in RESEARCH_SOURCES.items() if path.name in files}
-            if "/extensions/research/" not in file or not owners & features:
-                raise RuntimeError(f"Compiled an unselected extension: {file}")
-            continue
-        if "/scripting/" in file:
-            owner = {"script_host.cpp": "script_host", "native_script.cpp": "script_native",
-                     "lua_script.cpp": "script_lua", "dotnet_script.cpp": "script_csharp"}.get(path.name)
-            if owner not in features:
-                raise RuntimeError(f"Compiled an unselected language implementation: {file}")
+        if any(part in path.parts for part in ("extensions", "scripting")) or "/source/scene/" in file:
+            raise RuntimeError(f"Library compiled application code: {file}")
         if "/api/" in file:
-            owner = {"vultra_scene.generated.cpp": "api_scene", "vultra_ui.generated.cpp": "api_ui",
-                     "plugin_session.cpp": "api_host", "native_plugin.cpp": "native_plugin"}.get(path.name)
-            inspector = "editor_gui" in features and (
-                (path.name == "scene_properties.generated.cpp" and "world" in features) or
-                (path.name == "render_settings.generated.cpp" and "rendering" in features))
+            owner = {"vultra_ui.generated.cpp": "editor_gui",
+                     "vultra_compute.generated.cpp": "compute"}.get(path.name)
+            inspector = path.name == "render_settings.generated.cpp" and {"editor_gui", "rendering"} <= features
             if owner not in features and not inspector:
                 raise RuntimeError(f"Compiled an unselected ABI domain: {file}")
-        if "/assets/" in file:
-            game_source = "game_shader" in features and "/assets/src/shaders/" in file
+        if "/source/assets/" in file:
+            cooked_source = "/assets/src/shaders/" in file and path.name in {
+                "shader_asset.cpp", "shader_archive.cpp", "material_instance.cpp"}
+            game_source = "/assets/src/shaders/" in file and (
+                "game_shader" in features or ("game_shader_runtime" in features and cooked_source))
             if not game_source and path.name not in allowed_assets:
                 raise RuntimeError(f"Compiled an unselected asset implementation: {file}")
-        if "/scene/" in file:
-            owner = "world"
-            if "/camera/" in file:
-                owner = "camera"
-            elif path.name in ("scene_import.cpp", "scene_shader_materials.cpp"):
-                owner = "scene_rendering"
+        if "/source/ui/" in file:
+            owner = "vgui" if path.name in ("vgui.cpp", "vgui_skin.png") else "editor_gui"
+            if path.name == "editor_gui_shader_material.cpp":
+                owner = "shader_inspector"
             if owner not in features:
-                raise RuntimeError(f"Compiled an unselected scene implementation: {file}")
+                raise RuntimeError(f"Compiled an unselected UI implementation: {file}")
+        if path.name == "random_stream.cpp" and "random" not in features:
+            raise RuntimeError(f"Compiled unselected random streams: {file}")
+        if "/drivers/src/rhi/" in file and path.name.startswith("shader"):
+            runtime_sources = {"shader_program.cpp", "shader_archive.cpp", "shader_parameters.cpp",
+                               "shader_bindings.cpp", "shader_pipeline.cpp"}
+            owner = "shader_runtime" if path.name in runtime_sources else "shader"
+            if owner not in features:
+                raise RuntimeError(f"Compiled an unselected shader implementation: {file}")
         if "/servers/" in file:
             owner = "graph" if "/graph/" in file else "rendering"
             if path.name == "texture_blit.cpp":
                 owner = "blit"
+            elif path.name in {"shader_material.cpp", "shader_pass_state.cpp", "shader_runtime.cpp"}:
+                owner = "shader_material"
+            elif path.name == "shader_source_reload.cpp":
+                owner = "game_shader"
+            elif path.name in {"meshlets.cpp", "rendering_server.cpp", "scene.cpp"}:
+                owner = "gpu_scene"
+            elif path.name == "texture_upload.cpp":
+                owner = "texture_upload"
+            elif path.name == "scene_prepare.cpp":
+                owner = "scene_prepare"
             if owner not in features:
                 raise RuntimeError(f"Compiled an unselected server implementation: {file}")
-        if "/ui/" in file and "editor_gui" not in features:
-            raise RuntimeError(f"Compiled an unselected UI implementation: {file}")
-        if path.name == "editor_gui_shader_material.cpp" and "shader_inspector" not in features:
-            raise RuntimeError(f"Compiled an unselected shader Inspector: {file}")
 
 
 def run(arguments, log, *, succeeds=True, env=None, cwd=PROJECT):
@@ -107,26 +103,8 @@ def verify_dependencies(executable, features, log, env):
 
 
 def verify_diagnostics(output, features, target):
-    errors = [line for line in output.splitlines() if "[error]" in line]
-    if target == "module-research-extension":
-        expected = {"Research extension: test.discrete: invalid discrete parameter: quality": 1,
-                    "Research extension: Duplicate pass type": 1, "Research extension: Register one project editor": 2,
-                    "Research extension: Pass registration has ended": 1, "Research extension: Resource belongs": 1,
-                    "Research extension: Expired graph frame": 1, "gain.slang: Load shader module": 1,
-                    "[Shader] Pipeline builder returned null": 1, "Research extension: Unknown project shader handle": 1}
-        if len(errors) != sum(expected.values()) or any(
-                sum(token in error for error in errors) != count for token, count in expected.items()):
-            raise RuntimeError(f"{target} emitted unexpected recovery diagnostics: {output}")
-        if "Validation Error" in output:
-            raise RuntimeError(f"{target} emitted GPU validation errors: {output}")
-        return
-    expected = 0
-    if target == "module-scripting":
-        expected = len(features & {"script_native", "script_lua", "script_csharp"})
-    if len(errors) != expected or any("[App] [error] Reload " not in line for line in errors):
+    if "[error]" in output or "Validation Error" in output:
         raise RuntimeError(f"{target} emitted unexpected diagnostics: {output}")
-    if "Validation Error" in output:
-        raise RuntimeError(f"{target} emitted GPU validation errors: {output}")
 
 
 def main():
@@ -138,54 +116,40 @@ def main():
         env.pop(name, None)
     cases = {
         "foundation": "foundation",
+        "random": "random",
         "gpu": None,  # The embedded-project default must really be GPU-only.
         "graph": "graph",
         "graph_json": "graph_json",
         "image_io": "image_io",
+        "properties": "properties",
         "desktop": "desktop",
+        "shader_runtime": "shader_runtime",
         "shader": "shader",
         "shader_graph": "shader,graph",
         "shader_graph_json": "shader,graph_json",
         "asset_source": "asset_source",
-        "project": "project",
+        "game_shader_runtime": "game_shader_runtime",
+        "shader_material": "shader_material",
+        "shader_material_source": "shader_material,game_shader",
+        "shader_inspector": "shader_inspector,image_io",
         "game_shader": "game_shader",
         "editor_gui": "editor_gui,image_io",
         "editor_gui_window": "editor_gui,window,image_io",
         "vgui": "vgui",
         "vgui_window": "vgui,window",
         "material_values": "material_values",
+        "texture_values": "texture_values",
+        "texture_upload": "texture_upload",
+        "gpu_scene": "gpu_scene",
+        "meshlet_build": "meshlet_build",
+        "scene_prepare": "scene_prepare",
         "asset_values": "asset_values",
         "camera": "camera",
         "texture_import": "texture_import",
         "asset_import": "asset_import",
-        "world": "world",
         "rendering": "rendering",
-        "scene_rendering": "scene_rendering",
-        "asset_export": "asset_export",
-        "api_scene": "api_scene",
-        "api_ui": "api_ui",
-        "api_scene_ui": "api_scene,api_ui,image_io",
-        "api_host": "api_host",
-        "native_plugin": "native_plugin",
-        "script_host": "script_host",
-        "script_native": "script_native",
-        "script_lua": "script_lua",
-        "script_csharp": "script_csharp",
-        "script_all_cpu": "script_native,script_lua,script_csharp",
-        "script_all_ui": "script_native,script_lua,script_csharp,api_ui",
-        "native_sdk": "native_sdk",
+        "rendering_source": "rendering,scene_prepare,shader",
         "interactive": "interactive",
-        "engine": "engine",
-        "research_quality": "research_quality",
-        "research_camera": "research_camera",
-        "research_project": "research_project",
-        "research_graph": "research_graph",
-        "research_reference": "research_reference",
-        "research_reference_correctness": "research_reference,asset_import,image_metrics",
-        "research_experiment": "research_experiment",
-        "research_api": "research_api",
-        "research_api_cpu_host": "research_api,research_project,api_host,image_metrics",
-        "research": "research",
     }
     if len(sys.argv) > 1:
         requested = sys.argv[1:]
@@ -193,6 +157,23 @@ def main():
         if unknown:
             raise ValueError(f"Unknown module cases: {sorted(unknown)}")
         cases = {name: cases[name] for name in requested}
+    builtin_pack = None
+    if set(cases) & {"rendering", "vgui", "vgui_window"}:
+        host = evidence / "host"
+        host.mkdir()
+        host_env = env | {"XMAKE_CONFIGDIR": str(host)}
+        run(["xmake", "f", "-P", str(PROJECT), "-F", str(PROJECT / "xmake.lua"), "-y", "-m", "release",
+             "-o", str(host / "build"), "--libvultra_features=builtin_pack",
+             "--libvultra_build_examples=n", "--libvultra_build_tests=n"],
+            host / "configure.log", env=host_env)
+        run(["xmake", "build", "-P", str(PROJECT), "-F", str(PROJECT / "xmake.lua"), "-y", "module-builtin-pack"],
+            host / "build.log", env=host_env)
+        cookers = [file for file in (host / "build").rglob("module-builtin-pack*")
+                   if file.is_file() and file.name in ("module-builtin-pack", "module-builtin-pack.exe")]
+        if len(cookers) != 1:
+            raise RuntimeError(f"Expected one host builtin cooker: {cookers}")
+        builtin_pack = host / "builtin.vpk"
+        run([str(cookers[0]), str(ROOT), str(builtin_pack)], host / "cook.log", env=host_env, cwd=ROOT)
     for name, selection in cases.items():
         directory = evidence / name
         directory.mkdir()
@@ -220,70 +201,38 @@ def main():
         if "shader" in features:
             expected_targets.add("filewatch")
         if "asset_source" in features:
-            expected_targets.add("module-assets")
+            expected_targets.update(("module-assets", "module-vpk-memory"))
         if "editor_gui" in features and "image_io" in features:
-            expected_targets.add("module-gui")
+            expected_targets.update(("module-gui", "module-gui-lifetime"))
         if "vgui" in features:
-            expected_targets.update(("vultra-vgui", "module-vgui"))
+            expected_targets.add("module-vgui")
         if "game_shader" in features:
             expected_targets.add("module-game-shader")
-        if "world" in features:
-            expected_targets.update(("module-world-ecs", "module-world-execution"))
+        if "meshlet_build" in features:
+            expected_targets.add("module-meshlet-build")
+        if "properties" in features:
+            expected_targets.add("module-property-schema")
+        if "random" in features:
+            expected_targets.update(("pcg32", "module-random"))
         if "rendering" in features:
-            expected_targets.update(("openpbr", "module-rendering"))
+            expected_targets.add("openpbr")
+            expected_targets.add("module-rendering" if {"scene_prepare", "shader"} <= features else "module-rendering-runtime")
         if "texture_import" in features:
             expected_targets.add("bc7enc")
         if "asset_import" in features:
             expected_targets.add("module-import")
         if "material_values" in features:
             expected_targets.add("module-material")
-        if "api_scene" in features or "api_ui" in features:
-            expected_targets.add("module-abi")
-        if "api_host" in features:
-            expected_targets.add("module-plugin-session")
-        if "native_sdk" in features:
-            expected_targets.add("vultra-native-sdk")
-        if features & RESEARCH_SOURCES.keys():
-            expected_targets.add("vultra-research-extension")
-        if "research_host" in features:
-            expected_targets.add("vultra-research-scripting")
-        if "research_quality" in features:
-            expected_targets.add("flip")
-        if {"research_quality", "research_camera", "research_project", "research_graph"} & features:
-            expected_targets.add("module-research")
-        if {"research_reference", "asset_import", "image_metrics"} <= features:
-            expected_targets.add("module-reference")
-        if "research_experiment" in features:
-            expected_targets.add("module-experiment")
-        if {"research_api", "research_project", "api_host", "image_metrics"} <= features:
-            expected_targets.add("module-research-extension")
-        if "script_host" in features:
-            expected_targets.update(("vultra-scripting", "module-scripting"))
-        if "script_native" in features:
-            expected_targets.update(("module-native-code", "module-native-replacement"))
-        if "script_csharp" in features:
-            expected_targets.add("module-managed-assets")
         if set(manifest["targets"]) != expected_targets:
             raise RuntimeError(f"{name} registered unrelated targets: {manifest['targets']}")
         expected_packages = {"argparse", "spdlog"} | {
             package for package, owners in PACKAGE_FEATURES.items() if owners & features
         }
+        if {"shader_material", "game_shader"} <= features:
+            expected_packages.add("vtask")
         if packages != expected_packages:
             raise RuntimeError(f"{name} package mismatch: expected {expected_packages}; configured {packages}")
-        scripting_sources = {Path(file).name for file in manifest["scripting_sources"]}
-        expected_scripting = {file for feature, file in (
-            ("script_host", "script_host.cpp"), ("script_native", "native_script.cpp"),
-            ("script_lua", "lua_script.cpp"), ("script_csharp", "dotnet_script.cpp")) if feature in features}
-        if scripting_sources != expected_scripting:
-            raise RuntimeError(f"{name} language-source mismatch: {scripting_sources}; expected {expected_scripting}")
-        research_sources = {Path(file).name for file in manifest["research_sources"] + manifest["research_host_sources"]}
-        expected_research = {file for feature, files in RESEARCH_SOURCES.items() if feature in features for file in files}
-        if research_sources != expected_research:
-            raise RuntimeError(f"{name} research-source mismatch: {research_sources}; expected {expected_research}")
-        if any("extensions" in Path(file).parts for file in manifest["sources"]):
-            raise RuntimeError(f"{name} compiled research implementation inside the core library")
-        source_paths = [Path(file).as_posix() for file in manifest["sources"] + manifest["scripting_sources"] +
-                        manifest["research_sources"] + manifest["research_host_sources"]]
+        source_paths = [Path(file).as_posix() for file in manifest["sources"]]
         verify_sources(features, source_paths)
         binaries = [file for file in build.rglob("module-probe*") if file.is_file() and file.suffix in ("", ".exe")]
         if len(binaries) != 1:
@@ -297,8 +246,12 @@ def main():
                              and manifest["target_kinds"][target] == "binary"):
             executable = binaries[0].with_name(target + binaries[0].suffix)
             arguments = [str(executable)]
-            if target in ("module-assets", "module-vgui", "module-import", "module-scripting", "module-research"):
+            if target in ("module-assets", "module-vgui", "module-import"):
                 arguments.append(str(directory / target))
+            if target == "module-vgui":
+                arguments.append(str(builtin_pack))
+            if target == "module-rendering-runtime":
+                arguments.extend([str(builtin_pack), str(directory / target)])
             output = run(arguments, directory / (target + ".log"), env=case_env, cwd=ROOT)
             verify_diagnostics(output, features, target)
             verify_dependencies(executable, features, directory / (target + "-dynamic.log"), case_env)

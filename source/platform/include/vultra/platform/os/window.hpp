@@ -33,6 +33,11 @@ namespace vultra
         void        setTextInputEnabled(bool enabled);
         void*       nativeHandle() const;
 
+        Input& input()
+        {
+            return m_Input;
+        }
+
         const Input& input() const
         {
             return m_Input;

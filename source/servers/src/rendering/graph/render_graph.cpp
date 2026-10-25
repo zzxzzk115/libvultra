@@ -361,7 +361,7 @@ namespace vultra
         const auto label    = "Capture after " + writer;
         m_Passes.insert(m_Passes.begin() + (pass - m_Passes.begin()) + 1,
                         {label,
-                         {{source, Usage::eCopySource}, {captured, Usage::eCopyDestination}},
+                         {{source, Usage::eCopySource}, {captured, Usage::eCopyDestination, true}},
                          [this, source, captured](auto* cmd, RenderGraph& graph)
                          {
                              VriTextureCopyDesc copy {};
@@ -438,6 +438,7 @@ namespace vultra
         {
             auto& pass = m_Passes[p];
             pass.dependencies.clear();
+            pass.contentDependencies.clear();
             pass.live = false;
             std::vector<bool> used(m_Resources.size());
             for (const auto& use : pass.uses)
@@ -448,7 +449,12 @@ namespace vultra
                 {
                     throw std::invalid_argument(pass.name + ": duplicate resource; use a ReadWrite usage");
                 }
-                used[r]             = true;
+                used[r] = true;
+                if (use.discardPrevious && (!writes(use.usage) || reads(use.usage)))
+                {
+                    throw std::invalid_argument(pass.name +
+                                                ": discardPrevious requires a write-only usage: " + entry.name);
+                }
                 const auto required = requiredUsage(use.usage, entry.isTexture);
                 const auto declared = entry.isTexture ? entry.textureDesc.usage : entry.bufferDesc.usage;
                 if ((declared & required) != required)
@@ -462,6 +468,10 @@ namespace vultra
                 if (writer[r])
                 {
                     pass.dependencies.push_back(*writer[r]);
+                    if (reads(use.usage) || !use.discardPrevious)
+                    {
+                        pass.contentDependencies.push_back(*writer[r]);
+                    }
                 }
                 if (writes(use.usage))
                 {
@@ -478,14 +488,17 @@ namespace vultra
         std::vector<size_t> pending;
         for (size_t p = 0; p < m_Passes.size(); ++p)
         {
-            if (m_Passes[p].sideEffect || std::ranges::any_of(m_Passes[p].uses,
-                                                              [this](const Use& use)
-                                                              {
-                                                                  return lookup(use.resource).history &&
-                                                                         writes(use.usage);
-                                                              }))
+            if (m_Passes[p].sideEffect)
             {
                 pending.push_back(p);
+            }
+        }
+        for (size_t r = 0; r < m_Resources.size(); ++r)
+        {
+            // Only the final history value is observable next frame; earlier writes need a live reader.
+            if (m_Resources[r].history && writer[r])
+            {
+                pending.push_back(*writer[r]);
             }
         }
         for (const auto resource : m_Exports)
@@ -508,7 +521,7 @@ namespace vultra
                 continue;
             }
             pass.live = true;
-            pending.insert(pending.end(), pass.dependencies.begin(), pass.dependencies.end());
+            pending.insert(pending.end(), pass.contentDependencies.begin(), pass.contentDependencies.end());
         }
         // Declaration order is topological. Imports, exports and history never share an allocation.
         for (auto& entry : m_Resources)
@@ -762,10 +775,10 @@ namespace vultra
         }
         for (const auto& pass : m_Passes)
         {
-            PassInfo info {pass.name, pass.live, pass.dependencies, {}};
+            PassInfo info {pass.name, pass.live, pass.dependencies, {}, pass.contentDependencies};
             for (const auto& use : pass.uses)
             {
-                info.uses.push_back({use.resource.index, use.usage});
+                info.uses.push_back({use.resource.index, use.usage, use.discardPrevious});
                 if (pass.live)
                 {
                     result.resources[use.resource.index].active = true;

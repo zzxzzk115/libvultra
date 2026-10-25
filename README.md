@@ -2,18 +2,21 @@
 
 A small C++23 graphics framework built on VRI, with readable C++ and Slang code for research and prototyping.
 The `dev-VRI` branch is under early development and targets Windows x64 and Linux x86_64 with Vulkan.
+Experimental Android GameActivity and browser hosts run the existing clear/VRI/RenderGraph basics on Android,
+WebGL2 and WebGPU. Host Slang cooking produces SPIR-V or WGSL with checked runtime loading. The hidden in-app
+browser verifies WebGPU triangle canvas/readback parity; repeated Edge adapter/device initialization, device-loss
+recovery and the remaining example ports are still open.
+See [platform applications](BUILD.md#android-and-web-applications) for the tested paths and limits.
 
 Select the capabilities you use around one public `vultra` static library. Direct GPU programs need no scene,
-importer, ECS, renderer, UI or language host. Optional engine features use EnTT-backed world storage and
-Godot-style authoring/lifecycle; reusable research lives in `extensions/research`.
+importer, ECS, renderer, UI or language host.
 
 - VRI devices/resources, GLFW/SDL3 windows, input, profiling and finite-frame capture.
 - Explicit RenderGraph and context-owned typed pass definitions, with C++ and JSON construction.
 - Native Slang and game material shaders, reflection, cooking and transactional reload.
-- CPU asset import/cache, forward/deferred raster rendering and incremental scene synchronization.
-- Optional EditorGui/ImGui, VGui/RmlUi and generated Native/Lua/C# scripting APIs.
-- Offline batch/Python experiments, reference transport, AOV inspection and linked reports.
-- Research workbench and external/embedded VPK player export without xmake at runtime.
+- CPU asset import/cache, GPU scene data and optional forward/deferred raster rendering.
+- Optional EditorGui/ImGui, VGui/RmlUi and generated UI/property descriptions.
+- Generic VPK byte sources, writing, embedding and builtin shader cooking.
 
 [Get started](docs/get_started.md) provides complete desktop, offline and RenderGraph skeleton programs.
 [BUILD.md](BUILD.md) contains setup, feature selection, export and verification commands.
@@ -28,7 +31,7 @@ xmake build -y --all
 xmake run example-basics vri --frames 60
 ```
 
-An all-target build needs the .NET 10 SDK. Smaller selections are documented in BUILD.md.
+The library build does not require .NET, Lua or EnTT. Smaller selections are documented in BUILD.md.
 For a parent xmake project, use `includes("external/libvultra")` and `add_deps("vultra")`.
 
 ## Examples
@@ -40,26 +43,22 @@ the mode argument. Each example declares its own requirements, so one sample nee
 | --- | --- |
 | `example-basics` | `window`, `vri`, `graph`, `mesh-shading`. |
 | `example-offline` | Windowless triangle → compute → display, C++/JSON parity and PNG/PFM. |
-| `example-scene` | `helmet`, `debug`, `sponza`, `sponza-mesh-shading`. |
-| `example-ray` | `triangle`, `cornell`, `query`. |
-| `example-xr` | `triangle`, `sponza`; active runtime/device required. |
-| `example-ui` | Raw ImGui, EditorGui and VGui; optional C plugin with `ui.native`. |
-| `example-shader` | Cooked game material and native shader paths. |
-| `example-research` | Renderer, graph parameters, inspection and benchmarks. |
-| `example-scripting` | Native C++ movement, Lua pickups and safe C# throttle control with hot reload. |
+| `example-ui` | Raw ImGui, EditorGui and VGui. |
 
 Start from [offline GPU composition](examples/offline/main.cpp),
-[desktop services](examples/basics/window.cpp) or [the research example](examples/research/main.cpp).
-SceneData/GpuScene can be used directly; the ECS world and server RIDs are optional.
+[desktop services](examples/basics/window.cpp). SceneData/GpuScene can be used directly; RenderingServer is optional.
 Examples accept `--frames`, `--log-level` and `--log-file` where applicable.
 Orbit controls use left-drag, middle/right-drag and scroll; FPS controls use WASD/QE, right-drag and Shift.
 Use [offline runs](BUILD.md#offline-rendering) for automated rendering without desktop windows.
 
 ## Showcase
 
-[glTF Viewer](examples/scene/helmet.cpp)
+Builtin rendering with a glTF asset
 
-![Damaged Helmet rendered in the Vultra glTF Viewer](media/images/example_gltf_viewer.png)
+![Damaged Helmet rendered with the builtin renderer](media/images/example_gltf_viewer.png)
+
+The renderer accepts SceneData directly. Interactive model/research applications are maintained separately;
+the examples in this repository focus on library mechanisms.
 
 [UI Showcase](examples/ui/main.cpp)
 
@@ -70,8 +69,8 @@ The Damaged Helmet model retains its [upstream attribution and licenses](resourc
 ## Scope and contributions
 
 Current scope is static geometry and an opaque OpenPBR material subset.
-The workbench is a research frontend; gameplay authoring, advanced RmlUi effects, D3D12 and clean-machine delivery
-still have [roadmap gates](docs/roadmap.md). XR simulation/offscreen checks do not validate a physical headset.
+Advanced RmlUi effects, D3D12 and clean-machine delivery still have [roadmap gates](docs/roadmap.md).
+XR simulation/offscreen checks do not validate a physical headset.
 
 Follow [AGENTS.md](AGENTS.md), the checked-in formatting/static-analysis rules and
 [verification requirements](BUILD.md#development-checks). Keep contributions readable and independently maintainable.
@@ -86,8 +85,7 @@ Repository documentation is in English.
 - [SDL3](https://github.com/libsdl-org/SDL/tree/release-3.4.0): optional desktop window/input backend (zlib license)
 - [Native File Dialog Extended](https://github.com/btzy/nativefiledialog-extended/tree/v1.3.0): Linux portal model picker (zlib license)
 - [Dear ImGui](https://github.com/ocornut/imgui): immediate-mode UI, docking and multiple viewports
-- [imgui-node-editor](https://github.com/thedmd/imgui-node-editor): optional research editor node canvas (MIT)
-- [Slang](https://github.com/shader-slang/slang): shader compilation to SPIR-V
+- [Slang](https://github.com/shader-slang/slang): shader compilation to SPIR-V and WGSL
 - [ANTLR](https://github.com/antlr/antlr4/tree/4.13.2): private game shader parser and checked-in generated C++ (BSD-3-Clause)
 - [argparse](https://github.com/p-ranav/argparse): command-line argument parsing
 - [spdlog](https://github.com/gabime/spdlog): console and file logging
@@ -95,7 +93,6 @@ Repository documentation is in English.
 - [NVIDIA FLIP](https://github.com/NVlabs/flip): on-demand perceptual image assessment ([BSD-3-Clause provenance](external/flip/README.vultra.md))
 - [VTask](https://github.com/zzxzzk115/vtask): parallel loading, geometry and texture import jobs
 - [meshoptimizer](https://github.com/zeux/meshoptimizer): meshlet construction and bounds, inherited from `dev`
-- [EnTT 3.15.0](https://github.com/skypjack/entt/tree/v3.15.0): header-only scene ECS storage (MIT, no local patches)
 - [OpenFBX](https://github.com/nem0/OpenFBX): static FBX scene loading
 - [VRI-Framework](https://github.com/zzxzzk115/VRI-Framework): ORCA FBX material and normal-map conventions ([MIT notice](external/vrf_fbx_license.txt))
 - [DirectXTex](https://github.com/microsoft/DirectXTex): CPU DDS loading and block decompression
@@ -110,4 +107,4 @@ Repository documentation is in English.
 
 ## License
 
-Vultra is licensed under the [MIT License](LICENSE). Third-party code and assets retain their own licenses; see [OpenPBR](external/openpbr/README.vultra.md), [FileWatch](external/FileWatch/LICENSE), [BC7 encoder](external/bc7enc/README.md) and [asset attribution](resources/README.md).
+libvultra is licensed under the [MIT License](LICENSE). Third-party code and assets retain their own licenses; see [OpenPBR](external/openpbr/README.vultra.md), [FileWatch](external/FileWatch/LICENSE), [BC7 encoder](external/bc7enc/README.md) and [asset attribution](resources/README.md).

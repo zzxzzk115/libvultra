@@ -22,10 +22,28 @@ option("libvultra_features")
     end)
 option_end()
 
+option("libvultra_graphics_api")
+    set_default("vulkan")
+    set_values("vulkan", "webgpu", "webgl2")
+    set_showmenu(true)
+    set_description("VRI backend: Vulkan on native platforms, WebGPU or WebGL2 on WebAssembly")
+    after_check(function (option)
+        local api = option:value()
+        assert((is_plat("wasm") and (api == "webgpu" or api == "webgl2")) or
+               (not is_plat("wasm") and api == "vulkan"), "Unsupported Vultra platform/graphics API selection")
+    end)
+option_end()
+
 option("libvultra_examples")
     set_default("all")
     set_showmenu(true)
     set_description("Comma-separated example groups or modes, e.g. basics.vri,offline,ui")
+option_end()
+
+option("libvultra_example_pack")
+    set_default("")
+    set_showmenu(true)
+    set_description("Host-cooked VPK embedded in Web examples that load shader programs")
 option_end()
 
 option("libvultra_window_backend")
@@ -122,7 +140,7 @@ includes("scripts/build_features.lua")
 local features
 features, featureError = vultraFeatures()
 if has_config("libvultra_build_tests") then
-    for _, name in ipairs({"engine", "vgui", "scripting", "research", "editor", "tools"}) do
+    for _, name in ipairs({"rendering", "vgui", "editor_gui", "graph_json", "benchmark", "tools", "camera", "random", "input_actions"}) do
         if not features[name] then
             featureError = featureError or ("Repository tests require feature '" .. name ..
                            "'; select all or disable libvultra_build_tests")
@@ -135,23 +153,12 @@ includes("external")
 
 -- include source
 includes("source")
-if features.research_quality or features.research_graph or features.research_camera or features.research_project or
-   features.research_reference or features.research_experiment or features.research_api or features.research_stereo then
-    includes("extensions/research")
-end
 if is_root then
-    if features.tool_import or features.tool_shader or features.tool_pack or features.tool_sdk or
-       features.tool_batch or features.tool_python then
+    if features.tool_import or features.tool_shader or features.builtin_pack then
         includes("tools")
     end
     if features.builtin_pack then
         includes("builtin")
-    end
-    if features.runtime then
-        includes("runtime")
-    end
-    if features.editor then
-        includes("editor")
     end
 end
 

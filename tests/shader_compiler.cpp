@@ -154,7 +154,7 @@ namespace
 
         void release()
         {
-            m_Device.waitIdle();
+            m_Device.waitIdleForDestruction();
             if (m_Pool)
             {
                 m_Device.core.DestroyDescriptorPool(m_Pool);

@@ -63,7 +63,7 @@ public:
 
     ~MeshTriangleApp() override
     {
-        getDevice().waitIdle();
+        getDevice().waitIdleForDestruction();
         m_Pipeline.reset();
         getDevice().core.DestroyPipelineLayout(m_Layout);
     }
@@ -98,7 +98,7 @@ private:
     std::unique_ptr<vultra::ShaderPipeline> m_Pipeline;
 };
 
-int runMeshShader(int argc, char** argv)
+int runMeshShader(const vultra::AppLaunch& launch, int argc, char** argv)
 try
 {
     const auto options = sample::readOptions(argc, argv);

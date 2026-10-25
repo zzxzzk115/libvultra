@@ -2,6 +2,11 @@
 #ifndef VULTRA_ABI_GENERATED_H
 #define VULTRA_ABI_GENERATED_H
 #include <stdint.h>
+#if defined(_WIN32)
+#define VULTRA_ABI_CALL __cdecl
+#else
+#define VULTRA_ABI_CALL
+#endif
 #ifdef __cplusplus
 extern "C"
 {
@@ -14,7 +19,8 @@ extern "C"
         VULTRA_STATUS_INVALID_ARGUMENT = 1,
         VULTRA_STATUS_INVALID_FRAME    = 2,
         VULTRA_STATUS_ERROR            = 3,
-        VULTRA_STATUS_BUFFER_TOO_SMALL = 4
+        VULTRA_STATUS_BUFFER_TOO_SMALL = 4,
+        VULTRA_STATUS_MAX_ENUM         = 0x7fffffff
     } VultraStatus;
 #ifdef __cplusplus
 }

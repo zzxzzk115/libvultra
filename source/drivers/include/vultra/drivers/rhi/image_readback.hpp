@@ -19,6 +19,7 @@ namespace vultra
         VriFormat m_Format;
         uint32_t  m_Mip;
         uint32_t  m_TexelBytes;
+        uint64_t  m_RowBytes;
         bool      m_Recorded = false;
     };
 

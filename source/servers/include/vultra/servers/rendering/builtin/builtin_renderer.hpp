@@ -112,10 +112,12 @@ namespace vultra
         };
 
         // UNORM output is display encoded; RGBA16_SFLOAT is tone mapped but linear (for XR).
-        BuiltinRenderer(Device&      device,
-                        GpuScene&    scene,
-                        Environment& environment,
-                        VriFormat    outputFormat = VriFormat_RGBA8_UNORM);
+        // A supplied cooked shader source must outlive the renderer and shader reloads.
+        BuiltinRenderer(Device&            device,
+                        GpuScene&          scene,
+                        Environment&       environment,
+                        VriFormat          outputFormat = VriFormat_RGBA8_UNORM,
+                        const AssetSource* shaders      = nullptr);
         ~BuiltinRenderer();
         BuiltinRenderer(const BuiltinRenderer&)            = delete;
         BuiltinRenderer& operator=(const BuiltinRenderer&) = delete;

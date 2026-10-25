@@ -9,7 +9,9 @@ namespace vultra
     class ToneMappingPass final : public GraphPass
     {
     public:
-        explicit ToneMappingPass(Device& device, VriFormat format = VriFormat_RGBA8_UNORM);
+        explicit ToneMappingPass(Device&            device,
+                                 VriFormat          format  = VriFormat_RGBA8_UNORM,
+                                 const AssetSource* shaders = nullptr);
         ~ToneMappingPass() override;
         std::vector<RenderGraph::Resource> addPasses(RenderGraph&                           graph,
                                                      std::string_view                       name,

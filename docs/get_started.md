@@ -103,6 +103,12 @@ Close the window or press Escape to exit; `app.run(60)` runs at most 60 rendered
 Put logic in `onUpdate(float)`, CPU render preparation in `onPreRender()`, and GPU commands in `onRender()`.
 DesktopApp submits, waits and presents. Readback belongs in `onPostRender()`, after completion.
 
+For a platform-hosted version, derive from `<vultra/main/app/platform_app.hpp>`'s PlatformApp and pass an AppLaunch
+to its constructor. Select `android_app` for GameActivity or `web_app` for requestAnimationFrame; the rendering
+callbacks remain the same. Android's entry supplies its borrowed `android_app*`; a Web page owns the canvas size.
+[Build and entry examples](../BUILD.md#android-and-web-applications) show packaging and the existing portable
+clear/VRI/RenderGraph modes. These hosts do not make desktop GUI, scene or script dependencies portable automatically.
+
 The SRGB attachment converts linear clear/draw colors to display values. To draw geometry next, follow the
 [VRI triangle](../examples/basics/vri_triangle.cpp) and its explicit
 [vertex/index/pipeline setup](../examples/common/colored_mesh.cpp). Add the `shader` feature when compiling Slang.
@@ -222,9 +228,8 @@ profiling, C++/JSON graph parity and separate linear/display outputs.
 | Need | Continue with |
 | --- | --- |
 | Debug UI | [ImGuiApp](../source/main/include/vultra/main/app/imgui_app.hpp) and [UI example](../examples/ui/main.cpp). Add `editor_gui` to `desktop`, construct UI in `onImGui()`, and record `drawGui()` after scene rendering. |
-| Imported models and builtin rendering | [Scene viewer](../examples/scene/helmet.cpp). SceneData/GpuScene do not require a SceneTree. |
-| Projects, reproducible runs or parameter scans | [Batch setup](../BUILD.md#offline-rendering) and the optional research extension. |
-| Editable ECS world and language scripts | [Scripting example](../examples/scripting/main.cpp) and the [world/binding outlines](architecture.md#world-objects-and-properties). |
+| Imported models and builtin rendering | Select `rendering,asset_import,scene_prepare,shader` for source assets/shaders. Cooked applications select `rendering` and supply SceneData, PreparedTextures and a shader AssetSource directly. |
+| Explicit compute | Select `compute` and use ComputeContext for typed scalar buffers, Slang kernels and readback. |
 
 Use [BUILD.md](../BUILD.md) for platform/setup/export details, [architecture.md](architecture.md) for ownership
 and subsystem boundaries, and [roadmap.md](roadmap.md) for capabilities that are not yet implemented.

@@ -11,7 +11,7 @@ namespace vultra
     struct ShaderAsset;
     struct ShaderProgram;
 
-    // Persistence uses material_values; asset-aware setters and uniformData additionally require game_shader.
+    // Persistence uses material_values; asset-aware setters and uniformData additionally require game_shader_runtime.
     class MaterialInstance
     {
     public:

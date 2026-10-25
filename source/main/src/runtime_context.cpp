@@ -1,13 +1,14 @@
 #include <vultra/drivers/profiling/profiler.hpp>
 #include <vultra/drivers/rhi/swapchain.hpp>
-#include <vultra/main/app/desktop_app.hpp>
+#include <vultra/main/app/app_config.hpp>
 #include <vultra/main/runtime_context.hpp>
+#include <vultra/platform/os/window.hpp>
 
 namespace vultra
 {
     struct RuntimeContext::Impl
     {
-        explicit Impl(const DesktopAppConfig& config) :
+        explicit Impl(const AppConfig& config) :
             window(config.title.c_str(), config.size),
             device(config.validation, nullptr, config.features),
             swapchain(device, window, config.swapchainFormat),
@@ -24,7 +25,7 @@ namespace vultra
         Profiler  profiler;
     };
 
-    RuntimeContext::RuntimeContext(const DesktopAppConfig& config) :
+    RuntimeContext::RuntimeContext(const AppConfig& config) :
         m_Impl(std::make_unique<Impl>(config))
     {
     }

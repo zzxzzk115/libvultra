@@ -1,0 +1,20 @@
+package("game-activity")
+    set_homepage("https://developer.android.com/games/agdk/game-activity")
+    set_description("Android GameActivity and native app glue, statically linked")
+    set_license("Apache-2.0")
+    add_urls("https://dl.google.com/dl/android/maven2/androidx/games/games-activity/$(version)/games-activity-$(version).aar")
+    add_versions("4.4.2", "16069bb61a34e9cc7a4f6b4cef0ddb9e2f3f61fe781b282787f574f8880ba38e")
+    add_links("game-activity_static")
+    add_syslinks("android", "log")
+
+    on_install("android", function (package)
+        import("utils.archive")
+        archive.extract(package:originfile(), "aar", {extension = ".zip"})
+        os.cd("aar")
+        local module = "prefab/modules/game-activity_static"
+        os.cp(module .. "/include/*", package:installdir("include"))
+        os.cp(module .. "/libs/android." .. package:arch() .. "/libgame-activity_static.a", package:installdir("lib"))
+        -- Keep the matching Java classes available to APK exporters; no shared C++ runtime is copied.
+        os.cp("classes.jar", package:installdir("share/game-activity"))
+    end)
+package_end()

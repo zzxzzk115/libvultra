@@ -4,7 +4,7 @@
 
 namespace vultra
 {
-    ToneMappingPass::ToneMappingPass(Device& device, VriFormat format) :
+    ToneMappingPass::ToneMappingPass(Device& device, VriFormat format, const AssetSource* shaders) :
         m_Device(device),
         m_Format(format)
     {
@@ -54,7 +54,8 @@ namespace vultra
                     return pipeline;
                 },
                 "builtin/shaders",
-                std::vector<std::filesystem::path> {"builtin/shaders"});
+                std::vector<std::filesystem::path> {"builtin/shaders"},
+                shaders);
         }
         catch (...)
         {

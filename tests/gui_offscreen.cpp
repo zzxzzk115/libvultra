@@ -1,3 +1,4 @@
+#include <vultra/api/ui_bridge.hpp>
 #include <vultra/core/base/stable_id.hpp>
 #include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/ui/editor_gui.hpp>
@@ -34,11 +35,20 @@ try
     const Extent         extent {480, 360};
     Texture              target(device, colorTexture(extent));
     Frame                frame(device);
-    bool                 enabled   = false;
-    std::string          text      = "short";
-    int                  selected  = 0;
-    double               gain      = 1;
-    float                threshold = 0.5f;
+    bool                 enabled  = false;
+    std::string          text     = "short";
+    int                  selected = 0;
+    double               gain     = 1;
+    PropertySchema       thresholdSchema {.name         = "threshold",
+                                          .label        = "Threshold",
+                                          .drawerId     = "threshold",
+                                          .jsonPath     = "/threshold",
+                                          .kind         = PropertyKind::eFloat,
+                                          .speed        = 0.01f,
+                                          .defaultValue = 0.5f};
+    const auto           schema                    = parsePropertySchema(serializePropertySchema(thresholdSchema));
+    PropertyValue        threshold                 = schema.defaultValue;
+    bool                 thresholdChangedWhileHeld = false;
     std::array<float, 3> vector {};
     std::string          propertyText = "Property";
     ImVec2               floatPosition;
@@ -57,7 +67,11 @@ try
         {
             EditorGuiWindow window(ui, "Offscreen controls");
             require(bool(window), "Offscreen GUI window is not visible");
-            ui.checkbox("Enabled", &enabled);
+            uint8_t abiEnabled = enabled;
+            uint8_t changed    = 0;
+            require(uiApi().checkbox(makeUiFrame(gui), "Enabled", 7, &abiEnabled, &changed) == VULTRA_STATUS_OK,
+                    "Generated checkbox ABI failed in a live frame");
+            enabled          = abiEnabled != 0;
             checkboxPosition = itemCenter();
             ui.inputText("Project path", &text);
             textPosition = itemCenter();
@@ -82,7 +96,9 @@ try
             EditorGuiInspector inspector(gui, "typed-properties");
             if (inspector)
             {
-                inspector.floatField({"threshold", "Threshold"}, &threshold, 0.01f);
+                inspector.valueField(schema, threshold);
+                thresholdChangedWhileHeld |=
+                    ImGui::IsItemActive() && ImGui::GetIO().MouseDown[0] && std::get<float>(threshold) > 0.5f;
                 floatPosition = itemCenter();
                 inspector.float3Field({"vector", "Position"}, vector.data());
                 const auto min = ImGui::GetItemRectMin();
@@ -150,7 +166,8 @@ try
     };
     drag(floatPosition);
     drag(vectorPosition);
-    require(threshold > 0.5f && vector[0] > 0 && vector[1] == 0 && vector[2] == 0,
+    require(thresholdChangedWhileHeld && std::get<float>(threshold) > 0.5f && vector[0] > 0 && vector[1] == 0 &&
+                vector[2] == 0,
             "Inspector scalar/vector drag did not update the intended values");
     click(propertyTextPosition);
     ImGui::GetIO().AddInputCharactersUTF8(appended.c_str());

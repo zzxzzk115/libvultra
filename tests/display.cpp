@@ -271,7 +271,7 @@ namespace
         for (auto format : {VriFormat_BGRA8_UNORM, VriFormat_BGRA8_SRGB})
         {
             Texture  desktop(device, colorTexture({128, 64}, format));
-            Triangle triangle(device, format, "examples/research/shaders/triangle.slang");
+            Triangle triangle(device, format, "examples/offline/shaders/triangle.slang");
             cmd = frame.begin();
             desktop.transition(
                 cmd,
@@ -283,7 +283,7 @@ namespace
         for (auto format : {VriFormat_RGBA8_SRGB, VriFormat_RGBA8_UNORM, VriFormat_BGRA8_SRGB, VriFormat_BGRA8_UNORM})
         {
             Texture  eye(device, colorTexture({128, 64}, format));
-            Triangle xr(device, format, "examples/research/shaders/triangle.slang");
+            Triangle xr(device, format, "examples/offline/shaders/triangle.slang");
             xr.parameters.encodeSrgb = 0;
             blit.setSource(0, eye);
             cmd = frame.begin();

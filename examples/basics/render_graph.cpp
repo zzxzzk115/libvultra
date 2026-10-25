@@ -1,18 +1,27 @@
 #include "../common/colored_mesh.hpp"
 #include "../common/sample.hpp"
+#include "../common/shader_pack.hpp"
 
 #include <vultra/drivers/profiling/profiler.hpp>
-#include <vultra/main/app/desktop_app.hpp>
+#include <vultra/main/app/platform_app.hpp>
 #include <vultra/servers/rendering/graph/render_graph.hpp>
 
-class GraphApp final : public vultra::DesktopApp
+class GraphApp final : public vultra::PlatformApp
 {
 public:
     explicit GraphApp(const sample::Options& options) :
-        vultra::DesktopApp(
-            {.title = "Vultra | RenderGraph - Triangle", .size = {1024, 768}, .swapchainFormat = VriFormat_BGRA8_SRGB}),
+        vultra::PlatformApp(
+            {.title = "Vultra | RenderGraph - Triangle", .size = {1024, 768}, .swapchainFormat = VriFormat_BGRA8_SRGB},
+            options.launch),
         m_Options(options),
-        m_Triangle(getDevice(), getSwapchain().format(), sample::kTriangleVertices, sample::kTriangleIndices),
+        m_Program(sample::cookedShader(options.launch, "mesh.vshaderc")),
+        m_Triangle(getDevice(),
+                   getSwapchain().format(),
+                   sample::kTriangleVertices,
+                   sample::kTriangleIndices,
+                   VriPrimitiveTopology_TriangleList,
+                   false,
+                   m_Program ? &*m_Program : nullptr),
         m_Profiler(getDevice())
     {
     }
@@ -77,6 +86,7 @@ private:
     }
 
     sample::Options                      m_Options;
+    std::optional<vultra::ShaderProgram> m_Program;
     sample::ColoredMesh                  m_Triangle;
     vultra::Profiler                     m_Profiler;
     std::unique_ptr<vultra::RenderGraph> m_Graph;
@@ -84,10 +94,10 @@ private:
     vultra::Extent                       m_GraphSize {};
 };
 
-int runRenderGraph(int argc, char** argv)
+int runRenderGraph(const vultra::AppLaunch& launch, int argc, char** argv)
 try
 {
-    const auto options = sample::readOptions(argc, argv);
+    const auto options = sample::readOptions(argc, argv, launch);
     if (!options)
     {
         return 0;

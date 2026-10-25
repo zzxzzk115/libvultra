@@ -2,6 +2,42 @@
 
 namespace vultra
 {
+    bool inputCaptured(const InputEvent& event, InputCapture capture)
+    {
+        return event.consumed ||
+               (capture.keyboard &&
+                (std::holds_alternative<KeyInput>(event.value) || std::holds_alternative<TextInput>(event.value))) ||
+               (capture.mouse && (std::holds_alternative<MouseButtonInput>(event.value) ||
+                                  std::holds_alternative<MouseMotionInput>(event.value) ||
+                                  std::holds_alternative<MouseScrollInput>(event.value)));
+    }
+
+    uint32_t Input::pendingModifiers() const
+    {
+        uint32_t   result = 0;
+        const auto held   = [&](KeyCode first, KeyCode second)
+        {
+            return m_Pending.keys[size_t(first)].held || m_Pending.keys[size_t(second)].held;
+        };
+        if (held(KeyCode::eLShift, KeyCode::eRShift))
+        {
+            result |= uint32_t(InputModifier::eShift);
+        }
+        if (held(KeyCode::eLCtrl, KeyCode::eRCtrl))
+        {
+            result |= uint32_t(InputModifier::eControl);
+        }
+        if (held(KeyCode::eLAlt, KeyCode::eRAlt))
+        {
+            result |= uint32_t(InputModifier::eAlt);
+        }
+        if (held(KeyCode::eLGUI, KeyCode::eRGUI))
+        {
+            result |= uint32_t(InputModifier::eMeta);
+        }
+        return result;
+    }
+
     bool Input::isKeyHeld(KeyCode key) const
     {
         return m_Current.keys[size_t(key)].held;
@@ -79,7 +115,6 @@ namespace vultra
             return;
         }
         auto& state = m_Pending.keys[size_t(key)];
-        m_PendingEvents.push_back({KeyInput {key, action}});
         switch (action)
         {
             case InputAction::ePress:
@@ -94,6 +129,7 @@ namespace vultra
                 state.repeated = true;
                 break;
         }
+        m_PendingEvents.push_back({KeyInput {key, action, pendingModifiers()}});
     }
 
     void Input::setMouseButton(MouseCode button, bool held)
@@ -103,7 +139,7 @@ namespace vultra
             return;
         }
         auto& state = m_Pending.buttons[size_t(button)];
-        m_PendingEvents.push_back({MouseButtonInput {button, held}});
+        m_PendingEvents.push_back({MouseButtonInput {button, held, m_Pending.position, pendingModifiers()}});
         state.pressed |= held && !state.held;
         state.released |= !held && state.held;
         state.held = held;
@@ -111,11 +147,13 @@ namespace vultra
 
     void Input::setMousePosition(glm::vec2 position)
     {
-        m_PendingEvents.push_back({MouseMotionInput {position}});
+        glm::vec2 delta {};
         if (m_HasPosition && m_Pending.focused)
         {
-            m_Pending.delta += position - m_Pending.position;
+            delta = position - m_Pending.position;
+            m_Pending.delta += delta;
         }
+        m_PendingEvents.push_back({MouseMotionInput {position, delta, pendingModifiers()}});
         m_Pending.position = position;
         m_HasPosition      = m_Pending.focused;
     }
@@ -125,7 +163,7 @@ namespace vultra
         if (m_Pending.focused)
         {
             m_Pending.scroll += delta;
-            m_PendingEvents.push_back({MouseScrollInput {delta}});
+            m_PendingEvents.push_back({MouseScrollInput {delta, m_Pending.position, pendingModifiers()}});
         }
     }
 

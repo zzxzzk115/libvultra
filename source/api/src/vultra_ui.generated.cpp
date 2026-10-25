@@ -4,23 +4,31 @@
 #include <vultra/ui/editor_gui_frame.hpp>
 
 #include <cstddef>
+#include <stdexcept>
 
-static VultraStatus uiButton(VultraUiFrame frame, const char* label, uint64_t labelSize, uint8_t* changed)
+static VultraStatus VULTRA_ABI_CALL abiGuiButton(VultraUiFrame frame,
+                                                 const char*   label,
+                                                 uint64_t      labelSize,
+                                                 uint8_t*      changed)
 {
-    if (!frame.context || (!label && labelSize != 0) || !changed)
+    if (!frame.context || (!label && labelSize) || labelSize > SIZE_MAX || !changed)
     {
         return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     auto* gui = static_cast<vultra::EditorGui*>(frame.context);
-    if (!gui->frameActive() || gui->frameSerial() != frame.serial)
+    if (!gui->isCurrentFrame(frame.serial))
     {
         return VULTRA_STATUS_INVALID_FRAME;
     }
     try
     {
         auto current = gui->frame();
-        *changed     = vultra::guiButton(current, {label ? label : "", static_cast<size_t>(labelSize)});
+        *changed     = vultra::guiButton(current, {label ? label : "", size_t(labelSize)});
         return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     catch (...)
     {
@@ -28,23 +36,27 @@ static VultraStatus uiButton(VultraUiFrame frame, const char* label, uint64_t la
     }
 }
 
-static VultraStatus
-uiCheckbox(VultraUiFrame frame, const char* label, uint64_t labelSize, uint8_t* value, uint8_t* changed)
+static VultraStatus VULTRA_ABI_CALL
+abiGuiCheckbox(VultraUiFrame frame, const char* label, uint64_t labelSize, uint8_t* value, uint8_t* changed)
 {
-    if (!frame.context || (!label && labelSize != 0) || !value || !changed)
+    if (!frame.context || (!label && labelSize) || labelSize > SIZE_MAX || !value || !changed)
     {
         return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     auto* gui = static_cast<vultra::EditorGui*>(frame.context);
-    if (!gui->frameActive() || gui->frameSerial() != frame.serial)
+    if (!gui->isCurrentFrame(frame.serial))
     {
         return VULTRA_STATUS_INVALID_FRAME;
     }
     try
     {
         auto current = gui->frame();
-        *changed     = vultra::guiCheckbox(current, {label ? label : "", static_cast<size_t>(labelSize)}, *value);
+        *changed     = vultra::guiCheckbox(current, {label ? label : "", size_t(labelSize)}, *value);
         return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     catch (...)
     {
@@ -52,20 +64,21 @@ uiCheckbox(VultraUiFrame frame, const char* label, uint64_t labelSize, uint8_t* 
     }
 }
 
-static VultraStatus uiCombo(VultraUiFrame frame,
-                            const char*   label,
-                            uint64_t      labelSize,
-                            int32_t*      value,
-                            const char*   items,
-                            uint64_t      itemsSize,
-                            uint8_t*      changed)
+static VultraStatus VULTRA_ABI_CALL abiGuiCombo(VultraUiFrame frame,
+                                                const char*   label,
+                                                uint64_t      labelSize,
+                                                int32_t*      value,
+                                                const char*   items,
+                                                uint64_t      itemsSize,
+                                                uint8_t*      changed)
 {
-    if (!frame.context || (!label && labelSize != 0) || !value || (!items && itemsSize != 0) || !changed)
+    if (!frame.context || (!label && labelSize) || labelSize > SIZE_MAX || !value || (!items && itemsSize) ||
+        itemsSize > SIZE_MAX || !changed)
     {
         return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     auto* gui = static_cast<vultra::EditorGui*>(frame.context);
-    if (!gui->frameActive() || gui->frameSerial() != frame.serial)
+    if (!gui->isCurrentFrame(frame.serial))
     {
         return VULTRA_STATUS_INVALID_FRAME;
     }
@@ -73,10 +86,14 @@ static VultraStatus uiCombo(VultraUiFrame frame,
     {
         auto current = gui->frame();
         *changed     = vultra::guiCombo(current,
-                                        {label ? label : "", static_cast<size_t>(labelSize)},
+                                        {label ? label : "", size_t(labelSize)},
                                         *value,
-                                        {items ? items : "", static_cast<size_t>(itemsSize)});
+                                        {items ? items : "", size_t(itemsSize)});
         return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     catch (...)
     {
@@ -84,23 +101,27 @@ static VultraStatus uiCombo(VultraUiFrame frame,
     }
 }
 
-static VultraStatus
-uiHeader(VultraUiFrame frame, const char* label, uint64_t labelSize, int32_t initiallyOpen, uint8_t* changed)
+static VultraStatus VULTRA_ABI_CALL
+abiGuiHeader(VultraUiFrame frame, const char* label, uint64_t labelSize, int32_t initiallyOpen, uint8_t* changed)
 {
-    if (!frame.context || (!label && labelSize != 0) || !changed)
+    if (!frame.context || (!label && labelSize) || labelSize > SIZE_MAX || !changed)
     {
         return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     auto* gui = static_cast<vultra::EditorGui*>(frame.context);
-    if (!gui->frameActive() || gui->frameSerial() != frame.serial)
+    if (!gui->isCurrentFrame(frame.serial))
     {
         return VULTRA_STATUS_INVALID_FRAME;
     }
     try
     {
         auto current = gui->frame();
-        *changed     = vultra::guiHeader(current, {label ? label : "", static_cast<size_t>(labelSize)}, initiallyOpen);
+        *changed     = vultra::guiHeader(current, {label ? label : "", size_t(labelSize)}, initiallyOpen);
         return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     catch (...)
     {
@@ -108,32 +129,32 @@ uiHeader(VultraUiFrame frame, const char* label, uint64_t labelSize, int32_t ini
     }
 }
 
-static VultraStatus uiIntegerSlider(VultraUiFrame frame,
-                                    const char*   label,
-                                    uint64_t      labelSize,
-                                    int32_t*      value,
-                                    int32_t       minimum,
-                                    int32_t       maximum,
-                                    uint8_t*      changed)
+static VultraStatus VULTRA_ABI_CALL abiGuiIntegerSlider(VultraUiFrame frame,
+                                                        const char*   label,
+                                                        uint64_t      labelSize,
+                                                        int32_t*      value,
+                                                        int32_t       minimum,
+                                                        int32_t       maximum,
+                                                        uint8_t*      changed)
 {
-    if (!frame.context || (!label && labelSize != 0) || !value || !changed)
+    if (!frame.context || (!label && labelSize) || labelSize > SIZE_MAX || !value || !changed)
     {
         return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     auto* gui = static_cast<vultra::EditorGui*>(frame.context);
-    if (!gui->frameActive() || gui->frameSerial() != frame.serial)
+    if (!gui->isCurrentFrame(frame.serial))
     {
         return VULTRA_STATUS_INVALID_FRAME;
     }
     try
     {
         auto current = gui->frame();
-        *changed     = vultra::guiIntegerSlider(current,
-                                                {label ? label : "", static_cast<size_t>(labelSize)},
-                                                *value,
-                                                minimum,
-                                                maximum);
+        *changed = vultra::guiIntegerSlider(current, {label ? label : "", size_t(labelSize)}, *value, minimum, maximum);
         return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     catch (...)
     {
@@ -141,22 +162,26 @@ static VultraStatus uiIntegerSlider(VultraUiFrame frame,
     }
 }
 
-static VultraStatus uiSeparator(VultraUiFrame frame, const char* label, uint64_t labelSize)
+static VultraStatus VULTRA_ABI_CALL abiGuiSeparator(VultraUiFrame frame, const char* label, uint64_t labelSize)
 {
-    if (!frame.context || (!label && labelSize != 0))
+    if (!frame.context || (!label && labelSize) || labelSize > SIZE_MAX)
     {
         return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     auto* gui = static_cast<vultra::EditorGui*>(frame.context);
-    if (!gui->frameActive() || gui->frameSerial() != frame.serial)
+    if (!gui->isCurrentFrame(frame.serial))
     {
         return VULTRA_STATUS_INVALID_FRAME;
     }
     try
     {
         auto current = gui->frame();
-        vultra::guiSeparator(current, {label ? label : "", static_cast<size_t>(labelSize)});
+        vultra::guiSeparator(current, {label ? label : "", size_t(labelSize)});
         return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     catch (...)
     {
@@ -164,29 +189,32 @@ static VultraStatus uiSeparator(VultraUiFrame frame, const char* label, uint64_t
     }
 }
 
-static VultraStatus uiSlider(VultraUiFrame frame,
-                             const char*   label,
-                             uint64_t      labelSize,
-                             double*       value,
-                             double        minimum,
-                             double        maximum,
-                             uint8_t*      changed)
+static VultraStatus VULTRA_ABI_CALL abiGuiSlider(VultraUiFrame frame,
+                                                 const char*   label,
+                                                 uint64_t      labelSize,
+                                                 double*       value,
+                                                 double        minimum,
+                                                 double        maximum,
+                                                 uint8_t*      changed)
 {
-    if (!frame.context || (!label && labelSize != 0) || !value || !changed)
+    if (!frame.context || (!label && labelSize) || labelSize > SIZE_MAX || !value || !changed)
     {
         return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     auto* gui = static_cast<vultra::EditorGui*>(frame.context);
-    if (!gui->frameActive() || gui->frameSerial() != frame.serial)
+    if (!gui->isCurrentFrame(frame.serial))
     {
         return VULTRA_STATUS_INVALID_FRAME;
     }
     try
     {
         auto current = gui->frame();
-        *changed =
-            vultra::guiSlider(current, {label ? label : "", static_cast<size_t>(labelSize)}, *value, minimum, maximum);
+        *changed     = vultra::guiSlider(current, {label ? label : "", size_t(labelSize)}, *value, minimum, maximum);
         return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     catch (...)
     {
@@ -194,22 +222,26 @@ static VultraStatus uiSlider(VultraUiFrame frame,
     }
 }
 
-static VultraStatus uiText(VultraUiFrame frame, const char* text, uint64_t textSize)
+static VultraStatus VULTRA_ABI_CALL abiGuiText(VultraUiFrame frame, const char* text, uint64_t textSize)
 {
-    if (!frame.context || (!text && textSize != 0))
+    if (!frame.context || (!text && textSize) || textSize > SIZE_MAX)
     {
         return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     auto* gui = static_cast<vultra::EditorGui*>(frame.context);
-    if (!gui->frameActive() || gui->frameSerial() != frame.serial)
+    if (!gui->isCurrentFrame(frame.serial))
     {
         return VULTRA_STATUS_INVALID_FRAME;
     }
     try
     {
         auto current = gui->frame();
-        vultra::guiText(current, {text ? text : "", static_cast<size_t>(textSize)});
+        vultra::guiText(current, {text ? text : "", size_t(textSize)});
         return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     catch (...)
     {
@@ -217,22 +249,26 @@ static VultraStatus uiText(VultraUiFrame frame, const char* text, uint64_t textS
     }
 }
 
-static VultraStatus uiTextWrapped(VultraUiFrame frame, const char* text, uint64_t textSize)
+static VultraStatus VULTRA_ABI_CALL abiGuiTextWrapped(VultraUiFrame frame, const char* text, uint64_t textSize)
 {
-    if (!frame.context || (!text && textSize != 0))
+    if (!frame.context || (!text && textSize) || textSize > SIZE_MAX)
     {
         return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     auto* gui = static_cast<vultra::EditorGui*>(frame.context);
-    if (!gui->frameActive() || gui->frameSerial() != frame.serial)
+    if (!gui->isCurrentFrame(frame.serial))
     {
         return VULTRA_STATUS_INVALID_FRAME;
     }
     try
     {
         auto current = gui->frame();
-        vultra::guiTextWrapped(current, {text ? text : "", static_cast<size_t>(textSize)});
+        vultra::guiTextWrapped(current, {text ? text : "", size_t(textSize)});
         return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     catch (...)
     {
@@ -240,22 +276,26 @@ static VultraStatus uiTextWrapped(VultraUiFrame frame, const char* text, uint64_
     }
 }
 
-static VultraStatus uiTooltip(VultraUiFrame frame, const char* text, uint64_t textSize)
+static VultraStatus VULTRA_ABI_CALL abiGuiTooltip(VultraUiFrame frame, const char* text, uint64_t textSize)
 {
-    if (!frame.context || (!text && textSize != 0))
+    if (!frame.context || (!text && textSize) || textSize > SIZE_MAX)
     {
         return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     auto* gui = static_cast<vultra::EditorGui*>(frame.context);
-    if (!gui->frameActive() || gui->frameSerial() != frame.serial)
+    if (!gui->isCurrentFrame(frame.serial))
     {
         return VULTRA_STATUS_INVALID_FRAME;
     }
     try
     {
         auto current = gui->frame();
-        vultra::guiTooltip(current, {text ? text : "", static_cast<size_t>(textSize)});
+        vultra::guiTooltip(current, {text ? text : "", size_t(textSize)});
         return VULTRA_STATUS_OK;
+    }
+    catch (const std::invalid_argument&)
+    {
+        return VULTRA_STATUS_INVALID_ARGUMENT;
     }
     catch (...)
     {
@@ -274,16 +314,17 @@ namespace vultra
     {
         static const VultraUiApi api {VULTRA_ABI_VERSION,
                                       sizeof(VultraUiApi),
-                                      uiButton,
-                                      uiCheckbox,
-                                      uiCombo,
-                                      uiHeader,
-                                      uiIntegerSlider,
-                                      uiSeparator,
-                                      uiSlider,
-                                      uiText,
-                                      uiTextWrapped,
-                                      uiTooltip};
+                                      VULTRA_UI_API_FINGERPRINT,
+                                      abiGuiButton,
+                                      abiGuiCheckbox,
+                                      abiGuiCombo,
+                                      abiGuiHeader,
+                                      abiGuiIntegerSlider,
+                                      abiGuiSeparator,
+                                      abiGuiSlider,
+                                      abiGuiText,
+                                      abiGuiTextWrapped,
+                                      abiGuiTooltip};
         return api;
     }
 } // namespace vultra

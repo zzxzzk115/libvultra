@@ -1,0 +1,13 @@
+--- a/xmake.lua
++++ b/xmake.lua
+@@ -9,8 +9,8 @@
+ 
+ if is_plat("android") then
+     set_toolchains("@ndk", {sdkver = "26"})
+-    -- Vulkan handles are 64-bit; keep arm64 only to avoid handle truncation on 32-bit.
+-    set_allowedarchs("arm64-v8a")
++    -- Keep both Android ABIs 64-bit; x86_64 is used by host emulator regression tests.
++    set_allowedarchs("arm64-v8a", "x86_64")
+ end
+ 
+ -- root ?

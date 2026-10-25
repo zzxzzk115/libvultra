@@ -10,6 +10,8 @@
 
 namespace vultra
 {
+    class AssetSource;
+
     struct ShaderStateValue
     {
         std::string value;
@@ -43,7 +45,9 @@ namespace vultra
         std::string                      name;
         std::string                      text;
         std::vector<ShaderSourceMapping> mappings;
-        void                             mapBlock(const ShaderSourceBlock& block, size_t& cursor);
+#ifdef VULTRA_WITH_GAME_SHADER_COMPILER
+        void mapBlock(const ShaderSourceBlock& block, size_t& cursor);
+#endif
     };
 
     struct ShaderVariant
@@ -101,18 +105,20 @@ namespace vultra
         std::string                  compileKey;
         std::string                  diagnostics;
 
-        static ShaderAsset    parse(const std::filesystem::path& file, std::string_view text);
-        static ShaderAsset    compile(const std::filesystem::path& file,
-                                      const ShaderCompileOptions&  options  = {},
-                                      std::span<const std::string> variants = {});
-        static ShaderAsset    compileSource(const std::filesystem::path& file,
-                                            std::string_view             source,
-                                            const ShaderCompileOptions&  options  = {},
-                                            std::span<const std::string> variants = {});
-        static bool           cook(const std::filesystem::path& source,
-                                   const std::filesystem::path& output,
+#ifdef VULTRA_WITH_GAME_SHADER_COMPILER
+        static ShaderAsset parse(const std::filesystem::path& file, std::string_view text);
+        static ShaderAsset compile(const std::filesystem::path& file,
                                    const ShaderCompileOptions&  options  = {},
                                    std::span<const std::string> variants = {});
+        static ShaderAsset compileSource(const std::filesystem::path& file,
+                                         std::string_view             source,
+                                         const ShaderCompileOptions&  options  = {},
+                                         std::span<const std::string> variants = {});
+        static bool        cook(const std::filesystem::path& source,
+                                const std::filesystem::path& output,
+                                const ShaderCompileOptions&  options  = {},
+                                std::span<const std::string> variants = {});
+#endif
         static ShaderAsset    load(const std::filesystem::path& file, const AssetSource* source = nullptr);
         void                  save(const std::filesystem::path& file) const;
         void                  validate() const;
@@ -123,9 +129,11 @@ namespace vultra
                                               std::span<const std::string_view> lightModes,
                                               std::string&                      diagnostics,
                                               const SubshaderCompatibility&     compatible = {}) const;
+#ifdef VULTRA_WITH_GAME_SHADER_COMPILER
         std::vector<ShaderSourceProjection> projectSources() const;
         std::string                         generatedMaterialSource() const;
         std::string                         generatedPassSource(uint32_t subshader, uint32_t pass) const;
+#endif
     };
 
 } // namespace vultra

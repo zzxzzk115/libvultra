@@ -55,6 +55,27 @@ namespace vultra
 
     namespace
     {
+        class ContextScope
+        {
+        public:
+            explicit ContextScope(ImGuiContext* context) :
+                m_Previous(ImGui::GetCurrentContext())
+            {
+                ImGui::SetCurrentContext(context);
+            }
+
+            ~ContextScope()
+            {
+                ImGui::SetCurrentContext(m_Previous);
+            }
+
+            ContextScope(const ContextScope&)            = delete;
+            ContextScope& operator=(const ContextScope&) = delete;
+
+        private:
+            ImGuiContext* m_Previous;
+        };
+
         std::string layoutFilename(const EditorGuiConfig& config)
         {
             if (!config.persistLayout)
@@ -119,7 +140,10 @@ namespace vultra
             throw std::invalid_argument("ImGui platform windows require the desktop BGRA8_UNORM target format");
         }
         IMGUI_CHECKVERSION();
-        m_Context = ImGui::CreateContext();
+        auto* previous = ImGui::GetCurrentContext();
+        m_Context      = ImGui::CreateContext();
+        // CreateContext preserves an existing current context; initialize this instance's IO and renderer.
+        ImGui::SetCurrentContext(m_Context);
 #ifdef VULTRA_EDITOR_GUI_WINDOW
         bool platformReady = false;
 #endif
@@ -186,13 +210,16 @@ namespace vultra
                 m_Api.DestroyImgui(m_Renderer);
             }
             ImGui::DestroyContext(m_Context);
+            ImGui::SetCurrentContext(previous);
             throw;
         }
     }
 
     EditorGui::~EditorGui()
     {
-        m_Device.waitIdle();
+        auto* previous = ImGui::GetCurrentContext();
+        ImGui::SetCurrentContext(m_Context);
+        m_Device.waitIdleForDestruction();
         ImGui::DestroyPlatformWindows();
         ImGui::GetPlatformIO().ClearRendererHandlers();
         ImGui::GetIO().BackendRendererUserData = nullptr;
@@ -204,22 +231,33 @@ namespace vultra
 #endif
         m_Api.DestroyImgui(m_Renderer);
         ImGui::DestroyContext(m_Context);
+        if (previous != m_Context)
+        {
+            ImGui::SetCurrentContext(previous);
+        }
     }
 
     void EditorGui::setTheme(EditorGuiTheme theme)
     {
+        const ContextScope context(m_Context);
         applyEditorGuiTheme(theme);
         m_Theme = theme;
     }
 
     InputCapture EditorGui::inputCapture() const
     {
-        const auto& io = ImGui::GetIO();
+        const ContextScope context(m_Context);
+        const auto&        io = ImGui::GetIO();
         return {io.WantCaptureMouse, io.WantCaptureKeyboard};
     }
 
     void EditorGui::begin()
     {
+        if (m_FrameActive)
+        {
+            throw std::logic_error("Complete the current EditorGui frame before beginning another");
+        }
+        ImGui::SetCurrentContext(m_Context);
         if (!m_Window)
         {
             throw std::logic_error("Offscreen ImGui requires an explicit frame extent and time step");
@@ -232,6 +270,11 @@ namespace vultra
 
     void EditorGui::begin(Extent size, float deltaSeconds)
     {
+        if (m_FrameActive)
+        {
+            throw std::logic_error("Complete the current EditorGui frame before beginning another");
+        }
+        ImGui::SetCurrentContext(m_Context);
         if (m_Window || size.empty() || !std::isfinite(deltaSeconds) || deltaSeconds <= 0)
         {
             throw std::invalid_argument("Offscreen ImGui requires no window, positive extent and finite time step");
@@ -251,6 +294,19 @@ namespace vultra
         if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DockingEnable)
         {
             m_Dockspace = ImGui::DockSpaceOverViewport(0, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);
+        }
+    }
+
+    bool EditorGui::isCurrentFrame(uint64_t serial) const
+    {
+        return m_FrameActive && serial == m_FrameSerial && ImGui::GetCurrentContext() == m_Context;
+    }
+
+    void EditorGui::requireFrame(uint64_t serial) const
+    {
+        if (!isCurrentFrame(serial))
+        {
+            throw std::logic_error("EditorGui frame expired or belongs to a different current context");
         }
     }
 
@@ -330,6 +386,8 @@ namespace vultra
 
     void EditorGui::upload(Extent framebuffer)
     {
+        const ContextScope context(m_Context);
+        requireFrame(m_FrameSerial);
         m_FrameActive = false;
         ImGui::Render();
         m_DrawData.update(ImGui::GetDrawData(), framebuffer);
@@ -357,6 +415,7 @@ namespace vultra
 
     void EditorGui::renderPlatformWindows()
     {
+        const ContextScope context(m_Context);
         if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
         {
             ImGui::UpdatePlatformWindows();

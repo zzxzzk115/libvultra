@@ -12,8 +12,8 @@ namespace vultra
     {
         struct PropertyContext
         {
-            const ShaderProperty&  property;
-            const ProjectManifest* assets;
+            const ShaderProperty&       property;
+            std::span<const AssetEntry> assets;
         };
 
         bool drawProperty(EditorGuiProperty, void* pointer, void* user)
@@ -97,9 +97,9 @@ namespace vultra
                             changed          = true;
                         }
                     }
-                    if (context.assets)
+                    if (!context.assets.empty())
                     {
-                        for (const auto& asset : context.assets->assets())
+                        for (const auto& asset : context.assets)
                         {
                             const auto extension = asset.path.extension();
                             if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" ||
@@ -136,10 +136,10 @@ namespace vultra
         }
     } // namespace
 
-    bool drawShaderMaterialInspector(EditorGui&             gui,
-                                     const ShaderAsset&     shader,
-                                     MaterialInstance&      material,
-                                     const ProjectManifest* assets)
+    bool drawShaderMaterialInspector(EditorGui&                  gui,
+                                     const ShaderAsset&          shader,
+                                     MaterialInstance&           material,
+                                     std::span<const AssetEntry> assets)
     {
         bool changed = false;
         ImGui::PushID(&material);

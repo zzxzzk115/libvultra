@@ -1,3 +1,4 @@
+#include "rhi/shader_archive.hpp"
 #include "shader_pass_state.hpp"
 
 #include <vultra/core/base/logger.hpp>
@@ -11,23 +12,6 @@ namespace vultra
 {
     namespace
     {
-        VriTextureViewType dimension(uint32_t shape)
-        {
-            switch (shape)
-            {
-                case 0x42:
-                    return VriTextureViewType_2DArray;
-                case 3:
-                    return VriTextureViewType_3D;
-                case 4:
-                    return VriTextureViewType_Cube;
-                case 0x44:
-                    return VriTextureViewType_CubeArray;
-                default:
-                    return VriTextureViewType_2D;
-            }
-        }
-
         VriTextureViewType dimension(ShaderPropertyType type)
         {
             switch (type)
@@ -123,6 +107,7 @@ namespace vultra
                 program(program),
                 bindings(program.resourceBindings())
             {
+                detail::validateShaderProgram(program, *device.core.GetDeviceDesc(device.handle));
             }
 
             ~Pass()
@@ -179,7 +164,7 @@ namespace vultra
 
         ~State()
         {
-            device.waitIdle();
+            device.waitIdleForDestruction();
             for (auto& [key, pipeline] : pipelines)
             {
                 device.core.DestroyPipeline(pipeline.handle);
@@ -226,7 +211,7 @@ namespace vultra
             auto       found = defaults.find(key);
             if (found == defaults.end())
             {
-                auto desc           = colorTexture({1, 1}, VriFormat_RGBA32_SFLOAT);
+                auto desc           = colorTexture({1, 1}, VriFormat_RGBA16_SFLOAT);
                 desc.usage          = VriTextureUsage_ShaderResource | VriTextureUsage_TransferDst;
                 const auto viewType = dimension(property.type);
                 switch (viewType)
@@ -259,14 +244,15 @@ namespace vultra
                 {
                     throw std::runtime_error("Map default shader texture");
                 }
-                std::array<float, 4> color {1, 1, 1, 1};
+                // These three builtin colors are exactly representable in filterable RGBA16F.
+                std::array<uint16_t, 4> color {0x3c00, 0x3c00, 0x3c00, 0x3c00};
                 if (value.builtin == "black")
                 {
-                    color = {0, 0, 0, 1};
+                    color = {0, 0, 0, 0x3c00};
                 }
                 else if (value.builtin == "normal")
                 {
-                    color = {0.5f, 0.5f, 1, 1};
+                    color = {0x3800, 0x3800, 0x3c00, 0x3c00};
                 }
                 for (uint32_t layer = 0; layer < desc.layerNum; ++layer)
                 {
@@ -282,7 +268,7 @@ namespace vultra
                 {
                     VriBufferTextureCopyDesc copy {};
                     copy.bufferOffset      = uint64_t(layer) * 512;
-                    copy.bufferRowLength   = 16;
+                    copy.bufferRowLength   = 32;
                     copy.bufferImageHeight = 1;
                     copy.texture           = {0, layer, 1, VriImageAspect_Color, 0, 0, 0, 1, 1, 1};
                     device.core.CmdUploadBufferToTexture(cmd, created->texture->handle, upload.handle, &copy);
@@ -343,7 +329,7 @@ namespace vultra
                     throw std::invalid_argument("Overlapping reflected shader bindings: " + binding.name);
                 }
                 candidate->ranges.emplace(binding.name, std::pair(binding.set, uint32_t(ranges.size())));
-                ranges.push_back({binding.binding, binding.count, binding.type, stages, 0, dimension(binding.shape)});
+                ranges.push_back({binding.binding, binding.count, binding.type, stages, 0, binding.viewType});
                 switch (binding.type)
                 {
                     case VriDescriptorType_Sampler:

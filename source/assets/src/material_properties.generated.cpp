@@ -8,19 +8,24 @@ namespace vultra
     const ObjectTypeInfo& materialParametersType()
     {
         static const std::array<PropertyInfo, 23> properties = {{
-            {"baseRed",
-             "Base red",
-             "MaterialParameters.baseRed",
-             "/base_color/0",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             4,
-             1,
-             {},
-             {},
+            {{"baseRed",
+              "Base red",
+              "MaterialParameters.baseRed",
+              "/base_color/0",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              4,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.baseRed},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->baseRed;
@@ -28,28 +33,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->baseRed = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.baseRed;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"baseGreen",
-             "Base green",
-             "MaterialParameters.baseGreen",
-             "/base_color/1",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             4,
-             1,
-             {},
-             {},
+             }},
+            {{"baseGreen",
+              "Base green",
+              "MaterialParameters.baseGreen",
+              "/base_color/1",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              4,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.baseGreen},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->baseGreen;
@@ -57,28 +59,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->baseGreen = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.baseGreen;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"baseBlue",
-             "Base blue",
-             "MaterialParameters.baseBlue",
-             "/base_color/2",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             4,
-             1,
-             {},
-             {},
+             }},
+            {{"baseBlue",
+              "Base blue",
+              "MaterialParameters.baseBlue",
+              "/base_color/2",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              4,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.baseBlue},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->baseBlue;
@@ -86,28 +85,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->baseBlue = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.baseBlue;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"baseAlpha",
-             "Base alpha",
-             "MaterialParameters.baseAlpha",
-             "/base_color/3",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             1,
-             1,
-             {},
-             {},
+             }},
+            {{"baseAlpha",
+              "Base alpha",
+              "MaterialParameters.baseAlpha",
+              "/base_color/3",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              1,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.baseAlpha},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->baseAlpha;
@@ -115,28 +111,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->baseAlpha = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.baseAlpha;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"baseWeight",
-             "Base weight",
-             "MaterialParameters.baseWeight",
-             "/base_weight",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             1,
-             1,
-             {},
-             {},
+             }},
+            {{"baseWeight",
+              "Base weight",
+              "MaterialParameters.baseWeight",
+              "/base_weight",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              1,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.baseWeight},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->baseWeight;
@@ -144,28 +137,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->baseWeight = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.baseWeight;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"baseMetalness",
-             "Metalness",
-             "MaterialParameters.baseMetalness",
-             "/metalness",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             1,
-             1,
-             {},
-             {},
+             }},
+            {{"baseMetalness",
+              "Metalness",
+              "MaterialParameters.baseMetalness",
+              "/metalness",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              1,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.baseMetalness},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->baseMetalness;
@@ -173,28 +163,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->baseMetalness = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.baseMetalness;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"baseDiffuseRoughness",
-             "Diffuse roughness",
-             "MaterialParameters.baseDiffuseRoughness",
-             "/diffuse_roughness",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             1,
-             1,
-             {},
-             {},
+             }},
+            {{"baseDiffuseRoughness",
+              "Diffuse roughness",
+              "MaterialParameters.baseDiffuseRoughness",
+              "/diffuse_roughness",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              1,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.baseDiffuseRoughness},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->baseDiffuseRoughness;
@@ -202,28 +189,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->baseDiffuseRoughness = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.baseDiffuseRoughness;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"specularWeight",
-             "Specular weight",
-             "MaterialParameters.specularWeight",
-             "/specular_weight",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             1,
-             1,
-             {},
-             {},
+             }},
+            {{"specularWeight",
+              "Specular weight",
+              "MaterialParameters.specularWeight",
+              "/specular_weight",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              1,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.specularWeight},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->specularWeight;
@@ -231,28 +215,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->specularWeight = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.specularWeight;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"specularRed",
-             "Specular red",
-             "MaterialParameters.specularRed",
-             "/specular_color/0",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             4,
-             1,
-             {},
-             {},
+             }},
+            {{"specularRed",
+              "Specular red",
+              "MaterialParameters.specularRed",
+              "/specular_color/0",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              4,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.specularRed},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->specularRed;
@@ -260,28 +241,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->specularRed = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.specularRed;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"specularGreen",
-             "Specular green",
-             "MaterialParameters.specularGreen",
-             "/specular_color/1",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             4,
-             1,
-             {},
-             {},
+             }},
+            {{"specularGreen",
+              "Specular green",
+              "MaterialParameters.specularGreen",
+              "/specular_color/1",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              4,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.specularGreen},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->specularGreen;
@@ -289,28 +267,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->specularGreen = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.specularGreen;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"specularBlue",
-             "Specular blue",
-             "MaterialParameters.specularBlue",
-             "/specular_color/2",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             4,
-             1,
-             {},
-             {},
+             }},
+            {{"specularBlue",
+              "Specular blue",
+              "MaterialParameters.specularBlue",
+              "/specular_color/2",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              4,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.specularBlue},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->specularBlue;
@@ -318,28 +293,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->specularBlue = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.specularBlue;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"specularRoughness",
-             "Roughness",
-             "MaterialParameters.specularRoughness",
-             "/roughness",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             1,
-             1,
-             {},
-             {},
+             }},
+            {{"specularRoughness",
+              "Roughness",
+              "MaterialParameters.specularRoughness",
+              "/roughness",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              1,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.specularRoughness},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->specularRoughness;
@@ -347,28 +319,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->specularRoughness = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.specularRoughness;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"specularIor",
-             "Specular IOR",
-             "MaterialParameters.specularIor",
-             "/specular_ior",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             1,
-             3,
-             1,
-             {},
-             {},
+             }},
+            {{"specularIor",
+              "Specular IOR",
+              "MaterialParameters.specularIor",
+              "/specular_ior",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              1,
+              3,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.specularIor},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->specularIor;
@@ -376,28 +345,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->specularIor = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.specularIor;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"coatWeight",
-             "Coat weight",
-             "MaterialParameters.coatWeight",
-             "/coat_weight",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             1,
-             1,
-             {},
-             {},
+             }},
+            {{"coatWeight",
+              "Coat weight",
+              "MaterialParameters.coatWeight",
+              "/coat_weight",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              1,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.coatWeight},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->coatWeight;
@@ -405,28 +371,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->coatWeight = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.coatWeight;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"coatRoughness",
-             "Coat roughness",
-             "MaterialParameters.coatRoughness",
-             "/coat_roughness",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             1,
-             1,
-             {},
-             {},
+             }},
+            {{"coatRoughness",
+              "Coat roughness",
+              "MaterialParameters.coatRoughness",
+              "/coat_roughness",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              1,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.coatRoughness},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->coatRoughness;
@@ -434,28 +397,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->coatRoughness = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.coatRoughness;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"coatIor",
-             "Coat IOR",
-             "MaterialParameters.coatIor",
-             "/coat_ior",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             1,
-             3,
-             1,
-             {},
-             {},
+             }},
+            {{"coatIor",
+              "Coat IOR",
+              "MaterialParameters.coatIor",
+              "/coat_ior",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              1,
+              3,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.coatIor},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->coatIor;
@@ -463,28 +423,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->coatIor = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.coatIor;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"emissionRed",
-             "Emission red",
-             "MaterialParameters.emissionRed",
-             "/emission_color/0",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             4,
-             1,
-             {},
-             {},
+             }},
+            {{"emissionRed",
+              "Emission red",
+              "MaterialParameters.emissionRed",
+              "/emission_color/0",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              4,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.emissionRed},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->emissionRed;
@@ -492,28 +449,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->emissionRed = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.emissionRed;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"emissionGreen",
-             "Emission green",
-             "MaterialParameters.emissionGreen",
-             "/emission_color/1",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             4,
-             1,
-             {},
-             {},
+             }},
+            {{"emissionGreen",
+              "Emission green",
+              "MaterialParameters.emissionGreen",
+              "/emission_color/1",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              4,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.emissionGreen},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->emissionGreen;
@@ -521,28 +475,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->emissionGreen = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.emissionGreen;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"emissionBlue",
-             "Emission blue",
-             "MaterialParameters.emissionBlue",
-             "/emission_color/2",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             4,
-             1,
-             {},
-             {},
+             }},
+            {{"emissionBlue",
+              "Emission blue",
+              "MaterialParameters.emissionBlue",
+              "/emission_color/2",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              4,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.emissionBlue},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->emissionBlue;
@@ -550,28 +501,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->emissionBlue = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.emissionBlue;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"emissionLuminance",
-             "Emission luminance",
-             "MaterialParameters.emissionLuminance",
-             "/emission_luminance",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             100,
-             1,
-             {},
-             {},
+             }},
+            {{"emissionLuminance",
+              "Emission luminance",
+              "MaterialParameters.emissionLuminance",
+              "/emission_luminance",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              100,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.emissionLuminance},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->emissionLuminance;
@@ -579,28 +527,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->emissionLuminance = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.emissionLuminance;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"normalScale",
-             "Normal scale",
-             "MaterialParameters.normalScale",
-             "/normal_scale",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             4,
-             1,
-             {},
-             {},
+             }},
+            {{"normalScale",
+              "Normal scale",
+              "MaterialParameters.normalScale",
+              "/normal_scale",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              4,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.normalScale},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->normalScale;
@@ -608,28 +553,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->normalScale = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.normalScale;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"occlusionStrength",
-             "Occlusion strength",
-             "MaterialParameters.occlusionStrength",
-             "/occlusion_strength",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             0,
-             1,
-             1,
-             {},
-             {},
+             }},
+            {{"occlusionStrength",
+              "Occlusion strength",
+              "MaterialParameters.occlusionStrength",
+              "/occlusion_strength",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              0,
+              1,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.occlusionStrength},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->occlusionStrength;
@@ -637,28 +579,25 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->occlusionStrength = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.occlusionStrength;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
-            {"alphaCutoff",
-             "Alpha cutoff",
-             "MaterialParameters.alphaCutoff",
-             "/alpha_cutoff",
-             PropertyKind::eFloat,
-             PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
-             PropertyWidget::eSlider,
-             0,
-             -1,
-             1,
-             1,
-             {},
-             {},
+             }},
+            {{"alphaCutoff",
+              "Alpha cutoff",
+              "MaterialParameters.alphaCutoff",
+              "/alpha_cutoff",
+              PropertyKind::eFloat,
+              PropertyFlags::eSerialize | PropertyFlags::eInspect | PropertyFlags::eBind,
+              PropertyWidget::eSlider,
+              0,
+              -1,
+              1,
+              1,
+              {},
+              {},
+              PropertyValue {MaterialParameters {}.alphaCutoff},
+              PropertyKind::eFloat,
+              "object",
+              "",
+              true},
              [](const void* object) -> PropertyValue
              {
                  return static_cast<const MaterialParameters*>(object)->alphaCutoff;
@@ -666,17 +605,9 @@ namespace vultra
              [](void* object, const PropertyValue& value)
              {
                  static_cast<MaterialParameters*>(object)->alphaCutoff = std::get<float>(value);
-             },
-             []() -> PropertyValue
-             {
-                 return MaterialParameters {}.alphaCutoff;
-             },
-             PropertyKind::eFloat,
-             ObjectCategory::eResource,
-             nullptr,
-             true},
+             }},
         }};
-        static const ObjectTypeInfo type = {"MaterialParameters", properties, nullptr, ObjectCategory::eValue};
+        static const ObjectTypeInfo               type       = {"MaterialParameters", properties, nullptr, "value"};
         return type;
     }
 

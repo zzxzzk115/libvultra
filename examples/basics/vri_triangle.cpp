@@ -1,16 +1,25 @@
 #include "../common/colored_mesh.hpp"
 #include "../common/sample.hpp"
+#include "../common/shader_pack.hpp"
 
-#include <vultra/main/app/desktop_app.hpp>
+#include <vultra/main/app/platform_app.hpp>
 
-class TriangleApp final : public vultra::DesktopApp
+class TriangleApp final : public vultra::PlatformApp
 {
 public:
     explicit TriangleApp(const sample::Options& options) :
-        vultra::DesktopApp(
-            {.title = "Vultra | RHI - Indexed Triangle", .size = {1024, 768}, .swapchainFormat = VriFormat_BGRA8_SRGB}),
+        vultra::PlatformApp(
+            {.title = "Vultra | RHI - Indexed Triangle", .size = {1024, 768}, .swapchainFormat = VriFormat_BGRA8_SRGB},
+            options.launch),
         m_Options(options),
-        m_Triangle(getDevice(), getSwapchain().format(), sample::kTriangleVertices, sample::kTriangleIndices)
+        m_Program(sample::cookedShader(options.launch, "mesh.vshaderc")),
+        m_Triangle(getDevice(),
+                   getSwapchain().format(),
+                   sample::kTriangleVertices,
+                   sample::kTriangleIndices,
+                   VriPrimitiveTopology_TriangleList,
+                   false,
+                   m_Program ? &*m_Program : nullptr)
     {
     }
 
@@ -34,14 +43,15 @@ private:
         sample::captureFrame(m_Options, frameCount(), getDevice(), target);
     }
 
-    sample::Options     m_Options;
-    sample::ColoredMesh m_Triangle;
+    sample::Options                      m_Options;
+    std::optional<vultra::ShaderProgram> m_Program;
+    sample::ColoredMesh                  m_Triangle;
 };
 
-int runVriTriangle(int argc, char** argv)
+int runVriTriangle(const vultra::AppLaunch& launch, int argc, char** argv)
 try
 {
-    const auto options = sample::readOptions(argc, argv);
+    const auto options = sample::readOptions(argc, argv, launch);
     if (!options)
     {
         return 0;

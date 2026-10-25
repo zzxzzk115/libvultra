@@ -1,8 +1,7 @@
-#include "../upload.hpp"
-
 #include <vultra/assets/source_file.hpp>
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
 #include <vultra/servers/rendering/builtin/environment.hpp>
+#include <vultra/servers/rendering/texture_upload.hpp>
 
 #include <glm/glm.hpp>
 
@@ -13,8 +12,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <numbers>
+#include <utility>
 
 namespace vultra
 {
@@ -63,8 +64,8 @@ namespace vultra
                                                std::cos(theta),
                                                std::sin(phi) * std::sin(theta)};
                     glm::vec3       color = glm::mix(glm::vec3(0.8f, 0.85f, 0.9f),
-                                               glm::vec3(0.12f, 0.3f, 0.7f),
-                                               std::max(direction.y, 0.0f));
+                                                     glm::vec3(0.12f, 0.3f, 0.7f),
+                                                     std::max(direction.y, 0.0f));
                     if (direction.y < 0)
                     {
                         color = glm::vec3(0.08f, 0.07f, 0.055f);
@@ -79,12 +80,19 @@ namespace vultra
         }
     } // namespace
 
-    Environment::Environment(Device& device, const std::filesystem::path& hdr, const AssetSource* source) :
+    Environment::Environment(Device&                      device,
+                             const std::filesystem::path& hdr,
+                             const AssetSource*           source,
+                             const AssetSource*           shaders) :
         m_Device(device),
         m_Source(hdr),
-        m_AssetSource(source)
+        m_AssetSource(source),
+        m_ShaderSource(shaders)
     {
-        radiance    = uploadTexture(device, TextureFormat::eRgba32Sfloat, 16, {environmentPixels(hdr, source)});
+        TextureData sourceData;
+        sourceData.format = TextureFormat::eRgba32Sfloat;
+        sourceData.levels.push_back(environmentPixels(hdr, source));
+        radiance    = uploadTextureAsset(device, sourceData);
         diffuse     = std::make_unique<Texture>(device, colorTexture({64, 32}, VriFormat_RGBA16_SFLOAT));
         auto desc   = colorTexture({256, 128}, VriFormat_RGBA16_SFLOAT);
         desc.mipNum = 9;
@@ -148,34 +156,36 @@ namespace vultra
             device.core.UpdateDescriptorRanges(set, 0, 2, updates);
             auto generate = [&](Texture& texture, const char* entry)
             {
-                ShaderPipeline pipeline(device,
-                                        "builtin/shaders/passes/environment.slang",
-                                        {{"screenVertex", VriShaderStage_Vertex}, {entry, VriShaderStage_Fragment}},
-                                        [&](std::span<const VriShaderDesc> shaders)
-                                        {
-                                            VriColorAttachmentDesc color {};
-                                            color.format         = VriFormat_RGBA16_SFLOAT;
-                                            color.colorWriteMask = VriColorWrite_RGBA;
-                                            VriGraphicsPipelineDesc graphics {};
-                                            graphics.pipelineCache           = device.pipelineCache;
-                                            graphics.pipelineLayout          = layout;
-                                            graphics.shaders                 = shaders.data();
-                                            graphics.shaderNum               = uint32_t(shaders.size());
-                                            graphics.inputAssembly.topology  = VriPrimitiveTopology_TriangleList;
-                                            graphics.rasterization.cullMode  = VriCullMode_None;
-                                            graphics.rasterization.lineWidth = 1;
-                                            graphics.multisample.sampleNum   = 1;
-                                            graphics.outputMerger.colors     = &color;
-                                            graphics.outputMerger.colorNum   = 1;
-                                            VriPipeline* result              = nullptr;
-                                            check(device.core.CreateGraphicsPipeline(device.handle, &graphics, &result),
-                                                  "Create IBL pipeline");
-                                            return result;
-                                        },
-                                        "builtin/shaders",
-                                        {"builtin/shaders"});
-                Frame          frame(device);
-                auto*          cmd = frame.begin();
+                ShaderPipeline pipeline(
+                    device,
+                    "builtin/shaders/passes/environment.slang",
+                    {{"screenVertex", VriShaderStage_Vertex}, {entry, VriShaderStage_Fragment}},
+                    [&](std::span<const VriShaderDesc> shaders)
+                    {
+                        VriColorAttachmentDesc color {};
+                        color.format         = VriFormat_RGBA16_SFLOAT;
+                        color.colorWriteMask = VriColorWrite_RGBA;
+                        VriGraphicsPipelineDesc graphics {};
+                        graphics.pipelineCache           = device.pipelineCache;
+                        graphics.pipelineLayout          = layout;
+                        graphics.shaders                 = shaders.data();
+                        graphics.shaderNum               = uint32_t(shaders.size());
+                        graphics.inputAssembly.topology  = VriPrimitiveTopology_TriangleList;
+                        graphics.rasterization.cullMode  = VriCullMode_None;
+                        graphics.rasterization.lineWidth = 1;
+                        graphics.multisample.sampleNum   = 1;
+                        graphics.outputMerger.colors     = &color;
+                        graphics.outputMerger.colorNum   = 1;
+                        VriPipeline* result              = nullptr;
+                        check(device.core.CreateGraphicsPipeline(device.handle, &graphics, &result),
+                              "Create IBL pipeline");
+                        return result;
+                    },
+                    "builtin/shaders",
+                    {"builtin/shaders"},
+                    shaders);
+                Frame frame(device);
+                auto* cmd = frame.begin();
                 texture.transition(cmd,
                                    {VriAccess_ColorAttachmentWrite,
                                     VriLayout_ColorAttachment,
@@ -233,7 +243,7 @@ namespace vultra
 
     void Environment::replace(const std::filesystem::path& hdr)
     {
-        Environment replacement(m_Device, hdr, m_AssetSource);
+        Environment replacement(m_Device, hdr, m_AssetSource, m_ShaderSource);
         radiance.swap(replacement.radiance);
         diffuse.swap(replacement.diffuse);
         specular.swap(replacement.specular);
