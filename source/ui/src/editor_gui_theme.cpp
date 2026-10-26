@@ -39,7 +39,7 @@ namespace vultra
             };
 
             c[ImGuiCol_Text]         = p.text;
-            c[ImGuiCol_TextDisabled] = alpha(p.text, 0.45f);
+            c[ImGuiCol_TextDisabled] = alpha(p.text, 0.60f);
 
             c[ImGuiCol_WindowBg] = p.windowBg;
             c[ImGuiCol_ChildBg]  = p.childBg;
@@ -68,9 +68,15 @@ namespace vultra
             c[ImGuiCol_ButtonHovered] = p.hover;
             c[ImGuiCol_ButtonActive]  = p.accent;
 
-            c[ImGuiCol_Header]        = alpha(p.accent, 0.55f);
-            c[ImGuiCol_HeaderHovered] = alpha(p.accent, 0.75f);
+            c[ImGuiCol_Header]        = p.button;
+            c[ImGuiCol_HeaderHovered] = p.hover;
             c[ImGuiCol_HeaderActive]  = p.accent;
+
+            c[ImGuiCol_TableHeaderBg]     = p.childBg;
+            c[ImGuiCol_TableBorderStrong] = p.border;
+            c[ImGuiCol_TableBorderLight]  = alpha(p.border, 0.6f);
+            c[ImGuiCol_TableRowBg]        = {0, 0, 0, 0};
+            c[ImGuiCol_TableRowBgAlt]     = alpha(p.text, 0.025f);
 
             c[ImGuiCol_Separator]        = p.border;
             c[ImGuiCol_SeparatorHovered] = alpha(p.accent, 0.6f);

@@ -31,7 +31,10 @@ try
 {
     using namespace vultra;
     Device               device;
-    EditorGui            gui(device, VriFormat_RGBA8_UNORM, {.multiViewport = false, .persistLayout = false});
+    EditorGui            gui(device,
+                  static_cast<Window*>(nullptr),
+                  VriFormat_RGBA8_UNORM,
+                             {.multiViewport = false, .persistLayout = false});
     const Extent         extent {480, 360};
     Texture              target(device, colorTexture(extent));
     Frame                frame(device);
@@ -202,6 +205,34 @@ try
                 std::filesystem::path("build/.tmp") /
                     ("gui-font-" + std::to_string(int(scale)) + "x-" + StableId::generate().toString() + ".png"));
     }
+    // A narrow inspector must keep long labels visible when the font atlas grows for HiDPI.
+    ImGui::GetStyle().FontScaleMain = 2.5f;
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        gui.begin(extent, 1.0f / 60);
+        ImGui::SetNextWindowPos({20, 20}, ImGuiCond_Always);
+        ImGui::SetNextWindowSize({420, 290}, ImGuiCond_Always);
+        ImGui::Begin("HiDPI property");
+        const auto rowStart = ImGui::GetCursorPosY();
+        auto       ui       = gui.frame();
+        ui.checkbox("Environment intensity", &enabled);
+        require(ImGui::GetCursorPosY() - rowStart > ImGui::GetTextLineHeight() * 1.5f,
+                "Long HiDPI property label was clipped instead of wrapping");
+        ImGui::End();
+        gui.upload(extent);
+        auto* cmd = frame.begin();
+        gui.copy(cmd);
+        target.transition(
+            cmd,
+            {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
+        const float clear[4] {0, 0, 0, 1};
+        beginColorPass(device, cmd, target.view(), extent, clear);
+        gui.draw(cmd);
+        device.core.CmdEndRendering(cmd);
+        frame.submitAndWait();
+    }
+    savePng(readback(device, target),
+            std::filesystem::path("build/.tmp") / ("gui-property-250-" + StableId::generate().toString() + ".png"));
     std::cout
         << "Offscreen GUI tests passed: mouse, resized text, property scalar/vector/text, dropdown and GPU image\n";
     return 0;

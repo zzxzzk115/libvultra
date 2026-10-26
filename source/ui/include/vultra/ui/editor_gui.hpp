@@ -37,6 +37,8 @@ namespace vultra
         EditorGui(Device& device, Window& window, VriFormat targetFormat, const EditorGuiConfig& config = {});
         // Offscreen rendering uses the same VRI renderer, with no window backend or detached viewports.
         EditorGui(Device& device, VriFormat targetFormat, const EditorGuiConfig& config);
+        // A null window selects offscreen rendering when the target is chosen at runtime.
+        EditorGui(Device& device, Window* window, VriFormat targetFormat, const EditorGuiConfig& config);
         ~EditorGui();
         EditorGui(const EditorGui&)            = delete;
         EditorGui& operator=(const EditorGui&) = delete;
@@ -88,8 +90,7 @@ namespace vultra
     private:
         friend class EditorGuiFrame;
         friend class EditorGuiInspector;
-        void requireFrame(uint64_t serial) const;
-        EditorGui(Device& device, Window* window, VriFormat targetFormat, const EditorGuiConfig& config);
+        void  requireFrame(uint64_t serial) const;
         void  beginFrame();
         void  updateTextures();
         void  destroyTextures();

@@ -1,5 +1,16 @@
 # Handoff
 
+## UI readability and offline QA, 2026-10-26
+
+Shared EditorGui labels wrap within property columns, disabled captions have higher contrast, and
+headers/table colors follow the active editor palette. A nullable Window constructor exposes the
+existing runtime choice of native/offscreen rendering without duplicating renderer ownership.
+The offscreen GUI regression exercises this path and checks a long label at 250% font size with GPU
+readback, in addition to mouse/text/dropdown/inspector interactions and font-atlas updates.
+Windows release/GLFW, RTX 4090 Laptop Vulkan: the GUI offscreen test, changed C++ clang-tidy and
+format checks pass. Shared code remains backend-independent; no interactive window or physical XR
+session was opened for this cleanup. Existing generated builtin_pack.rc stays excluded.
+
 ## Start here
 
 Continue on `dev-VRI`. Clone that branch to obtain the library source, checked-in generated API and this handoff:

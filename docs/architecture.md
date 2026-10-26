@@ -365,6 +365,9 @@ be validated separately from existing callback-borrowed EditorGui frame handles;
 the native ownership/input contract runs. Native GUI requires neither ImGui/RmlUi nor .NET.
 
 EditorGui wraps upstream Dear ImGui with frame/window/layout and left-label/right-control Inspector rows.
+Property labels wrap within their column instead of clipping as DPI or panel width changes.
+A null Window pointer selects the existing offscreen renderer when a caller chooses its target at
+runtime; offscreen configuration must disable detached viewports and frames supply an extent/time step.
 The GUI context owns property drawers; callback data/code must survive registration and active frames.
 Each EditorGui initializes and selects its own ImGui context. Frame borrows expire at upload or the next frame;
 widget calls reject a different current context. Complete window/Inspector scopes before switching contexts.
