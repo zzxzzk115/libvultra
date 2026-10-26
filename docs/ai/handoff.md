@@ -84,3 +84,25 @@ The original machine retains recovery autostash `884598d3` and pre-cleanup snaps
 archive is a pre-publication backup; GitHub branches and dependent submodule pins are the continuation source.
 The abandoned `VRI-api-0.2` worktree remains a separate uncommitted experiment, not the active API or a build
 baseline. VRI source changes are not part of this handoff publication. No release or tag is created.
+
+
+## Windows hybrid GPU and HiDPI repair, 2026-10-26
+
+Integrated onto public `dev-VRI` commit `5dd86f46`, retaining the library split, VRI 0.2.0,
+checked completion operations and EditorGui context lifetime checks. Convenience Vulkan Device
+construction now ranks eligible adapters by type, VRAM and exposed queue coverage/count. Explicit
+creation descriptors and native XR hooks preserve their adapter contract. The timestamp alias patch
+is checksum-pinned to the current VRI source; no dependency downgrade is required.
+
+EditorGui embeds the existing OFL Lato font, handles ImGui 1.92 dynamic atlas updates/destruction
+through VRI, and separates monitor content scale from framebuffer density. GLFW and SDL3 own their
+native scaling paths; detached viewport geometry is not enlarged twice.
+
+Windows release verification on RTX 4090 Laptop / Intel hybrid hardware at 250% desktop scaling:
+device-selection baseline, RayQuery/bindless and impossible-feature rejection; checked device
+completion failures; offscreen font 1x/2x/1x GPU readback; context lifetime; settings/layout and
+320x200 detached native viewport all passed. Independent SDL3 offscreen/settings builds passed the
+same font and native-window checks. Modified C++ passes scoped clang-tidy/formatting. No physical
+headset, live cross-monitor transition, Retina hardware or non-Windows platform acceptance is claimed.
+Research benchmark sequence capture remains in the private PVW companion, since upstream removed
+the research host from this library.

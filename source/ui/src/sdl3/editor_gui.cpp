@@ -33,6 +33,13 @@ namespace vultra
         ImGui_ImplSDL3_NewFrame();
     }
 
+    float EditorGui::platformDpiScale() const
+    {
+        const auto display = SDL_GetDisplayForWindow(static_cast<SDL_Window*>(m_Window->handle()));
+        const auto scale   = SDL_GetDisplayContentScale(display);
+        return scale > 0 ? scale : 1.0f;
+    }
+
     void* EditorGui::viewportHandle(ImGuiViewport* viewport)
     {
         // ImGui's SDL3 backend stores the window ID, not SDL_Window*, in PlatformHandle.

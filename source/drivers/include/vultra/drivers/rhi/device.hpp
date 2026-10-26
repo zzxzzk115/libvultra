@@ -47,6 +47,7 @@ namespace vultra
         VriPipelineCache* pipelineCache = nullptr;
 
     private:
+        Device(const VriDeviceCreationDesc& requested, bool automaticSelection);
         VriPipelineCacheInterface m_PipelineCacheApi {};
     };
 

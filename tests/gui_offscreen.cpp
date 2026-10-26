@@ -51,6 +51,7 @@ try
     bool                 thresholdChangedWhileHeld = false;
     std::array<float, 3> vector {};
     std::string          propertyText = "Property";
+    float                fontSize     = 0;
     ImVec2               floatPosition;
     ImVec2               vectorPosition;
     ImVec2               propertyTextPosition;
@@ -67,6 +68,7 @@ try
         {
             EditorGuiWindow window(ui, "Offscreen controls");
             require(bool(window), "Offscreen GUI window is not visible");
+            fontSize           = ImGui::GetFontSize();
             uint8_t abiEnabled = enabled;
             uint8_t changed    = 0;
             require(uiApi().checkbox(makeUiFrame(gui), "Enabled", 7, &abiEnabled, &changed) == VULTRA_STATUS_OK,
@@ -181,6 +183,25 @@ try
     }
     require(hasUi && gain == 1, "Offscreen GPU output lost the widgets or changed an unedited value");
     savePng(image, std::filesystem::path("build/.tmp") / ("gui-offscreen-" + StableId::generate().toString() + ".png"));
+    // Exercise atlas updates at new font sizes and switching back, with real GPU draws/readback.
+    const auto baseFontSize = fontSize;
+    for (const auto scale : {2.0f, 1.0f})
+    {
+        ImGui::GetStyle().FontScaleMain = scale;
+        render();
+        render();
+        const auto scaledImage = readback(device, target);
+        require(fontSize == baseFontSize * scale, "Font size did not follow UI scale");
+        size_t textPixels = 0;
+        for (size_t pixel = 0; pixel < scaledImage.rgba.size(); pixel += 4)
+        {
+            textPixels += scaledImage.rgba[pixel] > 0.5f;
+        }
+        require(textPixels > 100, "Resized font atlas lost visible text");
+        savePng(scaledImage,
+                std::filesystem::path("build/.tmp") /
+                    ("gui-font-" + std::to_string(int(scale)) + "x-" + StableId::generate().toString() + ".png"));
+    }
     std::cout
         << "Offscreen GUI tests passed: mouse, resized text, property scalar/vector/text, dropdown and GPU image\n";
     return 0;

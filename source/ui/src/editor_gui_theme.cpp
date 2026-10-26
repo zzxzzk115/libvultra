@@ -167,6 +167,15 @@ namespace vultra
                 });
                 break;
         }
+        // Theme rounding is specified in base UI units; spacing already retains its DPI scale.
+        const auto scale = style._MainScale;
+        style.WindowRounding *= scale;
+        style.ChildRounding *= scale;
+        style.FrameRounding *= scale;
+        style.PopupRounding *= scale;
+        style.GrabRounding *= scale;
+        style.TabRounding *= scale;
+        style.ScrollbarRounding *= scale;
         if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
         {
             style.WindowRounding              = 0;

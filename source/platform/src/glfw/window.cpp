@@ -40,7 +40,10 @@ namespace vultra
         }
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
         m_Window = glfwCreateWindow(int(extent.width), int(extent.height), title, nullptr, nullptr);
+        // Hints are process-wide; ImGui supplies native viewport sizes and applies its own DPI policy.
+        glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
         if (!m_Window)
         {
             if (ownedWindows == 0)

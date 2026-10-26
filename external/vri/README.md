@@ -12,6 +12,7 @@ Their previous local patches have been removed. These remaining patches are chec
 
 | Patch | Scope and reason |
 | --- | --- |
+| `calibrated_timestamps.patch` | Vulkan: select KHR/EXT timestamp-domain entry points from the enabled extension on that adapter; mixed Intel/NVIDIA ICDs must not use another ICD's trampoline. |
 | `validation_extent.patch` | Forward actual swapchain extent through validation; resize must not use a larger requested render area. |
 | `cube_array.patch` | Enable the queried Vulkan `imageCubeArray` device feature used by texture-array sampling. |
 | `texture_copy_region.patch` | Vulkan: honor texture-copy offsets, extents, mip levels and array layers instead of copying the entire base image. The graph partial-write regression checks preserved and replaced texels. |
@@ -31,3 +32,8 @@ completion and explicit idle waits check their results. Destruction reports idle
 When rebuilding dependencies, preserve the configured version/backend flags: an unqualified package requirement
 can select a different package. A changed static package requires relinking its consumers. Browser adapter/device
 startup, native Linux WebGPU surfaces and hardware acceptance remain independent platform gates.
+
+The checksum-pinned `calibrated_timestamps.patch` selects the KHR or EXT physical-device timestamp
+entry point from the extension actually enabled on that GPU. Instance-level KHR lookup alone can
+return another ICD's trampoline on hybrid-GPU systems. It applies to the pinned v0.2.0 source;
+retain the current dependency revision and other platform patches when rebuilding it.
