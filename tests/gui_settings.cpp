@@ -34,7 +34,7 @@ namespace
     {
         std::filesystem::path original = std::filesystem::current_path();
         std::filesystem::path root     = original / "build/.tmp/gui-settings" /
-                                         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+                                     std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
 
         RunDirectory()
         {
@@ -196,6 +196,10 @@ try
     {
         auto  owner = makeGui(device, window.get(), {.multiViewport = false, .persistLayout = false});
         auto& gui   = *owner;
+        require(bool(ImGui::GetIO().BackendFlags & ImGuiBackendFlags_RendererHasTextures),
+                "GUI renderer cannot bake fonts at display DPI");
+        require(ImGui::GetIO().ConfigDpiScaleFonts && ImGui::GetIO().ConfigDpiScaleViewports,
+                "GUI did not enable monitor DPI handling");
         require(gui.theme() == vultra::EditorGuiTheme::eUnreal, "Default GUI theme is not Unreal");
         require(std::abs(ImGui::GetStyle().Colors[ImGuiCol_WindowBg].x - 0.082f) < 0.001f,
                 "Unreal palette was not applied");
@@ -214,6 +218,26 @@ try
         gui.setTheme(vultra::EditorGuiTheme::eGodot);
         require(ImGui::GetStyle().WindowRounding == 0 && ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w == 1,
                 "Theme switching broke platform viewport styling");
+        ImGui::GetIO().ConfigViewportsNoAutoMerge = true;
+        for (int index = 0; index < 4; ++index)
+        {
+            window->poll();
+            gui.begin();
+            const auto mainPosition = ImGui::GetMainViewport()->Pos;
+            ImGui::SetNextWindowPos({mainPosition.x + 50, mainPosition.y + 50}, ImGuiCond_Always);
+            ImGui::SetNextWindowSize({320, 200}, ImGuiCond_Always);
+            ImGui::Begin("Detached DPI regression", nullptr, ImGuiWindowFlags_NoDocking);
+            ImGui::TextUnformatted("DPI text and atlas");
+            auto* viewport = ImGui::GetWindowViewport();
+            ImGui::End();
+            gui.upload(window->framebufferSize());
+            gui.renderPlatformWindows();
+            require(viewport != ImGui::GetMainViewport() && viewport->PlatformHandle,
+                    "DPI regression did not create a detached platform window");
+            const auto actualSize = ImGui::GetPlatformIO().Platform_GetWindowSize(viewport);
+            require(std::abs(actualSize.x - 320) <= 1 && std::abs(actualSize.y - 200) <= 1,
+                    "Detached window was scaled twice instead of using ImGui's native size");
+        }
     }
     else
     {

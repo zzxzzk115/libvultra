@@ -20,6 +20,12 @@ namespace vultra
         ImGui_ImplGlfw_NewFrame();
     }
 
+    float EditorGui::platformDpiScale() const
+    {
+        const auto scale = ImGui_ImplGlfw_GetContentScaleForWindow(static_cast<GLFWwindow*>(m_Window->handle()));
+        return scale > 0 ? scale : 1.0f;
+    }
+
     void* EditorGui::viewportHandle(ImGuiViewport* viewport)
     {
         return viewport->PlatformHandle;

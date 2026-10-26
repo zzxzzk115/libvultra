@@ -76,6 +76,11 @@ namespace vultra
             ImGuiContext* m_Previous;
         };
 
+        // Reuse the bundled scalable UI font (SIL OFL: resources/ui/LICENSE.txt).
+        constexpr unsigned char kEditorFont[] = {
+#include "LatoLatin-Regular.ttf.h"
+        };
+
         std::string layoutFilename(const EditorGuiConfig& config)
         {
             if (!config.persistLayout)
@@ -155,21 +160,20 @@ namespace vultra
             {
                 io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
             }
-            io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
-            // Intentionally use ImGui's supported legacy atlas path, not dynamic textures.
-            unsigned char* pixels = nullptr;
-            int            width  = 0;
-            int            height = 0;
-            io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+            io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures;
+            io.ConfigDpiScaleFonts     = true;
+            io.ConfigDpiScaleViewports = true;
+            ImFontConfig fontConfig;
+            fontConfig.FontDataOwnedByAtlas = false;
+            io.Fonts->AddFontFromMemoryTTF(const_cast<unsigned char*>(kEditorFont),
+                                           sizeof(kEditorFont),
+                                           16,
+                                           &fontConfig);
             check(vriGetInterface(device.handle, VRI_INTERFACE_IMGUI, sizeof(m_Api), &m_Api), "Get ImGui interface");
             VriImguiDesc desc {};
             desc.uploadQueue = device.queue;
             desc.colorFormat = targetFormat;
-            desc.fontAtlas   = pixels;
-            desc.fontWidth   = uint32_t(width);
-            desc.fontHeight  = uint32_t(height);
             check(m_Api.CreateImgui(device.handle, &desc, &m_Renderer), "Create ImGui renderer");
-            io.Fonts->SetTexID(reinterpret_cast<ImTextureID>(m_Api.GetImguiFontView(m_Renderer)));
 #ifdef VULTRA_EDITOR_GUI_WINDOW
             if (window)
             {
@@ -178,6 +182,13 @@ namespace vultra
                 {
                     throw std::runtime_error("Initialize ImGui window backend");
                 }
+            }
+            if (window)
+            {
+                m_DpiScale = platformDpiScale();
+                ImGui::GetStyle().ScaleAllSizes(m_DpiScale);
+                ImGui::GetStyle().FontScaleDpi = m_DpiScale;
+                Logger::core().info("Editor UI DPI scale: {}", m_DpiScale);
             }
 #endif
             setTheme(config.theme);
@@ -229,7 +240,9 @@ namespace vultra
             shutdownPlatform();
         }
 #endif
+        destroyTextures();
         m_Api.DestroyImgui(m_Renderer);
+        ImGui::GetIO().BackendFlags &= ~ImGuiBackendFlags_RendererHasTextures;
         ImGui::DestroyContext(m_Context);
         if (previous != m_Context)
         {
@@ -264,6 +277,12 @@ namespace vultra
         }
 #ifdef VULTRA_EDITOR_GUI_WINDOW
         beginPlatformFrame();
+        const auto scale = platformDpiScale();
+        if (std::abs(scale - m_DpiScale) > 0.001f)
+        {
+            ImGui::GetStyle().ScaleAllSizes(scale / m_DpiScale);
+            m_DpiScale = scale;
+        }
 #endif
         beginFrame();
     }
@@ -390,6 +409,7 @@ namespace vultra
         requireFrame(m_FrameSerial);
         m_FrameActive = false;
         ImGui::Render();
+        updateTextures();
         m_DrawData.update(ImGui::GetDrawData(), framebuffer);
         if (m_DrawData.data.vertexCount)
         {

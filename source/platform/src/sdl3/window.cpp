@@ -39,6 +39,13 @@ namespace vultra
                                             SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
             checkSdl(window != nullptr, "Create SDL window");
             m_Window = window;
+            // SDL's native window coordinates include the content scale on Windows/X11.
+            const auto scale = SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(window));
+            if (scale > 0 && scale != 1)
+            {
+                checkSdl(SDL_SetWindowSize(window, int(extent.width * scale), int(extent.height * scale)),
+                         "Scale initial window to display DPI");
+            }
             checkSdl(SDL_SetPointerProperty(SDL_GetWindowProperties(window), kWindowProperty, this),
                      "Attach window input");
             m_Input.setFocused((SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0);

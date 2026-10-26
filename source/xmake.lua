@@ -342,14 +342,18 @@ target("vultra")
             add_packages("nativefiledialog-extended")
         end
     end
+    if features.editor_gui or features.vgui then
+        add_rules("utils.bin2c", {extensions = {".ttf", ".png"}})
+    end
     if features.editor_gui then
+        add_files("../resources/ui/LatoLatin-Regular.ttf")
         add_includedirs("ui/include", {public = true})
         add_includedirs("api/include", {public = true})
         add_headerfiles("ui/include/(vultra/ui/editor_gui*.hpp)")
         add_headerfiles("api/include/(vultra/api/vultra_abi.generated.h)",
                         "api/include/(vultra/api/vultra_ui.generated.h)", "api/include/(vultra/api/ui_bridge.hpp)")
         add_files("ui/src/editor_gui.cpp", "ui/src/editor_gui_frame.cpp", "ui/src/editor_gui_inspector.cpp",
-                  "ui/src/editor_gui_theme.cpp", "api/src/vultra_ui.generated.cpp")
+                  "ui/src/editor_gui_theme.cpp", "ui/src/editor_gui_textures.cpp", "api/src/vultra_ui.generated.cpp")
         add_packages("imgui", {public = true})
         if features.window then
             add_defines("VULTRA_EDITOR_GUI_WINDOW")
@@ -369,7 +373,6 @@ target("vultra")
     if features.vgui then
         add_includedirs("ui/include", {public = true})
         add_headerfiles("ui/include/vultra/ui/vgui.hpp")
-        add_rules("utils.bin2c", {extensions = ".png"})
         add_files("ui/assets/vgui_skin.png", "ui/src/vgui.cpp")
         if features.window then
             add_defines("VULTRA_VGUI_WINDOW")

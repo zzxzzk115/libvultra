@@ -91,6 +91,42 @@ Source-based builtin rendering expects the library's `builtin/shaders` and `exte
 application paths before using `ScopedWorkingDirectory` around the library shader root; GPU owners remain inside
 that scope. Shipping applications must cook/package their shader closure rather than depend on the checkout.
 
+## GPU selection
+
+`Device` convenience constructors probe Vulkan adapters at startup and reject candidates missing
+required features or a graphics queue. An explicit `VriDeviceCreationDesc` preserves its requested adapter;
+explicit best-effort convenience requests permit feature negotiation, as before. Eligible devices are ranked lexicographically by discrete,
+integrated, unknown, then software type; dedicated VRAM; exposed queue-type coverage; and exposed queue
+count. Equal scores retain enumeration order. The selected device is retained, unused probes are destroyed,
+and the startup log records the GPU, VRAM, queue counts and enabled feature mask. Required features are
+never silently removed from strict requests. Queue counts describe VRI's exposed queues and can include aliases, not independent
+hardware engines. The pinned VRI Vulkan implementation exposes one queue per type, limiting that tie-breaker.
+
+OpenXR creation hooks keep the runtime-selected physical device and strict required-feature handling.
+No OS GPU preference is necessary for ordinary automatic selection. Run `xmake test -v test-device-selection/*`
+for baseline submission, supported Ray Query/bindless submission and unsupported-feature rejection.
+
+## HiDPI editor UI
+
+EditorGui uses the monitor content scale for fonts, control spacing and theme rounding. The bundled
+Lato Latin font is embedded at build time, with a base size of 16 UI units; retain its
+[SIL OFL license](resources/ui/LICENSE.txt) when distributing the engine. ImGui 1.92's dynamic atlas
+bakes glyphs at the requested font size and framebuffer density. Atlas subrect uploads use VRI;
+cached views are released before their textures. Ordinary frames do not recreate the atlas.
+GLFW resets its process-wide scale-to-monitor creation hint before ImGui creates native-sized
+platform windows.
+Font scale follows detached viewport DPI. Shared style spacing follows the main window's monitor.
+
+Initial Window extents use base-DPI units (GLFW scale-to-monitor, SDL display content scale).
+Subsequent size/framebufferSize queries still return the backend's native units and pixels respectively.
+Framebuffer density remains separate from content scaling, so Retina-style rendering is not enlarged twice.
+Offscreen UI defaults to scale 1; applications can use ImGuiStyle::FontScaleMain for deliberate UI zoom.
+Theme changes retain custom spacing and scale their rounding to the current DPI.
+
+Run `xmake test -v 'test-gui-*/*'` for window/offscreen layout and GPU widget tests. The latter draws and
+reads back fonts at 1x, 2x and 1x again, covering atlas updates alongside mouse/text/property interaction.
+The window settings test also renders four frames into a detached viewport and checks its actual native size.
+
 ## Desktop and XR
 
 On Linux select the backend at configuration and the window system per process:
@@ -204,7 +240,7 @@ canvas/readback pixels. This does not resolve the independent Edge startup issue
 These are finite offscreen tests of the minimal `gpu,asset_source,image_io` selection, not ports of DesktopApp,
 the editor or player. They draw a triangle, then two rotating textured/lit indexed cubes with depth and a second
 postprocess pass. Three parameter updates, draw-order invariance and every postprocess pixel are checked.
-PNG outputs include the triangle, uploaded checker, 321 × 237 scene/final output and a 64 × 64 test pattern. Android
+PNG outputs include the triangle, uploaded checker, 321 Ã— 237 scene/final output and a 64 Ã— 64 test pattern. Android
 maps an uncompressed APK asset; Web links the pack into WASM and makes no project-VPK request. The host packer
 emits SPIR-V and WGSL from the same Slang triangle, multipass and Compute sources; no handwritten WGSL copy is used.
 

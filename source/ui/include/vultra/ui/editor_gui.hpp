@@ -9,9 +9,11 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace vultra
@@ -88,7 +90,10 @@ namespace vultra
         friend class EditorGuiInspector;
         void requireFrame(uint64_t serial) const;
         EditorGui(Device& device, Window* window, VriFormat targetFormat, const EditorGuiConfig& config);
-        void beginFrame();
+        void  beginFrame();
+        void  updateTextures();
+        void  destroyTextures();
+        float platformDpiScale() const;
         struct Viewport;
 
         struct DrawData
@@ -100,11 +105,12 @@ namespace vultra
             std::vector<VriImguiDrawCommand> commands;
         };
 
-        bool              initializePlatform();
-        void              shutdownPlatform();
-        void              beginPlatformFrame();
-        static void*      viewportHandle(ImGuiViewport* viewport);
-        void              installViewportCallbacks();
+        bool         initializePlatform();
+        void         shutdownPlatform();
+        void         beginPlatformFrame();
+        static void* viewportHandle(ImGuiViewport* viewport);
+        void         installViewportCallbacks();
+
         Window*           m_Window;
         Device&           m_Device;
         std::string       m_IniFile;
@@ -112,10 +118,14 @@ namespace vultra
         VriImgui*         m_Renderer = nullptr;
         ImGuiContext*     m_Context  = nullptr;
         DrawData          m_DrawData;
-        ImGuiID           m_Dockspace   = 0;
-        EditorGuiTheme    m_Theme       = EditorGuiTheme::eUnreal;
-        bool              m_FrameActive = false;
-        uint64_t          m_FrameSerial = 0;
+
+        std::unordered_map<VriDescriptor*, std::unique_ptr<Texture>> m_Textures;
+
+        float          m_DpiScale    = 1;
+        ImGuiID        m_Dockspace   = 0;
+        EditorGuiTheme m_Theme       = EditorGuiTheme::eUnreal;
+        bool           m_FrameActive = false;
+        uint64_t       m_FrameSerial = 0;
 
         struct PropertyDrawerEntry
         {

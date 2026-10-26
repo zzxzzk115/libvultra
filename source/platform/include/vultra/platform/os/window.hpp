@@ -13,6 +13,7 @@ namespace vultra
     class Window
     {
     public:
+        // Initial extent is in base-DPI units; the platform applies the monitor content scale.
         Window(const char* title, Extent extent = {1280, 720});
         // Borrow a backend window that has no Window wrapper. It must outlive this wrapper.
         explicit Window(void* borrowed);

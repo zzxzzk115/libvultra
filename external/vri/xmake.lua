@@ -22,4 +22,6 @@ package("vri-vultra")
         add_patches("v0.2.0", path.join(os.scriptdir(), "android_archs.patch"),
                     "ff986707c11605c8635bbbbebb2f776c6956c207087f411cbff491f3ede70cd2")
     end
+    add_patches("v0.2.0", path.join(os.scriptdir(), "calibrated_timestamps.patch"),
+                "d2f06cd8c0157944c0088e83f0bcd52c2fb7ff3d4a874be393454a216bf9da11")
 package_end()
