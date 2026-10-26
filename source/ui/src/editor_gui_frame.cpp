@@ -160,7 +160,9 @@ namespace vultra
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 0.55f);
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();
+        ImGui::PushTextWrapPos(0);
         ImGui::TextUnformatted(label);
+        ImGui::PopTextWrapPos();
         ImGui::TableNextColumn();
         ImGui::SetNextItemWidth(-FLT_MIN);
         return true;
