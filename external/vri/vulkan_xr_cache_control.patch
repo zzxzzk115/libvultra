@@ -1,0 +1,19 @@
+diff --git a/source/backend_vk/device_vk.cpp b/source/backend_vk/device_vk.cpp
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -459,6 +459,15 @@
+         {
+             f13.dynamicRendering = VK_TRUE;
+             f13.synchronization2 = VK_TRUE;
++            if (m_vkHooks)
++            {
++                // XR runtimes may create externally synchronized caches on the bound device.
++                VkPhysicalDeviceVulkan13Features supported = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
++                VkPhysicalDeviceFeatures2 query = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
++                query.pNext = &supported;
++                vkGetPhysicalDeviceFeatures2(m_physicalDevice, &query);
++                f13.pipelineCreationCacheControl = supported.pipelineCreationCacheControl;
++            }
+         }
+         else
+         {

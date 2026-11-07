@@ -24,4 +24,6 @@ package("vri-vultra")
     end
     add_patches("v0.2.0", path.join(os.scriptdir(), "calibrated_timestamps.patch"),
                 "d2f06cd8c0157944c0088e83f0bcd52c2fb7ff3d4a874be393454a216bf9da11")
+    add_patches("v0.2.0", path.join(os.scriptdir(), "vulkan_xr_cache_control.patch"),
+                "137f3bb88c403da1c2a3d9de21e222cd54cb99bed42e771f4079899a2a357c9c")
 package_end()

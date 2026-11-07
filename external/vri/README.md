@@ -14,6 +14,7 @@ Their previous local patches have been removed. These remaining patches are chec
 | --- | --- |
 | `calibrated_timestamps.patch` | Vulkan: select KHR/EXT timestamp-domain entry points from the enabled extension on that adapter; mixed Intel/NVIDIA ICDs must not use another ICD's trampoline. |
 | `validation_extent.patch` | Forward actual swapchain extent through validation; resize must not use a larger requested render area. |
+| `vulkan_xr_cache_control.patch` | Vulkan: enable the queried Vulkan 1.3 pipeline-cache control feature on XR-hooked devices; Meta XR Simulator uses externally synchronized caches. |
 | `cube_array.patch` | Enable the queried Vulkan `imageCubeArray` device feature used by texture-array sampling. |
 | `texture_copy_region.patch` | Vulkan: honor texture-copy offsets, extents, mip levels and array layers instead of copying the entire base image. The graph partial-write regression checks preserved and replaced texels. |
 | `gl_sampler_mips.patch` | WASM: honor mip filtering and min/max sampler LOD. |
