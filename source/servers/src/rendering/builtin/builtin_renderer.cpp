@@ -621,6 +621,7 @@ namespace vultra
             auto desc = depthTexture(size);
             desc.usage |= VriTextureUsage_TransferSrc;
             maps[cascade] = graph.createTexture("shadow_" + std::to_string(cascade), desc);
+            graph.preserveContents(maps[cascade]);
             graph.addPass("Shadow " + std::to_string(cascade),
                           {{maps[cascade], Usage::eDepthWrite}},
                           [this, cascade, resource = maps[cascade], size](auto* cmd, auto& resources)
@@ -990,10 +991,7 @@ namespace vultra
                                                                        });
         if (m_CacheShadows)
         {
-            if (graph.aliasesTransients())
-            {
-                throw std::logic_error("Cached shadow maps require a graph without transient aliasing");
-            }
+            // addShadowPasses preserves cached maps even when unrelated transients alias.
             if (m_ShadowMaterials.size() != m_Scene.materials.size())
             {
                 m_ShadowMaterials.resize(m_Scene.materials.size());

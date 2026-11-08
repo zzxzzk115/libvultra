@@ -276,6 +276,12 @@ namespace vultra
         lookup(resource).name = std::move(name);
     }
 
+    void RenderGraph::preserveContents(Resource resource)
+    {
+        edit();
+        lookup(resource).preserve = true;
+    }
+
     void RenderGraph::exportResource(Resource resource)
     {
         edit();
@@ -573,12 +579,12 @@ namespace vultra
             {
                 continue;
             }
-            if (aliasTransients && !entry.history && !exported(index))
+            if (aliasTransients && !entry.history && !entry.preserve && !exported(index))
             {
                 for (const auto owner : allocations)
                 {
                     const auto& candidate = m_Resources[owner];
-                    if (ends[owner] >= entry.firstUse || candidate.history || exported(owner) ||
+                    if (ends[owner] >= entry.firstUse || candidate.history || candidate.preserve || exported(owner) ||
                         candidate.isTexture != entry.isTexture)
                     {
                         continue;

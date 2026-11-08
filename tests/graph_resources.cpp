@@ -256,13 +256,18 @@ namespace
         require(graph.getTexture(retained).handle == handle, "History reset recreated GPU resources");
     }
 
-    std::array<Image, 3> transientReuse(Device& device, bool alias)
+    std::array<Image, 3> transientReuse(Device& device, bool alias, bool preserveFirst = false)
     {
         const auto       desc = colorTexture({8, 8}, VriFormat_RGBA32_SFLOAT);
         RenderGraph      graph(device);
         const auto       overlapping = graph.createTexture("overlapping", desc);
         const auto       first       = graph.createTexture("first", desc);
         const auto       second      = graph.createTexture("second", desc);
+        if (preserveFirst)
+        {
+            graph.preserveContents(first);
+        }
+        bool             skipFirst = false;
         const std::array outputs {graph.createTexture("red", desc),
                                   graph.createTexture("blue", desc),
                                   graph.createTexture("green", desc)};
@@ -272,6 +277,10 @@ namespace
                           {{resource, Usage::eColorWrite}},
                           [&, resource, color](auto* cmd, auto& current)
                           {
+                              if (skipFirst && resource.index == first.index)
+                              {
+                                  return;
+                              }
                               beginColorPass(device, cmd, current.getTexture(resource).view(), {8, 8}, color.data());
                               device.core.CmdEndRendering(cmd);
                           });
@@ -296,9 +305,9 @@ namespace
         const auto a = graph.resourceInfo(first);
         const auto b = graph.resourceInfo(second);
         require(a.lastUse < b.firstUse, "Transient resource intervals overlap");
-        require((graph.getTexture(first).handle == graph.getTexture(second).handle) == alias,
+        require((graph.getTexture(first).handle == graph.getTexture(second).handle) == (alias && !preserveFirst),
                 "Disjoint identical transients did not follow the allocation policy");
-        require((a.allocation == b.allocation) == alias, "Observer allocation identities disagree");
+        require((a.allocation == b.allocation) == (alias && !preserveFirst), "Observer allocation identities disagree");
         require(graph.getTexture(overlapping).handle != graph.getTexture(first).handle,
                 "Overlapping live resources shared storage");
         require(graph.getTexture(outputs[0]).handle != graph.getTexture(first).handle,
@@ -313,6 +322,14 @@ namespace
         }
         require(images[0].rgba[0] == 1 && images[1].rgba[2] == 1 && images[2].rgba[1] == 1,
                 "Aliased storage corrupted pass outputs");
+        if (preserveFirst)
+        {
+            skipFirst = true;
+            graph.execute(frame.begin());
+            frame.submitAndWait();
+            require(readback(device, graph.getTexture(outputs[0])).rgba == images[0].rgba,
+                    "A cached producer lost its retained contents when other transients were reused");
+        }
         if (alias)
         {
             bool rejected = false;
@@ -347,6 +364,7 @@ try
     history(device);
     const auto separate = transientReuse(device, false);
     const auto aliased  = transientReuse(device, true);
+    transientReuse(device, true, true);
     for (size_t i = 0; i < separate.size(); ++i)
     {
         require(separate[i].rgba == aliased[i].rgba, "Aliasing changed the rendered image");

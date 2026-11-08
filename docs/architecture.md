@@ -110,7 +110,7 @@ flowchart BT
 ## Ownership and frame lifecycle
 
 DesktopApp owns RuntimeContext directly. RuntimeContext hides desktop construction behind `unique_ptr<Impl>` and owns
-Window → Device → Swapchain → Frame → Profiler. Applications own optional renderers, servers and pass catalogs.
+Window â†’ Device â†’ Swapchain â†’ Frame â†’ Profiler. Applications own optional renderers, servers and pass catalogs.
 RenderApp keeps update, UI construction, command recording, submission, completed-frame callbacks and
 presentation distinct. ImGui construction stays in pre-render; retained game UI processes input and hit-test
 layout before scene logic. Offline programs own their GPU services directly.
@@ -208,12 +208,14 @@ Depth-test-only draws use `eDepthRead` to preserve read-only graph dataflow and 
 attachment API still stores depth, so execution barriers include that write even with pipeline depth writes disabled.
 
 History is graph-owned and explicitly reset by its caller. Optional transient reuse shares whole VRI resources
-only for identical descriptions and disjoint active lifetimes; imports/exports/history are excluded.
+only for identical descriptions and disjoint active lifetimes; imports/exports/history and resources
+marked with `preserveContents` are excluded. The latter retains cached producer data across frames
+without initializing the texture or keeping unused passes alive. Cached shadow maps use this contract.
 The reused plan is immutable. The current executor uses one graphics queue.
 Texture resources remain single-mip, single-layer 2D; depth attachments use D32. Complete resource/port constraints,
 subresource tracking, typed parameters and pass recompilation are open prerequisite gates in the roadmap.
 
-SceneData → GpuScene → BuiltinRenderer works without SceneTree. RenderingServer offers the same upload/render
+SceneData â†’ GpuScene â†’ BuiltinRenderer works without SceneTree. RenderingServer offers the same upload/render
 implementation through owned, move-only handles and checked RIDs, with GPU-complete retirement.
 The raster paths are NaiveDeferred and NaiveForward, with the current opaque OpenPBR subset, IBL and shadows.
 Task/mesh shaders, ray queries and ray pipelines require explicit device capabilities, without silent emulation.

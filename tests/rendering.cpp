@@ -888,20 +888,18 @@ namespace
         const auto changedViewUncached = render(device, renderer, graph, outputs, movedCamera);
         require(changedView.rgba == changedViewUncached.rgba, "Camera refresh differs from uncached shadows");
         renderer.settings.cacheShadows = true;
+        const auto          unaliasedCached = render(device, renderer, graph, outputs, camera);
         vultra::RenderGraph aliased(device);
         const auto          aliasedOutputs = renderer.addPasses(aliased, size);
         aliased.exportResource(aliasedOutputs.color);
+        aliased.exportResource(aliasedOutputs.hdr);
         aliased.compile(true);
-        bool rejectedAliasing = false;
-        try
-        {
-            renderer.prepare(camera, aliased, aliasedOutputs);
-        }
-        catch (const std::logic_error& error)
-        {
-            rejectedAliasing = std::string(error.what()).find("transient aliasing") != std::string::npos;
-        }
-        require(rejectedAliasing, "Cached shadows accepted an aliased transient allocation plan");
+        const auto aliasedCold = render(device, renderer, aliased, aliasedOutputs, camera);
+        require(shadowSubmitted() && aliasedCold.rgba == unaliasedCached.rgba,
+                "Aliasing changed cold cached-shadow rendering");
+        const auto aliasedWarm = render(device, renderer, aliased, aliasedOutputs, camera);
+        require(!shadowSubmitted() && aliasedWarm.rgba == aliasedCold.rgba,
+                "Transient reuse overwrote cached shadows or redrew their casters");
         std::cout
             << "Static shadow cache: cold/warm, unpublished submission, alpha and transform/camera refresh passed\n";
         std::cout << "Shadow soft pixels: hard=" << softPixels(hard) << ", PCF=" << softPixels(pcf)

@@ -100,6 +100,8 @@ namespace vultra
         Resource     importResource(std::string name, Buffer& buffer, bool initialized = true);
         Resource     createTexture(std::string name, const VriTextureDesc& desc);
         Resource     createBuffer(std::string name, const VriBufferDesc& desc);
+        // A cached producer may skip writes; preserve its contents without rooting or clearing it.
+        void preserveContents(Resource resource);
         // History belongs to this graph. Its initial value is restored before the first use after a reset.
         Resource createHistoryTexture(std::string name, const VriTextureDesc& desc, VriClearColor initial = {});
         void     resetHistory(); // Between completed frames; keep allocations and descriptor identities.
@@ -140,6 +142,7 @@ namespace vultra
             std::unique_ptr<Texture> ownedTexture;
             std::unique_ptr<Buffer>  ownedBuffer;
             bool                     history = false;
+            bool                     preserve = false;
             VriClearColor            initial {};
             uint32_t                 firstUse   = UINT32_MAX;
             uint32_t                 lastUse    = UINT32_MAX;
