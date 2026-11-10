@@ -51,4 +51,70 @@ namespace vultra
             throw std::runtime_error("Image " + path.string() + ": " + error.what());
         }
     }
+
+    bool asset_detail::imageHasOpaqueAlpha(const SceneImage& image)
+    {
+        if (!image.dds.empty())
+        {
+            return ddsHasOpaqueAlpha(image.dds);
+        }
+        if (image.width == 0 || image.height == 0 || image.pixels.size() % 4 != 0 ||
+            image.pixels.size() / 4 != uint64_t(image.width) * image.height)
+        {
+            return false;
+        }
+        for (size_t i = 3; i < image.pixels.size(); i += 4)
+        {
+            if (image.pixels[i] != 255)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void asset_detail::removeOpaqueOrcaCutouts(SceneData& scene)
+    {
+        std::vector<bool> candidates(scene.materials.size());
+        for (size_t i = 0; i < scene.materials.size(); ++i)
+        {
+            const auto& material = scene.materials[i];
+            candidates[i] =
+                material.alphaCutoff >= 0 && material.baseColor.a == 1 && material.baseColorTexture.image >= 0;
+        }
+        // A shared material must remain masked if any referenced corner carries alpha.
+        for (const auto& primitive : scene.primitives)
+        {
+            if (!candidates[primitive.material])
+            {
+                continue;
+            }
+            for (uint32_t index : std::span(scene.indices).subspan(primitive.firstIndex, primitive.indexCount))
+            {
+                if (scene.vertices[index].color.a != 1)
+                {
+                    candidates[primitive.material] = false;
+                    break;
+                }
+            }
+        }
+        std::vector<int8_t> opaqueImages(scene.images.size(), -1);
+        for (size_t i = 0; i < scene.materials.size(); ++i)
+        {
+            if (!candidates[i])
+            {
+                continue;
+            }
+            auto& material = scene.materials[i];
+            auto& opaque   = opaqueImages[size_t(material.baseColorTexture.image)];
+            if (opaque < 0)
+            {
+                opaque = imageHasOpaqueAlpha(scene.images[size_t(material.baseColorTexture.image)]) ? 1 : 0;
+            }
+            if (opaque != 0)
+            {
+                material.alphaCutoff = -1;
+            }
+        }
+    }
 } // namespace vultra

@@ -347,7 +347,7 @@ Connections: {
         const auto& material = warm.scene.materials[0];
         require(material.baseColor == glm::vec4(1) && material.baseMetalness == 1 && material.specularRoughness == 1 &&
                     material.metallicRoughnessTexture.image >= 0 && material.occlusionTexture.image == -1 &&
-                    material.alphaCutoff == 0.5f && material.doubleSided && material.emissionColor == glm::vec3(1) &&
+                    material.alphaCutoff == -1 && material.doubleSided && material.emissionColor == glm::vec3(1) &&
                     material.emissionLuminance == 1,
                 "ORCA factors, channel bindings, emission or coverage are incorrect");
         require(warm.textures.images[warm.textures.materials[0][2]].format == TextureFormat::eBc5Unorm,

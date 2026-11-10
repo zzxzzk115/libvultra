@@ -58,7 +58,7 @@ namespace vultra
                                    });
             if (extension == ".fbx")
             {
-                recipe["fbx"] = {{"importer", "static-orca-v1"},
+                recipe["fbx"] = {{"importer", "static-orca-opaque-v1"},
                                  {"materials", int(options.fbx.materialConvention)},
                                  {"directx_normals", options.fbx.directXNormalMaps}};
             }

@@ -260,6 +260,12 @@ the generic block implementation is not complete.
 CPU SceneData/material/texture values own no GPU resources. Import preserves source files and caches derived data
 under `.vultra/assets/`, validating actual source/dependency hashes. Static glTF/GLB, OBJ and FBX geometry and
 material textures are supported; skinning, morphs, animation and blended transparency remain outside this importer.
+ORCA FBX import initially assigns a 0.5 cutout threshold to textured materials. It removes this
+threshold only when base alpha and every referenced vertex alpha equal one, and all valid texels in every
+supported authored DDS mip (or the RGBA image) have alpha one. Unknown formats and actual cutouts keep the
+threshold. This is an import-time material default: later edits introducing coverage must set `alphaCutoff`
+again; the renderer retains no hidden original threshold. The importer recipe key invalidates older derived caches.
+
 AssetSource supplies filesystem or checked VPK entry bytes. Persistent asset references never contain GPU RIDs or graph-local handles.
 
 ## Properties and C ABI

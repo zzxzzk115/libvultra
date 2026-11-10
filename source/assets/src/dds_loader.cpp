@@ -118,6 +118,42 @@ namespace vultra
         }
     } // namespace
 
+    bool asset_detail::ddsHasOpaqueAlpha(std::span<const std::byte> bytes)
+    {
+        DirectX::TexMetadata metadata;
+        checkDds(DirectX::GetMetadataFromDDSMemory(bytes.data(), bytes.size(), DirectX::DDS_FLAGS_NONE, metadata),
+                 "Read DDS alpha metadata");
+        validateDds(metadata);
+        // Only prove formats whose decoded alpha is an exact UNORM byte. Other
+        // formats keep their cutout policy and use the normal import validation.
+        switch (DirectX::MakeLinear(metadata.format))
+        {
+            case DXGI_FORMAT_R8G8B8A8_UNORM:
+            case DXGI_FORMAT_B8G8R8A8_UNORM:
+            case DXGI_FORMAT_BC1_UNORM:
+            case DXGI_FORMAT_BC2_UNORM:
+            case DXGI_FORMAT_BC3_UNORM:
+            case DXGI_FORMAT_BC7_UNORM:
+                break;
+            default:
+                return false;
+        }
+        const auto texture = decodeDds(bytes, false, true);
+        // Reuse the texture decoder so partial BC blocks, authored lower mips and
+        // malformed payloads have the same semantics as the uploaded texture.
+        for (const auto& level : texture.levels)
+        {
+            for (size_t i = 3; i < level.bytes.size(); i += 4)
+            {
+                if (level.bytes[i] != std::byte(255))
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     SceneImage asset_detail::retainDds(std::span<const std::byte> bytes)
     {
         DirectX::TexMetadata metadata;

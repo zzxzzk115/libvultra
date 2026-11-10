@@ -514,6 +514,12 @@ namespace vultra
                     scene.images[i] = loadSceneImage(path.parent_path() / texturePath, serialObserver, assetSource);
                 }
             });
+        if (options.materialConvention == FbxMaterialConvention::eOrcaMetallicRoughness)
+        {
+            // ORCA stores cutout coverage in BaseColor alpha. The initial 0.5
+            // rule is redundant only when image, factor and vertex alpha prove it.
+            asset_detail::removeOpaqueOrcaCutouts(scene);
+        }
         return scene;
     }
 } // namespace vultra
