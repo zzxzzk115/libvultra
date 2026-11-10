@@ -1,0 +1,30 @@
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -493,12 +493,20 @@
+         }
+ 
+-        void VRI_CALL ResetCommandAllocator(VriCommandAllocator* allocator)
++        VriResult VRI_CALL ResetCommandAllocatorChecked(VriCommandAllocator* allocator)
+         {
++            if (!allocator)
++                return VriResult_InvalidArgument;
+             for (auto* commands : CA(allocator)->commands)
+             {
+                 DiscardCommands(commands);
+             }
++            return VriResult_Success;
+         }
+ 
++        void VRI_CALL ResetCommandAllocator(VriCommandAllocator* allocator)
++        {
++            (void)ResetCommandAllocatorChecked(allocator);
++        }
++
+         void VRI_CALL DestroyCommandAllocator(VriCommandAllocator* allocator)
+         {
+@@ -2669,4 +2677,5 @@
+             t.CreateCommandAllocator = CreateCommandAllocator;
+             t.ResetCommandAllocator = ResetCommandAllocator;
++            t.ResetCommandAllocatorChecked = ResetCommandAllocatorChecked;
+             t.DestroyCommandAllocator = DestroyCommandAllocator;
+             t.CreateCommandBuffer = CreateCommandBuffer;

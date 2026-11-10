@@ -4,63 +4,71 @@
 
 #include <algorithm>
 #include <cmath>
-#include <stdexcept>
 
 namespace vultra::detail
 {
     namespace
     {
-        double numeric(const ShaderAsset& asset, const MaterialInstance& instance, const ShaderStateValue& value)
+        std::expected<double, std::string>
+        numeric(const ShaderAsset& asset, const MaterialInstance& instance, const ShaderStateValue& value)
         {
             if (!value.property)
             {
-                return std::stod(value.value);
+                return value.numberExpected();
             }
-            const auto property = instance.value(asset, value.value);
-            if (const auto* integer = std::get_if<int32_t>(&property))
+            auto property = instance.valueExpected(asset, value.value);
+            if (!property)
+            {
+                return std::unexpected(property.error());
+            }
+            if (const auto* integer = std::get_if<int32_t>(&*property))
             {
                 return *integer;
             }
-            if (const auto* scalar = std::get_if<float>(&property))
+            if (const auto* scalar = std::get_if<float>(&*property))
             {
                 return *scalar;
             }
-            if (const auto* boolean = std::get_if<bool>(&property))
+            if (const auto* boolean = std::get_if<bool>(&*property))
             {
                 return *boolean ? 1 : 0;
             }
-            throw std::invalid_argument("State property is not numeric: " + value.value);
+            return std::unexpected("State property is not numeric: " + value.value);
         }
 
-        uint32_t enumValue(const ShaderAsset&                asset,
-                           const MaterialInstance&           instance,
-                           const ShaderStateValue&           value,
-                           std::span<const std::string_view> names)
+        std::expected<uint32_t, std::string> enumValue(const ShaderAsset&                asset,
+                                                       const MaterialInstance&           instance,
+                                                       const ShaderStateValue&           value,
+                                                       std::span<const std::string_view> names)
         {
             if (value.property)
             {
-                const auto number = numeric(asset, instance, value);
-                if (number < 0 || number >= names.size() || std::trunc(number) != number)
+                auto number = numeric(asset, instance, value);
+                if (!number)
                 {
-                    throw std::invalid_argument("State enum is outside its domain: " + value.value);
+                    return std::unexpected(number.error());
                 }
-                return uint32_t(number);
+                if (!std::isfinite(*number) || *number < 0 || *number >= names.size() || std::trunc(*number) != *number)
+                {
+                    return std::unexpected("State enum is outside its domain: " + value.value);
+                }
+                return uint32_t(*number);
             }
             const auto found = std::ranges::find(names, value.value);
             if (found == names.end())
             {
-                throw std::invalid_argument("Unknown state enum: " + value.value);
+                return std::unexpected("Unknown state enum: " + value.value);
             }
             return uint32_t(found - names.begin());
         }
     } // namespace
 
-    void applyShaderState(const ShaderAsset&                   asset,
-                          const MaterialInstance&              instance,
-                          const ShaderState&                   state,
-                          const ShaderPassContext&             context,
-                          VriGraphicsPipelineDesc&             pipeline,
-                          std::vector<VriColorAttachmentDesc>& colors)
+    std::expected<void, std::string> applyShaderStateExpected(const ShaderAsset&                   asset,
+                                                              const MaterialInstance&              instance,
+                                                              const ShaderState&                   state,
+                                                              const ShaderPassContext&             context,
+                                                              VriGraphicsPipelineDesc&             pipeline,
+                                                              std::vector<VriColorAttachmentDesc>& colors)
     {
         constexpr std::array<std::string_view, 8>
             compare {"Never", "Less", "Equal", "LEqual", "Greater", "NotEqual", "GEqual", "Always"};
@@ -84,60 +92,156 @@ namespace vultra::detail
         constexpr std::array<std::string_view, 3>  cull {"Off", "Front", "Back"};
         constexpr std::array<std::string_view, 2>  face {"CCW", "CW"};
         constexpr std::array<std::string_view, 2>  boolean {"Off", "On"};
+        constexpr std::array<std::string_view, 5>  operations {"Add", "Subtract", "ReverseSubtract", "Min", "Max"};
         for (const auto& [name, values] : state.commands)
         {
-            auto value = [&](size_t index, auto& names)
+            // The immutable asset's state schema was validated when the material was created.
+            const auto value = [&](size_t index, const auto& names)
             {
-                return enumValue(asset, instance, values.at(index), names);
+                return enumValue(asset, instance, values[index], names);
             };
-            if (name == "Cull")
+            if (name == "Cull" || name == "FrontFace" || name == "ZWrite" || name == "ZTest" || name == "Stencil" ||
+                name == "Stencil.Comp" || name == "Stencil.Pass" || name == "Stencil.Fail" || name == "Stencil.ZFail")
             {
-                pipeline.rasterization.cullMode = VriCullMode(value(0, cull));
-            }
-            else if (name == "FrontFace")
-            {
-                pipeline.rasterization.frontFace = VriFrontFace(value(0, face));
-            }
-            else if (name == "ZWrite")
-            {
-                pipeline.depthStencil.depthWrite = value(0, boolean);
-            }
-            else if (name == "ZTest")
-            {
-                pipeline.depthStencil.depthCompareOp = VriCompareOp(value(0, compare));
+                std::expected<uint32_t, std::string> resolved;
+                if (name == "Cull")
+                {
+                    resolved = value(0, cull);
+                }
+                else if (name == "FrontFace")
+                {
+                    resolved = value(0, face);
+                }
+                else if (name == "ZWrite" || name == "Stencil")
+                {
+                    resolved = value(0, boolean);
+                }
+                else if (name == "ZTest" || name == "Stencil.Comp")
+                {
+                    resolved = value(0, compare);
+                }
+                else
+                {
+                    resolved = value(0, stencil);
+                }
+                if (!resolved)
+                {
+                    return std::unexpected(resolved.error());
+                }
+                if (name == "Cull")
+                {
+                    pipeline.rasterization.cullMode = VriCullMode(*resolved);
+                }
+                else if (name == "FrontFace")
+                {
+                    pipeline.rasterization.frontFace = VriFrontFace(*resolved);
+                }
+                else if (name == "ZWrite")
+                {
+                    pipeline.depthStencil.depthWrite = *resolved;
+                }
+                else if (name == "ZTest")
+                {
+                    pipeline.depthStencil.depthCompareOp = VriCompareOp(*resolved);
+                }
+                else if (name == "Stencil")
+                {
+                    pipeline.depthStencil.stencilTest = *resolved;
+                }
+                else if (name == "Stencil.Comp")
+                {
+                    pipeline.depthStencil.front.compareOp = VriCompareOp(*resolved);
+                }
+                else if (name == "Stencil.Pass")
+                {
+                    pipeline.depthStencil.front.passOp = VriStencilOp(*resolved);
+                }
+                else if (name == "Stencil.Fail")
+                {
+                    pipeline.depthStencil.front.failOp = VriStencilOp(*resolved);
+                }
+                else
+                {
+                    pipeline.depthStencil.front.depthFailOp = VriStencilOp(*resolved);
+                }
             }
             else if (name == "DepthBias")
             {
-                pipeline.rasterization.depthBias.constant = float(numeric(asset, instance, values[0]));
-                pipeline.rasterization.depthBias.slope    = float(numeric(asset, instance, values[1]));
-                pipeline.rasterization.depthBias.clamp =
-                    values.size() == 3 ? float(numeric(asset, instance, values[2])) : 0;
+                auto constant = numeric(asset, instance, values[0]);
+                auto slope    = numeric(asset, instance, values[1]);
+                auto clamp =
+                    values.size() == 3 ? numeric(asset, instance, values[2]) : std::expected<double, std::string>(0);
+                if (!constant)
+                {
+                    return std::unexpected(constant.error());
+                }
+                if (!slope)
+                {
+                    return std::unexpected(slope.error());
+                }
+                if (!clamp)
+                {
+                    return std::unexpected(clamp.error());
+                }
+                pipeline.rasterization.depthBias.constant = float(*constant);
+                pipeline.rasterization.depthBias.slope    = float(*slope);
+                pipeline.rasterization.depthBias.clamp    = float(*clamp);
             }
             else if (name == "BlendOp")
             {
-                constexpr std::array<std::string_view, 5> operations {"Add",
-                                                                      "Subtract",
-                                                                      "ReverseSubtract",
-                                                                      "Min",
-                                                                      "Max"};
+                auto colorOp = value(0, operations);
+                auto alphaOp = value(values.size() == 2 ? 1 : 0, operations);
+                if (!colorOp)
+                {
+                    return std::unexpected(colorOp.error());
+                }
+                if (!alphaOp)
+                {
+                    return std::unexpected(alphaOp.error());
+                }
                 for (auto& color : colors)
                 {
-                    color.blend.colorOp = VriBlendOp(value(0, operations));
-                    color.blend.alphaOp = VriBlendOp(value(values.size() == 2 ? 1 : 0, operations));
+                    color.blend.colorOp = VriBlendOp(*colorOp);
+                    color.blend.alphaOp = VriBlendOp(*alphaOp);
                 }
             }
             else if (name == "Blend")
             {
+                if (values.size() == 1)
+                {
+                    for (auto& color : colors)
+                    {
+                        color.blend.enable = false;
+                    }
+                    continue;
+                }
+                auto srcColor = value(0, blend);
+                auto dstColor = value(1, blend);
+                auto srcAlpha = value(values.size() == 4 ? 2 : 0, blend);
+                auto dstAlpha = value(values.size() == 4 ? 3 : 1, blend);
+                if (!srcColor)
+                {
+                    return std::unexpected(srcColor.error());
+                }
+                if (!dstColor)
+                {
+                    return std::unexpected(dstColor.error());
+                }
+                if (!srcAlpha)
+                {
+                    return std::unexpected(srcAlpha.error());
+                }
+                if (!dstAlpha)
+                {
+                    return std::unexpected(dstAlpha.error());
+                }
                 for (auto& color : colors)
                 {
-                    color.blend.enable = values.size() != 1;
-                    if (color.blend.enable)
-                    {
-                        color.blend.srcColor = VriBlendFactor(value(0, blend));
-                        color.blend.dstColor = VriBlendFactor(value(1, blend));
-                        color.blend.srcAlpha = VriBlendFactor(value(values.size() == 4 ? 2 : 0, blend));
-                        color.blend.dstAlpha = VriBlendFactor(value(values.size() == 4 ? 3 : 1, blend));
-                    }
+                    color.blend.enable   = true;
+                    color.blend.srcColor = VriBlendFactor(*srcColor);
+                    color.blend.dstColor = VriBlendFactor(*dstColor);
+                    color.blend.srcAlpha = VriBlendFactor(*srcAlpha);
+                    color.blend.dstAlpha = VriBlendFactor(*dstAlpha);
                 }
             }
             else if (name == "ColorMask")
@@ -145,12 +249,16 @@ namespace vultra::detail
                 uint32_t mask = 0;
                 if (values[0].property)
                 {
-                    const auto number = numeric(asset, instance, values[0]);
-                    if (number < 0 || number > 15)
+                    auto number = numeric(asset, instance, values[0]);
+                    if (!number)
                     {
-                        throw std::invalid_argument("ColorMask is outside RGBA");
+                        return std::unexpected(number.error());
                     }
-                    mask = uint32_t(number);
+                    if (*number < 0 || *number > 15 || std::trunc(*number) != *number)
+                    {
+                        return std::unexpected("ColorMask is outside RGBA");
+                    }
+                    mask = uint32_t(*number);
                 }
                 else if (values[0].value != "0")
                 {
@@ -161,12 +269,16 @@ namespace vultra::detail
                 }
                 if (values.size() == 2)
                 {
-                    const auto index = uint32_t(numeric(asset, instance, values[1]));
-                    if (index >= colors.size())
+                    auto number = numeric(asset, instance, values[1]);
+                    if (!number)
                     {
-                        throw std::invalid_argument("ColorMask attachment is absent");
+                        return std::unexpected(number.error());
                     }
-                    colors[index].colorWriteMask = mask;
+                    if (*number < 0 || *number >= colors.size() || std::trunc(*number) != *number)
+                    {
+                        return std::unexpected("ColorMask attachment is absent");
+                    }
+                    colors[uint32_t(*number)].colorWriteMask = mask;
                 }
                 else
                 {
@@ -176,48 +288,32 @@ namespace vultra::detail
                     }
                 }
             }
-            else if (name == "Stencil")
+            else
             {
-                pipeline.depthStencil.stencilTest = value(0, boolean);
-            }
-            else if (name.starts_with("Stencil."))
-            {
-                auto& front = pipeline.depthStencil.front;
-                if (name == "Stencil.Comp")
+                auto number = numeric(asset, instance, values[0]);
+                if (!number)
                 {
-                    front.compareOp = VriCompareOp(value(0, compare));
+                    return std::unexpected(number.error());
                 }
-                else if (name == "Stencil.Pass")
+                if (*number < 0 || *number > 255 || std::trunc(*number) != *number)
                 {
-                    front.passOp = VriStencilOp(value(0, stencil));
+                    return std::unexpected("Stencil integer must be in [0, 255]");
                 }
-                else if (name == "Stencil.Fail")
+                if (name == "Stencil.Ref")
                 {
-                    front.failOp = VriStencilOp(value(0, stencil));
+                    pipeline.depthStencil.front.reference = uint32_t(*number);
                 }
-                else if (name == "Stencil.ZFail")
+                else if (name == "Stencil.ReadMask")
                 {
-                    front.depthFailOp = VriStencilOp(value(0, stencil));
+                    pipeline.depthStencil.front.compareMask = uint32_t(*number);
+                }
+                else if (name == "Stencil.WriteMask")
+                {
+                    pipeline.depthStencil.front.writeMask = uint32_t(*number);
                 }
                 else
                 {
-                    const auto number = numeric(asset, instance, values[0]);
-                    if (number < 0 || number > 255 || std::trunc(number) != number)
-                    {
-                        throw std::invalid_argument("Stencil integer must be in [0, 255]");
-                    }
-                    if (name == "Stencil.Ref")
-                    {
-                        front.reference = uint32_t(number);
-                    }
-                    else if (name == "Stencil.ReadMask")
-                    {
-                        front.compareMask = uint32_t(number);
-                    }
-                    else if (name == "Stencil.WriteMask")
-                    {
-                        front.writeMask = uint32_t(number);
-                    }
+                    return std::unexpected("Unknown render state: " + name);
                 }
             }
         }
@@ -230,25 +326,26 @@ namespace vultra::detail
         }
         if (context.depthReadOnly)
         {
-            pipeline.depthStencil.depthWrite = VRI_FALSE;
+            pipeline.depthStencil.depthWrite = false;
         }
         if (context.depth == VriFormat_Unknown &&
             (state.commands.contains("ZWrite") || state.commands.contains("ZTest") ||
              pipeline.depthStencil.stencilTest))
         {
-            throw std::invalid_argument("Pass depth/stencil state requires a depth attachment");
+            return std::unexpected("Pass depth/stencil state requires a depth attachment");
         }
         if (pipeline.depthStencil.stencilTest && context.depth != VriFormat_D24_UNORM_S8_UINT &&
             context.depth != VriFormat_D32_SFLOAT_S8_UINT)
         {
-            throw std::invalid_argument("Stencil state requires a stencil attachment");
+            return std::unexpected("Stencil state requires a stencil attachment");
         }
+        return {};
     }
 
-    std::string shaderPipelineKey(const ShaderAsset&       asset,
-                                  const MaterialInstance&  instance,
-                                  const ShaderPass&        pass,
-                                  const ShaderPassContext& context)
+    std::expected<std::string, std::string> shaderPipelineKeyExpected(const ShaderAsset&       asset,
+                                                                      const MaterialInstance&  instance,
+                                                                      const ShaderPass&        pass,
+                                                                      const ShaderPassContext& context)
     {
         nlohmann::json key {{"variant", instance.variant},
                             {"pass", pass.name},
@@ -269,7 +366,12 @@ namespace vultra::detail
             {
                 if (value.property)
                 {
-                    command.push_back(numeric(asset, instance, value));
+                    auto resolved = numeric(asset, instance, value);
+                    if (!resolved)
+                    {
+                        return std::unexpected(resolved.error());
+                    }
+                    command.push_back(*resolved);
                 }
                 else
                 {
@@ -289,6 +391,8 @@ namespace vultra::detail
         {
             key["streams"].push_back({stream.stride, stream.bindingSlot, stream.stepRate});
         }
-        return key.dump();
+        // Internal cache identity, not a serialized artifact. Retain exact semantic-name bytes without replacement.
+        const auto bytes = nlohmann::json::to_cbor(key);
+        return std::string(bytes.begin(), bytes.end());
     }
 } // namespace vultra::detail

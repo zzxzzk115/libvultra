@@ -1,0 +1,83 @@
+--- a/source/backend_metal/device_mtl.mm
++++ b/source/backend_metal/device_mtl.mm
+@@ -249,6 +249,7 @@
+         for (int t = 0; t < VriQueueType_Count; ++t)
+             m_desc.queueCount[t] = 1;
+         m_desc.hasComputeShader = VRI_TRUE;
++        m_desc.hasSeparateDepthStencilLayouts = VRI_TRUE; // Metal has no image-layout coupling.
+         m_desc.hasClearStorageTexture = VRI_TRUE;
+         m_desc.hasGeometryShader = VRI_FALSE; // Metal has no geometry stage
+         m_desc.hasTessellation = VRI_FALSE;   // Metal tessellation differs from VK; not in MVP
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -2016,6 +2016,24 @@
+                               toTexture:dt->texture destinationSlice:dstSlice destinationLevel:dstMip destinationOrigin:dorg];
+         }
+ 
++        struct BufferTexturePlane
++        {
++            uint32_t texelSize;
++            MTLBlitOption options;
++        };
++
++        BufferTexturePlane GetBufferTexturePlane(const TextureMTL* texture, VriImageAspectFlags aspect)
++        {
++            if (texture->format == VriFormat_D24_UNORM_S8_UINT || texture->format == VriFormat_D32_SFLOAT_S8_UINT)
++            {
++                if (aspect == VriImageAspect_Depth)
++                    return {4, MTLBlitOptionDepthFromDepthStencil};
++                if (aspect == VriImageAspect_Stencil)
++                    return {1, MTLBlitOptionStencilFromDepthStencil};
++            }
++            return {texture->texelSize, MTLBlitOptionNone};
++        }
++
+         void VRI_CALL CmdUploadBufferToTexture(VriCommandBuffer* cmd, VriTexture* dst, VriBuffer* src, const VriBufferTextureCopyDesc* region)
+         {
+             CommandBufferMTL* c = CB(cmd);
+@@ -2025,10 +2043,11 @@
+             const uint32_t h = region->texture.height ? region->texture.height : t->height;
+             const uint32_t d = region->texture.depth ? region->texture.depth : 1;
+             const auto block = TextureCopyBlock(t->format);
++            const auto plane = GetBufferTexturePlane(t, region->texture.aspect);
+             const uint32_t rowPixels = region->bufferRowLength ? region->bufferRowLength : w;
+             const uint32_t imagePixels = region->bufferImageHeight ? region->bufferImageHeight : h;
+             const uint32_t pitch = ((rowPixels + block.width - 1) / block.width) *
+-                                   (block.bytes ? block.bytes : t->texelSize);
++                                   (block.bytes ? block.bytes : plane.texelSize);
+             const uint32_t imgHeight = (imagePixels + block.height - 1) / block.height;
+             MTLOrigin origin = MTLOriginMake(region->texture.x, region->texture.y, region->texture.z);
+             [c->blitEnc copyFromBuffer:Buf(src)->buffer
+@@ -2039,7 +2058,8 @@
+                              toTexture:t->texture
+                       destinationSlice:region->texture.baseLayer
+                       destinationLevel:region->texture.mip
+-                     destinationOrigin:origin];
++                     destinationOrigin:origin
++                               options:plane.options];
+         }
+ 
+         void VRI_CALL CmdReadbackTextureToBuffer(VriCommandBuffer* cmd, VriBuffer* dst, VriTexture* src, const VriBufferTextureCopyDesc* region)
+@@ -2051,10 +2071,11 @@
+             const uint32_t h = region->texture.height ? region->texture.height : t->height;
+             const uint32_t d = region->texture.depth ? region->texture.depth : 1;
+             const auto block = TextureCopyBlock(t->format);
++            const auto plane = GetBufferTexturePlane(t, region->texture.aspect);
+             const uint32_t rowPixels = region->bufferRowLength ? region->bufferRowLength : w;
+             const uint32_t imagePixels = region->bufferImageHeight ? region->bufferImageHeight : h;
+             const uint32_t pitch = ((rowPixels + block.width - 1) / block.width) *
+-                                   (block.bytes ? block.bytes : t->texelSize);
++                                   (block.bytes ? block.bytes : plane.texelSize);
+             const uint32_t imgHeight = (imagePixels + block.height - 1) / block.height;
+             MTLOrigin origin = MTLOriginMake(region->texture.x, region->texture.y, region->texture.z);
+             [c->blitEnc copyFromTexture:t->texture
+@@ -2065,7 +2086,8 @@
+                                toBuffer:Buf(dst)->buffer
+                       destinationOffset:region->bufferOffset
+                  destinationBytesPerRow:pitch
+-               destinationBytesPerImage:(NSUInteger)pitch * imgHeight];
++               destinationBytesPerImage:(NSUInteger)pitch * imgHeight
++                                 options:plane.options];
+         }
+ 
+         void VRI_CALL CmdBeginDebugGroup(VriCommandBuffer* cmd, const char* name)

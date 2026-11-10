@@ -3,6 +3,7 @@
 
 #include <vri/integration/vri_sdl3.h>
 
+#include <limits>
 #include <stdexcept>
 
 namespace vultra
@@ -21,58 +22,93 @@ namespace vultra
     } // namespace
 
     Window::Window(const char* title, Extent extent) :
-        m_Title(title)
+        Window(Uninitialized {})
     {
-#if defined(__linux__)
-        if (const auto* requested = platform::requestedWindowSystem())
-        {
-            checkSdl(SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, requested, SDL_HINT_OVERRIDE),
-                     "Select SDL video driver");
-        }
-#endif
-        checkSdl(SDL_InitSubSystem(SDL_INIT_VIDEO), "Initialize SDL video");
-        try
-        {
-            auto* window = SDL_CreateWindow(title,
-                                            int(extent.width),
-                                            int(extent.height),
-                                            SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
-            checkSdl(window != nullptr, "Create SDL window");
-            m_Window = window;
-            // SDL's native window coordinates include the content scale on Windows/X11.
-            const auto scale = SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(window));
-            if (scale > 0 && scale != 1)
-            {
-                checkSdl(SDL_SetWindowSize(window, int(extent.width * scale), int(extent.height * scale)),
-                         "Scale initial window to display DPI");
-            }
-            checkSdl(SDL_SetPointerProperty(SDL_GetWindowProperties(window), kWindowProperty, this),
-                     "Attach window input");
-            m_Input.setFocused((SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0);
-        }
-        catch (...)
-        {
-            SDL_DestroyWindow(static_cast<SDL_Window*>(m_Window));
-            SDL_QuitSubSystem(SDL_INIT_VIDEO);
-            throw;
-        }
+        if (auto initialized = initializeOwned(title, extent); !initialized)
+            throw std::runtime_error(initialized.error());
     }
 
     Window::Window(void* borrowed) :
-        m_Window(borrowed),
-        m_Owned(false)
+        Window(Uninitialized {})
+    {
+        if (auto initialized = initializeBorrowed(borrowed); !initialized)
+            throw std::invalid_argument(initialized.error());
+    }
+
+    std::expected<void, std::string> Window::initializeOwned(const char* title, Extent extent)
+    {
+        if (!title || extent.empty() || extent.width > uint32_t(std::numeric_limits<int>::max()) ||
+            extent.height > uint32_t(std::numeric_limits<int>::max()))
+            return std::unexpected("Invalid SDL window title or extent");
+#if defined(__linux__)
+        auto requested = platform::requestedWindowSystemExpected();
+        if (!requested)
+            return std::unexpected(requested.error());
+        if (*requested && !SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, *requested, SDL_HINT_OVERRIDE))
+            return std::unexpected(std::string("Select SDL video driver: ") + SDL_GetError());
+#endif
+        if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
+            return std::unexpected(std::string("Initialize SDL video: ") + SDL_GetError());
+        auto* window = SDL_CreateWindow(title,
+                                        int(extent.width),
+                                        int(extent.height),
+                                        SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+        if (!window)
+        {
+            const std::string error = std::string("Create SDL window: ") + SDL_GetError();
+            SDL_QuitSubSystem(SDL_INIT_VIDEO);
+            return std::unexpected(error);
+        }
+        const auto scale = SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(window));
+        if (scale > 0 && scale != 1)
+        {
+            const double width   = extent.width * double(scale);
+            const double height  = extent.height * double(scale);
+            const int    maxSize = std::numeric_limits<int>::max();
+            const bool   valid   = width >= 1 && height >= 1 && width <= maxSize && height <= maxSize;
+            if (!valid || !SDL_SetWindowSize(window, int(width), int(height)))
+            {
+                const std::string error = valid ?
+                                              std::string("Scale initial window to display DPI: ") + SDL_GetError() :
+                                              "SDL window extent is out of range after DPI scaling";
+                SDL_DestroyWindow(window);
+                SDL_QuitSubSystem(SDL_INIT_VIDEO);
+                return std::unexpected(error);
+            }
+        }
+        if (!SDL_SetPointerProperty(SDL_GetWindowProperties(window), kWindowProperty, this))
+        {
+            const std::string error = std::string("Attach window input: ") + SDL_GetError();
+            SDL_DestroyWindow(window);
+            SDL_QuitSubSystem(SDL_INIT_VIDEO);
+            return std::unexpected(error);
+        }
+        m_Window = window;
+        m_Owned  = true;
+        m_Title  = title;
+        m_Input.setFocused((SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0);
+        return {};
+    }
+
+    std::expected<void, std::string> Window::initializeBorrowed(void* borrowed)
     {
         if (!borrowed)
-        {
-            throw std::invalid_argument("Cannot wrap a null SDL window");
-        }
-        m_Title               = title();
-        const auto properties = SDL_GetWindowProperties(static_cast<SDL_Window*>(m_Window));
-        checkSdl(SDL_SetPointerProperty(properties, kWindowProperty, this), "Attach borrowed window input");
+            return std::unexpected("Cannot wrap a null SDL window");
+        auto*       window = static_cast<SDL_Window*>(borrowed);
+        const char* title  = SDL_GetWindowTitle(window);
+        if (!title)
+            return std::unexpected(std::string("Read borrowed SDL window title: ") + SDL_GetError());
+        if (!SDL_SetPointerProperty(SDL_GetWindowProperties(window), kWindowProperty, this))
+            return std::unexpected(std::string("Attach borrowed window input: ") + SDL_GetError());
+        m_Window = window;
+        m_Title  = title;
+        return {};
     }
 
     Window::~Window()
     {
+        if (!m_Window)
+            return;
         auto* window = static_cast<SDL_Window*>(m_Window);
         SDL_ClearProperty(SDL_GetWindowProperties(window), kWindowProperty);
         if (m_Owned)
@@ -168,21 +204,42 @@ namespace vultra
         return SDL_GetWindowTitle(static_cast<SDL_Window*>(m_Window));
     }
 
-    Extent Window::framebufferSize() const
+    std::expected<Extent, std::string> Window::framebufferSizeExpected() const
     {
         int width  = 0;
         int height = 0;
-        checkSdl(SDL_GetWindowSizeInPixels(static_cast<SDL_Window*>(m_Window), &width, &height),
-                 "Query framebuffer size");
-        return {uint32_t(width), uint32_t(height)};
+        if (!SDL_GetWindowSizeInPixels(static_cast<SDL_Window*>(m_Window), &width, &height))
+            return std::unexpected(std::string("Query framebuffer size: ") + SDL_GetError());
+        if (width < 0 || height < 0)
+            return std::unexpected("SDL returned a negative framebuffer extent");
+        return Extent {uint32_t(width), uint32_t(height)};
+    }
+
+    std::expected<Extent, std::string> Window::sizeExpected() const
+    {
+        int width  = 0;
+        int height = 0;
+        if (!SDL_GetWindowSize(static_cast<SDL_Window*>(m_Window), &width, &height))
+            return std::unexpected(std::string("Query window size: ") + SDL_GetError());
+        if (width < 0 || height < 0)
+            return std::unexpected("SDL returned a negative window extent");
+        return Extent {uint32_t(width), uint32_t(height)};
+    }
+
+    Extent Window::framebufferSize() const
+    {
+        auto result = framebufferSizeExpected();
+        if (!result)
+            throw std::runtime_error(result.error());
+        return *result;
     }
 
     Extent Window::size() const
     {
-        int width  = 0;
-        int height = 0;
-        checkSdl(SDL_GetWindowSize(static_cast<SDL_Window*>(m_Window), &width, &height), "Query window size");
-        return {uint32_t(width), uint32_t(height)};
+        auto result = sizeExpected();
+        if (!result)
+            throw std::runtime_error(result.error());
+        return *result;
     }
 
     void Window::setTextInputEnabled(bool enabled)

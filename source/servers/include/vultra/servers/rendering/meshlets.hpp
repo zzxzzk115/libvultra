@@ -16,6 +16,8 @@ namespace vultra
     class GpuMeshlets
     {
     public:
+        static std::expected<std::unique_ptr<GpuMeshlets>, std::string>
+        create(Device& device, Buffer& vertices, const MeshletData& data);
         GpuMeshlets(Device& device, Buffer& vertices, const MeshletData& data);
 #ifdef VULTRA_WITH_SCENE_PREPARATION
         GpuMeshlets(Device& device, Buffer& vertices, const SceneData& scene, uint32_t workers = 0);
@@ -30,6 +32,9 @@ namespace vultra
         uint32_t                      count = 0;
 
     private:
+        explicit GpuMeshlets(Device& device);
+        std::expected<void, std::string>       initializeExpected(Buffer& vertices, const MeshletData& data);
+        void                                   release() noexcept;
         Device&                                m_Device;
         std::array<std::unique_ptr<Buffer>, 3> m_Buffers;
     };

@@ -1,0 +1,347 @@
+--- a/include/vri/vri_flags.h
++++ b/include/vri/vri_flags.h
+@@ -51,6 +51,8 @@
+     VriTextureUsage_DepthStencilAttachment = 1u << 5,
+     /* See VriBufferUsage_ConcurrentQueues. */
+     VriTextureUsage_ConcurrentQueues      = 1u << 6,
++    /* Permit native compatible-format views. Query GetTextureViewFormatSupport before use. */
++    VriTextureUsage_MutableFormat         = 1u << 7,
+     VriTextureUsage_MaxEnum               = 0x7fffffff
+ } VriTextureUsageBits;
+ 
+--- a/include/vri/vri_core.h
++++ b/include/vri/vri_core.h
+@@ -275,6 +275,11 @@
+                                                         const VriClearDepthStencil* value,
+                                                         const VriTextureSubresourceRange* range,
+                                                         VriImageAspectFlags aspects);
++    /* Compatible native view formats for every declared usage. Does not allocate or create a view.
++       A differing format also requires MutableFormat at creation. Backend/device/dimension limits still apply.
++       Unsupported backends may leave this entry NULL; they reject MutableFormat texture creation. */
++    VriBool(VRI_CALL* GetTextureViewFormatSupport)(const VriDevice* device, VriFormat sourceFormat,
++                                                  VriFormat viewFormat, VriTextureUsageFlags usage);
+ } VriCoreInterface;
+ 
+ VRI_EXTERN_C_END
+--- a/source/core/format_traits.h
++++ b/source/core/format_traits.h
+@@ -64,4 +64,74 @@
+         return format == VriFormat_R32_SFLOAT || format == VriFormat_RG32_SFLOAT ||
+                format == VriFormat_RGB32_SFLOAT || format == VriFormat_RGBA32_SFLOAT;
+     }
++    // Uncompressed color compatibility classes use total texel bits. Compressed classes keep their codec/block shape.
++    inline uint32_t TextureViewFormatClass(VriFormat format)
++    {
++        if (format >= VriFormat_R8_UNORM && format <= VriFormat_R8_SINT) return 8;
++        if (format >= VriFormat_RG8_UNORM && format <= VriFormat_RG8_SINT) return 16;
++        if (format >= VriFormat_RGBA8_UNORM && format <= VriFormat_BGRA8_SRGB) return 32;
++        if (format >= VriFormat_R16_UNORM && format <= VriFormat_R16_SFLOAT) return 16;
++        if (format >= VriFormat_RG16_UNORM && format <= VriFormat_RG16_SFLOAT) return 32;
++        if (format >= VriFormat_RGBA16_UNORM && format <= VriFormat_RGBA16_SFLOAT) return 64;
++        if (format >= VriFormat_R32_UINT && format <= VriFormat_R32_SFLOAT) return 32;
++        if (format >= VriFormat_RG32_UINT && format <= VriFormat_RG32_SFLOAT) return 64;
++        if (format >= VriFormat_RGB32_UINT && format <= VriFormat_RGB32_SFLOAT) return 96;
++        if (format >= VriFormat_RGBA32_UINT && format <= VriFormat_RGBA32_SFLOAT) return 128;
++        switch (format)
++        {
++            case VriFormat_RGB10A2_UNORM:
++            case VriFormat_RG11B10_UFLOAT: return 32;
++            case VriFormat_BC1_UNORM:
++            case VriFormat_BC1_SRGB: return 257;
++            case VriFormat_BC2_UNORM:
++            case VriFormat_BC2_SRGB: return 258;
++            case VriFormat_BC3_UNORM:
++            case VriFormat_BC3_SRGB: return 259;
++            case VriFormat_BC7_UNORM:
++            case VriFormat_BC7_SRGB: return 260;
++            case VriFormat_ASTC_4X4_UNORM:
++            case VriFormat_ASTC_4X4_SRGB: return 261;
++            case VriFormat_ASTC_6X6_UNORM:
++            case VriFormat_ASTC_6X6_SRGB: return 262;
++            default: return 0;
++        }
++    }
++
++    // Vulkan portability devices may allow only the same component count/bit widths across a format class.
++    inline uint32_t TextureViewComponentLayout(VriFormat format)
++    {
++        if (format >= VriFormat_R8_UNORM && format <= VriFormat_R8_SINT) return 0x0801;
++        if (format >= VriFormat_RG8_UNORM && format <= VriFormat_RG8_SINT) return 0x0802;
++        if (format >= VriFormat_RGBA8_UNORM && format <= VriFormat_BGRA8_SRGB) return 0x0804;
++        if (format >= VriFormat_R16_UNORM && format <= VriFormat_R16_SFLOAT) return 0x1001;
++        if (format >= VriFormat_RG16_UNORM && format <= VriFormat_RG16_SFLOAT) return 0x1002;
++        if (format >= VriFormat_RGBA16_UNORM && format <= VriFormat_RGBA16_SFLOAT) return 0x1004;
++        if (format >= VriFormat_R32_UINT && format <= VriFormat_R32_SFLOAT) return 0x2001;
++        if (format >= VriFormat_RG32_UINT && format <= VriFormat_RG32_SFLOAT) return 0x2002;
++        if (format >= VriFormat_RGB32_UINT && format <= VriFormat_RGB32_SFLOAT) return 0x2003;
++        if (format >= VriFormat_RGBA32_UINT && format <= VriFormat_RGBA32_SFLOAT) return 0x2004;
++        if (format == VriFormat_RGB10A2_UNORM) return 0x3001;
++        if (format == VriFormat_RG11B10_UFLOAT) return 0x3002;
++        return TextureViewFormatClass(format);
++    }
++
++    inline bool TextureViewFormatsCompatible(VriFormat source, VriFormat view)
++    {
++        if (source <= VriFormat_Unknown || source >= VriFormat_Count ||
++            view <= VriFormat_Unknown || view >= VriFormat_Count) return false;
++        if (source == view) return true;
++        const auto group = TextureViewFormatClass(source);
++        return group && group == TextureViewFormatClass(view);
++    }
++
++    inline bool TextureViewUsageSupported(VriFormatSupportFlags support, VriTextureUsageFlags usage)
++    {
++        constexpr VriTextureUsageFlags known = VriTextureUsage_TransferSrc | VriTextureUsage_TransferDst |
++            VriTextureUsage_ShaderResource | VriTextureUsage_ShaderResourceStorage | VriTextureUsage_ColorAttachment |
++            VriTextureUsage_DepthStencilAttachment | VriTextureUsage_ConcurrentQueues | VriTextureUsage_MutableFormat;
++        return !(usage & ~known) && (support & VriFormatSupport_Texture) &&
++            (!(usage & VriTextureUsage_ShaderResourceStorage) || (support & VriFormatSupport_StorageTexture)) &&
++            (!(usage & VriTextureUsage_ColorAttachment) || (support & VriFormatSupport_ColorAttachment)) &&
++            (!(usage & VriTextureUsage_DepthStencilAttachment) || (support & VriFormatSupport_DepthStencil));
++    }
+ } // namespace vri
+--- a/source/core/validation_layer.cpp
++++ b/source/core/validation_layer.cpp
+@@ -134,6 +134,12 @@
+         {
+             return DV(device)->core.GetFormatSupport(DV(device)->real, f);
+         }
++        VriBool VRI_CALL GetTextureViewFormatSupport(const VriDevice* device, VriFormat source,
++                                                     VriFormat view, VriTextureUsageFlags usage)
++        {
++            if (!device || !DV(device)->core.GetTextureViewFormatSupport) return VRI_FALSE;
++            return DV(device)->core.GetTextureViewFormatSupport(DV(device)->real, source, view, usage);
++        }
+         VriResult VRI_CALL GetVideoMemoryInfo(const VriDevice* device, VriMemoryLocation loc, VriVideoMemoryInfo* out)
+         {
+             return DV(device)->core.GetVideoMemoryInfo(DV(device)->real, loc, out);
+@@ -1086,6 +1092,7 @@
+             // control plane -> validating wrappers
+             t.GetDeviceDesc               = GetDeviceDesc;
+             t.GetFormatSupport            = GetFormatSupport;
++            t.GetTextureViewFormatSupport  = GetTextureViewFormatSupport;
+             t.GetVideoMemoryInfo          = GetVideoMemoryInfo;
+             t.GetQueue                    = GetQueue;
+             t.CreateCommandAllocator      = CreateCommandAllocator;
+--- a/source/backend_vk/core_vk.h
++++ b/source/backend_vk/core_vk.h
+@@ -5,6 +5,8 @@
+ 
+ namespace vri::vk
+ {
++    VriBool VRI_CALL GetTextureViewFormatSupport(const VriDevice* device, VriFormat sourceFormat,
++                                                 VriFormat viewFormat, VriTextureUsageFlags usage);
+     // Returns the singleton, fully-populated core interface table for Vulkan.
+     const VriCoreInterface* GetCoreInterfaceVK();
+ } // namespace vri::vk
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -6,3 +6,5 @@
+ #include "objects_vk.h"
+-
++#include "texture_formats_vk.h"
++
++#include "core/format_traits.h"
+ #include "core/synchronization.h"
+@@ -418,2 +420,4 @@
+         {
++            if (!device || !desc || !out) return VriResult_InvalidArgument;
++            *out = nullptr;
+             DeviceVK*         d   = Dev(device);
+@@ -449,2 +453,5 @@
+ 
++            TextureViewFormatListVK viewFormats;
++            const auto configured = viewFormats.Configure(device, *desc, ici);
++            if (configured != VriResult_Success) return configured;
+             VkImage       image = VK_NULL_HANDLE;
+@@ -473,2 +480,3 @@
+             t->format     = ici.format;
++            t->sourceFormat = desc->format;
+             t->extent     = ici.extent;
+@@ -596,2 +604,4 @@
+             *out         = VriMemoryDesc {};
++            TextureViewFormatListVK viewFormats;
++            if (viewFormats.Configure(device, *desc, ici) != VriResult_Success) return;
+             VkDevice dev = Dev(device)->Device();
+@@ -716,4 +726,17 @@
+         {
++            if (!out) return VriResult_InvalidArgument;
++            *out = nullptr;
++            if (!device || !desc || !desc->texture) return VriResult_InvalidArgument;
+             DeviceVK*        d = Dev(device);
+             const TextureVK* t = reinterpret_cast<const TextureVK*>(desc->texture);
++            if (t->device != d || !t->image || t->bindingAllowed) return VriResult_InvalidArgument;
++            const VkFormat format = desc->format == VriFormat_Unknown ? t->format : ToVkFormat(desc->format);
++            if (format == VK_FORMAT_UNDEFINED) return VriResult_InvalidArgument;
++            if (format != t->format)
++            {
++                if (!(t->usage & VriTextureUsage_MutableFormat) ||
++                    !TextureViewFormatsCompatible(t->sourceFormat, desc->format)) return VriResult_InvalidArgument;
++                if (!GetTextureViewFormatSupport(device, t->sourceFormat, desc->format, t->usage))
++                    return VriResult_Unsupported;
++            }
+ 
+@@ -722,3 +745,3 @@
+             ci.viewType                      = ToVkImageViewType(desc->viewType);
+-            ci.format                        = desc->format == VriFormat_Unknown ? t->format : ToVkFormat(desc->format);
++            ci.format                        = format;
+             ci.subresourceRange.aspectMask   = ToVkAspect(desc->aspect);
+@@ -2266,2 +2289,3 @@
+             CmdClearDepthStencilTextureRange,
++            GetTextureViewFormatSupport,
+         };
+@@ -2269,2 +2293,16 @@
+ 
++    VriBool VRI_CALL GetTextureViewFormatSupport(const VriDevice* device, VriFormat source,
++                                                 VriFormat view, VriTextureUsageFlags usage)
++    {
++        if (!device || !TextureViewFormatsCompatible(source, view)) return VRI_FALSE;
++        const auto* d = Dev(device);
++        if (d->Desc().apiVersionMajor < 1 ||
++            (d->Desc().apiVersionMajor == 1 && d->Desc().apiVersionMinor < 2)) return VRI_FALSE;
++        if (source != view && (!(usage & VriTextureUsage_MutableFormat) ||
++            (!d->HasImageViewFormatReinterpretation() &&
++             TextureViewComponentLayout(source) != TextureViewComponentLayout(view)))) return VRI_FALSE;
++        return TextureViewUsageSupported(GetFormatSupport(device, source), usage) &&
++               TextureViewUsageSupported(GetFormatSupport(device, view), usage);
++    }
++
+     const VriCoreInterface* GetCoreInterfaceVK() { return &g_coreVK; }
+--- /dev/null
++++ b/source/backend_vk/texture_formats_vk.h
+@@ -0,0 +1,34 @@
++#pragma once
++
++#include "core_vk.h"
++#include "conversions_vk.h"
++
++#include <array>
++
++namespace vri::vk
++{
++    // The list lives through the native create/query call, including any existing external-memory pNext chain.
++    struct TextureViewFormatListVK
++    {
++        std::array<VkFormat, VriFormat_Count> formats {};
++        VkImageFormatListCreateInfo list {VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO};
++
++        VriResult Configure(const VriDevice* device, const VriTextureDesc& desc, VkImageCreateInfo& image)
++        {
++            if (!(desc.usage & VriTextureUsage_MutableFormat)) return VriResult_Success;
++            if (!GetTextureViewFormatSupport(device, desc.format, desc.format, desc.usage))
++                return VriResult_Unsupported;
++            for (int candidate = int(VriFormat_Unknown) + 1; candidate < int(VriFormat_Count); ++candidate)
++            {
++                const auto view = VriFormat(candidate);
++                if (GetTextureViewFormatSupport(device, desc.format, view, desc.usage))
++                    formats[list.viewFormatCount++] = ToVkFormat(view);
++            }
++            image.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
++            list.pNext = image.pNext;
++            list.pViewFormats = formats.data();
++            image.pNext = &list;
++            return VriResult_Success;
++        }
++    };
++} // namespace vri::vk
+--- a/source/backend_vk/device_vk.h
++++ b/source/backend_vk/device_vk.h
+@@ -94,2 +94,3 @@
+         float           MaxSamplerAnisotropy() const { return m_maxSamplerAnisotropy; }
++        bool            HasImageViewFormatReinterpretation() const { return m_hasImageViewFormatReinterpretation; }
+         VkTimeDomainKHR HostTimeDomain() const { return m_hostTimeDomain; }
+@@ -154,2 +155,3 @@
+         bool            m_hasDrawIndirectCount         = false;
++        bool            m_hasImageViewFormatReinterpretation = true;
+         bool            m_hasSeparateDepthStencilLayouts = false;
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -594,2 +594,3 @@
+         // (literal name: the macro lives in vulkan_beta.h behind VK_ENABLE_BETA_EXTENSIONS)
++        m_hasImageViewFormatReinterpretation = !hasExt("VK_KHR_portability_subset");
+         if (hasExt("VK_KHR_portability_subset"))
+--- a/source/backend_vk/objects_vk.h
++++ b/source/backend_vk/objects_vk.h
+@@ -143,2 +143,3 @@
+         VriTextureUsageFlags usage = 0;
++        VriFormat sourceFormat = VriFormat_Unknown;
+         // Set when the image owns a dedicated, non-VMA VkDeviceMemory (exportable path).
+--- a/source/backend_vk/interop_vk.cpp
++++ b/source/backend_vk/interop_vk.cpp
+@@ -57,6 +57,7 @@
+             t->image      = static_cast<VkImage>(desc->nativeTexture);
+             t->allocation = VK_NULL_HANDLE;
+             t->format     = ToVkFormat(desc->desc.format);
++            t->sourceFormat = desc->desc.format;
+             t->extent     = {
+                 desc->desc.width, desc->desc.height ? desc->desc.height : 1u, desc->desc.depth ? desc->desc.depth : 1u};
+             t->mipNum   = desc->desc.mipNum ? desc->desc.mipNum : 1u;
+--- a/source/backend_vk/external_vk.cpp
++++ b/source/backend_vk/external_vk.cpp
+@@ -16,6 +16,7 @@
+ #include "conversions_vk.h"
+ #include "device_vk.h"
+ #include "objects_vk.h"
++#include "texture_formats_vk.h"
+ 
+ namespace vri::vk
+ {
+@@ -166,6 +167,7 @@
+                 return VriResult_InvalidArgument;
+             DeviceVK* d = Dev(device);
+ 
++            *out = nullptr;
+             VkExternalMemoryImageCreateInfo extIci = {VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO};
+             extIci.handleTypes                     = MemHandleBit();
+ 
+@@ -184,6 +186,9 @@
+             if (desc->type == VriTextureType_Cube || desc->type == VriTextureType_CubeArray)
+                 ici.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+ 
++            TextureViewFormatListVK viewFormats;
++            const auto configured = viewFormats.Configure(device, *desc, ici);
++            if (configured != VriResult_Success) return configured;
+             VkImage image = VK_NULL_HANDLE;
+             if (vkCreateImage(d->Device(), &ici, nullptr, &image) != VK_SUCCESS)
+                 return VriResult_Failure;
+@@ -220,6 +225,7 @@
+             t->image               = image;
+             t->allocation          = VK_NULL_HANDLE;
+             t->format              = ici.format;
++            t->sourceFormat        = desc->format;
+             t->extent              = ici.extent;
+             t->mipNum              = ici.mipLevels;
+             t->layerNum            = ici.arrayLayers;
+--- a/source/backend_d3d12/core_d3d12_resource.inc
++++ b/source/backend_d3d12/core_d3d12_resource.inc
+@@ -159,6 +159,8 @@
+ 
+ VriResult VRI_CALL CreateTexture(VriDevice* device, const VriTextureDesc* desc, VriTexture** out)
+ {
++    if (!device || !desc || !out) return VriResult_InvalidArgument;
++    if (desc->usage & VriTextureUsage_MutableFormat) { *out = nullptr; return VriResult_Unsupported; }
+     DeviceD3D12*         d  = Dev(device);
+     const DxgiFormatInfo fi = ToDxgiFormatOrNone(desc->format);
+     if (fi.format == DXGI_FORMAT_UNKNOWN)
+--- a/source/backend_gl/core_gl_resource.inc
++++ b/source/backend_gl/core_gl_resource.inc
+@@ -274,6 +274,8 @@
+ 
+ VriResult VRI_CALL CreateTexture(VriDevice* device, const VriTextureDesc* desc, VriTexture** out)
+ {
++    if (!device || !desc || !out) return VriResult_InvalidArgument;
++    if (desc->usage & VriTextureUsage_MutableFormat) { *out = nullptr; return VriResult_Unsupported; }
+     const GLFormat gf      = ToGLFormat(desc->format);
+     const GLsizei  mips    = static_cast<GLsizei>(desc->mipNum ? desc->mipNum : 1u);
+     const GLsizei  w       = static_cast<GLsizei>(desc->width);
+--- a/source/backend_wgpu/core_wgpu.cpp
++++ b/source/backend_wgpu/core_wgpu.cpp
+@@ -359,6 +359,8 @@
+ 
+         VriResult VRI_CALL CreateTexture(VriDevice* device, const VriTextureDesc* desc, VriTexture** out)
+         {
++            if (!device || !desc || !out) return VriResult_InvalidArgument;
++            if (desc->usage & VriTextureUsage_MutableFormat) { *out = nullptr; return VriResult_Unsupported; }
+             DeviceWGPU*           d    = Dev(device);
+             WGPUTextureDescriptor td   = {};
+             td.usage                   = ToWgpuTextureUsage(desc->usage);

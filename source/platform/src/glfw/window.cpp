@@ -4,6 +4,7 @@
 
 #include <vri/integration/vri_glfw.h>
 
+#include <limits>
 #include <stdexcept>
 #include <string_view>
 
@@ -16,8 +17,24 @@ namespace vultra
     } // namespace
 
     Window::Window(const char* title, Extent extent) :
-        m_Title(title)
+        Window(Uninitialized {})
     {
+        if (auto initialized = initializeOwned(title, extent); !initialized)
+            throw std::runtime_error(initialized.error());
+    }
+
+    Window::Window(void* borrowed) :
+        Window(Uninitialized {})
+    {
+        if (auto initialized = initializeBorrowed(borrowed); !initialized)
+            throw std::invalid_argument(initialized.error());
+    }
+
+    std::expected<void, std::string> Window::initializeOwned(const char* title, Extent extent)
+    {
+        if (!title || extent.empty() || extent.width > uint32_t(std::numeric_limits<int>::max()) ||
+            extent.height > uint32_t(std::numeric_limits<int>::max()))
+            return std::unexpected("Invalid GLFW window title or extent");
         if (ownedWindows == 0)
         {
             glfwSetErrorCallback(
@@ -26,17 +43,16 @@ namespace vultra
                     Logger::core().error("[GLFW {}] {}", code, text);
                 });
 #if defined(__linux__)
+            auto requested = platform::requestedWindowSystemExpected();
+            if (!requested)
+                return std::unexpected(requested.error());
             int windowSystem = GLFW_ANY_PLATFORM;
-            if (const auto* requested = platform::requestedWindowSystem())
-            {
-                windowSystem = std::string_view(requested) == "wayland" ? GLFW_PLATFORM_WAYLAND : GLFW_PLATFORM_X11;
-            }
+            if (*requested)
+                windowSystem = std::string_view(*requested) == "wayland" ? GLFW_PLATFORM_WAYLAND : GLFW_PLATFORM_X11;
             glfwInitHint(GLFW_PLATFORM, windowSystem);
 #endif
             if (!glfwInit())
-            {
-                throw std::runtime_error("GLFW initialization failed");
-            }
+                return std::unexpected("GLFW initialization failed");
         }
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -47,35 +63,32 @@ namespace vultra
         if (!m_Window)
         {
             if (ownedWindows == 0)
-            {
                 glfwTerminate();
-            }
-            throw std::runtime_error("GLFW window creation failed");
+            return std::unexpected("GLFW window creation failed");
         }
+        m_Title = title;
+        m_Owned = true;
         ++ownedWindows;
         platform::installGlfwInput(static_cast<GLFWwindow*>(m_Window), m_Input);
+        return {};
     }
 
-    Window::Window(void* borrowed) :
-        m_Window(borrowed),
-        m_Owned(false)
+    std::expected<void, std::string> Window::initializeBorrowed(void* borrowed)
     {
         if (!borrowed)
-        {
-            throw std::invalid_argument("Cannot wrap a null GLFW window");
-        }
-        m_Title = title();
+            return std::unexpected("Cannot wrap a null GLFW window");
+        m_Window = borrowed;
+        m_Title  = title();
+        return {};
     }
 
     Window::~Window()
     {
-        if (m_Owned)
+        if (m_Owned && m_Window)
         {
             glfwDestroyWindow(static_cast<GLFWwindow*>(m_Window));
             if (--ownedWindows == 0)
-            {
                 glfwTerminate();
-            }
         }
     }
 
@@ -101,20 +114,40 @@ namespace vultra
         glfwWaitEventsTimeout(seconds);
     }
 
-    Extent Window::framebufferSize() const
+    std::expected<Extent, std::string> Window::framebufferSizeExpected() const
     {
         int width  = 0;
         int height = 0;
         glfwGetFramebufferSize(static_cast<GLFWwindow*>(m_Window), &width, &height);
-        return {uint32_t(width), uint32_t(height)};
+        if (width < 0 || height < 0)
+            return std::unexpected("GLFW returned a negative framebuffer extent");
+        return Extent {uint32_t(width), uint32_t(height)};
     }
 
-    Extent Window::size() const
+    std::expected<Extent, std::string> Window::sizeExpected() const
     {
         int width  = 0;
         int height = 0;
         glfwGetWindowSize(static_cast<GLFWwindow*>(m_Window), &width, &height);
-        return {uint32_t(width), uint32_t(height)};
+        if (width < 0 || height < 0)
+            return std::unexpected("GLFW returned a negative window extent");
+        return Extent {uint32_t(width), uint32_t(height)};
+    }
+
+    Extent Window::framebufferSize() const
+    {
+        auto result = framebufferSizeExpected();
+        if (!result)
+            throw std::runtime_error(result.error());
+        return *result;
+    }
+
+    Extent Window::size() const
+    {
+        auto result = sizeExpected();
+        if (!result)
+            throw std::runtime_error(result.error());
+        return *result;
     }
 
     void Window::setTextInputEnabled(bool)

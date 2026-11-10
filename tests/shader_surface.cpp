@@ -1,11 +1,17 @@
+#include "support/builtin_frame_expected_probe.hpp"
+#include "support/builtin_owner_expected_probe.hpp"
+#include "support/texture_readback_expected_probe.hpp"
+
 #include <vultra/assets/shader_asset.hpp>
 #include <vultra/drivers/rhi/image_readback.hpp>
+#include <vultra/drivers/rhi/shader_compiler.hpp>
 #include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
 #include <vultra/servers/rendering/texture_upload.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -49,9 +55,12 @@ try
     options.includeDirectories = {"builtin/shaders", "external"};
     const auto asset           = ShaderAsset::compile("tests/shaders/painted_metal.vshader", options);
     require(asset.subshaders.front().passes.size() == 6, "Standard Surface did not generate all raster entries");
-    Device           device(true, nullptr, VriFeature_MeshShader);
+    Device     device(true, nullptr, VriFeature_MeshShader, true);
+    const bool meshSupported = (device.core.GetDeviceDesc(device.handle)->enabledFeatures & VriFeature_MeshShader) != 0;
+    auto       readbackProbe = test::textureReadbackExpectedProbe(device);
+    require(bool(readbackProbe), readbackProbe ? "" : readbackProbe.error().c_str());
     Environment      environment(device);
-    GpuScene         scene(device, quad(), true);
+    GpuScene         scene(device, quad(), meshSupported);
     TextureAssetData normalData;
     normalData.format = TextureFormat::eRgba32Sfloat;
     TextureSubresource normalPixels;
@@ -82,7 +91,22 @@ try
     MaterialInstance instance;
     ShaderMaterial   material(device, asset, instance, resolveNormal);
     ShaderMaterial*  activeMaterial = &material;
-    BuiltinRenderer  renderer(device, scene, environment);
+    auto             environmentCompiler = ShaderCompiler::create();
+    require(bool(environmentCompiler), "Create Expected environment compiler failed");
+    auto environmentProgram =
+        (*environmentCompiler)->compileExpected("builtin/shaders/passes/environment.slang", options);
+    require(bool(environmentProgram), environmentProgram ? "" : environmentProgram.error().c_str());
+    auto filtering = test::environmentFilterExpectedProbe(device, *environmentProgram);
+    require(bool(filtering), filtering ? "" : filtering.error().c_str());
+    auto owners = test::builtinOwnerExpectedProbe(device, scene, environment);
+    require(bool(owners), owners ? "" : owners.error().c_str());
+    auto tone = test::toneMappingExpectedProbe(device);
+    require(bool(tone), tone ? "" : tone.error().c_str());
+    auto frames = test::builtinFrameExpectedProbe(device, scene, environment);
+    require(bool(frames), frames ? "" : frames.error().c_str());
+    auto createdRenderer = BuiltinRenderer::create(device, scene, environment);
+    require(bool(createdRenderer), createdRenderer ? "" : createdRenderer.error().c_str());
+    auto& renderer                     = **createdRenderer;
     renderer.settings.skybox           = false;
     renderer.settings.ibl              = false;
     renderer.settings.shadowResolution = 64;
@@ -107,7 +131,9 @@ try
         renderer.settings.path        = path;
         renderer.settings.meshShading = mesh;
         RenderGraph graph(device);
-        const auto  outputs = renderer.addScenePasses(graph, size);
+        const auto  result = renderer.addScenePassesExpected(graph, size);
+        require(bool(result), result ? "" : result.error().c_str());
+        const auto outputs = *result;
         graph.exportResource(outputs.hdr);
         graph.exportResource(outputs.depth);
         for (const auto shadow : outputs.shadows)
@@ -122,7 +148,8 @@ try
             }
         }
         graph.compile();
-        renderer.prepare(camera, graph, outputs);
+        const auto preparedRenderer = renderer.prepareExpected(camera, graph, outputs);
+        require(bool(preparedRenderer), preparedRenderer ? "" : preparedRenderer.error().c_str());
         auto depthDesc = depthTexture(size);
         depthDesc.usage |= VriTextureUsage_TransferSrc;
         Texture depthProbe(device, depthDesc, nullptr, VriImageAspect_Depth);
@@ -191,11 +218,14 @@ try
     };
     const auto forward  = render(RenderPath::eNaiveForward, false);
     const auto deferred = render(RenderPath::eNaiveDeferred, false);
-    const auto mesh     = render(RenderPath::eNaiveForward, true);
     require(channel(forward.depth, 0) < 1, "Game Surface did not draw geometry");
     require(compare(forward.hdr, deferred.hdr).mse < 0.000001, "Forward and deferred game material differ");
-    require(compare(forward.hdr, mesh.hdr).mse < 0.000001 && compare(forward.depth, mesh.depth).mse == 0,
-            "Indexed and mesh Surface coverage/material differ");
+    if (meshSupported)
+    {
+        const auto mesh = render(RenderPath::eNaiveForward, true);
+        require(compare(forward.hdr, mesh.hdr).mse < 0.000001 && compare(forward.depth, mesh.depth).mse == 0,
+                "Indexed and mesh Surface coverage/material differ");
+    }
     require(std::abs(channel(deferred.gbuffer[0], 3) - 0.8f) < 0.001f &&
                 std::abs(channel(deferred.gbuffer[1], 3) - 0.4f) < 0.001f &&
                 std::abs(channel(deferred.gbuffer[3], 0) - 0.1f) < 0.001f &&
@@ -205,13 +235,17 @@ try
     {
         const auto lit     = render(RenderPath::eNaiveForward, false);
         const auto gbuffer = render(RenderPath::eNaiveDeferred, false);
-        const auto meshLit = render(RenderPath::eNaiveForward, true);
         require(std::abs(channel(gbuffer.gbuffer[1], 0) - normalX) < 0.002f &&
                     std::abs(channel(gbuffer.gbuffer[1], 2) - 0.8f) < 0.002f,
                 "Tangent-space normal, mirror or backface transform is incorrect");
-        require(compare(lit.hdr, gbuffer.hdr).mse < 0.000001 && compare(lit.hdr, meshLit.hdr).mse < 0.000001 &&
-                    compare(lit.depth, meshLit.depth).mse == 0,
-                "Mapped normal differs across indexed, deferred and mesh paths");
+        require(compare(lit.hdr, gbuffer.hdr).mse < 0.000001,
+                "Mapped normal differs across indexed and deferred paths");
+        if (meshSupported)
+        {
+            const auto meshLit = render(RenderPath::eNaiveForward, true);
+            require(compare(lit.hdr, meshLit.hdr).mse < 0.000001 && compare(lit.depth, meshLit.depth).mse == 0,
+                    "Mapped normal differs across indexed and mesh paths");
+        }
     };
     instance.set(asset, "normalMap", ShaderTextureValue {AssetId {StableId::generate()}, {}});
     checkMapped(0.6f);
@@ -245,9 +279,13 @@ try
     instance.set(asset, "opacity", 0.0f);
     const auto cutForward  = render(RenderPath::eNaiveForward, false);
     const auto cutDeferred = render(RenderPath::eNaiveDeferred, false);
-    const auto cutMesh     = render(RenderPath::eNaiveForward, true);
-    require(channel(cutForward.depth, 0) == 1 && channel(cutDeferred.depth, 0) == 1 && channel(cutMesh.depth, 0) == 1,
-            "Alpha mask did not match across raster paths");
+    require(channel(cutForward.depth, 0) == 1 && channel(cutDeferred.depth, 0) == 1,
+            "Alpha mask did not match across indexed raster paths");
+    if (meshSupported)
+    {
+        const auto cutMesh = render(RenderPath::eNaiveForward, true);
+        require(channel(cutMesh.depth, 0) == 1, "Alpha mask did not match the mesh raster path");
+    }
     for (const auto& shadow : cutForward.shadows)
     {
         for (size_t i = 0; i < shadow.rgba.size(); i += 4)
@@ -256,8 +294,10 @@ try
         }
     }
     require(material.pipelineCount() == pipelines, "Alpha mask update recreated pipelines");
-    std::puts("Game Surface GPU passed: Forward/deferred/mesh parity, OpenPBR channels, DepthOnly, shadow, normal "
-              "mapping, mirrors, backfaces and alpha mask");
+    std::puts(meshSupported ?
+                  "Game Surface GPU passed: forward/deferred/mesh parity, DepthOnly, shadows and material features" :
+                  "Game Surface GPU passed: forward/deferred parity, DepthOnly, shadows and material features (mesh "
+                  "unavailable)");
     return 0;
 }
 catch (const std::exception& error)

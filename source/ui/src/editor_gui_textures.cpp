@@ -3,11 +3,10 @@
 #include <algorithm>
 #include <cstring>
 #include <numeric>
-#include <stdexcept>
 
 namespace vultra
 {
-    void EditorGui::updateTextures()
+    std::expected<void, std::string> EditorGui::updateTexturesExpected()
     {
         // ImGui 1.92 bakes glyphs at the requested size/density, including detached viewport DPI.
         // The renderer owns these resources; user-provided image views are never added to this map.
@@ -20,7 +19,14 @@ namespace vultra
             auto* view = reinterpret_cast<VriDescriptor*>(data->GetTexID());
             if (data->Status == ImTextureStatus_WantDestroy)
             {
-                m_Device.waitIdle();
+                if (auto idle = m_Device.waitIdleExpected(); !idle)
+                {
+                    return idle;
+                }
+                if (!m_Textures.contains(view))
+                {
+                    return std::unexpected("ImGui atlas destruction requested for an unknown texture");
+                }
                 m_Api.FreeImguiTexture(m_Renderer, view);
                 m_Textures.erase(view);
                 data->SetTexID(ImTextureID_Invalid);
@@ -30,54 +36,124 @@ namespace vultra
             const bool create = data->Status == ImTextureStatus_WantCreate;
             if (data->Format != ImTextureFormat_RGBA32)
             {
-                throw std::runtime_error("ImGui atlas requires RGBA32 pixels");
+                return std::unexpected("ImGui atlas requires RGBA32 pixels");
             }
+            std::unique_ptr<Texture> candidate;
+            Texture*                 texture = nullptr;
             if (create)
             {
-                auto desc    = colorTexture({uint32_t(data->Width), uint32_t(data->Height)});
-                desc.usage   = VriTextureUsage_ShaderResource | VriTextureUsage_TransferDst;
-                auto texture = std::make_unique<Texture>(m_Device, desc);
-                view         = texture->view();
-                m_Textures.emplace(view, std::move(texture));
-                data->SetTexID(reinterpret_cast<ImTextureID>(view));
+                auto desc       = colorTexture({uint32_t(data->Width), uint32_t(data->Height)});
+                desc.usage      = VriTextureUsage_ShaderResource | VriTextureUsage_TransferDst;
+                auto allocation = Texture::create(m_Device, desc);
+                if (!allocation)
+                {
+                    return std::unexpected(allocation.error());
+                }
+                candidate       = std::move(*allocation);
+                auto descriptor = candidate->viewExpected();
+                if (!descriptor)
+                {
+                    return std::unexpected(descriptor.error());
+                }
+                view    = *descriptor;
+                texture = candidate.get();
             }
-            auto&          texture = *m_Textures.at(view);
-            const uint32_t x       = create ? 0 : data->UpdateRect.x;
-            const uint32_t y       = create ? 0 : data->UpdateRect.y;
-            const uint32_t width   = create ? data->Width : data->UpdateRect.w;
-            const uint32_t height  = create ? data->Height : data->UpdateRect.h;
+            else
+            {
+                const auto entry = m_Textures.find(view);
+                if (data->Status != ImTextureStatus_WantUpdates || entry == m_Textures.end())
+                {
+                    return std::unexpected("ImGui atlas update requested for an unknown texture");
+                }
+                texture = entry->second.get();
+            }
+            const uint32_t x      = create ? 0 : data->UpdateRect.x;
+            const uint32_t y      = create ? 0 : data->UpdateRect.y;
+            const uint32_t width  = create ? data->Width : data->UpdateRect.w;
+            const uint32_t height = create ? data->Height : data->UpdateRect.h;
             const auto     alignment =
                 std::lcm(256u,
                          std::max(1u, m_Device.core.GetDeviceDesc(m_Device.handle)->uploadBufferTextureRowAlignment));
             const auto     pitch = (width * 4 + alignment - 1) / alignment * alignment;
             const uint64_t bytes = uint64_t(pitch) * height;
-            Buffer         staging(m_Device, {bytes, 0, VriBufferUsage_TransferSrc, VriMemoryLocation_HostUpload});
-            auto*          mapped = static_cast<std::byte*>(m_Device.core.MapBuffer(staging.handle, 0, bytes));
+            auto           staging =
+                Buffer::create(m_Device, {bytes, 0, VriBufferUsage_TransferSrc, VriMemoryLocation_HostUpload});
+            if (!staging)
+            {
+                return std::unexpected(staging.error());
+            }
+            auto* mapped = static_cast<std::byte*>(m_Device.core.MapBuffer((*staging)->handle, 0, bytes));
             if (!mapped)
             {
-                throw std::runtime_error("Map ImGui atlas upload buffer");
+                return std::unexpected("Map ImGui atlas upload buffer failed");
             }
             for (uint32_t row = 0; row < height; ++row)
             {
                 std::memcpy(mapped + uint64_t(row) * pitch, data->GetPixelsAt(int(x), int(y + row)), width * 4);
             }
-            m_Device.core.UnmapBuffer(staging.handle);
-            Frame frame(m_Device);
-            auto* commands = frame.begin();
-            texture.transition(commands,
-                               {VriAccess_CopyDestinationWrite, VriLayout_CopyDestination, VriPipelineStage_Transfer});
+            m_Device.core.UnmapBuffer((*staging)->handle);
+            auto frame = Frame::create(m_Device);
+            if (!frame)
+            {
+                return std::unexpected(frame.error());
+            }
+            auto commands = (*frame)->beginExpected();
+            if (!commands)
+            {
+                return std::unexpected(commands.error());
+            }
+            auto                     prior = texture->captureState();
+            const VriTextureViewDesc atlasView {.viewType = VriTextureViewType_2D};
+            const auto               discard = [&](std::expected<void, std::string> failure)
+            {
+                if ((*frame)->discardExpected())
+                {
+                    if (auto restored = texture->restoreUnsubmittedExpected(std::move(prior)); !restored)
+                    {
+                        return restored;
+                    }
+                }
+                return failure;
+            };
+            if (auto ready = texture->transitionExpected(
+                    *commands,
+                    {VriAccess_CopyDestinationWrite, VriLayout_CopyDestination, VriPipelineStage_Transfer},
+                    atlasView);
+                !ready)
+            {
+                return discard(std::move(ready));
+            }
             VriBufferTextureCopyDesc copy {};
             copy.bufferRowLength   = pitch / 4;
             copy.bufferImageHeight = height;
             copy.texture           = {0, 0, 1, VriImageAspect_Color, int32_t(x), int32_t(y), 0, width, height, 1};
-            m_Device.core.CmdUploadBufferToTexture(commands, texture.handle, staging.handle, &copy);
-            texture.transition(commands,
-                               {VriAccess_ShaderResourceRead, VriLayout_ShaderResource, VriPipelineStage_AllCommands});
+            m_Device.core.CmdUploadBufferToTexture(*commands, texture->handle, (*staging)->handle, &copy);
+            if (auto ready = texture->transitionExpected(
+                    *commands,
+                    {VriAccess_ShaderResourceRead, VriLayout_ShaderResource, VriPipelineStage_AllCommands},
+                    atlasView);
+                !ready)
+            {
+                return discard(std::move(ready));
+            }
             // Atlas changes are infrequent. Complete the upload before releasing staging memory or drawing any
             // viewport.
-            frame.submitAndWait();
+            if (auto submitted = (*frame)->submitExpected(); !submitted)
+            {
+                return discard(std::move(submitted));
+            }
+            if (auto completed = (*frame)->waitExpected(); !completed)
+            {
+                return completed;
+            }
+            if (candidate)
+            {
+                m_Textures.emplace(view, std::move(candidate));
+                data->SetTexID(reinterpret_cast<ImTextureID>(view));
+            }
             data->SetStatus(ImTextureStatus_OK);
         }
+        return {};
     }
 
     void EditorGui::destroyTextures()

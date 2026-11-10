@@ -17,10 +17,22 @@ namespace vultra
 
     void ShaderProperty::validate(const ShaderPropertyValue& value) const
     {
+        if (auto valid = validateExpected(value); !valid)
+        {
+            throw std::invalid_argument(valid.error());
+        }
+    }
+
+    std::expected<void, std::string> ShaderProperty::validateExpected(const ShaderPropertyValue& value) const
+    {
         auto fail = [&](std::string message)
         {
-            throw std::invalid_argument(location.describe() + ": property " + name + ": " + message);
+            return std::unexpected(location.describe() + ": property " + name + ": " + message);
         };
+        if (type < ShaderPropertyType::eFloat || type > ShaderPropertyType::eTextureCubeArray)
+        {
+            return fail("Unknown declared property type");
+        }
         size_t expected = 0;
         if (type == ShaderPropertyType::eInteger)
         {
@@ -40,11 +52,11 @@ namespace vultra
         }
         if (value.index() != expected)
         {
-            fail("Value does not match the declared property type");
+            return fail("Value does not match the declared property type");
         }
         if (const auto* scalar = std::get_if<float>(&value); scalar && !std::isfinite(*scalar))
         {
-            fail("Value must be finite");
+            return fail("Value must be finite");
         }
         if (const auto* vector = std::get_if<std::array<float, 4>>(&value))
         {
@@ -52,7 +64,7 @@ namespace vultra
             {
                 if (!std::isfinite(component))
                 {
-                    fail("Components must be finite");
+                    return fail("Components must be finite");
                 }
             }
         }
@@ -62,16 +74,17 @@ namespace vultra
                  texture->builtin != "normal") ||
                 (texture->asset.value.valid() && !texture->builtin.empty()))
             {
-                fail("Texture must reference either one asset or a known builtin");
+                return fail("Texture must reference either one asset or a known builtin");
             }
             for (const auto component : texture->scaleOffset)
             {
                 if (!std::isfinite(component))
                 {
-                    fail("Texture scale/offset must be finite");
+                    return fail("Texture scale/offset must be finite");
                 }
             }
         }
+        return {};
     }
 
 } // namespace vultra

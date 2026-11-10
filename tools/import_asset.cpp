@@ -20,12 +20,18 @@ try
         vultra::Logger::app().info("Asset cache is current: {}", source.string());
         return 0;
     }
-    const auto asset = vultra::importAsset(source, options);
+    const auto asset = vultra::importAssetExpected(source, options);
+    if (!asset)
+    {
+        vultra::Logger::app().error("Import {}: {}", source.string(), asset.error());
+        return 1;
+    }
     if (options.cache && !vultra::isAssetCacheCurrent(source, options))
     {
-        throw std::runtime_error("Asset import did not publish a valid cache: " + asset.cachePath.string());
+        vultra::Logger::app().error("Asset import did not publish a valid cache: {}", asset->cachePath.string());
+        return 1;
     }
-    vultra::Logger::app().info("{}: {}", asset.cacheHit ? "Cached" : "Imported", asset.cachePath.string());
+    vultra::Logger::app().info("{}: {}", asset->cacheHit ? "Cached" : "Imported", asset->cachePath.string());
     return 0;
 }
 catch (const std::exception& error)

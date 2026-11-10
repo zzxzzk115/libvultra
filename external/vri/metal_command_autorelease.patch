@@ -1,0 +1,15 @@
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -533,7 +533,11 @@
+         {
+             CommandBufferMTL* c = CB(cmd);
+             DiscardCommands(c);
+-            c->cmd = [[c->queue commandBuffer] retain];
++            // Keep the explicit retain as the allocator's only ownership of an unsubmitted buffer.
++            @autoreleasepool
++            {
++                c->cmd = [[c->queue commandBuffer] retain];
++            }
+             return c->cmd ? VriResult_Success : VriResult_Failure;
+         }
+ 

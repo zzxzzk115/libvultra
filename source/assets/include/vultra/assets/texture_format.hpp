@@ -22,6 +22,18 @@ namespace vultra
         eBc4Unorm,
         eBc5Unorm,
         eBc6hUfloat,
-        eBc7Unorm
+        eBc7Unorm,
+        // Appended to retain existing prepared-scene and cache enum values.
+        eBc1Srgb,
+        eBc2Srgb,
+        eBc3Srgb,
+        eBc7Srgb,
+        eAstc4x4Unorm,
+        eAstc4x4Srgb,
+        eAstc6x6Unorm,
+        eAstc6x6Srgb,
+        // ASTC payload stores source RG in the red and green channels; consumers may reconstruct normal Z.
+        eAstc4x4RgUnorm,
+        eAstc6x6RgUnorm
     };
 } // namespace vultra

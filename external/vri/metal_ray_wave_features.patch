@@ -1,0 +1,31 @@
+--- a/source/backend_metal/device_mtl.mm
++++ b/source/backend_metal/device_mtl.mm
+@@ -89,6 +89,17 @@
+             }
+         }
+ 
++        if (requested & VriFeature_RayQuery)
++        {
++            if ([m_device supportsRaytracing])
++                m_enabledFeatures |= VriFeature_RayQuery;
++            else if (desc.bestEffort == VRI_FALSE)
++            {
++                ReportError("inline ray query is not supported");
++                return VriResult_Unsupported;
++            }
++        }
++
+         m_eventListener = [[MTLSharedEventListener alloc] init];
+         if (!m_eventListener)
+             return VriResult_Failure;
+@@ -143,7 +154,9 @@
+         m_desc.hasCustomBorderColor = VRI_TRUE;
+         // Inline ray query runs in a compute/fragment shader over MTLAccelerationStructure.
+         // (hasRayTracing stays FALSE: Metal has no DXR-style RT pipeline / SBT.)
+-        m_desc.hasRayQuery = [m_device supportsRaytracing] ? VRI_TRUE : VRI_FALSE;
++        m_desc.hasRayQuery = (m_enabledFeatures & VriFeature_RayQuery) ? VRI_TRUE : VRI_FALSE;
++        // Metal 3 simdgroup arithmetic and shuffle support the SPIR-V wave operations.
++        m_desc.hasShaderWaveOps = [m_device supportsFamily:MTLGPUFamilyMetal3] ? VRI_TRUE : VRI_FALSE;
+         // Mesh/object shaders require the Metal 3 family.
+         m_desc.hasMeshShader = [m_device supportsFamily:MTLGPUFamilyMetal3] ? VRI_TRUE : VRI_FALSE;
+ 

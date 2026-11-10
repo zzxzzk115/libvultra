@@ -5,11 +5,12 @@
 
 namespace vultra
 {
-    void generateTangents(std::span<SceneVertex> vertices, std::span<const uint32_t> indices, uint32_t vertexOffset)
+    std::expected<void, std::string>
+    generateTangentsExpected(std::span<SceneVertex> vertices, std::span<const uint32_t> indices, uint32_t vertexOffset)
     {
         if (indices.size() % 3 != 0)
         {
-            throw std::invalid_argument("Tangents require triangle indices");
+            return std::unexpected("Tangents require triangle indices");
         }
         std::vector<glm::vec3> tangents(vertices.size(), glm::vec3(0));
         std::vector<glm::vec3> bitangents(vertices.size(), glm::vec3(0));
@@ -21,7 +22,7 @@ namespace vultra
                 const auto index = indices[first + corner];
                 if (index < vertexOffset || index - vertexOffset >= vertices.size())
                 {
-                    throw std::invalid_argument("Tangent index exceeds its vertex range");
+                    return std::unexpected("Tangent index exceeds its vertex range");
                 }
                 corners[corner] = index - vertexOffset;
             }
@@ -57,7 +58,7 @@ namespace vultra
             const float length  = glm::length(tangent);
             if (!std::isfinite(length))
             {
-                throw std::invalid_argument("Cannot generate a finite tangent frame");
+                return std::unexpected("Cannot generate a finite tangent frame");
             }
             if (length <= 1e-8f)
             {
@@ -71,6 +72,15 @@ namespace vultra
             }
             const float sign = glm::dot(glm::cross(normal, tangent), bitangents[i]) < 0 ? -1.0f : 1.0f;
             vertex.tangent   = glm::vec4(tangent, sign);
+        }
+        return {};
+    }
+
+    void generateTangents(std::span<SceneVertex> vertices, std::span<const uint32_t> indices, uint32_t vertexOffset)
+    {
+        if (auto result = generateTangentsExpected(vertices, indices, vertexOffset); !result)
+        {
+            throw std::invalid_argument(result.error());
         }
     }
 } // namespace vultra

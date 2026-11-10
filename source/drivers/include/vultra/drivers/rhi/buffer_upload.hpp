@@ -14,4 +14,7 @@ namespace vultra
                                          VriBufferUsageFlags        usage,
                                          VriAccessStage             ready,
                                          uint32_t                   structureStride = 0);
+    std::expected<std::unique_ptr<Buffer>, std::string>
+    uploadBufferExpected(Device& device, std::span<const std::byte> data, VriBufferUsageFlags usage,
+                         VriAccessStage ready, uint32_t structureStride = 0);
 } // namespace vultra

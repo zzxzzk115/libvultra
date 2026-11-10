@@ -2,9 +2,11 @@
 
 #include <vultra/drivers/rhi/resources.hpp>
 
+#include <expected>
 #include <memory>
+#include <string>
 
 namespace vultra
 {
-    std::unique_ptr<Texture> createOpenPbrLuts(Device& device);
+    std::expected<std::unique_ptr<Texture>, std::string> createOpenPbrLutsExpected(Device& device);
 }

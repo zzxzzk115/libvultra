@@ -13,14 +13,19 @@
 #include <array>
 #include <chrono>
 #include <cstring>
+#include <format>
 #include <limits>
 #include <map>
 #include <mutex>
+#include <stdexcept>
 
 namespace vultra
 {
     namespace
     {
+        constexpr auto kInvalidImage      = "SceneData image must contain RGBA8 pixels";
+        constexpr auto kInvalidImageIndex = "Material image index is out of range";
+
         void compressBc7(TextureData& texture)
         {
             static std::once_flag initialized;
@@ -68,14 +73,20 @@ namespace vultra
         }
     } // namespace
 
-    TextureData prepareTexture(const SceneImage& image, bool srgb, const TextureImportOptions& options)
+    std::expected<TextureData, std::string>
+    prepareTextureExpected(const SceneImage& image, bool srgb, const TextureImportOptions& options)
     {
         if (!image.dds.empty())
         {
-            auto result = asset_detail::decodeDds(image.dds, srgb, options.compression == TextureCompression::eNone);
+            auto result =
+                asset_detail::decodeDdsExpected(image.dds, srgb, options.compression == TextureCompression::eNone);
+            if (!result)
+            {
+                return std::unexpected(result.error());
+            }
             if (!options.mipmaps)
             {
-                result.levels.resize(1);
+                result->levels.resize(1);
             }
             return result;
         }
@@ -83,7 +94,7 @@ namespace vultra
             image.height > uint32_t(std::numeric_limits<int>::max()) ||
             image.pixels.size() != uint64_t(image.width) * image.height * 4)
         {
-            throw std::invalid_argument("SceneData image must contain RGBA8 pixels");
+            return std::unexpected(kInvalidImage);
         }
         const auto                started = std::chrono::steady_clock::now();
         std::vector<TextureLevel> levels;
@@ -110,7 +121,7 @@ namespace vultra
                               STBIR_EDGE_CLAMP,
                               STBIR_FILTER_BOX))
             {
-                throw std::runtime_error("Generate texture mip");
+                return std::unexpected("Generate texture mip");
             }
             levels.push_back(std::move(next));
         }
@@ -130,11 +141,24 @@ namespace vultra
         return result;
     }
 
-    PreparedTextures prepareTextures(const SceneData& scene, const TextureImportOptions& options, uint32_t workers)
+    std::expected<PreparedTextures, std::string>
+    prepareTexturesExpected(const SceneData& scene, const TextureImportOptions& options, uint32_t workers)
     {
         PreparedTextures result;
-        result.images.push_back(prepareTexture({1, 1, {255, 255, 255, 255}}, false, options));
-        result.images.push_back(prepareTexture({1, 1, {128, 128, 255, 255}}, false, options));
+        const std::array defaults {SceneImage {1, 1, {255, 255, 255, 255}}, SceneImage {1, 1, {128, 128, 255, 255}}};
+        for (const auto& image : defaults)
+        {
+            auto texture = prepareTextureExpected(image, false, options);
+            if (!texture)
+            {
+                return std::unexpected(texture.error());
+            }
+            result.images.push_back(std::move(*texture));
+        }
+        if (scene.images.size() > std::numeric_limits<int>::max())
+        {
+            return std::unexpected("Scene image count exceeds material indexing");
+        }
 
         struct TextureJob
         {
@@ -146,17 +170,24 @@ namespace vultra
         std::vector<TextureJob>                  jobs;
         std::map<std::pair<int, bool>, uint32_t> cache;
         std::vector<uint64_t>                    hashes(scene.images.size());
-        asset_detail::runImportJobs("Indexing image content",
-                                    uint32_t(scene.images.size()),
-                                    workers,
-                                    0,
-                                    [&](uint32_t i)
-                                    {
-                                        const auto& image = scene.images[i];
-                                        const auto  bytes = image.dds.empty() ? std::as_bytes(std::span(image.pixels)) :
-                                                                                std::span<const std::byte>(image.dds);
-                                        hashes[i]         = XXH3_64bits(bytes.data(), bytes.size());
-                                    });
+        const auto                               indexed =
+            asset_detail::runImportJobsExpected("Indexing image content",
+                                                uint32_t(scene.images.size()),
+                                                workers,
+                                                0,
+                                                [&](uint32_t i) -> std::expected<void, std::string>
+                                                {
+                                                    const auto& image = scene.images[i];
+                                                    const auto  bytes = image.dds.empty() ?
+                                                                            std::as_bytes(std::span(image.pixels)) :
+                                                                            std::span<const std::byte>(image.dds);
+                                                    hashes[i]         = XXH3_64bits(bytes.data(), bytes.size());
+                                                    return {};
+                                                });
+        if (!indexed)
+        {
+            return std::unexpected(indexed.error());
+        }
         std::multimap<uint64_t, uint32_t> content;
         for (const auto& material : scene.materials)
         {
@@ -175,11 +206,15 @@ namespace vultra
                 {
                     continue;
                 }
+                if (size_t(images[slot]) >= scene.images.size())
+                {
+                    return std::unexpected(kInvalidImageIndex);
+                }
                 const auto key   = std::make_pair(images[slot], slot == 0 || slot == 4 || slot == 6);
                 auto       found = cache.find(key);
                 if (found == cache.end())
                 {
-                    const auto& image       = scene.images.at(key.first);
+                    const auto& image       = scene.images[key.first];
                     auto        index       = uint32_t(jobs.size() + 2);
                     const auto [begin, end] = content.equal_range(hashes[key.first]);
                     for (auto candidate = begin; candidate != end; ++candidate)
@@ -230,31 +265,73 @@ namespace vultra
         Logger::core().info("Texture policy: mips {}, compression {}",
                             options.mipmaps ? "on" : "off",
                             options.compression == TextureCompression::eNone ? "none" : "BC7 linear");
-        asset_detail::runImportJobs("Preparing textures",
-                                    uint32_t(jobs.size()),
-                                    workers,
-                                    scratchPerJob,
-                                    [&](uint32_t i)
-                                    {
-                                        const auto  job   = jobs[i];
-                                        const auto& image = scene.images[job.image];
-                                        Logger::core().debug("Preparing image {}: {}x{}, {}",
-                                                             job.image,
-                                                             image.width,
-                                                             image.height,
-                                                             job.srgb ? "sRGB" : "linear");
-                                        auto& texture       = result.images[job.output];
-                                        texture             = prepareTexture(image, job.srgb, options);
-                                        texture.sourceImage = int(job.image);
-                                        if (!image.dds.empty())
-                                        {
-                                            texture.sourceMipNum = uint32_t(texture.levels.size());
-                                        }
-                                        else if (texture.format != TextureFormat::eBc7Unorm)
-                                        {
-                                            texture.sourceMipNum = 1;
-                                        }
-                                    });
+        auto prepared = asset_detail::runImportJobsExpected(
+            "Preparing textures",
+            uint32_t(jobs.size()),
+            workers,
+            scratchPerJob,
+            [&](uint32_t i) -> std::expected<void, std::string>
+            {
+                const auto  job   = jobs[i];
+                const auto& image = scene.images[job.image];
+                Logger::core().debug("Preparing image {}: {}x{}, {}",
+                                     job.image,
+                                     image.width,
+                                     image.height,
+                                     job.srgb ? "sRGB" : "linear");
+                auto texture = prepareTextureExpected(image, job.srgb, options);
+                if (!texture)
+                {
+                    return std::unexpected(std::format("Image {}: {}", job.image, texture.error()));
+                }
+                texture->sourceImage = int(job.image);
+                if (!image.dds.empty())
+                {
+                    texture->sourceMipNum = uint32_t(texture->levels.size());
+                }
+                else if (texture->format != TextureFormat::eBc7Unorm)
+                {
+                    texture->sourceMipNum = 1;
+                }
+                result.images[job.output] = std::move(*texture);
+                return {};
+            });
+        if (!prepared)
+        {
+            return std::unexpected(prepared.error());
+        }
         return result;
+    }
+
+    TextureData prepareTexture(const SceneImage& image, bool srgb, const TextureImportOptions& options)
+    {
+        auto texture = prepareTextureExpected(image, srgb, options);
+        if (!texture)
+        {
+            if (texture.error() == kInvalidImage)
+            {
+                throw std::invalid_argument(texture.error());
+            }
+            throw std::runtime_error(texture.error());
+        }
+        return std::move(*texture);
+    }
+
+    PreparedTextures prepareTextures(const SceneData& scene, const TextureImportOptions& options, uint32_t workers)
+    {
+        auto textures = prepareTexturesExpected(scene, options, workers);
+        if (!textures)
+        {
+            if (textures.error() == kInvalidImageIndex)
+            {
+                throw std::out_of_range(textures.error());
+            }
+            if (textures.error().ends_with(kInvalidImage))
+            {
+                throw std::invalid_argument(textures.error());
+            }
+            throw std::runtime_error(textures.error());
+        }
+        return std::move(*textures);
     }
 } // namespace vultra

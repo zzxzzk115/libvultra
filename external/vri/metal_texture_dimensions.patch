@@ -1,0 +1,12 @@
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -543,6 +543,9 @@
+ 
+         VriResult VRI_CALL CreateTexture(VriDevice* device, const VriTextureDesc* desc, VriTexture** out)
+         {
++            // Native Metal 1D textures, including arrays, have no mip chain.
++            if ((desc->type == VriTextureType_1D || desc->type == VriTextureType_1DArray) && desc->mipNum > 1)
++                return VriResult_Unsupported;
+             DeviceMTL* d = Dev(device);
+             const auto support = GetFormatSupport(device, desc->format);
+             if (!(support & VriFormatSupport_Texture) ||

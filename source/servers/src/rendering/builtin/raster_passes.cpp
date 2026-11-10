@@ -3,17 +3,14 @@
 
 #include <algorithm>
 #include <array>
-#include <stdexcept>
 
 namespace vultra
 {
-    void installBuiltinRenderPasses(PassCatalog& catalog)
+    std::expected<void, std::string> installBuiltinRenderPassesExpected(PassCatalog& catalog)
     {
-        catalog.add(toneMappingDefinition());
-        for (auto definition : builtinRasterPassDefinitions())
-        {
-            catalog.add(std::move(definition));
-        }
+        auto definitions = builtinRasterPassDefinitions();
+        definitions.insert(definitions.begin(), toneMappingDefinition());
+        return catalog.addDefinitionsExpected(std::move(definitions));
     }
 
     namespace
@@ -48,64 +45,110 @@ namespace vultra
             {
             }
 
-            std::vector<RenderGraph::Resource> addPasses(RenderGraph& graph,
-                                                         std::string_view,
-                                                         std::span<const RenderGraph::Resource> inputs,
-                                                         std::span<const double>) override
+            std::expected<std::vector<RenderGraph::Resource>, std::string>
+            addPassesExpected(RenderGraph& graph,
+                              std::string_view,
+                              std::span<const RenderGraph::Resource> inputs,
+                              std::span<const double>                parameters) override
             {
                 if (!m_Renderer || !m_Bindings)
                 {
-                    throw std::invalid_argument("Built-in raster pass requires bindBuiltinRasterPasses()");
+                    return std::unexpected("Built-in raster pass requires bindBuiltinRasterPassesExpected()");
                 }
-                auto& outputs = *m_Bindings;
+                const size_t inputCount = m_Stage == RasterStage::eDeferred ? 13 : 0;
+                if (inputs.size() != inputCount || !parameters.empty())
+                {
+                    return std::unexpected("Built-in raster pass input/parameter count mismatch");
+                }
+                auto                               outputs = *m_Bindings;
+                std::vector<RenderGraph::Resource> result;
                 switch (m_Stage)
                 {
-                    case RasterStage::eShadow:
+                    case RasterStage::eShadow: {
                         if (outputs.shadows[0].graph)
                         {
-                            throw std::invalid_argument("One shadow stage per renderer view");
+                            return std::unexpected("One shadow stage per renderer view");
                         }
-                        outputs.shadows = m_Renderer->addShadowPasses(graph);
-                        return {outputs.shadows.begin(), outputs.shadows.end()};
-                    case RasterStage::eSkybox:
+                        auto shadows = m_Renderer->addShadowPassesExpected(graph);
+                        if (!shadows)
+                        {
+                            return std::unexpected(shadows.error());
+                        }
+                        outputs.shadows = *shadows;
+                        result.assign(outputs.shadows.begin(), outputs.shadows.end());
+                        break;
+                    }
+                    case RasterStage::eSkybox: {
                         if (outputs.hdr.graph)
                         {
-                            throw std::invalid_argument("One skybox stage per renderer view");
+                            return std::unexpected("One skybox stage per renderer view");
                         }
-                        outputs.hdr = graph.createTexture("scene_hdr", colorTexture(m_Size, VriFormat_RGBA16_SFLOAT));
-                        m_Renderer->addSkyboxPass(graph, outputs.hdr);
-                        return {outputs.hdr};
+                        auto hdr =
+                            graph.createTextureExpected("scene_hdr", colorTexture(m_Size, VriFormat_RGBA16_SFLOAT));
+                        if (!hdr)
+                        {
+                            return std::unexpected(hdr.error());
+                        }
+                        outputs.hdr = *hdr;
+                        if (auto sky = m_Renderer->addSkyboxPassExpected(graph, outputs.hdr); !sky)
+                        {
+                            return std::unexpected(sky.error());
+                        }
+                        result = {outputs.hdr};
+                        break;
+                    }
                     case RasterStage::eGBuffer: {
                         if (outputs.path != RenderPath::eNaiveDeferred || m_Renderer->settings.meshShading)
                         {
-                            throw std::invalid_argument("Built-in G-buffer requires indexed deferred geometry");
+                            return std::unexpected("Built-in G-buffer requires indexed deferred geometry");
                         }
                         if (outputs.depth.graph)
                         {
-                            throw std::invalid_argument("One geometry stage per renderer view");
+                            return std::unexpected("One geometry stage per renderer view");
                         }
                         auto desc = depthTexture(m_Size);
                         desc.usage |= VriTextureUsage_TransferSrc;
-                        outputs.depth   = graph.createTexture("scene_depth", desc);
-                        outputs.gbuffer = m_Renderer->addGBufferPasses(graph, outputs.depth, m_Size);
-                        std::vector<RenderGraph::Resource> result(outputs.gbuffer.begin(), outputs.gbuffer.end());
+                        auto depth = graph.createTextureExpected("scene_depth", desc);
+                        if (!depth)
+                        {
+                            return std::unexpected(depth.error());
+                        }
+                        outputs.depth = *depth;
+                        auto gbuffer  = m_Renderer->addGBufferPassesExpected(graph, outputs.depth, m_Size);
+                        if (!gbuffer)
+                        {
+                            return std::unexpected(gbuffer.error());
+                        }
+                        outputs.gbuffer = *gbuffer;
+                        result.assign(outputs.gbuffer.begin(), outputs.gbuffer.end());
                         result.push_back(outputs.depth);
-                        return result;
+                        break;
                     }
                     case RasterStage::eDeferred: {
                         if (outputs.path != RenderPath::eNaiveDeferred)
                         {
-                            throw std::invalid_argument("Deferred lighting requires a deferred renderer view");
+                            return std::unexpected("Deferred lighting requires a deferred renderer view");
                         }
                         outputs.hdr   = inputs[0];
                         outputs.depth = inputs[1];
                         std::copy_n(inputs.begin() + 2, 7, outputs.gbuffer.begin());
                         std::copy_n(inputs.begin() + 9, 4, outputs.shadows.begin());
-                        m_Renderer->addDeferredLightingPass(graph, outputs.hdr, outputs.gbuffer, outputs.shadows);
-                        return {outputs.hdr};
+                        if (auto added = m_Renderer->addDeferredLightingPassExpected(graph,
+                                                                                     outputs.hdr,
+                                                                                     outputs.gbuffer,
+                                                                                     outputs.shadows);
+                            !added)
+                        {
+                            return std::unexpected(added.error());
+                        }
+                        result = {outputs.hdr};
+                        break;
                     }
+                    default:
+                        return std::unexpected("Unknown raster stage");
                 }
-                throw std::logic_error("Unknown raster stage");
+                *m_Bindings = outputs;
+                return result;
             }
 
         private:
@@ -123,7 +166,8 @@ namespace vultra
         {
             PassDefinition definition;
             definition.type   = types[i];
-            definition.create = [stage = RasterStage(i)](Device&)
+            definition.createExpected =
+                [stage = RasterStage(i)](Device&) -> std::expected<std::unique_ptr<GraphPass>, std::string>
             {
                 return std::make_unique<RasterPass>(stage);
             };
@@ -184,18 +228,31 @@ namespace vultra
                                    });
     }
 
-    void bindBuiltinRasterPasses(PassCatalog&              catalog,
-                                 BuiltinRenderer&          renderer,
-                                 BuiltinRenderer::Outputs& bindings,
-                                 Extent                    size)
+    std::expected<void, std::string> bindBuiltinRasterPassesExpected(PassCatalog&              catalog,
+                                                                     BuiltinRenderer&          renderer,
+                                                                     BuiltinRenderer::Outputs& bindings,
+                                                                     Extent                    size)
     {
+        for (const auto type : types)
+        {
+            if (auto found = catalog.definitionExpected(type); !found)
+            {
+                return std::unexpected(found.error());
+            }
+        }
         for (uint32_t i = 0; i < types.size(); ++i)
         {
-            catalog.bindFactory(types[i],
-                                [&, stage = RasterStage(i), size](Device&)
-                                {
-                                    return std::make_unique<RasterPass>(stage, &renderer, &bindings, size);
-                                });
+            auto bound = catalog.bindFactoryExpected(
+                types[i],
+                [&, stage = RasterStage(i), size](Device&) -> std::expected<std::unique_ptr<GraphPass>, std::string>
+                {
+                    return std::make_unique<RasterPass>(stage, &renderer, &bindings, size);
+                });
+            if (!bound)
+            {
+                return bound;
+            }
         }
+        return {};
     }
 } // namespace vultra

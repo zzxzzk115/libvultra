@@ -9,6 +9,30 @@ option_end()
 includes("../..")
 local features = vultraFeatures()
 
+if not is_plat("android", "wasm") and features.xr then
+    target("platform-xr-desktop")
+        set_kind("binary")
+        set_default(false)
+        add_deps("vultra")
+        add_files("xr_desktop.cpp")
+    target_end()
+end
+
+if is_plat("android") and features.xr then
+    target("platform-xr-loader")
+        set_kind("shared")
+        add_deps("vultra")
+        add_files("xr_android.cpp")
+        add_syslinks("android", "log")
+        on_load(function (target)
+            local ndk = target:toolchain("ndk"):config("ndk")
+            local glue = path.join(ndk, "sources/android/native_app_glue")
+            target:add("includedirs", glue)
+            target:add("files", path.join(glue, "android_native_app_glue.c"))
+        end)
+    target_end()
+end
+
 target("platform-vpk-memory")
     set_kind("binary")
     add_deps("vultra")

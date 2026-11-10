@@ -1,0 +1,12 @@
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -1410,7 +1410,8 @@
+                 depth.imageLayout        = a->depth->readOnly ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL :
+                                                                   VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                 depth.loadOp             = a->depth->loadOp == VriAttachmentLoadOp_Clear ? VK_ATTACHMENT_LOAD_OP_CLEAR :
+-                                                                                           VK_ATTACHMENT_LOAD_OP_LOAD;
++                                           a->depth->loadOp == VriAttachmentLoadOp_DontCare ?
++                                               VK_ATTACHMENT_LOAD_OP_DONT_CARE : VK_ATTACHMENT_LOAD_OP_LOAD;
+                 depth.storeOp            = a->depth->readOnly ? VK_ATTACHMENT_STORE_OP_NONE :
+                                            a->depth->storeOp == VriAttachmentStoreOp_DontCare ?
+                                                VK_ATTACHMENT_STORE_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE;

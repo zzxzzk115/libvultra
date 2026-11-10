@@ -1,0 +1,153 @@
+--- a/source/backend_metal/rt_mtl.mm
++++ b/source/backend_metal/rt_mtl.mm
+@@ -109,6 +109,15 @@
+             return [d retain];
+         }
+ 
++        void TrackAccelerationStructure(AccelerationStructureMTL* a)
++        {
++            VriObjectInfo info = MakeObjectInfo(VriObjectType_AccelerationStructure);
++            info.memoryBytes   = [a->as allocatedSize] + [a->scratch allocatedSize] + [a->instanceBuffer allocatedSize];
++            info.width         = static_cast<uint32_t>([a->as allocatedSize] / 1024u);
++            info.height        = static_cast<uint32_t>([a->scratch allocatedSize] / 1024u);
++            a->device->Objects().Track(ToHandle(a), info);
++        }
++
+         VriResult VRI_CALL CreateAccelerationStructure(VriDevice* device, const VriAccelerationStructureDesc* desc, VriAccelerationStructure** out)
+         {
+             DeviceMTL* d = Dev(device);
+@@ -119,13 +128,21 @@
+             if (!as) { [mdesc release]; return VriResult_OutOfMemory; }
+             id<MTLBuffer> scratch = [d->Device() newBufferWithLength:(sizes.buildScratchBufferSize ? sizes.buildScratchBufferSize : 1)
+                                                             options:MTLResourceStorageModePrivate];
++            if (!scratch)
++            {
++                [as release];
++                [mdesc release];
++                return VriResult_OutOfMemory;
++            }
+ 
+             AccelerationStructureMTL* a = new AccelerationStructureMTL{};
+             a->device = d;
+             a->as = as;
+             a->scratch = scratch;
++            a->scratchLength            = [scratch length];
+             a->descriptor = mdesc; // owned
+             a->type = desc->type;
++            TrackAccelerationStructure(a);
+             *out = ToHandle(a);
+             return VriResult_Success;
+         }
+@@ -134,6 +151,7 @@
+         {
+             if (!as) return;
+             AccelerationStructureMTL* a = AS(as);
++            a->device->Objects().Untrack(as);
+             if (a->as) [a->as release];
+             if (a->scratch) [a->scratch release];
+             if (a->descriptor) [a->descriptor release];
+@@ -172,14 +190,18 @@
+         // The app's instance buffer is in VkAccelerationStructureInstanceKHR layout; translate
+         // it into Metal's MTLAccelerationStructureUserIDInstanceDescriptor + the instanced-AS array
+         // (Metal references each BLAS by index into that array, not by device address).
+-        void TranslateInstances(DeviceMTL* d, AccelerationStructureMTL* a, const VriAsInstancesDesc& in,
+-                                MTLInstanceAccelerationStructureDescriptor* tlasDesc)
++        VriResult TranslateInstances(DeviceMTL*                                  d,
++                                     AccelerationStructureMTL*                   a,
++                                     const VriAsInstancesDesc&                   in,
++                                     MTLInstanceAccelerationStructureDescriptor* tlasDesc)
+         {
+             struct VkInstance { float transform[12]; uint32_t idAndMask; uint32_t sbtAndFlags; uint64_t blasRef; };
+             const auto* src = reinterpret_cast<const VkInstance*>(static_cast<const uint8_t*>([Buf(in.instanceBuffer)->buffer contents]) + in.offset);
+ 
+             id<MTLBuffer> dst = [d->Device() newBufferWithLength:(sizeof(MTLAccelerationStructureUserIDInstanceDescriptor) * (in.instanceCount ? in.instanceCount : 1))
+                                                         options:MTLResourceStorageModeShared];
++            if (!dst)
++                return VriResult_OutOfMemory;
+             auto* out = static_cast<MTLAccelerationStructureUserIDInstanceDescriptor*>([dst contents]);
+             NSMutableArray* asArray = [[NSMutableArray alloc] init];
+ 
+@@ -218,12 +240,26 @@
+             tlasDesc.instanceDescriptorBufferOffset = 0;
+             tlasDesc.instanceCount = in.instanceCount;
+             tlasDesc.instancedAccelerationStructures = asArray;
++            return VriResult_Success;
+         }
+ 
+         void VRI_CALL CmdBuildAccelerationStructure(VriCommandBuffer* cmd, const VriBuildAccelerationStructureDesc* desc)
+         {
+             CommandBufferMTL* c = CB(cmd);
+             AccelerationStructureMTL* a = AS(desc->dst);
++            if (c->recordingResult != VriResult_Success)
++                return;
++            if (!a->scratch)
++            {
++                a->scratch = [c->device->Device() newBufferWithLength:a->scratchLength
++                                                              options:MTLResourceStorageModePrivate];
++                if (!a->scratch)
++                {
++                    c->recordingResult = VriResult_OutOfMemory;
++                    return;
++                }
++                TrackAccelerationStructure(a);
++            }
+ 
+             // Close any open blit/compute encoder before the AS-build encoder (one at a time).
+             if (c->blitEnc)    { [c->blitEnc endEncoding];    [c->blitEnc release];    c->blitEnc = nil; }
+@@ -234,12 +270,34 @@
+                 auto* tlasDesc = (MTLInstanceAccelerationStructureDescriptor*)a->descriptor;
+                 for (uint32_t i = 0; i < desc->geometry->geometryCount; ++i)
+                     if (desc->geometry->geometries[i].type == VriAsGeometryType_Instances)
+-                    { TranslateInstances(c->device, a, desc->geometry->geometries[i].instances, tlasDesc); break; }
++                    {
++                        c->recordingResult =
++                            TranslateInstances(c->device, a, desc->geometry->geometries[i].instances, tlasDesc);
++                        if (c->recordingResult != VriResult_Success)
++                            return;
++                        TrackAccelerationStructure(a);
++                        break;
++                    }
+             }
+ 
+             id<MTLAccelerationStructureCommandEncoder> enc = [c->cmd accelerationStructureCommandEncoder];
++            if (!enc)
++            {
++                c->recordingResult = VriResult_Failure;
++                return;
++            }
+             [enc buildAccelerationStructure:a->as descriptor:a->descriptor scratchBuffer:a->scratch scratchBufferOffset:0];
+             [enc endEncoding];
++        }
++
++        void VRI_CALL ReleaseAccelerationStructureScratch(VriAccelerationStructure* as)
++        {
++            if (!as)
++                return;
++            auto* a = AS(as);
++            [a->scratch release];
++            a->scratch = nil;
++            TrackAccelerationStructure(a);
+         }
+ 
+         void VRI_CALL CmdTraceRays(VriCommandBuffer*, const VriDispatchRaysDesc*) {} // no RT pipeline on Metal
+@@ -253,6 +311,10 @@
+             GetShaderGroupHandles,
+             CmdBuildAccelerationStructure,
+             CmdTraceRays,
++            nullptr, // Compacted-size query.
++            nullptr, // Compacted destination creation.
++            nullptr, // AS copy.
++            ReleaseAccelerationStructureScratch,
+         };
+     } // namespace
+ 
+--- a/source/backend_metal/rt_mtl.h
++++ b/source/backend_metal/rt_mtl.h
+@@ -21,6 +21,7 @@
+         DeviceMTL*                     device;
+         id<MTLAccelerationStructure>   as;
+         id<MTLBuffer>                  scratch;
++        uint64_t                            scratchLength = 0;
+         MTLAccelerationStructureDescriptor* descriptor; // retained; rebuilt-into on CmdBuild
+         VriAccelerationStructureType   type;
+         // TLAS build-time state (translated from the app's VK-layout instance buffer).

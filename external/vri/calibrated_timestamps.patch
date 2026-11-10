@@ -29,14 +29,12 @@ index 6306ad0..54d3a9f 100644
              {
                  uint32_t n = 0;
 diff --git a/source/backend_vk/device_vk.h b/source/backend_vk/device_vk.h
-index d88b0ec..2f06337 100644
 --- a/source/backend_vk/device_vk.h
 +++ b/source/backend_vk/device_vk.h
-@@ -128,6 +128,7 @@ namespace vri::vk
-         bool            m_hasSamplerAnisotropy         = false;
-         float           m_maxSamplerAnisotropy         = 1.0f;
-         bool            m_hasCalibratedTimestamps      = false;
-+        bool            m_hasKhrCalibratedTimestamps   = false;
-         bool            m_hasDrawIndirectCount         = false;
-         bool            m_hasMemoryBudget              = false;
-         bool            m_hasMemoryPriority            = false;
+@@ -156,5 +156,6 @@ namespace vri::vk
+         VkTimeDomainKHR m_hostTimeDomain = VK_TIME_DOMAIN_DEVICE_KHR; // the host clock to pair with DEVICE
++        bool            m_hasKhrCalibratedTimestamps = false;
+         ExtFunctions    m_ext            = {};
+ 
+         VriCooperativeVectorDeviceProperties        m_cooperativeVectorDeviceProperties {};
+         std::vector<VriCooperativeVectorProperties> m_cooperativeVectorCombinations;

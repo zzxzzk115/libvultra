@@ -1,6 +1,8 @@
 #include <vultra/assets/shader_asset.hpp>
 
 #include <algorithm>
+#include <cctype>
+#include <charconv>
 #include <cmath>
 #include <limits>
 #include <set>
@@ -8,38 +10,80 @@
 
 namespace vultra
 {
+    std::expected<double, std::string> ShaderStateValue::numberExpected() const
+    {
+        if (property)
+        {
+            return std::unexpected("Render-state property requires a material instance: " + value);
+        }
+        char* end         = nullptr;
+        errno             = 0;
+        const auto number = std::strtod(value.c_str(), &end);
+        if (errno == ERANGE || end == value.c_str() || end != value.c_str() + value.size() || !std::isfinite(number))
+        {
+            return std::unexpected("Expected a finite numeric render state: " + value);
+        }
+        return number;
+    }
+
     const ShaderProperty& ShaderAsset::property(std::string_view name) const
     {
-        for (const auto& property : properties)
+        auto found = propertyExpected(name);
+        if (!found)
         {
-            if (property.name == name)
-            {
-                return property;
-            }
+            throw std::invalid_argument(found.error());
         }
-        throw std::invalid_argument("Shader " + this->name + " has no property: " + std::string(name));
+        return **found;
+    }
+
+    std::expected<const ShaderProperty*, std::string> ShaderAsset::propertyExpected(std::string_view name) const
+    {
+        const auto found = std::ranges::find(properties, name, &ShaderProperty::name);
+        if (found == properties.end())
+        {
+            return std::unexpected("Shader " + this->name + " has no property: " + std::string(name));
+        }
+        return &*found;
     }
 
     const ShaderVariant& ShaderAsset::variant(std::string_view name) const
     {
-        for (const auto& variant : variants)
+        auto found = variantExpected(name);
+        if (!found)
         {
-            if (variant.name == name)
-            {
-                return variant;
-            }
+            throw std::invalid_argument(found.error());
         }
-        throw std::invalid_argument("Shader " + this->name + " has no variant: " + std::string(name));
+        return **found;
+    }
+
+    std::expected<const ShaderVariant*, std::string> ShaderAsset::variantExpected(std::string_view name) const
+    {
+        const auto found = std::ranges::find(variants, name, &ShaderVariant::name);
+        if (found == variants.end())
+        {
+            return std::unexpected("Shader " + this->name + " has no variant: " + std::string(name));
+        }
+        return &*found;
     }
 
     const ShaderProgram& ShaderPass::program(std::string_view variant) const
     {
+        auto found = programExpected(variant);
+        if (!found)
+        {
+            throw std::invalid_argument(found.error());
+        }
+        return **found;
+    }
+
+    std::expected<const ShaderProgram*, std::string> ShaderPass::programExpected(std::string_view variant) const
+    {
         const auto found = programs.find(variant);
         if (found == programs.end())
         {
-            throw std::invalid_argument("Pass " + name + " has no cooked variant: " + std::string(variant));
+            return std::unexpected("Pass " + name + " has no cooked variant: " + std::string(variant));
         }
-        return found->second;
+        return &found->second;
     }
 
     namespace
@@ -58,7 +102,7 @@ namespace vultra
                                        });
         }
 
-        void validateState(const ShaderAsset& asset, const ShaderState& state)
+        std::expected<void, std::string> validateState(const ShaderAsset& asset, const ShaderState& state)
         {
             const std::map<std::string, std::vector<std::string>, std::less<>> enums {
                 {"Cull", {"Off", "Front", "Back"}},
@@ -90,63 +134,68 @@ namespace vultra
                 {"Stencil.ZFail", {"Keep", "Zero", "Replace", "IncrSat", "DecrSat", "Invert", "IncrWrap", "DecrWrap"}}};
             auto fail = [&](std::string message)
             {
-                throw std::invalid_argument(state.location.describe() + ": " + message);
+                return std::unexpected(state.location.describe() + ": " + message);
             };
             for (const auto& [command, values] : state.commands)
             {
                 if (values.empty())
                 {
-                    fail("Empty state: " + command);
+                    return fail("Empty state: " + command);
                 }
                 const bool numeric = command == "DepthBias" || command == "Stencil.Ref" ||
                                      command == "Stencil.ReadMask" || command == "Stencil.WriteMask";
                 const bool mask    = command == "ColorMask";
                 if (!numeric && !mask && !enums.contains(command))
                 {
-                    fail("Unknown render state: " + command);
+                    return fail("Unknown render state: " + command);
                 }
                 if (command == "BlendOp")
                 {
                     if (values.size() != 1 && values.size() != 2)
                     {
-                        fail("BlendOp requires one color operation and optionally one alpha operation");
+                        return fail("BlendOp requires one color operation and optionally one alpha operation");
                     }
                 }
                 else if (command == "Blend")
                 {
                     if (values.size() != 1 && values.size() != 2 && values.size() != 4)
                     {
-                        fail("Blend requires Off or two/four factors");
+                        return fail("Blend requires Off or two/four factors");
                     }
                     if (values.size() == 1 && (values[0].property || values[0].value != "Off"))
                     {
-                        fail("A single Blend value must be Off");
+                        return fail("A single Blend value must be Off");
                     }
                 }
                 else if (command == "DepthBias")
                 {
                     if (values.size() != 2 && values.size() != 3)
                     {
-                        fail("DepthBias requires constant and slope factors");
+                        return fail("DepthBias requires constant and slope factors");
                     }
                 }
                 else if (command == "ColorMask")
                 {
                     if (values.size() > 2)
                     {
-                        fail("ColorMask accepts a mask and optional attachment index");
+                        return fail("ColorMask accepts a mask and optional attachment index");
                     }
                 }
                 else if (values.size() != 1)
                 {
-                    fail("Render state requires one value: " + command);
+                    return fail("Render state requires one value: " + command);
                 }
                 for (size_t index = 0; index < values.size(); ++index)
                 {
                     const auto& value = values[index];
                     if (value.property)
                     {
-                        const auto& property = asset.property(value.value);
+                        auto found = asset.propertyExpected(value.value);
+                        if (!found)
+                        {
+                            return std::unexpected(found.error());
+                        }
+                        const auto& property = **found;
                         const bool  floating =
                             property.type == ShaderPropertyType::eFloat || property.type == ShaderPropertyType::eRange;
                         const bool boolean = command == "ZWrite" || command == "Stencil";
@@ -155,21 +204,20 @@ namespace vultra
                             (numeric && property.type != ShaderPropertyType::eInteger &&
                              !(command == "DepthBias" && floating)))
                         {
-                            fail("Render state property has the wrong type: " + value.value);
+                            return fail("Render state property has the wrong type: " + value.value);
                         }
                     }
                     else if (numeric || (mask && (index == 1 || value.value == "0")))
                     {
-                        size_t     end    = 0;
-                        const auto number = std::stod(value.value, &end);
-                        if (!std::isfinite(number) || std::abs(number) > std::numeric_limits<float>::max() ||
-                            end != value.value.size())
+                        auto parsed = value.numberExpected();
+                        if (!parsed || std::abs(*parsed) > std::numeric_limits<float>::max())
                         {
-                            fail("Expected a numeric render state: " + command);
+                            return fail("Expected a numeric render state: " + command);
                         }
+                        const auto number = *parsed;
                         if (command != "DepthBias" && (std::trunc(number) != number || number < 0 || number > 255))
                         {
-                            fail("Stencil values and attachment indices must be integers in [0, 255]");
+                            return fail("Stencil values and attachment indices must be integers in [0, 255]");
                         }
                     }
                     else if (mask)
@@ -180,29 +228,38 @@ namespace vultra
                             if (std::string_view("RGBA").find(channel) == std::string_view::npos ||
                                 !channels.insert(channel).second)
                             {
-                                fail("ColorMask requires unique RGBA channels or zero");
+                                return fail("ColorMask requires unique RGBA channels or zero");
                             }
                         }
                     }
                     else if (std::ranges::find(enums.at(command), value.value) == enums.at(command).end())
                     {
-                        fail("Invalid " + command + " value: " + value.value);
+                        return fail("Invalid " + command + " value: " + value.value);
                     }
                 }
             }
+            return {};
         }
     } // namespace
 
     void ShaderAsset::validate() const
     {
+        if (auto valid = validateExpected(); !valid)
+        {
+            throw std::invalid_argument(valid.error());
+        }
+    }
+
+    std::expected<void, std::string> ShaderAsset::validateExpected() const
+    {
         auto fail = [&](const ShaderSourceLocation& location, std::string message)
         {
-            throw std::invalid_argument(location.describe() + ": " + message);
+            return std::unexpected(location.describe() + ": " + message);
         };
         if (name.empty() || name.size() > 4096 || subshaders.empty() || subshaders.size() > 256 ||
             properties.size() > 4096 || variants.empty() || variants.size() > 256)
         {
-            throw std::invalid_argument("Shader needs a name, SubShader and bounded property/variant counts");
+            return std::unexpected("Shader needs a name, SubShader and bounded property/variant counts");
         }
         std::set<std::string> propertyNames;
         for (const auto& property : properties)
@@ -210,9 +267,12 @@ namespace vultra
             if (!identifier(property.name) || property.name.starts_with("__vultra") ||
                 !propertyNames.insert(property.name).second)
             {
-                fail(property.location, "Invalid or duplicate property: " + property.name);
+                return fail(property.location, "Invalid or duplicate property: " + property.name);
             }
-            property.validate(property.defaultValue);
+            if (auto valid = property.validateExpected(property.defaultValue); !valid)
+            {
+                return valid;
+            }
             std::set<std::string> labels;
             std::set<int32_t>     enumValues;
             for (const auto& [label, value] : property.enumeration)
@@ -220,7 +280,7 @@ namespace vultra
                 if (label.empty() || label.size() > 4096 || !labels.insert(label).second ||
                     !enumValues.insert(value).second)
                 {
-                    fail(property.location, "Invalid or duplicate property enumeration item");
+                    return fail(property.location, "Invalid or duplicate property enumeration item");
                 }
             }
             if ((property.hdr && property.type != ShaderPropertyType::eColor) ||
@@ -232,7 +292,7 @@ namespace vultra
                 std::abs(property.maximum) > std::numeric_limits<float>::max() ||
                 (property.type == ShaderPropertyType::eRange && property.minimum >= property.maximum))
             {
-                fail(property.location, "Property metadata does not match its type");
+                return fail(property.location, "Property metadata does not match its type");
             }
         }
         for (const auto& property : properties)
@@ -243,8 +303,8 @@ namespace vultra
                 {
                     if (propertyNames.contains(property.name + suffix))
                     {
-                        fail(property.location,
-                             "Property conflicts with a generated texture field: " + property.name + suffix);
+                        return fail(property.location,
+                                    "Property conflicts with a generated texture field: " + property.name + suffix);
                     }
                 }
             }
@@ -255,41 +315,66 @@ namespace vultra
             if (variant.name.empty() || variant.name.size() > 256 || variant.name.find(char(0)) != std::string::npos ||
                 !variantNames.insert(variant.name).second)
             {
-                fail(variant.location, "Invalid or duplicate variant: " + variant.name);
+                return fail(variant.location, "Invalid or duplicate variant: " + variant.name);
+            }
+            if (variant.typeConformances.size() > 4096 ||
+                std::ranges::any_of(variant.typeConformances,
+                                    [](const auto& conformance)
+                                    {
+                                        return conformance.typeName.size() > 4096 ||
+                                               conformance.interfaceType.size() > 4096;
+                                    }))
+            {
+                return fail(variant.location, "Shader variant type conformances exceed metadata limits");
+            }
+            if (auto valid = ShaderTypeConformance::validateExpected(variant.typeConformances); !valid)
+            {
+                return fail(variant.location, "Variant " + variant.name + ": " + valid.error());
             }
         }
         for (const auto& subshader : subshaders)
         {
             if (subshader.requiredFeatures & ~(VriFeature_MeshShader | VriFeature_RayQuery))
             {
-                fail(subshader.location, "Unsupported game shader capability bits");
+                return fail(subshader.location, "Unsupported game shader capability bits");
             }
-            validateState(*this, subshader.state);
+            if (auto valid = validateState(*this, subshader.state); !valid)
+            {
+                return valid;
+            }
             if (!subshader.surface && subshader.passes.empty())
             {
-                fail(subshader.location, "SubShader requires a Surface or Pass");
+                return fail(subshader.location, "SubShader requires a Surface or Pass");
             }
             if (const auto type = subshader.tags.find("RenderType");
                 type != subshader.tags.end() && type->second != "Opaque" && type->second != "AlphaTest")
             {
-                fail(subshader.location, "Supported RenderType values are Opaque and AlphaTest");
+                return fail(subshader.location, "Supported RenderType values are Opaque and AlphaTest");
             }
             if (subshader.surface)
             {
-                if (subshader.surface->model != "OpenPBR" || subshader.surface->entry.empty())
+                if ((subshader.surface->model != "OpenPBR" && subshader.surface->model != "Unlit") ||
+                    subshader.surface->entry.size() > 4096 || !identifier(subshader.surface->entry))
                 {
-                    fail(subshader.surface->location, "Surface requires Model OpenPBR and an Entry");
+                    return fail(subshader.surface->location, "Surface requires Model OpenPBR or Unlit and an Entry");
                 }
-                validateState(*this, subshader.surface->state);
+                if (auto valid = validateState(*this, subshader.surface->state); !valid)
+                {
+                    return valid;
+                }
             }
             std::set<std::string> passNames;
             std::set<std::string> lightModes;
             for (const auto& pass : subshader.passes)
             {
+                if (pass.generated && !subshader.surface)
+                {
+                    return fail(pass.location, "Generated Pass requires Surface metadata");
+                }
                 if (pass.name.empty() || pass.name.size() > 256 || pass.name.find(char(0)) != std::string::npos ||
                     !passNames.insert(pass.name).second)
                 {
-                    fail(pass.location, "Invalid or duplicate Pass name: " + pass.name);
+                    return fail(pass.location, "Invalid or duplicate Pass name: " + pass.name);
                 }
                 constexpr std::array modes {"Forward",
                                             "DepthOnly",
@@ -299,17 +384,20 @@ namespace vultra
                                             "Custom"};
                 if (std::ranges::find(modes, pass.lightMode) == modes.end())
                 {
-                    fail(pass.location, "Unknown LightMode: " + pass.lightMode);
+                    return fail(pass.location, "Unknown LightMode: " + pass.lightMode);
                 }
                 if (pass.lightMode != "Custom" && !lightModes.insert(pass.lightMode).second)
                 {
-                    fail(pass.location, "Duplicate explicit LightMode: " + pass.lightMode);
+                    return fail(pass.location, "Duplicate explicit LightMode: " + pass.lightMode);
                 }
                 if (pass.requiredFeatures & ~(VriFeature_MeshShader | VriFeature_RayQuery))
                 {
-                    fail(pass.location, "Unsupported game Pass capability bits");
+                    return fail(pass.location, "Unsupported game Pass capability bits");
                 }
-                validateState(*this, pass.state);
+                if (auto valid = validateState(*this, pass.state); !valid)
+                {
+                    return valid;
+                }
                 uint32_t stages = 0;
                 for (const auto& entry : pass.entries)
                 {
@@ -318,11 +406,11 @@ namespace vultra
                          entry.stage != VriShaderStage_Task && entry.stage != VriShaderStage_Mesh &&
                          entry.stage != VriShaderStage_Compute))
                     {
-                        fail(pass.location, "Invalid game shader entry name or stage");
+                        return fail(pass.location, "Invalid game shader entry name or stage");
                     }
                     if (stages & uint32_t(entry.stage))
                     {
-                        fail(pass.location, "Duplicate shader stage");
+                        return fail(pass.location, "Duplicate shader stage");
                     }
                     stages |= uint32_t(entry.stage);
                 }
@@ -331,24 +419,31 @@ namespace vultra
                 if (stages != VriShaderStage_Compute && stages != graphics && stages != mesh &&
                     stages != (mesh | uint32_t(VriShaderStage_Task)) && stages != VriShaderStage_Vertex)
                 {
-                    fail(pass.location, "Invalid shader stage combination");
+                    return fail(pass.location, "Invalid shader stage combination");
                 }
                 if (stages == VriShaderStage_Vertex && pass.lightMode != "DepthOnly" &&
                     pass.lightMode != "ShadowCaster")
                 {
-                    fail(pass.location, "Vertex-only passes require a depth/shadow purpose");
+                    return fail(pass.location, "Vertex-only passes require a depth/shadow purpose");
                 }
                 if (stages == VriShaderStage_Compute && (pass.lightMode != "Custom" || !pass.state.commands.empty()))
                 {
-                    fail(pass.location, "Compute Pass requires Custom LightMode and no graphics state");
+                    return fail(pass.location, "Compute Pass requires Custom LightMode and no graphics state");
                 }
                 for (const auto& [variant, program] : pass.programs)
                 {
-                    this->variant(variant);
-                    program.descriptors(pass.entries);
+                    if (auto found = variantExpected(variant); !found)
+                    {
+                        return std::unexpected(found.error());
+                    }
+                    if (auto descriptors = program.descriptorsExpected(pass.entries); !descriptors)
+                    {
+                        return std::unexpected(descriptors.error());
+                    }
                 }
             }
         }
+        return {};
     }
 
     uint32_t ShaderAsset::selectSubshader(std::string_view                  pipeline,
@@ -356,6 +451,36 @@ namespace vultra
                                           std::span<const std::string_view> lightModes,
                                           std::string&                      diagnostics,
                                           const SubshaderCompatibility&     compatible) const
+    {
+        SubshaderCompatibilityExpected checked;
+        if (compatible)
+        {
+            checked = [compatible](const ShaderSubshader& subshader) -> std::expected<std::string, std::string>
+            {
+                try
+                {
+                    return compatible(subshader);
+                }
+                catch (const std::exception& error)
+                {
+                    return std::unexpected(error.what());
+                }
+            };
+        }
+        auto selected = selectSubshaderExpected(pipeline, features, lightModes, diagnostics, checked);
+        if (!selected)
+        {
+            throw std::invalid_argument(selected.error());
+        }
+        return *selected;
+    }
+
+    std::expected<uint32_t, std::string>
+    ShaderAsset::selectSubshaderExpected(std::string_view                      pipeline,
+                                         uint64_t                              features,
+                                         std::span<const std::string_view>     lightModes,
+                                         std::string&                          diagnostics,
+                                         const SubshaderCompatibilityExpected& compatible) const
     {
         diagnostics.clear();
         for (uint32_t index = 0; index < subshaders.size(); ++index)
@@ -391,7 +516,12 @@ namespace vultra
             }
             if (reason.empty() && compatible)
             {
-                reason = compatible(subshader);
+                auto result = compatible(subshader);
+                if (!result)
+                {
+                    return std::unexpected(result.error());
+                }
+                reason = std::move(*result);
             }
             if (reason.empty())
             {
@@ -400,6 +530,6 @@ namespace vultra
             }
             diagnostics += "Rejected SubShader " + std::to_string(index) + ": " + reason + "\n";
         }
-        throw std::invalid_argument("Shader " + name + " has no applicable SubShader\n" + diagnostics);
+        return std::unexpected("Shader " + name + " has no applicable SubShader\n" + diagnostics);
     }
 } // namespace vultra

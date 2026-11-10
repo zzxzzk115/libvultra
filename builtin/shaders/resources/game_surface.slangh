@@ -58,6 +58,23 @@ SurfaceOutput defaultSurfaceOutput()
     return output;
 }
 
+// A non-scattering surface specifies radiance, rather than a subset of OpenPBR inputs.
+struct UnlitSurfaceOutput
+{
+    float3 color;
+    float opacity;
+    float alphaCutoff;
+};
+
+UnlitSurfaceOutput defaultUnlitSurfaceOutput()
+{
+    UnlitSurfaceOutput output;
+    output.color = float3(1);
+    output.opacity = 1;
+    output.alphaCutoff = 0.5;
+    return output;
+}
+
 float3 decodeSurfaceNormal(float4 sample, uint encoding = 0)
 {
     float3 normal = sample.xyz * 2 - 1;
@@ -142,5 +159,28 @@ SurfaceData vultraSurfaceData(SurfaceInput input, SurfaceOutput output)
     surface.coatIor = output.coatIor;
     surface.emission = output.emission;
     surface.occlusion = output.occlusion;
+    return surface;
+}
+
+SurfaceData vultraSurfaceData(SurfaceInput input, UnlitSurfaceOutput output)
+{
+    SurfaceData surface;
+    surface.worldPosition = input.worldPosition;
+    surface.geometricNormal = input.geometricNormal * (input.frontFace ? 1 : -1);
+    surface.normal = surface.geometricNormal;
+    // The shared G-buffer stores this model as zero scattering and emission-only transport.
+    surface.baseColor = float3(0);
+    surface.baseWeight = 0;
+    surface.metallic = 0;
+    surface.roughness = 0.5;
+    surface.emission = max(output.color, 0);
+    surface.occlusion = 0;
+    surface.specularColor = float3(0);
+    surface.specularWeight = 0;
+    surface.specularIor = 1.5;
+    surface.coatWeight = 0;
+    surface.coatRoughness = 0.03;
+    surface.coatIor = 1.5;
+    surface.baseDiffuseRoughness = 0;
     return surface;
 }

@@ -2,6 +2,7 @@
 
 #include <vultra/drivers/profiling/profiler.hpp>
 
+#include <expected>
 #include <filesystem>
 #include <span>
 #include <string>
@@ -29,6 +30,14 @@ namespace vultra
     class BenchmarkCapture
     {
     public:
+        // Frame and pass timestamp validity are independent.
+        std::expected<void, std::string>
+        addExpected(const FrameTiming& frame, std::span<const PassTiming> passes, bool gpuPassesValid);
+        std::expected<void, std::string> writeExpected(const std::filesystem::path& directory,
+                                                       const BenchmarkMetadata&     metadata,
+                                                       const VriDeviceDesc&         device) const;
+
+        // Legacy boundaries.
         void add(const FrameTiming& frame, std::span<const PassTiming> passes);
         void write(const std::filesystem::path& directory,
                    const BenchmarkMetadata&     metadata,
@@ -44,6 +53,7 @@ namespace vultra
         {
             FrameTiming             frame;
             std::vector<PassTiming> passes;
+            bool                    gpuPassesValid = false;
         };
 
         std::vector<Sample> m_Samples;

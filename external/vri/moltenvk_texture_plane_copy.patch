@@ -1,0 +1,245 @@
+--- a/source/backend_vk/objects_vk.h
++++ b/source/backend_vk/objects_vk.h
+@@ -38,13 +38,23 @@
+ 
+     struct CommandBufferVK
+     {
+-        ~CommandBufferVK() { DebugObjectsVK::Untrack(this); }
++        ~CommandBufferVK();
+ 
+         DeviceVK*       device;
+         VkCommandBuffer cmd;
+         // recording state
+         VriPipelineLayout*  boundLayout;
+         VkPipelineBindPoint boundBindPoint;
++        // MoltenVK plane-copy storage survives resets. The caller retires this allocator before reuse/destruction.
++        struct PlaneCopyBuffer
++        {
++            VkBuffer buffer = VK_NULL_HANDLE;
++            VmaAllocation allocation = VK_NULL_HANDLE;
++            VkDeviceSize size = 0;
++        };
++        std::vector<PlaneCopyBuffer> planeCopyBuffers;
++        size_t planeCopyCursor = 0;
++        VriResult recordingResult = VriResult_Success;
+     };
+ 
+     inline CommandAllocatorVK::~CommandAllocatorVK()
+@@ -124,6 +134,7 @@
+         uint32_t      mipNum;
+         uint32_t      layerNum;
+         VkImageType   type;
++        VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+         bool          owned;
+         // Set when the image owns a dedicated, non-VMA VkDeviceMemory (exportable path).
+         VkDeviceMemory dedicatedMemory     = VK_NULL_HANDLE;
+--- a/source/backend_vk/device_vk.h
++++ b/source/backend_vk/device_vk.h
+@@ -89,6 +89,7 @@
+         // Sampler anisotropy: enabled only when the physical device supports it, and requests are
+         // clamped to this limit (asking for more than maxSamplerAnisotropy is a validation error).
+         bool            HasSamplerAnisotropy() const { return m_hasSamplerAnisotropy; }
++        bool            IsMoltenVK() const { return m_isMoltenVK; }
+         bool            HasMultisampleArrayImage() const { return m_hasMultisampleArrayImage; }
+         float           MaxSamplerAnisotropy() const { return m_maxSamplerAnisotropy; }
+         VkTimeDomainKHR HostTimeDomain() const { return m_hostTimeDomain; }
+@@ -152,6 +153,7 @@
+         bool            m_hasCalibratedTimestamps      = false;
+         bool            m_hasDrawIndirectCount         = false;
+         bool            m_hasSeparateDepthStencilLayouts = false;
++        bool            m_isMoltenVK = false;
+         bool            m_hasMemoryBudget              = false;
+         bool            m_hasMemoryPriority            = false;
+         bool            m_hasPageableDeviceLocalMemory = false;
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -1000,6 +1000,7 @@
+         props11.pNext                              = &props12;
+         props2.pNext                               = &props11;
+         vkGetPhysicalDeviceProperties2(m_physicalDevice, &props2);
++        m_isMoltenVK = props12.driverID == VK_DRIVER_ID_MOLTENVK;
+ 
+         m_desc = {};
+         std::strncpy(m_desc.adapter.name, props.deviceName, sizeof(m_desc.adapter.name) - 1);
+--- a/source/backend_vk/interop_vk.cpp
++++ b/source/backend_vk/interop_vk.cpp
+@@ -62,6 +62,7 @@
+             t->mipNum   = desc->desc.mipNum ? desc->desc.mipNum : 1u;
+             t->layerNum = desc->desc.layerNum ? desc->desc.layerNum : 1u;
+             t->type     = ToVkImageType(desc->desc.type);
++            t->samples  = static_cast<VkSampleCountFlagBits>(desc->desc.sampleNum ? desc->desc.sampleNum : 1u);
+             t->owned    = false; // borrowed: DestroyTexture won't free it
+             *out        = ToHandle(t);
+             return VriResult_Success;
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -10,10 +10,23 @@
+ #include <algorithm>
+ #include <cstring>
+ #include <deque>
++#include <limits>
+ #include <vector>
+ 
+ namespace vri::vk
+ {
++    CommandBufferVK::~CommandBufferVK()
++    {
++        for (const auto& scratch : planeCopyBuffers)
++        {
++            if (scratch.buffer)
++            {
++                vmaDestroyBuffer(device->Allocator(), scratch.buffer, scratch.allocation);
++            }
++        }
++        DebugObjectsVK::Untrack(this);
++    }
++
+     VriMemory* ToHandle(MemoryVK* m)
+     {
+         VmaAllocationInfo info {};
+@@ -260,6 +273,8 @@
+         {
+             CommandBufferVK* c          = CB(cmd);
+             c->boundLayout              = nullptr;
++            c->planeCopyCursor          = 0;
++            c->recordingResult          = VriResult_Success;
+             VkCommandBufferBeginInfo bi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+             bi.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+             return vkBeginCommandBuffer(c->cmd, &bi) == VK_SUCCESS ? VriResult_Success : VriResult_Failure;
+@@ -267,7 +282,12 @@
+ 
+         VriResult VRI_CALL EndCommandBuffer(VriCommandBuffer* cmd)
+         {
+-            return vkEndCommandBuffer(CB(cmd)->cmd) == VK_SUCCESS ? VriResult_Success : VriResult_Failure;
++            CommandBufferVK* c = CB(cmd);
++            if (vkEndCommandBuffer(c->cmd) != VK_SUCCESS)
++            {
++                return VriResult_Failure;
++            }
++            return c->recordingResult;
+         }
+ 
+         // Bytes VMA actually reserved, which is the only figure worth reporting: recomputing a
+@@ -441,6 +461,7 @@
+             t->mipNum     = ici.mipLevels;
+             t->layerNum   = ici.arrayLayers;
+             t->type       = ici.imageType;
++            t->samples    = ici.samples;
+             t->owned      = true;
+             {
+                 VriObjectInfo info = MakeObjectInfo(VriObjectType_Texture);
+@@ -1722,6 +1743,99 @@
+             return c;
+         }
+ 
++        bool IsCombinedDepthStencil(VkFormat format)
++        {
++            return format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D32_SFLOAT_S8_UINT;
++        }
++
++        // MoltenVK 1.2.11 directly blits same-format images and overwrites both depth/stencil aspects.
++        // Its buffer-image commands honor aspectMask. Bridge only the selected plane with an explicit GPU dependency.
++        void CopyMoltenVKPlane(CommandBufferVK* command, const TextureVK* destination, const TextureVK* source,
++                               const VkImageCopy& copy)
++        {
++            if (command->recordingResult != VriResult_Success)
++            {
++                return;
++            }
++            if (source->format != destination->format ||
++                copy.srcSubresource.aspectMask != copy.dstSubresource.aspectMask ||
++                copy.srcSubresource.layerCount != copy.dstSubresource.layerCount)
++            {
++                command->recordingResult = VriResult_InvalidArgument;
++                return;
++            }
++            if (source->samples != VK_SAMPLE_COUNT_1_BIT || destination->samples != VK_SAMPLE_COUNT_1_BIT)
++            {
++                command->recordingResult = VriResult_Unsupported;
++                return;
++            }
++            uint32_t pixelBytes = 4;
++            if (copy.srcSubresource.aspectMask == VK_IMAGE_ASPECT_STENCIL_BIT)
++            {
++                pixelBytes = 1;
++            }
++            VkDeviceSize bytes = pixelBytes;
++            for (uint32_t factor : {copy.extent.width, copy.extent.height, copy.extent.depth,
++                                    copy.srcSubresource.layerCount})
++            {
++                if (!factor || bytes > std::numeric_limits<VkDeviceSize>::max() / factor)
++                {
++                    command->recordingResult = VriResult_InvalidArgument;
++                    return;
++                }
++                bytes *= factor;
++            }
++            if (command->planeCopyCursor == command->planeCopyBuffers.size())
++            {
++                command->planeCopyBuffers.emplace_back();
++            }
++            auto& scratch = command->planeCopyBuffers[command->planeCopyCursor++];
++            if (scratch.size < bytes)
++            {
++                if (scratch.buffer)
++                {
++                    vmaDestroyBuffer(command->device->Allocator(), scratch.buffer, scratch.allocation);
++                }
++                scratch = {};
++                VkBufferCreateInfo description = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
++                description.size = bytes;
++                description.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
++                description.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
++                VmaAllocationCreateInfo allocation = {};
++                allocation.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
++                if (vmaCreateBuffer(command->device->Allocator(), &description, &allocation,
++                                    &scratch.buffer, &scratch.allocation, nullptr) != VK_SUCCESS)
++                {
++                    command->recordingResult = VriResult_OutOfMemory;
++                    return;
++                }
++                scratch.size = bytes;
++            }
++            VkBufferImageCopy region = {};
++            region.imageSubresource = copy.srcSubresource;
++            region.imageOffset = copy.srcOffset;
++            region.imageExtent = copy.extent;
++            vkCmdCopyImageToBuffer(command->cmd, source->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
++                                   scratch.buffer, 1, &region);
++            VkBufferMemoryBarrier2 barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
++            barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
++            barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
++            barrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
++            barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
++            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
++            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
++            barrier.buffer = scratch.buffer;
++            barrier.size = VK_WHOLE_SIZE;
++            VkDependencyInfo dependency = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
++            dependency.bufferMemoryBarrierCount = 1;
++            dependency.pBufferMemoryBarriers = &barrier;
++            command->device->Ext().CmdPipelineBarrier2(command->cmd, &dependency);
++            region.imageSubresource = copy.dstSubresource;
++            region.imageOffset = copy.dstOffset;
++            vkCmdCopyBufferToImage(command->cmd, scratch.buffer, destination->image,
++                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
++        }
++
+         void VRI_CALL CmdCopyTexture(VriCommandBuffer*         cmd,
+                                      VriTexture*               dst,
+                                      VriTexture*               src,
+@@ -1745,6 +1859,14 @@
+             c.extent = {source.width ? source.width : std::max(s->extent.width >> source.mip, 1u),
+                         source.height ? source.height : std::max(s->extent.height >> source.mip, 1u),
+                         source.depth ? source.depth : std::max(s->extent.depth >> source.mip, 1u)};
++            if (CB(cmd)->device->IsMoltenVK() &&
++                (IsCombinedDepthStencil(s->format) || IsCombinedDepthStencil(d->format)) &&
++                (c.srcSubresource.aspectMask == VK_IMAGE_ASPECT_DEPTH_BIT ||
++                 c.srcSubresource.aspectMask == VK_IMAGE_ASPECT_STENCIL_BIT))
++            {
++                CopyMoltenVKPlane(CB(cmd), d, s, c);
++                return;
++            }
+             vkCmdCopyImage(CB(cmd)->cmd,
+                            s->image,
+                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,

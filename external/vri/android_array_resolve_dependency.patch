@@ -1,0 +1,83 @@
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -1480,10 +1480,24 @@
+                 Fen(fence)->device->ReportError("Wait: Vulkan timeline synchronization failed");
+         }
+ 
++        void RecordMemoryDependency(CommandBufferVK* c)
++        {
++            VkMemoryBarrier2 memory {VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
++            memory.srcStageMask  = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
++            memory.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
++            memory.dstStageMask  = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
++            memory.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
++            VkDependencyInfo dependency {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
++            dependency.memoryBarrierCount = 1;
++            dependency.pMemoryBarriers    = &memory;
++            c->device->Ext().CmdPipelineBarrier2(c->cmd, &dependency);
++        }
++
+         // ---- command recording ---------------------------------------------
+         void VRI_CALL CmdBeginRendering(VriCommandBuffer* cmd, const VriAttachmentsDesc* a)
+         {
+             CommandBufferVK*                       c = CB(cmd);
++            c->resolveDependency                     = false;
+             std::vector<VkRenderingAttachmentInfo> colors;
+             colors.reserve(a->colorNum);
+             for (uint32_t i = 0; i < a->colorNum; ++i)
+@@ -1504,6 +1518,10 @@
+                     ai.resolveImageView   = Desc(src.resolveView)->imageView;
+                     ai.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                     ai.resolveMode        = VK_RESOLVE_MODE_AVERAGE_BIT;
++#if defined(__ANDROID__)
++                    // Successive selected MSAA array resolves on Qualcomm can retain stale layer data.
++                    c->resolveDependency |= c->device->Desc().adapter.vendorId == 0x5143 && view->texture->layerNum > 1;
++#endif
+                 }
+                 colors.push_back(ai);
+             }
+@@ -1624,7 +1642,16 @@
+             }
+         }
+ 
+-        void VRI_CALL CmdEndRendering(VriCommandBuffer* cmd) { CB(cmd)->device->Ext().CmdEndRendering(CB(cmd)->cmd); }
++        void VRI_CALL CmdEndRendering(VriCommandBuffer* cmd)
++        {
++            CommandBufferVK* c = CB(cmd);
++            c->device->Ext().CmdEndRendering(c->cmd);
++            if (c->resolveDependency)
++            {
++                RecordMemoryDependency(c);
++                c->resolveDependency = false;
++            }
++        }
+ 
+         void VRI_CALL CmdSetViewports(VriCommandBuffer* cmd, const VriViewport* vps, uint32_t num)
+         {
+@@ -1773,15 +1800,7 @@
+             // The macOS plane-copy patch retains command recording failures for EndCommandBuffer.
+             if (c->recordingResult != VriResult_Success) return c->recordingResult;
+ #endif
+-            VkMemoryBarrier2 memory {VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+-            memory.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+-            memory.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+-            memory.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+-            memory.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+-            VkDependencyInfo dependency {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+-            dependency.memoryBarrierCount = 1;
+-            dependency.pMemoryBarriers = &memory;
+-            c->device->Ext().CmdPipelineBarrier2(c->cmd, &dependency);
++            RecordMemoryDependency(c);
+             return VriResult_Success;
+         }
+ 
+--- a/source/backend_vk/objects_vk.h
++++ b/source/backend_vk/objects_vk.h
+@@ -45,6 +45,7 @@
+         // recording state
+         VriPipelineLayout*  boundLayout;
+         VkPipelineBindPoint boundBindPoint;
++        bool                resolveDependency = false;
+     };
+ 
+     inline CommandAllocatorVK::~CommandAllocatorVK()

@@ -2,7 +2,11 @@
 
 #include <glm/mat4x4.hpp>
 
+#include <expected>
+#include <string>
+
 namespace vultra
 {
-    void validateRigidPose(const glm::mat4& pose);
+    std::expected<void, std::string> validateRigidPoseExpected(const glm::mat4& pose);
+    void                             validateRigidPose(const glm::mat4& pose); // Legacy boundary.
 } // namespace vultra

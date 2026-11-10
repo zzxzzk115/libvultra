@@ -1,0 +1,79 @@
+--- a/source/backend_metal/objects_mtl.h
++++ b/source/backend_metal/objects_mtl.h
+@@ -108,6 +108,9 @@
+         std::vector<id<MTLBuffer>> planeCopyScratch;
+         size_t planeCopyNext = 0;
+         VriResult recordingResult = VriResult_Success;
++        // A private GPU-only timeline orders alias activation without changing ordinary encoder lifetimes.
++        id<MTLEvent> aliasEvent = nil;
++        uint64_t aliasEventValue = 0;
+     };
+ 
+     struct BufferMTL
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -418,6 +418,7 @@
+                 DiscardCommands(commands);
+                 [commands->visBuffer release];
+                 [commands->tsScratch release];
++                [commands->aliasEvent release];
+                 for (auto scratch : commands->planeCopyScratch)
+                     [scratch release];
+                 delete commands;
+@@ -648,6 +649,8 @@
+             hd.size = desc->size;
+             hd.storageMode = desc->location == VriMemoryLocation_Device ? MTLStorageModePrivate : MTLStorageModeShared;
+             hd.type = MTLHeapTypePlacement;
++            // Ordinary VRI resource barriers rely on native tracking; heap defaults are untracked.
++            hd.hazardTrackingMode = MTLHazardTrackingModeTracked;
+             id<MTLHeap> heap = [Dev(device)->Device() newHeapWithDescriptor:hd];
+             [hd release];
+             if (!heap) return VriResult_OutOfMemory;
+@@ -1929,7 +1932,28 @@
+                                             threadsPerThreadgroup:c->boundPipeline->threadsPerThreadgroup];
+         }
+ 
+-        void VRI_CALL CmdBarrier(VriCommandBuffer*, const VriBarrierGroupDesc*) {} // Metal auto-tracks hazards
++        void VRI_CALL CmdBarrier(VriCommandBuffer*, const VriBarrierGroupDesc*) {} // Ordinary tracked-resource hazards.
++
++        VriResult VRI_CALL CmdAliasMemoryBarrier(VriCommandBuffer* cmd)
++        {
++            if (!cmd) return VriResult_InvalidArgument;
++            CommandBufferMTL* c = CB(cmd);
++            if (!c->cmd || c->renderEnc) return VriResult_InvalidArgument;
++            if (c->recordingResult != VriResult_Success) return c->recordingResult;
++            if (c->aliasEventValue == UINT64_MAX) return VriResult_Failure;
++            if (!c->aliasEvent)
++            {
++                c->aliasEvent = [c->device->Device() newEvent];
++                if (!c->aliasEvent) return VriResult_OutOfMemory;
++            }
++            EndAux(c);
++            // Signals complete prior passes; the matching wait gates later passes in this command buffer.
++            // Keep values monotonic across resets so an earlier recording cannot satisfy a new wait.
++            const uint64_t value = ++c->aliasEventValue;
++            [c->cmd encodeSignalEvent:c->aliasEvent value:value];
++            [c->cmd encodeWaitForEvent:c->aliasEvent value:value];
++            return VriResult_Success;
++        }
+ 
+         // ---- copies (blit encoder) -----------------------------------------
+         // Metal's blit fillBuffer fills a single BYTE, not an arbitrary uint32. That still covers the
+@@ -2410,6 +2434,7 @@
+             t.CmdDispatch = CmdDispatch;
+             t.CmdDispatchIndirect = CmdDispatchIndirect;
+             t.CmdBarrier = CmdBarrier;
++            t.CmdAliasMemoryBarrier = CmdAliasMemoryBarrier;
+             t.CmdCopyBuffer = CmdCopyBuffer;
+             t.CmdCopyTexture = CmdCopyTexture;
+             t.CmdUploadBufferToTexture = CmdUploadBufferToTexture;
+--- a/source/backend_metal/device_mtl.mm
++++ b/source/backend_metal/device_mtl.mm
+@@ -253,6 +253,7 @@
+         m_desc.hasClearStorageTexture = VRI_TRUE;
+         m_desc.hasClearStorageTextureRange = VRI_TRUE;
+         m_desc.bufferTextureGranularity = 1; // Placement heap size/alignment includes native layout constraints.
++        m_desc.hasAliasMemoryBarrier = VRI_TRUE;
+         m_desc.hasGeometryShader = VRI_FALSE; // Metal has no geometry stage
+         m_desc.hasTessellation = VRI_FALSE;   // Metal tessellation differs from VK; not in MVP
+         m_desc.hasCustomBorderColor = VRI_TRUE;

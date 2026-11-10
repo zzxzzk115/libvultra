@@ -1,0 +1,105 @@
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -1406,32 +1406,70 @@
+             ri.colorAttachmentCount = static_cast<uint32_t>(colors.size());
+             ri.pColorAttachments    = colors.data();
+ 
+-            VkRenderingAttachmentInfo depth   = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+-            VkRenderingAttachmentInfo stencil = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
++            auto depthStencilInfo = [](const VriAttachmentDesc& source) {
++                VkRenderingAttachmentInfo info {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
++                info.imageView = Desc(source.view)->imageView;
++                info.imageLayout = source.readOnly ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL :
++                                                     VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
++                info.loadOp = source.loadOp == VriAttachmentLoadOp_Clear ? VK_ATTACHMENT_LOAD_OP_CLEAR :
++                              source.loadOp == VriAttachmentLoadOp_DontCare ? VK_ATTACHMENT_LOAD_OP_DONT_CARE :
++                                                                            VK_ATTACHMENT_LOAD_OP_LOAD;
++                info.storeOp = source.readOnly ? VK_ATTACHMENT_STORE_OP_NONE :
++                               source.storeOp == VriAttachmentStoreOp_DontCare ? VK_ATTACHMENT_STORE_OP_DONT_CARE :
++                                                                                VK_ATTACHMENT_STORE_OP_STORE;
++                info.clearValue.depthStencil.depth = source.clearValue.depthStencil.depth;
++                info.clearValue.depthStencil.stencil = source.clearValue.depthStencil.stencil;
++                return info;
++            };
++            VkRenderingAttachmentInfo depth {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
++            VkRenderingAttachmentInfo stencil {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+             if (a->depth && a->depth->view)
+             {
+-                const DescriptorVK* view = Desc(a->depth->view);
+-                depth.imageView          = view->imageView;
+-                depth.imageLayout        = a->depth->readOnly ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL :
+-                                                                  VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+-                depth.loadOp             = a->depth->loadOp == VriAttachmentLoadOp_Clear ? VK_ATTACHMENT_LOAD_OP_CLEAR :
+-                                           a->depth->loadOp == VriAttachmentLoadOp_DontCare ?
+-                                               VK_ATTACHMENT_LOAD_OP_DONT_CARE : VK_ATTACHMENT_LOAD_OP_LOAD;
+-                depth.storeOp            = a->depth->readOnly ? VK_ATTACHMENT_STORE_OP_NONE :
+-                                           a->depth->storeOp == VriAttachmentStoreOp_DontCare ?
+-                                               VK_ATTACHMENT_STORE_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE;
+-                depth.clearValue.depthStencil.depth   = a->depth->clearValue.depthStencil.depth;
+-                depth.clearValue.depthStencil.stencil = a->depth->clearValue.depthStencil.stencil;
+-                ri.pDepthAttachment                   = &depth;
+-                // Attach the stencil aspect too when the format carries stencil.
+-                const VkFormat f = view->format;
+-                if (f == VK_FORMAT_S8_UINT || f == VK_FORMAT_D16_UNORM_S8_UINT || f == VK_FORMAT_D24_UNORM_S8_UINT ||
+-                    f == VK_FORMAT_D32_SFLOAT_S8_UINT)
++                depth = depthStencilInfo(*a->depth);
++                ri.pDepthAttachment = &depth;
++            }
++            const VriAttachmentDesc* stencilSource = a->stencil;
++            if (!stencilSource && a->depth && a->depth->view)
++            {
++                // Preserve the combined-depth convenience; an explicit stencil slot owns its operations.
++                const VkFormat format = Desc(a->depth->view)->format;
++                if (format == VK_FORMAT_D16_UNORM_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT ||
++                    format == VK_FORMAT_D32_SFLOAT_S8_UINT)
++                    stencilSource = a->depth;
++            }
++            if (stencilSource && stencilSource->view)
++            {
++                stencil = depthStencilInfo(*stencilSource);
++                ri.pStencilAttachment = &stencil;
++            }
++
++#if defined(__APPLE__)
++            // MoltenVK 1.2.11 otherwise copies stencil-only load/store operations to the depth plane.
++            if (!ri.pDepthAttachment && ri.pStencilAttachment)
++            {
++                const VkFormat format = Desc(stencilSource->view)->format;
++                if (format == VK_FORMAT_D16_UNORM_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT ||
++                    format == VK_FORMAT_D32_SFLOAT_S8_UINT)
+                 {
+-                    stencil               = depth;
+-                    ri.pStencilAttachment = &stencil;
++                    depth = stencil;
++                    depth.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
++                    depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
++                    ri.pDepthAttachment = &depth;
++                    // The preserving depth load is backend work, so synchronize it here as well.
++                    VkMemoryBarrier2 memory {VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
++                    memory.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
++                    memory.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
++                    memory.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
++                                          VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
++                    memory.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
++                                           VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
++                    VkDependencyInfo dependency {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
++                    dependency.memoryBarrierCount = 1;
++                    dependency.pMemoryBarriers = &memory;
++                    c->device->Ext().CmdPipelineBarrier2(c->cmd, &dependency);
+                 }
+             }
++#endif
+ 
+             c->device->Ext().CmdBeginRendering(c->cmd, &ri);
+ 
+--- a/include/vri/vri_command.h
++++ b/include/vri/vri_command.h
+@@ -48,7 +48,7 @@
+     const VriAttachmentDesc* colors;
+     uint32_t                 colorNum;
+     const VriAttachmentDesc* depth;    /* NULL = none */
+-    const VriAttachmentDesc* stencil;  /* NULL = none */
++    const VriAttachmentDesc* stencil;  /* NULL = inherit a combined depth view; explicit operations override */
+     VriRect                  renderArea;
+     uint32_t                 layerNum;
+     uint32_t                 viewMask; /* multiview; 0 = single view */

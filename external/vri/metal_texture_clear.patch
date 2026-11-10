@@ -1,0 +1,520 @@
+--- a/LICENSE-slang-clear.txt
++++ b/LICENSE-slang-clear.txt
+@@ -0,0 +1,29 @@
++SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++
++    Licensed under the Apache License, Version 2.0 (the "License");
++    you may not use this file except in compliance with the License.
++    You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++    Unless required by applicable law or agreed to in writing, software
++    distributed under the License is distributed on an "AS IS" BASIS,
++    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++    See the License for the specific language governing permissions and
++    limitations under the License.
++
++LLVM Exceptions to the Apache 2.0 License
++
++As an exception, if, as a result of your compiling your source code, portions
++of this Software are embedded into an Object form of such source code, you
++may redistribute such embedded portions in such Object form without complying
++with the conditions of Sections 4(a), 4(b) and 4(d) of the License.
++
++In addition, if you combine or link compiled forms of this Software with
++software that is licensed under the GPLv2 ("Combined Software") and if a
++court of competent jurisdiction determines that the patent provision (Section
++3), the indemnity provision (Section 9) or other Section of the License
++conflicts with the conditions of the GPLv2, you may retroactively and
++prospectively choose to deem waived or otherwise exclude such Section(s) of
++the License, but only in their entirety and only with respect to the Combined
++Software.
+--- a/source/backend_metal/clear_texture_mtl.h
++++ b/source/backend_metal/clear_texture_mtl.h
+@@ -0,0 +1,137 @@
++// Adapted from shader-slang/slang-rhi, commit 30250fa108081ef1c2949c332ec41d104ffa1c95.
++// Source: src/metal/shaders/clear-texture.metal
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++// See LICENSE-slang-clear.txt for the upstream license and LLVM exception.
++#pragma once
++
++namespace vri::mtl
++{
++    inline constexpr const char kClearTextureSource[] = R"VRI_MSL(
++// This file implements Metal kernels for clearing textures.
++
++#include <metal_stdlib>
++using namespace metal;
++
++struct Params
++{
++    uint width;
++    uint height;
++    uint depth;
++    uint layer;
++    uint mip;
++};
++
++#define DEFINE_CLEAR_TEXTURE1D(T)                                                                                      \
++    kernel void clear_texture1d_##T(                                                                                   \
++        texture1d<T, access::write> texture [[texture(0)]],                                                            \
++        constant Params& params [[buffer(0)]],                                                                         \
++        constant T##4 & value [[buffer(1)]],                                                                           \
++        uint gid [[thread_position_in_grid]]                                                                           \
++    )                                                                                                                  \
++    {                                                                                                                  \
++        if (gid < params.width)                                                                                        \
++        {                                                                                                              \
++            texture.write(value, gid /*, params.mip*/);                                                                \
++        }                                                                                                              \
++    }
++
++#define DEFINE_CLEAR_TEXTURE1D_ARRAY(T)                                                                                \
++    kernel void clear_texture1d_array_##T(                                                                             \
++        texture1d_array<T, access::write> texture [[texture(0)]],                                                      \
++        constant Params& params [[buffer(0)]],                                                                         \
++        constant T##4 & value [[buffer(1)]],                                                                           \
++        uint gid [[thread_position_in_grid]]                                                                           \
++    )                                                                                                                  \
++    {                                                                                                                  \
++        if (gid < params.width)                                                                                        \
++        {                                                                                                              \
++            texture.write(value, gid, params.layer /*, params.mip*/);                                                  \
++        }                                                                                                              \
++    }
++
++#define DEFINE_CLEAR_TEXTURE2D(T)                                                                                      \
++    kernel void clear_texture2d_##T(                                                                                   \
++        texture2d<T, access::write> texture [[texture(0)]],                                                            \
++        constant Params& params [[buffer(0)]],                                                                         \
++        constant T##4 & value [[buffer(1)]],                                                                           \
++        uint2 gid [[thread_position_in_grid]]                                                                          \
++    )                                                                                                                  \
++    {                                                                                                                  \
++        if (gid.x < params.width && gid.y < params.height)                                                             \
++        {                                                                                                              \
++            texture.write(value, gid, params.mip);                                                                     \
++        }                                                                                                              \
++    }
++
++#define DEFINE_CLEAR_TEXTURE2D_ARRAY(T)                                                                                \
++    kernel void clear_texture2d_array_##T(                                                                             \
++        texture2d_array<T, access::write> texture [[texture(0)]],                                                      \
++        constant Params& params [[buffer(0)]],                                                                         \
++        constant T##4 & value [[buffer(1)]],                                                                           \
++        uint2 gid [[thread_position_in_grid]]                                                                          \
++    )                                                                                                                  \
++    {                                                                                                                  \
++        if (gid.x < params.width && gid.y < params.height)                                                             \
++        {                                                                                                              \
++            texture.write(value, gid, params.layer, params.mip);                                                       \
++        }                                                                                                              \
++    }
++
++#define DEFINE_CLEAR_TEXTURE3D(T)                                                                                      \
++    kernel void clear_texture3d_##T(                                                                                   \
++        texture3d<T, access::write> texture [[texture(0)]],                                                            \
++        constant Params& params [[buffer(0)]],                                                                         \
++        constant T##4 & value [[buffer(1)]],                                                                           \
++        uint3 gid [[thread_position_in_grid]]                                                                          \
++    )                                                                                                                  \
++    {                                                                                                                  \
++        if (gid.x < params.width && gid.y < params.height && gid.z < params.depth)                                     \
++        {                                                                                                              \
++            texture.write(value, gid, params.mip);                                                                     \
++        }                                                                                                              \
++    }
++
++#define DEFINE_CLEAR_TEXTURECUBE(T)                                                                                    \
++    kernel void clear_texturecube_##T(                                                                                 \
++        texturecube<T, access::write> texture [[texture(0)]],                                                          \
++        constant Params& params [[buffer(0)]],                                                                         \
++        constant T##4 & value [[buffer(1)]],                                                                           \
++        uint2 gid [[thread_position_in_grid]]                                                                          \
++    )                                                                                                                  \
++    {                                                                                                                  \
++        if (gid.x < params.width && gid.y < params.height)                                                             \
++        {                                                                                                              \
++            texture.write(value, gid, params.layer, params.mip);                                                       \
++        }                                                                                                              \
++    }
++
++#define DEFINE_CLEAR_TEXTURECUBE_ARRAY(T)                                                                              \
++    kernel void clear_texturecube_array_##T(                                                                           \
++        texturecube_array<T, access::write> texture [[texture(0)]],                                                    \
++        constant Params& params [[buffer(0)]],                                                                         \
++        constant T##4 & value [[buffer(1)]],                                                                           \
++        uint2 gid [[thread_position_in_grid]]                                                                          \
++    )                                                                                                                  \
++    {                                                                                                                  \
++        if (gid.x < params.width && gid.y < params.height)                                                             \
++        {                                                                                                              \
++            texture.write(value, gid, params.layer % 6, params.layer / 6, params.mip);                                 \
++        }                                                                                                              \
++    }
++
++
++#define DEFINE_CLEAR(type)                                                                                             \
++    DEFINE_CLEAR_TEXTURE1D(type)                                                                                       \
++    DEFINE_CLEAR_TEXTURE1D_ARRAY(type)                                                                                 \
++    DEFINE_CLEAR_TEXTURE2D(type)                                                                                       \
++    DEFINE_CLEAR_TEXTURE2D_ARRAY(type)                                                                                 \
++    DEFINE_CLEAR_TEXTURE3D(type)                                                                                       \
++    DEFINE_CLEAR_TEXTURECUBE(type)                                                                                     \
++    DEFINE_CLEAR_TEXTURECUBE_ARRAY(type)
++
++DEFINE_CLEAR(float)
++DEFINE_CLEAR(half)
++DEFINE_CLEAR(uint)
++DEFINE_CLEAR(int)
++)VRI_MSL";
++}
+--- a/source/backend_metal/device_mtl.h
++++ b/source/backend_metal/device_mtl.h
+@@ -23,15 +23,20 @@
+         QueueMTL*           GetQueue(VriQueueType type) { return &m_queueObjs[type]; }
+         const VriDeviceDesc& Desc() const { return m_desc; }
+ 
++        id<MTLComputePipelineState> ClearPipeline(MTLTextureType type, VriFormat format) const;
++
+         void ReportError(const char* message) const;
+         void Diagnostic(VriMessageSeverity severity, const char* message) const;
+ 
+     private:
++        VriResult InitClearPipelines();
+         void FillDeviceDesc();
+         void FillRegistry();
+         bool HasTimestampCounterSet() const;
+         bool SupportsArgumentBufferBindless() const;
+ 
++        // Three typed clear kernels per supported native texture shape, owned for the device lifetime.
++        id<MTLComputePipelineState> m_clearPipelines[8][3] = {};
+         MTLSharedEventListener* m_eventListener = nil;
+         id<MTLDevice>        m_device = nil;
+         id<MTLCommandQueue>  m_queue = nil;
+--- a/source/backend_metal/device_mtl.mm
++++ b/source/backend_metal/device_mtl.mm
+@@ -1,6 +1,8 @@
+ // device_mtl.mm - native Metal device creation, capability query, interface table.
+ 
+ #include "device_mtl.h"
++#include "clear_texture_mtl.h"
++#include "core/format_traits.h"
+ #include "core_mtl.h"
+ #include "swapchain_mtl.h"
+ #include "rt_mtl.h"
+@@ -24,6 +26,16 @@
+         if (m_queue) [m_queue release];
+         if (m_eventListener)
+             [m_eventListener release];
++        for (auto& shape : m_clearPipelines)
++        {
++            for (auto pipeline : shape)
++            {
++                if (pipeline)
++                {
++                    [pipeline release];
++                }
++            }
++        }
+         if (m_device) [m_device release];
+     }
+ 
+@@ -106,6 +118,12 @@
+                 ReportError("inline ray query is not supported");
+                 return VriResult_Unsupported;
+             }
++        }
++
++        const auto clearResult = InitClearPipelines();
++        if (clearResult != VriResult_Success)
++        {
++            return clearResult;
+         }
+ 
+         m_eventListener = [[MTLSharedEventListener alloc] init];
+@@ -115,6 +133,80 @@
+         m_desc.coordinates = desc.coordinates;
+         FillRegistry();
+         return VriResult_Success;
++    }
++
++    VriResult DeviceMTL::InitClearPipelines()
++    {
++        @autoreleasepool
++        {
++            NSError* error = nil;
++            MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
++            options.languageVersion = MTLLanguageVersion3_0;
++            id<MTLLibrary> library = [m_device newLibraryWithSource:[NSString stringWithUTF8String:kClearTextureSource]
++                                                          options:options error:&error];
++            [options release];
++            if (!library)
++            {
++                ReportError(error ? [[error localizedDescription] UTF8String] : "Compile texture clear kernels failed");
++                return VriResult_Failure;
++            }
++            struct Shape { MTLTextureType type; const char* name; };
++            const Shape shapes[] = {
++                {MTLTextureType1D, "texture1d"},
++                {MTLTextureType1DArray, "texture1d_array"},
++                {MTLTextureType2D, "texture2d"},
++                {MTLTextureType2DArray, "texture2d_array"},
++                {MTLTextureType3D, "texture3d"},
++                {MTLTextureTypeCube, "texturecube"},
++                {MTLTextureTypeCubeArray, "texturecube_array"},
++            };
++            const char* types[] = {"float", "uint", "int"};
++            for (const auto& shape : shapes)
++            {
++                for (size_t type = 0; type < 3; ++type)
++                {
++                    char name[80];
++                    std::snprintf(name, sizeof(name), "clear_%s_%s", shape.name, types[type]);
++                    id<MTLFunction> function = [library newFunctionWithName:[NSString stringWithUTF8String:name]];
++                    if (!function)
++                    {
++                        ReportError("Missing texture clear kernel");
++                        [library release];
++                        return VriResult_Failure;
++                    }
++                    m_clearPipelines[shape.type][type] = [m_device newComputePipelineStateWithFunction:function error:&error];
++                    [function release];
++                    if (!m_clearPipelines[shape.type][type])
++                    {
++                        ReportError(error ? [[error localizedDescription] UTF8String] : "Create texture clear pipeline failed");
++                        [library release];
++                        return VriResult_Failure;
++                    }
++                }
++            }
++            [library release];
++        }
++        return VriResult_Success;
++    }
++
++    id<MTLComputePipelineState> DeviceMTL::ClearPipeline(MTLTextureType type, VriFormat format) const
++    {
++        if (type >= 8)
++        {
++            return nil;
++        }
++        size_t valueType = vri::FormatIsInteger(format) ? 1 : 0;
++        switch (format)
++        {
++            case VriFormat_R8_SINT: case VriFormat_RG8_SINT: case VriFormat_RGBA8_SINT:
++            case VriFormat_R16_SINT: case VriFormat_RG16_SINT: case VriFormat_RGBA16_SINT:
++            case VriFormat_R32_SINT: case VriFormat_RG32_SINT: case VriFormat_RGBA32_SINT:
++                valueType = 2;
++                break;
++            default:
++                break;
++        }
++        return m_clearPipelines[type][valueType];
+     }
+ 
+     // True when descriptor sets can be expressed as Metal 3 argument buffers. Tier 2 is the
+@@ -157,6 +249,7 @@
+         for (int t = 0; t < VriQueueType_Count; ++t)
+             m_desc.queueCount[t] = 1;
+         m_desc.hasComputeShader = VRI_TRUE;
++        m_desc.hasClearStorageTexture = VRI_TRUE;
+         m_desc.hasGeometryShader = VRI_FALSE; // Metal has no geometry stage
+         m_desc.hasTessellation = VRI_FALSE;   // Metal tessellation differs from VK; not in MVP
+         m_desc.hasCustomBorderColor = VRI_TRUE;
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -298,23 +298,45 @@
+ 
+         VriFormatSupportFlags VRI_CALL GetFormatSupport(const VriDevice* device, VriFormat format)
+         {
+-            if (ToMtlFormat(format) == MTLPixelFormatInvalid && ToMtlVertexFormat(format) == MTLVertexFormatInvalid)
+-                return VriFormatSupport_None;
+-            VriFormatSupportFlags r = VriFormatSupport_VertexBuffer;
+-            if (ToMtlFormat(format) != MTLPixelFormatInvalid)
+-            {
+-                r |= VriFormatSupport_Texture;
+-                if (!vri::FormatIsInteger(format))
+-                {
+-                    if (!vri::FormatIsFloat32Color(format) || [Dev(device)->Device() supports32BitFloatFiltering])
+-                        r |= VriFormatSupport_LinearFilter;
+-                }
+-                if (FormatHasDepth(format) || FormatHasStencil(format))
+-                    r |= VriFormatSupport_DepthStencil;
+-                else
+-                    r |= VriFormatSupport_ColorAttachment | VriFormatSupport_Blend | VriFormatSupport_StorageTexture;
+-            }
+-            return r;
++            VriFormatSupportFlags result = ToMtlVertexFormat(format) != MTLVertexFormatInvalid ?
++                VriFormatSupport_VertexBuffer : VriFormatSupport_None;
++            const auto native = ToMtlFormat(format);
++            if (native == MTLPixelFormatInvalid)
++            {
++                return result;
++            }
++            id<MTLDevice> metal = Dev(device)->Device();
++            const bool compressed = TextureCopyBlock(format).bytes != 0;
++            if (compressed)
++            {
++                const bool astc = format >= VriFormat_ASTC_4X4_UNORM && format <= VriFormat_ASTC_6X6_SRGB;
++                if ((astc && ![metal supportsFamily:MTLGPUFamilyApple2]) ||
++                    (!astc && ![metal supportsBCTextureCompression]))
++                {
++                    return result;
++                }
++                return result | VriFormatSupport_Texture | VriFormatSupport_LinearFilter;
++            }
++            if (format == VriFormat_D24_UNORM_S8_UINT && ![metal isDepth24Stencil8PixelFormatSupported])
++            {
++                return result;
++            }
++            result |= VriFormatSupport_Texture;
++            if (!vri::FormatIsInteger(format) &&
++                (!vri::FormatIsFloat32Color(format) || [metal supports32BitFloatFiltering]))
++            {
++                result |= VriFormatSupport_LinearFilter;
++            }
++            if (vri::FormatIsDepthStencil(format))
++            {
++                return result | VriFormatSupport_DepthStencil;
++            }
++            result |= VriFormatSupport_ColorAttachment | VriFormatSupport_StorageTexture;
++            if (!vri::FormatIsInteger(format))
++            {
++                result |= VriFormatSupport_Blend;
++            }
++            return result;
+         }
+ 
+         VriResult VRI_CALL GetQueue(VriDevice* device, VriQueueType type, uint32_t, VriQueue** outQueue)
+@@ -522,6 +544,15 @@
+         VriResult VRI_CALL CreateTexture(VriDevice* device, const VriTextureDesc* desc, VriTexture** out)
+         {
+             DeviceMTL* d = Dev(device);
++            const auto support = GetFormatSupport(device, desc->format);
++            if (!(support & VriFormatSupport_Texture) ||
++                ((desc->usage & VriTextureUsage_ShaderResourceStorage) && !(support & VriFormatSupport_StorageTexture)) ||
++                ((desc->usage & VriTextureUsage_ColorAttachment) && !(support & VriFormatSupport_ColorAttachment)) ||
++                ((desc->usage & VriTextureUsage_DepthStencilAttachment) && !(support & VriFormatSupport_DepthStencil)) ||
++                ((desc->usage & VriTextureUsage_ShaderResourceStorage) && desc->sampleNum > 1))
++            {
++                return VriResult_Unsupported;
++            }
+             MTLTextureDescriptor* td = BuildTextureDescriptor(desc);
+             td.storageMode = MTLStorageModePrivate;
+ 
+@@ -1829,10 +1860,77 @@
+             EnsureBlit(c);
+             [c->blitEnc fillBuffer:buf range:NSMakeRange((NSUInteger)offset, (NSUInteger)len) value:b];
+         }
+-        // Metal clears textures via a render pass loadAction, not an out-of-pass command.
+-        void VRI_CALL CmdClearStorageTexture(VriCommandBuffer* cmd, VriTexture*, const VriClearColor*)
+-        {
+-            CB(cmd)->device->ReportError("CmdClearStorageTexture: unsupported on Metal");
++        // A private compute encoder preserves storage-only usage and the caller's cached compute state.
++        void VRI_CALL CmdClearStorageTexture(VriCommandBuffer* cmd, VriTexture* texture, const VriClearColor* value)
++        {
++            CommandBufferMTL* c = CB(cmd);
++            TextureMTL* t = Tex(texture);
++            if (!t->texture || !value || t->sampleNum != 1 ||
++                !([t->texture usage] & MTLTextureUsageShaderWrite) ||
++                vri::FormatIsDepthStencil(t->format) || TextureCopyBlock(t->format).bytes != 0)
++            {
++                c->device->ReportError("CmdClearStorageTexture requires a writable, single-sample color texture");
++                return;
++            }
++            const auto type = [t->texture textureType];
++            id<MTLComputePipelineState> pipeline = c->device->ClearPipeline(type, t->format);
++            if (!pipeline)
++            {
++                c->device->ReportError("CmdClearStorageTexture: unsupported native texture type");
++                return;
++            }
++            EndAux(c);
++            // C++ callers need not have a Cocoa run loop that drains autoreleased encoder objects.
++            @autoreleasepool
++            {
++                id<MTLComputeCommandEncoder> encoder = [c->cmd computeCommandEncoder];
++                if (!encoder)
++                {
++                    c->device->ReportError("CmdClearStorageTexture: create private compute encoder failed");
++                    return;
++                }
++                [encoder setLabel:@"VRI.ClearStorageTexture"];
++                [encoder setComputePipelineState:pipeline];
++                [encoder setTexture:t->texture atIndex:0];
++                [encoder setBytes:value length:sizeof(*value) atIndex:1];
++                struct Parameters
++                {
++                    uint32_t width;
++                    uint32_t height;
++                    uint32_t depth;
++                    uint32_t layer;
++                    uint32_t mip;
++                };
++                Parameters parameters {t->width, t->height, t->depth, 0, 0};
++                uint32_t layers = 1;
++                if (type == MTLTextureType1DArray || type == MTLTextureType2DArray)
++                {
++                    layers = (uint32_t)[t->texture arrayLength];
++                }
++                else if (type == MTLTextureTypeCube || type == MTLTextureTypeCubeArray)
++                {
++                    layers = (uint32_t)[t->texture arrayLength] * 6;
++                }
++                MTLSize threads = MTLSizeMake(8, 8, 1);
++                if (type == MTLTextureType1D || type == MTLTextureType1DArray)
++                {
++                    threads = MTLSizeMake(64, 1, 1);
++                }
++                else if (type == MTLTextureType3D)
++                {
++                    threads = MTLSizeMake(4, 4, 4);
++                }
++                const MTLSize groups = MTLSizeMake((parameters.width + threads.width - 1) / threads.width,
++                                                 (parameters.height + threads.height - 1) / threads.height,
++                                                 (parameters.depth + threads.depth - 1) / threads.depth);
++                for (uint32_t layer = 0; layer < layers; ++layer)
++                {
++                    parameters.layer = layer;
++                    [encoder setBytes:&parameters length:sizeof(parameters) atIndex:0];
++                    [encoder dispatchThreadgroups:groups threadsPerThreadgroup:threads];
++                }
++                [encoder endEncoding];
++            }
+         }
+         void VRI_CALL CmdCopyBuffer(VriCommandBuffer* cmd, VriBuffer* dst, VriBuffer* src, const VriBufferCopyDesc* r)
+         {
+--- a/source/backend_metal/conversions_mtl.h
++++ b/source/backend_metal/conversions_mtl.h
+@@ -14,8 +14,7 @@
+ namespace vri::mtl
+ {
+     // VriFormat -> MTLPixelFormat. Returns MTLPixelFormatInvalid for unmapped.
+-    // Note: D24_UNORM_S8 is not available on Apple Silicon, so it (and the
+-    // combined D32S8) both map to Depth32Float_Stencil8 - the portable choice.
++    // D24S8 remains its native format; GetFormatSupport rejects devices that do not provide it.
+     inline MTLPixelFormat ToMtlFormat(VriFormat f)
+     {
+         static constexpr vri::ConvRow<VriFormat, MTLPixelFormat> kTable[] = {
+@@ -84,7 +83,7 @@
+             {VriFormat_D16_UNORM,       MTLPixelFormatDepth16Unorm},
+             {VriFormat_D32_SFLOAT,      MTLPixelFormatDepth32Float},
+             {VriFormat_S8_UINT,         MTLPixelFormatStencil8},
+-            {VriFormat_D24_UNORM_S8_UINT,  MTLPixelFormatDepth32Float_Stencil8},
++            {VriFormat_D24_UNORM_S8_UINT,  MTLPixelFormatDepth24Unorm_Stencil8},
+             {VriFormat_D32_SFLOAT_S8_UINT, MTLPixelFormatDepth32Float_Stencil8},
+         };
+         return vri::MapOr(f, kTable, MTLPixelFormatInvalid);
+--- a/include/vri/vri_core.h
++++ b/include/vri/vri_core.h
+@@ -236,7 +236,7 @@
+     /* Clear a storage (UAV/image) texture's mip 0 (all layers) to a color value, outside a render
+      * pass. `value` is interpreted per the texture's format - fill the f32 (float/normalized) or
+      * u32 / i32 (integer) union member that matches it. Gated by VriDeviceDesc::hasClearStorageTexture
+-     * (WebGPU/Metal can't clear a texture outside a pass). Like CmdClearStorageBuffer this is a
++     * (WebGPU doesn't implement this operation). Metal uses private typed kernels. Like CmdClearStorageBuffer this is a
+      * transfer-domain op: barrier the texture to CopyDestination before, and to its next use after. */
+     void(VRI_CALL* CmdClearStorageTexture)(VriCommandBuffer* cmd, VriTexture* texture, const VriClearColor* value);
+ 

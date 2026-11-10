@@ -19,8 +19,15 @@ extern "C" void android_main(android_app* app)
         OfflineOptions       options {.output = root / "direct"};
         runOfflineExample(options, &shaders);
         const auto definition = shaders.read("color_gain.vgraph");
-        options.graph         = vultra::GraphDefinition::parse(
+        auto       graph      = vultra::GraphDefinition::parseExpected(
             std::string_view(reinterpret_cast<const char*>(definition.data()), definition.size()));
+        if (!graph)
+        {
+            vultra::Logger::app().error("Offline graph: {}", graph.error());
+            GameActivity_finish(app->activity);
+            return;
+        }
+        options.graph  = std::move(*graph);
         options.output = root / "graph";
         runOfflineExample(options, &shaders);
         vultra::Logger::app().info("OFFLINE_EXAMPLE_PASSED: {}", root.string());

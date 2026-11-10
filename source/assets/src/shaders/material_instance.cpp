@@ -1,84 +1,173 @@
 #include <vultra/assets/shader_asset.hpp>
+#include <vultra/drivers/rhi/shader_uniform_block.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
-#include <cstring>
+#include <span>
 #include <stdexcept>
 
 namespace vultra
 {
     ShaderPropertyValue MaterialInstance::value(const ShaderAsset& asset, std::string_view name) const
     {
-        const auto& property = asset.property(name);
-        const auto  found    = m_Overrides.find(name);
-        if (found != m_Overrides.end())
+        auto value = valueExpected(asset, name);
+        if (!value)
         {
-            return found->second;
+            throw std::invalid_argument(value.error());
         }
-        return property.defaultValue;
+        return std::move(*value);
+    }
+
+    std::expected<ShaderPropertyValue, std::string> MaterialInstance::valueExpected(const ShaderAsset& asset,
+                                                                                    std::string_view   name) const
+    {
+        auto property = asset.propertyExpected(name);
+        if (!property)
+        {
+            return std::unexpected(property.error());
+        }
+        const auto found = m_Overrides.find(name);
+        return found == m_Overrides.end() ? (*property)->defaultValue : found->second;
     }
 
     void MaterialInstance::set(const ShaderAsset& asset, std::string_view name, ShaderPropertyValue value)
     {
-        const auto& property = asset.property(name);
-        property.validate(value);
-        if (const auto found = m_Overrides.find(name); found != m_Overrides.end() && found->second == value)
+        if (auto set = setExpected(asset, name, std::move(value)); !set)
         {
-            return;
+            throw std::invalid_argument(set.error());
         }
-        if (value == property.defaultValue)
+    }
+
+    std::expected<void, std::string>
+    MaterialInstance::setExpected(const ShaderAsset& asset, std::string_view name, ShaderPropertyValue value)
+    {
+        auto property = asset.propertyExpected(name);
+        if (!property)
         {
-            reset(name);
-            return;
+            return std::unexpected(property.error());
+        }
+        if (auto valid = (*property)->validateExpected(value); !valid)
+        {
+            return valid;
+        }
+        const auto found = m_Overrides.find(name);
+        if (found != m_Overrides.end() && found->second == value)
+        {
+            return {};
+        }
+        if (value == (*property)->defaultValue)
+        {
+            return resetExpected(name);
+        }
+        if (m_Revision == UINT64_MAX)
+        {
+            return std::unexpected("Material revision exhausted");
         }
         m_Overrides.insert_or_assign(std::string(name), std::move(value));
         ++m_Revision;
+        return {};
     }
 
     void MaterialInstance::setVariant(const ShaderAsset& asset, std::string value)
     {
-        asset.variant(value);
-        if (value != variant)
+        if (auto selected = setVariantExpected(asset, std::move(value)); !selected)
         {
-            variant = std::move(value);
-            ++m_Revision;
+            throw std::invalid_argument(selected.error());
         }
+    }
+
+    std::expected<void, std::string> MaterialInstance::setVariantExpected(const ShaderAsset& asset, std::string value)
+    {
+        if (auto selected = asset.variantExpected(value); !selected)
+        {
+            return std::unexpected(selected.error());
+        }
+        if (variant == value)
+        {
+            return {};
+        }
+        if (m_Revision == UINT64_MAX)
+        {
+            return std::unexpected("Material revision exhausted");
+        }
+        variant = std::move(value);
+        ++m_Revision;
+        return {};
     }
 
     void MaterialInstance::validate(const ShaderAsset& asset) const
     {
-        asset.variant(variant);
+        if (auto valid = validateExpected(asset); !valid)
+        {
+            throw std::invalid_argument(valid.error());
+        }
+    }
+
+    std::expected<void, std::string> MaterialInstance::validateExpected(const ShaderAsset& asset) const
+    {
+        if (auto selected = asset.variantExpected(variant); !selected)
+        {
+            return std::unexpected(selected.error());
+        }
         for (const auto& [name, value] : m_Overrides)
         {
-            asset.property(name).validate(value);
+            auto property = asset.propertyExpected(name);
+            if (!property)
+            {
+                return std::unexpected(property.error());
+            }
+            if (auto valid = (*property)->validateExpected(value); !valid)
+            {
+                return valid;
+            }
         }
         for (const auto& property : asset.properties)
         {
-            if (property.isTexture())
+            const auto  found = m_Overrides.find(property.name);
+            const auto& value = found == m_Overrides.end() ? property.defaultValue : found->second;
+            if (auto valid = property.validateExpected(value); !valid)
             {
-                const auto texture = std::get<ShaderTextureValue>(value(asset, property.name));
-                if (!texture.asset.value.valid() && texture.builtin.empty())
-                {
-                    throw std::invalid_argument(property.location.describe() +
-                                                ": material requires texture: " + property.name);
-                }
+                return valid;
+            }
+            if (const auto* texture = std::get_if<ShaderTextureValue>(&value);
+                texture && !texture->asset.value.valid() && texture->builtin.empty())
+            {
+                return std::unexpected(property.location.describe() + ": material requires texture: " + property.name);
             }
         }
+        return {};
     }
 
     void
     MaterialInstance::reconcile(const ShaderAsset& previous, const ShaderAsset& candidate, std::string& diagnostics)
     {
+        if (auto reconciled = reconcileExpected(previous, candidate, diagnostics); !reconciled)
+        {
+            throw std::invalid_argument(reconciled.error());
+        }
+    }
+
+    std::expected<void, std::string> MaterialInstance::reconcileExpected(const ShaderAsset& previous,
+                                                                         const ShaderAsset& candidate,
+                                                                         std::string&       diagnostics)
+    {
+        if (auto valid = candidate.validateExpected(); !valid)
+        {
+            return valid;
+        }
+        MaterialInstance pending = *this;
+        std::string      messages;
         for (const auto& property : previous.properties)
         {
             const auto found = std::ranges::find(candidate.properties, property.name, &ShaderProperty::name);
             if (found == candidate.properties.end())
             {
-                diagnostics += "Removed material property: " + property.name + "\n";
+                messages += "Removed material property: " + property.name + "\n";
             }
             else if (found->type != property.type)
             {
-                diagnostics += "Reset type-changed material property: " + property.name + "\n";
+                messages += "Reset type-changed material property: " + property.name + "\n";
             }
         }
         for (const auto& property : candidate.properties)
@@ -86,94 +175,133 @@ namespace vultra
             if (std::ranges::find(previous.properties, property.name, &ShaderProperty::name) ==
                 previous.properties.end())
             {
-                diagnostics += "Added material property with shader default: " + property.name + "\n";
+                messages += "Added material property with shader default: " + property.name + "\n";
             }
         }
-        std::erase_if(m_Overrides,
-                      [&](const auto& override)
+        std::erase_if(pending.m_Overrides,
+                      [&](const auto& value)
                       {
-                          const auto found = std::ranges::find_if(candidate.properties,
-                                                                  [&](const ShaderProperty& property)
-                                                                  {
-                                                                      return property.name == override.first;
-                                                                  });
-                          const auto old   = std::ranges::find_if(previous.properties,
-                                                                  [&](const ShaderProperty& property)
-                                                                  {
-                                                                    return property.name == override.first;
-                                                                  });
-                          if (found == candidate.properties.end() || old == previous.properties.end() ||
-                              found->type != old->type)
-                          {
-                              return true;
-                          }
-                          found->validate(override.second);
-                          return false;
+                          const auto found =
+                              std::ranges::find(candidate.properties, value.first, &ShaderProperty::name);
+                          const auto old = std::ranges::find(previous.properties, value.first, &ShaderProperty::name);
+                          return found == candidate.properties.end() || old == previous.properties.end() ||
+                                 found->type != old->type;
                       });
-        candidate.variant(variant);
-        validate(candidate);
+        if (auto valid = pending.validateExpected(candidate); !valid)
+        {
+            return valid;
+        }
+        if (m_Revision == UINT64_MAX)
+        {
+            return std::unexpected("Material revision exhausted");
+        }
+        auto publishedDiagnostics = diagnostics + messages;
+        m_Overrides.swap(pending.m_Overrides);
+        diagnostics.swap(publishedDiagnostics);
         ++m_Revision;
+        return {};
     }
 
     void MaterialInstance::assign(const ShaderAsset& asset, const MaterialInstance& source)
     {
-        source.validate(asset);
-        if (shader != source.shader || variant != source.variant || m_Overrides != source.m_Overrides)
+        if (auto assigned = assignExpected(asset, source); !assigned)
         {
-            auto overrides = source.m_Overrides;
-            auto selected  = source.variant;
-            m_Overrides.swap(overrides);
-            variant.swap(selected);
-            shader = source.shader;
-            ++m_Revision;
+            throw std::invalid_argument(assigned.error());
         }
+    }
+
+    std::expected<void, std::string> MaterialInstance::assignExpected(const ShaderAsset&      asset,
+                                                                      const MaterialInstance& source)
+    {
+        if (auto valid = source.validateExpected(asset); !valid)
+        {
+            return valid;
+        }
+        if (shader == source.shader && variant == source.variant && m_Overrides == source.m_Overrides)
+        {
+            return {};
+        }
+        if (m_Revision == UINT64_MAX)
+        {
+            return std::unexpected("Material revision exhausted");
+        }
+        auto overrides = source.m_Overrides;
+        auto selected  = source.variant;
+        m_Overrides.swap(overrides);
+        variant.swap(selected);
+        shader = source.shader;
+        ++m_Revision;
+        return {};
     }
 
     std::vector<std::byte> MaterialInstance::uniformData(const ShaderAsset& asset, const ShaderProgram& program) const
     {
-        validate(asset);
+        auto data = uniformDataExpected(asset, program);
+        if (!data)
+        {
+            throw std::invalid_argument(data.error());
+        }
+        return std::move(*data);
+    }
+
+    std::expected<std::vector<std::byte>, std::string>
+    MaterialInstance::uniformDataExpected(const ShaderAsset& asset, const ShaderProgram& program) const
+    {
+        auto uniforms = uniformBlockExpected(asset, program);
+        if (!uniforms)
+        {
+            return std::unexpected(uniforms.error());
+        }
+        return std::vector<std::byte>(uniforms->data().begin(), uniforms->data().end());
+    }
+
+    std::expected<ShaderUniformBlock, std::string>
+    MaterialInstance::uniformBlockExpected(const ShaderAsset& asset, const ShaderProgram& program) const
+    {
+        if (auto valid = validateExpected(asset); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
         const auto* block = program.parameters.field("material");
         if (!block || block->kind != ShaderParameterKind::eParameterBlock)
         {
-            throw std::invalid_argument("Program does not expose the generated material ParameterBlock");
+            return std::unexpected("Program does not expose the generated material ParameterBlock");
         }
-        const auto* uniforms = block->field("$element");
-        if (!uniforms || uniforms->size > 16 * 1024 * 1024)
+        auto uniforms = ShaderUniformBlock::create(*block);
+        if (!uniforms)
         {
-            throw std::invalid_argument("Invalid reflected material uniform size");
+            return std::unexpected(uniforms.error());
         }
-        std::vector<std::byte> bytes(size_t(uniforms->size));
-        auto                   write = [&](std::string_view name, const void* data, size_t size)
+        const auto write = [&](std::string_view name, const auto values, ShaderParameterKind kind, uint32_t columns = 1)
+            -> std::expected<void, std::string>
         {
-            const auto* field = uniforms->field(name);
-            if (!field || field->size < size)
-            {
-                throw std::invalid_argument("Material field does not match reflection: " + std::string(name));
-            }
-            const auto offset = field->offset(ShaderOffsetKind::eUniform);
-            if (offset > bytes.size() || size > bytes.size() - offset)
-            {
-                throw std::invalid_argument("Material field lies outside the uniform block: " + std::string(name));
-            }
-            std::memcpy(bytes.data() + offset, data, size);
+            const std::array edits {ShaderUniformWrite {name, values, kind, 1, columns}};
+            return uniforms->setExpected(edits).transform(
+                [](bool)
+                {
+                });
         };
         for (const auto& property : asset.properties)
         {
-            const auto propertyValue = value(asset, property.name);
-            if (const auto* scalar = std::get_if<float>(&propertyValue))
+            auto propertyValue = valueExpected(asset, property.name);
+            if (!propertyValue)
             {
-                write(property.name, scalar, sizeof(*scalar));
+                return std::unexpected(propertyValue.error());
             }
-            else if (const auto* integer = std::get_if<int32_t>(&propertyValue))
+            std::expected<void, std::string> result;
+            if (const auto* scalar = std::get_if<float>(&*propertyValue))
             {
-                write(property.name, integer, sizeof(*integer));
+                result = write(property.name, std::span(scalar, 1), ShaderParameterKind::eScalar);
             }
-            else if (const auto* boolean = std::get_if<bool>(&propertyValue))
+            else if (const auto* integer = std::get_if<int32_t>(&*propertyValue))
             {
-                const uint32_t integer = *boolean ? 1 : 0;
-                write(property.name, &integer, sizeof(integer));
+                result = write(property.name, std::span(integer, 1), ShaderParameterKind::eScalar);
             }
-            else if (const auto* vector = std::get_if<std::array<float, 4>>(&propertyValue))
+            else if (const auto* boolean = std::get_if<bool>(&*propertyValue))
+            {
+                result = write(property.name, std::span(boolean, 1), ShaderParameterKind::eScalar);
+            }
+            else if (const auto* vector = std::get_if<std::array<float, 4>>(&*propertyValue))
             {
                 auto components = *vector;
                 if (property.type == ShaderPropertyType::eColor && !property.hdr)
@@ -185,16 +313,30 @@ namespace vultra
                             component <= 0.04045f ? component / 12.92f : std::pow((component + 0.055f) / 1.055f, 2.4f);
                     }
                 }
-                write(property.name, components.data(), sizeof(components));
+                result = write(property.name, std::span<const float>(components), ShaderParameterKind::eVector, 4);
             }
-            else if (!property.noScaleOffset && (property.type == ShaderPropertyType::eTexture2D ||
-                                                 property.type == ShaderPropertyType::eTexture2DArray))
+            else
             {
-                const auto& texture = std::get<ShaderTextureValue>(propertyValue);
-                write(property.name + "ScaleOffset", texture.scaleOffset.data(), sizeof(texture.scaleOffset));
+                const auto& texture = std::get<ShaderTextureValue>(*propertyValue);
+                if (!property.noScaleOffset && (property.type == ShaderPropertyType::eTexture2D ||
+                                                property.type == ShaderPropertyType::eTexture2DArray))
+                {
+                    result = write(property.name + "ScaleOffset",
+                                   std::span(texture.scaleOffset),
+                                   ShaderParameterKind::eVector,
+                                   4);
+                }
+                if (result && property.normal)
+                {
+                    const uint32_t encoding = 0;
+                    result = write(property.name + "Encoding", std::span(&encoding, 1), ShaderParameterKind::eScalar);
+                }
+            }
+            if (!result)
+            {
+                return std::unexpected(result.error());
             }
         }
-        return bytes;
+        return uniforms;
     }
-
 } // namespace vultra

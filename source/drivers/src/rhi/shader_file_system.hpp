@@ -1,5 +1,7 @@
 #pragma once
 
+#include "shader_cache.hpp"
+
 #include <vultra/drivers/rhi/shader_program.hpp>
 
 #include <slang-com-ptr.h>
@@ -59,48 +61,51 @@ namespace vultra::detail
 
         SlangResult SLANG_MCALL loadFile(const char* path, ISlangBlob** output) noexcept override
         {
-            *output = nullptr;
-            try
+            if (!path || !output)
             {
-                const std::scoped_lock lock(m_Mutex);
-                const auto             file  = std::filesystem::weakly_canonical(std::filesystem::absolute(path));
-                auto                   found = m_Files.find(file);
-                if (found == m_Files.end())
-                {
-                    if (!std::filesystem::is_regular_file(file))
-                    {
-                        return SLANG_E_NOT_FOUND;
-                    }
-                    if (std::filesystem::file_size(file) > 64 * 1024 * 1024)
-                    {
-                        return SLANG_FAIL;
-                    }
-                    std::ifstream input(file, std::ios::binary);
-                    if (!input)
-                    {
-                        return SLANG_FAIL;
-                    }
-                    const std::string text {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
-                    if (!input.eof() && !input.good())
-                    {
-                        return SLANG_FAIL;
-                    }
-                    Slang::ComPtr<ISlangBlob> blob;
-                    blob.attach(slang_createBlob(text.data(), text.size()));
-                    if (!blob)
-                    {
-                        return SLANG_FAIL;
-                    }
-                    found = m_Files.emplace(file, std::move(blob)).first;
-                }
-                *output = found->second.get();
-                (*output)->addRef();
-                return SLANG_OK;
+                return SLANG_E_INVALID_ARG;
             }
-            catch (...)
+            *output = nullptr;
+            auto absolute = shaderAbsolutePathExpected(path);
+            if (!absolute)
             {
                 return SLANG_FAIL;
             }
+            std::error_code error;
+            const auto      file = std::filesystem::weakly_canonical(*absolute, error);
+            if (error)
+            {
+                return SLANG_FAIL;
+            }
+            const std::scoped_lock lock(m_Mutex);
+            auto                   found = m_Files.find(file);
+            if (found == m_Files.end())
+            {
+                auto regular = shaderRegularFileExpected(file);
+                if (!regular)
+                {
+                    return SLANG_FAIL;
+                }
+                if (!*regular)
+                {
+                    return SLANG_E_NOT_FOUND;
+                }
+                auto text = readShaderTextExpected(file);
+                if (!text)
+                {
+                    return SLANG_FAIL;
+                }
+                Slang::ComPtr<ISlangBlob> blob;
+                blob.attach(slang_createBlob(text->data(), text->size()));
+                if (!blob)
+                {
+                    return SLANG_FAIL;
+                }
+                found = m_Files.emplace(file, std::move(blob)).first;
+            }
+            *output = found->second.get();
+            (*output)->addRef();
+            return SLANG_OK;
         }
 
         std::vector<ShaderDependency> dependencies() const

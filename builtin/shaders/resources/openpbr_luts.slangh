@@ -1,12 +1,21 @@
 #pragma once
 
+#include "resources/openpbr_lut_layout.h"
+
 // Atlas uploaded by openpbr_luts.cpp; row 0 contains {offset, width, height, depth} per LUT ID.
-[[vk::binding(11, 0)]] Texture2D<float4> openPbrLuts;
+// Raster shaders retain their frame-set binding; reference transport uses the sampled-global set.
+#ifndef VULTRA_OPENPBR_LUT_BINDING
+#define VULTRA_OPENPBR_LUT_BINDING 11
+#endif
+#ifndef VULTRA_OPENPBR_LUT_SET
+#define VULTRA_OPENPBR_LUT_SET 0
+#endif
+[[vk::binding(VULTRA_OPENPBR_LUT_BINDING, VULTRA_OPENPBR_LUT_SET)]] Texture2D<float4> openPbrLuts;
 
 float4 loadOpenPbrLut(uint4 table, uint3 position)
 {
     uint index = table.x + (position.z * table.z + position.y) * table.y + position.x;
-    return openPbrLuts.Load(int3(index % 32, index / 32, 0));
+    return openPbrLuts.Load(int3(index % openPbrLutWidth, index / openPbrLutWidth, 0));
 }
 
 float4 sampleOpenPbrLutSlice(uint4 table, float2 uv, uint slice)
@@ -26,13 +35,13 @@ float4 sampleOpenPbrLutSlice(uint4 table, float2 uv, uint slice)
 
 float4 sampleOpenPbrLut2D(int id, float2 uv)
 {
-    uint4 table = uint4(openPbrLuts.Load(int3(id, 0, 0)));
+    uint4 table = openPbrLutRegions[id];
     return sampleOpenPbrLutSlice(table, uv, 0);
 }
 
 float4 sampleOpenPbrLut3D(int id, float3 uvw)
 {
-    uint4 table = uint4(openPbrLuts.Load(int3(id, 0, 0)));
+    uint4 table = openPbrLutRegions[id];
     float slice = clamp(uvw.z * table.w - 0.5, 0, float(table.w - 1));
     uint  lower = uint(slice);
     uint  upper = min(lower + 1, table.w - 1);

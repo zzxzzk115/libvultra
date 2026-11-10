@@ -1,0 +1,47 @@
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -148,6 +148,7 @@
+                         model == spv::ExecutionModelMeshEXT    ? VriShaderStage_Mesh :
+                         model == spv::ExecutionModelTaskEXT    ? VriShaderStage_Task :
+                                                                  VriShaderStage_Compute;
++                    std::vector<spirv_cross::MSLResourceBinding> argumentMembers;
+                     for (uint32_t set = 0; set < layout->setBindings.size(); ++set)
+                     {
+                         const bool argBuffer = layout->IsArgBuffer(set);
+@@ -168,12 +169,20 @@
+                             rb.desc_set = set;
+                             rb.binding = b.baseRegister;
+                             rb.count = b.count;
++                            // SPIRV-Cross uses a scalar pointer to pad buffer/address slots.
++                            rb.basetype = spirv_cross::SPIRType::UInt;
++                            if (IsTextureType(b.type))
++                                rb.basetype = spirv_cross::SPIRType::Image;
++                            else if (b.type == VriDescriptorType_Sampler)
++                                rb.basetype = spirv_cross::SPIRType::Sampler;
+                             // Direct: the argument-table slot. Argument buffer: the [[id(n)]].
+                             // Acceleration structures bind to the Metal buffer argument table.
+                             if (IsBufferType(b.type) || b.type == VriDescriptorType_AccelerationStructure) rb.msl_buffer = b.mslIndex;
+                             else if (IsTextureType(b.type)) rb.msl_texture = b.mslIndex;
+                             else                        rb.msl_sampler = b.mslIndex;
+                             comp.add_msl_resource_binding(rb);
++                            if (argBuffer)
++                                argumentMembers.push_back(rb);
+                         }
+                         // Pin the argument buffer's own MTLBuffer slot, so CmdSetDescriptorSet
+                         // knows where to bind it without reflecting the compiled function.
+@@ -197,6 +206,15 @@
+                         rb.binding = spirv_cross::ResourceBindingPushConstantBinding;
+                         rb.msl_buffer = layout->pushBufferIndex;
+                         comp.add_msl_resource_binding(rb);
++                    }
++                    if (o.argument_buffers)
++                    {
++                        // Slang can remove unused globals before MSL translation. Pad the complete
++                        // set layout, but keep container/push mappings out of the member-index map.
++                        o.pad_argument_buffer_resources = true;
++                        comp.set_msl_options(o);
++                        for (const auto& member : argumentMembers)
++                            comp.add_msl_resource_binding(member);
+                     }
+                 }
+ 

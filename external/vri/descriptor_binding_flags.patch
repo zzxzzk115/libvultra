@@ -1,0 +1,139 @@
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -877,7 +877,23 @@
+                                                 const VriPipelineLayoutDesc* desc,
+                                                 VriPipelineLayout**          out)
+         {
+-            DeviceVK*         d      = Dev(device);
++            DeviceVK* d = Dev(device);
++            if (!(d->EnabledFeatures() & VriFeature_Bindless))
++            {
++                for (uint32_t s = 0; s < desc->descriptorSetNum; ++s)
++                {
++                    const VriDescriptorSetDesc& set = desc->descriptorSets[s];
++                    for (uint32_t r = 0; r < set.rangeNum; ++r)
++                    {
++                        if (set.ranges[r].flags &
++                            (VriDescriptorRange_PartiallyBound | VriDescriptorRange_VariableSized))
++                        {
++                            d->ReportError("partially-bound or variable descriptors require enabled bindless features");
++                            return VriResult_Unsupported;
++                        }
++                    }
++                }
++            }
+             PipelineLayoutVK* layout = new PipelineLayoutVK {};
+             layout->device           = d;
+ 
+@@ -915,7 +931,7 @@
+                         variableCount = range.descriptorNum; // VK requires this be the last binding
+ #endif
+                     }
+-                    if (bf)
++                    if (bf && d->HasUpdateAfterBind(range.descriptorType))
+                     {
+                         bf |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+                         usesUpdateAfterBind = true;
+@@ -933,9 +949,10 @@
+                 VkDescriptorSetLayoutCreateInfo lci = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+                 lci.bindingCount                    = static_cast<uint32_t>(bindings.size());
+                 lci.pBindings                       = bindings.data();
++                // Partial population and variable counts remain meaningful without update-after-bind.
++                lci.pNext = &bfci;
+                 if (usesUpdateAfterBind)
+                 {
+-                    lci.pNext = &bfci; // update-after-bind bindless set
+                     lci.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+                 }
+ 
+@@ -1268,9 +1285,8 @@
+             ci.maxSets                    = desc->descriptorSetMaxNum;
+             ci.poolSizeCount              = static_cast<uint32_t>(sizes.size());
+             ci.pPoolSizes                 = sizes.data();
+-            // Bindless sets are update-after-bind; the pool must allow it. Only when the
+-            // device granted the feature (the flag is illegal otherwise).
+-            if (d->EnabledFeatures() & VriFeature_Bindless)
++            // Permit update-after-bind sets only when a descriptor type has its native feature enabled.
++            if (d->HasUpdateAfterBind())
+                 ci.flags |= VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+ 
+             VkDescriptorPool pool = VK_NULL_HANDLE;
+--- a/source/backend_vk/device_vk.h
++++ b/source/backend_vk/device_vk.h
+@@ -77,6 +77,13 @@
+         };
+         const ExtFunctions& Ext() const { return m_ext; }
+         uint64_t            EnabledFeatures() const { return m_enabledFeatures; }
++        bool                HasUpdateAfterBind() const { return m_descriptorUpdateAfterBindTypes != 0; }
++        bool                HasUpdateAfterBind(VriDescriptorType type) const
++        {
++            const uint32_t index = static_cast<uint32_t>(type);
++            return index <= static_cast<uint32_t>(VriDescriptorType_AccelerationStructure) &&
++                   (m_descriptorUpdateAfterBindTypes & (1u << index)) != 0;
++        }
+ 
+         const VriCooperativeVectorDeviceProperties& CooperativeVectorDeviceProperties() const
+         {
+@@ -140,6 +147,7 @@
+         bool     m_software        = false;
+         uint64_t m_enabledFeatures = 0; // granted VriFeatureBits
+         bool m_hasStorageBufferNonUniformIndexing = false;
++        uint32_t m_descriptorUpdateAfterBindTypes     = 0;
+         // OpenXR XR_KHR_vulkan_enable2: when set, instance/device creation is routed through these
+         // hooks (which forward to xrCreateVulkan*KHR). Borrowed from the caller's nativeCreateInfo.
+         const VriVulkanCreateHooks* m_vkHooks = nullptr;
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -750,6 +750,9 @@
+             f12.descriptorBindingVariableDescriptorCount = v12Sup.descriptorBindingVariableDescriptorCount;
+ #endif
+             f12.descriptorBindingSampledImageUpdateAfterBind = v12Sup.descriptorBindingSampledImageUpdateAfterBind;
++            f12.descriptorBindingUniformBufferUpdateAfterBind = v12Sup.descriptorBindingUniformBufferUpdateAfterBind;
++            f12.descriptorBindingStorageImageUpdateAfterBind  = v12Sup.descriptorBindingStorageImageUpdateAfterBind;
++            f12.descriptorBindingStorageBufferUpdateAfterBind = v12Sup.descriptorBindingStorageBufferUpdateAfterBind;
+             f12.descriptorBindingUpdateUnusedWhilePending    = v12Sup.descriptorBindingUpdateUnusedWhilePending;
+             f12.shaderSampledImageArrayNonUniformIndexing    = VK_TRUE;
+             f12.shaderStorageBufferArrayNonUniformIndexing = v12Sup.shaderStorageBufferArrayNonUniformIndexing;
+@@ -933,6 +936,24 @@
+ 
+         m_enabledFeatures = granted;
+         m_hasStorageBufferNonUniformIndexing = f12.shaderStorageBufferArrayNonUniformIndexing != VK_FALSE;
++        // Binding flags must follow the feature bits actually passed to vkCreateDevice, per resource type.
++        if (f12.descriptorBindingSampledImageUpdateAfterBind)
++        {
++            m_descriptorUpdateAfterBindTypes |= (1u << VriDescriptorType_Sampler) | (1u << VriDescriptorType_Texture);
++        }
++        if (f12.descriptorBindingUniformBufferUpdateAfterBind)
++        {
++            m_descriptorUpdateAfterBindTypes |= 1u << VriDescriptorType_ConstantBuffer;
++        }
++        if (f12.descriptorBindingStorageImageUpdateAfterBind)
++        {
++            m_descriptorUpdateAfterBindTypes |= 1u << VriDescriptorType_StorageTexture;
++        }
++        if (f12.descriptorBindingStorageBufferUpdateAfterBind)
++        {
++            m_descriptorUpdateAfterBindTypes |=
++                (1u << VriDescriptorType_StructuredBuffer) | (1u << VriDescriptorType_StorageBuffer);
++        }
+ 
+         VkDeviceCreateInfo ci      = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+         ci.pNext                   = &features2;
+@@ -1091,6 +1112,17 @@
+         m_desc.hasRayQuery             = (m_enabledFeatures & VriFeature_RayQuery) ? VRI_TRUE : VRI_FALSE;
+         m_desc.hasExternalMemory       = (m_enabledFeatures & VriFeature_ExternalMemory) ? VRI_TRUE : VRI_FALSE;
+         m_desc.hasCooperativeVector    = (m_enabledFeatures & VriFeature_CooperativeVector) ? VRI_TRUE : VRI_FALSE;
++        // An ordinary descriptor binding must use ordinary per-stage and per-set limits.
++        if (m_desc.hasBindless && !HasUpdateAfterBind(VriDescriptorType_Texture))
++        {
++            m_desc.bindlessTextureMaxNum =
++                std::min(props.limits.maxPerStageDescriptorSampledImages, props.limits.maxDescriptorSetSampledImages);
++        }
++        if (m_desc.hasBindless && !HasUpdateAfterBind(VriDescriptorType_Sampler))
++        {
++            m_desc.bindlessSamplerMaxNum =
++                std::min(props.limits.maxPerStageDescriptorSamplers, props.limits.maxDescriptorSetSamplers);
++        }
+         m_desc.hasPipelineStatistics   = m_hasPipelineStats ? VRI_TRUE : VRI_FALSE;
+         m_desc.hasCalibratedTimestamps = m_hasCalibratedTimestamps ? VRI_TRUE : VRI_FALSE;
+         m_desc.hasDrawIndirectCount    = m_hasDrawIndirectCount ? VRI_TRUE : VRI_FALSE;

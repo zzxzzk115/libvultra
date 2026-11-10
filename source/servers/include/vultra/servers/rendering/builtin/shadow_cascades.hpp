@@ -4,6 +4,9 @@
 
 #include <array>
 #include <cstdint>
+#include <expected>
+#include <span>
+#include <string>
 
 namespace vultra
 {
@@ -21,4 +24,15 @@ namespace vultra
                                      float               casterRadius,
                                      uint32_t            resolution,
                                      float               splitLambda);
+
+    // All views use the reference camera's depth planes to choose a cascade. Additional
+    // views must share its near/far distances; asymmetric and canted projections are supported.
+    std::expected<ShadowCascades, std::string>
+    calculateCascadesExpected(const RenderCamera&           camera,
+                              glm::vec3                     directionToLight,
+                              glm::vec3                     casterCenter,
+                              float                         casterRadius,
+                              uint32_t                      resolution,
+                              float                         splitLambda,
+                              std::span<const RenderCamera> additionalViews = {});
 } // namespace vultra

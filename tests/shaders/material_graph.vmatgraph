@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "kind": "material_graph",
+  "entry": "materialPattern",
+  "result_type": "float4",
+  "parameters": [
+    {
+      "name": "tint",
+      "type": "float4"
+    },
+    {
+      "name": "gain",
+      "type": "float"
+    },
+    {
+      "name": "uv",
+      "type": "float2"
+    },
+    {
+      "name": "image",
+      "type": "Texture2D<float4>"
+    },
+    {
+      "name": "nearest",
+      "type": "SamplerState"
+    }
+  ],
+  "code": "struct GraphTexel { float3 color; float alpha; };\nGraphTexel sampleColor(Texture2D<float4> image, SamplerState nearest, float2 uv)\n{\n    float4 sample = image.SampleLevel(nearest, uv, 0);\n    GraphTexel result;\n    result.color = sample.rgb;\n    result.alpha = sample.a;\n    return result;\n}\nfloat4 scaleColor(float3 sample, float4 tint, float gain, float alpha)\n{\n    return float4(sample * tint.rgb * gain, alpha * tint.a);\n}\n",
+  "nodes": [
+    {
+      "id": "shade",
+      "function": "scaleColor",
+      "arguments": [
+        {
+          "source": "node",
+          "name": "sample",
+          "selection": "color"
+        },
+        {
+          "source": "parameter",
+          "name": "tint",
+          "selection": ""
+        },
+        {
+          "source": "node",
+          "name": "adjusted",
+          "selection": ""
+        },
+        {
+          "source": "node",
+          "name": "sample",
+          "selection": "alpha"
+        }
+      ]
+    },
+    {
+      "id": "orphan",
+      "function": "notRequiredByResult",
+      "arguments": []
+    },
+    {
+      "id": "sample",
+      "function": "sampleColor",
+      "arguments": [
+        {
+          "source": "parameter",
+          "name": "image",
+          "selection": ""
+        },
+        {
+          "source": "parameter",
+          "name": "nearest",
+          "selection": ""
+        },
+        {
+          "source": "parameter",
+          "name": "uv",
+          "selection": ""
+        }
+      ]
+    },
+    {
+      "id": "adjusted",
+      "function": "mul",
+      "arguments": [
+        {
+          "source": "parameter",
+          "name": "gain",
+          "selection": ""
+        },
+        {
+          "source": "literal",
+          "type": "float",
+          "value": 0.5
+        }
+      ]
+    }
+  ],
+  "result": {
+    "source": "node",
+    "name": "shade",
+    "selection": ""
+  }
+}

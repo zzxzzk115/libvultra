@@ -1,0 +1,15 @@
+#pragma once
+
+// Level-zero bilinear filtering in linear value space, with clamp-to-edge addressing.
+float4 sampleBilinearClampLevelZero(Texture2D<float4> texture, float2 uv, uint2 size)
+{
+    float2 position = saturate(uv) * float2(size) - 0.5;
+    int2 first = int2(floor(position));
+    int2 last = int2(size) - 1;
+    float2 weight = frac(position);
+    float4 a = texture.Load(int3(clamp(first, int2(0), last), 0));
+    float4 b = texture.Load(int3(clamp(first + int2(1, 0), int2(0), last), 0));
+    float4 c = texture.Load(int3(clamp(first + int2(0, 1), int2(0), last), 0));
+    float4 d = texture.Load(int3(clamp(first + int2(1, 1), int2(0), last), 0));
+    return lerp(lerp(a, b, weight.x), lerp(c, d, weight.x), weight.y);
+}

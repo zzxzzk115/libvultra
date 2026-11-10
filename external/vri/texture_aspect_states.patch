@@ -1,0 +1,41 @@
+--- a/include/vri/vri_device_desc.h
++++ b/include/vri/vri_device_desc.h
+@@ -156,6 +156,9 @@
+        non-uniform storage-buffer descriptor indexing, separately from sampled-image bindless. */
+     uint32_t storageBufferDescriptorMaxNum;
+     VriBool hasStorageBufferNonUniformIndexing;
++
++    /* Independent depth/stencil aspect transitions. Vulkan reports the enabled feature, not just support. */
++    VriBool hasSeparateDepthStencilLayouts;
+ } VriDeviceDesc;
+ 
+ VRI_EXTERN_C_END
+--- a/source/backend_vk/device_vk.h
++++ b/source/backend_vk/device_vk.h
+@@ -151,6 +151,7 @@
+         float           m_maxSamplerAnisotropy         = 1.0f;
+         bool            m_hasCalibratedTimestamps      = false;
+         bool            m_hasDrawIndirectCount         = false;
++        bool            m_hasSeparateDepthStencilLayouts = false;
+         bool            m_hasMemoryBudget              = false;
+         bool            m_hasMemoryPriority            = false;
+         bool            m_hasPageableDeviceLocalMemory = false;
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -505,6 +505,8 @@
+         // GPU-driven draw count (CmdDraw[Indexed]IndirectCount). Gated by a feature in 1.2+.
+         f12.drawIndirectCount  = v12Sup.drawIndirectCount;
+         m_hasDrawIndirectCount = v12Sup.drawIndirectCount == VK_TRUE;
++        f12.separateDepthStencilLayouts = v12Sup.separateDepthStencilLayouts;
++        m_hasSeparateDepthStencilLayouts = f12.separateDepthStencilLayouts == VK_TRUE;
+         // Chain f12 -> (f13) or (dynRenderKhr -> sync2Khr); record where optional features append.
+         void** baseTail = nullptr;
+         if (useVk13Core)
+@@ -1087,6 +1089,7 @@
+         m_desc.hasPipelineStatistics   = m_hasPipelineStats ? VRI_TRUE : VRI_FALSE;
+         m_desc.hasCalibratedTimestamps = m_hasCalibratedTimestamps ? VRI_TRUE : VRI_FALSE;
+         m_desc.hasDrawIndirectCount    = m_hasDrawIndirectCount ? VRI_TRUE : VRI_FALSE;
++        m_desc.hasSeparateDepthStencilLayouts = m_hasSeparateDepthStencilLayouts ? VRI_TRUE : VRI_FALSE;
+         m_desc.hasClearStorageBuffer   = VRI_TRUE; // vkCmdFillBuffer is core Vulkan
+         m_desc.hasClearStorageTexture  = VRI_TRUE; // vkCmdClearColorImage is core Vulkan
+         m_desc.hasMultiview            = m_hasMultiview ? VRI_TRUE : VRI_FALSE;

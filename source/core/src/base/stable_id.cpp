@@ -67,13 +67,12 @@ namespace vultra
             return std::nullopt;
         }
         StableId id;
-        size_t   byte = 0;
-        for (size_t i = 0; i < text.size();)
+        size_t   i = 0;
+        for (auto& byte : id.bytes)
         {
-            if (text[i] == '-')
+            if (i == 8 || i == 13 || i == 18 || i == 23)
             {
                 ++i;
-                continue;
             }
             const int high = hexDigit(text[i++]);
             const int low  = hexDigit(text[i++]);
@@ -81,7 +80,7 @@ namespace vultra
             {
                 return std::nullopt;
             }
-            id.bytes[byte++] = uint8_t((high << 4) | low);
+            byte = uint8_t((high << 4) | low);
         }
         return id.valid() ? std::optional(id) : std::nullopt;
     }

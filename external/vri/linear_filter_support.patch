@@ -1,0 +1,112 @@
+--- a/include/vri/vri_format.h
++++ b/include/vri/vri_format.h
+@@ -95,6 +95,7 @@
+     VriFormatSupport_DepthStencil    = 1u << 3,
+     VriFormatSupport_Blend           = 1u << 4,
+     VriFormatSupport_VertexBuffer    = 1u << 5,
++    VriFormatSupport_LinearFilter    = 1u << 6,
+     VriFormatSupport_MaxEnum         = 0x7fffffff
+ } VriFormatSupportBits;
+ 
+--- a/source/core/format_traits.h
++++ b/source/core/format_traits.h
+@@ -27,4 +27,41 @@
+ 
+     // A format that belongs on a depth/stencil attachment rather than a color one.
+     inline bool FormatIsDepthStencil(VriFormat f) { return FormatHasDepth(f) || FormatHasStencil(f); }
++
++    inline bool FormatIsInteger(VriFormat format)
++    {
++        switch (format)
++        {
++            case VriFormat_R8_UINT:
++            case VriFormat_R8_SINT:
++            case VriFormat_RG8_UINT:
++            case VriFormat_RG8_SINT:
++            case VriFormat_RGBA8_UINT:
++            case VriFormat_RGBA8_SINT:
++            case VriFormat_R16_UINT:
++            case VriFormat_R16_SINT:
++            case VriFormat_RG16_UINT:
++            case VriFormat_RG16_SINT:
++            case VriFormat_RGBA16_UINT:
++            case VriFormat_RGBA16_SINT:
++            case VriFormat_R32_UINT:
++            case VriFormat_R32_SINT:
++            case VriFormat_RG32_UINT:
++            case VriFormat_RG32_SINT:
++            case VriFormat_RGB32_UINT:
++            case VriFormat_RGB32_SINT:
++            case VriFormat_RGBA32_UINT:
++            case VriFormat_RGBA32_SINT:
++            case VriFormat_S8_UINT:
++                return true;
++            default:
++                return false;
++        }
++    }
++
++    inline bool FormatIsFloat32Color(VriFormat format)
++    {
++        return format == VriFormat_R32_SFLOAT || format == VriFormat_RG32_SFLOAT ||
++               format == VriFormat_RGB32_SFLOAT || format == VriFormat_RGBA32_SFLOAT;
++    }
+ } // namespace vri
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -150,6 +150,9 @@
+             VriFormatSupportFlags r = VriFormatSupport_None;
+             if (f & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)
+                 r |= VriFormatSupport_Texture;
++            if ((f & (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) ==
++                (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
++                r |= VriFormatSupport_LinearFilter;
+             if (f & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)
+                 r |= VriFormatSupport_StorageTexture;
+             if (f & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -272,7 +272,7 @@
+         // ---- queries -------------------------------------------------------
+         const VriDeviceDesc* VRI_CALL GetDeviceDesc(const VriDevice* device) { return &Dev(device)->Desc(); }
+ 
+-        VriFormatSupportFlags VRI_CALL GetFormatSupport(const VriDevice*, VriFormat format)
++        VriFormatSupportFlags VRI_CALL GetFormatSupport(const VriDevice* device, VriFormat format)
+         {
+             if (ToMtlFormat(format) == MTLPixelFormatInvalid && ToMtlVertexFormat(format) == MTLVertexFormatInvalid)
+                 return VriFormatSupport_None;
+@@ -280,6 +280,11 @@
+             if (ToMtlFormat(format) != MTLPixelFormatInvalid)
+             {
+                 r |= VriFormatSupport_Texture;
++                if (!vri::FormatIsInteger(format))
++                {
++                    if (!vri::FormatIsFloat32Color(format) || [Dev(device)->Device() supports32BitFloatFiltering])
++                        r |= VriFormatSupport_LinearFilter;
++                }
+                 if (FormatHasDepth(format) || FormatHasStencil(format))
+                     r |= VriFormatSupport_DepthStencil;
+                 else
+--- a/source/backend_d3d12/core_d3d12_resource.inc
++++ b/source/backend_d3d12/core_d3d12_resource.inc
+@@ -16,6 +16,8 @@
+     const D3D12_FORMAT_SUPPORT1 s = fs.Support1;
+     if (s & (D3D12_FORMAT_SUPPORT1_TEXTURE2D | D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE))
+         r |= VriFormatSupport_Texture;
++    if (s & D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE)
++        r |= VriFormatSupport_LinearFilter;
+     if (s & D3D12_FORMAT_SUPPORT1_TYPED_UNORDERED_ACCESS_VIEW)
+         r |= VriFormatSupport_StorageTexture;
+     if (s & D3D12_FORMAT_SUPPORT1_RENDER_TARGET)
+--- a/source/backend_wgpu/core_wgpu.cpp
++++ b/source/backend_wgpu/core_wgpu.cpp
+@@ -150,6 +150,9 @@
+             if (usable)
+             {
+                 r |= VriFormatSupport_Texture; // sampleable, depth included (shadow maps)
++                // Float32Filterable is not requested by DeviceWGPU::Init.
++                if (!vri::FormatIsInteger(format) && !vri::FormatIsFloat32Color(format))
++                    r |= VriFormatSupport_LinearFilter;
+                 if (vri::FormatIsDepthStencil(format))
+                 {
+                     r |= VriFormatSupport_DepthStencil;

@@ -4,6 +4,7 @@
 #include <vultra/servers/rendering/texture_upload.hpp>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/packing.hpp>
 
 #define STB_IMAGE_STATIC
 #define STB_IMAGE_IMPLEMENTATION
@@ -21,36 +22,9 @@ namespace vultra
 {
     namespace
     {
-        TextureLevel environmentPixels(const std::filesystem::path& path, const AssetSource* source)
+        TextureLevel analyticEnvironmentPixels()
         {
             TextureLevel result;
-            if (!path.empty())
-            {
-                int        width      = 0;
-                int        height     = 0;
-                int        components = 0;
-                const auto bytes      = readSourceFile(path, {}, source);
-                if (bytes.size() > size_t(std::numeric_limits<int>::max()))
-                {
-                    throw std::runtime_error("HDR environment exceeds decoder size limit: " + path.string());
-                }
-                const std::unique_ptr<float, decltype(&stbi_image_free)> pixels(
-                    stbi_loadf_from_memory(reinterpret_cast<const stbi_uc*>(bytes.data()),
-                                           int(bytes.size()),
-                                           &width,
-                                           &height,
-                                           &components,
-                                           4),
-                    &stbi_image_free);
-                if (!pixels)
-                {
-                    throw std::runtime_error("Load HDR environment " + path.string() + ": " + stbi_failure_reason());
-                }
-                result.size = {uint32_t(width), uint32_t(height)};
-                result.bytes.resize(size_t(width) * height * 4 * sizeof(float));
-                std::memcpy(result.bytes.data(), pixels.get(), result.bytes.size());
-                return result;
-            }
             result.size = {512, 256};
             std::vector<glm::vec4> pixels(size_t(result.size.width) * result.size.height);
             const auto             sun = glm::normalize(glm::vec3(-0.5f, 0.65f, 0.4f));
@@ -64,8 +38,8 @@ namespace vultra
                                                std::cos(theta),
                                                std::sin(phi) * std::sin(theta)};
                     glm::vec3       color = glm::mix(glm::vec3(0.8f, 0.85f, 0.9f),
-                                                     glm::vec3(0.12f, 0.3f, 0.7f),
-                                                     std::max(direction.y, 0.0f));
+                                               glm::vec3(0.12f, 0.3f, 0.7f),
+                                               std::max(direction.y, 0.0f));
                     if (direction.y < 0)
                     {
                         color = glm::vec3(0.08f, 0.07f, 0.055f);
@@ -78,7 +52,100 @@ namespace vultra
             std::memcpy(result.bytes.data(), pixels.data(), result.bytes.size());
             return result;
         }
+
+        TextureLevel environmentPixels(const std::filesystem::path& path, const AssetSource* source)
+        {
+            if (path.empty())
+                return analyticEnvironmentPixels();
+            TextureLevel result;
+            int          width      = 0;
+            int          height     = 0;
+            int          components = 0;
+            const auto   bytes      = readSourceFile(path, {}, source);
+            if (bytes.size() > size_t(std::numeric_limits<int>::max()))
+            {
+                throw std::runtime_error("HDR environment exceeds decoder size limit: " + path.string());
+            }
+            const std::unique_ptr<float, decltype(&stbi_image_free)> pixels(
+                stbi_loadf_from_memory(reinterpret_cast<const stbi_uc*>(bytes.data()),
+                                       int(bytes.size()),
+                                       &width,
+                                       &height,
+                                       &components,
+                                       4),
+                &stbi_image_free);
+            if (!pixels)
+            {
+                throw std::runtime_error("Load HDR environment " + path.string() + ": " + stbi_failure_reason());
+            }
+            result.size = {uint32_t(width), uint32_t(height)};
+            result.bytes.resize(size_t(width) * height * 4 * sizeof(float));
+            std::memcpy(result.bytes.data(), pixels.get(), result.bytes.size());
+            return result;
+        }
     } // namespace
+
+    std::expected<TextureData, std::string> decodeEnvironmentExpected(std::span<const std::byte> bytes,
+                                                                      EnvironmentPrecision       precision)
+    {
+        if (precision != EnvironmentPrecision::eFloat32 && precision != EnvironmentPrecision::ePreferFloat16)
+            return std::unexpected("Invalid environment precision");
+        const auto encode = [precision](Extent size, const std::byte* pixels) -> std::expected<TextureData, std::string>
+        {
+            const uint64_t count = uint64_t(size.width) * size.height * 4;
+            if (!pixels || size.empty() || count > std::numeric_limits<size_t>::max() / sizeof(float))
+                return std::unexpected("HDR environment dimensions exceed supported range");
+            bool half = precision == EnvironmentPrecision::ePreferFloat16;
+            for (size_t i = 0; i < size_t(count); ++i)
+            {
+                float value;
+                std::memcpy(&value, pixels + i * sizeof(float), sizeof(value));
+                if (!std::isfinite(value))
+                    return std::unexpected("HDR environment contains non-finite pixels");
+                if (std::abs(value) > 65504.f)
+                    half = false;
+            }
+            TextureData data;
+            data.format = half ? TextureFormat::eRgba16Sfloat : TextureFormat::eRgba32Sfloat;
+            TextureLevel level;
+            level.size = size;
+            level.bytes.resize(size_t(count) * (half ? sizeof(uint16_t) : sizeof(float)));
+            if (half)
+            {
+                for (size_t i = 0; i < size_t(count); ++i)
+                {
+                    float value;
+                    std::memcpy(&value, pixels + i * sizeof(float), sizeof(value));
+                    const uint16_t packed = glm::packHalf1x16(value);
+                    std::memcpy(level.bytes.data() + i * sizeof(packed), &packed, sizeof(packed));
+                }
+            }
+            else
+                std::memcpy(level.bytes.data(), pixels, level.bytes.size());
+            data.levels.push_back(std::move(level));
+            return data;
+        };
+        if (bytes.empty())
+        {
+            auto analytic = analyticEnvironmentPixels();
+            return encode(analytic.size, analytic.bytes.data());
+        }
+        if (bytes.size() > size_t(std::numeric_limits<int>::max()))
+            return std::unexpected("HDR environment exceeds decoder size limit");
+        const auto* source = reinterpret_cast<const stbi_uc*>(bytes.data());
+        const auto  length = int(bytes.size());
+        if (!stbi_is_hdr_from_memory(source, length))
+            return std::unexpected("Environment input is not a Radiance HDR image");
+        int                                                      width      = 0;
+        int                                                      height     = 0;
+        int                                                      components = 0;
+        const std::unique_ptr<float, decltype(&stbi_image_free)> pixels(
+            stbi_loadf_from_memory(source, length, &width, &height, &components, 4),
+            &stbi_image_free);
+        if (!pixels || width <= 0 || height <= 0)
+            return std::unexpected("Cannot decode HDR environment");
+        return encode({uint32_t(width), uint32_t(height)}, reinterpret_cast<const std::byte*>(pixels.get()));
+    }
 
     Environment::Environment(Device&                      device,
                              const std::filesystem::path& hdr,

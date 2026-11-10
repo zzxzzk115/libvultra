@@ -1,3 +1,4 @@
+#include "asset_file.hpp"
 #include "cache_io.hpp"
 #include "import_jobs.hpp"
 #include "texture_layout.hpp"
@@ -17,6 +18,7 @@
 #include <format>
 #include <fstream>
 #include <map>
+#include <stdexcept>
 
 namespace vultra
 {
@@ -27,7 +29,7 @@ namespace vultra
         using Json = nlohmann::json;
 
         constexpr uint64_t kMagic = 0x0054455353414c56; // "VLASSET\0", little endian.
-        // Pre-release cache format stays at 1; format changes invalidate old local caches.
+        // Pre-release cache format stays at 1; the import recipe identifies preparation semantics.
         constexpr uint32_t kPipelineVersion = 1;
         static_assert(std::endian::native == std::endian::little);
 
@@ -48,7 +50,8 @@ namespace vultra
                          {"source", pathText(source)},
                          {"mipmaps", options.textures.mipmaps},
                          {"compression", int(options.textures.compression)},
-                         {"bc7_encoder", "bc7e-ispc-fast-v1"}};
+                         {"bc7_encoder", "bc7e-ispc-fast-explicit-decrement-v1"},
+                         {"dds_srgb", "preserve-bc-v1"}};
             auto extension = source.extension().string();
             std::ranges::transform(extension,
                                    extension.begin(),
@@ -70,91 +73,143 @@ namespace vultra
         {
             const auto text = recipe.dump();
             const auto key  = hashBytes(std::as_bytes(std::span(text)));
-            return options.cacheDirectory /
-                   (source.stem().wstring() + L"-" + std::filesystem::path(key).wstring() + L".vasset");
+            auto       name = source.stem();
+            name += "-" + key + ".vasset";
+            return options.cacheDirectory / name;
         }
 
-        std::string hashFile(const std::filesystem::path& path)
+        std::expected<std::string, std::string> hashFile(const std::filesystem::path& path)
         {
             std::ifstream file(path, std::ios::binary);
             if (!file)
             {
-                throw std::runtime_error("Missing asset dependency: " + pathText(path));
+                return std::unexpected("Missing asset dependency: " + pathText(path));
             }
             std::unique_ptr<XXH3_state_t, decltype(&XXH3_freeState)> state(XXH3_createState(), &XXH3_freeState);
             if (!state || XXH3_64bits_reset(state.get()) == XXH_ERROR)
             {
-                throw std::runtime_error("Initialize asset hash");
+                return std::unexpected("Initialize asset hash");
             }
             std::array<char, 65536> buffer;
             while (file)
             {
                 file.read(buffer.data(), std::streamsize(buffer.size()));
-                XXH3_64bits_update(state.get(), buffer.data(), size_t(file.gcount()));
+                if (XXH3_64bits_update(state.get(), buffer.data(), size_t(file.gcount())) == XXH_ERROR)
+                {
+                    return std::unexpected("Hash asset dependency: " + pathText(path));
+                }
             }
-            if (!file.eof())
+            if (file.bad() || !file.eof())
             {
-                throw std::runtime_error("Read asset dependency: " + pathText(path));
+                return std::unexpected("Read asset dependency: " + pathText(path));
             }
             return std::format("{:016x}", XXH3_64bits_digest(state.get()));
         }
 
-        std::vector<std::byte> readFile(const std::filesystem::path& path)
+        std::expected<std::filesystem::path, std::string> resolveSource(const std::filesystem::path& input,
+                                                                        const AssetSource*           source)
         {
-            std::ifstream file(path, std::ios::binary | std::ios::ate);
-            file.exceptions(std::ios::failbit | std::ios::badbit);
-            const auto size = file.tellg();
-            if (size < 0)
+            if (source)
             {
-                throw std::runtime_error("Read asset cache size");
+                return source->resolveExpected(input);
             }
-            std::vector<std::byte> bytes(static_cast<size_t>(size));
-            file.seekg(0);
-            file.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size()));
-            return bytes;
+            if (input.native().find(std::filesystem::path::value_type(0)) != std::filesystem::path::string_type::npos)
+            {
+                return std::unexpected("Asset path contains a NUL character");
+            }
+            std::error_code error;
+            auto            path = std::filesystem::canonical(input, error);
+            if (error)
+            {
+                return std::unexpected("Resolve asset " + pathText(input) + ": " + error.message());
+            }
+            return path;
         }
 
-        void validateDependencies(const Json& dependencies, uint32_t workers, const AssetSource* source)
+        std::expected<void, std::string>
+        validateDependencies(const Json& dependencies, uint32_t workers, const AssetSource* source)
         {
-            if (dependencies.empty())
+            if (!dependencies.is_array() || dependencies.empty() || dependencies.size() > UINT32_MAX)
             {
-                throw std::runtime_error("Asset cache has no source dependencies");
+                return std::unexpected("Asset cache has invalid source dependencies");
             }
-            asset_detail::runImportJobs(
+            return asset_detail::runImportJobsExpected(
                 "Verifying source dependencies",
                 uint32_t(dependencies.size()),
                 workers,
                 65536,
-                [&](uint32_t i)
+                [&](uint32_t i) -> std::expected<void, std::string>
                 {
-                    const auto&                 dependency     = dependencies.at(i);
-                    const auto                  name           = dependency.at("path").get<std::string>();
-                    const std::filesystem::path dependencyPath = std::u8string(name.begin(), name.end());
-                    if ((source ? hashBytes(source->read(dependencyPath)) : hashFile(dependencyPath)) !=
-                        dependency.at("hash").get<std::string>())
+                    const auto& dependency = dependencies[i];
+                    const auto  path       = dependency.find("path");
+                    const auto  hash       = dependency.find("hash");
+                    if (path == dependency.end() || !path->is_string() || hash == dependency.end() ||
+                        !hash->is_string())
                     {
-                        throw std::runtime_error("Changed asset dependency: " + name);
+                        return std::unexpected("Invalid cached asset dependency");
                     }
+                    const auto&                 name           = path->get_ref<const std::string&>();
+                    const std::filesystem::path dependencyPath = std::u8string(name.begin(), name.end());
+                    if (dependencyPath.native().find(std::filesystem::path::value_type(0)) !=
+                        std::filesystem::path::string_type::npos)
+                    {
+                        return std::unexpected("Cached asset dependency path contains a NUL character");
+                    }
+                    std::string actual;
+                    if (source)
+                    {
+                        auto bytes = source->readExpected(dependencyPath);
+                        if (!bytes)
+                        {
+                            return std::unexpected(bytes.error());
+                        }
+                        actual = hashBytes(*bytes);
+                    }
+                    else
+                    {
+                        auto hashed = hashFile(dependencyPath);
+                        if (!hashed)
+                        {
+                            return std::unexpected(hashed.error());
+                        }
+                        actual = std::move(*hashed);
+                    }
+                    if (actual != hash->get_ref<const std::string&>())
+                    {
+                        return std::unexpected("Changed asset dependency: " + name);
+                    }
+                    return {};
                 });
         }
 
-        Json readMetadata(CacheReader& archive, std::span<const std::byte> bytes, const Json& recipe)
+        std::expected<Json, std::string>
+        readMetadata(CacheReader& archive, std::span<const std::byte> bytes, const Json& recipe)
         {
-            if (archive.value<uint64_t>() != kMagic || archive.value<uint32_t>() != kPipelineVersion)
+            uint64_t magic;
+            uint32_t version;
+            uint64_t checksum;
+            if (!archive.read(magic) || !archive.read(version) || !archive.read(checksum) || magic != kMagic ||
+                version != kPipelineVersion)
             {
-                throw std::runtime_error("Asset cache format changed");
+                return std::unexpected("Invalid or unsupported asset cache header");
             }
-            const auto       checksum = archive.value<uint64_t>();
-            constexpr size_t prefix   = sizeof(uint64_t) * 2 + sizeof(uint32_t);
+            constexpr size_t prefix = sizeof(magic) + sizeof(version) + sizeof(checksum);
             if (XXH3_64bits(bytes.data() + prefix, bytes.size() - prefix) != checksum)
             {
-                throw std::runtime_error("Asset cache checksum mismatch");
+                return std::unexpected("Asset cache checksum mismatch");
             }
-            const auto text     = archive.array<char>();
-            const auto metadata = Json::parse(text);
-            if (metadata.at("recipe") != recipe)
+            std::vector<char> text;
+            if (!archive.readArray(text))
             {
-                throw std::runtime_error("Asset import recipe changed");
+                return std::unexpected("Invalid asset cache metadata length");
+            }
+            auto       metadata     = Json::parse(text, nullptr, false);
+            const auto cachedRecipe = metadata.find("recipe");
+            const auto dependencies = metadata.find("dependencies");
+            if (cachedRecipe == metadata.end() || *cachedRecipe != recipe || dependencies == metadata.end() ||
+                !dependencies->is_array())
+            {
+                return std::unexpected("Asset import recipe or dependency metadata changed");
             }
             return metadata;
         }
@@ -194,52 +249,60 @@ namespace vultra
             }
         }
 
-        PreparedTextures readTextures(CacheReader& reader, const SceneData& scene, const AssetImportOptions& options)
+        std::expected<PreparedTextures, std::string>
+        readTextures(CacheReader& reader, const SceneData& scene, const AssetImportOptions& options)
         {
             PreparedTextures result;
-            result.materials = reader.array<std::array<uint32_t, kMaterialTextureCount>>();
-            const auto count = reader.value<uint32_t>();
-            if (count > 1000000 || result.materials.size() != scene.materials.size())
+            uint32_t         count;
+            if (!reader.readArray(result.materials) || !reader.read(count) || count < 2 || count > 1000000 ||
+                result.materials.size() != scene.materials.size())
             {
-                throw std::runtime_error("Invalid cached texture/material count");
+                return std::unexpected("Invalid cached texture/material count");
             }
             result.images.resize(count);
             std::vector<std::vector<std::span<const std::byte>>> payloads(count);
             for (uint32_t i = 0; i < count; ++i)
             {
                 auto& texture        = result.images[i];
-                texture.format       = reader.value<TextureFormat>();
-                texture.sourceImage  = reader.value<int>();
-                texture.sourceMipNum = reader.value<uint32_t>();
-                const auto levels    = reader.value<uint32_t>();
-                const auto layout    = asset_detail::textureLayout(texture.format);
+                uint32_t levels;
+                if (!reader.read(texture.format) || !reader.read(texture.sourceImage) ||
+                    !reader.read(texture.sourceMipNum) || !reader.read(levels))
+                {
+                    return std::unexpected("Truncated cached texture header");
+                }
+                const auto layout = asset_detail::textureLayout(texture.format);
+                if (!layout)
+                {
+                    return std::unexpected(layout.error());
+                }
                 if (levels == 0 || levels > 32 || texture.sourceMipNum > levels || texture.sourceImage < -1 ||
                     (texture.sourceImage >= 0 && size_t(texture.sourceImage) >= scene.images.size()) ||
                     (texture.sourceMipNum != 0 && texture.sourceImage < 0))
                 {
-                    throw std::runtime_error("Invalid cached texture source or mip count");
+                    return std::unexpected("Invalid cached texture source or mip count");
                 }
                 texture.levels.resize(levels);
                 for (uint32_t mip = 0; mip < levels; ++mip)
                 {
-                    auto& level             = texture.levels[mip];
-                    level.size              = reader.value<Extent>();
-                    const auto     pixels   = reader.arrayBytes<std::byte>();
-                    const uint64_t expected = mip < texture.sourceMipNum ?
-                                                  0 :
-                                                  uint64_t((level.size.width + layout.block - 1) / layout.block) *
-                                                      ((level.size.height + layout.block - 1) / layout.block) *
-                                                      layout.bytes;
-                    if (level.size.empty() || pixels.size() != expected)
+                    auto&                      level = texture.levels[mip];
+                    std::span<const std::byte> pixels;
+                    if (!reader.read(level.size) || !reader.readArrayBytes<std::byte>(pixels) || level.size.empty())
                     {
-                        throw std::runtime_error("Invalid cached derived mip size");
+                        return std::unexpected("Invalid cached derived mip");
+                    }
+                    const auto blocksX = (uint64_t(level.size.width) + layout->block - 1) / layout->block;
+                    const auto blocksY = (uint64_t(level.size.height) + layout->block - 1) / layout->block;
+                    const auto blocks  = mip < texture.sourceMipNum ? 0 : blocksX * blocksY;
+                    if (pixels.size() % layout->bytes != 0 || pixels.size() / layout->bytes != blocks)
+                    {
+                        return std::unexpected("Invalid cached derived mip size");
                     }
                     if (mip > 0)
                     {
                         const auto previous = texture.levels[mip - 1].size;
                         if (level.size != Extent {std::max(1u, previous.width / 2), std::max(1u, previous.height / 2)})
                         {
-                            throw std::runtime_error("Invalid cached mip dimensions");
+                            return std::unexpected("Invalid cached mip dimensions");
                         }
                     }
                     payloads[i].push_back(pixels);
@@ -247,7 +310,7 @@ namespace vultra
             }
             if (!reader.empty())
             {
-                throw std::runtime_error("Trailing derived cache data");
+                return std::unexpected("Trailing derived cache data");
             }
             for (const auto& material : result.materials)
             {
@@ -255,39 +318,46 @@ namespace vultra
                 {
                     if (image >= count)
                     {
-                        throw std::runtime_error("Invalid cached material texture");
+                        return std::unexpected("Invalid cached material texture");
                     }
                 }
             }
-            asset_detail::runImportJobs(
+            auto restored = asset_detail::runImportJobsExpected(
                 "Restoring derived textures",
                 count,
                 options.workers,
                 64 * 1024 * 1024,
-                [&](uint32_t i)
+                [&](uint32_t i) -> std::expected<void, std::string>
                 {
                     auto& texture = result.images[i];
                     if (texture.sourceMipNum != 0)
                     {
                         const auto& image = scene.images[texture.sourceImage];
                         const bool  srgb =
-                            texture.format == TextureFormat::eRgba8Srgb || texture.format == TextureFormat::eBgra8Srgb;
+                            texture.format == TextureFormat::eRgba8Srgb ||
+                            texture.format == TextureFormat::eBgra8Srgb || texture.format == TextureFormat::eBc1Srgb ||
+                            texture.format == TextureFormat::eBc2Srgb || texture.format == TextureFormat::eBc3Srgb ||
+                            texture.format == TextureFormat::eBc7Srgb;
                         TextureImportOptions sourceOptions;
                         sourceOptions.mipmaps = texture.sourceMipNum > 1;
                         sourceOptions.compression =
                             image.dds.empty() ? TextureCompression::eNone : options.textures.compression;
-                        auto authored = prepareTexture(image, srgb, sourceOptions);
-                        if (authored.format != texture.format || authored.levels.size() != texture.sourceMipNum)
+                        auto authored = prepareTextureExpected(image, srgb, sourceOptions);
+                        if (!authored)
                         {
-                            throw std::runtime_error("Cached texture no longer matches its source");
+                            return std::unexpected(authored.error());
+                        }
+                        if (authored->format != texture.format || authored->levels.size() != texture.sourceMipNum)
+                        {
+                            return std::unexpected("Cached texture no longer matches its source");
                         }
                         for (uint32_t mip = 0; mip < texture.sourceMipNum; ++mip)
                         {
-                            if (authored.levels[mip].size != texture.levels[mip].size)
+                            if (authored->levels[mip].size != texture.levels[mip].size)
                             {
-                                throw std::runtime_error("Cached dimensions no longer match the source");
+                                return std::unexpected("Cached dimensions no longer match the source");
                             }
-                            texture.levels[mip].bytes = std::move(authored.levels[mip].bytes);
+                            texture.levels[mip].bytes = std::move(authored->levels[mip].bytes);
                         }
                     }
                     for (uint32_t mip = texture.sourceMipNum; mip < texture.levels.size(); ++mip)
@@ -295,8 +365,67 @@ namespace vultra
                         const auto bytes = payloads[i][mip];
                         texture.levels[mip].bytes.assign(bytes.begin(), bytes.end());
                     }
+                    return {};
                 });
+            if (!restored)
+            {
+                return std::unexpected(restored.error());
+            }
             return result;
+        }
+
+        std::expected<PreparedTextures, std::string> readDerivedCache(const std::filesystem::path& path,
+                                                                      const Json&                  recipe,
+                                                                      const Json&                  dependencies,
+                                                                      const SceneData&             scene,
+                                                                      const AssetImportOptions&    options)
+        {
+            const auto bytes = detail::readAssetFileExpected(path);
+            if (!bytes)
+            {
+                return std::unexpected(bytes.error());
+            }
+            CacheReader archive(*bytes);
+            const auto  metadata = readMetadata(archive, *bytes, recipe);
+            if (!metadata)
+            {
+                return std::unexpected(metadata.error());
+            }
+            if (*metadata->find("dependencies") != dependencies)
+            {
+                return std::unexpected("Changed asset source dependencies");
+            }
+            return readTextures(archive, scene, options);
+        }
+
+        std::expected<void, std::string> publishCache(const std::filesystem::path& path,
+                                                      const Json&                  recipe,
+                                                      const Json&                  dependencies,
+                                                      const PreparedTextures&      textures)
+        {
+            const auto  metadata = Json {{"recipe", recipe}, {"dependencies", dependencies}}.dump();
+            CacheWriter archive;
+            archive.value(kMagic);
+            archive.value(kPipelineVersion);
+            const auto checksumOffset = archive.data.size();
+            archive.value(uint64_t(0));
+            const auto payloadOffset = archive.data.size();
+            archive.array(std::span<const char>(metadata));
+            writeTextures(archive, textures);
+            const auto checksum = XXH3_64bits(archive.data.data() + payloadOffset, archive.data.size() - payloadOffset);
+            std::memcpy(archive.data.data() + checksumOffset, &checksum, sizeof(checksum));
+            std::error_code error;
+            std::filesystem::create_directories(path.parent_path(), error);
+            if (error)
+            {
+                return std::unexpected("Create asset cache directory: " + error.message());
+            }
+            if (auto written = writeFileAtomicallyExpected(path, archive.data); !written)
+            {
+                return written;
+            }
+            Logger::core().info("Asset cache written: {:.1f} MiB", double(archive.data.size()) / (1024 * 1024));
+            return {};
         }
     } // namespace
 
@@ -308,44 +437,59 @@ namespace vultra
         {
             return false;
         }
-        const auto source    = assetSource ? assetSource->resolve(input) : std::filesystem::canonical(input);
-        const auto recipe    = importRecipe(source, options);
-        const auto cachePath = cacheFilePath(source, recipe, options);
-        if (!std::filesystem::is_regular_file(cachePath))
+        const auto source = resolveSource(input, assetSource);
+        if (!source)
         {
             return false;
         }
-        try
+        const auto recipe    = importRecipe(*source, options);
+        const auto cachePath = cacheFilePath(*source, recipe, options);
+        const auto bytes     = detail::readAssetFileExpected(cachePath);
+        if (!bytes)
         {
-            const auto  bytes = readFile(cachePath);
-            CacheReader archive(bytes);
-            const auto  metadata = readMetadata(archive, bytes, recipe);
-            validateDependencies(metadata.at("dependencies"), options.workers, assetSource);
-            return true;
-        }
-        catch (const std::exception& error)
-        {
-            Logger::core().info("Asset cache needs import: {}: {}", pathText(input), error.what());
             return false;
         }
+        CacheReader archive(*bytes);
+        const auto  metadata = readMetadata(archive, *bytes, recipe);
+        if (!metadata)
+        {
+            Logger::core().info("Asset cache needs import: {}: {}", pathText(input), metadata.error());
+            return false;
+        }
+        const auto current = validateDependencies(*metadata->find("dependencies"), options.workers, assetSource);
+        if (!current)
+        {
+            Logger::core().info("Asset cache needs import: {}: {}", pathText(input), current.error());
+        }
+        return current.has_value();
     }
 
-    ImportedAsset
-    importAsset(const std::filesystem::path& input, const AssetImportOptions& options, const AssetSource* assetSource)
+    std::expected<ImportedAsset, std::string> importAssetExpected(const std::filesystem::path& input,
+                                                                  const AssetImportOptions&    options,
+                                                                  const AssetSource*           assetSource)
     {
-        const auto started   = std::chrono::steady_clock::now();
-        const auto source    = assetSource ? assetSource->resolve(input) : std::filesystem::canonical(input);
-        const auto recipe    = importRecipe(source, options);
-        const auto cachePath = cacheFilePath(source, recipe, options);
+        const auto started = std::chrono::steady_clock::now();
+        const auto source  = resolveSource(input, assetSource);
+        if (!source)
+        {
+            return std::unexpected(source.error());
+        }
+        const auto recipe    = importRecipe(*source, options);
+        const auto cachePath = cacheFilePath(*source, recipe, options);
         Logger::core().info("Importing asset: {}", pathText(input));
         Logger::core().info("Loading geometry, materials and source images...");
         const auto                         loadStarted = std::chrono::steady_clock::now();
         auto                               lastReadLog = loadStarted;
         std::map<std::string, std::string> files;
-        const SourceObserver               observer =
-            [&files, &lastReadLog, assetSource](const auto& path, std::span<const std::byte> bytes)
+        const ExpectedSourceObserver       observer =
+            [&](const auto& path, std::span<const std::byte> bytes) -> std::expected<void, std::string>
         {
-            const auto name = pathText(assetSource ? assetSource->resolve(path) : std::filesystem::canonical(path));
+            auto resolved = resolveSource(path, assetSource);
+            if (!resolved)
+            {
+                return std::unexpected(resolved.error());
+            }
+            const auto name              = pathText(*resolved);
             const auto hash = hashBytes(bytes);
             const auto [entry, inserted] = files.emplace(name, hash);
             const auto now               = std::chrono::steady_clock::now();
@@ -356,33 +500,41 @@ namespace vultra
             }
             if (!inserted && entry->second != hash)
             {
-                throw std::runtime_error("Asset changed while importing: " + name);
+                return std::unexpected("Asset changed while importing: " + name);
             }
+            return {};
         };
-        ImportedAsset asset;
-        auto          extension = source.extension().string();
+        auto extension = source->extension().string();
         std::ranges::transform(extension,
                                extension.begin(),
                                [](unsigned char value)
                                {
                                    return char(std::tolower(value));
                                });
-        if (extension == ".gltf" || extension == ".glb")
+        auto load = [&]() -> std::expected<SceneData, std::string>
         {
-            asset.scene = loadGltf(source, observer, options.workers, assetSource);
-        }
-        else if (extension == ".obj")
+            if (extension == ".gltf" || extension == ".glb")
+            {
+                return loadGltfExpected(*source, observer, options.workers, assetSource);
+            }
+            if (extension == ".obj")
+            {
+                return loadObjExpected(*source, observer, options.workers, assetSource);
+            }
+            if (extension == ".fbx")
+            {
+                return loadFbxExpected(*source, observer, options.workers, assetSource, options.fbx);
+            }
+            return std::unexpected("Unsupported asset extension: " + extension);
+        };
+        auto scene = load();
+        if (!scene)
         {
-            asset.scene = loadObj(source, observer, options.workers, assetSource);
+            return std::unexpected(scene.error());
         }
-        else if (extension == ".fbx")
-        {
-            asset.scene = loadFbx(source, observer, options.workers, assetSource, options.fbx);
-        }
-        else
-        {
-            throw std::invalid_argument("Unsupported asset extension: " + extension);
-        }
+        ImportedAsset asset;
+        asset.scene     = std::move(*scene);
+        asset.cachePath = cachePath;
         Logger::core().info(
             "Loaded {} triangles, {} materials, {} source images ({:.1f} ms)",
             asset.scene.indices.size() / 3,
@@ -395,71 +547,48 @@ namespace vultra
             dependencies.push_back({{"path", path}, {"hash", hash}});
             asset.dependencies.push_back({std::filesystem::path(std::u8string(path.begin(), path.end())), hash});
         }
-        if (options.cache && !options.reimport && std::filesystem::exists(cachePath))
+        std::error_code error;
+        if (options.cache && !options.reimport && std::filesystem::is_regular_file(cachePath, error))
         {
-            try
+            auto cached = readDerivedCache(cachePath, recipe, dependencies, asset.scene, options);
+            if (cached)
             {
-                Logger::core().info("Checking derived cache against loaded source content: {}", pathText(input));
-                const auto  bytes = readFile(cachePath);
-                CacheReader archive(bytes);
-                const auto  metadata = readMetadata(archive, bytes, recipe);
-                if (metadata.at("dependencies") != dependencies)
+                // An edit during cache restoration must fail just like an edit during texture preparation.
+                if (auto current = validateDependencies(dependencies, options.workers, assetSource); !current)
                 {
-                    throw std::runtime_error("Changed asset source dependencies");
+                    return std::unexpected(current.error());
                 }
-                asset.textures = readTextures(archive, asset.scene, options);
+                asset.textures = std::move(*cached);
                 asset.scene.images.clear();
-                asset.cacheHit  = true;
-                asset.cachePath = cachePath;
+                asset.cacheHit = true;
                 Logger::core().info(
                     "Asset cache hit: {} ({:.1f} ms)",
                     pathText(input),
                     std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
                 return asset;
             }
-            catch (const std::exception& error)
-            {
-                Logger::core().info("Reimport {}: {}", pathText(input), error.what());
-            }
+            Logger::core().info("Reimport {}: {}", pathText(input), cached.error());
         }
         const auto textureStarted = std::chrono::steady_clock::now();
-        asset.textures            = prepareTextures(asset.scene, options.textures, options.workers);
+        auto       textures       = prepareTexturesExpected(asset.scene, options.textures, options.workers);
+        if (!textures)
+        {
+            return std::unexpected(textures.error());
+        }
+        asset.textures = std::move(*textures);
+        asset.scene.images.clear();
         Logger::core().info(
             "Texture preparation complete ({:.1f} ms)",
             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - textureStarted).count());
-        asset.scene.images.clear();
-        // Do not publish a mixture of source revisions if an editor changed a dependency during import.
-        Logger::core().info("Verifying {} source dependencies before publishing...", files.size());
-        validateDependencies(dependencies, options.workers, assetSource);
-        asset.cachePath = cachePath;
+        if (auto current = validateDependencies(dependencies, options.workers, assetSource); !current)
+        {
+            return std::unexpected(current.error());
+        }
         if (options.cache)
         {
-            try
+            if (auto published = publishCache(cachePath, recipe, dependencies, asset.textures); !published)
             {
-                Logger::core().info("Writing asset cache: {}", pathText(cachePath));
-                const auto  writeStarted = std::chrono::steady_clock::now();
-                const auto  metadata     = Json {{"recipe", recipe}, {"dependencies", dependencies}}.dump();
-                CacheWriter archive;
-                archive.value(kMagic);
-                archive.value(kPipelineVersion);
-                const auto checksumOffset = archive.data.size();
-                archive.value(uint64_t(0));
-                const auto payloadOffset = archive.data.size();
-                archive.array(std::span<const char>(metadata));
-                writeTextures(archive, asset.textures);
-                const auto checksum =
-                    XXH3_64bits(archive.data.data() + payloadOffset, archive.data.size() - payloadOffset);
-                std::memcpy(archive.data.data() + checksumOffset, &checksum, sizeof(checksum));
-                std::filesystem::create_directories(options.cacheDirectory);
-                writeFileAtomically(cachePath, archive.data);
-                Logger::core().info(
-                    "Asset cache written: {:.1f} MiB ({:.1f} ms)",
-                    double(archive.data.size()) / (1024 * 1024),
-                    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - writeStarted).count());
-            }
-            catch (const std::exception& error)
-            {
-                Logger::core().warn("Asset imported, but cache could not be written: {}", error.what());
+                Logger::core().warn("Asset imported, but cache could not be written: {}", published.error());
             }
         }
         Logger::core().info(
@@ -469,5 +598,21 @@ namespace vultra
             asset.textures.images.size(),
             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
         return asset;
+    }
+
+    ImportedAsset
+    importAsset(const std::filesystem::path& input, const AssetImportOptions& options, const AssetSource* assetSource)
+    {
+        auto asset = importAssetExpected(input, options, assetSource);
+        if (!asset)
+        {
+            if (asset.error().starts_with("Unsupported asset extension:") ||
+                asset.error() == "Unknown FBX material convention")
+            {
+                throw std::invalid_argument(asset.error());
+            }
+            throw std::runtime_error(asset.error());
+        }
+        return std::move(*asset);
     }
 } // namespace vultra

@@ -8,6 +8,22 @@
 
 namespace vultra
 {
+    std::expected<std::unique_ptr<Window>, std::string> Window::create(const char* title, Extent extent)
+    {
+        auto window = std::unique_ptr<Window>(new Window(Uninitialized {}));
+        if (auto initialized = window->initializeOwned(title, extent); !initialized)
+            return std::unexpected(initialized.error());
+        return window;
+    }
+
+    std::expected<std::unique_ptr<Window>, std::string> Window::borrow(void* borrowed)
+    {
+        auto window = std::unique_ptr<Window>(new Window(Uninitialized {}));
+        if (auto initialized = window->initializeBorrowed(borrowed); !initialized)
+            return std::unexpected(initialized.error());
+        return window;
+    }
+
     void Window::setTitle(const char* title)
     {
         m_Title = title;
@@ -38,18 +54,22 @@ namespace vultra
 
     namespace platform
     {
-        const char* requestedWindowSystem()
+        std::expected<const char*, std::string> requestedWindowSystemExpected()
         {
             const auto* value = std::getenv("VULTRA_WINDOW_SYSTEM");
             if (!value || std::string_view(value).empty())
-            {
                 return nullptr;
-            }
             if (std::string_view(value) != "x11" && std::string_view(value) != "wayland")
-            {
-                throw std::invalid_argument("VULTRA_WINDOW_SYSTEM must be x11 or wayland");
-            }
+                return std::unexpected("VULTRA_WINDOW_SYSTEM must be x11 or wayland");
             return value;
+        }
+
+        const char* requestedWindowSystem()
+        {
+            auto result = requestedWindowSystemExpected();
+            if (!result)
+                throw std::invalid_argument(result.error());
+            return *result;
         }
     } // namespace platform
 } // namespace vultra

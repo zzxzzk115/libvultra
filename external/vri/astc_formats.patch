@@ -1,0 +1,101 @@
+--- a/include/vri/vri_format.h
++++ b/include/vri/vri_format.h
+@@ -86,6 +86,12 @@
+     VriFormat_BC3_SRGB,
+     VriFormat_BC7_SRGB,
+ 
++    /* ASTC formats are optional and must be queried per device. */
++    VriFormat_ASTC_4X4_UNORM,
++    VriFormat_ASTC_4X4_SRGB,
++    VriFormat_ASTC_6X6_UNORM,
++    VriFormat_ASTC_6X6_SRGB,
++
+     VriFormat_Count,
+     VriFormat_MaxEnum = 0x7fffffff
+ } VriFormat;
+--- a/source/backend_vk/conversions_vk.h
++++ b/source/backend_vk/conversions_vk.h
+@@ -66,6 +66,10 @@
+             {VriFormat_BC6H_UFLOAT, VK_FORMAT_BC6H_UFLOAT_BLOCK},
+             {VriFormat_BC7_UNORM, VK_FORMAT_BC7_UNORM_BLOCK},
+             {VriFormat_BC7_SRGB, VK_FORMAT_BC7_SRGB_BLOCK},
++            {VriFormat_ASTC_4X4_UNORM, VK_FORMAT_ASTC_4x4_UNORM_BLOCK},
++            {VriFormat_ASTC_4X4_SRGB, VK_FORMAT_ASTC_4x4_SRGB_BLOCK},
++            {VriFormat_ASTC_6X6_UNORM, VK_FORMAT_ASTC_6x6_UNORM_BLOCK},
++            {VriFormat_ASTC_6X6_SRGB, VK_FORMAT_ASTC_6x6_SRGB_BLOCK},
+             {VriFormat_D16_UNORM, VK_FORMAT_D16_UNORM},
+             {VriFormat_D32_SFLOAT, VK_FORMAT_D32_SFLOAT},
+             {VriFormat_S8_UINT, VK_FORMAT_S8_UINT},
+--- a/source/backend_metal/conversions_mtl.h
++++ b/source/backend_metal/conversions_mtl.h
+@@ -76,6 +76,10 @@
+             {VriFormat_BC6H_UFLOAT,     MTLPixelFormatBC6H_RGBUfloat},
+             {VriFormat_BC7_UNORM,       MTLPixelFormatBC7_RGBAUnorm},
+             {VriFormat_BC7_SRGB,        MTLPixelFormatBC7_RGBAUnorm_sRGB},
++            {VriFormat_ASTC_4X4_UNORM,  MTLPixelFormatASTC_4x4_LDR},
++            {VriFormat_ASTC_4X4_SRGB,   MTLPixelFormatASTC_4x4_sRGB},
++            {VriFormat_ASTC_6X6_UNORM,  MTLPixelFormatASTC_6x6_LDR},
++            {VriFormat_ASTC_6X6_SRGB,   MTLPixelFormatASTC_6x6_sRGB},
+ 
+             {VriFormat_D16_UNORM,       MTLPixelFormatDepth16Unorm},
+             {VriFormat_D32_SFLOAT,      MTLPixelFormatDepth32Float},
+@@ -114,6 +118,27 @@
+         return vri::MapOr(f, kTable, MTLVertexFormatInvalid);
+     }
+ 
++    struct CopyBlockLayout { uint32_t width, height, bytes; };
++
++    // Metal buffer/texture copies measure compressed rows in blocks, including tail mips.
++    inline CopyBlockLayout TextureCopyBlock(VriFormat f)
++    {
++        switch (f)
++        {
++            case VriFormat_BC1_UNORM: case VriFormat_BC1_SRGB: case VriFormat_BC4_UNORM:
++                return {4, 4, 8};
++            case VriFormat_BC2_UNORM: case VriFormat_BC2_SRGB:
++            case VriFormat_BC3_UNORM: case VriFormat_BC3_SRGB: case VriFormat_BC5_UNORM:
++            case VriFormat_BC6H_UFLOAT: case VriFormat_BC7_UNORM: case VriFormat_BC7_SRGB:
++            case VriFormat_ASTC_4X4_UNORM: case VriFormat_ASTC_4X4_SRGB:
++                return {4, 4, 16};
++            case VriFormat_ASTC_6X6_UNORM: case VriFormat_ASTC_6X6_SRGB:
++                return {6, 6, 16};
++            default:
++                return {1, 1, 0}; // Caller uses TexelSize for uncompressed formats.
++        }
++    }
++
+     // Bytes per (uncompressed) texel - drives copy bytesPerRow.
+     inline uint32_t TexelSize(VriFormat f)
+     {
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -1683,8 +1683,12 @@
+             const uint32_t w = region->texture.width ? region->texture.width : t->width;
+             const uint32_t h = region->texture.height ? region->texture.height : t->height;
+             const uint32_t d = region->texture.depth ? region->texture.depth : 1;
+-            const uint32_t pitch = (region->bufferRowLength ? region->bufferRowLength : w) * t->texelSize;
+-            const uint32_t imgHeight = region->bufferImageHeight ? region->bufferImageHeight : h;
++            const auto block = TextureCopyBlock(t->format);
++            const uint32_t rowPixels = region->bufferRowLength ? region->bufferRowLength : w;
++            const uint32_t imagePixels = region->bufferImageHeight ? region->bufferImageHeight : h;
++            const uint32_t pitch = ((rowPixels + block.width - 1) / block.width) *
++                                   (block.bytes ? block.bytes : t->texelSize);
++            const uint32_t imgHeight = (imagePixels + block.height - 1) / block.height;
+             MTLOrigin origin = MTLOriginMake(region->texture.x, region->texture.y, region->texture.z);
+             [c->blitEnc copyFromBuffer:Buf(src)->buffer
+                           sourceOffset:region->bufferOffset
+@@ -1705,8 +1709,12 @@
+             const uint32_t w = region->texture.width ? region->texture.width : t->width;
+             const uint32_t h = region->texture.height ? region->texture.height : t->height;
+             const uint32_t d = region->texture.depth ? region->texture.depth : 1;
+-            const uint32_t pitch = (region->bufferRowLength ? region->bufferRowLength : w) * t->texelSize;
+-            const uint32_t imgHeight = region->bufferImageHeight ? region->bufferImageHeight : h;
++            const auto block = TextureCopyBlock(t->format);
++            const uint32_t rowPixels = region->bufferRowLength ? region->bufferRowLength : w;
++            const uint32_t imagePixels = region->bufferImageHeight ? region->bufferImageHeight : h;
++            const uint32_t pitch = ((rowPixels + block.width - 1) / block.width) *
++                                   (block.bytes ? block.bytes : t->texelSize);
++            const uint32_t imgHeight = (imagePixels + block.height - 1) / block.height;
+             MTLOrigin origin = MTLOriginMake(region->texture.x, region->texture.y, region->texture.z);
+             [c->blitEnc copyFromTexture:t->texture
+                             sourceSlice:region->texture.baseLayer

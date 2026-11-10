@@ -41,7 +41,7 @@ float cascadeVisibility(uint cascade, float3 position, float3 normal)
     shadow0.GetDimensions(resolution, height);
     float texelWorld = frame.cascadeWidths[cascade] / resolution;
     position += normal * frame.shadowParameters.y * texelWorld;
-    float4 projected   = mul(frame.lightViewProjection[cascade], float4(position, 1));
+    float4 projected   = mul(shadowLightMatrix(cascade), float4(position, 1));
     float3 coordinates = projected.xyz / projected.w;
     float2 uv          = clipToUv(coordinates.xy);
     if (any(uv < 0) || any(uv > 1) || coordinates.z < 0 || coordinates.z > 1)

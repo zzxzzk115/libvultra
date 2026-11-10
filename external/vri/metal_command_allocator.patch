@@ -1,0 +1,109 @@
+--- a/source/backend_metal/objects_mtl.h
++++ b/source/backend_metal/objects_mtl.h
+@@ -51,6 +51,7 @@
+     {
+         DeviceMTL*  device; // Metal has no command pool; command buffers come from the queue
+         VriQueueType type;
++        std::vector<struct CommandBufferMTL*> commands;
+     };
+ 
+     struct CommandBufferMTL
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -320,8 +320,61 @@
+             *out = ToHandle(new CommandAllocatorMTL{Dev(device), type});
+             return VriResult_Success;
+         }
+-        void VRI_CALL ResetCommandAllocator(VriCommandAllocator*) {}
+-        void VRI_CALL DestroyCommandAllocator(VriCommandAllocator* a) { delete CA(a); }
++        // Discard recorded work without submitting it. The caller establishes completion before resetting.
++        void DiscardCommands(CommandBufferMTL* c)
++        {
++            if (c->renderEnc)
++            {
++                [c->renderEnc endEncoding];
++                [c->renderEnc release];
++                c->renderEnc = nil;
++            }
++            EndAux(c);
++            if (c->cmd)
++            {
++                [c->cmd release];
++                c->cmd = nil;
++            }
++            c->boundLayout            = nullptr;
++            c->boundPipeline          = nullptr;
++            c->renderPipelineDeferred = false;
++            c->indexBuffer            = nil;
++            c->indexOffset            = 0;
++            c->indexType              = MTLIndexTypeUInt16;
++            for (auto& binding : c->computeBuffers)
++            {
++                binding.kind        = CommandBufferMTL::ComputeBufferBinding::Kind::Empty;
++                binding.descriptor  = nullptr;
++                binding.argumentSet = nullptr;
++                binding.bytes.clear();
++            }
++            std::fill(c->computeTextures.begin(), c->computeTextures.end(), nullptr);
++            std::fill(c->computeSamplers.begin(), c->computeSamplers.end(), nullptr);
++            c->visNextSlot = 0;
++            c->occMarks.clear();
++            c->tsResolves.clear();
++        }
++
++        void VRI_CALL ResetCommandAllocator(VriCommandAllocator* allocator)
++        {
++            for (auto* commands : CA(allocator)->commands)
++            {
++                DiscardCommands(commands);
++            }
++        }
++
++        void VRI_CALL DestroyCommandAllocator(VriCommandAllocator* allocator)
++        {
++            auto* a = CA(allocator);
++            for (auto* commands : a->commands)
++            {
++                DiscardCommands(commands);
++                [commands->visBuffer release];
++                [commands->tsScratch release];
++                delete commands;
++            }
++            delete a;
++        }
+ 
+         VriResult VRI_CALL CreateCommandBuffer(VriCommandAllocator* allocator, VriCommandBuffer** out)
+         {
+@@ -331,6 +384,7 @@
+             // Allocate against the queue for the allocator's type, so a Compute allocator's command
+             // buffers run on the async compute queue (and signal/wait events stay in queue order).
+             c->queue = a->device->GetQueue(a->type)->queue;
++            a->commands.push_back(c);
+             *out = ToHandle(c);
+             return VriResult_Success;
+         }
+@@ -338,23 +392,8 @@
+         VriResult VRI_CALL BeginCommandBuffer(VriCommandBuffer* cmd)
+         {
+             CommandBufferMTL* c = CB(cmd);
++            DiscardCommands(c);
+             c->cmd = [[c->queue commandBuffer] retain];
+-            c->renderEnc = nil; c->computeEnc = nil; c->blitEnc = nil;
+-            c->boundLayout = nullptr; c->boundPipeline = nullptr; c->renderPipelineDeferred = false;
+-            c->indexBuffer = nil; c->indexOffset = 0; c->indexType = MTLIndexTypeUInt16;
+-            for (auto& binding : c->computeBuffers)
+-            {
+-                binding.kind        = CommandBufferMTL::ComputeBufferBinding::Kind::Empty;
+-                binding.descriptor  = nullptr;
+-                binding.argumentSet = nullptr;
+-                binding.bytes.clear();
+-            }
+-            std::fill(c->computeTextures.begin(), c->computeTextures.end(), nullptr);
+-            std::fill(c->computeSamplers.begin(), c->computeSamplers.end(), nullptr);
+-            // Query state resets each begin; the visibility buffer (occlusion) is reused across resets.
+-            c->visNextSlot = 0;
+-            c->occMarks.clear();
+-            c->tsResolves.clear();
+             return c->cmd ? VriResult_Success : VriResult_Failure;
+         }
+ 

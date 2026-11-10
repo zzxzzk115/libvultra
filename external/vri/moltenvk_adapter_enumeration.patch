@@ -1,0 +1,18 @@
+diff --git a/source/backend_vk/device_vk.cpp b/source/backend_vk/device_vk.cpp
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -1246,6 +1246,14 @@
+         app.apiVersion           = VK_API_VERSION_1_3;
+         VkInstanceCreateInfo ici = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+         ici.pApplicationInfo     = &app;
++#if defined(__APPLE__)
++        // Use the same portability device set as CreateInstance on macOS.
++        const char* portability    = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
++        ici.enabledExtensionCount  = 1;
++        ici.ppEnabledExtensionNames = &portability;
++        ici.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
++#endif
++
+ 
+         VkInstance instance = VK_NULL_HANDLE;
+         if (vkCreateInstance(&ici, nullptr, &instance) != VK_SUCCESS)

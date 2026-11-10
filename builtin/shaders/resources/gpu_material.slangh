@@ -24,9 +24,18 @@ struct MaterialData
 [[vk::binding(6, 1)]] Texture2D<float4>            specularColorTexture;
 [[vk::binding(7, 1)]] SamplerState                 materialSamplers[7];
 
-float4 readBaseColor(float2 uv, float4 color)
+float4 sampleSurfaceMap(Texture2D<float4> map, uint samplerIndex, float2 uv, float2 dx, float2 dy)
 {
-    float4 result = baseColorTexture.Sample(materialSamplers[0], uv) * material.baseColor * color;
+#if defined(VULTRA_TRANSPARENCY_SAMPLED_DEPTH) || defined(VULTRA_TRANSPARENCY_EARLY_DEPTH)
+    return map.SampleGrad(materialSamplers[samplerIndex], uv, dx, dy);
+#else
+    return map.Sample(materialSamplers[samplerIndex], uv);
+#endif
+}
+
+float4 readBaseColor(float2 uv, float4 color, float2 dx = 0, float2 dy = 0)
+{
+    float4 result = sampleSurfaceMap(baseColorTexture, 0, uv, dx, dy) * material.baseColor * color;
     if (result.a < material.flags.x)
     {
         discard;
@@ -34,7 +43,7 @@ float4 readBaseColor(float2 uv, float4 color)
     return result;
 }
 
-float3 surfaceNormal(SurfaceVertex input)
+float3 surfaceNormal(SurfaceVertex input, float2 dx = 0, float2 dy = 0)
 {
     float3 normal = normalize(input.normal);
     if (material.flags.w < 0.5)
@@ -49,7 +58,7 @@ float3 surfaceNormal(SurfaceVertex input)
     }
     tangent *= rsqrt(tangentLength);
     float3 bitangent = input.tangent.w * cross(normal, tangent);
-    float3 mapped    = normalTexture.Sample(materialSamplers[2], input.uv).xyz * 2 - 1;
+    float3 mapped    = sampleSurfaceMap(normalTexture, 2, input.uv, dx, dy).xyz * 2 - 1;
     if (material.flags.w > 1.5)
     {
         mapped.z = sqrt(saturate(1 - dot(mapped.xy, mapped.xy))); // BC5 stores only X and Y.

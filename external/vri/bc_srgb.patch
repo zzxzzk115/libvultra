@@ -1,0 +1,85 @@
+--- a/include/vri/vri_format.h
++++ b/include/vri/vri_format.h
+@@ -80,6 +80,12 @@
+     VriFormat_D24_UNORM_S8_UINT,
+     VriFormat_D32_SFLOAT_S8_UINT,
+ 
++    /* sRGB block formats retain all existing enum values. */
++    VriFormat_BC1_SRGB,
++    VriFormat_BC2_SRGB,
++    VriFormat_BC3_SRGB,
++    VriFormat_BC7_SRGB,
++
+     VriFormat_Count,
+     VriFormat_MaxEnum = 0x7fffffff
+ } VriFormat;
+--- a/source/backend_vk/conversions_vk.h
++++ b/source/backend_vk/conversions_vk.h
+@@ -56,12 +56,16 @@
+             {VriFormat_RGB10A2_UNORM, VK_FORMAT_A2B10G10R10_UNORM_PACK32},
+             {VriFormat_RG11B10_UFLOAT, VK_FORMAT_B10G11R11_UFLOAT_PACK32},
+             {VriFormat_BC1_UNORM, VK_FORMAT_BC1_RGBA_UNORM_BLOCK},
++            {VriFormat_BC1_SRGB, VK_FORMAT_BC1_RGBA_SRGB_BLOCK},
+             {VriFormat_BC2_UNORM, VK_FORMAT_BC2_UNORM_BLOCK},
++            {VriFormat_BC2_SRGB, VK_FORMAT_BC2_SRGB_BLOCK},
+             {VriFormat_BC3_UNORM, VK_FORMAT_BC3_UNORM_BLOCK},
++            {VriFormat_BC3_SRGB, VK_FORMAT_BC3_SRGB_BLOCK},
+             {VriFormat_BC4_UNORM, VK_FORMAT_BC4_UNORM_BLOCK},
+             {VriFormat_BC5_UNORM, VK_FORMAT_BC5_UNORM_BLOCK},
+             {VriFormat_BC6H_UFLOAT, VK_FORMAT_BC6H_UFLOAT_BLOCK},
+             {VriFormat_BC7_UNORM, VK_FORMAT_BC7_UNORM_BLOCK},
++            {VriFormat_BC7_SRGB, VK_FORMAT_BC7_SRGB_BLOCK},
+             {VriFormat_D16_UNORM, VK_FORMAT_D16_UNORM},
+             {VriFormat_D32_SFLOAT, VK_FORMAT_D32_SFLOAT},
+             {VriFormat_S8_UINT, VK_FORMAT_S8_UINT},
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -550,6 +550,10 @@
+         features2.features.geometryShader          = baseSup.geometryShader;
+         features2.features.tessellationShader      = baseSup.tessellationShader;
+         features2.features.fillModeNonSolid        = baseSup.fillModeNonSolid;        // polygonMode Line/Point
++        // Compressed images require the corresponding enabled Vulkan core feature.
++        features2.features.textureCompressionBC       = baseSup.textureCompressionBC;
++        features2.features.textureCompressionETC2     = baseSup.textureCompressionETC2;
++        features2.features.textureCompressionASTC_LDR = baseSup.textureCompressionASTC_LDR;
+         features2.features.pipelineStatisticsQuery = baseSup.pipelineStatisticsQuery; // pipeline-statistics queries
+         // VriSamplerDesc has always exposed anisotropyEnable/maxAnisotropy and the backend forwards
+         // both into VkSamplerCreateInfo - but Vulkan requires this feature to be enabled first, so
+--- a/source/backend_metal/conversions_mtl.h
++++ b/source/backend_metal/conversions_mtl.h
+@@ -66,12 +66,16 @@
+             {VriFormat_RG11B10_UFLOAT,  MTLPixelFormatRG11B10Float},
+ 
+             {VriFormat_BC1_UNORM,       MTLPixelFormatBC1_RGBA},
++            {VriFormat_BC1_SRGB,        MTLPixelFormatBC1_RGBA_sRGB},
+             {VriFormat_BC2_UNORM,       MTLPixelFormatBC2_RGBA},
++            {VriFormat_BC2_SRGB,        MTLPixelFormatBC2_RGBA_sRGB},
+             {VriFormat_BC3_UNORM,       MTLPixelFormatBC3_RGBA},
++            {VriFormat_BC3_SRGB,        MTLPixelFormatBC3_RGBA_sRGB},
+             {VriFormat_BC4_UNORM,       MTLPixelFormatBC4_RUnorm},
+             {VriFormat_BC5_UNORM,       MTLPixelFormatBC5_RGUnorm},
+             {VriFormat_BC6H_UFLOAT,     MTLPixelFormatBC6H_RGBUfloat},
+             {VriFormat_BC7_UNORM,       MTLPixelFormatBC7_RGBAUnorm},
++            {VriFormat_BC7_SRGB,        MTLPixelFormatBC7_RGBAUnorm_sRGB},
+ 
+             {VriFormat_D16_UNORM,       MTLPixelFormatDepth16Unorm},
+             {VriFormat_D32_SFLOAT,      MTLPixelFormatDepth32Float},
+--- a/source/backend_d3d12/conversions_d3d12.h
++++ b/source/backend_d3d12/conversions_d3d12.h
+@@ -36,12 +36,16 @@
+         // Compressed storage is measured in blocks, not integer bytes per texel.
+         // Copy/readback pitches come from GetCopyableFootprints.
+         {VriFormat_BC1_UNORM, {DXGI_FORMAT_BC1_UNORM, 0}},
++        {VriFormat_BC1_SRGB, {DXGI_FORMAT_BC1_UNORM_SRGB, 0}},
+         {VriFormat_BC2_UNORM, {DXGI_FORMAT_BC2_UNORM, 0}},
++        {VriFormat_BC2_SRGB, {DXGI_FORMAT_BC2_UNORM_SRGB, 0}},
+         {VriFormat_BC3_UNORM, {DXGI_FORMAT_BC3_UNORM, 0}},
++        {VriFormat_BC3_SRGB, {DXGI_FORMAT_BC3_UNORM_SRGB, 0}},
+         {VriFormat_BC4_UNORM, {DXGI_FORMAT_BC4_UNORM, 0}},
+         {VriFormat_BC5_UNORM, {DXGI_FORMAT_BC5_UNORM, 0}},
+         {VriFormat_BC6H_UFLOAT, {DXGI_FORMAT_BC6H_UF16, 0}},
+         {VriFormat_BC7_UNORM, {DXGI_FORMAT_BC7_UNORM, 0}},
++        {VriFormat_BC7_SRGB, {DXGI_FORMAT_BC7_UNORM_SRGB, 0}},
+         {VriFormat_D32_SFLOAT, {DXGI_FORMAT_D32_FLOAT, 4}},
+         {VriFormat_D24_UNORM_S8_UINT, {DXGI_FORMAT_D24_UNORM_S8_UINT, 4}},
+     };

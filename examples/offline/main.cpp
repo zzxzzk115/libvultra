@@ -44,16 +44,23 @@ try
     OfflineOptions options {.frames = frames, .output = output, .gain = cli.get<double>("--gain")};
     if (const auto file = cli.present<std::string>("--graph"))
     {
+        std::expected<GraphDefinition, std::string> graph;
         if (shaders)
         {
             const auto bytes = shaders->read(*file);
-            options.graph =
-                GraphDefinition::parse(std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
+            graph            = GraphDefinition::parseExpected(
+                std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
         }
         else
         {
-            options.graph = GraphDefinition::load(*file);
+            graph = GraphDefinition::loadExpected(*file);
         }
+        if (!graph)
+        {
+            Logger::app().error("{}", graph.error());
+            return 1;
+        }
+        options.graph = std::move(*graph);
     }
     runOfflineExample(options, shaders ? &*shaders : nullptr);
     return 0;

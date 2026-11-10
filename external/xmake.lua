@@ -8,10 +8,43 @@ if features.gpu then
     includes("vri")
 
     local api = get_config("libvultra_graphics_api") or (is_plat("wasm") and "webgpu" or "vulkan")
+    if is_plat("macosx") and api == "vulkan" then
+        add_requires("moltenvk-vultra 1.2.11", {system = false})
+    end
     add_requires("vri-vultra v0.2.0", {
         alias = "vri",
-        configs = {vulkan = api == "vulkan", gl = api == "webgl2", wgpu = api == "webgpu",
-                   d3d12 = false, metal = false}
+        configs = {
+            vulkan = api == "vulkan", metal = api == "metal", gl = api == "webgl2", wgpu = api == "webgpu",
+            d3d12 = false, depth_stencil_clear_ranges = true, buffer_range_barriers = true, alias_memory_barrier = true,
+            explicit_memory_contract = true, texture_view_formats = true,
+            storage_texture_ranges = true,
+            storage_buffer_arrays = true, descriptor_binding_flags = true,
+            color_input_attachments = true,
+            readonly_depth = true, texture_aspect_states = true, depth_stencil_sample_zero_resolve = true,
+            depth_load_contract = api == "vulkan",
+            format_filtering = true,
+            surface_format_contract = true, surface_composite_alpha = true,
+            astc_formats = true, bc_srgb_features = true, macos_bindless_limits = is_plat("macosx"),
+            metal_argument_layout = api == "metal", metal_ray_wave_features = api == "metal",
+            metal_ray_instance_id = api == "metal", metal_openxr_interop = api == "metal",
+            metal_compute_state = api == "metal", metal_command_allocator = api == "metal",
+            metal_command_autorelease = (api == "metal") or nil,
+            metal_buffer_dimensions = api == "metal",
+            metal_texture_clear = api == "metal", metal_texture_views = api == "metal",
+            metal_texture_dimensions = api == "metal", metal_texture_plane_copy = api == "metal",
+            metal_texture_plane_transfers = api == "metal",
+            moltenvk_texture_plane_copy = api == "vulkan" and is_plat("macosx"),
+            vulkan_stencil_attachments = api == "vulkan",
+            vulkan_device_contract = (api == "vulkan") or nil,
+            vulkan_storage_features = api == "vulkan",
+            vulkan_float16_features = api == "vulkan",
+            acceleration_scratch_rebuild = true,
+            android_depth_array_clear = api == "vulkan" and is_plat("android"),
+            android_array_resolve_dependency = (api == "vulkan" and is_plat("android")) or nil,
+            vulkan_portability_features = api == "vulkan" and is_plat("macosx"),
+            command_allocator_ownership = true, vulkan_compute_queue_family = true, vulkan_family_transfer_pair = true,
+            checked_command_allocator_reset = true
+        }
     })
 end
 
@@ -36,6 +69,7 @@ if features.image_io then
 end
 if features.shader then
     add_requires("slang-static 2026.11")
+    add_requires("spirv-tools 1.4.335+0", {system = false, configs = {shared = false}})
 end
 if features.shader_runtime or features.asset_source then
     add_requires("xxhash v0.8.3")
@@ -60,7 +94,8 @@ if features.asset_import then
     add_requires("openfbx v0.9")
 end
 if features.texture_import then
-    add_requires("directxtex 2025.07", {configs = {dx11 = false, dx12 = false}})
+    add_requires(is_plat("macosx") and "directxtex-macos 2025.07" or "directxtex 2025.07",
+                 {alias = "directxtex", configs = {dx11 = false, dx12 = false}})
     add_requires("ispc 1.28.2", {host = true})
 end
 if features.asset_jobs or (features.shader_material and features.game_shader) then
@@ -81,8 +116,12 @@ end
 if features.xr then
     if is_plat("linux") then
         add_requires("openxr-static 1.1.49")
+    elseif is_plat("android") then
+        add_requires("openxr-android 1.1.49")
     else
-        add_requires("openxr 1.1.49", {configs = {shared = false}})
+        -- The macOS static loader hides libc++ exception RTTI, breaking catches in the host.
+        -- A shared loader keeps its private RTTI inside the library; Android remains static.
+        add_requires("openxr 1.1.49", {configs = {shared = is_plat("macosx")}})
     end
     add_requires("vulkan-headers 1.4.335")
 end

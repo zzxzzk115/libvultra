@@ -1,0 +1,329 @@
+--- a/include/vri/vri_resource.h
++++ b/include/vri/vri_resource.h
+@@ -119,10 +119,14 @@
+     uint64_t          size;
+     uint64_t          alignment;
+     VriMemoryLocation location;
+-    /* Backend-opaque: the set of memory types a resource accepts. Produced by
+-       GetBufferMemoryDesc/GetTextureMemoryDesc and consumed by AllocateMemory.
+-       Do not interpret or set by hand. */
++    /* Backend-specific set of compatible memory types, produced by the resource queries.
++       Shared heaps intersect all nonzero query masks; an empty known intersection is incompatible.
++       Zero means unreported/unrestricted, not a valid encoding of an empty intersection.
++       Bit indices do not encode portable memory properties. */
+     uint32_t          memoryTypeMask;
++    /* A required dedicated allocation cannot participate in this explicit shared-heap path.
++       Keep the ordinary resource-allocation path for such resources. */
++    VriBool           requiresDedicatedAllocation;
+ } VriMemoryDesc;
+ 
+ VRI_EXTERN_C_END
+--- a/include/vri/vri_device_desc.h
++++ b/include/vri/vri_device_desc.h
+@@ -161,6 +161,9 @@
+     VriBool hasSeparateDepthStencilLayouts;
+     /* Selected mip/layer color-storage clears; independent from legacy mip-zero clear support. */
+     VriBool hasClearStorageTextureRange;
++    /* Additional linear-buffer/optimal-texture separation within one heap. Zero means unreported.
++       Respect this together with each resource's native size/alignment and compatible memory types. */
++    uint64_t bufferTextureGranularity;
+ } VriDeviceDesc;
+ 
+ VRI_EXTERN_C_END
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -352,6 +352,7 @@
+             }
+ 
+             BufferVK* b = new BufferVK {d, buffer, alloc, desc->size};
++            b->bindingAllowed = desc->memoryLocation == VriMemoryLocation_Undefined;
+             {
+                 VriObjectInfo info = MakeObjectInfo(VriObjectType_Buffer);
+                 info.memoryBytes   = AllocatedBytes(d, alloc);
+@@ -381,19 +382,27 @@
+             delete b;
+         }
+ 
+-        void* VRI_CALL MapBuffer(VriBuffer* buffer, uint64_t offset, uint64_t /*size*/)
+-        {
++        void* VRI_CALL MapBuffer(VriBuffer* buffer, uint64_t offset, uint64_t size)
++        {
++            if (!buffer) return nullptr;
+             BufferVK* b = Buf(buffer);
+-            void*     p = nullptr;
+-            if (vmaMapMemory(b->device->Allocator(), b->allocation, &p) != VK_SUCCESS)
+-                return nullptr;
+-            return static_cast<uint8_t*>(p) + offset;
++            if (offset > b->size || (size && size > b->size - offset)) return nullptr;
++            const auto allocation = b->allocation ? b->allocation : b->explicitAllocation;
++            if (!allocation) return nullptr;
++            VkMemoryPropertyFlags properties = 0;
++            vmaGetAllocationMemoryProperties(b->device->Allocator(), allocation, &properties);
++            if (!(properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) return nullptr;
++            void* mapped = nullptr;
++            if (vmaMapMemory(b->device->Allocator(), allocation, &mapped) != VK_SUCCESS) return nullptr;
++            return static_cast<uint8_t*>(mapped) + (b->allocation ? 0 : b->explicitOffset) + offset;
+         }
+ 
+         void VRI_CALL UnmapBuffer(VriBuffer* buffer)
+         {
++            if (!buffer) return;
+             BufferVK* b = Buf(buffer);
+-            vmaUnmapMemory(b->device->Allocator(), b->allocation);
++            const auto allocation = b->allocation ? b->allocation : b->explicitAllocation;
++            if (allocation) vmaUnmapMemory(b->device->Allocator(), allocation);
+         }
+ 
+         uint64_t VRI_CALL GetBufferDeviceAddress(const VriBuffer* buffer)
+@@ -434,6 +443,8 @@
+             }
+             if (desc->type == VriTextureType_Cube || desc->type == VriTextureType_CubeArray)
+                 ici.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
++            if (desc->memoryLocation == VriMemoryLocation_Undefined)
++                ici.flags |= VK_IMAGE_CREATE_ALIAS_BIT;
+ 
+             VkImage       image = VK_NULL_HANDLE;
+             VmaAllocation alloc = VK_NULL_HANDLE;
+@@ -453,6 +464,7 @@
+             }
+ 
+             TextureVK* t  = new TextureVK {};
++            t->bindingAllowed = desc->memoryLocation == VriMemoryLocation_Undefined;
+             t->device     = d;
+             t->image      = image;
+             t->allocation = alloc;
+@@ -521,7 +533,7 @@
+                 }
+             }
+ 
+-            // Query via a throwaway VkBuffer + core-1.0 vkGetBufferMemoryRequirements rather than
++            // Query via a throwaway VkBuffer + core-1.1 memory requirements (including dedicated flags), not
+             // the 1.3 vkGetDeviceBufferMemoryRequirements: MoltenVK reports apiVersion 1.2, where
+             // that entry point is null and calling it segfaults. The temp buffer allocates no memory.
+             *out         = VriMemoryDesc {};
+@@ -529,13 +541,17 @@
+             VkBuffer tmp = VK_NULL_HANDLE;
+             if (vkCreateBuffer(dev, &bci, nullptr, &tmp) != VK_SUCCESS)
+                 return;
+-            VkMemoryRequirements mr = {};
+-            vkGetBufferMemoryRequirements(dev, tmp, &mr);
++            VkMemoryDedicatedRequirements dedicated {VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
++            VkMemoryRequirements2 requirements {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2, &dedicated};
++            const VkBufferMemoryRequirementsInfo2 info {VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2, nullptr, tmp};
++            vkGetBufferMemoryRequirements2(dev, &info, &requirements);
++            const auto& mr = requirements.memoryRequirements;
+             vkDestroyBuffer(dev, tmp, nullptr);
+             out->size           = mr.size;
+             out->alignment      = mr.alignment;
+             out->location       = location;
+             out->memoryTypeMask = mr.memoryTypeBits;
++            out->requiresDedicatedAllocation = dedicated.requiresDedicatedAllocation;
+         }
+ 
+         void VRI_CALL GetTextureMemoryDesc(const VriDevice*      device,
+@@ -556,6 +572,10 @@
+             ici.usage             = ToVkImageUsage(desc->usage);
+             ici.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
+             ici.initialLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
++            if (desc->type == VriTextureType_Cube || desc->type == VriTextureType_CubeArray)
++                ici.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
++            if (desc->memoryLocation == VriMemoryLocation_Undefined)
++                ici.flags |= VK_IMAGE_CREATE_ALIAS_BIT;
+             // Mirror CreateTexture's sharing mode: requirements may legally depend on it.
+             uint32_t families[VriQueueType_Count];
+             if (desc->usage & VriTextureUsage_ConcurrentQueues)
+@@ -568,7 +588,7 @@
+                 }
+             }
+ 
+-            // Query via a throwaway VkImage + core-1.0 vkGetImageMemoryRequirements rather than
++            // Query via a throwaway VkImage + core-1.1 memory requirements (including dedicated flags), not
+             // the 1.3 vkGetDeviceImageMemoryRequirements: MoltenVK reports apiVersion 1.2, where
+             // that entry point is null and calling it segfaults. The temp image allocates no memory.
+             *out         = VriMemoryDesc {};
+@@ -576,61 +596,105 @@
+             VkImage  tmp = VK_NULL_HANDLE;
+             if (vkCreateImage(dev, &ici, nullptr, &tmp) != VK_SUCCESS)
+                 return;
+-            VkMemoryRequirements mr = {};
+-            vkGetImageMemoryRequirements(dev, tmp, &mr);
++            VkMemoryDedicatedRequirements dedicated {VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
++            VkMemoryRequirements2 requirements {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2, &dedicated};
++            const VkImageMemoryRequirementsInfo2 info {VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2, nullptr, tmp};
++            vkGetImageMemoryRequirements2(dev, &info, &requirements);
++            const auto& mr = requirements.memoryRequirements;
+             vkDestroyImage(dev, tmp, nullptr);
+             out->size           = mr.size;
+             out->alignment      = mr.alignment;
+             out->location       = location;
+             out->memoryTypeMask = mr.memoryTypeBits;
++            out->requiresDedicatedAllocation = dedicated.requiresDedicatedAllocation;
+         }
+ 
+         VriResult VRI_CALL AllocateMemory(VriDevice* device, const VriMemoryDesc* desc, VriMemory** out)
+         {
+-            DeviceVK*            d   = Dev(device);
+-            VkMemoryRequirements req = {};
+-            req.size                 = desc->size;
+-            req.alignment            = desc->alignment ? desc->alignment : 1;
+-            req.memoryTypeBits       = desc->memoryTypeMask ? desc->memoryTypeMask : ~0u;
+-
+-            VmaAllocationCreateInfo aci = {};
+-            FillVmaRequiredFlags(desc->location, aci);
+-
+-            VmaAllocation alloc = VK_NULL_HANDLE;
+-            if (vmaAllocateMemory(d->Allocator(), &req, &aci, &alloc, nullptr) != VK_SUCCESS)
++            if (!out) return VriResult_InvalidArgument;
++            *out = nullptr;
++            if (!device || !desc || !desc->size || (desc->alignment && (desc->alignment & (desc->alignment - 1))) ||
++                (desc->location != VriMemoryLocation_Device && desc->location != VriMemoryLocation_DeviceUpload &&
++                 desc->location != VriMemoryLocation_HostUpload && desc->location != VriMemoryLocation_HostReadback))
++                return VriResult_InvalidArgument;
++            if (desc->requiresDedicatedAllocation) return VriResult_Unsupported;
++            DeviceVK* d = Dev(device);
++            VkMemoryRequirements required {};
++            required.size = desc->size;
++            required.alignment = desc->alignment ? desc->alignment : 1;
++            required.memoryTypeBits = desc->memoryTypeMask ? desc->memoryTypeMask : ~0u;
++            VmaAllocationCreateInfo info {};
++            FillVmaRequiredFlags(desc->location, info);
++            info.flags = VMA_ALLOCATION_CREATE_CAN_ALIAS_BIT;
++            VmaAllocation allocation = VK_NULL_HANDLE;
++            if (vmaAllocateMemory(d->Allocator(), &required, &info, &allocation, nullptr) != VK_SUCCESS)
+                 return VriResult_OutOfMemory;
+-
+-            *out = ToHandle(new MemoryVK {d, alloc});
++            *out = ToHandle(new MemoryVK {d, allocation, desc->size});
+             return VriResult_Success;
+         }
+ 
+         void VRI_CALL FreeMemory(VriMemory* memory)
+         {
+-            if (!memory)
+-                return;
++            if (!memory) return;
+             MemoryVK* m = Mem(memory);
+             vmaFreeMemory(m->device->Allocator(), m->allocation);
+             delete m;
+         }
+ 
++        VriResult ValidateBinding(DeviceVK* device, const MemoryVK* memory, uint64_t offset,
++                                  const VkMemoryRequirements& required)
++        {
++            if (memory->device != device || offset > memory->size || !required.alignment ||
++                offset % required.alignment || required.size > memory->size - offset)
++                return VriResult_InvalidArgument;
++            VmaAllocationInfo allocation {};
++            vmaGetAllocationInfo(device->Allocator(), memory->allocation, &allocation);
++            if (!(required.memoryTypeBits & (1u << allocation.memoryType))) return VriResult_InvalidArgument;
++            return VriResult_Success;
++        }
++
+         VriResult VRI_CALL BindBufferMemory(VriDevice* device, VriBuffer* buffer, VriMemory* memory, uint64_t offset)
+         {
+-            BufferVK* b = Buf(buffer);
+-            MemoryVK* m = Mem(memory);
+-            return vmaBindBufferMemory2(Dev(device)->Allocator(), m->allocation, offset, b->buffer, nullptr) ==
+-                           VK_SUCCESS ?
+-                       VriResult_Success :
+-                       VriResult_Failure;
++            if (!device || !buffer || !memory) return VriResult_InvalidArgument;
++            DeviceVK* d = Dev(device);
++            BufferVK* resource = Buf(buffer);
++            MemoryVK* allocation = Mem(memory);
++            if (resource->device != d || !resource->bindingAllowed) return VriResult_InvalidArgument;
++            VkMemoryDedicatedRequirements dedicated {VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
++            VkMemoryRequirements2 required {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2, &dedicated};
++            const VkBufferMemoryRequirementsInfo2 info {VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2,
++                                                       nullptr, resource->buffer};
++            vkGetBufferMemoryRequirements2(d->Device(), &info, &required);
++            if (dedicated.requiresDedicatedAllocation) return VriResult_Unsupported;
++            const auto valid = ValidateBinding(d, allocation, offset, required.memoryRequirements);
++            if (valid != VriResult_Success) return valid;
++            if (vmaBindBufferMemory2(d->Allocator(), allocation->allocation, offset, resource->buffer, nullptr) != VK_SUCCESS)
++                return VriResult_Failure;
++            resource->explicitAllocation = allocation->allocation;
++            resource->explicitOffset = offset;
++            resource->bindingAllowed = false;
++            return VriResult_Success;
+         }
+ 
+         VriResult VRI_CALL BindTextureMemory(VriDevice* device, VriTexture* texture, VriMemory* memory, uint64_t offset)
+         {
+-            TextureVK* t = Tex(texture);
+-            MemoryVK*  m = Mem(memory);
+-            return vmaBindImageMemory2(Dev(device)->Allocator(), m->allocation, offset, t->image, nullptr) ==
+-                           VK_SUCCESS ?
+-                       VriResult_Success :
+-                       VriResult_Failure;
++            if (!device || !texture || !memory) return VriResult_InvalidArgument;
++            DeviceVK* d = Dev(device);
++            TextureVK* resource = Tex(texture);
++            MemoryVK* allocation = Mem(memory);
++            if (resource->device != d || !resource->bindingAllowed) return VriResult_InvalidArgument;
++            VkMemoryDedicatedRequirements dedicated {VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
++            VkMemoryRequirements2 required {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2, &dedicated};
++            const VkImageMemoryRequirementsInfo2 info {VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2,
++                                                      nullptr, resource->image};
++            vkGetImageMemoryRequirements2(d->Device(), &info, &required);
++            if (dedicated.requiresDedicatedAllocation) return VriResult_Unsupported;
++            const auto valid = ValidateBinding(d, allocation, offset, required.memoryRequirements);
++            if (valid != VriResult_Success) return valid;
++            if (vmaBindImageMemory2(d->Allocator(), allocation->allocation, offset, resource->image, nullptr) != VK_SUCCESS)
++                return VriResult_Failure;
++            resource->bindingAllowed = false;
++            return VriResult_Success;
+         }
+ 
+         // ---- views & samplers ----------------------------------------------
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -1093,6 +1093,7 @@
+         m_desc.hasSeparateDepthStencilLayouts = m_hasSeparateDepthStencilLayouts ? VRI_TRUE : VRI_FALSE;
+         m_desc.hasClearStorageBuffer   = VRI_TRUE; // vkCmdFillBuffer is core Vulkan
+         m_desc.hasClearStorageTextureRange = VRI_TRUE;
++        m_desc.bufferTextureGranularity = props.limits.bufferImageGranularity;
+         m_desc.hasClearStorageTexture  = VRI_TRUE; // vkCmdClearColorImage is core Vulkan
+         m_desc.hasMultiview            = m_hasMultiview ? VRI_TRUE : VRI_FALSE;
+         m_desc.maxViewCount            = m_hasMultiview ? m_maxViewCount : 0u;
+--- a/source/backend_vk/objects_vk.h
++++ b/source/backend_vk/objects_vk.h
+@@ -72,6 +72,9 @@
+         VkBuffer      buffer;
+         VmaAllocation allocation; // null if not VMA-owned
+         uint64_t      size;
++        VmaAllocation explicitAllocation = VK_NULL_HANDLE;
++        uint64_t explicitOffset = 0;
++        bool bindingAllowed = false;
+         // Set when the buffer owns a dedicated, non-VMA VkDeviceMemory (the exportable
+         // external-memory path; see external_vk.cpp). allocation is null in that case.
+         VkDeviceMemory dedicatedMemory     = VK_NULL_HANDLE;
+@@ -129,6 +132,7 @@
+         DeviceVK*     device;
+         VkImage       image;
+         VmaAllocation allocation; // null if wrapped (not owned)
++        bool bindingAllowed = false;
+         VkFormat      format;
+         VkExtent3D    extent;
+         uint32_t      mipNum;
+@@ -246,6 +250,7 @@
+ 
+         DeviceVK*     device;
+         VmaAllocation allocation;
++        uint64_t size = 0;
+     };
+ 
+     struct QueryPoolVK
+--- a/source/backend_d3d12/core_d3d12_memory.inc
++++ b/source/backend_d3d12/core_d3d12_memory.inc
+@@ -86,6 +86,10 @@
+         }
+         VriResult VRI_CALL AllocateMemory(VriDevice* device, const VriMemoryDesc* desc, VriMemory** out)
+         {
++            if (!out) return VriResult_InvalidArgument;
++            *out = nullptr;
++            if (!device || !desc || !desc->size || (desc->alignment && (desc->alignment & (desc->alignment - 1)))) return VriResult_InvalidArgument;
++            if (desc->requiresDedicatedAllocation) return VriResult_Unsupported;
+             DeviceD3D12*     d     = Dev(device);
+             D3D12_HEAP_FLAGS flags = D3D12_HEAP_FLAG_NONE;
+             switch (desc->memoryTypeMask)

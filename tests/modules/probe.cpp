@@ -155,22 +155,49 @@ namespace
         {
         }
 
-        std::vector<RenderGraph::Resource> addPasses(RenderGraph&     graph,
-                                                     std::string_view name,
-                                                     std::span<const RenderGraph::Resource>,
-                                                     std::span<const double> parameters) override
+        std::expected<std::vector<RenderGraph::Resource>, std::string>
+        addPassesExpected(RenderGraph&     graph,
+                          std::string_view name,
+                          std::span<const RenderGraph::Resource>,
+                          std::span<const double> parameters) override
         {
-            const auto color =
-                graph.createTexture(std::string(name) + ".color", colorTexture({11, 7}, kGraphColorFormat));
-            graph.addPass(std::string(name),
-                          {{color, Usage::eColorWrite}},
-                          [this, color, parameters](auto* cmd, auto& active)
-                          {
-                              const float clear[] {float(parameters[0]), 0, 0, 1};
-                              beginColorPass(m_Device, cmd, active.getTexture(color).view(), {11, 7}, clear);
-                              m_Device.core.CmdEndRendering(cmd);
-                          });
-            return {color};
+            if (parameters.size() != 1)
+            {
+                return std::unexpected("Clear requires one parameter");
+            }
+            auto created =
+                graph.createTextureExpected(std::string(name) + ".color", colorTexture({11, 7}, kGraphColorFormat));
+            if (!created)
+            {
+                return std::unexpected(created.error());
+            }
+            const auto       color = *created;
+            const std::array uses {RenderGraph::Use {color, Usage::eColorWrite}};
+            auto             added = graph.addPassExpected(
+                std::string(name),
+                uses,
+                [this, color, parameters](auto* cmd, auto& active) -> std::expected<void, std::string>
+                {
+                    auto target = active.getTextureExpected(color);
+                    if (!target)
+                    {
+                        return std::unexpected(target.error());
+                    }
+                    auto view = (*target)->viewExpected();
+                    if (!view)
+                    {
+                        return std::unexpected(view.error());
+                    }
+                    const float clear[] {float(parameters[0]), 0, 0, 1};
+                    beginColorPass(m_Device, cmd, *view, {11, 7}, clear);
+                    m_Device.core.CmdEndRendering(cmd);
+                    return {};
+                });
+            if (!added)
+            {
+                return std::unexpected(added.error());
+            }
+            return std::vector<RenderGraph::Resource> {color};
         }
 
     private:
@@ -187,7 +214,10 @@ namespace
                      {{"color", PassResourceKind::eTexture, kGraphColorFormat}},
                      {{"red", 0.2, 0, 1}},
                      0,
-                     [](Device& owner)
+                     {},
+                     {},
+                     false,
+                     [](Device& owner) -> std::expected<std::unique_ptr<GraphPass>, std::string>
                      {
                          return std::make_unique<ClearPass>(owner);
                      }});
@@ -203,7 +233,7 @@ namespace
         RenderGraph::Resource output;
 #ifdef TEST_GRAPH_JSON
 #ifdef TEST_GRAPH_SHADER
-        const auto definition = GraphDefinition::parse(
+        const auto definition = GraphDefinition::parseExpected(
             R"({
                 "format": "vultra.graph", "version": 1,
                 "passes": [
@@ -214,14 +244,15 @@ namespace
                 "outputs": ["gain.color"]
             })");
 #else
-        const auto definition = GraphDefinition::parse(
+        const auto definition = GraphDefinition::parseExpected(
             R"({
                 "format": "vultra.graph", "version": 1,
                 "passes": [{"id": "clear", "type": "probe.clear", "parameters": {"red": 0.2}}],
                 "edges": [], "outputs": ["clear.color"]
             })");
 #endif
-        definitionPasses = definition.build(graph, catalog, {});
+        require(bool(definition), definition ? "" : definition.error().c_str());
+        definitionPasses = definition->build(graph, catalog, {});
         output           = definitionPasses.outputs.front().resource;
 #else
         pass   = catalog.build(graph, "probe.clear", "clear", {});

@@ -189,21 +189,17 @@ namespace
         {
             RenderGraph graph(device);
             const auto  texture = graph.createTexture("invalid", colorTexture({8, 8}));
-            graph.addPass("Contradictory access",
-                          {{texture, usage, true}},
-                          [](auto*, auto&)
-                          {
-                          });
-            bool rejected = false;
-            try
-            {
-                graph.compile();
-            }
-            catch (const std::invalid_argument& error)
-            {
-                rejected = std::string_view(error.what()).find("discardPrevious") != std::string_view::npos;
-            }
-            require(rejected, "Read access accepted a declaration that discards its input content");
+            const std::array uses {RenderGraph::Use {texture, usage, true}};
+            const auto       added = graph.addPassExpected("Contradictory access",
+                                                     uses,
+                                                     [](auto*, auto&) -> std::expected<void, std::string>
+                                                     {
+                                                         return {};
+                                                     });
+            require(bool(added), "Declare contradictory access fixture");
+            const auto rejected = graph.compileExpected();
+            require(!rejected && rejected.error().find("discardPrevious") != std::string::npos,
+                    "Read access accepted a declaration that discards its input content");
         }
     }
 
@@ -213,7 +209,7 @@ namespace
         desc.usage |= VriTextureUsage_ShaderResourceStorage;
         RenderGraph         graph(device);
         const VriClearColor initial {{0.25f, 0.5f, 1, 1}};
-        const auto          retained = graph.createHistoryTexture("retained", desc, initial);
+        const auto          retained = graph.createHistoryTexture("retained", desc, VriClearValue {.color = initial});
         const auto          observed = graph.createTexture("previous", desc);
         graph.addPass("Read previous frame",
                       {{retained, Usage::eCopySource}, {observed, Usage::eCopyDestination}},

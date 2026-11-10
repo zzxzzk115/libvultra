@@ -1,0 +1,175 @@
+--- a/source/backend_metal/objects_mtl.h
++++ b/source/backend_metal/objects_mtl.h
+@@ -104,6 +104,10 @@
+         // records the resolve and QueueSubmit executes it in the command buffer's completion handler.
+         struct TimestampResolve { id<MTLCounterSampleBuffer> sb; uint32_t srcIndex; uint32_t num; void* dst; };
+         std::vector<TimestampResolve> tsResolves;
++        // Partial depth/stencil texture copies use native buffer blits; scratch survives final GPU use.
++        std::vector<id<MTLBuffer>> planeCopyScratch;
++        size_t planeCopyNext = 0;
++        VriResult recordingResult = VriResult_Success;
+     };
+ 
+     struct BufferMTL
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -398,6 +398,8 @@
+             c->visNextSlot = 0;
+             c->occMarks.clear();
+             c->tsResolves.clear();
++            c->planeCopyNext = 0;
++            c->recordingResult = VriResult_Success;
+         }
+ 
+         void VRI_CALL ResetCommandAllocator(VriCommandAllocator* allocator)
+@@ -416,6 +418,8 @@
+                 DiscardCommands(commands);
+                 [commands->visBuffer release];
+                 [commands->tsScratch release];
++                for (auto scratch : commands->planeCopyScratch)
++                    [scratch release];
+                 delete commands;
+             }
+             delete a;
+@@ -445,7 +449,7 @@
+         VriResult VRI_CALL EndCommandBuffer(VriCommandBuffer* cmd)
+         {
+             EndAux(CB(cmd)); // close any trailing blit/compute encoder
+-            return VriResult_Success;
++            return CB(cmd)->recordingResult;
+         }
+ 
+         // ---- resources -----------------------------------------------------
+@@ -1997,41 +2001,108 @@
+                               toBuffer:Buf(dst)->buffer destinationOffset:r->dstOffset size:r->size];
+         }
+ 
++        struct BufferTexturePlane
++        {
++            uint32_t texelSize;
++            MTLBlitOption options;
++        };
++
++        BufferTexturePlane GetBufferTexturePlane(const TextureMTL* texture, VriImageAspectFlags aspect)
++        {
++            if (texture->format == VriFormat_D24_UNORM_S8_UINT || texture->format == VriFormat_D32_SFLOAT_S8_UINT)
++            {
++                if (aspect == VriImageAspect_Depth)
++                    return {4, MTLBlitOptionDepthFromDepthStencil};
++                if (aspect == VriImageAspect_Stencil)
++                    return {1, MTLBlitOptionStencilFromDepthStencil};
++            }
++            return {texture->texelSize, MTLBlitOptionNone};
++        }
++
+         void VRI_CALL CmdCopyTexture(VriCommandBuffer* cmd, VriTexture* dst, VriTexture* src, const VriTextureCopyDesc* region)
+         {
+             CommandBufferMTL* c = CB(cmd);
++            if (c->recordingResult != VriResult_Success) return;
+             TextureMTL* s = Tex(src);
+             TextureMTL* dt = Tex(dst);
+-            EnsureBlit(c);
+             const uint32_t srcMip = region ? region->src.mip : 0;
+             const uint32_t dstMip = region ? region->dst.mip : 0;
+             const uint32_t srcSlice = region ? region->src.baseLayer : 0;
+             const uint32_t dstSlice = region ? region->dst.baseLayer : 0;
++            const uint32_t layers = region && region->src.layerNum ? region->src.layerNum : 1;
++            if (region && region->dst.layerNum && region->dst.layerNum != layers)
++            {
++                c->recordingResult = VriResult_InvalidArgument;
++                return;
++            }
+             MTLOrigin so = region ? MTLOriginMake(region->src.x, region->src.y, region->src.z) : MTLOriginMake(0, 0, 0);
+             MTLOrigin dorg = region ? MTLOriginMake(region->dst.x, region->dst.y, region->dst.z) : MTLOriginMake(0, 0, 0);
+-            uint32_t w = (region && region->src.width)  ? region->src.width  : s->width;
+-            uint32_t h = (region && region->src.height) ? region->src.height : s->height;
+-            uint32_t d = (region && region->src.depth)  ? region->src.depth  : (s->type == VriTextureType_3D ? s->depth : 1);
+-            [c->blitEnc copyFromTexture:s->texture sourceSlice:srcSlice sourceLevel:srcMip sourceOrigin:so sourceSize:MTLSizeMake(w, h, d)
+-                              toTexture:dt->texture destinationSlice:dstSlice destinationLevel:dstMip destinationOrigin:dorg];
+-        }
+-
+-        struct BufferTexturePlane
+-        {
+-            uint32_t texelSize;
+-            MTLBlitOption options;
+-        };
+-
+-        BufferTexturePlane GetBufferTexturePlane(const TextureMTL* texture, VriImageAspectFlags aspect)
+-        {
+-            if (texture->format == VriFormat_D24_UNORM_S8_UINT || texture->format == VriFormat_D32_SFLOAT_S8_UINT)
+-            {
+-                if (aspect == VriImageAspect_Depth)
+-                    return {4, MTLBlitOptionDepthFromDepthStencil};
+-                if (aspect == VriImageAspect_Stencil)
+-                    return {1, MTLBlitOptionStencilFromDepthStencil};
+-            }
+-            return {texture->texelSize, MTLBlitOptionNone};
++            const uint32_t w = region && region->src.width ? region->src.width : std::max(s->width >> srcMip, 1u);
++            const uint32_t h = region && region->src.height ? region->src.height : std::max(s->height >> srcMip, 1u);
++            const uint32_t d = region && region->src.depth ? region->src.depth :
++                (s->type == VriTextureType_3D ? std::max(s->depth >> srcMip, 1u) : 1);
++            const bool combined = s->format == VriFormat_D24_UNORM_S8_UINT || s->format == VriFormat_D32_SFLOAT_S8_UINT;
++            const bool targetCombined = dt->format == VriFormat_D24_UNORM_S8_UINT || dt->format == VriFormat_D32_SFLOAT_S8_UINT;
++            const VriImageAspectFlags both = VriImageAspect_Depth | VriImageAspect_Stencil;
++            const VriImageAspectFlags aspect = region && region->src.aspect ? region->src.aspect : both;
++            if (combined || targetCombined)
++            {
++                if (!combined || !targetCombined || s->format != dt->format || (aspect & ~both) ||
++                    (region && region->dst.aspect && region->dst.aspect != aspect))
++                {
++                    c->recordingResult = VriResult_InvalidArgument;
++                    return;
++                }
++                if (aspect != both)
++                {
++                    // Metal has no texture-to-texture aspect selector. Two native plane-buffer blits
++                    // preserve the other plane; reuse command-owned scratch after caller-established completion.
++                    if (s->sampleNum != 1 || dt->sampleNum != 1)
++                    {
++                        c->recordingResult = VriResult_Unsupported;
++                        return;
++                    }
++                    const auto plane = GetBufferTexturePlane(s, aspect);
++                    const uint64_t pitch = (uint64_t(w) * plane.texelSize + 255) & ~uint64_t(255);
++                    const uint64_t bytes = pitch * h * d;
++                    if (bytes > [c->device->Device() maxBufferLength])
++                    {
++                        c->recordingResult = VriResult_OutOfMemory;
++                        return;
++                    }
++                    if (c->planeCopyNext == c->planeCopyScratch.size())
++                        c->planeCopyScratch.push_back(nil);
++                    auto& scratch = c->planeCopyScratch[c->planeCopyNext++];
++                    if (!scratch || [scratch length] < bytes)
++                    {
++                        [scratch release];
++                        scratch = [c->device->Device() newBufferWithLength:bytes options:MTLResourceStorageModePrivate];
++                    }
++                    if (!scratch)
++                    {
++                        c->recordingResult = VriResult_OutOfMemory;
++                        return;
++                    }
++                    EnsureBlit(c);
++                    for (uint32_t layer = 0; layer < layers; ++layer)
++                    {
++                        [c->blitEnc copyFromTexture:s->texture sourceSlice:srcSlice + layer sourceLevel:srcMip
++                            sourceOrigin:so sourceSize:MTLSizeMake(w, h, d) toBuffer:scratch destinationOffset:0
++                            destinationBytesPerRow:pitch destinationBytesPerImage:pitch * h options:plane.options];
++                        [c->blitEnc copyFromBuffer:scratch sourceOffset:0 sourceBytesPerRow:pitch sourceBytesPerImage:pitch * h
++                            sourceSize:MTLSizeMake(w, h, d) toTexture:dt->texture destinationSlice:dstSlice + layer
++                            destinationLevel:dstMip destinationOrigin:dorg options:plane.options];
++                    }
++                    return;
++                }
++            }
++            EnsureBlit(c);
++            for (uint32_t layer = 0; layer < layers; ++layer)
++            {
++                [c->blitEnc copyFromTexture:s->texture sourceSlice:srcSlice + layer sourceLevel:srcMip
++                    sourceOrigin:so sourceSize:MTLSizeMake(w, h, d) toTexture:dt->texture destinationSlice:dstSlice + layer
++                    destinationLevel:dstMip destinationOrigin:dorg];
++            }
+         }
+ 
+         void VRI_CALL CmdUploadBufferToTexture(VriCommandBuffer* cmd, VriTexture* dst, VriBuffer* src, const VriBufferTextureCopyDesc* region)

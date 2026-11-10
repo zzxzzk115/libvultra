@@ -561,6 +561,80 @@ namespace
             maxPathError = std::max(maxPathError, std::abs(forwardImage.rgba[i] - deferredImage.rgba[i]));
         }
         require(maxPathError < 0.02f, "Deferred OpenPBR differs from forward on the same material and camera");
+
+        // Zero-intensity and finite-range lights must not change the unlit output. An
+        // in-range light is checked separately so a missing light loop cannot pass.
+        camera.view = glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0));
+        const auto lightImage = [&](std::span<const vultra::RenderLight> lights)
+        {
+            renderer.prepare(camera, graph, outputs, lights);
+            vultra::Frame frame(device);
+            graph.execute(frame.begin());
+            frame.submitAndWait();
+            renderer.completeFrame();
+            auto image = vultra::readback(device, graph.getTexture(outputs.hdr));
+            finite(image);
+            return image;
+        };
+        const auto unlit = lightImage({});
+        vultra::RenderLight point;
+        point.kind = vultra::RenderLightKind::ePoint;
+        point.position = {0, 0, 1};
+        point.range = 2;
+        const auto illuminated = lightImage(std::span<const vultra::RenderLight>(&point, 1));
+        require(illuminated.rgba[centerDepth] > unlit.rgba[centerDepth] + 0.001f,
+                "In-range point light must contribute");
+        point.position = {0, 0, 3};
+        const auto outside = lightImage(std::span<const vultra::RenderLight>(&point, 1));
+        point.position = {0, 0, 2};
+        const auto boundary = lightImage(std::span<const vultra::RenderLight>(&point, 1));
+        point.position = {0, 0, 1};
+        point.intensity = 0;
+        const auto disabled = lightImage(std::span<const vultra::RenderLight>(&point, 1));
+        point.intensity = 1;
+        point.color = {0, 0, 0};
+        const auto black = lightImage(std::span<const vultra::RenderLight>(&point, 1));
+        point.color = {1, 1, 1};
+        point.kind = vultra::RenderLightKind::eSpot;
+        point.directionToLight = {0, 0, 1};
+        const auto spotLit = lightImage(std::span<const vultra::RenderLight>(&point, 1));
+        require(spotLit.rgba[centerDepth] > unlit.rgba[centerDepth] + 0.001f,
+                "In-cone spot light must contribute");
+        point.directionToLight = {1, 0, 0};
+        const auto spotOutside = lightImage(std::span<const vultra::RenderLight>(&point, 1));
+        point.kind = vultra::RenderLightKind::eDirectional;
+        point.intensity = 0;
+        const auto zeroSun = lightImage(std::span<const vultra::RenderLight>(&point, 1));
+        for (const auto* image : {&outside, &boundary, &disabled, &black, &spotOutside, &zeroSun})
+            for (unsigned channel = 0; channel < 3; ++channel)
+                require(std::abs(image->rgba[centerDepth + channel] - unlit.rgba[centerDepth + channel]) < 1e-5f,
+                        "Zero-contribution point light changed HDR output");
+
+        // The original quad has vertex alpha one and a white fallback base texture.
+        // Its opaque proof permits early depth without changing alpha-masked output.
+        gpu.materials[0].alphaCutoff = 0.5f;
+        gpu.materials[0].baseColor.a = 1;
+        const auto ordinaryOpaque = render(device, renderer, graph, outputs, camera);
+        const std::array<uint8_t, 1> opaqueProof {1};
+        require(gpu.setImmutableOpaqueAlpha(opaqueProof).has_value(), "Valid opaque proof rejected");
+        vultra::BuiltinRenderer opaqueRenderer(device, gpu, environment);
+        opaqueRenderer.settings = renderer.settings;
+        vultra::RenderGraph opaqueGraph(device);
+        const auto opaqueOutputs = opaqueRenderer.addPasses(opaqueGraph, {65, 65});
+        opaqueGraph.exportResource(opaqueOutputs.color);
+        opaqueGraph.compile();
+        const auto earlyOpaque = render(device, opaqueRenderer, opaqueGraph, opaqueOutputs, camera);
+        for (size_t i = 0; i < earlyOpaque.rgba.size(); ++i)
+            require(std::abs(earlyOpaque.rgba[i] - ordinaryOpaque.rgba[i]) < 0.001f,
+                    "Opaque early-depth path changed HDR output");
+        // Changing the material alpha invalidates use of the fast path even with the proof.
+        gpu.materials[0].baseColor.a = 0.25f;
+        const auto certifiedMasked = render(device, opaqueRenderer, opaqueGraph, opaqueOutputs, camera);
+        require(gpu.setImmutableOpaqueAlpha({}).has_value(), "Cannot clear opaque proof");
+        const auto uncertifiedMasked = render(device, opaqueRenderer, opaqueGraph, opaqueOutputs, camera);
+        for (size_t i = 0; i < certifiedMasked.rgba.size(); ++i)
+            require(certifiedMasked.rgba[i] == uncertifiedMasked.rgba[i],
+                    "Material alpha did not restore the masked path");
         gpu.materials[0] = {};
 
         vultra::BuiltinRenderer linearRenderer(device, gpu, environment, VriFormat_RGBA16_SFLOAT);

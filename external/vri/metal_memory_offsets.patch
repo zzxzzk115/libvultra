@@ -1,0 +1,108 @@
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -493,11 +493,13 @@
+             delete b;
+         }
+ 
+-        void* VRI_CALL MapBuffer(VriBuffer* buffer, uint64_t offset, uint64_t)
+-        {
++        void* VRI_CALL MapBuffer(VriBuffer* buffer, uint64_t offset, uint64_t size)
++        {
++            if (!buffer) return nullptr;
+             BufferMTL* b = Buf(buffer);
+-            if (!b->buffer || [b->buffer storageMode] == MTLStorageModePrivate)
+-                return nullptr; // GPU-only memory is not host-mappable
++            if (!b->buffer || [b->buffer storageMode] == MTLStorageModePrivate || offset > b->size ||
++                (size && size > b->size - offset))
++                return nullptr;
+             return static_cast<uint8_t*>([b->buffer contents]) + offset;
+         }
+ 
+@@ -635,10 +637,17 @@
+         }
+         VriResult VRI_CALL AllocateMemory(VriDevice* device, const VriMemoryDesc* desc, VriMemory** out)
+         {
++            if (!out) return VriResult_InvalidArgument;
++            *out = nullptr;
++            if (!device || !desc || !desc->size || (desc->alignment && (desc->alignment & (desc->alignment - 1))) ||
++                (desc->location != VriMemoryLocation_Device && desc->location != VriMemoryLocation_DeviceUpload &&
++                 desc->location != VriMemoryLocation_HostUpload && desc->location != VriMemoryLocation_HostReadback))
++                return VriResult_InvalidArgument;
++            if (desc->requiresDedicatedAllocation) return VriResult_Unsupported;
+             MTLHeapDescriptor* hd = [[MTLHeapDescriptor alloc] init];
+             hd.size = desc->size;
+             hd.storageMode = desc->location == VriMemoryLocation_Device ? MTLStorageModePrivate : MTLStorageModeShared;
+-            hd.type = MTLHeapTypeAutomatic;
++            hd.type = MTLHeapTypePlacement;
+             id<MTLHeap> heap = [Dev(device)->Device() newHeapWithDescriptor:hd];
+             [hd release];
+             if (!heap) return VriResult_OutOfMemory;
+@@ -652,25 +661,46 @@
+             if (m->heap) [m->heap release];
+             delete m;
+         }
+-        VriResult VRI_CALL BindBufferMemory(VriDevice*, VriBuffer* buffer, VriMemory* memory, uint64_t)
+-        {
++        VriResult VRI_CALL BindBufferMemory(VriDevice* device, VriBuffer* buffer, VriMemory* memory, uint64_t offset)
++        {
++            if (!device || !buffer || !memory) return VriResult_InvalidArgument;
+             BufferMTL* b = Buf(buffer);
+             MemoryMTL* m = Mem(memory);
+-            const MTLResourceOptions opt = m->location == VriMemoryLocation_Device ? MTLResourceStorageModePrivate
+-                                                                                   : MTLResourceStorageModeShared;
+-            b->buffer = [m->heap newBufferWithLength:(b->size ? b->size : 1) options:opt];
+-            if (!b->buffer) return VriResult_OutOfMemory;
++            if (b->device != Dev(device) || m->device != Dev(device) || b->buffer || !m->heap)
++                return VriResult_InvalidArgument;
++            const auto options = StorageOptions(m->location);
++            const auto length = b->size ? b->size : 1;
++            const MTLSizeAndAlign required = [Dev(device)->Device() heapBufferSizeAndAlignWithLength:length options:options];
++            if (!required.size || !required.align || offset % required.align || offset > m->size ||
++                required.size > m->size - offset)
++                return VriResult_InvalidArgument;
++            id<MTLBuffer> candidate = [m->heap newBufferWithLength:length options:options offset:offset];
++            if (!candidate) return VriResult_OutOfMemory;
++            b->buffer = candidate;
++            b->options = options;
+             b->owned = true;
+             return VriResult_Success;
+         }
+-        VriResult VRI_CALL BindTextureMemory(VriDevice*, VriTexture* texture, VriMemory* memory, uint64_t)
+-        {
++        VriResult VRI_CALL BindTextureMemory(VriDevice* device, VriTexture* texture, VriMemory* memory, uint64_t offset)
++        {
++            if (!device || !texture || !memory) return VriResult_InvalidArgument;
+             TextureMTL* t = Tex(texture);
+             MemoryMTL* m = Mem(memory);
+-            if (!t->descriptor) return VriResult_InvalidArgument;
+-            t->descriptor.storageMode = m->location == VriMemoryLocation_Device ? MTLStorageModePrivate : MTLStorageModeShared;
+-            t->texture = [m->heap newTextureWithDescriptor:t->descriptor];
+-            if (!t->texture) return VriResult_OutOfMemory;
++            if (t->device != Dev(device) || m->device != Dev(device) || t->texture || !t->descriptor || !m->heap)
++                return VriResult_InvalidArgument;
++            MTLTextureDescriptor* descriptor = [t->descriptor copy];
++            descriptor.storageMode = m->location == VriMemoryLocation_Device ? MTLStorageModePrivate : MTLStorageModeShared;
++            const MTLSizeAndAlign required = [Dev(device)->Device() heapTextureSizeAndAlignWithDescriptor:descriptor];
++            if (!required.size || !required.align || offset % required.align || offset > m->size ||
++                required.size > m->size - offset)
++            {
++                [descriptor release];
++                return VriResult_InvalidArgument;
++            }
++            id<MTLTexture> candidate = [m->heap newTextureWithDescriptor:descriptor offset:offset];
++            [descriptor release];
++            if (!candidate) return VriResult_OutOfMemory;
++            t->texture = candidate;
+             t->owned = true;
+             return VriResult_Success;
+         }
+--- a/source/backend_metal/device_mtl.mm
++++ b/source/backend_metal/device_mtl.mm
+@@ -252,6 +252,7 @@
+         m_desc.hasSeparateDepthStencilLayouts = VRI_TRUE; // Metal has no image-layout coupling.
+         m_desc.hasClearStorageTexture = VRI_TRUE;
+         m_desc.hasClearStorageTextureRange = VRI_TRUE;
++        m_desc.bufferTextureGranularity = 1; // Placement heap size/alignment includes native layout constraints.
+         m_desc.hasGeometryShader = VRI_FALSE; // Metal has no geometry stage
+         m_desc.hasTessellation = VRI_FALSE;   // Metal tessellation differs from VK; not in MVP
+         m_desc.hasCustomBorderColor = VRI_TRUE;

@@ -1,0 +1,23 @@
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -1030,8 +1030,20 @@
+         // (core_vk.cpp), so its per-stage limits are the ones that actually bound a range.
+         if (m_desc.hasBindless)
+         {
++#if defined(__APPLE__)
++            // Variable-sized ranges are fixed-size ordinary descriptors on MoltenVK.
++            // Report the limits actually applied to these layouts, not the larger
++            // update-after-bind limits used by other Vulkan implementations.
++            m_desc.bindlessTextureMaxNum = std::min({props.limits.maxPerStageDescriptorSampledImages,
++                                                    props.limits.maxDescriptorSetSampledImages,
++                                                    props12.maxPerStageDescriptorUpdateAfterBindSampledImages});
++            m_desc.bindlessSamplerMaxNum = std::min({props.limits.maxPerStageDescriptorSamplers,
++                                                    props.limits.maxDescriptorSetSamplers,
++                                                    props12.maxPerStageDescriptorUpdateAfterBindSamplers});
++#else
+             m_desc.bindlessTextureMaxNum = props12.maxPerStageDescriptorUpdateAfterBindSampledImages;
+             m_desc.bindlessSamplerMaxNum = props12.maxPerStageDescriptorUpdateAfterBindSamplers;
++#endif
+         }
+         m_desc.hasVariableShadingRate  = (m_enabledFeatures & VriFeature_VariableShadingRate) ? VRI_TRUE : VRI_FALSE;
+         m_desc.hasOpacityMicromap      = (m_enabledFeatures & VriFeature_OpacityMicromap) ? VRI_TRUE : VRI_FALSE;

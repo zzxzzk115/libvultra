@@ -69,6 +69,11 @@ namespace vultra
                 ImGui::SetCurrentContext(m_Previous);
             }
 
+            void keepCurrent()
+            {
+                m_Previous = ImGui::GetCurrentContext();
+            }
+
             ContextScope(const ContextScope&)            = delete;
             ContextScope& operator=(const ContextScope&) = delete;
 
@@ -81,7 +86,7 @@ namespace vultra
 #include "LatoLatin-Regular.ttf.h"
         };
 
-        std::string layoutFilename(const EditorGuiConfig& config)
+        std::expected<std::string, std::string> layoutFilename(const EditorGuiConfig& config)
         {
             if (!config.persistLayout)
             {
@@ -102,18 +107,41 @@ namespace vultra
                                     return c < 32;
                                 }))
                 {
-                    throw std::invalid_argument("EditorGuiConfig.appName must be a valid single directory name");
+                    return std::unexpected("EditorGuiConfig.appName must be a valid single directory name");
                 }
                 const std::u8string directory(appName.begin(), appName.end());
                 file = std::filesystem::path(".vultra") / directory / "imgui.ini";
             }
             // Pin the path for the lifetime of the context, even if the application changes cwd.
-            file = std::filesystem::absolute(file).lexically_normal();
-            std::filesystem::create_directories(file.parent_path());
+            std::error_code error;
+            file = std::filesystem::absolute(file, error).lexically_normal();
+            if (error)
+                return std::unexpected("Resolve GUI layout path: " + error.message());
+            std::filesystem::create_directories(file.parent_path(), error);
+            if (error)
+                return std::unexpected("Create GUI layout directory: " + error.message());
             const auto utf8 = file.u8string();
             return std::string(utf8.begin(), utf8.end());
         }
     } // namespace
+
+    std::expected<std::unique_ptr<EditorGui>, std::string>
+    EditorGui::create(Device& device, Window& window, VriFormat targetFormat, const EditorGuiConfig& config)
+    {
+        auto gui = std::unique_ptr<EditorGui>(new EditorGui(device, &window, Uninitialized {}));
+        if (auto initialized = gui->initialize(targetFormat, config); !initialized)
+            return std::unexpected(initialized.error());
+        return gui;
+    }
+
+    std::expected<std::unique_ptr<EditorGui>, std::string>
+    EditorGui::create(Device& device, VriFormat targetFormat, const EditorGuiConfig& config)
+    {
+        auto gui = std::unique_ptr<EditorGui>(new EditorGui(device, nullptr, Uninitialized {}));
+        if (auto initialized = gui->initialize(targetFormat, config); !initialized)
+            return std::unexpected(initialized.error());
+        return gui;
+    }
 
     EditorGui::EditorGui(Device& device, Window& window, VriFormat targetFormat, const EditorGuiConfig& config) :
         EditorGui(device, &window, targetFormat, config)
@@ -125,129 +153,132 @@ namespace vultra
     {
     }
 
-    EditorGui::EditorGui(Device& device, Window* window, VriFormat targetFormat, const EditorGuiConfig& config) :
+    EditorGui::EditorGui(Device& device, Window* window, Uninitialized) :
         m_Window(window),
-        m_Device(device),
-        m_IniFile(layoutFilename(config))
+        m_Device(device)
+    {
+    }
+
+    EditorGui::EditorGui(Device& device, Window* window, VriFormat targetFormat, const EditorGuiConfig& config) :
+        EditorGui(device, window, Uninitialized {})
+    {
+        if (auto initialized = initialize(targetFormat, config); !initialized)
+        {
+            const auto error = initialized.error();
+            cleanup();
+            if (error.starts_with("EditorGuiConfig.") || error.starts_with("Window-backed") ||
+                error.starts_with("Offscreen ImGui") || error.starts_with("ImGui platform"))
+                throw std::invalid_argument(error);
+            throw std::runtime_error(error);
+        }
+    }
+
+    std::expected<void, std::string> EditorGui::initialize(VriFormat targetFormat, const EditorGuiConfig& config)
     {
 #ifndef VULTRA_EDITOR_GUI_WINDOW
-        if (window)
-        {
-            throw std::invalid_argument("Window-backed EditorGui requires the window feature");
-        }
+        if (m_Window)
+            return std::unexpected("Window-backed EditorGui requires the window feature");
 #endif
-        if (!window && config.multiViewport)
-        {
-            throw std::invalid_argument("Offscreen ImGui cannot create detached viewports");
-        }
+        if (!m_Window && config.multiViewport)
+            return std::unexpected("Offscreen ImGui cannot create detached viewports");
         if (config.multiViewport && targetFormat != VriFormat_BGRA8_UNORM)
-        {
-            throw std::invalid_argument("ImGui platform windows require the desktop BGRA8_UNORM target format");
-        }
+            return std::unexpected("ImGui platform windows require the desktop BGRA8_UNORM target format");
+        auto filename = layoutFilename(config);
+        if (!filename)
+            return std::unexpected(filename.error());
+        m_IniFile = std::move(*filename);
         IMGUI_CHECKVERSION();
         auto* previous = ImGui::GetCurrentContext();
         m_Context      = ImGui::CreateContext();
-        // CreateContext preserves an existing current context; initialize this instance's IO and renderer.
-        ImGui::SetCurrentContext(m_Context);
+        ImGui::SetCurrentContext(previous);
+        if (!m_Context)
+            return std::unexpected("Create ImGui context failed");
+        ContextScope context(m_Context);
+        auto&        io = ImGui::GetIO();
+        io.IniFilename  = m_IniFile.empty() ? nullptr : m_IniFile.c_str();
+        if (config.docking)
+            io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+        io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures;
+        io.ConfigDpiScaleFonts     = true;
+        io.ConfigDpiScaleViewports = true;
+        ImFontConfig fontConfig;
+        fontConfig.FontDataOwnedByAtlas = false;
+        io.Fonts->AddFontFromMemoryTTF(const_cast<unsigned char*>(kEditorFont), sizeof(kEditorFont), 16, &fontConfig);
+        auto result = vriGetInterface(m_Device.handle, VRI_INTERFACE_IMGUI, sizeof(m_Api), &m_Api);
+        if (result != VriResult_Success)
+            return std::unexpected("Get ImGui interface failed: " + std::to_string(result));
+        VriImguiDesc desc {};
+        desc.uploadQueue = m_Device.queue;
+        desc.colorFormat = targetFormat;
+        result           = m_Api.CreateImgui(m_Device.handle, &desc, &m_Renderer);
+        if (result != VriResult_Success || !m_Renderer)
+            return std::unexpected("Create ImGui renderer failed: " + std::to_string(result));
 #ifdef VULTRA_EDITOR_GUI_WINDOW
-        bool platformReady = false;
-#endif
-        try
+        if (m_Window)
         {
-            auto& io       = ImGui::GetIO();
-            io.IniFilename = m_IniFile.empty() ? nullptr : m_IniFile.c_str();
-            if (config.docking)
+            m_PlatformReady = initializePlatform();
+            if (!m_PlatformReady)
             {
-                io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+                return std::unexpected("Initialize ImGui window backend failed");
             }
-            io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures;
-            io.ConfigDpiScaleFonts     = true;
-            io.ConfigDpiScaleViewports = true;
-            ImFontConfig fontConfig;
-            fontConfig.FontDataOwnedByAtlas = false;
-            io.Fonts->AddFontFromMemoryTTF(const_cast<unsigned char*>(kEditorFont),
-                                           sizeof(kEditorFont),
-                                           16,
-                                           &fontConfig);
-            check(vriGetInterface(device.handle, VRI_INTERFACE_IMGUI, sizeof(m_Api), &m_Api), "Get ImGui interface");
-            VriImguiDesc desc {};
-            desc.uploadQueue = device.queue;
-            desc.colorFormat = targetFormat;
-            check(m_Api.CreateImgui(device.handle, &desc, &m_Renderer), "Create ImGui renderer");
-#ifdef VULTRA_EDITOR_GUI_WINDOW
-            if (window)
-            {
-                platformReady = initializePlatform();
-                if (!platformReady)
-                {
-                    throw std::runtime_error("Initialize ImGui window backend");
-                }
-            }
-            if (window)
-            {
-                m_DpiScale = platformDpiScale();
-                ImGui::GetStyle().ScaleAllSizes(m_DpiScale);
-                ImGui::GetStyle().FontScaleDpi = m_DpiScale;
-                Logger::core().info("Editor UI DPI scale: {}", m_DpiScale);
-            }
-#endif
-            setTheme(config.theme);
-#ifdef VULTRA_EDITOR_GUI_WINDOW
-            if (config.multiViewport)
-            {
-                if (io.BackendFlags & ImGuiBackendFlags_PlatformHasViewports)
-                {
-                    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-                    installViewportCallbacks();
-                }
-                else
-                {
-                    Logger::core().warn(
-                        "The window system does not support detached ImGui viewports; docking remains available");
-                }
-            }
-#endif
+            m_DpiScale = platformDpiScale();
+            ImGui::GetStyle().ScaleAllSizes(m_DpiScale);
+            ImGui::GetStyle().FontScaleDpi = m_DpiScale;
+            Logger::core().info("Editor UI DPI scale: {}", m_DpiScale);
         }
-        catch (...)
+#endif
+        setTheme(config.theme);
+#ifdef VULTRA_EDITOR_GUI_WINDOW
+        if (config.multiViewport)
         {
-#ifdef VULTRA_EDITOR_GUI_WINDOW
-            if (platformReady)
+            if (io.BackendFlags & ImGuiBackendFlags_PlatformHasViewports)
             {
-                shutdownPlatform();
+                io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+                installViewportCallbacks();
             }
-#endif
-            if (m_Renderer)
+            else
             {
-                m_Api.DestroyImgui(m_Renderer);
+                Logger::core().warn(
+                    "The window system does not support detached ImGui viewports; docking remains available");
             }
-            ImGui::DestroyContext(m_Context);
-            ImGui::SetCurrentContext(previous);
-            throw;
         }
+#endif
+        context.keepCurrent();
+        return {};
     }
 
     EditorGui::~EditorGui()
     {
+        cleanup();
+    }
+
+    void EditorGui::cleanup()
+    {
+        if (!m_Context)
+            return;
         auto* previous = ImGui::GetCurrentContext();
         ImGui::SetCurrentContext(m_Context);
-        m_Device.waitIdleForDestruction();
+        if (m_Renderer)
+            m_Device.waitIdleForDestruction();
         ImGui::DestroyPlatformWindows();
         ImGui::GetPlatformIO().ClearRendererHandlers();
         ImGui::GetIO().BackendRendererUserData = nullptr;
 #ifdef VULTRA_EDITOR_GUI_WINDOW
-        if (m_Window)
-        {
+        if (m_PlatformReady)
             shutdownPlatform();
-        }
 #endif
-        destroyTextures();
-        m_Api.DestroyImgui(m_Renderer);
+        if (m_Renderer)
+        {
+            destroyTextures();
+            m_Api.DestroyImgui(m_Renderer);
+        }
         ImGui::GetIO().BackendFlags &= ~ImGuiBackendFlags_RendererHasTextures;
         ImGui::DestroyContext(m_Context);
         if (previous != m_Context)
-        {
             ImGui::SetCurrentContext(previous);
-        }
+        m_Context       = nullptr;
+        m_Renderer      = nullptr;
+        m_PlatformReady = false;
     }
 
     void EditorGui::setTheme(EditorGuiTheme theme)
@@ -264,17 +295,13 @@ namespace vultra
         return {io.WantCaptureMouse, io.WantCaptureKeyboard};
     }
 
-    void EditorGui::begin()
+    std::expected<void, std::string> EditorGui::beginExpected()
     {
         if (m_FrameActive)
-        {
-            throw std::logic_error("Complete the current EditorGui frame before beginning another");
-        }
-        ImGui::SetCurrentContext(m_Context);
+            return std::unexpected("Complete the current EditorGui frame before beginning another");
         if (!m_Window)
-        {
-            throw std::logic_error("Offscreen ImGui requires an explicit frame extent and time step");
-        }
+            return std::unexpected("Offscreen ImGui requires an explicit frame extent and time step");
+        ImGui::SetCurrentContext(m_Context);
 #ifdef VULTRA_EDITOR_GUI_WINDOW
         beginPlatformFrame();
         const auto scale = platformDpiScale();
@@ -285,24 +312,38 @@ namespace vultra
         }
 #endif
         beginFrame();
+        return {};
     }
 
-    void EditorGui::begin(Extent size, float deltaSeconds)
+    std::expected<void, std::string> EditorGui::beginExpected(Extent size, float deltaSeconds)
     {
         if (m_FrameActive)
-        {
-            throw std::logic_error("Complete the current EditorGui frame before beginning another");
-        }
-        ImGui::SetCurrentContext(m_Context);
+            return std::unexpected("Complete the current EditorGui frame before beginning another");
         if (m_Window || size.empty() || !std::isfinite(deltaSeconds) || deltaSeconds <= 0)
-        {
-            throw std::invalid_argument("Offscreen ImGui requires no window, positive extent and finite time step");
-        }
+            return std::unexpected("Offscreen ImGui requires no window, positive extent and finite time step");
+        ImGui::SetCurrentContext(m_Context);
         auto& io                   = ImGui::GetIO();
         io.DisplaySize             = {float(size.width), float(size.height)};
         io.DisplayFramebufferScale = {1, 1};
         io.DeltaTime               = deltaSeconds;
         beginFrame();
+        return {};
+    }
+
+    void EditorGui::begin()
+    {
+        if (auto begun = beginExpected(); !begun)
+            throw std::logic_error(begun.error());
+    }
+
+    void EditorGui::begin(Extent size, float deltaSeconds)
+    {
+        if (auto begun = beginExpected(size, deltaSeconds); !begun)
+        {
+            if (m_FrameActive)
+                throw std::logic_error(begun.error());
+            throw std::invalid_argument(begun.error());
+        }
     }
 
     void EditorGui::beginFrame()
@@ -339,7 +380,7 @@ namespace vultra
         m_Api.FreeImguiTexture(m_Renderer, texture.view());
     }
 
-    void EditorGui::DrawData::update(const ImDrawData* draw, Extent framebuffer)
+    std::expected<void, std::string> EditorGui::DrawData::updateExpected(const ImDrawData* draw, Extent framebuffer)
     {
         vertices.clear();
         indices.clear();
@@ -348,7 +389,7 @@ namespace vultra
         if (!draw || draw->TotalVtxCount == 0 || draw->DisplaySize.x <= 0 || draw->DisplaySize.y <= 0 ||
             framebuffer.empty())
         {
-            return;
+            return {};
         }
         // Normalize positions and clipping to framebuffer pixels. VRI's scissor API uses pixels;
         // ImGui uses desktop coordinates, which may have a different scale on each monitor.
@@ -375,7 +416,7 @@ namespace vultra
                     // VRI binds its full render state for each draw. Never call the reset sentinel.
                     if (command.UserCallback != ImDrawCallback_ResetRenderState)
                     {
-                        throw std::runtime_error("Custom ImDrawCallback is outside Vultra's minimal GUI backend");
+                        return std::unexpected("Custom ImDrawCallback is outside Vultra's minimal GUI backend");
                     }
                     continue;
                 }
@@ -401,19 +442,45 @@ namespace vultra
         data.displaySize[1]    = float(framebuffer.height);
         data.framebufferWidth  = framebuffer.width;
         data.framebufferHeight = framebuffer.height;
+        return {};
+    }
+
+    void EditorGui::DrawData::update(const ImDrawData* draw, Extent framebuffer)
+    {
+        if (auto updated = updateExpected(draw, framebuffer); !updated)
+            throw std::runtime_error(updated.error());
+    }
+
+    std::expected<void, std::string> EditorGui::uploadExpected(Extent framebuffer)
+    {
+        const ContextScope context(m_Context);
+        if (!isCurrentFrame(m_FrameSerial))
+            return std::unexpected("EditorGui frame expired or belongs to a different current context");
+        m_FrameActive = false;
+        ImGui::Render();
+        if (auto updated = updateTexturesExpected(); !updated)
+        {
+            m_DrawData.data = {};
+            return updated;
+        }
+        if (auto updated = m_DrawData.updateExpected(ImGui::GetDrawData(), framebuffer); !updated)
+        {
+            m_DrawData.data = {};
+            return updated;
+        }
+        if (m_DrawData.data.vertexCount)
+            m_Api.UploadImguiData(m_Renderer, &m_DrawData.data);
+        return {};
     }
 
     void EditorGui::upload(Extent framebuffer)
     {
-        const ContextScope context(m_Context);
-        requireFrame(m_FrameSerial);
-        m_FrameActive = false;
-        ImGui::Render();
-        updateTextures();
-        m_DrawData.update(ImGui::GetDrawData(), framebuffer);
-        if (m_DrawData.data.vertexCount)
+        const bool wasActive = m_FrameActive;
+        if (auto uploaded = uploadExpected(framebuffer); !uploaded)
         {
-            m_Api.UploadImguiData(m_Renderer, &m_DrawData.data);
+            if (!wasActive)
+                throw std::logic_error(uploaded.error());
+            throw std::runtime_error(uploaded.error());
         }
     }
 

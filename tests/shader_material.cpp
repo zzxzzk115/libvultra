@@ -1,14 +1,28 @@
+#include "support/material_expected_probe.hpp"
+#include "support/scene_owner_expected_probe.hpp"
+#include "support/shader_runtime_expected_probe.hpp"
+
 #include <vultra/assets/shader_asset.hpp>
 #include <vultra/platform/os/file.hpp>
 #include <vultra/servers/rendering/shader_material.hpp>
 #include <vultra/servers/rendering/shader_runtime.hpp>
 
+#if defined(__APPLE__)
+#include <FileWatch.hpp>
+#include <libproc.h>
+
+#include <unistd.h>
+#endif
+
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -19,6 +33,130 @@ namespace
             throw std::runtime_error(message);
         }
     }
+
+#if defined(__APPLE__)
+    size_t openFileDescriptors()
+    {
+        const int bytes = proc_pidinfo(getpid(), PROC_PIDLISTFDS, 0, nullptr, 0);
+        require(bytes > 0, "Query watcher descriptor count");
+        std::vector<proc_fdinfo> descriptors(size_t(bytes) / sizeof(proc_fdinfo) + 16);
+        const int                read = proc_pidinfo(getpid(),
+                                      PROC_PIDLISTFDS,
+                                      0,
+                                      descriptors.data(),
+                                      int(descriptors.size() * sizeof(proc_fdinfo)));
+        require(read > 0, "Read watcher descriptor count");
+        descriptors.resize(size_t(read) / sizeof(proc_fdinfo));
+        return size_t(std::ranges::count(descriptors, PROX_FDTYPE_VNODE, &proc_fdinfo::proc_fdtype));
+    }
+
+    void verifyAtomicNotifications(const std::filesystem::path& root)
+    {
+        const auto directory = std::filesystem::absolute(root / "watch");
+        std::filesystem::create_directory(directory);
+        const auto source = directory / "stable.slang";
+        const auto write  = [&](const std::filesystem::path& path, std::string_view text)
+        {
+            const auto result = vultra::writeFileAtomicallyExpected(path, std::as_bytes(std::span(text)));
+            require(bool(result), result ? "" : result.error().c_str());
+        };
+        write(source, "initial");
+        // Initialize the process-wide FSEvents client before measuring owned file descriptors.
+        {
+            filewatch::FileWatch<std::string> warm(directory.string(),
+                                                   [](const auto&, auto)
+                                                   {
+                                                   });
+        }
+        const auto           descriptors = openFileDescriptors();
+        std::atomic_uint32_t revisions {0};
+        {
+            auto watch = filewatch::FileWatch<std::string>::createExpected(
+                directory.string(),
+                [&](const std::string& path, auto) -> std::expected<void, std::string>
+                {
+                    if (path == "stable.slang")
+                    {
+                        revisions.fetch_add(1, std::memory_order_relaxed);
+                    }
+                    return {};
+                });
+            require(bool(watch), watch ? "" : watch.error().c_str());
+            for (uint32_t round = 0; round < 4; ++round)
+            {
+                const auto before = revisions.load(std::memory_order_relaxed);
+                for (uint32_t edit = 0; edit < 128; ++edit)
+                {
+                    write(source, std::to_string(round * 128 + edit));
+                    const auto temporary = directory / ("ephemeral-" + std::to_string(edit) + ".slang");
+                    write(temporary, "temporary");
+                    std::filesystem::remove(temporary);
+                }
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+                while (revisions.load(std::memory_order_relaxed) == before &&
+                       std::chrono::steady_clock::now() < deadline)
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                }
+                require(revisions.load(std::memory_order_relaxed) > before,
+                        "Atomic replacement stopped delivering shader invalidations");
+            }
+        }
+
+        const auto ignore = [](const auto&, auto) -> std::expected<void, std::string>
+        {
+            return {};
+        };
+        require(!filewatch::FileWatch<std::string>::createExpected("", ignore), "Watcher accepted an empty path");
+        require(!filewatch::FileWatch<std::string>::createExpected(std::string("bad\0path", 8), ignore),
+                "Watcher accepted a NUL path");
+        require(!filewatch::FileWatch<std::string>::createExpected((directory / "absent").string(), ignore),
+                "Watcher accepted a missing path");
+        {
+            auto failed = filewatch::FileWatch<std::string>::createExpected(
+                directory.string(),
+                [](const auto&, auto) -> std::expected<void, std::string>
+                {
+                    return std::unexpected("injected watcher callback rejection");
+                });
+            require(bool(failed), failed ? "" : failed.error().c_str());
+            write(source, "callback rejection");
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while ((*failed)->statusExpected() && std::chrono::steady_clock::now() < deadline)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            const auto status = (*failed)->statusExpected();
+            require(!status && status.error() == "injected watcher callback rejection",
+                    "Watcher lost its worker callback failure");
+        }
+        const auto unicode = directory / "\xe7\x9b\x91\xe5\x90\xac";
+        std::filesystem::create_directory(unicode);
+        const auto watchedFile = unicode / "shader.slang";
+        write(watchedFile, "before");
+        {
+            std::atomic_uint32_t notifications {0};
+            auto                 file = filewatch::FileWatch<std::string>::createExpected(
+                watchedFile.string(),
+                [&](const auto&, auto) -> std::expected<void, std::string>
+                {
+                    ++notifications;
+                    return {};
+                });
+            require(bool(file), file ? "" : file.error().c_str());
+            write(watchedFile, "after");
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (!notifications && std::chrono::steady_clock::now() < deadline)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            require(notifications > 0 && (*file)->statusExpected(), "Unicode single-file watch lost changes");
+        }
+        require(openFileDescriptors() == descriptors, "File watcher leaked owned file descriptors");
+        std::puts("Atomic watcher checks passed: 512 replacements, transient files, Expected startup/callback "
+                  "failures, Unicode file and descriptor retirement");
+    }
+#endif
 
     VriResult VRI_CALL rejectComputePipeline(VriDevice*, const VriComputePipelineDesc*, VriPipeline** pipeline)
     {
@@ -80,6 +218,9 @@ try
     using namespace vultra;
     const auto root = std::filesystem::path("build/.tmp/material-gpu") / StableId::generate().toString();
     std::filesystem::create_directories(root);
+#if defined(__APPLE__)
+    verifyAtomicNotifications(root);
+#endif
     const auto source = root / "compute.vshader";
     const auto cooked = root / "compute.vshaderc";
     writeFileAtomically(source, std::as_bytes(std::span(kSource.data(), kSource.size())));
@@ -88,6 +229,12 @@ try
     std::filesystem::remove(source);
     asset = ShaderAsset::load(cooked);
     Device device;
+    auto   expectedMaterial = test::shaderMaterialExpectedProbe(device, asset);
+    require(bool(expectedMaterial), expectedMaterial ? "" : expectedMaterial.error().c_str());
+    auto expectedScene = test::sceneOwnerExpectedProbe(device);
+    require(bool(expectedScene), expectedScene ? "" : expectedScene.error().c_str());
+    auto expectedRuntime = test::shaderRuntimeExpectedProbe(device, asset, root / "expected-runtime");
+    require(bool(expectedRuntime), expectedRuntime ? "" : expectedRuntime.error().c_str());
     Buffer output(device,
                   {16, 16, VriBufferUsage_StorageBuffer | VriBufferUsage_TransferSrc, VriMemoryLocation_Device});
     Buffer readback(device, {16, 0, VriBufferUsage_TransferDst, VriMemoryLocation_HostReadback});

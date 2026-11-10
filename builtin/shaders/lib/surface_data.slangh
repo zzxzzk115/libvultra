@@ -20,14 +20,14 @@ SurfaceVertex transformSurfaceVertex(MeshVertex input)
     return result;
 }
 
-SurfaceData sampleSurface(SurfaceVertex input, bool frontFace, float3 baseColor)
+SurfaceData sampleSurface(SurfaceVertex input, bool frontFace, float3 baseColor, float2 dx = 0, float2 dy = 0)
 {
     SurfaceData result;
     float faceSign = frontFace ? 1 : -1;
-    float2 mr = metallicRoughnessTexture.Sample(materialSamplers[1], input.uv).bg;
+    float2 mr = sampleSurfaceMap(metallicRoughnessTexture, 1, input.uv, dx, dy).bg;
     result.worldPosition = input.worldPosition;
     result.geometricNormal = normalize(input.normal) * faceSign;
-    result.normal = surfaceNormal(input) * faceSign;
+    result.normal = surfaceNormal(input, dx, dy) * faceSign;
     result.baseColor = baseColor;
     result.baseWeight = material.flags.y;
     result.metallic = saturate(material.surface.x * mr.x);
@@ -40,10 +40,24 @@ SurfaceData sampleSurface(SurfaceVertex input, bool frontFace, float3 baseColor)
     {
         result.metallic = saturate(frame.overrides.y);
     }
-    result.emission = emissionTexture.Sample(materialSamplers[4], input.uv).rgb * material.emission.rgb;
-    result.occlusion = lerp(1, occlusionTexture.Sample(materialSamplers[3], input.uv).r, material.emission.w);
-    result.specularColor = material.specular.rgb * specularColorTexture.Sample(materialSamplers[6], input.uv).rgb;
-    result.specularWeight = material.coat.w * specularTexture.Sample(materialSamplers[5], input.uv).a;
+#ifdef VULTRA_TRANSPARENCY_SKIP_ZERO_WEIGHT_MAPS
+    // A zero factor makes the emission or occlusion map immaterial to shading.
+    result.emission = 0;
+    if (any(material.emission.rgb != 0))
+    {
+        result.emission = sampleSurfaceMap(emissionTexture, 4, input.uv, dx, dy).rgb * material.emission.rgb;
+    }
+    result.occlusion = 1;
+    if (material.emission.w != 0)
+    {
+        result.occlusion = lerp(1, sampleSurfaceMap(occlusionTexture, 3, input.uv, dx, dy).r, material.emission.w);
+    }
+#else
+    result.emission = sampleSurfaceMap(emissionTexture, 4, input.uv, dx, dy).rgb * material.emission.rgb;
+    result.occlusion = lerp(1, sampleSurfaceMap(occlusionTexture, 3, input.uv, dx, dy).r, material.emission.w);
+#endif
+    result.specularColor = material.specular.rgb * sampleSurfaceMap(specularColorTexture, 6, input.uv, dx, dy).rgb;
+    result.specularWeight = material.coat.w * sampleSurfaceMap(specularTexture, 5, input.uv, dx, dy).a;
     result.specularIor = material.surface.z;
     result.coatWeight = material.coat.x;
     result.coatRoughness = material.coat.y;

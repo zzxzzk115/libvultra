@@ -16,6 +16,8 @@ namespace vultra
     {
         std::string value;
         bool        property = false;
+        // Parse a finite decimal/hex literal; property references need a material instance.
+        std::expected<double, std::string> numberExpected() const;
     };
 
     // Authoring commands are resolved to ordinary VRI state by the rendering module.
@@ -47,6 +49,7 @@ namespace vultra
         std::vector<ShaderSourceMapping> mappings;
 #ifdef VULTRA_WITH_GAME_SHADER_COMPILER
         void mapBlock(const ShaderSourceBlock& block, size_t& cursor);
+        std::expected<void, std::string> mapBlockExpected(const ShaderSourceBlock& block, size_t& cursor);
 #endif
     };
 
@@ -56,6 +59,8 @@ namespace vultra
         std::string                        constants;
         std::vector<std::filesystem::path> modules;
         std::vector<ShaderDefine>          defines;
+        // Parsed declarations; compilation combines global selections here for source-free inspection.
+        std::vector<ShaderTypeConformance> typeConformances;
         ShaderSourceLocation               location;
     };
 
@@ -71,6 +76,7 @@ namespace vultra
         bool                                              generated = false;
         ShaderSourceLocation                              location;
         const ShaderProgram&                              program(std::string_view variant) const;
+        std::expected<const ShaderProgram*, std::string>  programExpected(std::string_view variant) const;
     };
 
     struct ShaderSurface
@@ -97,6 +103,8 @@ namespace vultra
     struct ShaderAsset
     {
         using SubshaderCompatibility = std::function<std::string(const ShaderSubshader&)>;
+        using SubshaderCompatibilityExpected =
+            std::function<std::expected<std::string, std::string>(const ShaderSubshader&)>;
         std::string                  name;
         std::filesystem::path        sourcePath;
         std::vector<ShaderProperty>  properties;
@@ -106,6 +114,20 @@ namespace vultra
         std::string                  diagnostics;
 
 #ifdef VULTRA_WITH_GAME_SHADER_COMPILER
+        static std::expected<ShaderAsset, std::string> parseExpected(const std::filesystem::path& file,
+                                                                     std::string_view             text);
+        static std::expected<ShaderAsset, std::string> compileExpected(const std::filesystem::path& file,
+                                                                       const ShaderCompileOptions&  options  = {},
+                                                                       std::span<const std::string> variants = {});
+        static std::expected<ShaderAsset, std::string>
+                                                compileSourceExpected(const std::filesystem::path& file,
+                                                                      std::string_view             source,
+                                                                      const ShaderCompileOptions&  options  = {},
+                                                                      std::span<const std::string> variants = {});
+        static std::expected<bool, std::string> cookExpected(const std::filesystem::path& source,
+                                                             const std::filesystem::path& output,
+                                                             const ShaderCompileOptions&  options  = {},
+                                                             std::span<const std::string> variants = {});
         static ShaderAsset parse(const std::filesystem::path& file, std::string_view text);
         static ShaderAsset compile(const std::filesystem::path& file,
                                    const ShaderCompileOptions&  options  = {},
@@ -119,17 +141,34 @@ namespace vultra
                                 const ShaderCompileOptions&  options  = {},
                                 std::span<const std::string> variants = {});
 #endif
+        static std::expected<ShaderAsset, std::string> loadExpected(const std::filesystem::path& file,
+                                                                    const AssetSource*           source = nullptr);
+        static std::expected<ShaderAsset, std::string> loadExpected(std::span<const std::byte>   bytes,
+                                                                    const std::filesystem::path& identity);
+        std::expected<void, std::string>               saveExpected(const std::filesystem::path& file) const;
         static ShaderAsset    load(const std::filesystem::path& file, const AssetSource* source = nullptr);
         void                  save(const std::filesystem::path& file) const;
         void                  validate() const;
+        std::expected<void, std::string> validateExpected() const;
         const ShaderProperty& property(std::string_view name) const;
         const ShaderVariant&  variant(std::string_view name) const;
+        std::expected<const ShaderProperty*, std::string> propertyExpected(std::string_view name) const;
+        std::expected<const ShaderVariant*, std::string>  variantExpected(std::string_view name) const;
         uint32_t              selectSubshader(std::string_view                  pipeline,
                                               uint64_t                          features,
                                               std::span<const std::string_view> lightModes,
                                               std::string&                      diagnostics,
                                               const SubshaderCompatibility&     compatible = {}) const;
+        std::expected<uint32_t, std::string>
+        selectSubshaderExpected(std::string_view                      pipeline,
+                                uint64_t                              features,
+                                std::span<const std::string_view>     lightModes,
+                                std::string&                          diagnostics,
+                                const SubshaderCompatibilityExpected& compatible = {}) const;
 #ifdef VULTRA_WITH_GAME_SHADER_COMPILER
+        std::expected<std::vector<ShaderSourceProjection>, std::string> projectSourcesExpected() const;
+        std::expected<std::string, std::string>                         generatedMaterialSourceExpected() const;
+        std::expected<std::string, std::string> generatedPassSourceExpected(uint32_t subshader, uint32_t pass) const;
         std::vector<ShaderSourceProjection> projectSources() const;
         std::string                         generatedMaterialSource() const;
         std::string                         generatedPassSource(uint32_t subshader, uint32_t pass) const;

@@ -1,0 +1,140 @@
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -683,40 +683,94 @@
+ 
+         VriResult VRI_CALL CreateTextureView(VriDevice* device, const VriTextureViewDesc* desc, VriDescriptor** out)
+         {
+-            TextureMTL* t = Tex(desc->texture);
+-            const MTLPixelFormat fmt = desc->format == VriFormat_Unknown ? t->mtlFormat : ToMtlFormat(desc->format);
+-            MTLTextureType vt = ToMtlViewType(desc->viewType);
+-            // A view of an MSAA texture must keep the multisample type (a 2D view of a
+-            // 2DMultisample texture is rejected by Metal) - the view dims carry no sample count.
+-            if (t->sampleNum > 1 && vt == MTLTextureType2D)
+-                vt = MTLTextureType2DMultisample;
+-            const uint32_t mipNum = desc->mipNum ? desc->mipNum : (t->mipNum - desc->baseMip);
+-            const uint32_t layerNum = desc->layerNum ? desc->layerNum : (t->layerNum - desc->baseLayer);
+-
+-            DescriptorMTL* v = new DescriptorMTL{};
+-            v->kind = DescriptorMTL::Kind::Texture;
+-            v->device = Dev(device);
+-            // A full-range, same-format/type view can reuse the base texture (cheaper, and
+-            // avoids a needless view object); otherwise create a reinterpreting view.
+-            const bool full = fmt == t->mtlFormat && vt == [t->texture textureType] &&
+-                              desc->baseMip == 0 && mipNum == t->mipNum &&
+-                              desc->baseLayer == 0 && layerNum == t->layerNum;
+-            if (full)
++            @autoreleasepool
+             {
+-                v->texture = t->texture;
+-                v->ownsTexture = false;
+-            }
+-            else
+-            {
+-                v->texture = [t->texture newTextureViewWithPixelFormat:fmt
+-                                                           textureType:vt
+-                                                                levels:NSMakeRange(desc->baseMip, mipNum)
+-                                                                slices:NSMakeRange(desc->baseLayer, layerNum)];
+-                v->ownsTexture = true;
+-                if (!v->texture) { delete v; return VriResult_Failure; }
++                if (!desc || !out || !desc->texture) return VriResult_InvalidArgument;
++                *out = nullptr;
++                TextureMTL* t = Tex(desc->texture);
++                if (!t->texture || desc->viewType < VriTextureViewType_1D || desc->viewType > VriTextureViewType_CubeArray ||
++                    desc->baseMip >= t->mipNum || desc->baseLayer >= t->layerNum)
++                    return VriResult_InvalidArgument;
++                const uint32_t mipNum = desc->mipNum ? desc->mipNum : t->mipNum - desc->baseMip;
++                const uint32_t layerNum = desc->layerNum ? desc->layerNum : t->layerNum - desc->baseLayer;
++                if (mipNum > t->mipNum - desc->baseMip || layerNum > t->layerNum - desc->baseLayer)
++                    return VriResult_InvalidArgument;
++                VriImageAspectFlags available = VriImageAspect_Color;
++                switch (t->format)
++                {
++                    case VriFormat_D16_UNORM:
++                    case VriFormat_D32_SFLOAT: available = VriImageAspect_Depth; break;
++                    case VriFormat_D24_UNORM_S8_UINT:
++                    case VriFormat_D32_SFLOAT_S8_UINT: available = VriImageAspect_Depth | VriImageAspect_Stencil; break;
++                    case VriFormat_S8_UINT: available = VriImageAspect_Stencil; break;
++                    default: break;
++                }
++                const auto aspect = desc->aspect ? desc->aspect : available;
++                if (aspect & ~available) return VriResult_InvalidArgument;
++                MTLPixelFormat fmt = desc->format == VriFormat_Unknown ? t->mtlFormat : ToMtlFormat(desc->format);
++                // Metal exposes the stencil plane of a combined texture through these dedicated view formats.
++                if (aspect == VriImageAspect_Stencil && t->mtlFormat == MTLPixelFormatDepth32Float_Stencil8)
++                    fmt = MTLPixelFormatX32_Stencil8;
++                else if (aspect == VriImageAspect_Stencil && t->mtlFormat == MTLPixelFormatDepth24Unorm_Stencil8)
++                    fmt = MTLPixelFormatX24_Stencil8;
++                MTLTextureType vt = ToMtlViewType(desc->viewType);
++                if (t->sampleNum > 1)
++                {
++                    if (vt == MTLTextureType2D) vt = MTLTextureType2DMultisample;
++                    else if (vt == MTLTextureType2DArray) vt = MTLTextureType2DMultisampleArray;
++                    else return VriResult_InvalidArgument;
++                }
++
++                if (fmt == MTLPixelFormatInvalid) return VriResult_Unsupported;
++                const MTLTextureType sourceType = [t->texture textureType];
++                bool compatible = vt == sourceType;
++                switch (sourceType)
++                {
++                    case MTLTextureType1D: compatible = vt == MTLTextureType1D; break;
++                    case MTLTextureType1DArray: compatible = vt == MTLTextureType1DArray; break;
++                    case MTLTextureType2D:
++                        compatible = vt == MTLTextureType2D || vt == MTLTextureType2DArray;
++                        break;
++                    case MTLTextureType2DArray:
++                    case MTLTextureTypeCube:
++                    case MTLTextureTypeCubeArray:
++                        compatible = vt == MTLTextureType2D || vt == MTLTextureType2DArray ||
++                                     vt == MTLTextureTypeCube || vt == MTLTextureTypeCubeArray;
++                        break;
++                    default: break;
++                }
++                if (!compatible || (vt == MTLTextureType1D && layerNum != 1) ||
++                    (vt == MTLTextureType2D && layerNum != 1) ||
++                    (vt == MTLTextureTypeCube && (desc->baseLayer % 6 || layerNum != 6)) ||
++                    (vt == MTLTextureTypeCubeArray && (desc->baseLayer % 6 || layerNum % 6)))
++                    return VriResult_InvalidArgument;
++
++                DescriptorMTL* v = new DescriptorMTL{};
++                v->kind = DescriptorMTL::Kind::Texture;
++                v->device = Dev(device);
++                // A full-range, same-format/type view can reuse the base texture (cheaper, and
++                // avoids a needless view object); otherwise create a reinterpreting view.
++                const bool full = fmt == t->mtlFormat && vt == [t->texture textureType] &&
++                                  desc->baseMip == 0 && mipNum == t->mipNum &&
++                                  desc->baseLayer == 0 && layerNum == t->layerNum;
++                if (full)
++                {
++                    v->texture = t->texture;
++                    v->ownsTexture = false;
++                }
++                else
++                {
++                    v->texture = [t->texture newTextureViewWithPixelFormat:fmt
++                                                               textureType:vt
++                                                                    levels:NSMakeRange(desc->baseMip, mipNum)
++                                                                    slices:NSMakeRange(desc->baseLayer, layerNum)];
++                    v->ownsTexture = true;
++                    if (!v->texture) { delete v; return VriResult_Failure; }
++                }
++                *out = ToHandle(v);
++                return VriResult_Success;
++
+             }
+-            *out = ToHandle(v);
+-            return VriResult_Success;
+         }
+ 
+         VriResult VRI_CALL CreateSampler(VriDevice* device, const VriSamplerDesc* desc, VriDescriptor** out)
+--- a/source/backend_metal/conversions_mtl.h
++++ b/source/backend_metal/conversions_mtl.h
+@@ -352,7 +352,7 @@
+             case VriTextureType_1D:        return MTLTextureType1D;
+             case VriTextureType_1DArray:   return MTLTextureType1DArray;
+             case VriTextureType_2D:        return ms ? MTLTextureType2DMultisample : MTLTextureType2D;
+-            case VriTextureType_2DArray:   return MTLTextureType2DArray;
++            case VriTextureType_2DArray:   return ms ? MTLTextureType2DMultisampleArray : MTLTextureType2DArray;
+             case VriTextureType_3D:        return MTLTextureType3D;
+             case VriTextureType_Cube:      return MTLTextureTypeCube;
+             case VriTextureType_CubeArray: return MTLTextureTypeCubeArray;

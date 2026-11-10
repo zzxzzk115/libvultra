@@ -7,12 +7,12 @@
 
 namespace vultra
 {
-    void validateImage(const Image& image)
+    std::expected<void, std::string> validateImageExpected(const Image& image)
     {
         if (image.size.empty() || image.size.width > uint32_t(INT_MAX / 4) || image.size.height > uint32_t(INT_MAX) ||
             uint64_t(image.size.width) * image.size.height * 4 != image.rgba.size())
         {
-            throw std::invalid_argument("Invalid image dimensions or RGBA storage");
+            return std::unexpected("Invalid image dimensions or RGBA storage");
         }
         if (!std::all_of(image.rgba.begin(),
                          image.rgba.end(),
@@ -21,7 +21,16 @@ namespace vultra
                              return std::isfinite(v);
                          }))
         {
-            throw std::invalid_argument("Image contains NaN or infinity");
+            return std::unexpected("Image contains NaN or infinity");
+        }
+        return {};
+    }
+
+    void validateImage(const Image& image)
+    {
+        if (auto valid = validateImageExpected(image); !valid)
+        {
+            throw std::invalid_argument(valid.error());
         }
     }
 

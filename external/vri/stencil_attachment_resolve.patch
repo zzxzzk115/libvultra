@@ -1,0 +1,79 @@
+--- a/include/vri/vri_device_desc.h
++++ b/include/vri/vri_device_desc.h
+@@ -173,6 +173,9 @@
+     VriBool hasDepthAttachmentResolve;
+     /* A depth resolve with Load and no draws executes its resolve operation. */
+     VriBool hasLoadOnlyDepthAttachmentResolve;
++    /* Native S8 or paired depth/stencil resolve selects sample zero. */
++    VriBool hasStencilAttachmentResolve;
++    VriBool hasLoadOnlyStencilAttachmentResolve;
+ } VriDeviceDesc;
+ 
+ VRI_EXTERN_C_END
+--- a/include/vri/vri_command.h
++++ b/include/vri/vri_command.h
+@@ -38,7 +38,8 @@
+     VriAttachmentLoadOp  loadOp;
+     VriAttachmentStoreOp storeOp;
+     VriClearValue        clearValue;
+-    /* NULL disables resolve. Color averages; a supported D16/D32 depth slot selects sample zero. */
++    /* NULL disables resolve. Color averages; native depth and stencil select sample zero.
++     * For a combined format, bind the same source and resolve views in both slots. */
+     VriDescriptor*       resolveView;
+     /* Depth only (including combined stencil): Load + Store, no resolve or stencil slot; writes disabled. */
+     VriBool             readOnly;
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -1136,10 +1136,17 @@
+         m_desc.hasDepthAttachmentResolve = (props12.supportedDepthResolveModes & VK_RESOLVE_MODE_SAMPLE_ZERO_BIT)
+                                                ? VRI_TRUE : VRI_FALSE;
+         m_desc.hasLoadOnlyDepthAttachmentResolve = m_desc.hasDepthAttachmentResolve;
++        m_desc.hasStencilAttachmentResolve = (props12.supportedStencilResolveModes & VK_RESOLVE_MODE_SAMPLE_ZERO_BIT)
++                                                 ? VRI_TRUE : VRI_FALSE;
++        m_desc.hasLoadOnlyStencilAttachmentResolve = m_desc.hasStencilAttachmentResolve;
+ #if defined(__ANDROID__)
+         // Adreno drops a loaded depth resolve when the render scope records no draws.
++        // Conservatively require a draw for depth and stencil resolves of loaded attachments.
+         if (props.vendorID == 0x5143)
++        {
+             m_desc.hasLoadOnlyDepthAttachmentResolve = VRI_FALSE;
++            m_desc.hasLoadOnlyStencilAttachmentResolve = VRI_FALSE;
++        }
+ #endif
+         m_desc.hasClearStorageTexture  = VRI_TRUE; // vkCmdClearColorImage is core Vulkan
+         m_desc.hasMultiview            = m_hasMultiview ? VRI_TRUE : VRI_FALSE;
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -1200,7 +1200,8 @@
+             if (desc->outputMerger.depthStencilFormat != VriFormat_Unknown)
+             {
+                 const VkFormat dsf              = ToVkFormat(desc->outputMerger.depthStencilFormat);
+-                rendering.depthAttachmentFormat = dsf;
++                if (dsf != VK_FORMAT_S8_UINT)
++                    rendering.depthAttachmentFormat = dsf;
+                 if (dsf == VK_FORMAT_S8_UINT || dsf == VK_FORMAT_D16_UNORM_S8_UINT ||
+                     dsf == VK_FORMAT_D24_UNORM_S8_UINT || dsf == VK_FORMAT_D32_SFLOAT_S8_UINT)
+                     rendering.stencilAttachmentFormat = dsf;
+@@ -1598,6 +1599,12 @@
+             if (stencilSource && stencilSource->view)
+             {
+                 stencil = depthStencilInfo(*stencilSource);
++                if (stencilSource->resolveView)
++                {
++                    stencil.resolveImageView = Desc(stencilSource->resolveView)->imageView;
++                    stencil.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
++                    stencil.resolveMode = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
++                }
+                 ri.pStencilAttachment = &stencil;
+             }
+ 
+@@ -1610,6 +1617,9 @@
+                     format == VK_FORMAT_D32_SFLOAT_S8_UINT)
+                 {
+                     depth = stencil;
++                    depth.resolveMode = VK_RESOLVE_MODE_NONE;
++                    depth.resolveImageView = VK_NULL_HANDLE;
++                    depth.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                     depth.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+                     depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+                     ri.pDepthAttachment = &depth;

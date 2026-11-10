@@ -51,20 +51,38 @@ namespace vultra
     class Profiler
     {
     public:
+        enum class TimestampOrder
+        {
+            eNative,
+            eCompletedCommands // Gate each marker against earlier and later encoder work.
+        };
+
         explicit Profiler(Device& device, uint32_t eventCapacity = 64);
+        static std::expected<std::unique_ptr<Profiler>, std::string>
+        create(Device& device, uint32_t eventCapacity = 64, TimestampOrder order = TimestampOrder::eNative);
         ~Profiler();
-        Profiler(const Profiler&)            = delete;
-        Profiler& operator=(const Profiler&) = delete;
-        void      beginFrame(VriCommandBuffer* cmd);
-        void      beginPass(VriCommandBuffer* cmd, const std::string& name);
-        void      beginCommands(VriCommandBuffer* cmd); // optional boundary after graph barriers
-        void      endPass(VriCommandBuffer* cmd);
-        void      resolve(VriCommandBuffer* cmd);
-        void      collect(); // only after Frame::submitAndWait
+        Profiler(const Profiler&)                                   = delete;
+        Profiler&                        operator=(const Profiler&) = delete;
+        void                             beginFrame(VriCommandBuffer* cmd);
+        void                             beginPass(VriCommandBuffer* cmd, const std::string& name);
+        void                             beginCommands(VriCommandBuffer* cmd); // optional boundary after graph barriers
+        void                             endPass(VriCommandBuffer* cmd);
+        void                             resolve(VriCommandBuffer* cmd);
+        void                             collect(); // only after Frame::submitAndWait
+        std::expected<void, std::string> beginPassExpected(VriCommandBuffer* cmd, const std::string& name);
+        std::expected<void, std::string> beginCommandsExpected(VriCommandBuffer* cmd);
+        std::expected<void, std::string> endPassExpected(VriCommandBuffer* cmd);
+        std::expected<void, std::string> resolveExpected(VriCommandBuffer* cmd);
+        std::expected<void, std::string> collectExpected(); // only after Frame::submitAndWait
+
+        bool belongsTo(const Device& device) const
+        {
+            return &m_Device == &device;
+        }
 
         bool hasGpuTimings() const
         {
-            return m_Pool != nullptr;
+            return m_Pool != nullptr && m_TimingsValid;
         }
 
         const std::vector<PassTiming>& timings() const
@@ -73,6 +91,13 @@ namespace vultra
         }
 
     private:
+        struct Uninitialized
+        {};
+
+        Profiler(Device& device, uint32_t eventCapacity, TimestampOrder order, Uninitialized);
+        std::expected<void, std::string> initialize();
+        std::expected<void, std::string> writeTimestampExpected(VriCommandBuffer* commands);
+
         struct Record
         {
             PassTiming                            timing;
@@ -83,6 +108,7 @@ namespace vultra
         };
 
         uint32_t                m_EventCapacity;
+        TimestampOrder          m_TimestampOrder;
         Device&                 m_Device;
         VriQueryInterface       m_Api {};
         VriQueryPool*           m_Pool = nullptr;
@@ -90,7 +116,8 @@ namespace vultra
         std::vector<Record>     m_Records;
         std::vector<PassTiming> m_Results;
         std::vector<uint32_t>   m_Stack;
-        double                  m_TickNs     = 0;
-        uint32_t                m_QueryCount = 0;
+        double                  m_TickNs       = 0;
+        uint32_t                m_QueryCount   = 0;
+        bool                    m_TimingsValid = true;
     };
 } // namespace vultra

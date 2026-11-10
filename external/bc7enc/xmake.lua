@@ -12,14 +12,19 @@ rule("bc7enc.ispc")
         local headerdir = path.join(target:autogendir(), "bc7-ispc")
         -- Multi-target ISPC emits a dispatcher and a separate object for each ISA.
         table.insert(target:objectfiles(), object)
-        for _, isa in ipairs({"sse2", "avx2"}) do
-            table.insert(target:objectfiles(), path.join(path.directory(object),
-                path.basename(object) .. "_" .. isa .. path.extension(object)))
+        local arm = target:is_arch("arm64", "aarch64")
+        if not arm then
+            for _, isa in ipairs({"sse2", "avx2"}) do
+                table.insert(target:objectfiles(), path.join(path.directory(object),
+                    path.basename(object) .. "_" .. isa .. path.extension(object)))
+            end
         end
-        local flags = {"--target=sse2-i32x4,avx2-i32x8", "--arch=x86-64", "--target-os=" .. target:plat(),
+        local flags = {"--target=" .. (arm and "neon-i32x4" or "sse2-i32x4,avx2-i32x8"),
+                       "--arch=" .. (arm and "aarch64" or "x86-64"),
+                       "--target-os=" .. (target:is_plat("macosx") and "macos" or target:plat()),
                        "-O2", "--opt=disable-assertions", "-h", path.join(headerdir, "bc7e_ispc.h"),
                        "-o", object, sourcefile}
-        if target:is_plat("linux") then
+        if target:is_plat("linux", "macosx") then
             table.insert(flags, "--pic")
         end
         batchcmds:show_progress(opt.progress, "${color.build.object}compiling.bc7-ispc %s", sourcefile)

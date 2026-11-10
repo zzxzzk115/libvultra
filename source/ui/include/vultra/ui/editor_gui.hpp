@@ -8,6 +8,7 @@
 #include <imgui.h>
 
 #include <cstdint>
+#include <expected>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -34,16 +35,24 @@ namespace vultra
     class EditorGui
     {
     public:
+        static std::expected<std::unique_ptr<EditorGui>, std::string>
+        create(Device& device, Window& window, VriFormat targetFormat, const EditorGuiConfig& config = {});
+        static std::expected<std::unique_ptr<EditorGui>, std::string>
+        create(Device& device, VriFormat targetFormat, const EditorGuiConfig& config);
+
         EditorGui(Device& device, Window& window, VriFormat targetFormat, const EditorGuiConfig& config = {});
         // Offscreen rendering uses the same VRI renderer, with no window backend or detached viewports.
         EditorGui(Device& device, VriFormat targetFormat, const EditorGuiConfig& config);
         // A null window selects offscreen rendering when the target is chosen at runtime.
         EditorGui(Device& device, Window* window, VriFormat targetFormat, const EditorGuiConfig& config);
         ~EditorGui();
-        EditorGui(const EditorGui&)            = delete;
-        EditorGui& operator=(const EditorGui&) = delete;
-        void       begin();
-        void       begin(Extent size, float deltaSeconds);
+        EditorGui(const EditorGui&)                                  = delete;
+        EditorGui&                       operator=(const EditorGui&) = delete;
+        std::expected<void, std::string> beginExpected();
+        std::expected<void, std::string> beginExpected(Extent size, float deltaSeconds);
+        std::expected<void, std::string> uploadExpected(Extent framebuffer);
+        void                             begin();
+        void                             begin(Extent size, float deltaSeconds);
 
         EditorGuiFrame frame()
         {
@@ -90,15 +99,23 @@ namespace vultra
     private:
         friend class EditorGuiFrame;
         friend class EditorGuiInspector;
-        void  requireFrame(uint64_t serial) const;
-        void  beginFrame();
-        void  updateTextures();
-        void  destroyTextures();
-        float platformDpiScale() const;
+        void requireFrame(uint64_t serial) const;
+
+        struct Uninitialized
+        {};
+
+        EditorGui(Device& device, Window* window, Uninitialized);
+        std::expected<void, std::string> initialize(VriFormat targetFormat, const EditorGuiConfig& config);
+        void                             cleanup();
+        void                             beginFrame();
+        std::expected<void, std::string> updateTexturesExpected();
+        void                             destroyTextures();
+        float                            platformDpiScale() const;
         struct Viewport;
 
         struct DrawData
         {
+            std::expected<void, std::string> updateExpected(const ImDrawData* draw, Extent framebuffer);
             void                             update(const ImDrawData* draw, Extent framebuffer);
             VriImguiDrawData                 data {};
             std::vector<VriImguiVertex>      vertices;
@@ -122,11 +139,12 @@ namespace vultra
 
         std::unordered_map<VriDescriptor*, std::unique_ptr<Texture>> m_Textures;
 
-        float          m_DpiScale    = 1;
-        ImGuiID        m_Dockspace   = 0;
-        EditorGuiTheme m_Theme       = EditorGuiTheme::eUnreal;
-        bool           m_FrameActive = false;
-        uint64_t       m_FrameSerial = 0;
+        float          m_DpiScale      = 1;
+        ImGuiID        m_Dockspace     = 0;
+        EditorGuiTheme m_Theme         = EditorGuiTheme::eUnreal;
+        bool           m_PlatformReady = false;
+        bool           m_FrameActive   = false;
+        uint64_t       m_FrameSerial   = 0;
 
         struct PropertyDrawerEntry
         {

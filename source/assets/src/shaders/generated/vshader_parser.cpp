@@ -53,138 +53,144 @@ void vshader_parserParserInitialize() {
     std::vector<std::string>{
       "file", "properties", "property", "attribute", "attributeArgument",
       "propertyType", "value", "variant", "constants", "modules", "defines",
-      "subshader", "tags", "requires", "common", "program", "surface", "pass",
-      "stage", "state", "stateValue"
+      "conformances", "conformance", "subshader", "tags", "requires", "common",
+      "program", "surface", "pass", "stage", "state", "stateValue"
     },
     std::vector<std::string>{
       "", "'Shader'", "'Properties'", "'SubShader'", "'Pass'", "'Surface'",
       "'Tags'", "'Name'", "'Model'", "'Entry'", "'Variant'", "'Constants'",
-      "'Modules'", "'Defines'", "'Requires'", "'Vertex'", "'Fragment'",
-      "'Task'", "'Mesh'", "'Compute'", "'Cull'", "'FrontFace'", "'ZWrite'",
-      "'ZTest'", "'DepthBias'", "'Blend'", "'BlendOp'", "'ColorMask'", "'Stencil'",
-      "", "", "", "", "", "", "'{'", "'}'", "'('", "')'", "'['", "']'",
-      "','", "'='", "';'"
+      "'Modules'", "'Defines'", "'Conformances'", "'Requires'", "'Vertex'",
+      "'Fragment'", "'Task'", "'Mesh'", "'Compute'", "'Cull'", "'FrontFace'",
+      "'ZWrite'", "'ZTest'", "'DepthBias'", "'Blend'", "'BlendOp'", "'ColorMask'",
+      "'Stencil'", "", "", "", "", "", "", "'{'", "'}'", "'('", "')'", "'['",
+      "']'", "','", "'='", "';'"
     },
     std::vector<std::string>{
       "", "SHADER", "PROPERTIES", "SUBSHADER", "PASS", "SURFACE", "TAGS",
       "NAME", "MODEL", "ENTRY", "VARIANT", "CONSTANTS", "MODULES", "DEFINES",
-      "REQUIRES", "VERTEX", "FRAGMENT", "TASK", "MESH", "COMPUTE", "CULL",
-      "FRONT_FACE", "ZWRITE", "ZTEST", "DEPTH_BIAS", "BLEND", "BLEND_OP",
-      "COLOR_MASK", "STENCIL", "SLANG_PROGRAM", "SLANG_INCLUDE", "TEXTURE_TYPE",
-      "IDENTIFIER", "NUMBER", "STRING", "LBRACE", "RBRACE", "LPAREN", "RPAREN",
-      "LBRACKET", "RBRACKET", "COMMA", "EQUAL", "SEMICOLON", "LINE_COMMENT",
-      "BLOCK_COMMENT", "WHITESPACE", "PROGRAM_END", "PROGRAM_TEXT"
+      "CONFORMANCES", "REQUIRES", "VERTEX", "FRAGMENT", "TASK", "MESH",
+      "COMPUTE", "CULL", "FRONT_FACE", "ZWRITE", "ZTEST", "DEPTH_BIAS",
+      "BLEND", "BLEND_OP", "COLOR_MASK", "STENCIL", "SLANG_PROGRAM", "SLANG_INCLUDE",
+      "TEXTURE_TYPE", "IDENTIFIER", "NUMBER", "STRING", "LBRACE", "RBRACE",
+      "LPAREN", "RPAREN", "LBRACKET", "RBRACKET", "COMMA", "EQUAL", "SEMICOLON",
+      "LINE_COMMENT", "BLOCK_COMMENT", "WHITESPACE", "PROGRAM_END", "PROGRAM_TEXT"
     }
   );
   static const int32_t serializedATNSegment[] = {
-      4,1,48,319,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,6,2,
+      4,1,49,339,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,6,2,
       7,7,7,2,8,7,8,2,9,7,9,2,10,7,10,2,11,7,11,2,12,7,12,2,13,7,13,2,14,7,
-      14,2,15,7,15,2,16,7,16,2,17,7,17,2,18,7,18,2,19,7,19,2,20,7,20,1,0,1,
-      0,1,0,1,0,1,0,1,0,5,0,49,8,0,10,0,12,0,52,9,0,1,0,1,0,1,0,1,1,1,1,1,1,
-      5,1,60,8,1,10,1,12,1,63,9,1,1,1,1,1,1,2,5,2,68,8,2,10,2,12,2,71,9,2,1,
-      2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,3,1,3,1,3,1,3,1,3,1,3,5,3,88,8,3,
-      10,3,12,3,91,9,3,1,3,1,3,3,3,95,8,3,1,3,1,3,1,4,1,4,1,5,1,5,1,5,1,5,1,
-      5,1,5,3,5,107,8,5,1,6,1,6,1,6,1,6,1,6,3,6,114,8,6,1,6,1,6,1,6,1,6,5,6,
-      120,8,6,10,6,12,6,123,9,6,1,6,3,6,126,8,6,1,7,1,7,1,7,1,7,1,7,1,7,5,7,
-      134,8,7,10,7,12,7,137,9,7,1,7,1,7,1,8,1,8,1,8,1,8,1,8,1,8,5,8,147,8,8,
-      10,8,12,8,150,9,8,1,8,1,8,1,9,1,9,1,9,5,9,157,8,9,10,9,12,9,160,9,9,1,
-      9,1,9,1,10,1,10,1,10,1,10,1,10,5,10,169,8,10,10,10,12,10,172,9,10,1,10,
-      1,10,1,11,1,11,1,11,1,11,1,11,1,11,1,11,1,11,5,11,184,8,11,10,11,12,11,
-      187,9,11,1,11,1,11,1,12,1,12,1,12,1,12,1,12,5,12,196,8,12,10,12,12,12,
-      199,9,12,1,12,1,12,1,13,1,13,1,13,1,13,5,13,207,8,13,10,13,12,13,210,
-      9,13,1,14,1,14,5,14,214,8,14,10,14,12,14,217,9,14,1,14,1,14,1,15,1,15,
-      5,15,223,8,15,10,15,12,15,226,9,15,1,15,1,15,1,16,1,16,1,16,1,16,1,16,
-      1,16,1,16,1,16,5,16,238,8,16,10,16,12,16,241,9,16,1,16,1,16,1,17,1,17,
-      1,17,1,17,1,17,1,17,1,17,1,17,1,17,5,17,254,8,17,10,17,12,17,257,9,17,
-      1,17,1,17,1,18,1,18,1,18,1,19,1,19,1,19,1,19,1,19,1,19,1,19,1,19,1,19,
-      1,19,1,19,1,19,3,19,276,8,19,1,19,1,19,1,19,1,19,1,19,1,19,1,19,3,19,
-      285,8,19,3,19,287,8,19,1,19,1,19,1,19,1,19,3,19,293,8,19,1,19,1,19,1,
-      19,3,19,298,8,19,1,19,1,19,1,19,1,19,5,19,304,8,19,10,19,12,19,307,9,
-      19,1,19,3,19,310,8,19,1,20,1,20,1,20,1,20,1,20,3,20,317,8,20,1,20,0,0,
-      21,0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,0,4,1,0,
-      32,34,1,0,31,32,1,0,32,33,1,0,15,19,352,0,42,1,0,0,0,2,56,1,0,0,0,4,69,
-      1,0,0,0,6,81,1,0,0,0,8,98,1,0,0,0,10,100,1,0,0,0,12,125,1,0,0,0,14,127,
-      1,0,0,0,16,140,1,0,0,0,18,153,1,0,0,0,20,163,1,0,0,0,22,175,1,0,0,0,24,
-      190,1,0,0,0,26,202,1,0,0,0,28,211,1,0,0,0,30,220,1,0,0,0,32,229,1,0,0,
-      0,34,244,1,0,0,0,36,260,1,0,0,0,38,309,1,0,0,0,40,316,1,0,0,0,42,43,5,
-      1,0,0,43,44,5,34,0,0,44,50,5,35,0,0,45,49,3,2,1,0,46,49,3,14,7,0,47,49,
-      3,22,11,0,48,45,1,0,0,0,48,46,1,0,0,0,48,47,1,0,0,0,49,52,1,0,0,0,50,
-      48,1,0,0,0,50,51,1,0,0,0,51,53,1,0,0,0,52,50,1,0,0,0,53,54,5,36,0,0,54,
-      55,5,0,0,1,55,1,1,0,0,0,56,57,5,2,0,0,57,61,5,35,0,0,58,60,3,4,2,0,59,
-      58,1,0,0,0,60,63,1,0,0,0,61,59,1,0,0,0,61,62,1,0,0,0,62,64,1,0,0,0,63,
-      61,1,0,0,0,64,65,5,36,0,0,65,3,1,0,0,0,66,68,3,6,3,0,67,66,1,0,0,0,68,
-      71,1,0,0,0,69,67,1,0,0,0,69,70,1,0,0,0,70,72,1,0,0,0,71,69,1,0,0,0,72,
-      73,5,32,0,0,73,74,5,37,0,0,74,75,5,34,0,0,75,76,5,41,0,0,76,77,3,10,5,
-      0,77,78,5,38,0,0,78,79,5,42,0,0,79,80,3,12,6,0,80,5,1,0,0,0,81,82,5,39,
-      0,0,82,94,5,32,0,0,83,84,5,37,0,0,84,89,3,8,4,0,85,86,5,41,0,0,86,88,
-      3,8,4,0,87,85,1,0,0,0,88,91,1,0,0,0,89,87,1,0,0,0,89,90,1,0,0,0,90,92,
-      1,0,0,0,91,89,1,0,0,0,92,93,5,38,0,0,93,95,1,0,0,0,94,83,1,0,0,0,94,95,
-      1,0,0,0,95,96,1,0,0,0,96,97,5,40,0,0,97,7,1,0,0,0,98,99,7,0,0,0,99,9,
-      1,0,0,0,100,106,7,1,0,0,101,102,5,37,0,0,102,103,5,33,0,0,103,104,5,41,
-      0,0,104,105,5,33,0,0,105,107,5,38,0,0,106,101,1,0,0,0,106,107,1,0,0,0,
-      107,11,1,0,0,0,108,126,5,33,0,0,109,126,5,32,0,0,110,113,5,34,0,0,111,
-      112,5,35,0,0,112,114,5,36,0,0,113,111,1,0,0,0,113,114,1,0,0,0,114,126,
-      1,0,0,0,115,116,5,37,0,0,116,121,5,33,0,0,117,118,5,41,0,0,118,120,5,
-      33,0,0,119,117,1,0,0,0,120,123,1,0,0,0,121,119,1,0,0,0,121,122,1,0,0,
-      0,122,124,1,0,0,0,123,121,1,0,0,0,124,126,5,38,0,0,125,108,1,0,0,0,125,
-      109,1,0,0,0,125,110,1,0,0,0,125,115,1,0,0,0,126,13,1,0,0,0,127,128,5,
-      10,0,0,128,129,5,34,0,0,129,135,5,35,0,0,130,134,3,16,8,0,131,134,3,18,
-      9,0,132,134,3,20,10,0,133,130,1,0,0,0,133,131,1,0,0,0,133,132,1,0,0,0,
-      134,137,1,0,0,0,135,133,1,0,0,0,135,136,1,0,0,0,136,138,1,0,0,0,137,135,
-      1,0,0,0,138,139,5,36,0,0,139,15,1,0,0,0,140,141,5,11,0,0,141,148,5,35,
-      0,0,142,143,5,32,0,0,143,144,5,32,0,0,144,145,5,42,0,0,145,147,7,2,0,
-      0,146,142,1,0,0,0,147,150,1,0,0,0,148,146,1,0,0,0,148,149,1,0,0,0,149,
-      151,1,0,0,0,150,148,1,0,0,0,151,152,5,36,0,0,152,17,1,0,0,0,153,154,5,
-      12,0,0,154,158,5,35,0,0,155,157,5,34,0,0,156,155,1,0,0,0,157,160,1,0,
-      0,0,158,156,1,0,0,0,158,159,1,0,0,0,159,161,1,0,0,0,160,158,1,0,0,0,161,
-      162,5,36,0,0,162,19,1,0,0,0,163,164,5,13,0,0,164,170,5,35,0,0,165,166,
-      5,32,0,0,166,167,5,42,0,0,167,169,7,0,0,0,168,165,1,0,0,0,169,172,1,0,
-      0,0,170,168,1,0,0,0,170,171,1,0,0,0,171,173,1,0,0,0,172,170,1,0,0,0,173,
-      174,5,36,0,0,174,21,1,0,0,0,175,176,5,3,0,0,176,185,5,35,0,0,177,184,
-      3,24,12,0,178,184,3,26,13,0,179,184,3,38,19,0,180,184,3,28,14,0,181,184,
-      3,32,16,0,182,184,3,34,17,0,183,177,1,0,0,0,183,178,1,0,0,0,183,179,1,
-      0,0,0,183,180,1,0,0,0,183,181,1,0,0,0,183,182,1,0,0,0,184,187,1,0,0,0,
-      185,183,1,0,0,0,185,186,1,0,0,0,186,188,1,0,0,0,187,185,1,0,0,0,188,189,
-      5,36,0,0,189,23,1,0,0,0,190,191,5,6,0,0,191,197,5,35,0,0,192,193,5,34,
-      0,0,193,194,5,42,0,0,194,196,5,34,0,0,195,192,1,0,0,0,196,199,1,0,0,0,
-      197,195,1,0,0,0,197,198,1,0,0,0,198,200,1,0,0,0,199,197,1,0,0,0,200,201,
-      5,36,0,0,201,25,1,0,0,0,202,203,5,14,0,0,203,208,5,32,0,0,204,205,5,41,
-      0,0,205,207,5,32,0,0,206,204,1,0,0,0,207,210,1,0,0,0,208,206,1,0,0,0,
-      208,209,1,0,0,0,209,27,1,0,0,0,210,208,1,0,0,0,211,215,5,30,0,0,212,214,
-      5,48,0,0,213,212,1,0,0,0,214,217,1,0,0,0,215,213,1,0,0,0,215,216,1,0,
-      0,0,216,218,1,0,0,0,217,215,1,0,0,0,218,219,5,47,0,0,219,29,1,0,0,0,220,
-      224,5,29,0,0,221,223,5,48,0,0,222,221,1,0,0,0,223,226,1,0,0,0,224,222,
-      1,0,0,0,224,225,1,0,0,0,225,227,1,0,0,0,226,224,1,0,0,0,227,228,5,47,
-      0,0,228,31,1,0,0,0,229,230,5,5,0,0,230,239,5,35,0,0,231,232,5,8,0,0,232,
-      238,5,32,0,0,233,234,5,9,0,0,234,238,5,32,0,0,235,238,3,38,19,0,236,238,
-      3,30,15,0,237,231,1,0,0,0,237,233,1,0,0,0,237,235,1,0,0,0,237,236,1,0,
-      0,0,238,241,1,0,0,0,239,237,1,0,0,0,239,240,1,0,0,0,240,242,1,0,0,0,241,
-      239,1,0,0,0,242,243,5,36,0,0,243,33,1,0,0,0,244,245,5,4,0,0,245,255,5,
-      35,0,0,246,247,5,7,0,0,247,254,5,34,0,0,248,254,3,24,12,0,249,254,3,36,
-      18,0,250,254,3,26,13,0,251,254,3,38,19,0,252,254,3,30,15,0,253,246,1,
-      0,0,0,253,248,1,0,0,0,253,249,1,0,0,0,253,250,1,0,0,0,253,251,1,0,0,0,
-      253,252,1,0,0,0,254,257,1,0,0,0,255,253,1,0,0,0,255,256,1,0,0,0,256,258,
-      1,0,0,0,257,255,1,0,0,0,258,259,5,36,0,0,259,35,1,0,0,0,260,261,7,3,0,
-      0,261,262,5,32,0,0,262,37,1,0,0,0,263,264,5,20,0,0,264,310,3,40,20,0,
-      265,266,5,21,0,0,266,310,3,40,20,0,267,268,5,22,0,0,268,310,3,40,20,0,
-      269,270,5,23,0,0,270,310,3,40,20,0,271,272,5,24,0,0,272,273,3,40,20,0,
-      273,275,3,40,20,0,274,276,3,40,20,0,275,274,1,0,0,0,275,276,1,0,0,0,276,
-      310,1,0,0,0,277,278,5,25,0,0,278,286,3,40,20,0,279,284,3,40,20,0,280,
-      281,5,41,0,0,281,282,3,40,20,0,282,283,3,40,20,0,283,285,1,0,0,0,284,
-      280,1,0,0,0,284,285,1,0,0,0,285,287,1,0,0,0,286,279,1,0,0,0,286,287,1,
-      0,0,0,287,310,1,0,0,0,288,289,5,26,0,0,289,292,3,40,20,0,290,291,5,41,
-      0,0,291,293,3,40,20,0,292,290,1,0,0,0,292,293,1,0,0,0,293,310,1,0,0,0,
-      294,295,5,27,0,0,295,297,3,40,20,0,296,298,5,33,0,0,297,296,1,0,0,0,297,
-      298,1,0,0,0,298,310,1,0,0,0,299,300,5,28,0,0,300,305,5,35,0,0,301,302,
-      5,32,0,0,302,304,3,40,20,0,303,301,1,0,0,0,304,307,1,0,0,0,305,303,1,
-      0,0,0,305,306,1,0,0,0,306,308,1,0,0,0,307,305,1,0,0,0,308,310,5,36,0,
-      0,309,263,1,0,0,0,309,265,1,0,0,0,309,267,1,0,0,0,309,269,1,0,0,0,309,
-      271,1,0,0,0,309,277,1,0,0,0,309,288,1,0,0,0,309,294,1,0,0,0,309,299,1,
-      0,0,0,310,39,1,0,0,0,311,317,5,32,0,0,312,317,5,33,0,0,313,314,5,39,0,
-      0,314,315,5,32,0,0,315,317,5,40,0,0,316,311,1,0,0,0,316,312,1,0,0,0,316,
-      313,1,0,0,0,317,41,1,0,0,0,33,48,50,61,69,89,94,106,113,121,125,133,135,
-      148,158,170,183,185,197,208,215,224,237,239,253,255,275,284,286,292,297,
-      305,309,316
+      14,2,15,7,15,2,16,7,16,2,17,7,17,2,18,7,18,2,19,7,19,2,20,7,20,2,21,7,
+      21,2,22,7,22,1,0,1,0,1,0,1,0,1,0,1,0,5,0,53,8,0,10,0,12,0,56,9,0,1,0,
+      1,0,1,0,1,1,1,1,1,1,5,1,64,8,1,10,1,12,1,67,9,1,1,1,1,1,1,2,5,2,72,8,
+      2,10,2,12,2,75,9,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,3,1,3,1,3,1,
+      3,1,3,1,3,5,3,92,8,3,10,3,12,3,95,9,3,1,3,1,3,3,3,99,8,3,1,3,1,3,1,4,
+      1,4,1,5,1,5,1,5,1,5,1,5,1,5,3,5,111,8,5,1,6,1,6,1,6,1,6,1,6,3,6,118,8,
+      6,1,6,1,6,1,6,1,6,5,6,124,8,6,10,6,12,6,127,9,6,1,6,3,6,130,8,6,1,7,1,
+      7,1,7,1,7,1,7,1,7,1,7,5,7,139,8,7,10,7,12,7,142,9,7,1,7,1,7,1,8,1,8,1,
+      8,1,8,1,8,1,8,5,8,152,8,8,10,8,12,8,155,9,8,1,8,1,8,1,9,1,9,1,9,5,9,162,
+      8,9,10,9,12,9,165,9,9,1,9,1,9,1,10,1,10,1,10,1,10,1,10,5,10,174,8,10,
+      10,10,12,10,177,9,10,1,10,1,10,1,11,1,11,1,11,5,11,184,8,11,10,11,12,
+      11,187,9,11,1,11,1,11,1,12,1,12,1,12,1,12,1,12,1,13,1,13,1,13,1,13,1,
+      13,1,13,1,13,1,13,5,13,204,8,13,10,13,12,13,207,9,13,1,13,1,13,1,14,1,
+      14,1,14,1,14,1,14,5,14,216,8,14,10,14,12,14,219,9,14,1,14,1,14,1,15,1,
+      15,1,15,1,15,5,15,227,8,15,10,15,12,15,230,9,15,1,16,1,16,5,16,234,8,
+      16,10,16,12,16,237,9,16,1,16,1,16,1,17,1,17,5,17,243,8,17,10,17,12,17,
+      246,9,17,1,17,1,17,1,18,1,18,1,18,1,18,1,18,1,18,1,18,1,18,5,18,258,8,
+      18,10,18,12,18,261,9,18,1,18,1,18,1,19,1,19,1,19,1,19,1,19,1,19,1,19,
+      1,19,1,19,5,19,274,8,19,10,19,12,19,277,9,19,1,19,1,19,1,20,1,20,1,20,
+      1,21,1,21,1,21,1,21,1,21,1,21,1,21,1,21,1,21,1,21,1,21,1,21,3,21,296,
+      8,21,1,21,1,21,1,21,1,21,1,21,1,21,1,21,3,21,305,8,21,3,21,307,8,21,1,
+      21,1,21,1,21,1,21,3,21,313,8,21,1,21,1,21,1,21,3,21,318,8,21,1,21,1,21,
+      1,21,1,21,5,21,324,8,21,10,21,12,21,327,9,21,1,21,3,21,330,8,21,1,22,
+      1,22,1,22,1,22,1,22,3,22,337,8,22,1,22,0,0,23,0,2,4,6,8,10,12,14,16,18,
+      20,22,24,26,28,30,32,34,36,38,40,42,44,0,4,1,0,33,35,1,0,32,33,1,0,33,
+      34,1,0,16,20,372,0,46,1,0,0,0,2,60,1,0,0,0,4,73,1,0,0,0,6,85,1,0,0,0,
+      8,102,1,0,0,0,10,104,1,0,0,0,12,129,1,0,0,0,14,131,1,0,0,0,16,145,1,0,
+      0,0,18,158,1,0,0,0,20,168,1,0,0,0,22,180,1,0,0,0,24,190,1,0,0,0,26,195,
+      1,0,0,0,28,210,1,0,0,0,30,222,1,0,0,0,32,231,1,0,0,0,34,240,1,0,0,0,36,
+      249,1,0,0,0,38,264,1,0,0,0,40,280,1,0,0,0,42,329,1,0,0,0,44,336,1,0,0,
+      0,46,47,5,1,0,0,47,48,5,35,0,0,48,54,5,36,0,0,49,53,3,2,1,0,50,53,3,14,
+      7,0,51,53,3,26,13,0,52,49,1,0,0,0,52,50,1,0,0,0,52,51,1,0,0,0,53,56,1,
+      0,0,0,54,52,1,0,0,0,54,55,1,0,0,0,55,57,1,0,0,0,56,54,1,0,0,0,57,58,5,
+      37,0,0,58,59,5,0,0,1,59,1,1,0,0,0,60,61,5,2,0,0,61,65,5,36,0,0,62,64,
+      3,4,2,0,63,62,1,0,0,0,64,67,1,0,0,0,65,63,1,0,0,0,65,66,1,0,0,0,66,68,
+      1,0,0,0,67,65,1,0,0,0,68,69,5,37,0,0,69,3,1,0,0,0,70,72,3,6,3,0,71,70,
+      1,0,0,0,72,75,1,0,0,0,73,71,1,0,0,0,73,74,1,0,0,0,74,76,1,0,0,0,75,73,
+      1,0,0,0,76,77,5,33,0,0,77,78,5,38,0,0,78,79,5,35,0,0,79,80,5,42,0,0,80,
+      81,3,10,5,0,81,82,5,39,0,0,82,83,5,43,0,0,83,84,3,12,6,0,84,5,1,0,0,0,
+      85,86,5,40,0,0,86,98,5,33,0,0,87,88,5,38,0,0,88,93,3,8,4,0,89,90,5,42,
+      0,0,90,92,3,8,4,0,91,89,1,0,0,0,92,95,1,0,0,0,93,91,1,0,0,0,93,94,1,0,
+      0,0,94,96,1,0,0,0,95,93,1,0,0,0,96,97,5,39,0,0,97,99,1,0,0,0,98,87,1,
+      0,0,0,98,99,1,0,0,0,99,100,1,0,0,0,100,101,5,41,0,0,101,7,1,0,0,0,102,
+      103,7,0,0,0,103,9,1,0,0,0,104,110,7,1,0,0,105,106,5,38,0,0,106,107,5,
+      34,0,0,107,108,5,42,0,0,108,109,5,34,0,0,109,111,5,39,0,0,110,105,1,0,
+      0,0,110,111,1,0,0,0,111,11,1,0,0,0,112,130,5,34,0,0,113,130,5,33,0,0,
+      114,117,5,35,0,0,115,116,5,36,0,0,116,118,5,37,0,0,117,115,1,0,0,0,117,
+      118,1,0,0,0,118,130,1,0,0,0,119,120,5,38,0,0,120,125,5,34,0,0,121,122,
+      5,42,0,0,122,124,5,34,0,0,123,121,1,0,0,0,124,127,1,0,0,0,125,123,1,0,
+      0,0,125,126,1,0,0,0,126,128,1,0,0,0,127,125,1,0,0,0,128,130,5,39,0,0,
+      129,112,1,0,0,0,129,113,1,0,0,0,129,114,1,0,0,0,129,119,1,0,0,0,130,13,
+      1,0,0,0,131,132,5,10,0,0,132,133,5,35,0,0,133,140,5,36,0,0,134,139,3,
+      16,8,0,135,139,3,18,9,0,136,139,3,20,10,0,137,139,3,22,11,0,138,134,1,
+      0,0,0,138,135,1,0,0,0,138,136,1,0,0,0,138,137,1,0,0,0,139,142,1,0,0,0,
+      140,138,1,0,0,0,140,141,1,0,0,0,141,143,1,0,0,0,142,140,1,0,0,0,143,144,
+      5,37,0,0,144,15,1,0,0,0,145,146,5,11,0,0,146,153,5,36,0,0,147,148,5,33,
+      0,0,148,149,5,33,0,0,149,150,5,43,0,0,150,152,7,2,0,0,151,147,1,0,0,0,
+      152,155,1,0,0,0,153,151,1,0,0,0,153,154,1,0,0,0,154,156,1,0,0,0,155,153,
+      1,0,0,0,156,157,5,37,0,0,157,17,1,0,0,0,158,159,5,12,0,0,159,163,5,36,
+      0,0,160,162,5,35,0,0,161,160,1,0,0,0,162,165,1,0,0,0,163,161,1,0,0,0,
+      163,164,1,0,0,0,164,166,1,0,0,0,165,163,1,0,0,0,166,167,5,37,0,0,167,
+      19,1,0,0,0,168,169,5,13,0,0,169,175,5,36,0,0,170,171,5,33,0,0,171,172,
+      5,43,0,0,172,174,7,0,0,0,173,170,1,0,0,0,174,177,1,0,0,0,175,173,1,0,
+      0,0,175,176,1,0,0,0,176,178,1,0,0,0,177,175,1,0,0,0,178,179,5,37,0,0,
+      179,21,1,0,0,0,180,181,5,14,0,0,181,185,5,36,0,0,182,184,3,24,12,0,183,
+      182,1,0,0,0,184,187,1,0,0,0,185,183,1,0,0,0,185,186,1,0,0,0,186,188,1,
+      0,0,0,187,185,1,0,0,0,188,189,5,37,0,0,189,23,1,0,0,0,190,191,5,35,0,
+      0,191,192,5,35,0,0,192,193,5,43,0,0,193,194,5,34,0,0,194,25,1,0,0,0,195,
+      196,5,3,0,0,196,205,5,36,0,0,197,204,3,28,14,0,198,204,3,30,15,0,199,
+      204,3,42,21,0,200,204,3,32,16,0,201,204,3,36,18,0,202,204,3,38,19,0,203,
+      197,1,0,0,0,203,198,1,0,0,0,203,199,1,0,0,0,203,200,1,0,0,0,203,201,1,
+      0,0,0,203,202,1,0,0,0,204,207,1,0,0,0,205,203,1,0,0,0,205,206,1,0,0,0,
+      206,208,1,0,0,0,207,205,1,0,0,0,208,209,5,37,0,0,209,27,1,0,0,0,210,211,
+      5,6,0,0,211,217,5,36,0,0,212,213,5,35,0,0,213,214,5,43,0,0,214,216,5,
+      35,0,0,215,212,1,0,0,0,216,219,1,0,0,0,217,215,1,0,0,0,217,218,1,0,0,
+      0,218,220,1,0,0,0,219,217,1,0,0,0,220,221,5,37,0,0,221,29,1,0,0,0,222,
+      223,5,15,0,0,223,228,5,33,0,0,224,225,5,42,0,0,225,227,5,33,0,0,226,224,
+      1,0,0,0,227,230,1,0,0,0,228,226,1,0,0,0,228,229,1,0,0,0,229,31,1,0,0,
+      0,230,228,1,0,0,0,231,235,5,31,0,0,232,234,5,49,0,0,233,232,1,0,0,0,234,
+      237,1,0,0,0,235,233,1,0,0,0,235,236,1,0,0,0,236,238,1,0,0,0,237,235,1,
+      0,0,0,238,239,5,48,0,0,239,33,1,0,0,0,240,244,5,30,0,0,241,243,5,49,0,
+      0,242,241,1,0,0,0,243,246,1,0,0,0,244,242,1,0,0,0,244,245,1,0,0,0,245,
+      247,1,0,0,0,246,244,1,0,0,0,247,248,5,48,0,0,248,35,1,0,0,0,249,250,5,
+      5,0,0,250,259,5,36,0,0,251,252,5,8,0,0,252,258,5,33,0,0,253,254,5,9,0,
+      0,254,258,5,33,0,0,255,258,3,42,21,0,256,258,3,34,17,0,257,251,1,0,0,
+      0,257,253,1,0,0,0,257,255,1,0,0,0,257,256,1,0,0,0,258,261,1,0,0,0,259,
+      257,1,0,0,0,259,260,1,0,0,0,260,262,1,0,0,0,261,259,1,0,0,0,262,263,5,
+      37,0,0,263,37,1,0,0,0,264,265,5,4,0,0,265,275,5,36,0,0,266,267,5,7,0,
+      0,267,274,5,35,0,0,268,274,3,28,14,0,269,274,3,40,20,0,270,274,3,30,15,
+      0,271,274,3,42,21,0,272,274,3,34,17,0,273,266,1,0,0,0,273,268,1,0,0,0,
+      273,269,1,0,0,0,273,270,1,0,0,0,273,271,1,0,0,0,273,272,1,0,0,0,274,277,
+      1,0,0,0,275,273,1,0,0,0,275,276,1,0,0,0,276,278,1,0,0,0,277,275,1,0,0,
+      0,278,279,5,37,0,0,279,39,1,0,0,0,280,281,7,3,0,0,281,282,5,33,0,0,282,
+      41,1,0,0,0,283,284,5,21,0,0,284,330,3,44,22,0,285,286,5,22,0,0,286,330,
+      3,44,22,0,287,288,5,23,0,0,288,330,3,44,22,0,289,290,5,24,0,0,290,330,
+      3,44,22,0,291,292,5,25,0,0,292,293,3,44,22,0,293,295,3,44,22,0,294,296,
+      3,44,22,0,295,294,1,0,0,0,295,296,1,0,0,0,296,330,1,0,0,0,297,298,5,26,
+      0,0,298,306,3,44,22,0,299,304,3,44,22,0,300,301,5,42,0,0,301,302,3,44,
+      22,0,302,303,3,44,22,0,303,305,1,0,0,0,304,300,1,0,0,0,304,305,1,0,0,
+      0,305,307,1,0,0,0,306,299,1,0,0,0,306,307,1,0,0,0,307,330,1,0,0,0,308,
+      309,5,27,0,0,309,312,3,44,22,0,310,311,5,42,0,0,311,313,3,44,22,0,312,
+      310,1,0,0,0,312,313,1,0,0,0,313,330,1,0,0,0,314,315,5,28,0,0,315,317,
+      3,44,22,0,316,318,5,34,0,0,317,316,1,0,0,0,317,318,1,0,0,0,318,330,1,
+      0,0,0,319,320,5,29,0,0,320,325,5,36,0,0,321,322,5,33,0,0,322,324,3,44,
+      22,0,323,321,1,0,0,0,324,327,1,0,0,0,325,323,1,0,0,0,325,326,1,0,0,0,
+      326,328,1,0,0,0,327,325,1,0,0,0,328,330,5,37,0,0,329,283,1,0,0,0,329,
+      285,1,0,0,0,329,287,1,0,0,0,329,289,1,0,0,0,329,291,1,0,0,0,329,297,1,
+      0,0,0,329,308,1,0,0,0,329,314,1,0,0,0,329,319,1,0,0,0,330,43,1,0,0,0,
+      331,337,5,33,0,0,332,337,5,34,0,0,333,334,5,40,0,0,334,335,5,33,0,0,335,
+      337,5,41,0,0,336,331,1,0,0,0,336,332,1,0,0,0,336,333,1,0,0,0,337,45,1,
+      0,0,0,34,52,54,65,73,93,98,110,117,125,129,138,140,153,163,175,185,203,
+      205,217,228,235,244,257,259,273,275,295,304,306,312,317,325,329,336
   };
   staticData->serializedATN = antlr4::atn::SerializedATNView(serializedATNSegment, sizeof(serializedATNSegment) / sizeof(serializedATNSegment[0]));
 
@@ -303,34 +309,34 @@ vshader_parser::FileContext* vshader_parser::file() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(42);
+    setState(46);
     match(vshader_parser::SHADER);
-    setState(43);
+    setState(47);
     match(vshader_parser::STRING);
-    setState(44);
+    setState(48);
     match(vshader_parser::LBRACE);
-    setState(50);
+    setState(54);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while ((((_la & ~ 0x3fULL) == 0) &&
       ((1ULL << _la) & 1036) != 0)) {
-      setState(48);
+      setState(52);
       _errHandler->sync(this);
       switch (_input->LA(1)) {
         case vshader_parser::PROPERTIES: {
-          setState(45);
+          setState(49);
           properties();
           break;
         }
 
         case vshader_parser::VARIANT: {
-          setState(46);
+          setState(50);
           variant();
           break;
         }
 
         case vshader_parser::SUBSHADER: {
-          setState(47);
+          setState(51);
           subshader();
           break;
         }
@@ -338,13 +344,13 @@ vshader_parser::FileContext* vshader_parser::file() {
       default:
         throw NoViableAltException(this);
       }
-      setState(52);
+      setState(56);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
-    setState(53);
+    setState(57);
     match(vshader_parser::RBRACE);
-    setState(54);
+    setState(58);
     match(vshader_parser::EOF);
 
   }
@@ -403,23 +409,23 @@ vshader_parser::PropertiesContext* vshader_parser::properties() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(56);
+    setState(60);
     match(vshader_parser::PROPERTIES);
-    setState(57);
-    match(vshader_parser::LBRACE);
     setState(61);
+    match(vshader_parser::LBRACE);
+    setState(65);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while (_la == vshader_parser::IDENTIFIER
 
     || _la == vshader_parser::LBRACKET) {
-      setState(58);
+      setState(62);
       property();
-      setState(63);
+      setState(67);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
-    setState(64);
+    setState(68);
     match(vshader_parser::RBRACE);
 
   }
@@ -498,31 +504,31 @@ vshader_parser::PropertyContext* vshader_parser::property() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(69);
+    setState(73);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while (_la == vshader_parser::LBRACKET) {
-      setState(66);
+      setState(70);
       attribute();
-      setState(71);
+      setState(75);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
-    setState(72);
-    match(vshader_parser::IDENTIFIER);
-    setState(73);
-    match(vshader_parser::LPAREN);
-    setState(74);
-    match(vshader_parser::STRING);
-    setState(75);
-    match(vshader_parser::COMMA);
     setState(76);
-    propertyType();
+    match(vshader_parser::IDENTIFIER);
     setState(77);
-    match(vshader_parser::RPAREN);
+    match(vshader_parser::LPAREN);
     setState(78);
-    match(vshader_parser::EQUAL);
+    match(vshader_parser::STRING);
     setState(79);
+    match(vshader_parser::COMMA);
+    setState(80);
+    propertyType();
+    setState(81);
+    match(vshader_parser::RPAREN);
+    setState(82);
+    match(vshader_parser::EQUAL);
+    setState(83);
     value();
 
   }
@@ -597,35 +603,35 @@ vshader_parser::AttributeContext* vshader_parser::attribute() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(81);
+    setState(85);
     match(vshader_parser::LBRACKET);
-    setState(82);
+    setState(86);
     match(vshader_parser::IDENTIFIER);
-    setState(94);
+    setState(98);
     _errHandler->sync(this);
 
     _la = _input->LA(1);
     if (_la == vshader_parser::LPAREN) {
-      setState(83);
+      setState(87);
       match(vshader_parser::LPAREN);
-      setState(84);
+      setState(88);
       attributeArgument();
-      setState(89);
+      setState(93);
       _errHandler->sync(this);
       _la = _input->LA(1);
       while (_la == vshader_parser::COMMA) {
-        setState(85);
+        setState(89);
         match(vshader_parser::COMMA);
-        setState(86);
+        setState(90);
         attributeArgument();
-        setState(91);
+        setState(95);
         _errHandler->sync(this);
         _la = _input->LA(1);
       }
-      setState(92);
+      setState(96);
       match(vshader_parser::RPAREN);
     }
-    setState(96);
+    setState(100);
     match(vshader_parser::RBRACKET);
 
   }
@@ -676,10 +682,10 @@ vshader_parser::AttributeArgumentContext* vshader_parser::attributeArgument() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(98);
+    setState(102);
     _la = _input->LA(1);
     if (!((((_la & ~ 0x3fULL) == 0) &&
-      ((1ULL << _la) & 30064771072) != 0))) {
+      ((1ULL << _la) & 60129542144) != 0))) {
     _errHandler->recoverInline(this);
     }
     else {
@@ -751,7 +757,7 @@ vshader_parser::PropertyTypeContext* vshader_parser::propertyType() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(100);
+    setState(104);
     _la = _input->LA(1);
     if (!(_la == vshader_parser::TEXTURE_TYPE
 
@@ -762,20 +768,20 @@ vshader_parser::PropertyTypeContext* vshader_parser::propertyType() {
       _errHandler->reportMatch(this);
       consume();
     }
-    setState(106);
+    setState(110);
     _errHandler->sync(this);
 
     _la = _input->LA(1);
     if (_la == vshader_parser::LPAREN) {
-      setState(101);
-      match(vshader_parser::LPAREN);
-      setState(102);
-      match(vshader_parser::NUMBER);
-      setState(103);
-      match(vshader_parser::COMMA);
-      setState(104);
-      match(vshader_parser::NUMBER);
       setState(105);
+      match(vshader_parser::LPAREN);
+      setState(106);
+      match(vshader_parser::NUMBER);
+      setState(107);
+      match(vshader_parser::COMMA);
+      setState(108);
+      match(vshader_parser::NUMBER);
+      setState(109);
       match(vshader_parser::RPAREN);
     }
 
@@ -854,35 +860,35 @@ vshader_parser::ValueContext* vshader_parser::value() {
     exitRule();
   });
   try {
-    setState(125);
+    setState(129);
     _errHandler->sync(this);
     switch (_input->LA(1)) {
       case vshader_parser::NUMBER: {
         enterOuterAlt(_localctx, 1);
-        setState(108);
+        setState(112);
         match(vshader_parser::NUMBER);
         break;
       }
 
       case vshader_parser::IDENTIFIER: {
         enterOuterAlt(_localctx, 2);
-        setState(109);
+        setState(113);
         match(vshader_parser::IDENTIFIER);
         break;
       }
 
       case vshader_parser::STRING: {
         enterOuterAlt(_localctx, 3);
-        setState(110);
+        setState(114);
         match(vshader_parser::STRING);
-        setState(113);
+        setState(117);
         _errHandler->sync(this);
 
         _la = _input->LA(1);
         if (_la == vshader_parser::LBRACE) {
-          setState(111);
+          setState(115);
           match(vshader_parser::LBRACE);
-          setState(112);
+          setState(116);
           match(vshader_parser::RBRACE);
         }
         break;
@@ -890,23 +896,23 @@ vshader_parser::ValueContext* vshader_parser::value() {
 
       case vshader_parser::LPAREN: {
         enterOuterAlt(_localctx, 4);
-        setState(115);
+        setState(119);
         match(vshader_parser::LPAREN);
-        setState(116);
+        setState(120);
         match(vshader_parser::NUMBER);
-        setState(121);
+        setState(125);
         _errHandler->sync(this);
         _la = _input->LA(1);
         while (_la == vshader_parser::COMMA) {
-          setState(117);
+          setState(121);
           match(vshader_parser::COMMA);
-          setState(118);
+          setState(122);
           match(vshader_parser::NUMBER);
-          setState(123);
+          setState(127);
           _errHandler->sync(this);
           _la = _input->LA(1);
         }
-        setState(124);
+        setState(128);
         match(vshader_parser::RPAREN);
         break;
       }
@@ -971,6 +977,14 @@ vshader_parser::DefinesContext* vshader_parser::VariantContext::defines(size_t i
   return getRuleContext<vshader_parser::DefinesContext>(i);
 }
 
+std::vector<vshader_parser::ConformancesContext *> vshader_parser::VariantContext::conformances() {
+  return getRuleContexts<vshader_parser::ConformancesContext>();
+}
+
+vshader_parser::ConformancesContext* vshader_parser::VariantContext::conformances(size_t i) {
+  return getRuleContext<vshader_parser::ConformancesContext>(i);
+}
+
 
 size_t vshader_parser::VariantContext::getRuleIndex() const {
   return vshader_parser::RuleVariant;
@@ -991,46 +1005,52 @@ vshader_parser::VariantContext* vshader_parser::variant() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(127);
+    setState(131);
     match(vshader_parser::VARIANT);
-    setState(128);
+    setState(132);
     match(vshader_parser::STRING);
-    setState(129);
+    setState(133);
     match(vshader_parser::LBRACE);
-    setState(135);
+    setState(140);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while ((((_la & ~ 0x3fULL) == 0) &&
-      ((1ULL << _la) & 14336) != 0)) {
-      setState(133);
+      ((1ULL << _la) & 30720) != 0)) {
+      setState(138);
       _errHandler->sync(this);
       switch (_input->LA(1)) {
         case vshader_parser::CONSTANTS: {
-          setState(130);
+          setState(134);
           constants();
           break;
         }
 
         case vshader_parser::MODULES: {
-          setState(131);
+          setState(135);
           modules();
           break;
         }
 
         case vshader_parser::DEFINES: {
-          setState(132);
+          setState(136);
           defines();
+          break;
+        }
+
+        case vshader_parser::CONFORMANCES: {
+          setState(137);
+          conformances();
           break;
         }
 
       default:
         throw NoViableAltException(this);
       }
-      setState(137);
+      setState(142);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
-    setState(138);
+    setState(143);
     match(vshader_parser::RBRACE);
 
   }
@@ -1105,21 +1125,21 @@ vshader_parser::ConstantsContext* vshader_parser::constants() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(140);
+    setState(145);
     match(vshader_parser::CONSTANTS);
-    setState(141);
+    setState(146);
     match(vshader_parser::LBRACE);
-    setState(148);
+    setState(153);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while (_la == vshader_parser::IDENTIFIER) {
-      setState(142);
+      setState(147);
       match(vshader_parser::IDENTIFIER);
-      setState(143);
+      setState(148);
       match(vshader_parser::IDENTIFIER);
-      setState(144);
+      setState(149);
       match(vshader_parser::EQUAL);
-      setState(145);
+      setState(150);
       _la = _input->LA(1);
       if (!(_la == vshader_parser::IDENTIFIER
 
@@ -1130,11 +1150,11 @@ vshader_parser::ConstantsContext* vshader_parser::constants() {
         _errHandler->reportMatch(this);
         consume();
       }
-      setState(150);
+      setState(155);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
-    setState(151);
+    setState(156);
     match(vshader_parser::RBRACE);
 
   }
@@ -1193,21 +1213,21 @@ vshader_parser::ModulesContext* vshader_parser::modules() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(153);
-    match(vshader_parser::MODULES);
-    setState(154);
-    match(vshader_parser::LBRACE);
     setState(158);
+    match(vshader_parser::MODULES);
+    setState(159);
+    match(vshader_parser::LBRACE);
+    setState(163);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while (_la == vshader_parser::STRING) {
-      setState(155);
-      match(vshader_parser::STRING);
       setState(160);
+      match(vshader_parser::STRING);
+      setState(165);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
-    setState(161);
+    setState(166);
     match(vshader_parser::RBRACE);
 
   }
@@ -1290,34 +1310,167 @@ vshader_parser::DefinesContext* vshader_parser::defines() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(163);
+    setState(168);
     match(vshader_parser::DEFINES);
-    setState(164);
+    setState(169);
     match(vshader_parser::LBRACE);
-    setState(170);
+    setState(175);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while (_la == vshader_parser::IDENTIFIER) {
-      setState(165);
+      setState(170);
       match(vshader_parser::IDENTIFIER);
-      setState(166);
+      setState(171);
       match(vshader_parser::EQUAL);
-      setState(167);
+      setState(172);
       _la = _input->LA(1);
       if (!((((_la & ~ 0x3fULL) == 0) &&
-        ((1ULL << _la) & 30064771072) != 0))) {
+        ((1ULL << _la) & 60129542144) != 0))) {
       _errHandler->recoverInline(this);
       }
       else {
         _errHandler->reportMatch(this);
         consume();
       }
-      setState(172);
+      setState(177);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
-    setState(173);
+    setState(178);
     match(vshader_parser::RBRACE);
+
+  }
+  catch (RecognitionException &e) {
+    _errHandler->reportError(this, e);
+    _localctx->exception = std::current_exception();
+    _errHandler->recover(this, _localctx->exception);
+  }
+
+  return _localctx;
+}
+
+//----------------- ConformancesContext ------------------------------------------------------------------
+
+vshader_parser::ConformancesContext::ConformancesContext(ParserRuleContext *parent, size_t invokingState)
+  : ParserRuleContext(parent, invokingState) {
+}
+
+tree::TerminalNode* vshader_parser::ConformancesContext::CONFORMANCES() {
+  return getToken(vshader_parser::CONFORMANCES, 0);
+}
+
+tree::TerminalNode* vshader_parser::ConformancesContext::LBRACE() {
+  return getToken(vshader_parser::LBRACE, 0);
+}
+
+tree::TerminalNode* vshader_parser::ConformancesContext::RBRACE() {
+  return getToken(vshader_parser::RBRACE, 0);
+}
+
+std::vector<vshader_parser::ConformanceContext *> vshader_parser::ConformancesContext::conformance() {
+  return getRuleContexts<vshader_parser::ConformanceContext>();
+}
+
+vshader_parser::ConformanceContext* vshader_parser::ConformancesContext::conformance(size_t i) {
+  return getRuleContext<vshader_parser::ConformanceContext>(i);
+}
+
+
+size_t vshader_parser::ConformancesContext::getRuleIndex() const {
+  return vshader_parser::RuleConformances;
+}
+
+
+vshader_parser::ConformancesContext* vshader_parser::conformances() {
+  ConformancesContext *_localctx = _tracker.createInstance<ConformancesContext>(_ctx, getState());
+  enterRule(_localctx, 22, vshader_parser::RuleConformances);
+  size_t _la = 0;
+
+#if __cplusplus > 201703L
+  auto onExit = finally([=, this] {
+#else
+  auto onExit = finally([=] {
+#endif
+    exitRule();
+  });
+  try {
+    enterOuterAlt(_localctx, 1);
+    setState(180);
+    match(vshader_parser::CONFORMANCES);
+    setState(181);
+    match(vshader_parser::LBRACE);
+    setState(185);
+    _errHandler->sync(this);
+    _la = _input->LA(1);
+    while (_la == vshader_parser::STRING) {
+      setState(182);
+      conformance();
+      setState(187);
+      _errHandler->sync(this);
+      _la = _input->LA(1);
+    }
+    setState(188);
+    match(vshader_parser::RBRACE);
+
+  }
+  catch (RecognitionException &e) {
+    _errHandler->reportError(this, e);
+    _localctx->exception = std::current_exception();
+    _errHandler->recover(this, _localctx->exception);
+  }
+
+  return _localctx;
+}
+
+//----------------- ConformanceContext ------------------------------------------------------------------
+
+vshader_parser::ConformanceContext::ConformanceContext(ParserRuleContext *parent, size_t invokingState)
+  : ParserRuleContext(parent, invokingState) {
+}
+
+std::vector<tree::TerminalNode *> vshader_parser::ConformanceContext::STRING() {
+  return getTokens(vshader_parser::STRING);
+}
+
+tree::TerminalNode* vshader_parser::ConformanceContext::STRING(size_t i) {
+  return getToken(vshader_parser::STRING, i);
+}
+
+tree::TerminalNode* vshader_parser::ConformanceContext::EQUAL() {
+  return getToken(vshader_parser::EQUAL, 0);
+}
+
+tree::TerminalNode* vshader_parser::ConformanceContext::NUMBER() {
+  return getToken(vshader_parser::NUMBER, 0);
+}
+
+
+size_t vshader_parser::ConformanceContext::getRuleIndex() const {
+  return vshader_parser::RuleConformance;
+}
+
+
+vshader_parser::ConformanceContext* vshader_parser::conformance() {
+  ConformanceContext *_localctx = _tracker.createInstance<ConformanceContext>(_ctx, getState());
+  enterRule(_localctx, 24, vshader_parser::RuleConformance);
+
+#if __cplusplus > 201703L
+  auto onExit = finally([=, this] {
+#else
+  auto onExit = finally([=] {
+#endif
+    exitRule();
+  });
+  try {
+    enterOuterAlt(_localctx, 1);
+    setState(190);
+    match(vshader_parser::STRING);
+    setState(191);
+    match(vshader_parser::STRING);
+    setState(192);
+    match(vshader_parser::EQUAL);
+    setState(193);
+    match(vshader_parser::NUMBER);
 
   }
   catch (RecognitionException &e) {
@@ -1403,7 +1556,7 @@ size_t vshader_parser::SubshaderContext::getRuleIndex() const {
 
 vshader_parser::SubshaderContext* vshader_parser::subshader() {
   SubshaderContext *_localctx = _tracker.createInstance<SubshaderContext>(_ctx, getState());
-  enterRule(_localctx, 22, vshader_parser::RuleSubshader);
+  enterRule(_localctx, 26, vshader_parser::RuleSubshader);
   size_t _la = 0;
 
 #if __cplusplus > 201703L
@@ -1415,26 +1568,26 @@ vshader_parser::SubshaderContext* vshader_parser::subshader() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(175);
+    setState(195);
     match(vshader_parser::SUBSHADER);
-    setState(176);
+    setState(196);
     match(vshader_parser::LBRACE);
-    setState(185);
+    setState(205);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while ((((_la & ~ 0x3fULL) == 0) &&
-      ((1ULL << _la) & 1609580656) != 0)) {
-      setState(183);
+      ((1ULL << _la) & 3219161200) != 0)) {
+      setState(203);
       _errHandler->sync(this);
       switch (_input->LA(1)) {
         case vshader_parser::TAGS: {
-          setState(177);
+          setState(197);
           tags();
           break;
         }
 
         case vshader_parser::REQUIRES: {
-          setState(178);
+          setState(198);
           requires_();
           break;
         }
@@ -1448,25 +1601,25 @@ vshader_parser::SubshaderContext* vshader_parser::subshader() {
         case vshader_parser::BLEND_OP:
         case vshader_parser::COLOR_MASK:
         case vshader_parser::STENCIL: {
-          setState(179);
+          setState(199);
           state();
           break;
         }
 
         case vshader_parser::SLANG_INCLUDE: {
-          setState(180);
+          setState(200);
           common();
           break;
         }
 
         case vshader_parser::SURFACE: {
-          setState(181);
+          setState(201);
           surface();
           break;
         }
 
         case vshader_parser::PASS: {
-          setState(182);
+          setState(202);
           pass();
           break;
         }
@@ -1474,11 +1627,11 @@ vshader_parser::SubshaderContext* vshader_parser::subshader() {
       default:
         throw NoViableAltException(this);
       }
-      setState(187);
+      setState(207);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
-    setState(188);
+    setState(208);
     match(vshader_parser::RBRACE);
 
   }
@@ -1533,7 +1686,7 @@ size_t vshader_parser::TagsContext::getRuleIndex() const {
 
 vshader_parser::TagsContext* vshader_parser::tags() {
   TagsContext *_localctx = _tracker.createInstance<TagsContext>(_ctx, getState());
-  enterRule(_localctx, 24, vshader_parser::RuleTags);
+  enterRule(_localctx, 28, vshader_parser::RuleTags);
   size_t _la = 0;
 
 #if __cplusplus > 201703L
@@ -1545,25 +1698,25 @@ vshader_parser::TagsContext* vshader_parser::tags() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(190);
+    setState(210);
     match(vshader_parser::TAGS);
-    setState(191);
+    setState(211);
     match(vshader_parser::LBRACE);
-    setState(197);
+    setState(217);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while (_la == vshader_parser::STRING) {
-      setState(192);
+      setState(212);
       match(vshader_parser::STRING);
-      setState(193);
+      setState(213);
       match(vshader_parser::EQUAL);
-      setState(194);
+      setState(214);
       match(vshader_parser::STRING);
-      setState(199);
+      setState(219);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
-    setState(200);
+    setState(220);
     match(vshader_parser::RBRACE);
 
   }
@@ -1610,7 +1763,7 @@ size_t vshader_parser::RequiresContext::getRuleIndex() const {
 
 vshader_parser::RequiresContext* vshader_parser::requires_() {
   RequiresContext *_localctx = _tracker.createInstance<RequiresContext>(_ctx, getState());
-  enterRule(_localctx, 26, vshader_parser::RuleRequires);
+  enterRule(_localctx, 30, vshader_parser::RuleRequires);
   size_t _la = 0;
 
 #if __cplusplus > 201703L
@@ -1622,19 +1775,19 @@ vshader_parser::RequiresContext* vshader_parser::requires_() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(202);
+    setState(222);
     match(vshader_parser::REQUIRES);
-    setState(203);
+    setState(223);
     match(vshader_parser::IDENTIFIER);
-    setState(208);
+    setState(228);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while (_la == vshader_parser::COMMA) {
-      setState(204);
+      setState(224);
       match(vshader_parser::COMMA);
-      setState(205);
+      setState(225);
       match(vshader_parser::IDENTIFIER);
-      setState(210);
+      setState(230);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
@@ -1679,7 +1832,7 @@ size_t vshader_parser::CommonContext::getRuleIndex() const {
 
 vshader_parser::CommonContext* vshader_parser::common() {
   CommonContext *_localctx = _tracker.createInstance<CommonContext>(_ctx, getState());
-  enterRule(_localctx, 28, vshader_parser::RuleCommon);
+  enterRule(_localctx, 32, vshader_parser::RuleCommon);
   size_t _la = 0;
 
 #if __cplusplus > 201703L
@@ -1691,19 +1844,19 @@ vshader_parser::CommonContext* vshader_parser::common() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(211);
+    setState(231);
     match(vshader_parser::SLANG_INCLUDE);
-    setState(215);
+    setState(235);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while (_la == vshader_parser::PROGRAM_TEXT) {
-      setState(212);
+      setState(232);
       match(vshader_parser::PROGRAM_TEXT);
-      setState(217);
+      setState(237);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
-    setState(218);
+    setState(238);
     match(vshader_parser::PROGRAM_END);
 
   }
@@ -1746,7 +1899,7 @@ size_t vshader_parser::ProgramContext::getRuleIndex() const {
 
 vshader_parser::ProgramContext* vshader_parser::program() {
   ProgramContext *_localctx = _tracker.createInstance<ProgramContext>(_ctx, getState());
-  enterRule(_localctx, 30, vshader_parser::RuleProgram);
+  enterRule(_localctx, 34, vshader_parser::RuleProgram);
   size_t _la = 0;
 
 #if __cplusplus > 201703L
@@ -1758,19 +1911,19 @@ vshader_parser::ProgramContext* vshader_parser::program() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(220);
+    setState(240);
     match(vshader_parser::SLANG_PROGRAM);
-    setState(224);
+    setState(244);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while (_la == vshader_parser::PROGRAM_TEXT) {
-      setState(221);
+      setState(241);
       match(vshader_parser::PROGRAM_TEXT);
-      setState(226);
+      setState(246);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
-    setState(227);
+    setState(247);
     match(vshader_parser::PROGRAM_END);
 
   }
@@ -1849,7 +2002,7 @@ size_t vshader_parser::SurfaceContext::getRuleIndex() const {
 
 vshader_parser::SurfaceContext* vshader_parser::surface() {
   SurfaceContext *_localctx = _tracker.createInstance<SurfaceContext>(_ctx, getState());
-  enterRule(_localctx, 32, vshader_parser::RuleSurface);
+  enterRule(_localctx, 36, vshader_parser::RuleSurface);
   size_t _la = 0;
 
 #if __cplusplus > 201703L
@@ -1861,30 +2014,30 @@ vshader_parser::SurfaceContext* vshader_parser::surface() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(229);
+    setState(249);
     match(vshader_parser::SURFACE);
-    setState(230);
+    setState(250);
     match(vshader_parser::LBRACE);
-    setState(239);
+    setState(259);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while ((((_la & ~ 0x3fULL) == 0) &&
-      ((1ULL << _la) & 1072694016) != 0)) {
-      setState(237);
+      ((1ULL << _la) & 2145387264) != 0)) {
+      setState(257);
       _errHandler->sync(this);
       switch (_input->LA(1)) {
         case vshader_parser::MODEL: {
-          setState(231);
+          setState(251);
           match(vshader_parser::MODEL);
-          setState(232);
+          setState(252);
           match(vshader_parser::IDENTIFIER);
           break;
         }
 
         case vshader_parser::ENTRY: {
-          setState(233);
+          setState(253);
           match(vshader_parser::ENTRY);
-          setState(234);
+          setState(254);
           match(vshader_parser::IDENTIFIER);
           break;
         }
@@ -1898,13 +2051,13 @@ vshader_parser::SurfaceContext* vshader_parser::surface() {
         case vshader_parser::BLEND_OP:
         case vshader_parser::COLOR_MASK:
         case vshader_parser::STENCIL: {
-          setState(235);
+          setState(255);
           state();
           break;
         }
 
         case vshader_parser::SLANG_PROGRAM: {
-          setState(236);
+          setState(256);
           program();
           break;
         }
@@ -1912,11 +2065,11 @@ vshader_parser::SurfaceContext* vshader_parser::surface() {
       default:
         throw NoViableAltException(this);
       }
-      setState(241);
+      setState(261);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
-    setState(242);
+    setState(262);
     match(vshader_parser::RBRACE);
 
   }
@@ -2011,7 +2164,7 @@ size_t vshader_parser::PassContext::getRuleIndex() const {
 
 vshader_parser::PassContext* vshader_parser::pass() {
   PassContext *_localctx = _tracker.createInstance<PassContext>(_ctx, getState());
-  enterRule(_localctx, 34, vshader_parser::RulePass);
+  enterRule(_localctx, 38, vshader_parser::RulePass);
   size_t _la = 0;
 
 #if __cplusplus > 201703L
@@ -2023,28 +2176,28 @@ vshader_parser::PassContext* vshader_parser::pass() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(244);
+    setState(264);
     match(vshader_parser::PASS);
-    setState(245);
+    setState(265);
     match(vshader_parser::LBRACE);
-    setState(255);
+    setState(275);
     _errHandler->sync(this);
     _la = _input->LA(1);
     while ((((_la & ~ 0x3fULL) == 0) &&
-      ((1ULL << _la) & 1073725632) != 0)) {
-      setState(253);
+      ((1ULL << _la) & 2147451072) != 0)) {
+      setState(273);
       _errHandler->sync(this);
       switch (_input->LA(1)) {
         case vshader_parser::NAME: {
-          setState(246);
+          setState(266);
           match(vshader_parser::NAME);
-          setState(247);
+          setState(267);
           match(vshader_parser::STRING);
           break;
         }
 
         case vshader_parser::TAGS: {
-          setState(248);
+          setState(268);
           tags();
           break;
         }
@@ -2054,13 +2207,13 @@ vshader_parser::PassContext* vshader_parser::pass() {
         case vshader_parser::TASK:
         case vshader_parser::MESH:
         case vshader_parser::COMPUTE: {
-          setState(249);
+          setState(269);
           stage();
           break;
         }
 
         case vshader_parser::REQUIRES: {
-          setState(250);
+          setState(270);
           requires_();
           break;
         }
@@ -2074,13 +2227,13 @@ vshader_parser::PassContext* vshader_parser::pass() {
         case vshader_parser::BLEND_OP:
         case vshader_parser::COLOR_MASK:
         case vshader_parser::STENCIL: {
-          setState(251);
+          setState(271);
           state();
           break;
         }
 
         case vshader_parser::SLANG_PROGRAM: {
-          setState(252);
+          setState(272);
           program();
           break;
         }
@@ -2088,11 +2241,11 @@ vshader_parser::PassContext* vshader_parser::pass() {
       default:
         throw NoViableAltException(this);
       }
-      setState(257);
+      setState(277);
       _errHandler->sync(this);
       _la = _input->LA(1);
     }
-    setState(258);
+    setState(278);
     match(vshader_parser::RBRACE);
 
   }
@@ -2143,7 +2296,7 @@ size_t vshader_parser::StageContext::getRuleIndex() const {
 
 vshader_parser::StageContext* vshader_parser::stage() {
   StageContext *_localctx = _tracker.createInstance<StageContext>(_ctx, getState());
-  enterRule(_localctx, 36, vshader_parser::RuleStage);
+  enterRule(_localctx, 40, vshader_parser::RuleStage);
   size_t _la = 0;
 
 #if __cplusplus > 201703L
@@ -2155,17 +2308,17 @@ vshader_parser::StageContext* vshader_parser::stage() {
   });
   try {
     enterOuterAlt(_localctx, 1);
-    setState(260);
+    setState(280);
     _la = _input->LA(1);
     if (!((((_la & ~ 0x3fULL) == 0) &&
-      ((1ULL << _la) & 1015808) != 0))) {
+      ((1ULL << _la) & 2031616) != 0))) {
     _errHandler->recoverInline(this);
     }
     else {
       _errHandler->reportMatch(this);
       consume();
     }
-    setState(261);
+    setState(281);
     match(vshader_parser::IDENTIFIER);
 
   }
@@ -2260,7 +2413,7 @@ size_t vshader_parser::StateContext::getRuleIndex() const {
 
 vshader_parser::StateContext* vshader_parser::state() {
   StateContext *_localctx = _tracker.createInstance<StateContext>(_ctx, getState());
-  enterRule(_localctx, 38, vshader_parser::RuleState);
+  enterRule(_localctx, 42, vshader_parser::RuleState);
   size_t _la = 0;
 
 #if __cplusplus > 201703L
@@ -2271,60 +2424,60 @@ vshader_parser::StateContext* vshader_parser::state() {
     exitRule();
   });
   try {
-    setState(309);
+    setState(329);
     _errHandler->sync(this);
     switch (_input->LA(1)) {
       case vshader_parser::CULL: {
         enterOuterAlt(_localctx, 1);
-        setState(263);
+        setState(283);
         match(vshader_parser::CULL);
-        setState(264);
+        setState(284);
         stateValue();
         break;
       }
 
       case vshader_parser::FRONT_FACE: {
         enterOuterAlt(_localctx, 2);
-        setState(265);
+        setState(285);
         match(vshader_parser::FRONT_FACE);
-        setState(266);
+        setState(286);
         stateValue();
         break;
       }
 
       case vshader_parser::ZWRITE: {
         enterOuterAlt(_localctx, 3);
-        setState(267);
+        setState(287);
         match(vshader_parser::ZWRITE);
-        setState(268);
+        setState(288);
         stateValue();
         break;
       }
 
       case vshader_parser::ZTEST: {
         enterOuterAlt(_localctx, 4);
-        setState(269);
+        setState(289);
         match(vshader_parser::ZTEST);
-        setState(270);
+        setState(290);
         stateValue();
         break;
       }
 
       case vshader_parser::DEPTH_BIAS: {
         enterOuterAlt(_localctx, 5);
-        setState(271);
+        setState(291);
         match(vshader_parser::DEPTH_BIAS);
-        setState(272);
+        setState(292);
         stateValue();
-        setState(273);
+        setState(293);
         stateValue();
-        setState(275);
+        setState(295);
         _errHandler->sync(this);
 
         _la = _input->LA(1);
         if ((((_la & ~ 0x3fULL) == 0) &&
-          ((1ULL << _la) & 562640715776) != 0)) {
-          setState(274);
+          ((1ULL << _la) & 1125281431552) != 0)) {
+          setState(294);
           stateValue();
         }
         break;
@@ -2332,28 +2485,28 @@ vshader_parser::StateContext* vshader_parser::state() {
 
       case vshader_parser::BLEND: {
         enterOuterAlt(_localctx, 6);
-        setState(277);
+        setState(297);
         match(vshader_parser::BLEND);
-        setState(278);
+        setState(298);
         stateValue();
-        setState(286);
+        setState(306);
         _errHandler->sync(this);
 
         _la = _input->LA(1);
         if ((((_la & ~ 0x3fULL) == 0) &&
-          ((1ULL << _la) & 562640715776) != 0)) {
-          setState(279);
+          ((1ULL << _la) & 1125281431552) != 0)) {
+          setState(299);
           stateValue();
-          setState(284);
+          setState(304);
           _errHandler->sync(this);
 
           _la = _input->LA(1);
           if (_la == vshader_parser::COMMA) {
-            setState(280);
+            setState(300);
             match(vshader_parser::COMMA);
-            setState(281);
+            setState(301);
             stateValue();
-            setState(282);
+            setState(302);
             stateValue();
           }
         }
@@ -2362,18 +2515,18 @@ vshader_parser::StateContext* vshader_parser::state() {
 
       case vshader_parser::BLEND_OP: {
         enterOuterAlt(_localctx, 7);
-        setState(288);
+        setState(308);
         match(vshader_parser::BLEND_OP);
-        setState(289);
+        setState(309);
         stateValue();
-        setState(292);
+        setState(312);
         _errHandler->sync(this);
 
         _la = _input->LA(1);
         if (_la == vshader_parser::COMMA) {
-          setState(290);
+          setState(310);
           match(vshader_parser::COMMA);
-          setState(291);
+          setState(311);
           stateValue();
         }
         break;
@@ -2381,16 +2534,16 @@ vshader_parser::StateContext* vshader_parser::state() {
 
       case vshader_parser::COLOR_MASK: {
         enterOuterAlt(_localctx, 8);
-        setState(294);
+        setState(314);
         match(vshader_parser::COLOR_MASK);
-        setState(295);
+        setState(315);
         stateValue();
-        setState(297);
+        setState(317);
         _errHandler->sync(this);
 
         _la = _input->LA(1);
         if (_la == vshader_parser::NUMBER) {
-          setState(296);
+          setState(316);
           match(vshader_parser::NUMBER);
         }
         break;
@@ -2398,23 +2551,23 @@ vshader_parser::StateContext* vshader_parser::state() {
 
       case vshader_parser::STENCIL: {
         enterOuterAlt(_localctx, 9);
-        setState(299);
+        setState(319);
         match(vshader_parser::STENCIL);
-        setState(300);
+        setState(320);
         match(vshader_parser::LBRACE);
-        setState(305);
+        setState(325);
         _errHandler->sync(this);
         _la = _input->LA(1);
         while (_la == vshader_parser::IDENTIFIER) {
-          setState(301);
+          setState(321);
           match(vshader_parser::IDENTIFIER);
-          setState(302);
+          setState(322);
           stateValue();
-          setState(307);
+          setState(327);
           _errHandler->sync(this);
           _la = _input->LA(1);
         }
-        setState(308);
+        setState(328);
         match(vshader_parser::RBRACE);
         break;
       }
@@ -2463,7 +2616,7 @@ size_t vshader_parser::StateValueContext::getRuleIndex() const {
 
 vshader_parser::StateValueContext* vshader_parser::stateValue() {
   StateValueContext *_localctx = _tracker.createInstance<StateValueContext>(_ctx, getState());
-  enterRule(_localctx, 40, vshader_parser::RuleStateValue);
+  enterRule(_localctx, 44, vshader_parser::RuleStateValue);
 
 #if __cplusplus > 201703L
   auto onExit = finally([=, this] {
@@ -2473,30 +2626,30 @@ vshader_parser::StateValueContext* vshader_parser::stateValue() {
     exitRule();
   });
   try {
-    setState(316);
+    setState(336);
     _errHandler->sync(this);
     switch (_input->LA(1)) {
       case vshader_parser::IDENTIFIER: {
         enterOuterAlt(_localctx, 1);
-        setState(311);
+        setState(331);
         match(vshader_parser::IDENTIFIER);
         break;
       }
 
       case vshader_parser::NUMBER: {
         enterOuterAlt(_localctx, 2);
-        setState(312);
+        setState(332);
         match(vshader_parser::NUMBER);
         break;
       }
 
       case vshader_parser::LBRACKET: {
         enterOuterAlt(_localctx, 3);
-        setState(313);
+        setState(333);
         match(vshader_parser::LBRACKET);
-        setState(314);
+        setState(334);
         match(vshader_parser::IDENTIFIER);
-        setState(315);
+        setState(335);
         match(vshader_parser::RBRACKET);
         break;
       }

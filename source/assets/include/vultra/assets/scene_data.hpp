@@ -7,8 +7,10 @@
 #include <glm/glm.hpp>
 
 #include <array>
+#include <expected>
 #include <filesystem>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace vultra
@@ -39,7 +41,7 @@ namespace vultra
         int sampler = -1; // SceneData sampler index; -1 selects linear filtering, mipmaps and repeat.
     };
 
-    // Opaque real-time OpenPBR parameter subset. No transmission, subsurface, fuzz or thin film.
+    // Real-time OpenPBR parameter subset. No transmission, subsurface, fuzz or thin film.
     struct SurfaceMaterial
     {
         glm::vec4       baseColor {1};
@@ -58,7 +60,8 @@ namespace vultra
         float           normalScale       = 1;
         float           occlusionStrength = 1;
         float           alphaCutoff       = -1;
-        bool            doubleSided       = true; // Procedural/OBJ/FBX default; glTF imports its own default (false).
+        bool            doubleSided       = true;  // Procedural/OBJ/FBX default; glTF imports its own default (false).
+        bool            alphaBlend        = false; // Sorted raster coverage, without refractive transport.
         MaterialTexture baseColorTexture;
         MaterialTexture metallicRoughnessTexture;
         MaterialTexture normalTexture;
@@ -120,22 +123,41 @@ namespace vultra
     // Nonzero authored tangents are preserved. Indices may reference a range starting at vertexOffset.
     void
     generateTangents(std::span<SceneVertex> vertices, std::span<const uint32_t> indices, uint32_t vertexOffset = 0);
+    std::expected<void, std::string> generateTangentsExpected(std::span<SceneVertex>    vertices,
+                                                              std::span<const uint32_t> indices,
+                                                              uint32_t                  vertexOffset = 0);
 
+    std::expected<SceneData, std::string> loadGltfExpected(const std::filesystem::path&  path,
+                                                           const ExpectedSourceObserver& observer = {},
+                                                           uint32_t                      workers  = 0,
+                                                           const AssetSource*            source   = nullptr);
     SceneData loadGltf(const std::filesystem::path& path,
                        const SourceObserver&        observer = {},
                        uint32_t                     workers  = 0,
                        const AssetSource*           source   = nullptr);
     // Static OBJ geometry and untextured MTL diffuse/emission; used by the original Cornell Box.
+    std::expected<SceneData, std::string> loadObjExpected(const std::filesystem::path&  path,
+                                                          const ExpectedSourceObserver& observer = {},
+                                                          uint32_t                      workers  = 0,
+                                                          const AssetSource*            source   = nullptr);
     SceneData loadObj(const std::filesystem::path& path,
                       const SourceObserver&        observer = {},
                       uint32_t                     workers  = 0,
                       const AssetSource*           source   = nullptr);
 
+    std::expected<SceneData, std::string>  loadFbxExpected(const std::filesystem::path&  path,
+                                                           const ExpectedSourceObserver& observer = {},
+                                                           uint32_t                      workers  = 0,
+                                                           const AssetSource*            source   = nullptr,
+                                                           const FbxImportOptions&       options  = {});
     SceneData  loadFbx(const std::filesystem::path& path,
                        const SourceObserver&        observer = {},
                        uint32_t                     workers  = 0,
                        const AssetSource*           source   = nullptr,
                        const FbxImportOptions&      options  = {});
+    std::expected<SceneImage, std::string> loadSceneImageExpected(const std::filesystem::path&  path,
+                                                                  const ExpectedSourceObserver& observer = {},
+                                                                  const AssetSource*            source   = nullptr);
     SceneImage loadSceneImage(const std::filesystem::path& path,
                               const SourceObserver&        observer = {},
                               const AssetSource*           source   = nullptr);

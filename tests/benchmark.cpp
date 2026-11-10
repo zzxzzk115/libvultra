@@ -77,4 +77,25 @@ int main()
         rejected = true;
     }
     require(rejected, "Benchmark overwrote an existing run");
+
+    vultra::BenchmarkCapture checked;
+    const auto               checkedDirectory = directory / "checked";
+    require(!checked.writeExpected(checkedDirectory, metadata, device) && !std::filesystem::exists(checkedDirectory),
+            "An empty checked run created output");
+    vultra::FrameTiming frame {};
+    frame.gpuMs = 2;
+    const std::array passes {vultra::PassTiming {"stage", 1, 2, 0.25, 0.5}};
+    require(checked.addExpected(frame, passes, false).has_value(), "Cannot add checked benchmark frame");
+    frame.frameIndex = 2;
+    require(!checked.addExpected(frame, passes, true) && checked.size() == 1, "Nonconsecutive frame was stored");
+    frame.frameIndex = 1;
+    frame.gpuMs.reset();
+    require(checked.addExpected(frame, passes, true).has_value(), "Cannot add frame after rejection");
+    require(checked.writeExpected(checkedDirectory / "", metadata, device).has_value(),
+            "Cannot write checked benchmark");
+    require(!checked.writeExpected(checkedDirectory, metadata, device), "Checked writer overwrote an existing run");
+    const auto passRows = read(checkedDirectory / "passes.csv");
+    require(passRows.find(R"(0,"stage",1,0.25,0.75,,,,0,,0)") != std::string::npos &&
+                passRows.find(R"(1,"stage",1,0.25,0.75,2,0.5,1.5,0,,0)") != std::string::npos,
+            "Pass timestamp availability must be independent of the frame timestamp");
 }

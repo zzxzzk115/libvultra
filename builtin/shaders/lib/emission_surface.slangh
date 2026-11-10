@@ -1,0 +1,36 @@
+#pragma once
+
+#include "lib/shadow.slangh"
+#include "lib/surface_types.slangh"
+
+bool isEmissionOnlySurface(SurfaceData surface)
+{
+    return all(surface.baseColor == 0) && surface.baseWeight == 0 && surface.specularWeight == 0 &&
+           surface.coatWeight == 0 && surface.occlusion == 0;
+}
+
+float3 shadeEmissionOnlySurface(SurfaceData surface)
+{
+    uint debug = uint(frame.cameraClip.w);
+    if (debug == 1)
+    {
+        return float3(0); // No diffuse reflectance in a non-scattering model.
+    }
+    if (debug == 2)
+    {
+        return surface.normal * 0.5 + 0.5;
+    }
+    if (debug == 3 || debug == 4)
+    {
+        float depth = dot(frame.shadowViewDepth, float4(surface.worldPosition, 1));
+        float visibility = shadowVisibility(surface.worldPosition, surface.geometricNormal, depth);
+        if (debug == 4)
+        {
+            return visibility.xxx;
+        }
+        const float3 colors[4] = {float3(1, 0.2, 0.1), float3(0.2, 1, 0.2),
+                                  float3(0.2, 0.4, 1), float3(1, 0.2, 1)};
+        return colors[shadowCascade(depth)] * (0.25 + 0.75 * visibility);
+    }
+    return max(surface.emission, 0);
+}

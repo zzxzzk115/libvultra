@@ -6,14 +6,30 @@
 #include "lib/shadow.slangh"
 #include "lib/surface_types.slangh"
 
-float3 shadeSurface(SurfaceData sample)
+#ifndef VULTRA_SURFACE_IBL
+#define VULTRA_SURFACE_IBL 1
+#endif
+#ifndef VULTRA_SURFACE_PRIMARY_LIGHT
+#define VULTRA_SURFACE_PRIMARY_LIGHT 1
+#endif
+#ifndef VULTRA_SURFACE_DEBUG
+#define VULTRA_SURFACE_DEBUG 1
+#endif
+
+float3 shadeSurface(SurfaceData sample, float3 cameraPosition, uint2 lightMask)
 {
-    float3 view = normalize(frame.cameraPosition.xyz - sample.worldPosition);
-    float cameraDepth = viewDepth(sample.worldPosition, frame.view);
+    float3 view = normalize(cameraPosition - sample.worldPosition);
+    // Match the hemisphere orientation used by OpenPBR for front- and back-facing views.
+    float3 facingNormal = dot(view, sample.normal) < 0 ? -sample.normal : sample.normal;
+#if VULTRA_SURFACE_PRIMARY_LIGHT || VULTRA_SURFACE_DEBUG
+    float cameraDepth = dot(frame.shadowViewDepth, float4(sample.worldPosition, 1));
     float visibility = shadowVisibility(sample.worldPosition, sample.geometricNormal, cameraDepth);
+#endif
+#if VULTRA_SURFACE_PRIMARY_LIGHT
     DirectionalLight light;
     light.directionToLight = frame.lightDirection.xyz;
     light.radiance = frame.lightColor.rgb * frame.lightDirection.w;
+#endif
     OpenPbrSurface surface;
     surface.baseColor = sample.baseColor;
     surface.baseWeight = sample.baseWeight;
@@ -27,23 +43,47 @@ float3 shadeSurface(SurfaceData sample)
     surface.coatRoughness = max(sample.coatRoughness, 0.03);
     surface.coatIor = sample.coatIor;
     OpenPBR_PreparedBsdf bsdf = prepareOpenPbr(surface, sample.normal, view);
-    float3 result = evaluateDirectionalLight(bsdf, light, visibility) + sample.emission;
+    // Explicit scene lights may contain no directional light. Avoid evaluating the full
+    // OpenPBR response when its radiance is known to be zero.
+    float3 result = sample.emission;
+#if VULTRA_SURFACE_PRIMARY_LIGHT
+    if (frame.lightDirection.w != 0 && any(frame.lightColor.rgb != 0))
+    {
+        result += evaluateDirectionalLight(bsdf, light, visibility, facingNormal);
+    }
+#endif
     // Explicit constant fill for raster experiments; it is neither IBL nor shadowed direct light.
     result += frame.ambientColor.rgb * sample.baseColor * sample.occlusion;
+#ifdef VULTRA_CLUSTERED_LIGHTING
+    // Iterate only set bits, in the original light order, without a fixed-length per-pixel scan.
+    for (uint word = 0; word < 2; ++word)
+    {
+        uint bits = lightMask[word];
+        while (bits != 0)
+        {
+            uint i = word * 32 + uint(firstbitlow(bits));
+            if (i < uint(frame.lightConfig.x) && int(i) != int(frame.lightConfig.y))
+                result += evaluateSceneLight(bsdf, frame.lights[i], sample.worldPosition, facingNormal);
+            bits &= bits - 1;
+        }
+    }
+#else
     for (uint i = 0; i < uint(frame.lightConfig.x); ++i)
     {
         // The first directional light uses the existing cascades; other lights are currently unshadowed.
         if (int(i) != int(frame.lightConfig.y))
-        {
-            result += evaluateSceneLight(bsdf, frame.lights[i], sample.worldPosition);
-        }
+            result += evaluateSceneLight(bsdf, frame.lights[i], sample.worldPosition, facingNormal);
     }
+#endif
+#if VULTRA_SURFACE_IBL
     if (frame.options.x > 0.5)
     {
         float3 ibl = evaluateIbl(surface, sample.normal, view, diffuseMap, specularMap, brdfLut,
                                  environmentSampler, frame.options.w);
         result += ibl * frame.lightColor.w * sample.occlusion;
     }
+#endif
+#if VULTRA_SURFACE_DEBUG
     uint debug = uint(frame.cameraClip.w);
     if (debug == 1)
     {
@@ -67,5 +107,16 @@ float3 shadeSurface(SurfaceData sample)
     {
         result = sample.emission;
     }
+#endif
     return max(result, 0);
+}
+
+float3 shadeSurface(SurfaceData sample, float3 cameraPosition)
+{
+    return shadeSurface(sample, cameraPosition, uint2(0xffffffffu, 0xffffffffu));
+}
+
+float3 shadeSurface(SurfaceData sample)
+{
+    return shadeSurface(sample, frame.cameraPosition.xyz);
 }

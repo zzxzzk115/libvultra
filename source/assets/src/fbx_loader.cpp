@@ -1,5 +1,6 @@
 #include "image_decode.hpp"
 #include "import_jobs.hpp"
+#include "legacy_source_observer.hpp"
 
 #include <vultra/assets/scene_data.hpp>
 #include <vultra/core/base/logger.hpp>
@@ -12,6 +13,7 @@
 #include <limits>
 #include <map>
 #include <mutex>
+#include <stdexcept>
 #include <string_view>
 
 namespace vultra
@@ -31,7 +33,7 @@ namespace vultra
             return result;
         }
 
-        glm::mat4 sceneBasis(const ofbx::GlobalSettings& settings)
+        std::expected<glm::mat4, std::string> sceneBasis(const ofbx::GlobalSettings& settings)
         {
             const int right = int(settings.CoordAxis);
             const int up    = int(settings.UpAxis);
@@ -41,7 +43,7 @@ namespace vultra
                 std::abs(settings.FrontAxisSign) != 1 || !std::isfinite(settings.UnitScaleFactor) ||
                 settings.UnitScaleFactor <= 0)
             {
-                throw std::runtime_error("Unsupported FBX axis or unit metadata");
+                return std::unexpected("Unsupported FBX axis or unit metadata");
             }
             // FBX stores centimeters per source unit; Vultra uses meters, Y up and -Z forward.
             const float scale = settings.UnitScaleFactor * 0.01f;
@@ -65,7 +67,8 @@ namespace vultra
         }
 
         // Read Properties70 directly: OpenFBX 0.9 getters may contain uninitialized values for absent properties.
-        const ofbx::IElementProperty* materialProperty(const ofbx::Material& material, std::string_view name)
+        std::expected<const ofbx::IElementProperty*, std::string> materialProperty(const ofbx::Material& material,
+                                                                                   std::string_view      name)
         {
             for (auto* group = material.element.getFirstChild(); group; group = group->getSibling())
             {
@@ -86,7 +89,7 @@ namespace vultra
                     }
                     if (!value)
                     {
-                        throw std::runtime_error(std::string(material.name) + ": incomplete FBX material property");
+                        return std::unexpected(std::string(material.name) + ": incomplete FBX material property");
                     }
                     return value;
                 }
@@ -94,20 +97,31 @@ namespace vultra
             return nullptr;
         }
 
-        float materialNumber(const ofbx::Material& material, std::string_view name, float fallback)
+        std::expected<float, std::string>
+        materialNumber(const ofbx::Material& material, std::string_view name, float fallback)
         {
-            const auto* value  = materialProperty(material, name);
-            const float result = value ? float(value->getValue().toDouble()) : fallback;
+            const auto value = materialProperty(material, name);
+            if (!value)
+            {
+                return std::unexpected(value.error());
+            }
+            const float result = *value ? float((*value)->getValue().toDouble()) : fallback;
             if (!std::isfinite(result))
             {
-                throw std::runtime_error(std::string(material.name) + ": non-finite FBX property " + std::string(name));
+                return std::unexpected(std::string(material.name) + ": non-finite FBX property " + std::string(name));
             }
             return result;
         }
 
-        glm::vec3 materialColor(const ofbx::Material& material, std::string_view name, glm::vec3 fallback)
+        std::expected<glm::vec3, std::string>
+        materialColor(const ofbx::Material& material, std::string_view name, glm::vec3 fallback)
         {
-            const auto* value = materialProperty(material, name);
+            const auto property = materialProperty(material, name);
+            if (!property)
+            {
+                return std::unexpected(property.error());
+            }
+            const auto* value = *property;
             if (!value)
             {
                 return fallback;
@@ -117,88 +131,104 @@ namespace vultra
             {
                 if (!value)
                 {
-                    throw std::runtime_error(std::string(material.name) + ": incomplete FBX color " +
-                                             std::string(name));
+                    return std::unexpected(std::string(material.name) + ": incomplete FBX color " + std::string(name));
                 }
                 result[component] = float(value->getValue().toDouble());
                 if (!std::isfinite(result[component]))
                 {
-                    throw std::runtime_error(std::string(material.name) + ": non-finite FBX color " +
-                                             std::string(name));
+                    return std::unexpected(std::string(material.name) + ": non-finite FBX color " + std::string(name));
                 }
                 value = value->getNext();
             }
             return result;
         }
 
-        glm::vec3 position(const ofbx::Vec3Attributes& positions, int corner)
+        std::expected<glm::vec3, std::string> position(const ofbx::Vec3Attributes& positions, int corner)
         {
             if (corner < 0 || corner >= positions.count || !positions.values)
             {
-                throw std::runtime_error("FBX polygon vertex is out of bounds");
+                return std::unexpected("FBX polygon vertex is out of bounds");
             }
             const int index = positions.indices ? positions.indices[corner] : corner;
             if (index < 0 || index >= positions.values_count)
             {
-                throw std::runtime_error("FBX position index is out of bounds");
+                return std::unexpected("FBX position index is out of bounds");
             }
             const auto value = positions.values[index];
-            return {value.x, value.y, value.z};
+            return glm::vec3(value.x, value.y, value.z);
         }
 
         // OpenFBX 0.9 triangulates a fan. Reject concave polygons instead of producing overlapping triangles.
-        void requireConvex(const ofbx::Vec3Attributes& positions, const ofbx::GeometryPartition::Polygon& polygon)
+        std::expected<void, std::string> requireConvex(const ofbx::Vec3Attributes&             positions,
+                                                       const ofbx::GeometryPartition::Polygon& polygon,
+                                                       std::vector<glm::vec3>&                 corners)
         {
             if (polygon.vertex_count <= 3)
             {
-                return;
+                return {};
             }
-            glm::vec3  normal(0);
-            const auto origin = position(positions, polygon.from_vertex);
-            for (int i = 1; i + 1 < polygon.vertex_count; ++i)
-            {
-                normal += glm::cross(position(positions, polygon.from_vertex + i) - origin,
-                                     position(positions, polygon.from_vertex + i + 1) - origin);
-            }
+            corners.clear();
             for (int i = 0; i < polygon.vertex_count; ++i)
             {
-                const auto a = position(positions, polygon.from_vertex + i);
-                const auto b = position(positions, polygon.from_vertex + (i + 1) % polygon.vertex_count);
-                const auto c = position(positions, polygon.from_vertex + (i + 2) % polygon.vertex_count);
+                const auto corner = position(positions, polygon.from_vertex + i);
+                if (!corner)
+                {
+                    return std::unexpected(corner.error());
+                }
+                corners.push_back(*corner);
+            }
+            glm::vec3 normal(0);
+            for (size_t i = 1; i + 1 < corners.size(); ++i)
+            {
+                normal += glm::cross(corners[i] - corners.front(), corners[i + 1] - corners.front());
+            }
+            for (size_t i = 0; i < corners.size(); ++i)
+            {
+                const auto a = corners[i];
+                const auto b = corners[(i + 1) % corners.size()];
+                const auto c = corners[(i + 2) % corners.size()];
                 if (glm::dot(glm::cross(b - a, c - b), normal) < 0)
                 {
-                    throw std::runtime_error("Concave FBX polygon: triangulate the mesh when exporting");
+                    return std::unexpected("Concave FBX polygon: triangulate the mesh when exporting");
                 }
             }
+            return {};
         }
     } // namespace
 
-    SceneData loadFbx(const std::filesystem::path& path,
-                      const SourceObserver&        observer,
-                      uint32_t                     workers,
-                      const AssetSource*           assetSource,
-                      const FbxImportOptions&      options)
+    std::expected<SceneData, std::string> loadFbxExpected(const std::filesystem::path&  path,
+                                                          const ExpectedSourceObserver& observer,
+                                                          uint32_t                      workers,
+                                                          const AssetSource*            assetSource,
+                                                          const FbxImportOptions&       options)
     {
         if (options.materialConvention != FbxMaterialConvention::ePhong &&
             options.materialConvention != FbxMaterialConvention::eOrcaMetallicRoughness)
         {
-            throw std::invalid_argument("Unknown FBX material convention");
+            return std::unexpected("Unknown FBX material convention");
         }
         Logger::core().info("FBX material convention: {}; {} normal maps",
                             options.materialConvention == FbxMaterialConvention::eOrcaMetallicRoughness ? "ORCA" :
                                                                                                           "Phong",
                             options.directXNormalMaps ? "DirectX" : "OpenGL");
-        const auto bytes   = readSourceFile(path, observer, assetSource);
+        const auto bytes = readSourceFileExpected(path, observer, assetSource);
+        if (!bytes)
+        {
+            return std::unexpected(bytes.error());
+        }
         const auto process = [](ofbx::JobFunction function, void* user, void* data, ofbx::u32 size, ofbx::u32 count)
         {
-            asset_detail::runImportJobs("Parsing FBX arrays",
-                                        count,
-                                        *static_cast<uint32_t*>(user),
-                                        64 * 1024 * 1024,
-                                        [&](uint32_t i)
-                                        {
-                                            function(static_cast<std::byte*>(data) + size_t(size) * i);
-                                        });
+            // OpenFBX collects parse failures in its job data.
+            static_cast<void>(asset_detail::runImportJobsExpected("Parsing FBX arrays",
+                                                                  count,
+                                                                  *static_cast<uint32_t*>(user),
+                                                                  64 * 1024 * 1024,
+                                                                  [&](uint32_t i) -> std::expected<void, std::string>
+                                                                  {
+                                                                      function(static_cast<std::byte*>(data) +
+                                                                               size_t(size) * i);
+                                                                      return {};
+                                                                  }));
         };
         const auto destroy = [](ofbx::IScene* scene)
         {
@@ -206,15 +236,15 @@ namespace vultra
         };
         const auto flags = ofbx::LoadFlags::IGNORE_CAMERAS | ofbx::LoadFlags::IGNORE_LIGHTS;
         const std::unique_ptr<ofbx::IScene, decltype(destroy)> source(
-            ofbx::load(reinterpret_cast<const ofbx::u8*>(bytes.data()),
-                       bytes.size(),
+            ofbx::load(reinterpret_cast<const ofbx::u8*>(bytes->data()),
+                       bytes->size(),
                        ofbx::u16(flags),
                        process,
                        &workers),
             destroy);
         if (!source)
         {
-            throw std::runtime_error("Load FBX " + path.string() + ": " + ofbx::getError());
+            return std::unexpected("Load FBX " + path.string() + ": " + ofbx::getError());
         }
         if (source->getAnimationStackCount())
         {
@@ -224,11 +254,15 @@ namespace vultra
         {
             if (source->isEmbeddedBase64(i))
             {
-                throw std::runtime_error(
+                return std::unexpected(
                     "ASCII FBX embedded base64 textures are unsupported; export binary FBX or external images");
             }
         }
-        const auto                                basis = sceneBasis(*source->getGlobalSettings());
+        const auto basis = sceneBasis(*source->getGlobalSettings());
+        if (!basis)
+        {
+            return std::unexpected(basis.error());
+        }
         SceneData                                 scene;
         std::map<const ofbx::Material*, uint32_t> materials;
         std::map<const ofbx::Texture*, int>       textureIndices;
@@ -247,7 +281,7 @@ namespace vultra
             }
             return it->second;
         };
-        auto materialIndex = [&](const ofbx::Material* material)
+        auto materialIndex = [&](const ofbx::Material* material) -> std::expected<uint32_t, std::string>
         {
             const auto [it, inserted] = materials.emplace(material, uint32_t(scene.materials.size()));
             if (inserted)
@@ -255,10 +289,30 @@ namespace vultra
                 SurfaceMaterial result;
                 if (material)
                 {
-                    const auto diffuse            = materialColor(*material, "DiffuseColor", glm::vec3(1));
-                    result.baseColor              = glm::vec4(diffuse, 1);
-                    result.emissionColor          = materialColor(*material, "EmissiveColor", glm::vec3(0));
-                    result.emissionLuminance      = materialNumber(*material, "EmissiveFactor", 0);
+                    const auto diffuse = materialColor(*material, "DiffuseColor", glm::vec3(1));
+                    if (!diffuse)
+                    {
+                        return std::unexpected(diffuse.error());
+                    }
+                    const auto opacity = materialNumber(*material, "Opacity", 1);
+                    if (!opacity)
+                    {
+                        return std::unexpected(opacity.error());
+                    }
+                    const auto emission = materialColor(*material, "EmissiveColor", glm::vec3(0));
+                    if (!emission)
+                    {
+                        return std::unexpected(emission.error());
+                    }
+                    const auto emissiveFactor = materialNumber(*material, "EmissiveFactor", 0);
+                    if (!emissiveFactor)
+                    {
+                        return std::unexpected(emissiveFactor.error());
+                    }
+                    result.baseColor              = glm::vec4(*diffuse, std::clamp(*opacity, 0.0f, 1.0f));
+                    result.alphaBlend             = result.baseColor.a < 1;
+                    result.emissionColor          = *emission;
+                    result.emissionLuminance      = *emissiveFactor;
                     result.baseColorTexture.image = imageIndex(*material, ofbx::Texture::DIFFUSE);
                     result.normalTexture.image    = imageIndex(*material, ofbx::Texture::NORMAL);
                     result.emissionTexture.image  = imageIndex(*material, ofbx::Texture::EMISSIVE);
@@ -270,7 +324,7 @@ namespace vultra
                         result.metallicRoughnessTexture.image = imageIndex(*material, ofbx::Texture::SPECULAR);
                         result.baseMetalness     = result.metallicRoughnessTexture.image >= 0 ? 1.0f : 0.0f;
                         result.specularRoughness = 1;
-                        result.alphaCutoff       = result.baseColorTexture.image >= 0 ? 0.5f : -1.0f;
+                        result.alphaCutoff       = !result.alphaBlend && result.baseColorTexture.image >= 0 ? 0.5f : -1.0f;
                         result.doubleSided       = std::string_view(material->name).ends_with(".DoubleSided");
                         if (result.emissionTexture.image >= 0)
                         {
@@ -280,8 +334,18 @@ namespace vultra
                     }
                     else
                     {
-                        result.baseColor *= glm::vec4(glm::vec3(materialNumber(*material, "DiffuseFactor", 1)), 1);
-                        const float shininess    = std::max(0.0f, materialNumber(*material, "Shininess", 20));
+                        const auto diffuseFactor = materialNumber(*material, "DiffuseFactor", 1);
+                        if (!diffuseFactor)
+                        {
+                            return std::unexpected(diffuseFactor.error());
+                        }
+                        const auto authoredShininess = materialNumber(*material, "Shininess", 20);
+                        if (!authoredShininess)
+                        {
+                            return std::unexpected(authoredShininess.error());
+                        }
+                        result.baseColor *= glm::vec4(glm::vec3(*diffuseFactor), 1);
+                        const float shininess    = std::max(0.0f, *authoredShininess);
                         result.specularRoughness = std::clamp(std::sqrt(2.0f / (shininess + 2.0f)), 0.02f, 1.0f);
                     }
                     for (const auto type : {ofbx::Texture::SPECULAR,
@@ -322,13 +386,13 @@ namespace vultra
             const auto* mesh = source->getMesh(m);
             if (mesh->getSkin() || mesh->getBlendShape())
             {
-                throw std::runtime_error("FBX skinning and blend shapes are outside the static importer");
+                return std::unexpected("FBX skinning and blend shapes are outside the static importer");
             }
-            const auto  world       = basis * matrix(mesh->getGlobalTransform()) * matrix(mesh->getGeometricMatrix());
+            const auto  world       = *basis * matrix(mesh->getGlobalTransform()) * matrix(mesh->getGeometricMatrix());
             const float determinant = glm::determinant(glm::mat3(world));
             if (!std::isfinite(determinant) || determinant == 0)
             {
-                throw std::runtime_error("Invalid FBX mesh transform");
+                return std::unexpected("Invalid FBX mesh transform");
             }
             const auto& geometry = mesh->getGeometryData();
             for (int part = 0; part < geometry.getPartitionCount(); ++part)
@@ -341,28 +405,32 @@ namespace vultra
                 const uint64_t count = uint64_t(partition.triangles_count) * 3;
                 if (vertexCount + count > std::numeric_limits<uint32_t>::max())
                 {
-                    throw std::runtime_error("FBX exceeds 32-bit geometry limits");
+                    return std::unexpected("FBX exceeds 32-bit geometry limits");
                 }
                 const auto material =
                     materialIndex(part < mesh->getMaterialCount() ? mesh->getMaterial(part) : nullptr);
+                if (!material)
+                {
+                    return std::unexpected(material.error());
+                }
                 jobs.push_back({mesh, part, world, uint32_t(vertexCount), uint32_t(count)});
-                scene.primitives.push_back({uint32_t(vertexCount), uint32_t(count), material});
+                scene.primitives.push_back({uint32_t(vertexCount), uint32_t(count), *material});
                 vertexCount += count;
                 largestScratch = std::max(largestScratch, count * sizeof(glm::vec3) * 2);
             }
         }
         if (jobs.empty())
         {
-            throw std::runtime_error("FBX contains no triangle geometry");
+            return std::unexpected("FBX contains no triangle geometry");
         }
         scene.vertices.resize(size_t(vertexCount));
         scene.indices.resize(size_t(vertexCount));
-        asset_detail::runImportJobs(
+        auto geometryResult = asset_detail::runImportJobsExpected(
             "Preparing FBX geometry",
             uint32_t(jobs.size()),
             workers,
             largestScratch,
-            [&](uint32_t i)
+            [&](uint32_t i) -> std::expected<void, std::string>
             {
                 auto&            job          = jobs[i];
                 const auto&      geometry     = job.mesh->getGeometryData();
@@ -375,27 +443,36 @@ namespace vultra
                 const bool       mirrored     = glm::determinant(glm::mat3(job.world)) < 0;
                 std::vector<int> corners(size_t(partition.max_polygon_triangles) * 3);
                 uint32_t         output = job.first;
+                std::vector<glm::vec3> polygonCorners;
                 for (int p = 0; p < partition.polygon_count; ++p)
                 {
                     const auto& polygon = partition.polygons[p];
-                    requireConvex(positions, polygon);
+                    if (auto valid = requireConvex(positions, polygon, polygonCorners); !valid)
+                    {
+                        return valid;
+                    }
                     const auto count = ofbx::triangulate(geometry, polygon, corners.data());
                     for (uint32_t t = 0; t < count; t += 3)
                     {
                         if (output - job.first + 3 > job.count)
                         {
-                            throw std::runtime_error("FBX triangulation exceeds its allocated range");
+                            return std::unexpected("FBX triangulation exceeds its allocated range");
                         }
                         for (uint32_t c = 0; c < 3; ++c)
                         {
                             const int   corner = corners[t + (mirrored && c != 0 ? 3 - c : c)];
                             SceneVertex vertex {};
-                            vertex.position = glm::vec3(job.world * glm::vec4(position(positions, corner), 1));
+                            const auto  sourcePosition = position(positions, corner);
+                            if (!sourcePosition)
+                            {
+                                return std::unexpected(sourcePosition.error());
+                            }
+                            vertex.position = glm::vec3(job.world * glm::vec4(*sourcePosition, 1));
                             if (!std::isfinite(vertex.position.x) || !std::isfinite(vertex.position.y) ||
                                 !std::isfinite(vertex.position.z) || (normals.count && corner >= normals.count) ||
                                 (uvs.count && corner >= uvs.count) || (colors.count && corner >= colors.count))
                             {
-                                throw std::runtime_error("Invalid FBX vertex attributes");
+                                return std::unexpected("Invalid FBX vertex attributes");
                             }
                             if (normals.values && normals.count)
                             {
@@ -403,7 +480,7 @@ namespace vultra
                                 vertex.normal = glm::normalize(normalMatrix * glm::vec3(normal.x, normal.y, normal.z));
                                 if (!std::isfinite(glm::dot(vertex.normal, vertex.normal)))
                                 {
-                                    throw std::runtime_error("Invalid FBX supplied normal");
+                                    return std::unexpected("Invalid FBX supplied normal");
                                 }
                             }
                             if (uvs.values && uvs.count)
@@ -428,7 +505,7 @@ namespace vultra
                                            scene.vertices[output + 2].position - scene.vertices[output].position);
                             if (!std::isfinite(glm::dot(normal, normal)) || glm::dot(normal, normal) <= 0)
                             {
-                                throw std::runtime_error("Degenerate FBX triangle cannot generate a normal");
+                                return std::unexpected("Degenerate FBX triangle cannot generate a normal");
                             }
                             normal = glm::normalize(normal);
                             for (uint32_t c = 0; c < 3; ++c)
@@ -439,9 +516,13 @@ namespace vultra
                         output += 3;
                     }
                 }
-                generateTangents(std::span(scene.vertices).subspan(job.first, job.count),
-                                 std::span(scene.indices).subspan(job.first, job.count),
-                                 job.first);
+                if (auto tangents = generateTangentsExpected(std::span(scene.vertices).subspan(job.first, job.count),
+                                                             std::span(scene.indices).subspan(job.first, job.count),
+                                                             job.first);
+                    !tangents)
+                {
+                    return tangents;
+                }
                 // Tangents already include the fixed V flip. Only OpenGL source maps need the extra inversion.
                 if (!options.directXNormalMaps)
                 {
@@ -452,9 +533,14 @@ namespace vultra
                 }
                 if (output != job.first + job.count)
                 {
-                    throw std::runtime_error("FBX triangulation size mismatch");
+                    return std::unexpected("FBX triangulation size mismatch");
                 }
+                return {};
             });
+        if (!geometryResult)
+        {
+            return std::unexpected(geometryResult.error());
+        }
         glm::vec3 low(std::numeric_limits<float>::max());
         glm::vec3 high(std::numeric_limits<float>::lowest());
         for (const auto& job : jobs)
@@ -466,20 +552,22 @@ namespace vultra
         scene.radius = glm::length(high - low) * 0.5f;
         scene.images.resize(textures.size());
         std::mutex           observed;
-        const SourceObserver serialObserver = [&](const auto& file, auto data)
+        const ExpectedSourceObserver serialObserver = [&](const auto& file,
+                                                          auto        data) -> std::expected<void, std::string>
         {
             const std::lock_guard lock(observed);
             if (observer)
             {
-                observer(file, data);
+                return observer(file, data);
             }
+            return {};
         };
-        asset_detail::runImportJobs(
+        auto images = asset_detail::runImportJobsExpected(
             "Loading FBX images",
             uint32_t(textures.size()),
             workers,
             64 * 1024 * 1024,
-            [&](uint32_t i)
+            [&](uint32_t i) -> std::expected<void, std::string>
             {
                 const auto* texture  = textures[i];
                 const auto  embedded = texture->getEmbeddedData();
@@ -490,14 +578,19 @@ namespace vultra
                     uint32_t   size = 0;
                     if (data.size() < sizeof(size))
                     {
-                        throw std::runtime_error("Truncated FBX embedded image length");
+                        return std::unexpected("Truncated FBX embedded image length");
                     }
                     std::memcpy(&size, data.data(), sizeof(size));
                     if (size != data.size() - sizeof(size))
                     {
-                        throw std::runtime_error("Invalid FBX embedded image length");
+                        return std::unexpected("Invalid FBX embedded image length");
                     }
-                    scene.images[i] = asset_detail::decodeImage(data.subspan(sizeof(size)));
+                    auto image = asset_detail::decodeImageExpected(data.subspan(sizeof(size)));
+                    if (!image)
+                    {
+                        return std::unexpected("Embedded FBX image: " + image.error());
+                    }
+                    scene.images[i] = std::move(*image);
                 }
                 else
                 {
@@ -508,18 +601,51 @@ namespace vultra
                     }
                     if (name.empty())
                     {
-                        throw std::runtime_error("FBX texture has no image path or embedded data");
+                        return std::unexpected("FBX texture has no image path or embedded data");
                     }
                     const std::filesystem::path texturePath = std::u8string(name.begin(), name.end());
-                    scene.images[i] = loadSceneImage(path.parent_path() / texturePath, serialObserver, assetSource);
+                    auto image = loadSceneImageExpected(path.parent_path() / texturePath, serialObserver, assetSource);
+                    if (!image)
+                    {
+                        return std::unexpected(image.error());
+                    }
+                    scene.images[i] = std::move(*image);
                 }
+                return {};
             });
+        if (!images)
+        {
+            return std::unexpected(images.error());
+        }
         if (options.materialConvention == FbxMaterialConvention::eOrcaMetallicRoughness)
         {
-            // ORCA stores cutout coverage in BaseColor alpha. The initial 0.5
-            // rule is redundant only when image, factor and vertex alpha prove it.
-            asset_detail::removeOpaqueOrcaCutouts(scene);
+            // Remove the default cutoff only after the loaded inputs prove full opacity.
+            if (auto audited = asset_detail::removeOpaqueOrcaCutoutsExpected(scene); !audited)
+            {
+                return std::unexpected("Audit ORCA texture opacity: " + audited.error());
+            }
         }
         return scene;
+    }
+
+    SceneData loadFbx(const std::filesystem::path& path,
+                      const SourceObserver&        observer,
+                      uint32_t                     workers,
+                      const AssetSource*           assetSource,
+                      const FbxImportOptions&      options)
+    {
+        asset_detail::LegacySourceObservation observation(observer);
+        auto scene = loadFbxExpected(path, observation.callback(), workers, assetSource, options);
+        observation.rethrowError();
+        if (!scene)
+        {
+            if (options.materialConvention != FbxMaterialConvention::ePhong &&
+                options.materialConvention != FbxMaterialConvention::eOrcaMetallicRoughness)
+            {
+                throw std::invalid_argument(scene.error());
+            }
+            throw std::runtime_error(scene.error());
+        }
+        return std::move(*scene);
     }
 } // namespace vultra

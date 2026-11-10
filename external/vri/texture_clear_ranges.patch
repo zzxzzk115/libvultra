@@ -1,0 +1,135 @@
+--- a/include/vri/vri_command.h
++++ b/include/vri/vri_command.h
+@@ -107,6 +107,15 @@
+     VriAccessStage after;
+ } VriBufferBarrierDesc;
+ 
++/* Complete subresources; zero counts select the remaining mips/layers. A 3D mip includes its full depth. */
++typedef struct VriTextureSubresourceRange
++{
++    uint32_t baseMip;
++    uint32_t mipNum;
++    uint32_t baseLayer;
++    uint32_t layerNum;
++} VriTextureSubresourceRange;
++
+ typedef struct VriTextureBarrierDesc
+ {
+     VriTexture*          texture;
+--- a/include/vri/vri_core.h
++++ b/include/vri/vri_core.h
+@@ -253,6 +253,14 @@
+     /* Bounded host wait on the same timeline as Wait(). Zero polls; UINT64_MAX
+      * waits indefinitely. Timeout never changes the fence's completion value. */
+     VriResult(VRI_CALL* WaitForFence)(VriFence* fence, uint64_t value, uint64_t timeoutNanoseconds);
++    /* Clear selected color-storage subresources outside a render pass. NULL selects every mip/layer.
++     * Values, storage/transfer-destination usage and CopyDestination barriers follow CmdClearStorageTexture.
++     * Does not transition resources. Range/availability errors return before recording the clear; a recording
++     * failure requires discarding the command buffer. Check hasClearStorageTextureRange first; unsupported
++     * backends may expose a NULL entry. Other subresources and the caller's compute bindings are preserved. */
++    VriResult(VRI_CALL* CmdClearStorageTextureRange)(VriCommandBuffer* cmd, VriTexture* texture,
++                                                    const VriClearColor* value,
++                                                    const VriTextureSubresourceRange* range);
+ } VriCoreInterface;
+ 
+ VRI_EXTERN_C_END
+--- a/include/vri/vri_device_desc.h
++++ b/include/vri/vri_device_desc.h
+@@ -159,6 +159,8 @@
+ 
+     /* Independent depth/stencil aspect transitions. Vulkan reports the enabled feature, not just support. */
+     VriBool hasSeparateDepthStencilLayouts;
++    /* Selected mip/layer color-storage clears; independent from legacy mip-zero clear support. */
++    VriBool hasClearStorageTextureRange;
+ } VriDeviceDesc;
+ 
+ VRI_EXTERN_C_END
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -1706,15 +1706,33 @@
+         {
+             vkCmdFillBuffer(CB(cmd)->cmd, Buf(buffer)->buffer, offset, size ? size : VK_WHOLE_SIZE, value);
+         }
++        VriResult VRI_CALL CmdClearStorageTextureRange(VriCommandBuffer* cmd, VriTexture* texture,
++                                                       const VriClearColor* value,
++                                                       const VriTextureSubresourceRange* selected)
++        {
++            if (!cmd || !texture || !value)
++                return VriResult_InvalidArgument;
++            const auto* t = Tex(texture);
++            auto range = selected ? *selected : VriTextureSubresourceRange {};
++            if (range.baseMip >= t->mipNum || range.baseLayer >= t->layerNum)
++                return VriResult_InvalidArgument;
++            range.mipNum = range.mipNum ? range.mipNum : t->mipNum - range.baseMip;
++            range.layerNum = range.layerNum ? range.layerNum : t->layerNum - range.baseLayer;
++            if (range.mipNum > t->mipNum - range.baseMip || range.layerNum > t->layerNum - range.baseLayer)
++                return VriResult_InvalidArgument;
++            VkClearColorValue color;
++            std::memcpy(&color, value, sizeof(color));
++            const VkImageSubresourceRange native {VK_IMAGE_ASPECT_COLOR_BIT, range.baseMip, range.mipNum,
++                                                  range.baseLayer, range.layerNum};
++            vkCmdClearColorImage(CB(cmd)->cmd, t->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &color, 1, &native);
++            return VriResult_Success;
++        }
++
+         void VRI_CALL CmdClearStorageTexture(VriCommandBuffer* cmd, VriTexture* texture, const VriClearColor* value)
+         {
+-            VkClearColorValue cv;
+-            std::memcpy(&cv, value, sizeof(cv)); // VriClearColor + VkClearColorValue are both a 16-byte union
+-            VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, VK_REMAINING_ARRAY_LAYERS};
+-            // vkCmdClearColorImage is a transfer-domain op, so the caller barriers the texture to the
+-            // CopyDestination state/layout (matching the storage-buffer clear's transfer contract).
+-            vkCmdClearColorImage(
+-                CB(cmd)->cmd, Tex(texture)->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &cv, 1, &range);
++            const VriTextureSubresourceRange range {0, 1, 0, 0};
++            if (CmdClearStorageTextureRange(cmd, texture, value, &range) != VriResult_Success)
++                CB(cmd)->device->ReportError("CmdClearStorageTexture: invalid command, texture, value or range");
+         }
+         void VRI_CALL CmdCopyBuffer(VriCommandBuffer*        cmd,
+                                     VriBuffer*               dst,
+@@ -2083,6 +2101,7 @@
+             CmdClearStorageTexture,
+             EnumerateObjects,
+             WaitForFence,
++            CmdClearStorageTextureRange,
+         };
+     } // namespace
+ 
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -1092,6 +1092,7 @@
+         m_desc.hasDrawIndirectCount    = m_hasDrawIndirectCount ? VRI_TRUE : VRI_FALSE;
+         m_desc.hasSeparateDepthStencilLayouts = m_hasSeparateDepthStencilLayouts ? VRI_TRUE : VRI_FALSE;
+         m_desc.hasClearStorageBuffer   = VRI_TRUE; // vkCmdFillBuffer is core Vulkan
++        m_desc.hasClearStorageTextureRange = VRI_TRUE;
+         m_desc.hasClearStorageTexture  = VRI_TRUE; // vkCmdClearColorImage is core Vulkan
+         m_desc.hasMultiview            = m_hasMultiview ? VRI_TRUE : VRI_FALSE;
+         m_desc.maxViewCount            = m_hasMultiview ? m_maxViewCount : 0u;
+--- a/source/core/validation_layer.cpp
++++ b/source/core/validation_layer.cpp
+@@ -625,6 +625,17 @@
+                 return;
+             }
+             c->dev->core.CmdClearStorageTexture(c->real, texture, value);
++        }
++        VriResult VRI_CALL CmdClearStorageTextureRange(VriCommandBuffer* cmd, VriTexture* texture,
++                                                       const VriClearColor* value,
++                                                       const VriTextureSubresourceRange* range)
++        {
++            CmdBufVal* c = CV(cmd);
++            if (!OutsideOk(c, "CmdClearStorageTextureRange must be outside a render pass"))
++                return VriResult_InvalidArgument;
++            if (!c->dev->desc.hasClearStorageTextureRange || !c->dev->core.CmdClearStorageTextureRange)
++                return VriResult_Unsupported;
++            return c->dev->core.CmdClearStorageTextureRange(c->real, texture, value, range);
+         }
+         void VRI_CALL CmdCopyTexture(VriCommandBuffer*         cmd,
+                                      VriTexture*               dst,
+@@ -1077,6 +1088,7 @@
+             t.CmdCopyBuffer               = CmdCopyBuffer;
+             t.CmdClearStorageBuffer       = CmdClearStorageBuffer;
+             t.CmdClearStorageTexture      = CmdClearStorageTexture;
++            t.CmdClearStorageTextureRange = CmdClearStorageTextureRange;
+             // Objects pass through, but the device still belongs to this layer.
+             t.EnumerateObjects           = d->core.EnumerateObjects ? EnumerateObjects : nullptr;
+             t.CmdCopyTexture             = CmdCopyTexture;

@@ -1,4 +1,6 @@
+#include <vultra/assets/material_graph.hpp>
 #include <vultra/assets/shader_asset.hpp>
+#include <vultra/assets/source_file.hpp>
 #include <vultra/core/base/command_line.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/drivers/rhi/shader_program.hpp>
@@ -6,6 +8,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <charconv>
 #include <fstream>
 
 namespace
@@ -13,7 +16,9 @@ namespace
     nlohmann::json describe(const vultra::ShaderParameter& parameter)
     {
         nlohmann::json node {{"name", parameter.name},
+                             {"type", parameter.typeName},
                              {"kind", parameter.kind},
+                             {"scalar", parameter.scalar},
                              {"size", parameter.size},
                              {"stride", parameter.stride},
                              {"count", parameter.count},
@@ -48,10 +53,10 @@ int main(int argc, char** argv)
 try
 {
     argparse::ArgumentParser cli("vultra-shader", "0.1.0", argparse::default_arguments::none);
-    cli.add_description("Cook game .vshader assets or raw .slang programs to checked .vshaderc artifacts");
+    cli.add_description("Cook .vshader/.slang programs, or generate Slang source from .vmatgraph value graphs");
     vultra::addAppOptions(cli);
-    cli.add_argument("source").help("Source .vshader asset or .slang module");
-    cli.add_argument("--output").help("Output .vshaderc file, atomically replaced after successful cooking");
+    cli.add_argument("source").help("Source .vshader asset, .slang module or .vmatgraph function graph");
+    cli.add_argument("--output").help("Output .vshaderc artifact or .slangh graph source, atomically replaced");
     cli.add_argument("--include").append().help("Additional include directory; may be repeated");
     cli.add_argument("--variant").append().help("Selected game variant; repeated, defaults to all declared variants");
     cli.add_argument("--entry").append().help(
@@ -59,7 +64,19 @@ try
     cli.add_argument("--define").append().help("Preprocessor macro NAME=VALUE; may be repeated");
     cli.add_argument("--capability").append().help("Explicit Slang target capability; may be repeated");
     cli.add_argument("--link").append().help("Additional Slang link module; may be repeated");
+    cli.add_argument("--type-conformance")
+        .nargs(3)
+        .append()
+        .help("Slang implementation type, interface type and uint32 dispatch ID; may be repeated");
     cli.add_argument("--profile").default_value(std::string("spirv_1_5")).help("SPIR-V target profile or wgsl");
+    cli.add_argument("--optimization")
+        .default_value(std::string("default"))
+        .choices("none", "default", "high", "maximal")
+        .help("Slang optimization level; maximal can increase code size and compile time");
+    cli.add_argument("--skip-spirv-tools").flag().help("Keep Slang SPIR-V without SPIRV-Tools optimization");
+    cli.add_argument("--debug-info")
+        .choices("none", "minimal", "standard", "maximal")
+        .help("Debug information; omitted uses the compiler library's build default");
     cli.add_argument("--ray-query").flag().help("Enable the SPIR-V ray-query capability");
     cli.add_argument("--project-source").help("Write generated Slang documents and source maps for editor services");
     cli.add_argument("--input-text").help("Read unsaved source text from this file using the original source path");
@@ -70,9 +87,85 @@ try
     {
         return 0;
     }
+    const std::filesystem::path input = cli.get<std::string>("source");
+    if (input.extension() == ".vmatgraph")
+    {
+        constexpr std::array shaderOptions {"--include",
+                                            "--variant",
+                                            "--entry",
+                                            "--define",
+                                            "--capability",
+                                            "--link",
+                                            "--type-conformance",
+                                            "--profile",
+                                            "--optimization",
+                                            "--skip-spirv-tools",
+                                            "--debug-info",
+                                            "--ray-query",
+                                            "--project-source",
+                                            "--input-text",
+                                            "--check",
+                                            "--reflection"};
+        for (const auto option : shaderOptions)
+        {
+            if (cli.is_used(option))
+            {
+                vultra::Logger::app().error("Material graph source generation does not accept {}", option);
+                return 1;
+            }
+        }
+        auto bytes = vultra::readSourceFileExpected(input);
+        if (!bytes)
+        {
+            vultra::Logger::app().error("Read material graph {}: {}", input.string(), bytes.error());
+            return 1;
+        }
+        auto graph = vultra::MaterialGraph::parseExpected(
+            std::string_view(reinterpret_cast<const char*>(bytes->data()), bytes->size()));
+        if (!graph)
+        {
+            vultra::Logger::app().error("Read material graph {}: {}", input.string(), graph.error());
+            return 1;
+        }
+        auto source = graph->sourceExpected(input);
+        if (!source)
+        {
+            vultra::Logger::app().error("Generate material graph {}: {}", input.string(), source.error());
+            return 1;
+        }
+        auto output = input;
+        output.replace_extension(".slangh");
+        if (const auto selected = cli.present<std::string>("--output"))
+        {
+            output = *selected;
+        }
+        if (auto written = vultra::writeFileAtomicallyExpected(output, std::as_bytes(std::span(*source))); !written)
+        {
+            vultra::Logger::app().error("Write material graph {}: {}", output.string(), written.error());
+            return 1;
+        }
+        vultra::Logger::app().info("Material graph source generated: {}", output.string());
+        return 0;
+    }
     vultra::ShaderCompileOptions options;
     options.profile  = cli.get<std::string>("--profile");
     options.rayQuery = cli.get<bool>("--ray-query");
+    const std::map<std::string, vultra::ShaderOptimization> optimizationLevels {
+        {"none", vultra::ShaderOptimization::eNone},
+        {"default", vultra::ShaderOptimization::eDefault},
+        {"high", vultra::ShaderOptimization::eHigh},
+        {"maximal", vultra::ShaderOptimization::eMaximal}};
+    options.optimization = optimizationLevels.find(cli.get<std::string>("--optimization"))->second;
+    options.runSpirvToolsOptimization = !cli.get<bool>("--skip-spirv-tools");
+    if (const auto level = cli.present<std::string>("--debug-info"))
+    {
+        const std::map<std::string, vultra::ShaderDebugInformation> debugLevels {
+            {"none", vultra::ShaderDebugInformation::eNone},
+            {"minimal", vultra::ShaderDebugInformation::eMinimal},
+            {"standard", vultra::ShaderDebugInformation::eStandard},
+            {"maximal", vultra::ShaderDebugInformation::eMaximal}};
+        options.debugInformation = debugLevels.find(*level)->second;
+    }
     if (auto paths = cli.present<std::vector<std::string>>("--include"))
     {
         for (const auto& path : *paths)
@@ -85,6 +178,21 @@ try
         for (const auto& path : *paths)
         {
             options.linkModules.emplace_back(path);
+        }
+    }
+    if (auto values = cli.present<std::vector<std::string>>("--type-conformance"))
+    {
+        for (size_t i = 0; i < values->size(); i += 3)
+        {
+            const auto& text   = (*values)[i + 2];
+            uint32_t    id     = 0;
+            const auto  parsed = std::from_chars(text.data(), text.data() + text.size(), id);
+            if (parsed.ec != std::errc {} || parsed.ptr != text.data() + text.size())
+            {
+                vultra::Logger::app().error("Type conformance requires a uint32 dispatch ID: {}", text);
+                return 1;
+            }
+            options.typeConformances.push_back({(*values)[i], (*values)[i + 1], id});
         }
     }
     if (auto values = cli.present<std::vector<std::string>>("--entry"))
@@ -192,8 +300,23 @@ try
                 {
                     for (const auto& [variant, program] : pass.programs)
                     {
-                        layouts.push_back(
-                            {{"pass", pass.name}, {"variant", variant}, {"parameters", describe(program.parameters)}});
+                        auto definition = asset.variantExpected(variant);
+                        if (!definition)
+                        {
+                            vultra::Logger::app().error("{}", definition.error());
+                            return 1;
+                        }
+                        nlohmann::json conformances = nlohmann::json::array();
+                        for (const auto& conformance : (*definition)->typeConformances)
+                        {
+                            conformances.push_back({{"type", conformance.typeName},
+                                                    {"interface", conformance.interfaceType},
+                                                    {"id", conformance.id}});
+                        }
+                        layouts.push_back({{"pass", pass.name},
+                                           {"variant", variant},
+                                           {"type_conformances", std::move(conformances)},
+                                           {"parameters", describe(program.parameters)}});
                     }
                 }
             }

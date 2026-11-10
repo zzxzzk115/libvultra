@@ -122,6 +122,13 @@ namespace vultra
         BuiltinRenderer(const BuiltinRenderer&)            = delete;
         BuiltinRenderer& operator=(const BuiltinRenderer&) = delete;
 
+        static std::expected<std::unique_ptr<BuiltinRenderer>, std::string>
+        create(Device&            device,
+               GpuScene&          scene,
+               Environment&       environment,
+               VriFormat          outputFormat = VriFormat_RGBA8_UNORM,
+               const AssetSource* shaders      = nullptr);
+
         // C++ composition entry points. Resources returned here can feed custom research passes.
         ShadowMaps addShadowPasses(RenderGraph& graph);
         void       addSkyboxPass(RenderGraph& graph, RenderGraph::Resource hdr);
@@ -132,10 +139,41 @@ namespace vultra
         void
         addDeferredLightingPass(RenderGraph& graph, RenderGraph::Resource hdr, GBuffer gbuffer, ShadowMaps shadows);
 
-        RenderGraph::Resource addToneMappingPass(RenderGraph& graph, RenderGraph::Resource hdr, Extent size);
         // Build linear scene outputs so a project pass can run before tone mapping.
         Outputs addScenePasses(RenderGraph& graph, Extent size);
         Outputs addPasses(RenderGraph& graph, Extent size);
+
+        std::expected<ShadowMaps, std::string> addShadowPassesExpected(RenderGraph& graph);
+        std::expected<void, std::string>       addSkyboxPassExpected(RenderGraph& graph, RenderGraph::Resource hdr);
+        std::expected<void, std::string>       addForwardPassExpected(RenderGraph&          graph,
+                                                                      RenderGraph::Resource hdr,
+                                                                      RenderGraph::Resource depth,
+                                                                      ShadowMaps            shadows);
+        std::expected<GBuffer, std::string>
+        addGBufferPassesExpected(RenderGraph& graph, RenderGraph::Resource depth, Extent size);
+        std::expected<void, std::string> addDeferredLightingPassExpected(RenderGraph&          graph,
+                                                                         RenderGraph::Resource hdr,
+                                                                         GBuffer               gbuffer,
+                                                                         ShadowMaps            shadows);
+        std::expected<RenderGraph::Resource, std::string>
+        addToneMappingPassExpected(RenderGraph& graph, RenderGraph::Resource hdr, Extent size);
+        std::expected<Outputs, std::string> addScenePassesExpected(RenderGraph& graph, Extent size);
+        std::expected<Outputs, std::string> addPassesExpected(RenderGraph& graph, Extent size);
+        // Rejection prevents scene recording until preparation succeeds again. Borrowed materials may have
+        // prepared earlier passes; their caches are not a whole-renderer transaction. Accepted GPU images remain.
+        std::expected<void, std::string>
+                                         prepareExpected(const RenderCamera&                         camera,
+                                                         RenderGraph&                                graph,
+                                                         const Outputs&                              outputs,
+                                                         std::optional<std::span<const RenderLight>> lights = std::nullopt,
+                                                         float                                       environmentIntensity = 1);
+        std::expected<bool, std::string> pollShadersExpected();
+        std::expected<void, std::string> setShaderMaterialExpected(uint32_t slot, ShaderMaterial* material);
+        std::expected<std::array<VriPipeline*, 10>, std::string>
+        prepareShaderMaterialExpected(ShaderMaterial& material, RenderGraph& graph, const Outputs& outputs);
+        static std::expected<std::string, std::string>
+                                         shaderSubshaderCompatibilityExpected(const ShaderSubshader& subshader);
+        std::expected<void, std::string> prepareToneMappingExpected(RenderGraph& graph, RenderGraph::Resource hdr);
 
         // After graph.compile(), before recording. Previous frame must have completed.
         // Absent lighting uses RenderSettings' C++ sun. An explicit empty span disables direct lights.
@@ -165,6 +203,17 @@ namespace vultra
         RenderSettings settings;
 
     private:
+        struct Uninitialized
+        {};
+
+        BuiltinRenderer(Device&            device,
+                        GpuScene&          scene,
+                        Environment&       environment,
+                        VriFormat          outputFormat,
+                        const AssetSource* shaders,
+                        Uninitialized);
+        std::expected<void, std::string> initializeExpected();
+
         enum class GeometryPass
         {
             eShadow,
@@ -174,12 +223,18 @@ namespace vultra
         };
 
         void                                 release();
-        void                                 drawScene(VriCommandBuffer* cmd, GeometryPass pass, uint32_t cascade = 0);
+        std::expected<void, std::string>
+        drawSceneExpected(VriCommandBuffer* cmd, GeometryPass pass, uint32_t cascade = 0);
+        std::expected<std::array<const VriDescriptor*, 20>, std::string> frameViewsExpected(RenderGraph&   graph,
+                                                                                            const Outputs& outputs);
+        std::expected<void, std::string>     requirePreparedExpected(const RenderGraph& graph) const;
         void                                 drawFullscreen(VriCommandBuffer* cmd, VriPipeline* pipeline);
         Device&                              m_Device;
         GpuScene&                            m_Scene;
         Environment&                         m_Environment;
         VriFormat                            m_OutputFormat;
+        bool                                 m_Initialized  = false;
+        const AssetSource*                   m_ShaderAssets = nullptr;
         std::unique_ptr<Texture>             m_OpenPbrLuts;
         std::unique_ptr<Buffer>              m_FrameBuffer;
         VriDescriptor*                       m_FrameView          = nullptr;
@@ -190,7 +245,6 @@ namespace vultra
         VriDescriptorSet*                    m_FrameSet           = nullptr;
         VriDescriptorSet*                    m_MeshletSet         = nullptr;
         VriMeshShaderInterface               m_MeshApi {};
-        std::array<std::vector<uint32_t>, 5> m_VisiblePrimitives;
 
         struct ShadowKey
         {
@@ -198,6 +252,7 @@ namespace vultra
             uint32_t                resource = 0;
             glm::mat4               matrix {1};
             uint64_t                transformRevision = 0;
+            uint64_t                geometryRevision  = 0;
             std::array<uint64_t, 4> programs {};
             bool                    draw                               = false;
             bool                    operator==(const ShadowKey&) const = default;
@@ -213,25 +268,37 @@ namespace vultra
             bool                 operator==(const ShadowMaterial&) const = default;
         };
 
-        std::array<ShadowKey, 4>                  m_PreparedShadowKeys;
+        struct PreparedFrame
+        {
+            std::array<std::vector<uint32_t>, 5> visiblePrimitives;
+            std::array<ShadowKey, 4>             shadowKeys;
+            std::vector<ShadowMaterial>          shadowMaterials;
+            bool                                 cacheShadows = false;
+            std::array<double, 3>                toneParameters {};
+        };
+
+        // Swap accepted/candidate values, preserving the tone-parameter span's member address and vector capacity.
+        PreparedFrame                             m_PreparedFrame;
+        PreparedFrame                             m_CandidateFrame;
+        const RenderGraph*                        m_PreparedGraph = nullptr;
+        std::array<VriBuffer*, 3>                 m_SceneBuffers {};
         std::array<std::optional<ShadowKey>, 4>   m_ShadowCache;
         std::array<std::optional<ShadowKey>, 4>   m_RecordedShadows;
         std::array<bool, 4>                       m_ShadowDrawn {};
-        std::vector<ShadowMaterial>               m_ShadowMaterials;
-        bool                                      m_CacheShadows = false;
         std::vector<VriDescriptorSet*>            m_MaterialSets;
         std::vector<ShaderMaterial*>              m_ShaderMaterials;
         std::vector<std::array<VriPipeline*, 10>> m_ShaderPipelines;
+        std::vector<std::array<VriPipeline*, 10>> m_CandidatePipelines;
         std::vector<VriDescriptor*>               m_MaterialSamplers;
         // Geometry pipelines are indexed by sidedness and reflected front face.
         std::array<std::unique_ptr<ShaderPipeline>, 4> m_Shadow;
         std::array<std::unique_ptr<ShaderPipeline>, 4> m_Forward;
+        std::array<std::unique_ptr<ShaderPipeline>, 4> m_ForwardOpaque;
         std::array<std::unique_ptr<ShaderPipeline>, 4> m_GBufferBase;
         std::array<std::unique_ptr<ShaderPipeline>, 4> m_GBufferMaterial;
         std::array<std::unique_ptr<ShaderPipeline>, 4> m_MeshForward;
         std::unique_ptr<ShaderPipeline>                m_Skybox;
         std::unique_ptr<ToneMappingPass>               m_ToneMapping;
-        std::array<double, 3>                          m_ToneParameters {};
         std::unique_ptr<ShaderPipeline>                m_DeferredLighting;
     };
 } // namespace vultra

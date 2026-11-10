@@ -17,6 +17,10 @@ namespace vultra
 
     // Source files stay untouched. Changed dependencies/options invalidate the derived cache.
     // A rejected cache is logged and rebuilt; importer errors remain errors.
+    std::expected<ImportedAsset, std::string> importAssetExpected(const std::filesystem::path& source,
+                                                                  const AssetImportOptions&    options     = {},
+                                                                  const AssetSource*           assetSource = nullptr);
+
     ImportedAsset importAsset(const std::filesystem::path& source,
                               const AssetImportOptions&    options     = {},
                               const AssetSource*           assetSource = nullptr);

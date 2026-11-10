@@ -1,0 +1,136 @@
+--- a/include/vri/ext/vri_ext_interop.h
++++ b/include/vri/ext/vri_ext_interop.h
+@@ -70,6 +70,14 @@
+     void* physicalDevice; /* VkPhysicalDevice OpenXR mandates (xrGetVulkanGraphicsDevice2KHR); NULL = VRI picks */
+ } VriVulkanCreateHooks;
+ 
++/* Select an existing Metal device, e.g. the device required by OpenXR.
++ * The backend retains the device for its lifetime and creates its own queues. */
++typedef struct VriMetalCreateInfo
++{
++    VriGraphicsAPI api; /* must be VriGraphicsAPI_Metal */
++    void* device; /* id<MTLDevice> */
++} VriMetalCreateInfo;
++
+ typedef struct VriInteropInterface
+ {
+     VriResult (VRI_CALL *GetDeviceNativeHandles)(const VriDevice* device, VriDeviceNativeHandles* out);
+--- a/source/backend_metal/core_mtl.h
++++ b/source/backend_metal/core_mtl.h
+@@ -2,8 +2,10 @@
+ #pragma once
+ 
+ #include <vri/vri.h>
++#include <vri/ext/vri_ext_interop.h>
+ 
+ namespace vri::mtl
+ {
+     const VriCoreInterface* GetCoreInterfaceMTL();
++    const VriInteropInterface* GetInteropInterfaceMTL();
+ } // namespace vri::mtl
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -1954,10 +1954,70 @@
+             t.CmdClearStorageBuffer  = CmdClearStorageBuffer;
+             t.CmdClearStorageTexture = CmdClearStorageTexture;
+             return t;
++        }
++
++        VriResult VRI_CALL GetDeviceNativeHandles(const VriDevice* device, VriDeviceNativeHandles* out)
++        {
++            if (!device || !out) return VriResult_InvalidArgument;
++            const DeviceMTL* d = Dev(device);
++            *out = {};
++            out->api = VriGraphicsAPI_Metal;
++            out->u.metal.device = d->Device();
++            out->u.metal.commandQueue = d->Queue();
++            return VriResult_Success;
++        }
++
++        void* VRI_CALL GetQueueNativeHandle(const VriQueue* queue)
++        {
++            return queue ? reinterpret_cast<const QueueMTL*>(queue)->queue : nullptr;
++        }
++
++        void* VRI_CALL GetTextureNativeHandle(const VriTexture* texture)
++        {
++            return texture ? reinterpret_cast<const TextureMTL*>(texture)->texture : nullptr;
++        }
++
++        void* VRI_CALL GetBufferNativeHandle(const VriBuffer* buffer)
++        {
++            return buffer ? reinterpret_cast<const BufferMTL*>(buffer)->buffer : nullptr;
++        }
++
++        VriResult VRI_CALL WrapTexture(VriDevice* device, const VriWrapTextureDesc* desc, VriTexture** out)
++        {
++            if (!device || !desc || !desc->nativeTexture || !out) return VriResult_InvalidArgument;
++            DeviceMTL* d = Dev(device);
++            id<MTLTexture> native = static_cast<id<MTLTexture>>(desc->nativeTexture);
++            const auto& requested = desc->desc;
++            if (native.device != d->Device() || native.pixelFormat != ToMtlFormat(requested.format) ||
++                native.width != requested.width || native.height != requested.height ||
++                requested.type != VriTextureType_2D || requested.layerNum != 1 || requested.mipNum != 1 ||
++                requested.sampleNum != 1 || native.textureType != MTLTextureType2D)
++                return VriResult_InvalidArgument;
++            auto* t = new TextureMTL {};
++            t->device = d;
++            t->texture = native;
++            t->format = requested.format;
++            t->mtlFormat = native.pixelFormat;
++            t->type = requested.type;
++            t->width = requested.width;
++            t->height = requested.height;
++            t->depth = 1;
++            t->mipNum = 1;
++            t->layerNum = 1;
++            t->sampleNum = 1;
++            t->texelSize = TexelSize(requested.format);
++            t->owned = false;
++            *out = ToHandle(t);
++            return VriResult_Success;
+         }
+ 
++        const VriInteropInterface g_interopMTL = {
++            GetDeviceNativeHandles, GetQueueNativeHandle, GetTextureNativeHandle, GetBufferNativeHandle, WrapTexture
++        };
++
+         const VriCoreInterface g_coreMTL = MakeTable();
+     } // namespace
+ 
+     const VriCoreInterface* GetCoreInterfaceMTL() { return &g_coreMTL; }
++    const VriInteropInterface* GetInteropInterfaceMTL() { return &g_interopMTL; }
+ } // namespace vri::mtl
+--- a/source/backend_metal/device_mtl.mm
++++ b/source/backend_metal/device_mtl.mm
+@@ -44,10 +44,18 @@
+ 
+         @autoreleasepool
+         {
+-            // MTLCreateSystemDefaultDevice picks the system's preferred GPU (the only
+-            // device on Apple Silicon). adapterIndex selection across MTLCopyAllDevices
+-            // is a desktop-Intel nicety we skip for the arm64 MVP.
+-            m_device = MTLCreateSystemDefaultDevice();
++            // OpenXR requires the device returned by its Metal graphics requirements.
++            if (desc.nativeCreateInfo)
++            {
++                const auto* native = static_cast<const VriMetalCreateInfo*>(desc.nativeCreateInfo);
++                if (native->api != VriGraphicsAPI_Metal || !native->device)
++                    return VriResult_InvalidArgument;
++                m_device = static_cast<id<MTLDevice>>(native->device);
++            }
++            else
++            {
++                m_device = MTLCreateSystemDefaultDevice();
++            }
+             if (!m_device)
+             {
+                 ReportError("MTLCreateSystemDefaultDevice returned nil");
+@@ -186,6 +194,7 @@
+     void DeviceMTL::FillRegistry()
+     {
+         m_registry.Register(VRI_INTERFACE_CORE, GetCoreInterfaceMTL(), sizeof(VriCoreInterface));
++        m_registry.Register(VRI_INTERFACE_INTEROP, GetInteropInterfaceMTL(), sizeof(VriInteropInterface));
+         m_registry.Register(VRI_INTERFACE_SWAPCHAIN, GetSwapChainInterfaceMTL(), sizeof(VriSwapChainInterface));
+         m_registry.Register(VRI_INTERFACE_QUERY, GetQueryInterfaceMTL(), sizeof(VriQueryInterface));
+         m_registry.Register(

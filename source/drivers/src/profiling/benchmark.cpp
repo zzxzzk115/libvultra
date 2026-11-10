@@ -1,4 +1,5 @@
 #include <vultra/drivers/profiling/benchmark.hpp>
+#include <vultra/platform/os/file.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -6,6 +7,7 @@
 #include <iomanip>
 #include <map>
 #include <numeric>
+#include <sstream>
 #include <stdexcept>
 
 namespace vultra
@@ -67,35 +69,51 @@ namespace vultra
         }
     } // namespace
 
-    void BenchmarkCapture::add(const FrameTiming& frame, std::span<const PassTiming> passes)
+    std::expected<void, std::string>
+    BenchmarkCapture::addExpected(const FrameTiming& frame, std::span<const PassTiming> passes, bool gpuPassesValid)
     {
-        if (!m_Samples.empty() && frame.frameIndex != m_Samples.back().frame.frameIndex + 1)
+        if (!m_Samples.empty())
         {
-            throw std::invalid_argument("Benchmark frames must be consecutive");
+            const auto previous = m_Samples.back().frame.frameIndex;
+            if (previous == UINT64_MAX || frame.frameIndex != previous + 1)
+            {
+                return std::unexpected("Benchmark frames must be consecutive");
+            }
         }
-        m_Samples.push_back({frame, {passes.begin(), passes.end()}});
+        m_Samples.push_back({frame, {passes.begin(), passes.end()}, gpuPassesValid});
+        return {};
     }
 
-    void BenchmarkCapture::write(const std::filesystem::path& directory,
-                                 const BenchmarkMetadata&     metadata,
-                                 const VriDeviceDesc&         device) const
+    std::expected<void, std::string> BenchmarkCapture::writeExpected(const std::filesystem::path& directory,
+                                                                     const BenchmarkMetadata&     metadata,
+                                                                     const VriDeviceDesc&         device) const
     {
         if (m_Samples.empty())
         {
-            throw std::invalid_argument("Benchmark has no measured frames");
+            return std::unexpected("Benchmark has no measured frames");
         }
-        if (std::filesystem::exists(directory))
+        if (directory.empty() || directory.native().find(std::filesystem::path::value_type {}) != std::string::npos)
         {
-            throw std::invalid_argument("Benchmark output directory already exists");
+            return std::unexpected("Benchmark requires a nonempty output path without embedded nulls");
         }
-        std::filesystem::create_directories(directory);
-        std::ofstream manifest(directory / "manifest.json");
-        std::ofstream frames(directory / "frames.csv");
-        std::ofstream passes(directory / "passes.csv");
-        std::ofstream summary(directory / "summary.csv");
-        if (!manifest || !frames || !passes || !summary)
+        auto output = directory;
+        while (output.has_relative_path() && !output.has_filename())
         {
-            throw std::runtime_error("Cannot create benchmark output files");
+            output = output.parent_path();
+        }
+        std::error_code error;
+        if (!std::filesystem::create_directories(output, error))
+        {
+            return std::unexpected("Cannot create fresh benchmark directory: " + output.string() +
+                                   (error ? ": " + error.message() : " (already exists)"));
+        }
+        std::ostringstream manifest;
+        std::ofstream      frames(output / "frames.csv");
+        std::ofstream      passes(output / "passes.csv");
+        std::ofstream      summary(output / "summary.csv");
+        if (!frames || !passes || !summary)
+        {
+            return std::unexpected("Cannot create benchmark output files: " + output.string());
         }
         manifest << "{\n  \"version\": 1,\n  \"experiment\": " << jsonString(metadata.experiment)
                  << ",\n  \"source_revision\": " << jsonString(metadata.sourceRevision)
@@ -157,7 +175,7 @@ namespace vultra
                        << ',' << pass.cpuMs - pass.cpuBarrierMs << ',';
                 metrics["pass." + pass.name + ".cpu_total"].push_back(pass.cpuMs);
                 metrics["pass." + pass.name + ".cpu_barrier"].push_back(pass.cpuBarrierMs);
-                if (f.gpuMs)
+                if (sample.gpuPassesValid)
                 {
                     passes << pass.gpuMs << ',' << pass.gpuBarrierMs << ',' << pass.gpuMs - pass.gpuBarrierMs;
                     metrics["pass." + pass.name + ".gpu_total"].push_back(pass.gpuMs);
@@ -179,9 +197,40 @@ namespace vultra
         {
             writeSummary(summary, name, values);
         }
+        frames.close();
+        passes.close();
+        summary.close();
         if (!manifest || !frames || !passes || !summary)
         {
-            throw std::runtime_error("Writing benchmark output failed");
+            return std::unexpected("Writing benchmark output failed: " + output.string());
+        }
+        const auto text = std::move(manifest).str();
+        return writeFileAtomicallyExpected(output / "manifest.json", std::as_bytes(std::span(text)));
+    }
+
+    void BenchmarkCapture::add(const FrameTiming& frame, std::span<const PassTiming> passes)
+    {
+        if (auto added = addExpected(frame, passes, frame.gpuMs.has_value()); !added)
+        {
+            throw std::invalid_argument(added.error());
+        }
+    }
+
+    void BenchmarkCapture::write(const std::filesystem::path& directory,
+                                 const BenchmarkMetadata&     metadata,
+                                 const VriDeviceDesc&         device) const
+    {
+        if (m_Samples.empty())
+        {
+            throw std::invalid_argument("Benchmark has no measured frames");
+        }
+        if (std::filesystem::exists(directory))
+        {
+            throw std::invalid_argument("Benchmark output directory already exists");
+        }
+        if (auto written = writeExpected(directory, metadata, device); !written)
+        {
+            throw std::runtime_error(written.error());
         }
     }
 } // namespace vultra

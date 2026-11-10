@@ -1,7 +1,14 @@
 #include "../examples/common/triangle.hpp"
 
+#include <vultra/assets/asset_source.hpp>
+#include <vultra/assets/scene_render_data.hpp>
+#include <vultra/assets/source_file.hpp>
 #include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/platform/os/file.hpp>
+#include <vultra/servers/rendering/builtin/openpbr_luts.hpp>
+#include <vultra/servers/rendering/builtin/visibility_raster_pipeline.hpp>
+#include <vultra/servers/rendering/builtin/visibility_resolve_pipeline.hpp>
+#include <vultra/servers/rendering/builtin/visibility_scene_bindings.hpp>
 #include <vultra/servers/rendering/graph/render_graph.hpp>
 
 #include <nlohmann/json.hpp>
@@ -10,7 +17,9 @@
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <memory>
 #include <stdexcept>
+#include <thread>
 
 namespace
 {
@@ -44,6 +53,11 @@ namespace
         return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
     }
 
+    VriResult VRI_CALL rejectPipelineRetirement(VriDevice*)
+    {
+        return VriResult_Failure;
+    }
+
     // Alter a valid artifact's metadata while retaining its checksum to exercise schema checks.
     template<class Callback>
     void alterDocument(const std::filesystem::path& file, const std::vector<uint8_t>& original, Callback&& callback)
@@ -58,6 +72,8 @@ namespace
             bytes[8 + i] = uint8_t(hash >> (8 * i));
         }
         bytes.insert(bytes.end(), payload.begin(), payload.end());
+        require(!vultra::ShaderProgram::loadExpected(std::as_bytes(std::span(bytes)), file),
+                "Expected shader loader accepted malformed metadata");
         vultra::writeFileAtomically(file, std::as_bytes(std::span(bytes)));
         reject(
             [&]
@@ -131,6 +147,12 @@ try
                               ShaderEntry {"fragmentMain", VriShaderStage_Fragment}};
     const auto       program = ShaderProgram::compile(source, {}, includes);
     require(program.shaders.size() == 2 && !program.rayQuery, "Shader entry discovery failed");
+    const auto expectedDescriptors = program.descriptorsExpected(entries);
+    require(expectedDescriptors && expectedDescriptors->size() == entries.size(),
+            "Expected shader descriptors rejected valid entries");
+    require(!program.descriptorsExpected({}), "Expected shader descriptors accepted an empty entry list");
+    const std::array missingEntries {ShaderEntry {"missing", VriShaderStage_Fragment}};
+    require(!program.descriptorsExpected(missingEntries), "Expected shader descriptors accepted a missing entry");
     program.save(cooked);
     ShaderCompileOptions cacheOptions;
     cacheOptions.includeDirectories.assign(includes.begin(), includes.end());
@@ -143,6 +165,22 @@ try
     const auto original   = readBytes(cooked);
     const auto restored   = ShaderProgram::load(cooked);
     const auto fromMemory = ShaderProgram::load(std::as_bytes(std::span(original)), "embedded/triangle.vshaderc");
+    const auto expectedMemory = ShaderProgram::loadExpected(std::as_bytes(std::span(original)), "embedded/triangle.vshaderc");
+    require(expectedMemory && expectedMemory->shaders.size() == fromMemory.shaders.size() &&
+                expectedMemory->shaders[0].words == fromMemory.shaders[0].words &&
+                expectedMemory->compileKey == fromMemory.compileKey &&
+                expectedMemory->resourceBindings().size() == fromMemory.resourceBindings().size(),
+            "Expected shader loader changed the cooked program");
+    const std::array visibilityIncludes {fs::path("builtin/shaders"), fs::path("external")};
+    const auto visibility = ShaderProgram::compile("builtin/shaders/passes/visibility_lighting.slang", {}, visibilityIncludes);
+    const auto visibilityFile = root / "visibility_lighting.vshaderc";
+    visibility.save(visibilityFile);
+    const auto visibilityBytes = readBytes(visibilityFile);
+    const auto visibilityExpected = ShaderProgram::loadExpected(std::as_bytes(std::span(visibilityBytes)), visibilityFile);
+    require(visibilityExpected && visibilityExpected->shaders.size() == visibility.shaders.size() &&
+                visibilityExpected->parameters.fields.size() == visibility.parameters.fields.size() &&
+                visibilityExpected->shaders[0].words == visibility.shaders[0].words,
+            "Expected shader loader rejected visibility resolve");
     require(fromMemory.shaders.size() == restored.shaders.size() &&
                 fromMemory.shaders[0].words == restored.shaders[0].words &&
                 fromMemory.shaders[1].words == restored.shaders[1].words &&
@@ -150,6 +188,9 @@ try
             "Embedded shader archive differs from filesystem loading");
     auto damaged = original;
     damaged.back() ^= 1;
+    require(!ShaderProgram::loadExpected(std::as_bytes(std::span(damaged)), "embedded/damaged.vshaderc") &&
+                !ShaderProgram::loadExpected(std::as_bytes(std::span(original)).first(15), "embedded/truncated.vshaderc"),
+            "Expected shader loader accepted a corrupt archive");
     reject(
         [&]
         {
@@ -305,6 +346,84 @@ void callableMain(inout Payload payload)
     require(readBytes(cooked) == original, "Rejected shader save overwrote last good artifact");
 
     Device               device;
+    {
+        auto expectedLuts = createOpenPbrLutsExpected(device);
+        require(expectedLuts && (*expectedLuts)->desc.format == VriFormat_RGBA32_SFLOAT &&
+                    (*expectedLuts)->desc.width == 32 && (*expectedLuts)->desc.height == 2210,
+                "Expected OpenPBR LUT default storage changed");
+        const auto core = device.core;
+        device.core.MapBuffer = [](VriBuffer*, uint64_t, uint64_t) -> void* { return nullptr; };
+        const auto failedLuts = createOpenPbrLutsExpected(device);
+        device.core = core;
+        require(!failedLuts && failedLuts.error().find("Upload OpenPBR LUT: Map") != std::string::npos,
+                "Expected OpenPBR LUT upload did not report a staging map failure");
+        auto recoveredLuts = createOpenPbrLutsExpected(device);
+        require(recoveredLuts && readback(device, **expectedLuts).rgba == readback(device, **recoveredLuts).rgba,
+                "Expected OpenPBR LUT upload did not recover after a staging map failure");
+    }
+    if (auto bindless = Device::create(false, nullptr, VriFeature_Bindless); bindless)
+    {
+        auto resolve = VisibilityResolvePipeline::create(**bindless, *visibilityExpected, 71, sizeof(SceneVertex));
+        if (!resolve)
+            std::fprintf(stderr, "Visibility resolve pipeline: %s\n", resolve.error().c_str());
+        require(resolve && (*resolve)->layout() && (*resolve)->handle(), "Create visibility resolve pipeline");
+        require(!VisibilityResolvePipeline::create(**bindless, *visibilityExpected, 0, sizeof(SceneVertex)),
+                "Visibility resolve accepted no materials");
+        {
+            SceneData scene;
+            scene.vertices = {{{-1, -1, 0}, {0, 0, 1}, {0, 0}},
+                              {{1, -1, 0}, {0, 0, 1}, {1, 0}},
+                              {{0, 1, 0}, {0, 0, 1}, {.5f, 1}}};
+            scene.indices  = {0, 1, 2};
+            scene.primitives.push_back({0, 3, 0});
+            scene.materials.emplace_back();
+            PreparedTextures prepared;
+            TextureData pixel;
+            pixel.format = TextureFormat::eRgba8Unorm;
+            pixel.levels.push_back({{1, 1}, {std::byte {255}, std::byte {255}, std::byte {255}, std::byte {255}}});
+            prepared.images.push_back(std::move(pixel));
+            prepared.materials.emplace_back();
+            GpuScene gpuScene(**bindless, scene, prepared);
+            const std::array visible {uint32_t(0)};
+            auto draws = visibilityRasterDraws(gpuScene, visible);
+            require(draws && draws->size() == 1 && (*draws)[0].firstIndex == 0 && (*draws)[0].indexCount == 3 &&
+                        (*draws)[0].material.instance.x == 0 && !(*draws)[0].alphaMasked,
+                    "Visibility scene draw conversion failed");
+            gpuScene.materials[0].alphaCutoff = .5f;
+            auto maskedDraws = visibilityRasterDraws(gpuScene, visible);
+            require(maskedDraws && (*maskedDraws)[0].alphaMasked && (*maskedDraws)[0].material.flags.x == .5f,
+                    "Visibility scene draw conversion lost alpha masking");
+            const std::array invalidVisible {uint32_t(1)};
+            require(!visibilityRasterDraws(gpuScene, invalidVisible), "Visibility scene accepted an invalid primitive");
+            auto oneMaterial =
+                VisibilityResolvePipeline::create(**bindless, *visibilityExpected, 1, gpuScene.vertices->desc.size);
+            require(bool(oneMaterial), "Create single-material visibility resolve pipeline");
+            VriSamplerDesc samplerDesc {};
+            samplerDesc.minFilter = samplerDesc.magFilter = VriFilter_Linear;
+            samplerDesc.mipmapMode                        = VriMipmapMode_Linear;
+            samplerDesc.maxLod                            = 32;
+            VriDescriptor* sampler = nullptr;
+            require((*bindless)->core.CreateSampler((*bindless)->handle, &samplerDesc, &sampler) == VriResult_Success && sampler,
+                    "Create visibility test sampler");
+            const std::array samplers {sampler};
+            auto bindings = VisibilitySceneBindings::create(**bindless, gpuScene, **oneMaterial, samplers);
+            if (!bindings) std::fprintf(stderr, "Visibility bindings: %s\n", bindings.error().c_str());
+            require(bool(bindings), "Create visibility scene bindings");
+            require(!VisibilitySceneBindings::create(**bindless, gpuScene, **resolve, samplers),
+                    "Visibility bindings accepted a mismatched material layout");
+            require(!(*bindings)->updateFrame({}, {}), "Visibility bindings accepted null frame descriptors");
+            const auto core = (*bindless)->core;
+            (*bindless)->core.MapBuffer = [](VriBuffer*, uint64_t, uint64_t) -> void* { return nullptr; };
+            const auto failedUpdate = (*bindings)->updateMaterials();
+            (*bindless)->core = core;
+            require(!failedUpdate && (*bindings)->updateMaterials(), "Visibility material update did not handle map failure");
+            bindings->reset();
+            (*bindless)->core.DestroyDescriptor(sampler);
+        }
+        std::puts("Visibility resolve bindless pipeline creation passed");
+    }
+    else
+        std::puts("Visibility resolve bindless pipeline creation skipped: bindless device unavailable");
     ShaderCompileOptions wgslOptions;
     wgslOptions.profile = "wgsl";
     wgslOptions.includeDirectories.assign(includes.begin(), includes.end());
@@ -320,6 +439,9 @@ void callableMain(inout Payload payload)
     const auto wgslBytes = readBytes(wgslFile);
     const auto wgslRestored =
         ShaderProgram::load(std::as_bytes(std::span(wgslBytes)), "embedded/triangle-wgsl.vshaderc");
+    const auto wgslExpected = ShaderProgram::loadExpected(std::as_bytes(std::span(wgslBytes)), "embedded/triangle-wgsl.vshaderc");
+    require(wgslExpected && wgslExpected->shaders[0].wgsl == wgslRestored.shaders[0].wgsl,
+            "Expected shader loader changed WGSL");
     require(wgslRestored.profile == "wgsl" && wgslRestored.shaders[0].wgsl == wgsl.shaders[0].wgsl &&
                 wgslRestored.shaders[1].wgsl == wgsl.shaders[1].wgsl,
             "Cooked WGSL changed during embedded archive loading");
@@ -377,6 +499,255 @@ void callableMain(inout Payload payload)
     {
         Triangle triangle(device, VriFormat_BGRA8_UNORM, source, root / "source", {includes.begin(), includes.end()});
         baseline = render(triangle);
+        bool expectedBuilderCalled = false;
+        enum class BuildResult
+        {
+            eNative,
+            eRejected,
+            eNull,
+            eAlias
+        };
+        auto       buildResult   = BuildResult::eNative;
+        const auto buildExpected = [&](std::span<const VriShaderDesc> shaders) -> std::expected<VriPipeline*, std::string>
+        {
+            expectedBuilderCalled = true;
+            if (buildResult == BuildResult::eRejected)
+            {
+                return std::unexpected("injected pipeline builder rejection");
+            }
+            if (buildResult == BuildResult::eNull)
+            {
+                return nullptr;
+            }
+            if (buildResult == BuildResult::eAlias)
+            {
+                return triangle.pipeline->handle();
+            }
+            VriColorAttachmentDesc color {};
+            color.format = VriFormat_BGRA8_UNORM;
+            color.colorWriteMask = VriColorWrite_RGBA;
+            VriGraphicsPipelineDesc desc {};
+            desc.pipelineCache = device.pipelineCache;
+            desc.pipelineLayout = triangle.layout;
+            desc.shaders = shaders.data();
+            desc.shaderNum = uint32_t(shaders.size());
+            desc.inputAssembly.topology = VriPrimitiveTopology_TriangleList;
+            desc.rasterization.cullMode = VriCullMode_None;
+            desc.rasterization.lineWidth = 1;
+            desc.multisample.sampleNum = 1;
+            desc.outputMerger.colors = &color;
+            desc.outputMerger.colorNum = 1;
+            VriPipeline* pipeline = nullptr;
+            const auto result = device.core.CreateGraphicsPipeline(device.handle, &desc, &pipeline);
+            if (result != VriResult_Success)
+                return std::unexpected("Create triangle pipeline failed: " + std::to_string(result));
+            return pipeline;
+        };
+        auto incompatible = ShaderPipeline::create(device, wgslRestored, {entries.begin(), entries.end()}, buildExpected);
+        require(!incompatible && !expectedBuilderCalled, "Expected pipeline accepted an incompatible target");
+        auto missing = ShaderPipeline::create(device, program, {missingEntries.begin(), missingEntries.end()}, buildExpected);
+        require(!missing && !expectedBuilderCalled, "Expected pipeline accepted a missing entry");
+        auto failed = ShaderPipeline::create(device,
+                                             program,
+                                             {entries.begin(), entries.end()},
+                                             [](auto) -> std::expected<VriPipeline*, std::string>
+                                             {
+                                                 return std::unexpected("builder failure");
+                                             });
+        require(!failed && failed.error() == "builder failure", "Expected pipeline lost builder error");
+        auto empty = ShaderPipeline::create(device,
+                                            program,
+                                            {entries.begin(), entries.end()},
+                                            [](auto) -> std::expected<VriPipeline*, std::string>
+                                            {
+                                                return nullptr;
+                                            });
+        require(!empty, "Expected pipeline accepted a null handle");
+        std::weak_ptr<int> builderCapture;
+        const auto         transientBuilder = [&]
+        {
+            const auto token = std::make_shared<int>(0);
+            builderCapture   = token;
+            return ShaderPipeline::ExpectedBuilder(
+                [&, token](std::span<const VriShaderDesc> shaders) -> std::expected<VriPipeline*, std::string>
+                {
+                    (void)token;
+                    return buildExpected(shaders);
+                });
+        };
+        auto created = ShaderPipeline::create(device, program, {entries.begin(), entries.end()}, transientBuilder());
+        require(builderCapture.expired(), "Immutable pipeline retained a transient builder capture");
+        require(created && expectedBuilderCalled && (*created)->generation() == 1 && (*created)->handle(),
+                "Expected pipeline creation failed");
+        triangle.pipeline = std::move(*created);
+        require(compare(baseline, render(triangle)).mse == 0, "Expected pipeline changed GPU pixels");
+
+        const auto retained = [&]
+        {
+            const auto handle     = triangle.pipeline->handle();
+            const auto generation = triangle.pipeline->generation();
+            const auto identity   = triangle.pipeline->identity();
+            return [&, handle, generation, identity]
+            {
+                const auto& current = triangle.pipeline->identity();
+                require(triangle.pipeline->handle() == handle && triangle.pipeline->generation() == generation &&
+                            current.file == identity.file && current.compileKey == identity.compileKey &&
+                            current.bytecodeHash == identity.bytecodeHash &&
+                            std::ranges::equal(current.dependencies,
+                                               identity.dependencies,
+                                               [](const auto& a, const auto& b)
+                                               {
+                                                   return a.path == b.path && a.hash == b.hash;
+                                               }),
+                        "Rejected pipeline replacement changed the accepted identity");
+                require(compare(baseline, render(triangle)).mse == 0, "Rejected replacement changed accepted pixels");
+            };
+        };
+        std::function<void()> unchanged = retained();
+        require(!triangle.pipeline->reloadExpected(), "In-memory pipeline unexpectedly reloaded a file");
+        unchanged();
+
+        ShaderCompileOptions pipelineOptions;
+        pipelineOptions.entries.assign(entries.begin(), entries.end());
+        pipelineOptions.includeDirectories.assign(includes.begin(), includes.end());
+        pipelineOptions.defines = {{"PIPELINE_EXPECTED_TEST", "1"}};
+        auto sourced            = ShaderPipeline::create(device,
+                                              source,
+                                              pipelineOptions,
+                                              buildExpected,
+                                              root / "source",
+                                              root / "pipeline-cache");
+        require(bool(sourced), sourced ? "" : sourced.error().c_str());
+        triangle.pipeline = std::move(*sourced);
+        require(compare(baseline, render(triangle)).mse == 0 && !triangle.pipeline->identity().compileKey.empty(),
+                "Expected source pipeline changed pixels or lost cache identity");
+        require(!ShaderPipeline::create(device,
+                                        source,
+                                        pipelineOptions,
+                                        buildExpected,
+                                        root / "absent-watch",
+                                        root / "pipeline-cache"),
+                "Expected pipeline accepted an absent source watch root");
+        require(!ShaderPipeline::create(device, root / "bad.extension", pipelineOptions, buildExpected),
+                "Expected pipeline accepted an unsupported file extension");
+        require(
+            !ShaderPipeline::create(device, fs::path(std::string("bad\0source", 10)), pipelineOptions, buildExpected),
+            "Expected pipeline accepted a NUL path");
+        require(!ShaderPipeline::create(device, source, pipelineOptions, ShaderPipeline::ExpectedBuilder {}),
+                "Expected file pipeline accepted an empty builder");
+        unchanged = retained();
+        for (const auto result : {BuildResult::eRejected, BuildResult::eNull, BuildResult::eAlias})
+        {
+            buildResult         = result;
+            const auto rejected = triangle.pipeline->reloadExpected();
+            require(!rejected && !rejected.error().empty(), "Expected reload accepted a rejected/null/aliased build");
+            if (result == BuildResult::eRejected)
+            {
+                require(rejected.error().find("injected pipeline builder rejection") != std::string::npos,
+                        "Expected reload lost builder diagnostics");
+            }
+            unchanged();
+        }
+        buildResult                = BuildResult::eNative;
+        const auto idle            = device.core.DeviceWaitIdle;
+        device.core.DeviceWaitIdle = rejectPipelineRetirement;
+        const auto retired         = triangle.pipeline->reloadExpected();
+        device.core.DeviceWaitIdle = idle;
+        require(!retired && retired.error().find("Retire previous") != std::string::npos,
+                "Expected reload lost device-retirement rejection");
+        unchanged();
+        const auto write = [](const fs::path& file, std::string_view text)
+        {
+            const auto result = writeFileAtomicallyExpected(file, std::as_bytes(std::span(text)));
+            require(bool(result), result ? "" : result.error().c_str());
+        };
+        const auto colorFile = root / "source/color.slangh";
+        write(colorFile, "invalid source @@@");
+        require(!triangle.pipeline->reloadExpected() && !triangle.pipeline->diagnostics().empty(),
+                "Expected source reload accepted a compiler failure");
+        unchanged();
+        const auto external = root / "external-dep";
+        fs::create_directory(external);
+        const auto implementation = external / "implementation.slangh";
+        write(implementation, "float3 experimentColor(float3 c) { return c * 0.25; }\n");
+        write(colorFile, "#include \"../external-dep/implementation.slangh\"\n");
+        buildResult = BuildResult::eRejected;
+        require(!triangle.pipeline->reloadExpected(), "External dependency unexpectedly bypassed builder rejection");
+        unchanged();
+        // Drain notifications from the source edit before changing only the external dependency.
+        const auto quiet = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+        while (std::chrono::steady_clock::now() < quiet)
+        {
+            const auto changed = triangle.pipeline->pollExpected();
+            require(!changed || !*changed, "Rejected builder unexpectedly published a watched program");
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        buildResult = BuildResult::eNative;
+        write(implementation, "float3 experimentColor(float3 c) { return c * 0.5; }\n");
+        bool       published = false;
+        const auto deadline  = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (!published && std::chrono::steady_clock::now() < deadline)
+        {
+            const auto changed = triangle.pipeline->pollExpected();
+            require(bool(changed), changed ? "" : changed.error().c_str());
+            published = *changed;
+            if (!published)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+        }
+        require(published, "Expected watcher failed to publish an included-source edit");
+        const auto changedImage = render(triangle);
+        require(compare(baseline, changedImage).mse > 0, "Expected source edit did not change GPU pixels");
+        {
+            Triangle reference(device,
+                               VriFormat_BGRA8_UNORM,
+                               source,
+                               root / "source",
+                               {includes.begin(), includes.end()});
+            require(compare(changedImage, render(reference)).mse == 0,
+                    "Expected hot reload differs from a fresh source pipeline");
+        }
+        write(colorFile, "float3 experimentColor(float3 c) { return c; }\n");
+        fs::remove_all(external);
+        require(bool(triangle.pipeline->reloadExpected()) && compare(baseline, render(triangle)).mse == 0,
+                "Expected source reload failed to recover reference pixels");
+
+        auto directory = AssetSource::create(root / "source");
+        require(bool(directory), directory ? "" : directory.error().c_str());
+        const std::array packageFiles {VpkFile {"triangle.vshaderc", cooked}};
+        const auto       packageFile = root / "pipeline.vpk";
+        VpkArchive::pack(packageFiles, packageFile);
+        auto diskArchive = VpkArchive::open(packageFile);
+        require(bool(diskArchive), diskArchive ? "" : diskArchive.error().c_str());
+        auto disk = AssetSource::create(std::move(*diskArchive));
+        require(bool(disk), disk ? "" : disk.error().c_str());
+        auto packageBytes = readSourceFileExpected(packageFile);
+        require(bool(packageBytes), packageBytes ? "" : packageBytes.error().c_str());
+        auto memoryArchive = VpkArchive::open(root / "virtual-pipeline.vpk", *packageBytes);
+        require(bool(memoryArchive), memoryArchive ? "" : memoryArchive.error().c_str());
+        auto memory = AssetSource::create(std::move(*memoryArchive));
+        require(bool(memory), memory ? "" : memory.error().c_str());
+        for (const auto* provider : {directory->get(), disk->get(), memory->get()})
+        {
+            auto packaged = ShaderPipeline::create(device,
+                                                   "triangle.slang",
+                                                   pipelineOptions,
+                                                   buildExpected,
+                                                   root / "absent-watch",
+                                                   root / "not-a-cache",
+                                                   provider);
+            require(bool(packaged), packaged ? "" : packaged.error().c_str());
+            triangle.pipeline  = std::move(*packaged);
+            const auto changed = triangle.pipeline->pollExpected();
+            require(changed && !*changed && compare(baseline, render(triangle)).mse == 0,
+                    "Expected packaged pipeline created a watcher or changed GPU pixels");
+            require(bool(triangle.pipeline->reloadExpected()) && compare(baseline, render(triangle)).mse == 0,
+                    "Expected packaged pipeline failed to reload checked source bytes");
+        }
+        triangle.pipeline.reset(); // Borrowed provider bytes and sources outlive their final GPU use.
+        std::puts("Expected pipelines: source/watch/edit, builder/null/alias/idle rejection, identity retention, "
+                  "directory/disk/memory VPK GPU parity passed");
     }
     fs::remove(source);
     fs::remove(root / "source/color.slangh");

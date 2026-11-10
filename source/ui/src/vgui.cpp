@@ -460,12 +460,14 @@ namespace vultra
                                    VriPipelineStage_ColorAttachmentOutput});
                 for (const auto& draw : m_Draws)
                 {
-                    if (draw.geometry->vertices->state.access != VriAccess_VertexBufferRead)
+                    auto vertexState = draw.geometry->vertices->stateExpected();
+                    if (!vertexState || vertexState->access != VriAccess_VertexBufferRead)
                     {
                         draw.geometry->vertices->transition(cmd,
                                                             {VriAccess_VertexBufferRead, VriPipelineStage_VertexInput});
                     }
-                    if (draw.geometry->indices->state.access != VriAccess_IndexBufferRead)
+                    auto indexState = draw.geometry->indices->stateExpected();
+                    if (!indexState || indexState->access != VriAccess_IndexBufferRead)
                     {
                         draw.geometry->indices->transition(cmd,
                                                            {VriAccess_IndexBufferRead, VriPipelineStage_VertexInput});

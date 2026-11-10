@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstddef>
+#include <expected>
 #include <filesystem>
 #include <optional>
 #include <span>
@@ -49,7 +50,8 @@ namespace vultra
         eInteger,
         eUnsigned,
         eBoolean,
-        eOther
+        eOther,
+        eFloat16
     };
 
     enum class ShaderOffsetKind
@@ -65,6 +67,8 @@ namespace vultra
         ShaderOffsetKind kind;
         uint64_t         offset = 0;
         uint64_t         space  = 0;
+
+        bool operator==(const ShaderParameterOffset&) const = default;
     };
 
     // Container and element nodes retain relative layouts, including implicit global containers.
@@ -87,15 +91,45 @@ namespace vultra
         std::vector<ShaderParameterOffset> offsets;
         std::vector<ShaderParameter>       fields;
 
+        bool operator==(const ShaderParameter&) const = default;
+
         uint64_t               offset(ShaderOffsetKind kind) const;
         uint64_t               space(ShaderOffsetKind kind) const;
         const ShaderParameter* field(std::string_view name) const;
+        // Canonical descriptor path: containers and array elements are implicit; no numeric subscripts.
+        std::expected<const ShaderParameter*, std::string> bindingExpected(std::string_view name) const;
     };
 
     struct ShaderDefine
     {
         std::string name;
         std::string value;
+    };
+
+    // Explicit dispatch IDs are shared with shader inputs; no process-local automatic assignment.
+    struct ShaderTypeConformance
+    {
+        std::string typeName;
+        std::string interfaceType;
+        uint32_t    id = 0;
+        // Metadata validation is available in cooked-only consumers; Slang resolves actual type identities at link.
+        static std::expected<void, std::string> validateExpected(std::span<const ShaderTypeConformance> conformances);
+    };
+
+    enum class ShaderOptimization
+    {
+        eNone,
+        eDefault,
+        eHigh,
+        eMaximal
+    };
+
+    enum class ShaderDebugInformation
+    {
+        eNone,
+        eMinimal,
+        eStandard,
+        eMaximal
     };
 
     struct ShaderCompileOptions
@@ -105,9 +139,14 @@ namespace vultra
         std::vector<std::filesystem::path> linkModules;
         std::vector<ShaderDefine>          defines;
         std::vector<ShaderDefine>          linkSources;            // Module name and ordinary Slang source text.
+        std::vector<ShaderTypeConformance> typeConformances;       // Link selected implementations and dispatch IDs.
         std::string                        profile  = "spirv_1_5"; // SPIR-V profile or "wgsl".
         bool                               rayQuery = false;
         std::vector<std::string>           capabilities;
+        ShaderOptimization                 optimization = ShaderOptimization::eDefault;
+        // Unspecified retains the compiler library's build default: standard in debug, none in release.
+        std::optional<ShaderDebugInformation> debugInformation;
+        bool                                  runSpirvToolsOptimization = true;
     };
 
     struct ShaderDependency
@@ -126,6 +165,7 @@ namespace vultra
         uint64_t           uniformSize  = 0;
         VriTextureViewType viewType     = VriTextureViewType_2D;
         bool               pushConstant = false;
+        bool               array        = false; // Preserve array addressing even at capacity one.
     };
 
     // Owns one target's code, layout and entry names; descriptor views expire when this program changes.
@@ -156,9 +196,15 @@ namespace vultra
         static std::string   compilerVersion();
 #endif
         static ShaderProgram       load(const std::filesystem::path& file);
+        static std::expected<ShaderProgram, std::string> loadExpected(const std::filesystem::path& file);
         static ShaderProgram       load(std::span<const std::byte> bytes, const std::filesystem::path& identity);
+        static std::expected<ShaderProgram, std::string> loadExpected(std::span<const std::byte> bytes, const std::filesystem::path& identity);
         void                       save(const std::filesystem::path& file) const;
+        std::expected<void, std::string> saveExpected(const std::filesystem::path& file) const;
         std::vector<VriShaderDesc> descriptors(std::span<const ShaderEntry> entries) const;
+        std::expected<std::vector<VriShaderDesc>, std::string>
+        descriptorsExpected(std::span<const ShaderEntry> entries) const;
         std::vector<ShaderResourceBinding> resourceBindings() const;
+        std::expected<std::vector<ShaderResourceBinding>, std::string> resourceBindingsExpected() const;
     };
 } // namespace vultra

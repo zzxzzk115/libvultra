@@ -17,21 +17,6 @@ namespace
         }
     }
 
-    template<typename F>
-    void requireFailure(F&& operation)
-    {
-        bool failed = false;
-        try
-        {
-            operation();
-        }
-        catch (const std::exception&)
-        {
-            failed = true;
-        }
-        require(failed, "Malformed supported DDS did not report an import failure");
-    }
-
     std::vector<std::byte> bc1(uint16_t first, uint16_t second, uint32_t selectors = 0)
     {
         std::vector<std::byte> result(8);
@@ -107,7 +92,15 @@ namespace
 
     void testImages()
     {
-        using asset_detail::imageHasOpaqueAlpha;
+        const auto imageHasOpaqueAlpha = [](const SceneImage& image)
+        {
+            auto result = asset_detail::imageHasOpaqueAlphaExpected(image);
+            if (!result)
+            {
+                throw std::runtime_error(result.error());
+            }
+            return *result;
+        };
         require(imageHasOpaqueAlpha({1, 1, {12, 34, 56, 255}, {}}), "Opaque RGBA was rejected");
         require(!imageHasOpaqueAlpha({1, 1, {12, 34, 56, 254}, {}}), "Nonopaque RGBA was accepted");
         require(!imageHasOpaqueAlpha({}), "Empty pixels were mistaken for opaque DDS or RGBA");
@@ -147,22 +140,21 @@ namespace
                 "Unproved DDS format was treated as opaque");
         auto broken = dds(71, 4, 4, {bc1(65535, 0)});
         broken.dds.pop_back();
-        requireFailure(
-            [&]
-            {
-                imageHasOpaqueAlpha(broken);
-            });
+        require(!asset_detail::imageHasOpaqueAlphaExpected(broken), "Truncated DDS mip data was accepted");
         broken.dds.resize(4);
-        requireFailure(
-            [&]
-            {
-                imageHasOpaqueAlpha(broken);
-            });
+        require(!asset_detail::imageHasOpaqueAlphaExpected(broken), "Truncated DDS header was accepted");
     }
 
     void testMaterials()
     {
-        using asset_detail::removeOpaqueOrcaCutouts;
+        const auto removeOpaqueOrcaCutouts = [](SceneData& data)
+        {
+            auto result = asset_detail::removeOpaqueOrcaCutoutsExpected(data);
+            if (!result)
+            {
+                throw std::runtime_error(result.error());
+            }
+        };
         auto value = scene();
         removeOpaqueOrcaCutouts(value);
         require(value.materials[0].alphaCutoff == -1, "Opaque referenced vertices did not remove redundant cutout");

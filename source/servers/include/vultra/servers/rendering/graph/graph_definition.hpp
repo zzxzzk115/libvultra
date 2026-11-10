@@ -2,6 +2,7 @@
 
 #include <vultra/servers/rendering/graph/pass_catalog.hpp>
 
+#include <expected>
 #include <filesystem>
 
 namespace vultra
@@ -38,12 +39,18 @@ namespace vultra
         std::vector<GraphEdge>     edges;
         std::vector<std::string>   outputs;
 
-        std::string            serialize() const;
-        static GraphDefinition parse(std::string_view text);
-        void                   save(const std::filesystem::path& file) const;
-        static GraphDefinition load(const std::filesystem::path& file);
+        // Checked version-1 persistence, bounded to 64 MiB. Invalid UTF-8 and nonfinite parameters reject.
+        // Semantic connection/capability validation belongs to buildExpected(), so editable partial graphs persist.
+        std::expected<std::string, std::string>            serializeExpected() const;
+        static std::expected<GraphDefinition, std::string> parseExpected(std::string_view text);
+        // Atomic publication preserves the previous file on validation or write failure.
+        std::expected<void, std::string>                   saveExpected(const std::filesystem::path& file) const;
+        static std::expected<GraphDefinition, std::string> loadExpected(const std::filesystem::path& file);
 
-        // Build into a fresh candidate graph. Discard the candidate if validation/build fails.
+        // Append only; call between completed GPU uses. Failure rolls back all appended passes/resources/exports.
+        // Keep the successful GraphBuild alive until its graph callbacks and final GPU uses are discarded.
         GraphBuild build(RenderGraph& graph, const PassCatalog& catalog, std::span<const GraphBinding> imports) const;
+        std::expected<GraphBuild, std::string>
+        buildExpected(RenderGraph& graph, const PassCatalog& catalog, std::span<const GraphBinding> imports) const;
     };
 } // namespace vultra

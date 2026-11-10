@@ -10,21 +10,24 @@
 #include <atomic>
 #include <chrono>
 #include <exception>
+#include <format>
 #include <mutex>
+#include <optional>
 #include <thread>
-#include <vector>
+#include <utility>
 
 namespace vultra::asset_detail
 {
-    void runImportJobs(std::string_view                     phase,
-                       uint32_t                             count,
-                       uint32_t                             workerLimit,
-                       uint64_t                             scratchPerJob,
-                       const std::function<void(uint32_t)>& job)
+    std::expected<void, std::string>
+    runImportJobsExpected(std::string_view                                                 phase,
+                          uint32_t                                                         count,
+                          uint32_t                                                         workerLimit,
+                          uint64_t                                                         scratchPerJob,
+                          const std::function<std::expected<void, std::string>(uint32_t)>& job)
     {
         if (count == 0)
         {
-            return;
+            return {};
         }
         const auto     hardware  = std::max(1u, std::thread::hardware_concurrency());
         const auto     requested = workerLimit == 0 ? hardware : std::min(workerLimit, hardware);
@@ -43,7 +46,7 @@ namespace vultra::asset_detail
         uint32_t                        completed = 0;
         std::mutex                      progress;
         std::atomic_bool                failed = false;
-        std::vector<std::exception_ptr> errors(count);
+        std::optional<std::pair<uint32_t, std::string>> error;
         vtask::Scheduler                scheduler(workers);
         vtask::TaskSet                  tasks(
             count,
@@ -52,38 +55,73 @@ namespace vultra::asset_detail
             {
                 for (uint32_t i = range.begin; i < range.end && !failed.load(std::memory_order_relaxed); ++i)
                 {
-                    try
+                    auto result = job(i);
+                    if (!result)
                     {
-                        job(i);
-                        const std::lock_guard lock(progress);
-                        ++completed;
-                        const auto now = std::chrono::steady_clock::now();
-                        if (completed == 1 || completed == count || now - lastLog >= std::chrono::milliseconds(500))
-                        {
-                            Logger::core().info("{}: {}/{} ({:.1f} ms)",
-                                                phase,
-                                                completed,
-                                                count,
-                                                std::chrono::duration<double, std::milli>(now - started).count());
-                            lastLog = now;
-                        }
-                    }
-                    catch (...)
-                    {
-                        errors[i] = std::current_exception();
                         failed.store(true, std::memory_order_relaxed);
+                        const std::lock_guard lock(progress);
+                        if (!error || i < error->first)
+                        {
+                            error.emplace(i, std::move(result.error()));
+                        }
+                        break;
+                    }
+                    const std::lock_guard lock(progress);
+                    ++completed;
+                    const auto now = std::chrono::steady_clock::now();
+                    if (completed == 1 || completed == count || now - lastLog >= std::chrono::milliseconds(500))
+                    {
+                        Logger::core().info("{}: {}/{} ({:.1f} ms)",
+                                            phase,
+                                            completed,
+                                            count,
+                                            std::chrono::duration<double, std::milli>(now - started).count());
+                        lastLog = now;
                     }
                 }
             });
         scheduler.run(tasks);
         scheduler.wait(tasks);
-        for (uint32_t i = 0; i < errors.size(); ++i)
+        if (error)
         {
-            if (errors[i])
-            {
-                Logger::core().error("{} failed at job {}", phase, i);
-                std::rethrow_exception(errors[i]);
-            }
+            return std::unexpected(std::format("{} failed at job {}: {}", phase, error->first, error->second));
+        }
+        return {};
+    }
+
+    void runImportJobs(std::string_view                     phase,
+                       uint32_t                             count,
+                       uint32_t                             workerLimit,
+                       uint64_t                             scratchPerJob,
+                       const std::function<void(uint32_t)>& job)
+    {
+        std::mutex                                             errorMutex;
+        std::optional<std::pair<uint32_t, std::exception_ptr>> error;
+        const auto                                             result = runImportJobsExpected(phase,
+                                                  count,
+                                                  workerLimit,
+                                                  scratchPerJob,
+                                                  [&](uint32_t i) -> std::expected<void, std::string>
+                                                  {
+                                                      try
+                                                      {
+                                                          job(i);
+                                                          return {};
+                                                      }
+                                                      catch (...)
+                                                      {
+                                                          const std::lock_guard lock(errorMutex);
+                                                          if (!error || i < error->first)
+                                                          {
+                                                              error.emplace(i, std::current_exception());
+                                                          }
+                                                          return std::unexpected("Legacy import job threw");
+                                                      }
+                                                  });
+        if (!result && error)
+        {
+            Logger::core().error("{}", result.error());
+            std::rethrow_exception(error->second);
         }
     }
 } // namespace vultra::asset_detail

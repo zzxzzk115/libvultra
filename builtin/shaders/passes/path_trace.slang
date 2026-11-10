@@ -1,3 +1,7 @@
+// Sampled globals use their own descriptor set alongside the bindless material sets.
+#define VULTRA_OPENPBR_LUT_BINDING 0
+#define VULTRA_OPENPBR_LUT_SET 3
+
 #include "lib/ray_surface.slangh"
 #include "lib/texture.slangh"
 #include "lib/environment_sampling.slangh"
@@ -221,7 +225,7 @@ void traceMain(uint3 thread : SV_DispatchThreadID)
             float4 current = mul(traceFrame.viewProjection, float4(surface.position, 1));
             float4 previousWorld = mul(tracePreviousTransforms[hit.primitive].model, float4(surface.objectPosition, 1));
             float4 previous = mul(traceFrame.previousViewProjection, previousWorld);
-            if (previous.w > 0 && current.w > 0)
+            if (traceFrame.options.w != 0 && previous.w > 0 && current.w > 0)
             {
                 motion = (previous.xy / previous.w - current.xy / current.w) * float2(0.5, -0.5) * float2(width, height);
             }
@@ -269,7 +273,7 @@ void traceMain(uint3 thread : SV_DispatchThreadID)
     traceAlbedo[pixel] = float4(albedo, 1);
     traceNormal[pixel] = float4(normal, 1);
     traceDepth[pixel] = float4(depth.xxx, 1);
-    traceMotion[pixel] = float4(motion, 0, 1);
+    traceMotion[pixel] = float4(motion, 0, traceFrame.options.w);
     traceSamples[pixel] = float4(float(sample + 1).xxx, 1);
     traceRays[pixel] = float4(traceRays[pixel].rgb + float(rays).xxx, 1);
 }

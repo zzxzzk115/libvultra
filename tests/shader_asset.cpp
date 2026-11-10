@@ -1,3 +1,7 @@
+#include "support/material_expected_probe.hpp"
+#include "support/material_persistence_expected_probe.hpp"
+#include "support/shader_asset_expected_probe.hpp"
+
 #include <vultra/assets/shader_asset.hpp>
 #include <vultra/platform/os/file.hpp>
 
@@ -70,6 +74,120 @@ ENDSLANG
     }
 })";
 
+    std::expected<void, std::string> authoringExpected(const std::filesystem::path& root)
+    {
+        using namespace vultra;
+        const auto source = root / "expected.vshader";
+        const auto cooked = root / "expected.vshaderc";
+        auto       parsed = ShaderAsset::parseExpected(source, kSource);
+        if (!parsed)
+        {
+            return std::unexpected(parsed.error());
+        }
+        auto material  = parsed->generatedMaterialSourceExpected();
+        auto generated = parsed->generatedPassSourceExpected(0, 0);
+        auto projected = parsed->projectSourcesExpected();
+        if (!material || !generated || !projected || projected->size() != 1 ||
+            projected->front().mappings.size() < parsed->properties.size() ||
+            parsed->generatedPassSourceExpected(1, 0) || parsed->generatedPassSourceExpected(0, 1))
+        {
+            return std::unexpected("Expected shader generation/projection or index rejection failed");
+        }
+        ShaderSourceProjection missing;
+        missing.text  = "unrelated";
+        size_t cursor = 3;
+        if (missing.mapBlockExpected(parsed->subshaders.front().passes.front().source, cursor) || cursor != 3 ||
+            !missing.mappings.empty())
+        {
+            return std::unexpected("Rejected source mapping mutated accepted mappings/cursor");
+        }
+        for (const auto& [from, to] :
+             std::vector<std::pair<std::string, std::string>> {{"Range(0.03, 1)", "Range(1, 0)"},
+                                                               {"= 0.4", "= 1e999"},
+                                                               {"Integer) = 1", "Integer) = 2147483648"},
+                                                               {"Cull [cull]", "Cull [cull] Cull Off"},
+                                                               {"bool useDetail = true", "bool useDetail = invalid"},
+                                                               {"int sampleCount = 4", "int sampleCount = 1.5"},
+                                                               {"Tests/Material", "Tests/\\q"}})
+        {
+            std::string invalid(kSource);
+            invalid.replace(invalid.find(from), from.size(), to);
+            auto result = ShaderAsset::parseExpected(source, invalid);
+            if (result || result.error().find(source.filename().string()) == std::string::npos)
+            {
+                return std::unexpected("Expected authoring semantic rejection lost source context: " + from);
+            }
+        }
+        if (ShaderAsset::parseExpected(source, "Shader { broken") ||
+            ShaderAsset::parseExpected("invalid.slang", kSource) ||
+            ShaderAsset::parseExpected(source, std::string(kSource) + char(0xff)))
+        {
+            return std::unexpected("Expected authoring syntax/extension/UTF-8 rejection failed");
+        }
+        ShaderCompileOptions invalidOptions;
+        invalidOptions.entries = {{"computeMain", VriShaderStage_Compute}};
+        const std::array unknown {std::string("Unknown")};
+        const std::array duplicate {std::string("Default"), std::string("Default")};
+        if (ShaderAsset::compileExpected(root / "absent.vshader") ||
+            ShaderAsset::compileSourceExpected(source, kSource, invalidOptions) ||
+            ShaderAsset::compileSourceExpected(source, kSource, {}, unknown) ||
+            ShaderAsset::compileSourceExpected(source, kSource, {}, duplicate))
+        {
+            return std::unexpected("Expected authoring accepted missing source, external entries or invalid variants");
+        }
+        std::string invalid(kSource);
+        invalid.replace(invalid.find("void computeMain"), 16, "void missingMain");
+        auto rejected = ShaderAsset::compileSourceExpected(source, invalid);
+        if (rejected || rejected.error().find("Pass Compute, variant Default") == std::string::npos)
+        {
+            return std::unexpected("Expected Slang failure lost Pass/variant context");
+        }
+        if (auto written = writeFileAtomicallyExpected(source, std::as_bytes(std::span(kSource))); !written)
+        {
+            return written;
+        }
+        auto first  = ShaderAsset::cookExpected(source, cooked);
+        auto hit    = ShaderAsset::cookExpected(source, cooked);
+        auto assets = AssetSource::create(root);
+        if (!first || !*first || !hit || *hit || !assets)
+        {
+            return std::unexpected("Expected game shader cook/cache-hit failed");
+        }
+        auto before = (*assets)->readExpected(cooked.filename());
+        if (!before)
+        {
+            return std::unexpected(before.error());
+        }
+        if (auto written = writeFileAtomicallyExpected(source, std::as_bytes(std::span(invalid))); !written)
+        {
+            return written;
+        }
+        auto failedCook = ShaderAsset::cookExpected(source, cooked);
+        auto retained   = (*assets)->readExpected(cooked.filename());
+        if (failedCook || !retained || *retained != *before || !ShaderAsset::loadExpected(cooked))
+        {
+            return std::unexpected("Rejected source cook replaced the accepted artifact");
+        }
+        if (auto written = writeFileAtomicallyExpected(source, std::as_bytes(std::span(kSource))); !written)
+        {
+            return written;
+        }
+        const auto corrupt = std::span(*before).first(15);
+        if (auto written = writeFileAtomicallyExpected(cooked, corrupt); !written)
+        {
+            return written;
+        }
+        auto rebuilt   = ShaderAsset::cookExpected(source, cooked);
+        auto recovered = (*assets)->readExpected(cooked.filename());
+        if (!rebuilt || !*rebuilt || !recovered || *recovered != *before)
+        {
+            return std::unexpected("Expected game shader cook failed to recover an unreadable cache");
+        }
+        std::puts("Expected game shader authoring: semantic/syntax/UTF-8/Slang errors, source projection, "
+                  "cache hits, failed-cook retention and recovery passed");
+        return {};
+    }
+
     void variantBindings(const std::filesystem::path& root)
     {
         using namespace vultra;
@@ -130,6 +248,8 @@ int main()
 try
 {
     using namespace vultra;
+    auto persisted = test::materialPersistenceExpectedProbe();
+    require(bool(persisted), persisted ? "" : persisted.error().c_str());
     auto asset = ShaderAsset::parse("build/.tmp/material.vshader", kSource);
     require(asset.properties.size() == 4 && asset.variants.size() == 2, "Shader sections were lost");
     require(asset.variant("Detail").constants.find("export static const int sampleCount = 4;") != std::string::npos,
@@ -292,10 +412,14 @@ ENDSLANG
     const auto root = std::filesystem::path("build/.tmp/shader-authoring") / StableId::generate().toString();
     std::filesystem::create_directories(root);
     variantBindings(root);
+    auto expectedAuthoring = authoringExpected(root);
+    require(bool(expectedAuthoring), expectedAuthoring ? "" : expectedAuthoring.error().c_str());
     const auto source = root / "material.vshader";
     const auto cooked = root / "material.vshaderc";
     writeFileAtomically(source, std::as_bytes(std::span(kSource.data(), kSource.size())));
     const auto  compiled = ShaderAsset::compile(source);
+    auto        expectedSchema = test::materialSchemaExpectedProbe(compiled, "roughness", "baseColor");
+    require(bool(expectedSchema), expectedSchema ? "" : expectedSchema.error().c_str());
     const auto& program  = compiled.subshaders[0].passes[0].program("Detail");
     const auto  bytes    = instance.uniformData(compiled, program);
     const auto* material = program.parameters.field("material");
@@ -309,6 +433,8 @@ ENDSLANG
     require(uploaded == 2.0f, "Material uniform was written at the wrong offset");
     compiled.save(cooked);
     const auto loaded = ShaderAsset::load(cooked);
+    auto       expectedArchive = test::shaderAssetArchiveExpectedProbe(compiled, root / "expected-archive");
+    require(bool(expectedArchive), expectedArchive ? "" : expectedArchive.error().c_str());
     require(loaded.properties.size() == compiled.properties.size() &&
                 loaded.subshaders[0].passes[0].program("Detail").shaders[0].words == program.shaders[0].words &&
                 loaded.subshaders[0].passes[0].source.text.empty(),

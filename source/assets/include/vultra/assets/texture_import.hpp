@@ -22,6 +22,11 @@ namespace vultra
                         const SourceObserver&        observer = {},
                         const AssetSource*           source   = nullptr);
 
+    std::expected<TextureData, std::string>
+    prepareTextureExpected(const SceneImage& image, bool srgb, const TextureImportOptions& options = {});
+    std::expected<PreparedTextures, std::string>
+    prepareTexturesExpected(const SceneData& scene, const TextureImportOptions& options = {}, uint32_t workers = 0);
+
     TextureData prepareTexture(const SceneImage& image, bool srgb, const TextureImportOptions& options = {});
     PreparedTextures
     prepareTextures(const SceneData& scene, const TextureImportOptions& options = {}, uint32_t workers = 0);

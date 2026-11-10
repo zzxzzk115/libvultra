@@ -14,22 +14,23 @@ public:
   enum {
     SHADER = 1, PROPERTIES = 2, SUBSHADER = 3, PASS = 4, SURFACE = 5, TAGS = 6,
     NAME = 7, MODEL = 8, ENTRY = 9, VARIANT = 10, CONSTANTS = 11, MODULES = 12,
-    DEFINES = 13, REQUIRES = 14, VERTEX = 15, FRAGMENT = 16, TASK = 17,
-    MESH = 18, COMPUTE = 19, CULL = 20, FRONT_FACE = 21, ZWRITE = 22, ZTEST = 23,
-    DEPTH_BIAS = 24, BLEND = 25, BLEND_OP = 26, COLOR_MASK = 27, STENCIL = 28,
-    SLANG_PROGRAM = 29, SLANG_INCLUDE = 30, TEXTURE_TYPE = 31, IDENTIFIER = 32,
-    NUMBER = 33, STRING = 34, LBRACE = 35, RBRACE = 36, LPAREN = 37, RPAREN = 38,
-    LBRACKET = 39, RBRACKET = 40, COMMA = 41, EQUAL = 42, SEMICOLON = 43,
-    LINE_COMMENT = 44, BLOCK_COMMENT = 45, WHITESPACE = 46, PROGRAM_END = 47,
-    PROGRAM_TEXT = 48
+    DEFINES = 13, CONFORMANCES = 14, REQUIRES = 15, VERTEX = 16, FRAGMENT = 17,
+    TASK = 18, MESH = 19, COMPUTE = 20, CULL = 21, FRONT_FACE = 22, ZWRITE = 23,
+    ZTEST = 24, DEPTH_BIAS = 25, BLEND = 26, BLEND_OP = 27, COLOR_MASK = 28,
+    STENCIL = 29, SLANG_PROGRAM = 30, SLANG_INCLUDE = 31, TEXTURE_TYPE = 32,
+    IDENTIFIER = 33, NUMBER = 34, STRING = 35, LBRACE = 36, RBRACE = 37,
+    LPAREN = 38, RPAREN = 39, LBRACKET = 40, RBRACKET = 41, COMMA = 42,
+    EQUAL = 43, SEMICOLON = 44, LINE_COMMENT = 45, BLOCK_COMMENT = 46, WHITESPACE = 47,
+    PROGRAM_END = 48, PROGRAM_TEXT = 49
   };
 
   enum {
     RuleFile = 0, RuleProperties = 1, RuleProperty = 2, RuleAttribute = 3,
     RuleAttributeArgument = 4, RulePropertyType = 5, RuleValue = 6, RuleVariant = 7,
-    RuleConstants = 8, RuleModules = 9, RuleDefines = 10, RuleSubshader = 11,
-    RuleTags = 12, RuleRequires = 13, RuleCommon = 14, RuleProgram = 15,
-    RuleSurface = 16, RulePass = 17, RuleStage = 18, RuleState = 19, RuleStateValue = 20
+    RuleConstants = 8, RuleModules = 9, RuleDefines = 10, RuleConformances = 11,
+    RuleConformance = 12, RuleSubshader = 13, RuleTags = 14, RuleRequires = 15,
+    RuleCommon = 16, RuleProgram = 17, RuleSurface = 18, RulePass = 19,
+    RuleStage = 20, RuleState = 21, RuleStateValue = 22
   };
 
   explicit vshader_parser(antlr4::TokenStream *input);
@@ -60,6 +61,8 @@ public:
   class ConstantsContext;
   class ModulesContext;
   class DefinesContext;
+  class ConformancesContext;
+  class ConformanceContext;
   class SubshaderContext;
   class TagsContext;
   class RequiresContext;
@@ -210,6 +213,8 @@ public:
     ModulesContext* modules(size_t i);
     std::vector<DefinesContext *> defines();
     DefinesContext* defines(size_t i);
+    std::vector<ConformancesContext *> conformances();
+    ConformancesContext* conformances(size_t i);
 
 
   };
@@ -270,6 +275,35 @@ public:
   };
 
   DefinesContext* defines();
+
+  class  ConformancesContext : public antlr4::ParserRuleContext {
+  public:
+    ConformancesContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    antlr4::tree::TerminalNode *CONFORMANCES();
+    antlr4::tree::TerminalNode *LBRACE();
+    antlr4::tree::TerminalNode *RBRACE();
+    std::vector<ConformanceContext *> conformance();
+    ConformanceContext* conformance(size_t i);
+
+
+  };
+
+  ConformancesContext* conformances();
+
+  class  ConformanceContext : public antlr4::ParserRuleContext {
+  public:
+    ConformanceContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    std::vector<antlr4::tree::TerminalNode *> STRING();
+    antlr4::tree::TerminalNode* STRING(size_t i);
+    antlr4::tree::TerminalNode *EQUAL();
+    antlr4::tree::TerminalNode *NUMBER();
+
+
+  };
+
+  ConformanceContext* conformance();
 
   class  SubshaderContext : public antlr4::ParserRuleContext {
   public:

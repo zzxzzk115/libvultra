@@ -1,0 +1,14 @@
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -526,6 +526,11 @@
+             VkPhysicalDeviceFeatures2        mvq  = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+             mvq.pNext                             = &mv11;
+             vkGetPhysicalDeviceFeatures2(m_physicalDevice, &mvq);
++            if (!mv11.shaderDrawParameters)
++            {
++                ReportError("Vulkan device lacks required shaderDrawParameters feature");
++                return VriResult_Unsupported;
++            }
+             if (mv11.multiview)
+             {
+                 f11.multiview                               = VK_TRUE;

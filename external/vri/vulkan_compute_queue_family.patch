@@ -1,0 +1,207 @@
+--- a/include/vri/vri_structs.h
++++ b/include/vri/vri_structs.h
+@@ -73,6 +73,10 @@
+ 
+     const VriAllocationCallbacks* allocationCallbacks; /* optional */
+     const VriCallbackInterface*   callbackInterface;   /* optional */
++
++    /* Vulkan may select a second family when the graphics family only offers one queue.
++       Resources shared between families require ConcurrentQueues or native ownership transfers. */
++    VriBool allowSeparateComputeFamily;
+ } VriDeviceCreationDesc;
+ 
+ /* NOLINTNEXTLINE(modernize-redundant-void-arg): C11 needs an explicit no-parameter prototype. */
+--- a/include/vri/vri_core.h
++++ b/include/vri/vri_core.h
+@@ -280,6 +280,9 @@
+        Unsupported backends may leave this entry NULL; they reject MutableFormat texture creation. */
+     VriBool(VRI_CALL* GetTextureViewFormatSupport)(const VriDevice* device, VriFormat sourceFormat,
+                                                   VriFormat viewFormat, VriTextureUsageFlags usage);
++    /* Native Vulkan command-pool family, or UINT32_MAX for an invalid or foreign command buffer.
++       Backends without Vulkan queue families leave this entry NULL. */
++    uint32_t(VRI_CALL* GetCommandBufferQueueFamilyIndex)(const VriDevice* device, VriCommandBuffer* cmd);
+ } VriCoreInterface;
+ 
+ VRI_EXTERN_C_END
+--- a/source/backend_vk/objects_vk.h
++++ b/source/backend_vk/objects_vk.h
+@@ -42,6 +42,7 @@
+ 
+         DeviceVK*       device;
+         VkCommandBuffer cmd;
++        uint32_t        familyIndex;
+         // recording state
+         VriPipelineLayout*  boundLayout;
+         uint32_t            colorInputPhase = 0;
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -266,10 +266,19 @@
+             if (vkAllocateCommandBuffers(a->device->Device(), &ai, &cmd) != VK_SUCCESS)
+                 return VriResult_Failure;
+ 
+-            auto* buffer = new CommandBufferVK {a->device, cmd, nullptr, VK_PIPELINE_BIND_POINT_GRAPHICS};
++            auto* buffer = new CommandBufferVK {};
++            buffer->device = a->device;
++            buffer->cmd = cmd;
++            buffer->familyIndex = a->device->GetQueue(a->queueType)->familyIndex;
++            buffer->boundBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+             a->buffers.push_back(buffer);
+             *out = ToHandle(buffer);
+             return VriResult_Success;
++        }
++
++        uint32_t VRI_CALL GetCommandBufferQueueFamilyIndex(const VriDevice* device, VriCommandBuffer* cmd)
++        {
++            return device && cmd && CB(cmd)->device == Dev(device) ? CB(cmd)->familyIndex : UINT32_MAX;
+         }
+ 
+         VriResult VRI_CALL BeginCommandBuffer(VriCommandBuffer* cmd)
+@@ -2184,7 +2193,7 @@
+                 return VriResult_InvalidArgument;
+             QueueVK* q = Q(queue);
+             for (uint32_t i = 0; i < submit->commandBufferNum; ++i)
+-                if (CB(submit->commandBuffers[i])->device != q->device)
++                if (CB(submit->commandBuffers[i])->device != q->device || CB(submit->commandBuffers[i])->familyIndex != q->familyIndex)
+                     return VriResult_InvalidArgument;
+             for (uint32_t i = 0; i < submit->waitFenceNum; ++i)
+                 if (Fen(submit->waitFences[i].fence)->device != q->device)
+@@ -2347,6 +2356,7 @@
+             CmdBufferBarrierRange,
+             CmdClearDepthStencilTextureRange,
+             GetTextureViewFormatSupport,
++            GetCommandBufferQueueFamilyIndex,
+         };
+     } // namespace
+ 
+--- a/source/core/validation_layer.cpp
++++ b/source/core/validation_layer.cpp
+@@ -678,6 +678,17 @@
+                 return VriResult_Unsupported;
+             return c->dev->core.CmdBufferBarrierRange(c->real, barrier);
+         }
++        uint32_t VRI_CALL GetCommandBufferQueueFamilyIndex(const VriDevice* device, VriCommandBuffer* cmd)
++        {
++            if (!device || !cmd)
++                return UINT32_MAX;
++            const auto* c = CV(cmd);
++            const auto* d = DV(device);
++            if (c->dev != d || !d->core.GetCommandBufferQueueFamilyIndex)
++                return UINT32_MAX;
++            return d->core.GetCommandBufferQueueFamilyIndex(d->real, c->real);
++        }
++
+         VriResult VRI_CALL CmdClearDepthStencilTextureRange(VriCommandBuffer* cmd, VriTexture* texture,
+                                                             const VriClearDepthStencil* value,
+                                                             const VriTextureSubresourceRange* range,
+@@ -1200,6 +1211,8 @@
+             t.CmdAliasMemoryBarrier = CmdAliasMemoryBarrier;
+             t.CmdBufferBarrierRange = CmdBufferBarrierRange;
+             t.CmdClearDepthStencilTextureRange = CmdClearDepthStencilTextureRange;
++            t.GetCommandBufferQueueFamilyIndex =
++                d->core.GetCommandBufferQueueFamilyIndex ? GetCommandBufferQueueFamilyIndex : nullptr;
+             // Objects pass through, but the device still belongs to this layer.
+             t.EnumerateObjects           = d->core.EnumerateObjects ? EnumerateObjects : nullptr;
+             t.CmdCopyTexture             = CmdCopyTexture;
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -337,10 +337,11 @@
+         std::vector<VkQueueFamilyProperties> families(familyCount);
+         vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevice, &familyCount, families.data());
+ 
++        constexpr VkQueueFlags universal = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
+         uint32_t graphicsFamily = UINT32_MAX;
+         for (uint32_t i = 0; i < familyCount; ++i)
+         {
+-            if (families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
++            if (families[i].queueCount && (families[i].queueFlags & universal) == universal)
+             {
+                 graphicsFamily = i;
+                 break;
+@@ -348,25 +349,44 @@
+         }
+         if (graphicsFamily == UINT32_MAX)
+         {
+-            ReportError("no graphics-capable queue family");
++            ReportError("no graphics and compute capable queue family");
+             return VriResult_Failure;
+         }
+ 
+-        // Give each VRI queue type its own VkQueue from the graphics family when the family exposes
+-        // enough queues, so async-compute / async-transfer work can overlap graphics. Staying in one
+-        // family avoids queue-family ownership transfers on shared resources (a dedicated compute-only
+-        // family would need those). If the family has fewer queues than types, the extras alias queue 0.
++        // Prefer a second queue in the graphics family. With one queue, an opt-in caller can use
++        // another compute-capable family. MoltenVK can expose multiple single-queue universal families.
++        const uint32_t familyQueueCount = families[graphicsFamily].queueCount;
++        uint32_t computeFamily = graphicsFamily;
++        if (desc.allowSeparateComputeFamily && familyQueueCount == 1)
++        {
++            for (uint32_t i = 0; i < familyCount; ++i)
++            {
++                const auto& candidate = families[i];
++                if (i == graphicsFamily || !candidate.queueCount || !(candidate.queueFlags & VK_QUEUE_COMPUTE_BIT))
++                    continue;
++                if (!(candidate.queueFlags & VK_QUEUE_GRAPHICS_BIT))
++                {
++                    computeFamily = i;
++                    break;
++                }
++                if (computeFamily == graphicsFamily)
++                    computeFamily = i;
++            }
++        }
+         for (int t = 0; t < VriQueueType_Count; ++t)
+             m_queueFamilies[t] = graphicsFamily;
+-
+-        const uint32_t familyQueueCount = families[graphicsFamily].queueCount;
+-        const uint32_t queueCount =
+-            familyQueueCount < (uint32_t)VriQueueType_Count ? familyQueueCount : (uint32_t)VriQueueType_Count;
+-        const float             priorities[VriQueueType_Count] = {1.0f, 1.0f, 1.0f};
+-        VkDeviceQueueCreateInfo queueCi                        = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+-        queueCi.queueFamilyIndex                               = graphicsFamily;
+-        queueCi.queueCount                                     = queueCount;
+-        queueCi.pQueuePriorities                               = priorities;
++        m_queueFamilies[VriQueueType_Compute] = computeFamily;
++
++        const uint32_t queueCount = std::min(familyQueueCount, uint32_t(VriQueueType_Count));
++        const float priorities[VriQueueType_Count] = {1.0f, 1.0f, 1.0f};
++        VkDeviceQueueCreateInfo queueInfos[2] = {{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO},
++                                               {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO}};
++        queueInfos[0].queueFamilyIndex = graphicsFamily;
++        queueInfos[0].queueCount = queueCount;
++        queueInfos[0].pQueuePriorities = priorities;
++        queueInfos[1].queueFamilyIndex = computeFamily;
++        queueInfos[1].queueCount = 1;
++        queueInfos[1].pQueuePriorities = priorities;
+ 
+         // ---- available device extensions ----
+         uint32_t extCount = 0;
+@@ -957,8 +977,8 @@
+ 
+         VkDeviceCreateInfo ci      = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+         ci.pNext                   = &features2;
+-        ci.queueCreateInfoCount    = 1;
+-        ci.pQueueCreateInfos       = &queueCi;
++        ci.queueCreateInfoCount    = computeFamily == graphicsFamily ? 1u : 2u;
++        ci.pQueueCreateInfos       = queueInfos;
+         ci.enabledExtensionCount   = static_cast<uint32_t>(extensions.size());
+         ci.ppEnabledExtensionNames = extensions.data();
+ 
+@@ -975,12 +995,13 @@
+ 
+         for (int t = 0; t < VriQueueType_Count; ++t)
+         {
+-            const uint32_t idx = (uint32_t)t < queueCount ? (uint32_t)t : 0; // distinct queue per type if available
+-            VkQueue        q   = VK_NULL_HANDLE;
+-            vkGetDeviceQueue(m_device, graphicsFamily, idx, &q);
++            const uint32_t family = m_queueFamilies[t];
++            const uint32_t idx = family == graphicsFamily && uint32_t(t) < queueCount ? uint32_t(t) : 0;
++            VkQueue q = VK_NULL_HANDLE;
++            vkGetDeviceQueue(m_device, family, idx, &q);
+             m_queues[t].device        = this;
+             m_queues[t].queue         = q;
+-            m_queues[t].familyIndex   = graphicsFamily;
++            m_queues[t].familyIndex   = family;
+             m_queues[t].indexInFamily = idx;
+         }
+ 

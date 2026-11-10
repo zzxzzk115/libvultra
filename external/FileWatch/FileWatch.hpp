@@ -24,6 +24,11 @@
 #define FILEWATCHER_H
 
 #include <cstdio>
+#include <cerrno>
+#include <exception>
+#include <expected>
+#include <filesystem>
+#include <memory>
 #include <fstream>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -31,6 +36,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <process.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <tchar.h>
@@ -65,9 +71,12 @@
 #define FILEWATCH_PLATFORM_MAC 1
 #endif
 
+#if __unix__ || FILEWATCH_PLATFORM_MAC
+#include <pthread.h>
+#endif
+
 #include <functional>
 #include <atomic>
-#include <thread>
 #include <mutex>
 #include <condition_variable>
 #include <utility>
@@ -179,35 +188,76 @@ namespace filewatch {
 
 	public:
 
-		FileWatch(StringType path, UnderpinningRegex pattern, std::function<void(const StringType& file, const Event event_type)> callback) :
-			_path(absolute_path_of(path)),
-			_pattern(pattern),
-			_callback(callback),
-                  _directory(get_directory(path))
-		{
-			init();
-		}
 
-		FileWatch(StringType path, std::function<void(const StringType& file, const Event event_type)> callback) :
-			FileWatch<StringType>(path, UnderpinningRegex(_regex_all), callback) {}
+        using ExpectedCallback = std::function<std::expected<void, std::string>(const StringType&, Event)>;
 
-		~FileWatch() {
-			destroy();
-		}
+        static std::expected<std::unique_ptr<FileWatch>, std::string>
+        createExpected(StringType path, ExpectedCallback callback)
+        {
+            if (!callback) {
+                return std::unexpected("File watcher callback is empty");
+            }
+            auto watcher = std::unique_ptr<FileWatch>(new FileWatch(Uninitialized{}));
+            watcher->_callback = std::move(callback);
+            if (auto ready = watcher->initializeExpected(path); !ready) {
+                return std::unexpected(ready.error());
+            }
+            return watcher;
+        }
 
-		FileWatch(const FileWatch<StringType>& other) : FileWatch<StringType>(other._path, other._callback) {}
+        std::expected<void, std::string> statusExpected() const
+        {
+            if (!_failed.load()) { return {}; }
+            std::lock_guard<std::mutex> lock(_error_mutex);
+            if (!_error.empty()) {
+                return std::unexpected(_error);
+            }
+            return {};
+        }
 
-		FileWatch<StringType>& operator=(const FileWatch<StringType>& other) 
-		{
-			if (this == &other) { return *this; }
+        FileWatch(StringType path, UnderpinningRegex pattern,
+                  std::function<void(const StringType&, Event)> callback) : FileWatch(Uninitialized{})
+        {
+            _pattern = std::move(pattern);
+            // Only the legacy callback boundary retains upstream exception swallowing.
+            _callback = [callback = std::move(callback)](const StringType& file, Event event)
+                -> std::expected<void, std::string> {
+                try {
+                    if (callback) { callback(file, event); }
+                } catch (const std::exception&) {}
+                return {};
+            };
+            if (auto ready = initializeExpected(path); !ready) {
+                throw std::runtime_error(ready.error());
+            }
+        }
 
-			destroy();
-			_path = other._path;
-			_callback = other._callback;
-			_directory = get_directory(other._path);
-			init();
-			return *this;
-		}
+        FileWatch(StringType path, std::function<void(const StringType&, Event)> callback) :
+            FileWatch(std::move(path), UnderpinningRegex(_regex_all), std::move(callback)) {}
+
+        ~FileWatch() { destroy(); }
+
+        FileWatch(const FileWatch& other) : FileWatch(Uninitialized{})
+        {
+            _pattern = other._pattern;
+            _callback = other._callback;
+            if (auto ready = initializeExpected(other._input_path); !ready) {
+                throw std::runtime_error(ready.error());
+            }
+        }
+
+        FileWatch& operator=(const FileWatch& other)
+        {
+            if (this != &other) {
+                destroy();
+                _pattern = other._pattern;
+                _callback = other._callback;
+                if (auto ready = initializeExpected(other._input_path); !ready) {
+                    throw std::runtime_error(ready.error());
+                }
+            }
+            return *this;
+        }
 
 		// Const memeber varibles don't let me implent moves nicely, if moves are really wanted std::unique_ptr should be used and move that.
 		FileWatch(FileWatch<StringType>&&) = delete;
@@ -223,7 +273,8 @@ namespace filewatch {
 			StringType directory;
 			StringType filename;
 		};
-		const StringType _path;
+		StringType _path;
+        StringType _input_path;
 
 		UnderpinningRegex _pattern;
 
@@ -232,16 +283,73 @@ namespace filewatch {
 		// only used if watch a single file
 		StringType _filename;
 
-		std::function<void(const StringType& file, const Event event_type)> _callback;
+		ExpectedCallback _callback;
 
-		std::thread _watch_thread;
+        // Native thread creation has a returned error, unlike std::thread's throwing constructor.
+        struct NativeThread {
+            FileWatch* owner = nullptr;
+            void (*function)(FileWatch*) = nullptr;
+            bool running = false;
+#ifdef _WIN32
+            HANDLE handle = nullptr;
+            static unsigned __stdcall enter(void* context) {
+                auto* thread = static_cast<NativeThread*>(context);
+                thread->function(thread->owner);
+                return 0;
+            }
+#else
+            pthread_t handle{};
+            static void* enter(void* context) {
+                auto* thread = static_cast<NativeThread*>(context);
+                thread->function(thread->owner);
+                return nullptr;
+            }
+#endif
+            std::expected<void, std::string> start(FileWatch* watch, void (*entry)(FileWatch*)) {
+                owner = watch;
+                function = entry;
+#ifdef _WIN32
+                handle = reinterpret_cast<HANDLE>(_beginthreadex(nullptr, 0, enter, this, 0, nullptr));
+                if (!handle) {
+                    return std::unexpected("Create watch thread: " + std::error_code(errno, std::generic_category()).message());
+                }
+#else
+                const auto status = pthread_create(&handle, nullptr, enter, this);
+                if (status != 0) {
+                    return std::unexpected("Create watch thread: " + std::error_code(status, std::generic_category()).message());
+                }
+#endif
+                running = true;
+                return {};
+            }
+            bool joinable() const { return running; }
+            void join() {
+                if (!running) { return; }
+#ifdef _WIN32
+                const auto status = WaitForSingleObject(handle, INFINITE);
+                // Joining a live, uniquely owned handle is an internal invariant.
+                if (status != WAIT_OBJECT_0) { std::terminate(); }
+                CloseHandle(handle);
+                handle = nullptr;
+#else
+                if (pthread_join(handle, nullptr) != 0) { std::terminate(); }
+#endif
+                running = false;
+            }
+        };
+
+        NativeThread _watch_thread;
 
 		std::condition_variable _cv;
 		std::mutex _callback_mutex;
 		std::vector<std::pair<StringType, Event>> _callback_information;
-		std::thread _callback_thread;
+        NativeThread _callback_thread;
 
-		std::promise<void> _running;
+        std::promise<std::expected<void, std::string>> _running;
+        std::atomic<bool> _ready = false;
+        mutable std::mutex _error_mutex;
+        std::string _error;
+        std::atomic<bool> _failed = false;
 		std::atomic<bool> _destory = { false };
 		bool _watching_single_file = { false };
 
@@ -274,7 +382,7 @@ namespace filewatch {
 			int watch;
 		};
 
-		FolderInfo  _directory;
+		FolderInfo _directory{-1, -1};
 
 		const std::uint32_t _listen_filters = IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO;
 
@@ -317,78 +425,145 @@ namespace filewatch {
             };
             std::unordered_map<StringType, FileState> _directory_snapshot{};
             bool _previous_event_is_rename = false;
-            CFRunLoopRef _run_loop = nullptr;
+            std::atomic<CFRunLoopRef> _run_loop{nullptr};
             int _file_fd = -1;
             struct timespec _last_modification_time = {};
-            FSEventStreamRef _directory;
+            FSEventStreamRef _directory = nullptr;
+            bool _stream_started = false;
             // fd for single file
 #endif // FILEWATCH_PLATFORM_MAC
 
-		void init() 
-		{
+
+        struct Uninitialized {};
+        explicit FileWatch(Uninitialized) : _pattern(_regex_all) {}
+
+        void signalReady(std::expected<void, std::string> result)
+        {
+            if (!_ready.exchange(true)) {
+                _running.set_value(std::move(result));
+            }
+        }
+
+        void wakeForStop()
+        {
 #ifdef _WIN32
-			_close_event = CreateEvent(NULL, TRUE, FALSE, NULL);
-			if (!_close_event) {
-				throw std::system_error(GetLastError(), std::system_category());
-			}
-#endif // WIN32
-
-			_callback_thread = std::thread([this]() {
-				try {
-					callback_thread();
-				} catch (...) {
-					try {
-						_running.set_exception(std::current_exception());
-					}
-					catch (...) {} // set_exception() may throw too
-				}
-			});
-
-			_watch_thread = std::thread([this]() { 
-				try {
-					monitor_directory();
-				} catch (...) {
-					try {
-						_running.set_exception(std::current_exception());
-					}
-					catch (...) {} // set_exception() may throw too
-				}
-			});
-
-			std::future<void> future = _running.get_future();
-			future.get(); //block until the monitor_directory is up and running
-		}
-
-		void destroy()
-		{
-			_destory = true;
-			_running = std::promise<void>();
-
-#ifdef _WIN32
-			SetEvent(_close_event);
-#elif __unix__
-			inotify_rm_watch(_directory.folder, _directory.watch);
+            if (_close_event) { SetEvent(_close_event); }
 #elif FILEWATCH_PLATFORM_MAC
-                  if (_run_loop) {
-                        CFRunLoopStop(_run_loop);
-                  }
-#endif // __unix__
+            if (auto loop = _run_loop.load()) { CFRunLoopStop(loop); }
+#endif
+            _cv.notify_all();
+        }
 
-			_cv.notify_all();
-			_watch_thread.join();
-			_callback_thread.join();
+        void fail(std::string error)
+        {
+            {
+                std::lock_guard<std::mutex> lock(_error_mutex);
+                if (_error.empty()) { _error = error; }
+            }
+            _failed = true;
+            signalReady(std::unexpected(std::move(error)));
+            _destory = true;
+            wakeForStop();
+        }
 
+        std::expected<void, std::string> initializeExpected(const StringType& path)
+        {
+            if (path.empty() || path.find(C(0)) != StringType::npos) {
+                return std::unexpected("File watcher requires a nonempty path without NUL characters");
+            }
+            std::error_code error;
+            const auto resolved = std::filesystem::canonical(std::filesystem::path(path), error);
+            if (error) { return std::unexpected("Resolve watch path: " + error.message()); }
+            const auto status = std::filesystem::status(resolved, error);
+            if (error) { return std::unexpected("Inspect watch path: " + error.message()); }
+            _watching_single_file = std::filesystem::is_regular_file(status);
+            if (!_watching_single_file && !std::filesystem::is_directory(status)) {
+                return std::unexpected("File watcher requires a directory or regular file");
+            }
+            _input_path = resolved.template string<C>();
+            _filename = _watching_single_file ? resolved.filename().template string<C>() : StringType{};
+            _path = (_watching_single_file ? resolved.parent_path() : resolved).template string<C>();
+            _destory = false;
+            _ready = false;
+            _error.clear();
+            _failed = false;
+            _running = std::promise<std::expected<void, std::string>>();
+            auto directory = get_directory_expected(_path);
+            if (!directory) {
+                destroy();
+                return std::unexpected(directory.error());
+            }
+            _directory = *directory;
 #ifdef _WIN32
-			CloseHandle(_directory);
-#elif __unix__
-			close(_directory.folder);
+            _close_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+            if (!_close_event) {
+                const auto message = std::error_code(GetLastError(), std::system_category()).message();
+                destroy();
+                return std::unexpected("Create watch stop event: " + message);
+            }
 #elif FILEWATCH_PLATFORM_MAC
-                  FSEventStreamStop(_directory);
-                  FSEventStreamInvalidate(_directory);
-                  FSEventStreamRelease(_directory);
-                  _directory = nullptr;
-#endif // FILEWATCH_PLATFORM_MAC
-		}
+            if (_watching_single_file) {
+                _file_fd = open(_input_path.c_str(), O_RDONLY);
+                struct stat state{};
+                if (_file_fd < 0 || fstat(_file_fd, &state) != 0) {
+                    const auto message = std::error_code(errno, std::system_category()).message();
+                    destroy();
+                    return std::unexpected("Open watched file: " + message);
+                }
+                _last_modification_time = state.st_mtimespec;
+            }
+#endif
+            auto future = _running.get_future();
+            auto callback = _callback_thread.start(this, [](FileWatch* self) { self->callback_thread(); });
+            if (!callback) {
+                destroy();
+                return callback;
+            }
+            auto watch = _watch_thread.start(this, [](FileWatch* self) {
+                if (auto monitored = self->monitor_directory(); !monitored) { self->fail(monitored.error()); }
+            });
+            if (!watch) {
+                destroy();
+                return watch;
+            }
+            auto started = future.get();
+            if (!started) { destroy(); }
+            return started;
+        }
+
+        void destroy()
+        {
+            _destory = true;
+            wakeForStop();
+#if __unix__
+            if (_directory.folder >= 0 && _directory.watch >= 0) {
+                inotify_rm_watch(_directory.folder, _directory.watch);
+            }
+#endif
+            if (_watch_thread.joinable()) { _watch_thread.join(); }
+            if (_callback_thread.joinable()) { _callback_thread.join(); }
+#ifdef _WIN32
+            if (_directory && _directory != INVALID_HANDLE_VALUE) { CloseHandle(_directory); }
+            if (_close_event) { CloseHandle(_close_event); }
+            _directory = nullptr;
+            _close_event = nullptr;
+#elif __unix__
+            if (_directory.folder >= 0) { close(_directory.folder); }
+            _directory = {-1, -1};
+#elif FILEWATCH_PLATFORM_MAC
+            if (_directory) {
+                if (_stream_started) { FSEventStreamStop(_directory); }
+                _stream_started = false;
+                FSEventStreamInvalidate(_directory);
+                FSEventStreamRelease(_directory);
+                _directory = nullptr;
+            }
+            if (auto loop = _run_loop.exchange(nullptr)) { CFRelease(loop); }
+            if (_file_fd >= 0) { close(_file_fd); _file_fd = -1; }
+            _directory_snapshot.clear();
+#endif
+            _callback_information.clear();
+        }
 
 		const PathParts split_directory_and_file(const StringType& path) const 
 		{
@@ -436,44 +611,18 @@ namespace filewatch {
 			return CreateFileW(lpFileName, args...);
 		}
 
-		HANDLE get_directory(const StringType& path) 
-		{
-			auto file_info = GetFileAttributesX(path.c_str());
 
-			if (file_info == INVALID_FILE_ATTRIBUTES)
-			{
-				throw std::system_error(GetLastError(), std::system_category());
-			}
-			_watching_single_file = (file_info & FILE_ATTRIBUTE_DIRECTORY) == false;
-
-			const StringType watch_path = [this, &path]() {
-				if (_watching_single_file)
-				{
-					const auto parsed_path = split_directory_and_file(path);
-					_filename = parsed_path.filename;
-					return parsed_path.directory;
-				}
-				else 
-				{
-					return path;
-				}
-			}();
-
-			HANDLE directory = CreateFileX(
-				watch_path.c_str(),           // pointer to the file name
-				FILE_LIST_DIRECTORY,    // access (read/write) mode
-				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, // share mode
-				nullptr, // security descriptor
-				OPEN_EXISTING,         // how to create
-				FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, // file attributes
-				HANDLE(0));                 // file with attributes to copy
-
-			if (directory == INVALID_HANDLE_VALUE)
-			{
-				throw std::system_error(GetLastError(), std::system_category());
-			}
-			return directory;
-		}
+        std::expected<HANDLE, std::string> get_directory_expected(const StringType& path)
+        {
+            HANDLE directory = CreateFileX(path.c_str(), FILE_LIST_DIRECTORY,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, HANDLE(0));
+            if (directory == INVALID_HANDLE_VALUE) {
+                return std::unexpected("Open watched directory: " +
+                    std::error_code(GetLastError(), std::system_category()).message());
+            }
+            return directory;
+        }
 
 		void convert_wstring(const std::wstring& wstr, std::string& out)
 		{
@@ -487,7 +636,7 @@ namespace filewatch {
 			out = wstr;
 		}
 
-		void monitor_directory() 
+		std::expected<void, std::string> monitor_directory()
 		{
 			std::vector<BYTE> buffer(_buffer_size);
 			DWORD bytes_returned = 0;
@@ -495,22 +644,27 @@ namespace filewatch {
 
 			overlapped_buffer.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 			if (!overlapped_buffer.hEvent) {
-				std::cerr << "Error creating monitor event" << std::endl;
+				return std::unexpected("Create watch monitor event: " + std::error_code(GetLastError(), std::system_category()).message());
 			}
 
 			std::array<HANDLE, 2> handles{ overlapped_buffer.hEvent, _close_event };
 
 			auto async_pending = false;
-			_running.set_value();
+            std::expected<void, std::string> result;
 			do {
 				std::vector<std::pair<StringType, Event>> parsed_information;
-				ReadDirectoryChangesW(
+				const auto requested = ReadDirectoryChangesW(
 					_directory,
 					buffer.data(), static_cast<DWORD>(buffer.size()),
 					TRUE,
 					_listen_filters,
 					&bytes_returned,
 					&overlapped_buffer, NULL);
+                if (!requested) {
+                    result = std::unexpected("Request directory changes: " + std::error_code(GetLastError(), std::system_category()).message());
+                    break;
+                }
+                signalReady({});
 			
 				async_pending = true;
 			
@@ -519,7 +673,8 @@ namespace filewatch {
 				case WAIT_OBJECT_0:
 				{
 					if (!GetOverlappedResult(_directory, &overlapped_buffer, &bytes_returned, TRUE)) {
-						throw std::system_error(GetLastError(), std::system_category());
+						result = std::unexpected("Read directory changes: " + std::error_code(GetLastError(), std::system_category()).message());
+                        break;
 					}
 					async_pending = false;
 
@@ -550,7 +705,8 @@ namespace filewatch {
 					// quit
 					break;
 				case WAIT_FAILED:
-					break;
+                    result = std::unexpected("Wait for directory changes: " + std::error_code(GetLastError(), std::system_category()).message());
+                    break;
 				}
 				//dispatch callbacks
 				{
@@ -558,7 +714,7 @@ namespace filewatch {
 					_callback_information.insert(_callback_information.end(), parsed_information.begin(), parsed_information.end());
 				}
 				_cv.notify_all();
-			} while (_destory == false);
+			} while (_destory == false && result);
 
 			if (async_pending)
 			{
@@ -566,69 +722,49 @@ namespace filewatch {
 				CancelIo(_directory);
 				GetOverlappedResult(_directory, &overlapped_buffer, &bytes_returned, TRUE);
 			}
+            CloseHandle(overlapped_buffer.hEvent);
+            return result;
 		}
 #endif // WIN32
 
 #if __unix__
 
-		bool is_file(const StringType& path) const
-		{
-			struct stat statbuf = {};
-			if (stat(path.c_str(), &statbuf) != 0)
-			{
-				throw std::system_error(errno, std::system_category());
-			}
-			return S_ISREG(statbuf.st_mode);
-		}
 
-		FolderInfo get_directory(const StringType& path) 
-		{
-			const auto folder = inotify_init();
-			if (folder < 0) 
-			{
-				throw std::system_error(errno, std::system_category());
-			}
+        std::expected<FolderInfo, std::string> get_directory_expected(const StringType& path)
+        {
+            const auto folder = inotify_init();
+            if (folder < 0) {
+                return std::unexpected("Create inotify: " + std::error_code(errno, std::system_category()).message());
+            }
+            const auto watch = inotify_add_watch(folder, path.c_str(), _listen_filters);
+            if (watch < 0) {
+                const auto message = std::error_code(errno, std::system_category()).message();
+                close(folder);
+                return std::unexpected("Watch inotify directory: " + message);
+            }
+            return FolderInfo{folder, watch};
+        }
 
-			_watching_single_file = is_file(path);
-
-			const StringType watch_path = [this, &path]() {
-				if (_watching_single_file)
-				{
-					const auto parsed_path = split_directory_and_file(path);
-					_filename = parsed_path.filename;
-					return parsed_path.directory;
-				}
-				else
-				{
-					return path;
-				}
-			}();
-
-			const auto watch = inotify_add_watch(folder, watch_path.c_str(), IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO);
-			if (watch < 0) 
-			{
-				throw std::system_error(errno, std::system_category());
-			}
-			return { folder, watch };
-		}
-
-		void monitor_directory() 
+		std::expected<void, std::string> monitor_directory()
 		{
 			std::vector<char> buffer(_buffer_size);
 
-			_running.set_value();
+			signalReady({});
 			while (_destory == false) 
 			{
 				// A removed directory has no watch left to wake read() during destruction.
 				pollfd descriptor{_directory.folder, POLLIN, 0};
 				const auto ready = poll(&descriptor, 1, 100);
 				if (ready < 0 && errno != EINTR) {
-					throw std::system_error(errno, std::system_category());
+					return std::unexpected("Poll watched directory: " + std::error_code(errno, std::system_category()).message());
 				}
 				if (ready <= 0 || _destory) {
 					continue;
 				}
 				const auto length = read(_directory.folder, static_cast<void*>(buffer.data()), buffer.size());
+                if (length < 0 && errno != EINTR) {
+                    return std::unexpected("Read watched directory: " + std::error_code(errno, std::system_category()).message());
+                }
 				if (length > 0) 
 				{
 					int i = 0;
@@ -636,6 +772,10 @@ namespace filewatch {
 					while (i < length) 
 					{
 						struct inotify_event *event = reinterpret_cast<struct inotify_event *>(&buffer[i]); // NOLINT
+                        if (event->mask & IN_IGNORED) {
+                            if (_destory) { return {}; }
+                            return std::unexpected("Inotify watch was removed");
+                        }
 						if (event->len) 
 						{
 							const UnderpinningString changed_file{ event->name };
@@ -673,91 +813,9 @@ namespace filewatch {
 					_cv.notify_all();
 				}
 			}
+            return {};
 		}
 #endif // __unix__
-
-#if FILEWATCH_PLATFORM_MAC
-            static StringType absolute_path_of(const StringType& path) {
-                  char buf[PATH_MAX];
-                  int fd = open((const char*)path.c_str(), O_RDONLY);
-                  const char* str = buf;
-                  struct stat stat;
-                  mbstate_t state;
-
-                  assert(fd != -1);
-                  fcntl(fd, F_GETPATH, buf);
-                  fstat(fd, &stat);
-
-                  if (stat.st_mode & S_IFREG || stat.st_mode & S_IFLNK) {
-                        size_t len = strlen(buf);
-
-                        for (size_t i = len - 1; i >= 0; i--) {
-                              if (buf[i] == '/') {
-                                    buf[i] = '\0';
-                                    break;
-                              }
-                        }
-                  }
-                  close(fd);
-
-                  if (IsWChar<C>::value) {
-                        size_t needed = mbsrtowcs(nullptr, &str, 0, &state) + 1;
-                        StringType s;
-
-                        s.reserve(needed);
-                        mbsrtowcs((wchar_t*)&s[0], &str, s.size(), &state);
-                        return s;
-                  }
-                  return StringType {buf};
-            }
-#elif defined(__unix__)
-            static StringType absolute_path_of(const StringType& path) {
-                  char buf[PATH_MAX];
-                  const char* str = buf;
-                  struct stat stat;
-                  mbstate_t state;
-
-                  realpath((const char*)path.c_str(), buf);
-                  ::stat((const char*)path.c_str(), &stat);
-
-                  if (stat.st_mode & S_IFREG || stat.st_mode & S_IFLNK) {
-                        size_t len = strlen(buf);
-
-                        for (size_t i = len - 1; i >= 0; i--) {
-                              if (buf[i] == '/') {
-                                    buf[i] = '\0';
-                                    break;
-                              }
-                        }
-                  }
-
-                  if (IsWChar<C>::value) {
-                        size_t needed = mbsrtowcs(nullptr, &str, 0, &state) + 1;
-                        StringType s;
-
-                        s.reserve(needed);
-                        mbsrtowcs((wchar_t*)&s[0], &str, s.size(), &state);
-                        return s;
-                  }
-                  return StringType {buf};
-            }
-#elif _WIN32
-            static StringType absolute_path_of(const StringType& path) {
-                  constexpr size_t size = IsWChar<C>::value? MAX_PATH : 32767 * sizeof(wchar_t);
-                  char buf[size];
-
-                  DWORD length = IsWChar<C>::value? 
-                        GetFullPathNameW((LPCWSTR)path.c_str(), 
-                              size / sizeof(TCHAR),
-                              (LPWSTR)buf,
-                              nullptr) : 
-                        GetFullPathNameA((LPCSTR)path.c_str(), 
-                              size / sizeof(TCHAR),
-                              buf,
-                              nullptr);
-                  return StringType{(C*)buf, length};
-            }
-#endif
 
 #if FILEWATCH_PLATFORM_MAC
             static StringType utf8StringToUtf32String(const char* buffer) {
@@ -859,16 +917,15 @@ namespace filewatch {
             }
 
             FileState makeFileState(const StringType& path) {
-                  int fd = openFile(path);
-                  struct stat stat;
-
-                  fstat(fd, &stat);
-
-                  return FileState {
-                        openFile(path),
-                        stat.st_nlink,
-                        stat.st_mtimespec.tv_sec
-                  };
+                  // An atomic-save temporary may disappear before its queued event is delivered.
+                  int fd = open(fullPathOf(path).c_str(), O_RDONLY);
+                  struct stat stat{};
+                  if (fd == -1 || fstat(fd, &stat) == -1) {
+                        if (fd != -1) close(fd);
+                        return FileState {-1, 0, 0};
+                  }
+                  // Transfer this descriptor; opening again leaked one fd for every snapshot entry.
+                  return FileState {fd, static_cast<uint32_t>(stat.st_nlink), stat.st_mtimespec.tv_sec};
             }
 
             static StringType filenameOf(const StringType& file) {
@@ -975,7 +1032,8 @@ namespace filewatch {
                         }
                         if (newSnapshot.count(file) == 0) {
                               FileState state = makeFileState(file);
-                              struct stat stat;
+                              if (state.fd == -1) return;
+                              struct stat stat{};
                               
                               fstat(state.fd, &stat);
                               events.push_back(EventInfo {
@@ -1098,13 +1156,20 @@ namespace filewatch {
                   Event event = Event::modified;
                   if (_previous_event_is_rename) {
                         event = Event::renamed_new;
-                        _directory_snapshot.insert(std::make_pair(pathPair.filename, 
-                              std::move(makeFileState(pathPair.filename))));
+                        FileState state = makeFileState(pathPair.filename);
+                        if (state.fd != -1) {
+                              _directory_snapshot.insert(std::make_pair(pathPair.filename, std::move(state)));
+                        }
                         _previous_event_is_rename = false;
                   }
                   else if (flags & kFSEventStreamEventFlagItemRenamed) {
                         const auto state = _directory_snapshot.find(pathPair.filename);
-                        assert(state != _directory_snapshot.end());
+                        if (state == _directory_snapshot.end()) {
+                              // FSEvents may coalesce create/rename/remove for an atomic-save temporary.
+                              // Reconcile actual files instead of dereferencing an absent snapshot entry.
+                              walkAndSeeChanges();
+                              return;
+                        }
                         StringType fdPath = pathOfFd(state->second.fd);
 
                         // moved/delete to Trash folder
@@ -1118,8 +1183,10 @@ namespace filewatch {
                         }
                   }
                   else if (flags & kFSEventStreamEventFlagItemCreated) {
-                        _directory_snapshot.insert(std::make_pair(pathPair.filename, 
-                              std::move(makeFileState(pathPair.filename))));
+                        FileState state = makeFileState(pathPair.filename);
+                        if (state.fd != -1) {
+                              _directory_snapshot.insert(std::make_pair(pathPair.filename, std::move(state)));
+                        }
                         event = Event::added;
                   }
                   else if (flags & kFSEventStreamEventFlagItemRemoved) {
@@ -1160,17 +1227,19 @@ namespace filewatch {
 
             FSEventStreamRef openStream(const StringType& directory) {
                   CFStringEncoding encoding = IsWChar<C>::value? 
-                        kCFStringEncodingUTF32 : kCFStringEncodingASCII;
+                        kCFStringEncodingUTF32 : kCFStringEncodingUTF8;
                   CFStringRef path = CFStringCreateWithBytes(kCFAllocatorDefault, 
                                           (const UInt8*)directory.data(), 
-                                          directory.size(), 
+                                          directory.size() * sizeof(C),
                                           encoding, 
                                           false);
+                  if (!path) { return nullptr; }
                   CFArrayRef paths = CFArrayCreate(
                                           kCFAllocatorDefault, 
                                           (const void**)&path, 
                                           1, 
                                           nullptr);
+                  if (!paths) { CFRelease(path); return nullptr; }
                   FSEventStreamContext context {
                         .info = (void*)this
                   };
@@ -1193,41 +1262,40 @@ namespace filewatch {
                   FSEventStreamRef stream = openStream(directory);
                   walkDirectory(directory, [this] (StringType path) mutable {
                         if (!isParentOrSelfDirectory(path) && std::regex_match(path, _pattern)) {
-                              _directory_snapshot.insert(std::make_pair(std::move(path), 
-                                                std::move(makeFileState(path))));
+                              FileState state = makeFileState(path);
+                              if (state.fd != -1) {
+                                    _directory_snapshot.insert(std::make_pair(std::move(path), std::move(state)));
+                              }
                         }
                   });
                   return stream;
             }
 
-            FSEventStreamRef openStreamForFile(const StringType& file) {
-                  PathParts split = splitPath(file);
 
-                  _watching_single_file = true;
-                  _filename = std::move(split.filename);
-                  _file_fd = openFile(file);
-                  return openStreamForDirectory(split.directory);
-            }
-
-            FSEventStreamRef get_directory(const StringType& directory) {
-                  struct stat stat;
-
-                  ::stat((const char*)directory.c_str(), &stat);
-                  if (stat.st_mode & S_IFDIR) {
-                        return openStreamForDirectory(directory);
+            std::expected<FSEventStreamRef, std::string> get_directory_expected(const StringType& directory) {
+                  const int fd = open(directory.c_str(), O_RDONLY);
+                  if (fd < 0) {
+                        return std::unexpected("Open watched directory: " + std::error_code(errno, std::system_category()).message());
                   }
-                  _last_modification_time = stat.st_mtimespec;
-                  return openStreamForFile(directory);
+                  close(fd);
+                  auto stream = openStreamForDirectory(directory);
+                  if (!stream) { return std::unexpected("Create FSEvents stream"); }
+                  return stream;
             }
 
-            void monitor_directory() {
-                  _run_loop = CFRunLoopGetCurrent();
-                  FSEventStreamScheduleWithRunLoop(_directory, 
-                        _run_loop, 
-                        kCFRunLoopDefaultMode);
-                  FSEventStreamStart(_directory);
-                  _running.set_value();
-                  CFRunLoopRun();
+            std::expected<void, std::string> monitor_directory() {
+                  const auto loop = CFRunLoopGetCurrent();
+                  CFRetain(loop);
+                  _run_loop = loop;
+                  FSEventStreamScheduleWithRunLoop(_directory, loop, kCFRunLoopDefaultMode);
+                  if (!FSEventStreamStart(_directory)) {
+                        return std::unexpected("Start FSEvents stream");
+                  }
+                  _stream_started = true;
+                  signalReady({});
+                  // A bounded run also handles stop arriving between startup acknowledgement and RunInMode.
+                  while (!_destory) { CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false); }
+                  return {};
             }
 #endif // FILEWATCH_PLATFORM_MAC
 
@@ -1244,13 +1312,11 @@ namespace filewatch {
 
 				for (const auto& file : callback_information) {
 					if (_callback) {
-						try
-						{
-							_callback(file.first, file.second);
-						}
-						catch (const std::exception&)
-						{
-						}
+                        if (_destory) { return; }
+                        if (auto called = _callback(file.first, file.second); !called) {
+                            fail(called.error());
+                            return;
+                        }
 					}
 				}
 			}

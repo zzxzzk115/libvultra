@@ -1,7 +1,11 @@
 // This template is appended after the user's surface function and its generated adapter.
 #if !defined(VULTRA_SURFACE_DEPTH) && !defined(VULTRA_SURFACE_SHADOW) && \
     !defined(VULTRA_SURFACE_GBUFFER_BASE) && !defined(VULTRA_SURFACE_GBUFFER_MATERIAL)
+#ifdef VULTRA_SURFACE_UNLIT
+#include "lib/emission_surface.slangh"
+#else
 #include "lib/surface_lighting.slangh"
+#endif
 #endif
 
 [shader("vertex")]
@@ -9,7 +13,7 @@ SurfaceVertex vultraVertexMain(MeshVertex input)
 {
     SurfaceVertex vertex = vultraTransformVertex(input);
 #ifdef VULTRA_SURFACE_SHADOW
-    vertex.position = mul(frame.lightViewProjection[vultraDraw.instance.y], float4(vertex.worldPosition, 1));
+    vertex.position = mul(shadowLightMatrix(vultraDraw.instance.y), float4(vertex.worldPosition, 1));
 #endif
     return vertex;
 }
@@ -17,7 +21,11 @@ SurfaceVertex vultraVertexMain(MeshVertex input)
 SurfaceData vultraSampleSurface(SurfaceVertex vertex, bool frontFace)
 {
     SurfaceInput input = vultraSurfaceInput(vertex, frontFace);
+#ifdef VULTRA_SURFACE_UNLIT
+    UnlitSurfaceOutput output = vultraEvaluateSurface(input);
+#else
     SurfaceOutput output = vultraEvaluateSurface(input);
+#endif
 #ifdef VULTRA_SURFACE_ALPHA_MASK
     if (output.opacity < output.alphaCutoff)
     {
@@ -75,7 +83,11 @@ VultraGBufferMaterial vultraFragmentMain(SurfaceVertex vertex, bool frontFace : 
 [shader("fragment")]
 float4 vultraFragmentMain(SurfaceVertex vertex, bool frontFace : SV_IsFrontFace) : SV_Target
 {
+#ifdef VULTRA_SURFACE_UNLIT
+    return float4(shadeEmissionOnlySurface(vultraSampleSurface(vertex, frontFace)), 1);
+#else
     return float4(shadeSurface(vultraSampleSurface(vertex, frontFace)), 1);
+#endif
 }
 #endif
 

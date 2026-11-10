@@ -1,0 +1,51 @@
+--- a/spirv_msl.cpp
++++ b/spirv_msl.cpp
+@@ -12247,7 +12247,6 @@
+ string CompilerMSL::to_buffer_size_expression(uint32_t id)
+ {
+ 	auto expr = to_expression(id);
+-	auto index = expr.find_first_of('[');
+ 
+ 	// This is quite crude, but we need to translate the reference name (*spvDescriptorSetN.name) to
+ 	// the pointer expression spvDescriptorSetN.name to make a reasonable expression here.
+@@ -12255,17 +12254,26 @@
+ 	if (expr.size() >= 3 && expr[0] == '(' && expr[1] == '*')
+ 		expr = address_of_expression(expr);
+ 
++	auto index = expr.find_first_of('[');
++	string buffer_expr, array_expr;
++
++	if (index != string::npos)
++	{
++		buffer_expr = expr.substr(0, index);
++		array_expr = expr.substr(index);
++	}
++
+ 	// If a buffer is part of an argument buffer translate this to a legal identifier.
+ 	for (auto &c : expr)
+ 		if (c == '.')
+ 			c = '_';
+ 
+ 	if (index == string::npos)
++	{
+ 		return expr + buffer_size_name_suffix;
++	}
+ 	else
+ 	{
+-		auto buffer_expr = expr.substr(0, index);
+-		auto array_expr = expr.substr(index);
+ 		if (auto var = maybe_get_backing_variable(id))
+ 		{
+ 			if (is_var_runtime_size_array(*var))
+@@ -12278,6 +12286,11 @@
+ 					return buffer_expr + ".length(" + array_expr.substr(1, last_pos - 1) + ")";
+ 			}
+ 		}
++
++		for (auto &c : buffer_expr)
++			if (c == '.')
++				c = '_';
++
+ 		return buffer_expr + buffer_size_name_suffix + array_expr;
+ 	}
+ }

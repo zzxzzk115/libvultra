@@ -189,6 +189,50 @@ Connections: {
                 "DDS GPU upload or transfer function is incorrect");
     }
 
+    // Four different BC1 blocks catch incorrect row pitches that a single 4x4 block cannot expose.
+    void testCompressedBlockRows()
+    {
+        vultra::TextureData texture;
+        texture.format = vultra::TextureFormat::eBc1Srgb;
+        vultra::TextureLevel level;
+        level.size = {8, 8};
+        const std::array<uint16_t, 4> colors {0xf800, 0x07e0, 0x001f, 0xffff};
+        for (const uint16_t color : colors)
+        {
+            level.bytes.push_back(std::byte(color & 255));
+            level.bytes.push_back(std::byte(color >> 8));
+            for (int i = 0; i < 6; ++i)
+                level.bytes.push_back(std::byte {0});
+        }
+        texture.levels.push_back(std::move(level));
+        vultra::ImportedAsset asset;
+        asset.scene.vertices = {{{0, 0, 0}, {0, 0, 1}, {0, 0}},
+                                {{1, 0, 0}, {0, 0, 1}, {1, 0}},
+                                {{0, 1, 0}, {0, 0, 1}, {0, 1}}};
+        asset.scene.indices  = {0, 1, 2};
+        asset.scene.materials.resize(1);
+        asset.scene.primitives.push_back({0, 3, 0});
+        asset.textures.images.push_back(std::move(texture));
+        asset.textures.materials.push_back({0, 0, 0, 0, 0});
+        vultra::Device      device;
+        vultra::GpuScene    gpu(device, asset);
+        vultra::Texture     output(device, vultra::colorTexture({8, 8}));
+        vultra::TextureBlit blit(device, output.desc.format);
+        blit.setSource(0, *gpu.textures[0]);
+        vultra::Frame frame(device);
+        blit.draw(frame.begin(), output, {0, 0, 8, 8}, 0, false);
+        frame.submitAndWait();
+        const auto image = vultra::readback(device, output);
+        const auto red   = vultra::imagePixel(image, 1, 1);
+        const auto green = vultra::imagePixel(image, 6, 1);
+        const auto blue  = vultra::imagePixel(image, 1, 6);
+        const auto white = vultra::imagePixel(image, 6, 6);
+        require(red[0] > .95f && red[1] < .05f && red[2] < .05f && green[0] < .05f && green[1] > .95f &&
+                    green[2] < .05f && blue[0] < .05f && blue[1] < .05f && blue[2] > .95f && white[0] > .95f &&
+                    white[1] > .95f && white[2] > .95f,
+                "Compressed texture block rows were uploaded incorrectly");
+    }
+
     void testGltfDds(const std::filesystem::path& root)
     {
         const float positions[] {0, 0, 0, 1, 0, 0, 0, 1, 0};
@@ -213,7 +257,7 @@ Connections: {
         const auto& material = parallel.materials[0];
         require(material.specularTexture.image == 1 && material.specularColorTexture.image == 1 &&
                     material.specularColor == glm::vec3(0.2f, 0.4f, 0.8f) && material.specularWeight == 0.7f &&
-                    material.alphaCutoff == 0.5f,
+                    material.alphaBlend && material.alphaCutoff == -1.f,
                 "Specular extension or documented opaque coverage mapping was lost");
         vultra::AssetImportOptions options;
         options.cacheDirectory = root / "gltf-cache";
@@ -221,13 +265,13 @@ Connections: {
         const auto warm        = vultra::importAsset(root / "dds.gltf", options);
         require(!cold.cacheHit && warm.cacheHit && cold.textures.materials == warm.textures.materials &&
                     warm.scene.materials[0].specularTexture.image == 1 &&
-                    warm.scene.materials[0].specularColorTexture.image == 1 &&
-                    warm.scene.materials[0].alphaCutoff == 0.5f,
+                    warm.scene.materials[0].specularColorTexture.image == 1 && warm.scene.materials[0].alphaBlend &&
+                    warm.scene.materials[0].alphaCutoff == -1.f,
                 "Cache lost specular slots or alpha-mask coverage");
         const auto& slots = warm.textures.materials[0];
         require(slots[0] == slots[6] && slots[5] != slots[6] &&
                     warm.textures.images[slots[5]].format == vultra::TextureFormat::eBc1Unorm &&
-                    warm.textures.images[slots[6]].format == vultra::TextureFormat::eRgba8Srgb,
+                    warm.textures.images[slots[6]].format == vultra::TextureFormat::eBc1Srgb,
                 "Specular color/weight texture reuse ignored material color space");
         for (size_t i = 0; i < parallel.images.size(); ++i)
         {
@@ -435,16 +479,17 @@ try
     const auto colorPath = root / "color.dds";
     write(colorPath, dds(true));
     const auto color = vultra::loadDds(colorPath);
-    require(color.format == vultra::TextureFormat::eRgba8Srgb && color.levels.size() == 3 &&
+    require(color.format == vultra::TextureFormat::eBc1Srgb && color.levels.size() == 3 &&
                 color.levels[2].size == vultra::Extent {1, 1},
             "sRGB DDS lost its authored mips or hardware sRGB format");
     sampleDds(color, true, 132.0f / 255);
+    testCompressedBlockRows();
     auto authored = dds(true);
     authored[164] = std::byte(0);
     authored[165] = std::byte(0xf8); // The last mip is red, unlike the gray base level.
     write(root / "authored.dds", authored);
     const auto authoredMips = vultra::loadDds(root / "authored.dds");
-    require(authoredMips.levels[2].bytes[0] == std::byte(255) && authoredMips.levels[2].bytes[1] == std::byte(0),
+    require(authoredMips.levels[2].bytes[0] == std::byte(0) && authoredMips.levels[2].bytes[1] == std::byte(0xf8),
             "DDS authored mip was regenerated from level zero");
     sampleDds(color, false, 0.2307f);
     const auto sourceImage = vultra::loadSceneImage(colorPath);
@@ -453,6 +498,30 @@ try
     require(linear.format == vultra::TextureFormat::eBc1Unorm && linear.levels[0].bytes.size() == 8,
             "Linear DDS lost native blocks");
     sampleDds(linear, false, 132.0f / 255);
+    const auto colorPlain =
+        vultra::prepareTexture(sourceImage, true, {.compression = vultra::TextureCompression::eNone});
+    require(colorPlain.format == vultra::TextureFormat::eRgba8Srgb && colorPlain.levels.size() == 3,
+            "Explicit uncompressed sRGB import lost its transfer function");
+    sampleDds(colorPlain, false, 0.2307f);
+    // A second fixture covers BC3/DXT5 sRGB and preserves its alpha block and authored mips.
+    auto           bc3       = dds(true);
+    const uint32_t bc3Format = 78; // DXGI_FORMAT_BC3_UNORM_SRGB
+    std::memcpy(bc3.data() + 32 * sizeof(uint32_t), &bc3Format, sizeof(bc3Format));
+    const auto bc1Blocks = std::vector<std::byte>(bc3.begin() + 148, bc3.end());
+    bc3.resize(148 + 3 * 16);
+    for (size_t mip = 0; mip < 3; ++mip)
+    {
+        const size_t offset = 148 + mip * 16;
+        bc3[offset] = bc3[offset + 1] = std::byte {255};
+        std::fill(bc3.begin() + offset + 2, bc3.begin() + offset + 8, std::byte {0});
+        std::copy_n(bc1Blocks.begin() + mip * 8, 8, bc3.begin() + offset + 8);
+    }
+    write(root / "color-bc3.dds", bc3);
+    const auto colorBc3 = vultra::loadDds(root / "color-bc3.dds");
+    require(colorBc3.format == vultra::TextureFormat::eBc3Srgb && colorBc3.levels.size() == 3 &&
+                colorBc3.levels[0].bytes.size() == 16,
+            "sRGB BC3 DDS lost its native blocks or authored mips");
+    sampleDds(colorBc3, false, 0.2307f);
     const auto plain = vultra::prepareTexture(sourceImage, false, {.compression = vultra::TextureCompression::eNone});
     require(plain.format == vultra::TextureFormat::eRgba8Unorm && plain.levels.size() == 3,
             "DDS ignored uncompressed import");
@@ -502,7 +571,7 @@ try
     const auto embedded = vultra::loadFbx("tests/fixtures/embedded_dds.fbx", {}, 4);
     require(embedded.indices.size() == 3 && embedded.images.size() == 1 && !embedded.images[0].dds.empty(),
             "Binary FBX embedded DDS image was not loaded");
-    require(vultra::prepareTexture(embedded.images[0], true).format == vultra::TextureFormat::eRgba8Srgb,
+    require(vultra::prepareTexture(embedded.images[0], true).format == vultra::TextureFormat::eBc1Srgb,
             "Embedded DDS lost its sRGB interpretation");
     const auto model = root / "model.fbx";
     writeText(model, kFbx);
@@ -598,12 +667,9 @@ try
     write(package, corruptedPackage);
     require(!vultra::isAssetCacheCurrent(assets.resolve("model.fbx"), options, &assets),
             "Package cache accepted a corrupt source dependency");
-    requireFailure(
-        [&]
-        {
-            vultra::importAsset(assets.resolve("model.fbx"), options, &assets);
-        },
-        "Package import concealed a corrupt image dependency");
+    const auto rejected = vultra::importAssetExpected(assets.resolve("model.fbx"), options, &assets);
+    require(!rejected && rejected.error().contains("Loading FBX images"),
+            "Package import concealed a corrupt image dependency or lost its error context");
     require(vultra::readSourceFile(packagedCold.cachePath) == validCache,
             "Failed package import replaced the preceding valid cache");
     write(package, validPackage);

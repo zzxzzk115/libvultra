@@ -1,0 +1,22 @@
+--- a/source/backend_vk/objects_vk.h
++++ b/source/backend_vk/objects_vk.h
+@@ -47,2 +47,3 @@
+         uint32_t            colorInputPhase = 0;
++        VriResult recordingResult = VriResult_Success;
+         VkPipelineBindPoint boundBindPoint;
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -259,2 +259,3 @@
+             c->boundLayout              = nullptr;
++            c->recordingResult          = VriResult_Success;
+             VkCommandBufferBeginInfo bi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+@@ -266,3 +267,8 @@
+         {
+-            return vkEndCommandBuffer(CB(cmd)->cmd) == VK_SUCCESS ? VriResult_Success : VriResult_Failure;
++            CommandBufferVK* c = CB(cmd);
++            if (vkEndCommandBuffer(c->cmd) != VK_SUCCESS)
++            {
++                return VriResult_Failure;
++            }
++            return c->recordingResult;
+         }

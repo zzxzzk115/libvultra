@@ -1,0 +1,97 @@
+--- a/include/vri/vri_core.h
++++ b/include/vri/vri_core.h
+@@ -261,6 +261,10 @@
+     VriResult(VRI_CALL* CmdClearStorageTextureRange)(VriCommandBuffer* cmd, VriTexture* texture,
+                                                     const VriClearColor* value,
+                                                     const VriTextureSubresourceRange* range);
++    /* Order all prior GPU memory accesses before later accesses, including distinct alias handles.
++       Outside rendering. Does not transfer queue ownership or initialize an image layout/content.
++       Establish separate queue dependencies for work submitted to other queues. */
++    VriResult(VRI_CALL* CmdAliasMemoryBarrier)(VriCommandBuffer* cmd);
+ } VriCoreInterface;
+ 
+ VRI_EXTERN_C_END
+--- a/include/vri/vri_device_desc.h
++++ b/include/vri/vri_device_desc.h
+@@ -164,6 +164,8 @@
+     /* Additional linear-buffer/optimal-texture separation within one heap. Zero means unreported.
+        Respect this together with each resource's native size/alignment and compatible memory types. */
+     uint64_t bufferTextureGranularity;
++    /* CmdAliasMemoryBarrier is available; image activation still requires Undefined layout/content. */
++    VriBool hasAliasMemoryBarrier;
+ } VriDeviceDesc;
+ 
+ VRI_EXTERN_C_END
+--- a/source/core/validation_layer.cpp
++++ b/source/core/validation_layer.cpp
+@@ -625,6 +625,15 @@
+                 return;
+             }
+             c->dev->core.CmdClearStorageTexture(c->real, texture, value);
++        }
++        VriResult VRI_CALL CmdAliasMemoryBarrier(VriCommandBuffer* cmd)
++        {
++            if (!cmd) return VriResult_InvalidArgument;
++            CmdBufVal* c = CV(cmd);
++            if (!c->recording || c->insideRenderPass) return VriResult_InvalidArgument;
++            if (!c->dev->desc.hasAliasMemoryBarrier || !c->dev->core.CmdAliasMemoryBarrier)
++                return VriResult_Unsupported;
++            return c->dev->core.CmdAliasMemoryBarrier(c->real);
+         }
+         VriResult VRI_CALL CmdClearStorageTextureRange(VriCommandBuffer* cmd, VriTexture* texture,
+                                                        const VriClearColor* value,
+@@ -1089,6 +1098,7 @@
+             t.CmdClearStorageBuffer       = CmdClearStorageBuffer;
+             t.CmdClearStorageTexture      = CmdClearStorageTexture;
+             t.CmdClearStorageTextureRange = CmdClearStorageTextureRange;
++            t.CmdAliasMemoryBarrier = CmdAliasMemoryBarrier;
+             // Objects pass through, but the device still belongs to this layer.
+             t.EnumerateObjects           = d->core.EnumerateObjects ? EnumerateObjects : nullptr;
+             t.CmdCopyTexture             = CmdCopyTexture;
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -1711,6 +1711,26 @@
+         void VRI_CALL CmdDispatchIndirect(VriCommandBuffer* cmd, VriBuffer* buffer, uint64_t offset)
+         {
+             vkCmdDispatchIndirect(CB(cmd)->cmd, Buf(buffer)->buffer, offset);
++        }
++
++        VriResult VRI_CALL CmdAliasMemoryBarrier(VriCommandBuffer* cmd)
++        {
++            if (!cmd) return VriResult_InvalidArgument;
++            CommandBufferVK* c = CB(cmd);
++#if defined(__APPLE__)
++            // The macOS plane-copy patch retains command recording failures for EndCommandBuffer.
++            if (c->recordingResult != VriResult_Success) return c->recordingResult;
++#endif
++            VkMemoryBarrier2 memory {VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
++            memory.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
++            memory.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
++            memory.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
++            memory.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
++            VkDependencyInfo dependency {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
++            dependency.memoryBarrierCount = 1;
++            dependency.pMemoryBarriers = &memory;
++            c->device->Ext().CmdPipelineBarrier2(c->cmd, &dependency);
++            return VriResult_Success;
+         }
+ 
+         void VRI_CALL CmdBarrier(VriCommandBuffer* cmd, const VriBarrierGroupDesc* group)
+@@ -2166,6 +2186,7 @@
+             EnumerateObjects,
+             WaitForFence,
+             CmdClearStorageTextureRange,
++            CmdAliasMemoryBarrier,
+         };
+     } // namespace
+ 
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -1094,6 +1094,7 @@
+         m_desc.hasClearStorageBuffer   = VRI_TRUE; // vkCmdFillBuffer is core Vulkan
+         m_desc.hasClearStorageTextureRange = VRI_TRUE;
+         m_desc.bufferTextureGranularity = props.limits.bufferImageGranularity;
++        m_desc.hasAliasMemoryBarrier = VRI_TRUE;
+         m_desc.hasClearStorageTexture  = VRI_TRUE; // vkCmdClearColorImage is core Vulkan
+         m_desc.hasMultiview            = m_hasMultiview ? VRI_TRUE : VRI_FALSE;
+         m_desc.maxViewCount            = m_hasMultiview ? m_maxViewCount : 0u;

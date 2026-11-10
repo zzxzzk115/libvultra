@@ -4,6 +4,8 @@ package("slang-static")
     set_license("MIT")
     add_urls("https://github.com/shader-slang/slang.git")
     add_versions("2026.11", "03f76f6c91fd4c6db1c067ee92ad1af188d302b6")
+    add_patches("2026.11", path.join(os.scriptdir(), "constant_bool_cast.patch"),
+                "6a1ede762521901cbdd023e1364095b3f461130f226695150a20a7e4036640f1")
     add_deps("cmake", "miniz")
     if is_plat("linux") then
         add_syslinks("dl", "pthread")
@@ -14,7 +16,7 @@ package("slang-static")
         package:add("links", "slang-compiler", "compiler-core", "core", "lz4", "cmark-gfm")
     end)
 
-    on_install("windows|x64", "linux|x86_64", function (package)
+    on_install("windows|x64", "linux|x86_64", "macosx|arm64", "macosx|x86_64", function (package)
         io.replace("CMakeLists.txt", [[find_package(Threads REQUIRED)]], [[find_package(Threads REQUIRED)
 find_package(miniz CONFIG REQUIRED)
 add_library(miniz ALIAS miniz::miniz)

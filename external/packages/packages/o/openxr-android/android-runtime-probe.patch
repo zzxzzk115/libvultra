@@ -1,0 +1,14 @@
+--- a/src/loader/android_utilities.cpp
++++ b/src/loader/android_utilities.cpp
+@@ -320,7 +320,10 @@ int getActiveRuntimeVirtualManifest(wrap::android::content::Context const &contex
+               filename.c_str(), libDir.c_str(), (hasFunctions ? "yes" : "no"));
+ 
+         auto lib_path = libDir + "/" + filename;
+-        auto *lib = dlopen(lib_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
++        // A runtime may register thread-local destructors while its globals are
++        // destroyed. Keep the probe's code mapped until process exit so those
++        // destructors cannot point into an unloaded library.
++        auto *lib = dlopen(lib_path.c_str(), RTLD_LAZY | RTLD_LOCAL | RTLD_NODELETE);
+         if (lib) {
+             // we found a runtime that we can dlopen, use it.
+             dlclose(lib);

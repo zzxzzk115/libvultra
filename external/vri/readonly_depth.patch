@@ -1,0 +1,143 @@
+--- a/include/vri/vri_command.h
++++ b/include/vri/vri_command.h
+@@ -39,6 +39,8 @@
+     VriAttachmentStoreOp storeOp;
+     VriClearValue        clearValue;
+     VriDescriptor*       resolveView; /* NULL = none; MSAA resolve target (single-sample view) */
++    /* Depth only (including combined stencil): Load + Store, no resolve or stencil slot; writes disabled. */
++    VriBool             readOnly;
+ } VriAttachmentDesc;
+ 
+ typedef struct VriAttachmentsDesc
+--- a/source/backend_d3d12/core_d3d12_command.inc
++++ b/source/backend_d3d12/core_d3d12_command.inc
+@@ -110,8 +110,9 @@
+             if (hasDepth)
+             {
+                 const DescriptorD3D12* dv = Desc(a->depth->view);
+-                Transition(c, const_cast<TextureD3D12*>(dv->texture), D3D12_RESOURCE_STATE_DEPTH_WRITE);
+-                dsv = dv->cpu;
++                Transition(c, const_cast<TextureD3D12*>(dv->texture), a->depth->readOnly ?
++                    D3D12_RESOURCE_STATE_DEPTH_READ : D3D12_RESOURCE_STATE_DEPTH_WRITE);
++                dsv = a->depth->readOnly ? dv->readOnlyDsv : dv->cpu;
+             }
+             c->list->OMSetRenderTargets(
+                 static_cast<UINT>(c->rtvCount), c->rtvCount ? c->rtvs : nullptr, FALSE, hasDepth ? &dsv : nullptr);
+--- a/source/backend_d3d12/core_d3d12_resource.inc
++++ b/source/backend_d3d12/core_d3d12_resource.inc
+@@ -307,6 +307,11 @@
+         dsv.ViewDimension      = D3D12_DSV_DIMENSION_TEXTURE2D;
+         dsv.Texture2D.MipSlice = desc->baseMip;
+         d->Device()->CreateDepthStencilView(v->texture->resource.Get(), &dsv, v->cpu);
++        v->readOnlyDsv = d->AllocDsv();
++        dsv.Flags = D3D12_DSV_FLAG_READ_ONLY_DEPTH;
++        if (dsv.Format == DXGI_FORMAT_D24_UNORM_S8_UINT || dsv.Format == DXGI_FORMAT_D32_FLOAT_S8X24_UINT)
++            dsv.Flags |= D3D12_DSV_FLAG_READ_ONLY_STENCIL;
++        d->Device()->CreateDepthStencilView(v->texture->resource.Get(), &dsv, v->readOnlyDsv);
+     }
+     else if (v->texture->isRenderTarget)
+     {
+--- a/source/backend_d3d12/objects_d3d12.h
++++ b/source/backend_d3d12/objects_d3d12.h
+@@ -94,6 +94,7 @@
+         uint64_t                    bufferOffset = 0;
+         uint64_t                    bufferSize   = 0;
+         D3D12_CPU_DESCRIPTOR_HANDLE cpu          = {}; // for RTV/DSV
++        D3D12_CPU_DESCRIPTOR_HANDLE readOnlyDsv  = {};
+         uint32_t                    mip          = 0;
+         VriTextureViewType          viewType     = VriTextureViewType_2D; // SRV dimension (cube vs 2d/2darray)
+         VriSamplerDesc              sampler      = {}; // for Kind::Sampler (built into the sampler heap at update)
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -1248,6 +1248,8 @@
+                 MTLRenderPassDepthAttachmentDescriptor* da = rp.depthAttachment;
+                 da.texture = Desc(a->depth->view)->texture;
+                 da.loadAction = ToMtlLoadAction(a->depth->loadOp);
++                // Metal has no read-only depth store action. Store preserves the loaded depth;
++                // the pipeline must disable writes, as required by readOnly.
+                 da.storeAction = ToMtlStoreAction(a->depth->storeOp);
+                 da.clearDepth = a->depth->clearValue.depthStencil.depth;
+             }
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -1407,10 +1407,13 @@
+             {
+                 const DescriptorVK* view = Desc(a->depth->view);
+                 depth.imageView          = view->imageView;
+-                depth.imageLayout        = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
++                depth.imageLayout        = a->depth->readOnly ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL :
++                                                                  VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                 depth.loadOp             = a->depth->loadOp == VriAttachmentLoadOp_Clear ? VK_ATTACHMENT_LOAD_OP_CLEAR :
+                                                                                            VK_ATTACHMENT_LOAD_OP_LOAD;
+-                depth.storeOp            = VK_ATTACHMENT_STORE_OP_STORE;
++                depth.storeOp            = a->depth->readOnly ? VK_ATTACHMENT_STORE_OP_NONE :
++                                           a->depth->storeOp == VriAttachmentStoreOp_DontCare ?
++                                               VK_ATTACHMENT_STORE_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE;
+                 depth.clearValue.depthStencil.depth   = a->depth->clearValue.depthStencil.depth;
+                 depth.clearValue.depthStencil.stencil = a->depth->clearValue.depthStencil.stencil;
+                 ri.pDepthAttachment                   = &depth;
+--- a/source/backend_wgpu/core_wgpu.cpp
++++ b/source/backend_wgpu/core_wgpu.cpp
+@@ -1143,6 +1143,12 @@
+                 ds.depthStoreOp =
+                     a->depth->storeOp == VriAttachmentStoreOp_DontCare ? WGPUStoreOp_Discard : WGPUStoreOp_Store;
+                 ds.depthClearValue = a->depth->clearValue.depthStencil.depth;
++                ds.depthReadOnly = a->depth->readOnly;
++                if (ds.depthReadOnly)
++                {
++                    ds.depthLoadOp = WGPULoadOp_Undefined;
++                    ds.depthStoreOp = WGPUStoreOp_Undefined;
++                }
+                 // Stencil aspect: WGPU requires stencil load/store ops iff the format has stencil.
+                 const WGPUTextureFormat dsFmt = Desc(a->depth->view)->format;
+                 if (dsFmt == WGPUTextureFormat_Depth24PlusStencil8 || dsFmt == WGPUTextureFormat_Depth32FloatStencil8 ||
+@@ -1153,6 +1159,12 @@
+                     ds.stencilStoreOp =
+                         a->depth->storeOp == VriAttachmentStoreOp_DontCare ? WGPUStoreOp_Discard : WGPUStoreOp_Store;
+                     ds.stencilClearValue = a->depth->clearValue.depthStencil.stencil;
++                    ds.stencilReadOnly = a->depth->readOnly;
++                    if (ds.stencilReadOnly)
++                    {
++                        ds.stencilLoadOp = WGPULoadOp_Undefined;
++                        ds.stencilStoreOp = WGPUStoreOp_Undefined;
++                    }
+                 }
+                 rp.depthStencilAttachment = &ds;
+             }
+--- a/source/core/validation_layer.cpp
++++ b/source/core/validation_layer.cpp
+@@ -392,6 +392,34 @@
+             CmdBufVal* c = CV(cmd);
+             if (!OutsideOk(c, "CmdBeginRendering called outside command recording or inside an active render pass"))
+                 return;
++            if (!a || (a->colorNum && !a->colors))
++            {
++                Err(c->dev, "CmdBeginRendering requires valid attachments");
++                return;
++            }
++            for (uint32_t i = 0; i < a->colorNum; ++i)
++            {
++                if (a->colors[i].readOnly)
++                {
++                    Err(c->dev, "readOnly is only supported for the depth attachment");
++                    return;
++                }
++            }
++            if (a->stencil && (a->stencil->readOnly || (a->depth && a->depth->readOnly)))
++            {
++                Err(c->dev, "readOnly depth cannot be combined with a separate stencil attachment");
++                return;
++            }
++            for (const auto* attachment : {a->depth})
++            {
++                if (attachment && attachment->readOnly &&
++                    (!attachment->view || attachment->loadOp != VriAttachmentLoadOp_Load ||
++                     attachment->storeOp != VriAttachmentStoreOp_Store || attachment->resolveView))
++                {
++                    Err(c->dev, "readOnly requires a depth/stencil view, Load, Store and no resolve");
++                    return;
++                }
++            }
+             c->insideRenderPass = true;
+             c->dev->core.CmdBeginRendering(c->real, a);
+         }

@@ -1,0 +1,108 @@
+--- a/include/vri/vri_core.h
++++ b/include/vri/vri_core.h
+@@ -291,4 +291,7 @@
+     VriResult(VRI_CALL* CmdQueueFamilyTransfer)(VriCommandBuffer* release, VriCommandBuffer* acquire,
+                                                const VriBarrierGroupDesc* barriers);
++    /* Discard every unsubmitted recording from the allocator. Only success confirms reset.
++       The caller must ensure none of its commands are pending. Other backends may leave this NULL. */
++    VriResult(VRI_CALL* ResetCommandAllocatorChecked)(VriCommandAllocator* allocator);
+ } VriCoreInterface;
+ 
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -240,14 +240,31 @@
+         }
+ 
+-        void VRI_CALL ResetCommandAllocator(VriCommandAllocator* allocator)
++        VriResult VRI_CALL ResetCommandAllocatorChecked(VriCommandAllocator* allocator)
+         {
+-            CommandAllocatorVK* a = CA(allocator);
+-            if (vkResetCommandPool(a->device->Device(), a->pool, 0) == VK_SUCCESS)
++            if (!allocator)
++                return VriResult_InvalidArgument;
++            auto* a = CA(allocator);
++            const auto result = vkResetCommandPool(a->device->Device(), a->pool, 0);
++            switch (result)
+             {
+-                for (auto* buffer : a->buffers)
+-                    buffer->recording = false;
++                case VK_SUCCESS:
++                    for (auto* buffer : a->buffers)
++                        buffer->recording = false;
++                    return VriResult_Success;
++                case VK_ERROR_OUT_OF_HOST_MEMORY:
++                case VK_ERROR_OUT_OF_DEVICE_MEMORY:
++                    return VriResult_OutOfMemory;
++                case VK_ERROR_DEVICE_LOST:
++                    return VriResult_DeviceLost;
++                default:
++                    return VriResult_Failure;
+             }
+         }
+ 
++        void VRI_CALL ResetCommandAllocator(VriCommandAllocator* allocator)
++        {
++            (void)ResetCommandAllocatorChecked(allocator);
++        }
++
+         void VRI_CALL DestroyCommandAllocator(VriCommandAllocator* allocator)
+         {
+@@ -2454,4 +2471,5 @@
+             GetCommandBufferQueueFamilyIndex,
+             CmdQueueFamilyTransfer,
++            ResetCommandAllocatorChecked,
+         };
+     } // namespace
+--- a/source/core/validation_layer.cpp
++++ b/source/core/validation_layer.cpp
+@@ -176,9 +176,7 @@
+             return VriResult_Success;
+         }
+-        void VRI_CALL ResetCommandAllocator(VriCommandAllocator* a)
++        void ClearAllocatorRecordingStates(AllocatorVal& allocator)
+         {
+-            AllocatorVal* allocator = AV(a);
+-            allocator->dev->core.ResetCommandAllocator(allocator->real);
+-            for (CmdBufVal* command : allocator->commands)
++            for (CmdBufVal* command : allocator.commands)
+             {
+                 command->recording        = false;
+@@ -186,5 +184,31 @@
+                 command->insideRenderPass = false;
+                 command->recordThread     = {};
++            }
++        }
++
++        VriResult VRI_CALL ResetCommandAllocatorChecked(VriCommandAllocator* a)
++        {
++            if (!a)
++                return VriResult_InvalidArgument;
++            auto* allocator = AV(a);
++            const auto reset = allocator->dev->core.ResetCommandAllocatorChecked;
++            if (!reset)
++                return VriResult_Unsupported;
++            const auto result = reset(allocator->real);
++            if (result == VriResult_Success)
++                ClearAllocatorRecordingStates(*allocator);
++            return result;
++        }
++
++        void VRI_CALL ResetCommandAllocator(VriCommandAllocator* a)
++        {
++            auto* allocator = AV(a);
++            if (allocator->dev->core.ResetCommandAllocatorChecked)
++            {
++                (void)ResetCommandAllocatorChecked(a);
++                return;
+             }
++            allocator->dev->core.ResetCommandAllocator(allocator->real);
++            ClearAllocatorRecordingStates(*allocator);
+         }
+         void VRI_CALL DestroyCommandAllocator(VriCommandAllocator* a)
+@@ -1229,4 +1253,6 @@
+                 d->core.GetCommandBufferQueueFamilyIndex ? GetCommandBufferQueueFamilyIndex : nullptr;
+             t.CmdQueueFamilyTransfer = d->core.CmdQueueFamilyTransfer ? CmdQueueFamilyTransfer : nullptr;
++            t.ResetCommandAllocatorChecked =
++                d->core.ResetCommandAllocatorChecked ? ResetCommandAllocatorChecked : nullptr;
+             // Objects pass through, but the device still belongs to this layer.
+             t.EnumerateObjects           = d->core.EnumerateObjects ? EnumerateObjects : nullptr;

@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <expected>
 #include <filesystem>
 #include <string>
 #include <variant>
@@ -61,6 +62,7 @@ namespace vultra
         ShaderSourceLocation                         location;
         bool                                         isTexture() const;
         void                                         validate(const ShaderPropertyValue& value) const;
+        std::expected<void, std::string>             validateExpected(const ShaderPropertyValue& value) const;
     };
 
 } // namespace vultra

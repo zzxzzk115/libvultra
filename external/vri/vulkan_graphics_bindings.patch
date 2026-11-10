@@ -1,0 +1,42 @@
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -712,12 +712,19 @@
+         // ---- views & samplers ----------------------------------------------
+         VriResult VRI_CALL CreateBufferView(VriDevice* device, const VriBufferViewDesc* desc, VriDescriptor** out)
+         {
++            if (!device || !desc || !out || !desc->buffer)
++                return VriResult_InvalidArgument;
++            *out = nullptr;
++            const BufferVK* buffer = Buf(desc->buffer);
++            if (buffer->device != Dev(device) || !buffer->buffer || desc->offset >= buffer->size ||
++                desc->size > buffer->size - desc->offset)
++                return VriResult_InvalidArgument;
+             DescriptorVK* v = new DescriptorVK {};
+             v->kind         = DescriptorVK::Kind::BufferView;
+             v->device       = Dev(device);
+             v->buffer       = Buf(desc->buffer);
+             v->bufferOffset = desc->offset;
+-            v->bufferRange  = desc->size;
++            v->bufferRange  = desc->size ? desc->size : buffer->size - desc->offset;
+             *out            = ToHandle(v);
+             return VriResult_Success;
+         }
+@@ -1055,7 +1062,7 @@
+                 const VriVertexAttributeDesc&     a  = desc->vertexInput.attributes[i];
+                 VkVertexInputAttributeDescription va = {};
+                 va.location                          = i;
+-                va.binding                           = a.streamIndex;
++                va.binding                           = desc->vertexInput.streams[a.streamIndex].bindingSlot;
+                 va.format                            = ToVkFormat(a.format);
+                 va.offset                            = a.offset;
+                 vkAttrs.push_back(va);
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -566,6 +566,7 @@
+         features2.features.shaderStorageImageExtendedFormats = baseSup.shaderStorageImageExtendedFormats;
+         features2.features.shaderStorageImageReadWithoutFormat = baseSup.shaderStorageImageReadWithoutFormat;
+         features2.features.shaderStorageImageWriteWithoutFormat = baseSup.shaderStorageImageWriteWithoutFormat;
++        features2.features.fragmentStoresAndAtomics = baseSup.fragmentStoresAndAtomics;
+         m_hasSamplerAnisotropy               = baseSup.samplerAnisotropy == VK_TRUE;
+         m_maxSamplerAnisotropy               = physProps.limits.maxSamplerAnisotropy;
+         m_hasPipelineStats                   = baseSup.pipelineStatisticsQuery;

@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <cstring>
 #include <span>
-#include <stdexcept>
 #include <type_traits>
 #include <vector>
 
@@ -48,44 +47,47 @@ namespace vultra::asset_detail
         }
 
         template<typename T>
-        T value()
+        bool read(T& value)
         {
             static_assert(std::is_trivially_copyable_v<T>);
             if (m_Remaining.size() < sizeof(T))
             {
-                throw std::runtime_error("Truncated asset cache");
+                return false;
             }
-            T result;
-            std::memcpy(&result, m_Remaining.data(), sizeof(T));
+            std::memcpy(&value, m_Remaining.data(), sizeof(T));
             m_Remaining = m_Remaining.subspan(sizeof(T));
-            return result;
+            return true;
         }
 
         template<typename T>
-        std::vector<T> array()
+        bool readArray(std::vector<T>& values)
         {
-            const auto     bytes = arrayBytes<T>();
-            std::vector<T> result(bytes.size() / sizeof(T));
+            std::span<const std::byte> bytes;
+            if (!readArrayBytes<T>(bytes))
+            {
+                return false;
+            }
+            values.resize(bytes.size() / sizeof(T));
             if (!bytes.empty())
             {
-                std::memcpy(result.data(), bytes.data(), bytes.size());
+                std::memcpy(values.data(), bytes.data(), bytes.size());
             }
-            return result;
+            return true;
         }
 
         // Keep byte views unaligned. Callers may copy independent payloads after indexing the archive.
         template<typename T>
-        std::span<const std::byte> arrayBytes()
+        bool readArrayBytes(std::span<const std::byte>& bytes)
         {
             static_assert(std::is_trivially_copyable_v<T>);
-            const auto count = value<uint64_t>();
-            if (count > m_Remaining.size() / sizeof(T))
+            uint64_t count;
+            if (!read(count) || count > m_Remaining.size() / sizeof(T))
             {
-                throw std::runtime_error("Invalid asset cache array length");
+                return false;
             }
-            const auto result = m_Remaining.first(size_t(count) * sizeof(T));
-            m_Remaining       = m_Remaining.subspan(result.size());
-            return result;
+            bytes       = m_Remaining.first(size_t(count) * sizeof(T));
+            m_Remaining = m_Remaining.subspan(bytes.size());
+            return true;
         }
 
         bool empty() const

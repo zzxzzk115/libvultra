@@ -5,6 +5,7 @@
 #include <vultra/drivers/rhi/shader_compiler.hpp>
 
 #include <slang.h>
+#include <spirv-tools/libspirv.h>
 
 #include <fstream>
 #include <stdexcept>
@@ -44,7 +45,8 @@ namespace vultra
 
     std::string ShaderProgram::compilerVersion()
     {
-        std::string identity = std::string(spGetBuildTagString()) + ";" + kShaderToolchainKey;
+        std::string identity = std::string(spGetBuildTagString()) +
+                               ";spirv-tools=" + spvSoftwareVersionDetailsString() + ";" + kShaderToolchainKey;
 #ifdef NDEBUG
         identity += ";debug=none";
 #else

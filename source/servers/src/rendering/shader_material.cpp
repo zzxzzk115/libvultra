@@ -1,11 +1,12 @@
-#include "rhi/shader_archive.hpp"
 #include "shader_pass_state.hpp"
 
 #include <vultra/core/base/logger.hpp>
+#include <vultra/drivers/rhi/shader_uniform_block.hpp>
 
 #include <algorithm>
-#include <cstring>
+#include <array>
 #include <map>
+#include <optional>
 #include <stdexcept>
 
 namespace vultra
@@ -85,112 +86,101 @@ namespace vultra
 
         struct Pass
         {
-            Device&                                                               device;
-            const ShaderPass&                                                     definition;
-            const ShaderProgram&                                                  program;
-            VriPipelineLayout*                                                    layout = nullptr;
-            VriDescriptorPool*                                                    pool   = nullptr;
-            std::vector<VriDescriptorSet*>                                        sets;
-            std::vector<uint32_t>                                                 spaces;
-            std::vector<ShaderResourceBinding>                                    bindings;
-            std::map<std::string, std::pair<uint32_t, uint32_t>, std::less<>>     ranges;
-            std::unique_ptr<Buffer>                                               uniforms;
-            VriDescriptor*                                                        uniformView = nullptr;
-            uint64_t                                                              revision    = UINT64_MAX;
-            uint32_t                                                              pushSize    = 0;
-            std::map<std::string, bool>                                           normalEncodings;
-            std::map<std::string, std::vector<const VriDescriptor*>, std::less<>> bound;
+            const ShaderPass&               definition;
+            const ShaderProgram&            program;
+            std::unique_ptr<ShaderBindings> parameters;
+            bool                            hasUniforms = false;
+            uint64_t                        revision    = UINT64_MAX;
+            std::map<std::string, bool>     normalEncodings;
 
-            Pass(Device& device, const ShaderPass& definition, const ShaderProgram& program) :
-                device(device),
+            Pass(const ShaderPass& definition, const ShaderProgram& program) :
                 definition(definition),
-                program(program),
-                bindings(program.resourceBindings())
+                program(program)
             {
-                detail::validateShaderProgram(program, *device.core.GetDeviceDesc(device.handle));
             }
 
-            ~Pass()
-            {
-                if (pool)
-                {
-                    device.core.DestroyDescriptorPool(pool);
-                }
-                if (uniformView)
-                {
-                    device.core.DestroyDescriptor(uniformView);
-                }
-                if (layout)
-                {
-                    device.core.DestroyPipelineLayout(layout);
-                }
-            }
         };
 
         struct Pipeline
         {
+            Device&      device;
             VriPipeline* handle = nullptr;
-            Pass*        pass   = nullptr;
+            Pass*        pass;
             PreparedPass prepared;
+
+            Pipeline(Device& device, Pass& pass) :
+                device(device),
+                pass(&pass)
+            {
+            }
+
+            ~Pipeline()
+            {
+                if (handle)
+                {
+                    device.core.DestroyPipeline(handle);
+                }
+            }
         };
 
         Device&                                                device;
         const ShaderAsset&                                     asset;
         MaterialInstance&                                      instance;
-        TextureResolver                                        resolveTexture;
+        TextureResolverExpected                                              resolveTexture;
         uint32_t                                               selected       = 0;
         VriDescriptor*                                         defaultSampler = nullptr;
         std::map<std::string, std::unique_ptr<DefaultTexture>> defaults;
-        std::map<std::string, std::unique_ptr<Pass>>           passes;
-        std::map<std::string, Pipeline>                        pipelines;
+        std::map<std::pair<std::string, std::string>, std::unique_ptr<Pass>> passes;
+        std::map<std::string, std::unique_ptr<Pipeline>>                     pipelines;
         std::map<std::string, Pipeline*, std::less<>>          active;
 
-        State(Device&                                    device,
-              const ShaderAsset&                         asset,
-              MaterialInstance&                          instance,
-              TextureResolver                            resolver,
-              std::span<const std::string_view>          requiredLightModes,
-              const ShaderAsset::SubshaderCompatibility& compatible) :
+        State(Device& device, const ShaderAsset& asset, MaterialInstance& instance, TextureResolverExpected resolver) :
             device(device),
             asset(asset),
             instance(instance),
             resolveTexture(std::move(resolver))
         {
-            std::string diagnostics;
-            selected = asset.selectSubshader("Vultra", device.features, requiredLightModes, diagnostics, compatible);
-            Logger::core().info("Shader {} selected SubShader {}\n{}", asset.name, selected, diagnostics);
-            instance.validate(asset);
         }
 
         ~State()
         {
-            device.waitIdleForDestruction();
-            for (auto& [key, pipeline] : pipelines)
+            if (!pipelines.empty() || !defaults.empty())
             {
-                device.core.DestroyPipeline(pipeline.handle);
+                device.waitIdleForDestruction();
             }
+            pipelines.clear();
             if (defaultSampler)
             {
                 device.core.DestroyDescriptor(defaultSampler);
             }
         }
 
-        ShaderTextureBinding texture(const ShaderProperty& property, const ShaderTextureValue& value)
+        std::expected<void, std::string> bind(VriCommandBuffer* commands, const Pipeline& pipeline) const
+        {
+            return pipeline.pass->parameters->bindExpected(commands, pipeline.handle);
+        }
+
+        std::expected<ShaderTextureBinding, std::string> texture(const ShaderProperty&     property,
+                                                                 const ShaderTextureValue& value)
         {
             if (value.builtin.empty())
             {
                 if (!resolveTexture)
                 {
-                    throw std::invalid_argument("No texture resolver for property: " + property.name);
+                    return std::unexpected("No texture resolver for property: " + property.name);
                 }
                 auto result = resolveTexture(property, value);
-                if (!result.texture || !result.sampler || result.dimension != dimension(property.type))
+                if (!result)
                 {
-                    throw std::invalid_argument("Texture resource/dimension mismatch: " + property.name);
+                    return std::unexpected(result.error());
                 }
-                if (result.srgb != property.srgb)
+                if (!result->texture || !result->sampler || result->dimension != dimension(property.type))
                 {
-                    throw std::invalid_argument("Texture color-space/normal usage mismatch: " + property.name);
+                    return std::unexpected("Texture resource/dimension mismatch: " + property.name);
+                }
+                if (result->srgb != property.srgb)
+                {
+                    return std::unexpected("Texture color-space/normal usage mismatch: " + property.name);
                 }
                 return result;
             }
@@ -204,8 +194,11 @@ namespace vultra
                 sampler.addressModeU = VriAddressMode_Repeat;
                 sampler.addressModeV = VriAddressMode_Repeat;
                 sampler.addressModeW = VriAddressMode_Repeat;
-                check(device.core.CreateSampler(device.handle, &sampler, &defaultSampler),
-                      "Create shader default sampler");
+                if (const auto status = device.core.CreateSampler(device.handle, &sampler, &defaultSampler);
+                    status != VriResult_Success)
+                {
+                    return std::unexpected("Create shader default sampler failed: " + std::to_string(status));
+                }
             }
             const auto key   = value.builtin + std::to_string(uint32_t(property.type));
             auto       found = defaults.find(key);
@@ -235,14 +228,24 @@ namespace vultra
                 desc.layerNum =
                     (viewType == VriTextureViewType_Cube || viewType == VriTextureViewType_CubeArray) ? 6 : 1;
                 auto created     = std::make_unique<DefaultTexture>(device);
-                created->texture = std::make_unique<Texture>(device, desc);
-                Buffer upload(
+                auto ownedTexture = Texture::create(device, desc);
+                if (!ownedTexture)
+                {
+                    return std::unexpected(ownedTexture.error());
+                }
+                created->texture = std::move(*ownedTexture);
+                auto upload      = Buffer::create(
                     device,
                     {uint64_t(desc.layerNum) * 512, 0, VriBufferUsage_TransferSrc, VriMemoryLocation_HostUpload});
-                auto* mapped = static_cast<std::byte*>(device.core.MapBuffer(upload.handle, 0, upload.desc.size));
+                if (!upload)
+                {
+                    return std::unexpected(upload.error());
+                }
+                auto* mapped =
+                    static_cast<std::byte*>(device.core.MapBuffer((*upload)->handle, 0, (*upload)->desc.size));
                 if (!mapped)
                 {
-                    throw std::runtime_error("Map default shader texture");
+                    return std::unexpected("Map default shader texture");
                 }
                 // These three builtin colors are exactly representable in filterable RGBA16F.
                 std::array<uint16_t, 4> color {0x3c00, 0x3c00, 0x3c00, 0x3c00};
@@ -258,12 +261,27 @@ namespace vultra
                 {
                     std::memcpy(mapped + uint64_t(layer) * 512, color.data(), sizeof(color));
                 }
-                device.core.UnmapBuffer(upload.handle);
-                Frame frame(device);
-                auto* cmd = frame.begin();
-                created->texture->transition(
-                    cmd,
-                    {VriAccess_CopyDestinationWrite, VriLayout_CopyDestination, VriPipelineStage_Transfer});
+                device.core.UnmapBuffer((*upload)->handle);
+                auto frame = Frame::create(device);
+                if (!frame)
+                {
+                    return std::unexpected(frame.error());
+                }
+                auto commands = (*frame)->beginExpected();
+                if (!commands)
+                {
+                    return std::unexpected(commands.error());
+                }
+                VriTextureViewDesc whole {};
+                whole.viewType = VriTextureViewType_MaxEnum;
+                if (auto transitioned = created->texture->transitionExpected(
+                        *commands,
+                        {VriAccess_CopyDestinationWrite, VriLayout_CopyDestination, VriPipelineStage_Transfer},
+                        whole);
+                    !transitioned)
+                {
+                    return std::unexpected(transitioned.error());
+                }
                 for (uint32_t layer = 0; layer < desc.layerNum; ++layer)
                 {
                     VriBufferTextureCopyDesc copy {};
@@ -271,163 +289,108 @@ namespace vultra
                     copy.bufferRowLength   = 32;
                     copy.bufferImageHeight = 1;
                     copy.texture           = {0, layer, 1, VriImageAspect_Color, 0, 0, 0, 1, 1, 1};
-                    device.core.CmdUploadBufferToTexture(cmd, created->texture->handle, upload.handle, &copy);
+                    device.core.CmdUploadBufferToTexture(*commands, created->texture->handle, (*upload)->handle, &copy);
                 }
-                created->texture->transition(
-                    cmd,
-                    {VriAccess_ShaderResourceRead, VriLayout_ShaderResource, VriPipelineStage_AllCommands});
-                frame.submitAndWait();
+                if (auto transitioned = created->texture->transitionExpected(
+                        *commands,
+                        {VriAccess_ShaderResourceRead, VriLayout_ShaderResource, VriPipelineStage_AllCommands},
+                        whole);
+                    !transitioned)
+                {
+                    return std::unexpected(transitioned.error());
+                }
+                if (auto submitted = (*frame)->submitAndWaitExpected(); !submitted)
+                {
+                    return std::unexpected(submitted.error());
+                }
                 VriTextureViewDesc view {};
                 view.texture  = created->texture->handle;
                 view.viewType = viewType;
                 view.format   = desc.format;
                 view.aspect   = VriImageAspect_Color;
                 view.layerNum = desc.layerNum;
-                check(device.core.CreateTextureView(device.handle, &view, &created->view),
-                      "Create default shader texture view");
+                if (const auto status = device.core.CreateTextureView(device.handle, &view, &created->view);
+                    status != VriResult_Success)
+                {
+                    return std::unexpected("Create default shader texture view failed: " + std::to_string(status));
+                }
                 found = defaults.emplace(key, std::move(created)).first;
             }
-            return {found->second->view, defaultSampler, dimension(property.type), false, false};
+            return ShaderTextureBinding {found->second->view, defaultSampler, dimension(property.type), false, false};
         }
 
-        Pass& pass(const ShaderPass& definition)
+        std::expected<std::unique_ptr<Pass>, std::string> createPass(const ShaderPass& definition)
         {
-            const auto key   = definition.name + ":" + instance.variant;
-            const auto found = passes.find(key);
-            if (found != passes.end())
+            auto program = definition.programExpected(instance.variant);
+            if (!program)
             {
-                return *found->second;
+                return std::unexpected(program.error());
             }
-            auto candidate = std::make_unique<Pass>(device, definition, definition.program(instance.variant));
-            std::map<uint32_t, std::vector<VriDescriptorRangeDesc>> groups;
-            VriShaderStageFlags                                     stages = 0;
-            for (const auto& entry : definition.entries)
+            auto reflected = (**program).resourceBindingsExpected();
+            if (!reflected)
             {
-                stages |= entry.stage;
+                return std::unexpected(reflected.error());
             }
-            std::vector<VriPushConstantDesc> pushes;
-            VriDescriptorPoolDesc            pool {};
-            for (const auto& binding : candidate->bindings)
+            const bool       hasUniforms = std::ranges::any_of(*reflected,
+                                                         [](const auto& binding)
+                                                         {
+                                                             return !binding.pushConstant && binding.name == "material";
+                                                         });
+            const std::array names {std::string_view("material")};
+            auto             parameters = ShaderBindings::create(device,
+                                                     **program,
+                                                     definition.entries,
+                                                     hasUniforms ? std::span<const std::string_view>(names) :
+                                                                               std::span<const std::string_view> {});
+            if (!parameters)
             {
-                if (binding.pushConstant)
-                {
-                    if (binding.uniformSize > 128 || !pushes.empty())
-                    {
-                        throw std::invalid_argument("Material Pass supports one push constant block up to 128 bytes");
-                    }
-                    candidate->pushSize = uint32_t(binding.uniformSize);
-                    pushes.push_back({0, candidate->pushSize, stages});
-                    continue;
-                }
-                auto& ranges = groups[binding.set];
-                if (std::ranges::any_of(ranges,
-                                        [&](const auto& range)
-                                        {
-                                            return range.baseRegister == binding.binding;
-                                        }))
-                {
-                    throw std::invalid_argument("Overlapping reflected shader bindings: " + binding.name);
-                }
-                candidate->ranges.emplace(binding.name, std::pair(binding.set, uint32_t(ranges.size())));
-                ranges.push_back({binding.binding, binding.count, binding.type, stages, 0, binding.viewType});
-                switch (binding.type)
-                {
-                    case VriDescriptorType_Sampler:
-                        pool.samplerMaxNum += binding.count;
-                        break;
-                    case VriDescriptorType_Texture:
-                        pool.textureMaxNum += binding.count;
-                        break;
-                    case VriDescriptorType_StorageTexture:
-                        pool.storageTextureMaxNum += binding.count;
-                        break;
-                    case VriDescriptorType_ConstantBuffer:
-                        pool.constantBufferMaxNum += binding.count;
-                        break;
-                    case VriDescriptorType_StructuredBuffer:
-                        pool.structuredBufferMaxNum += binding.count;
-                        break;
-                    case VriDescriptorType_StorageBuffer:
-                        pool.storageBufferMaxNum += binding.count;
-                        break;
-                    case VriDescriptorType_AccelerationStructure:
-                        pool.accelerationStructureMaxNum += binding.count;
-                        break;
-                    default:
-                        throw std::invalid_argument("Unsupported shader descriptor type");
-                }
-                if (binding.name == "material")
-                {
-                    candidate->uniforms = std::make_unique<Buffer>(device,
-                                                                   VriBufferDesc {binding.uniformSize,
-                                                                                  0,
-                                                                                  VriBufferUsage_ConstantBuffer,
-                                                                                  VriMemoryLocation_HostUpload});
-                    VriBufferViewDesc view {candidate->uniforms->handle,
-                                            VriDescriptorType_ConstantBuffer,
-                                            VriFormat_Unknown,
-                                            0,
-                                            binding.uniformSize};
-                    check(device.core.CreateBufferView(device.handle, &view, &candidate->uniformView),
-                          "Create shader material uniform view");
-                }
+                return std::unexpected(parameters.error());
             }
-            std::vector<VriDescriptorSetDesc> sets;
-            if (!groups.empty())
-            {
-                const auto highestSet = groups.rbegin()->first;
-                if (highestSet >= 32)
-                {
-                    throw std::invalid_argument("Reflected descriptor set index exceeds material layout limit (31)");
-                }
-                // Vulkan set indices are positional; registerSpace does not create skipped layouts.
-                for (uint32_t space = 0; space <= highestSet; ++space)
-                {
-                    const auto& ranges = groups[space];
-                    candidate->spaces.push_back(space);
-                    sets.push_back({space, ranges.data(), uint32_t(ranges.size())});
-                }
-            }
-            VriPipelineLayoutDesc layout {sets.data(),
-                                          uint32_t(sets.size()),
-                                          pushes.data(),
-                                          uint32_t(pushes.size()),
-                                          stages};
-            check(device.core.CreatePipelineLayout(device.handle, &layout, &candidate->layout),
-                  "Create reflected shader layout");
-            if (!sets.empty())
-            {
-                pool.descriptorSetMaxNum = uint32_t(sets.size());
-                check(device.core.CreateDescriptorPool(device.handle, &pool, &candidate->pool),
-                      "Create shader material descriptor pool");
-                candidate->sets.resize(sets.size());
-                for (uint32_t index = 0; index < sets.size(); ++index)
-                {
-                    check(device.core.AllocateDescriptorSets(candidate->pool,
-                                                             candidate->layout,
-                                                             index,
-                                                             &candidate->sets[index],
-                                                             1),
-                          "Allocate reflected shader descriptor set");
-                }
-            }
-            return *passes.emplace(key, std::move(candidate)).first->second;
+            auto candidate         = std::make_unique<Pass>(definition, **program);
+            candidate->parameters = std::move(*parameters);
+            candidate->hasUniforms = hasUniforms;
+            return candidate;
         }
 
-        void update(Pass& pass, std::span<const ShaderResourceViews> resources)
+        std::expected<void, std::string> update(Pass& pass, std::span<const ShaderResourceViews> resources)
         {
+            const auto                                  revision = instance.revision();
+            const auto                                  variant  = instance.variant;
             std::map<std::string, ShaderTextureBinding> textures;
             for (const auto& property : asset.properties)
             {
                 if (property.isTexture())
                 {
-                    textures.emplace(
-                        property.name,
-                        texture(property, std::get<ShaderTextureValue>(instance.value(asset, property.name))));
+                    auto value = instance.valueExpected(asset, property.name);
+                    if (!value)
+                    {
+                        return std::unexpected(value.error());
+                    }
+                    auto resolved = texture(property, std::get<ShaderTextureValue>(*value));
+                    if (!resolved)
+                    {
+                        return std::unexpected(resolved.error());
+                    }
+                    textures.emplace(property.name, *resolved);
                 }
             }
-            std::map<std::string, std::vector<const VriDescriptor*>> resolved;
-            for (const auto& binding : pass.bindings)
+            if (instance.revision() != revision || instance.variant != variant)
+            {
+                return std::unexpected("Material changed while resolving textures");
+            }
+            for (size_t i = 0; i < resources.size(); ++i)
+            {
+                if (std::ranges::any_of(resources.subspan(i + 1),
+                                        [&](const auto& other)
+                                        {
+                                            return other.name == resources[i].name;
+                                        }))
+                {
+                    return std::unexpected("Duplicate shader resource binding: " + resources[i].name);
+                }
+            }
+            std::vector<ShaderResourceViews> resolved;
+            for (const auto& binding : pass.parameters->bindings())
             {
                 if (binding.pushConstant)
                 {
@@ -436,7 +399,7 @@ namespace vultra
                 std::vector<const VriDescriptor*> views;
                 if (binding.name == "material")
                 {
-                    views.push_back(pass.uniformView);
+                    continue;
                 }
                 else if (binding.name.starts_with("material."))
                 {
@@ -449,7 +412,7 @@ namespace vultra
                     const auto found = textures.find(name);
                     if (found == textures.end())
                     {
-                        throw std::invalid_argument("Unknown generated material resource: " + binding.name);
+                        return std::unexpected("Unknown generated material resource: " + binding.name);
                     }
                     views.push_back(sampler ? found->second.sampler : found->second.texture);
                 }
@@ -458,9 +421,9 @@ namespace vultra
                     const auto found = std::ranges::find(resources, binding.name, &ShaderResourceViews::name);
                     if (found == resources.end() || found->type != binding.type || found->views.size() != binding.count)
                     {
-                        throw std::invalid_argument(pass.definition.location.describe() +
-                                                    ": missing or incompatible resource in Pass " +
-                                                    pass.definition.name + ": " + binding.name);
+                        return std::unexpected(pass.definition.location.describe() +
+                                               ": missing or incompatible resource in Pass " + pass.definition.name +
+                                               ": " + binding.name);
                     }
                     views = found->views;
                 }
@@ -470,12 +433,11 @@ namespace vultra
                                             return view == nullptr;
                                         }))
                 {
-                    throw std::invalid_argument(pass.definition.location.describe() +
-                                                ": unbound required shader resource: " + binding.name);
+                    return std::unexpected(pass.definition.location.describe() +
+                                           ": unbound required shader resource: " + binding.name);
                 }
-                resolved.emplace(binding.name, std::move(views));
+                resolved.push_back({binding.name, binding.type, std::move(views)});
             }
-            // Validate every binding before changing any live uniform or descriptor.
             bool encodingChanged = false;
             for (const auto& property : asset.properties)
             {
@@ -487,30 +449,41 @@ namespace vultra
                         encodingChanged || previous == pass.normalEncodings.end() || previous->second != bc5;
                 }
             }
-            if (pass.uniforms && (pass.revision != instance.revision() || encodingChanged))
+            std::optional<ShaderUniformBlock> data;
+            if (pass.hasUniforms && (pass.revision != instance.revision() || encodingChanged))
             {
-                auto        data     = instance.uniformData(asset, pass.program);
-                const auto* uniforms = pass.program.parameters.field("material")->field("$element");
+                auto packed = instance.uniformBlockExpected(asset, pass.program);
+                if (!packed)
+                {
+                    return std::unexpected(packed.error());
+                }
+                data                 = std::move(*packed);
                 for (const auto& property : asset.properties)
                 {
                     if (property.normal)
                     {
-                        const auto*    field    = uniforms->field(property.name + "Encoding");
                         const uint32_t encoding = textures.at(property.name).bc5 ? 1 : 0;
-                        std::memcpy(data.data() + field->offset(ShaderOffsetKind::eUniform),
-                                    &encoding,
-                                    sizeof(encoding));
+                        const auto       path     = property.name + "Encoding";
+                        const std::array writes {ShaderUniformWrite {path, std::span(&encoding, 1)}};
+                        if (auto written = data->setExpected(writes); !written)
+                        {
+                            return std::unexpected(written.error());
+                        }
                     }
                 }
-                auto* mapped = device.core.MapBuffer(pass.uniforms->handle, 0, data.size());
-                if (!mapped)
-                {
-                    throw std::runtime_error("Map shader material parameters");
-                }
-                std::memcpy(mapped, data.data(), data.size());
-                device.core.UnmapBuffer(pass.uniforms->handle);
-                pass.revision = instance.revision();
             }
+            std::optional<ShaderUniformUpload>   upload;
+            std::span<const ShaderUniformUpload> uploads;
+            if (data)
+            {
+                upload.emplace("material", *data);
+                uploads = {&*upload, 1};
+            }
+            if (auto updated = pass.parameters->updateExpected(resolved, uploads); !updated)
+            {
+                return updated;
+            }
+            pass.revision = instance.revision();
             for (const auto& property : asset.properties)
             {
                 if (property.normal)
@@ -518,26 +491,91 @@ namespace vultra
                     pass.normalEncodings.insert_or_assign(property.name, textures.at(property.name).bc5);
                 }
             }
-            for (auto& [name, views] : resolved)
-            {
-                // Borrowed descriptors can be destroyed and allocated at the same CPU address.
-                // Always refresh their VRI contents at preparation, after the preceding GPU frame completes.
-                const auto [space, range]          = pass.ranges.at(name);
-                const auto                   index = std::ranges::find(pass.spaces, space) - pass.spaces.begin();
-                VriDescriptorRangeUpdateDesc update {views.data(), uint32_t(views.size()), 0};
-                device.core.UpdateDescriptorRanges(pass.sets[index], range, 1, &update);
-            }
+            return {};
         }
     };
+
+    ShaderMaterial::ShaderMaterial(std::unique_ptr<State> state) :
+        m_State(std::move(state))
+    {
+    }
+
+    std::expected<std::unique_ptr<ShaderMaterial>, std::string>
+    ShaderMaterial::create(Device&                                            device,
+                           const ShaderAsset&                                 asset,
+                           MaterialInstance&                                  instance,
+                           TextureResolverExpected                            textures,
+                           std::span<const std::string_view>                  requiredLightModes,
+                           const ShaderAsset::SubshaderCompatibilityExpected& compatible)
+    {
+        if (auto valid = asset.validateExpected(); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
+        auto        state = std::make_unique<State>(device, asset, instance, std::move(textures));
+        std::string diagnostics;
+        auto        selected =
+            asset.selectSubshaderExpected("Vultra", device.features, requiredLightModes, diagnostics, compatible);
+        if (!selected)
+        {
+            return std::unexpected(selected.error());
+        }
+        if (auto valid = instance.validateExpected(asset); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
+        state->selected = *selected;
+        Logger::core().info("Shader {} selected SubShader {}\n{}", asset.name, state->selected, diagnostics);
+        return std::unique_ptr<ShaderMaterial>(new ShaderMaterial(std::move(state)));
+    }
 
     ShaderMaterial::ShaderMaterial(Device&                                    device,
                                    const ShaderAsset&                         asset,
                                    MaterialInstance&                          instance,
                                    TextureResolver                            textures,
                                    std::span<const std::string_view>          requiredLightModes,
-                                   const ShaderAsset::SubshaderCompatibility& compatible) :
-        m_State(std::make_unique<State>(device, asset, instance, std::move(textures), requiredLightModes, compatible))
+                                   const ShaderAsset::SubshaderCompatibility& compatible)
     {
+        // Explicit adapters for existing throwing application callbacks during migration.
+        TextureResolverExpected checkedTextures;
+        if (textures)
+        {
+            checkedTextures =
+                [textures = std::move(textures)](const auto& property,
+                                                 const auto& value) -> std::expected<ShaderTextureBinding, std::string>
+            {
+                try
+                {
+                    return textures(property, value);
+                }
+                catch (const std::exception& error)
+                {
+                    return std::unexpected(error.what());
+                }
+            };
+        }
+        ShaderAsset::SubshaderCompatibilityExpected checkedCompatibility;
+        if (compatible)
+        {
+            checkedCompatibility = [compatible](const auto& subshader) -> std::expected<std::string, std::string>
+            {
+                try
+                {
+                    return compatible(subshader);
+                }
+                catch (const std::exception& error)
+                {
+                    return std::unexpected(error.what());
+                }
+            };
+        }
+        auto material =
+            create(device, asset, instance, std::move(checkedTextures), requiredLightModes, checkedCompatibility);
+        if (!material)
+        {
+            throw std::invalid_argument(material.error());
+        }
+        m_State = std::move((*material)->m_State);
     }
 
     ShaderMaterial::~ShaderMaterial() = default;
@@ -546,46 +584,95 @@ namespace vultra
                                          const ShaderPassContext&             context,
                                          std::span<const ShaderResourceViews> resources)
     {
+        auto prepared = prepareExpected(name, context, resources);
+        if (!prepared)
+        {
+            throw std::invalid_argument(prepared.error());
+        }
+        return *prepared;
+    }
+
+    std::expected<VriPipeline*, std::string>
+    ShaderMaterial::prepareExpected(std::string_view                     name,
+                                    const ShaderPassContext&             context,
+                                    std::span<const ShaderResourceViews> resources)
+    {
         auto& state = *m_State;
-        state.instance.validate(state.asset);
+        if (auto valid = state.instance.validateExpected(state.asset); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
         const auto& definitions = state.asset.subshaders[state.selected].passes;
         const auto  found       = std::ranges::find(definitions, name, &ShaderPass::name);
         if (found == definitions.end())
         {
-            throw std::invalid_argument("SubShader has no requested Pass: " + std::string(name));
+            return std::unexpected("SubShader has no requested Pass: " + std::string(name));
         }
         if ((found->requiredFeatures & state.device.features) != found->requiredFeatures)
         {
-            throw std::invalid_argument("Device lacks capabilities required by Pass: " + std::string(name));
+            return std::unexpected("Device lacks capabilities required by Pass: " + std::string(name));
         }
-        auto&      pass     = state.pass(*found);
-        const auto key      = detail::shaderPipelineKey(state.asset, state.instance, *found, context);
-        auto       pipeline = state.pipelines.find(key);
-        if (pipeline == state.pipelines.end())
+        auto key = detail::shaderPipelineKeyExpected(state.asset, state.instance, *found, context);
+        if (!key)
         {
-            VriPipeline* handle  = nullptr;
-            const auto   shaders = pass.program.descriptors(found->entries);
+            return std::unexpected(key.error());
+        }
+        const auto                   passKey      = std::pair(found->name, state.instance.variant);
+        const auto                   existingPass = state.passes.find(passKey);
+        std::unique_ptr<State::Pass> candidatePass;
+        State::Pass*                 pass = nullptr;
+        if (existingPass == state.passes.end())
+        {
+            auto created = state.createPass(*found);
+            if (!created)
+            {
+                return std::unexpected(created.error());
+            }
+            candidatePass = std::move(*created);
+            pass          = candidatePass.get();
+        }
+        else
+        {
+            pass = existingPass->second.get();
+        }
+        auto cached = state.pipelines.find(*key);
+        // Candidate pipeline ownership ends before its borrowed candidate layout on any rejection.
+        std::unique_ptr<State::Pipeline> candidatePipeline;
+        if (cached == state.pipelines.end())
+        {
+            candidatePipeline = std::make_unique<State::Pipeline>(state.device, *pass);
+            auto shaders      = pass->program.descriptorsExpected(found->entries);
+            if (!shaders)
+            {
+                return std::unexpected(shaders.error());
+            }
             if (found->entries.front().stage == VriShaderStage_Compute)
             {
                 if (!context.colors.empty() || context.depth != VriFormat_Unknown || !context.attributes.empty())
                 {
-                    throw std::invalid_argument("Compute Pass cannot use graphics attachments/input");
+                    return std::unexpected("Compute Pass cannot use graphics attachments/input");
                 }
-                VriComputePipelineDesc desc {pass.layout, shaders.front(), state.device.pipelineCache};
-                check(state.device.core.CreateComputePipeline(state.device.handle, &desc, &handle),
-                      "Create shader compute pipeline");
+                const VriComputePipelineDesc desc {pass->parameters->layout(),
+                                                   shaders->front(),
+                                                   state.device.pipelineCache};
+                const auto                   status =
+                    state.device.core.CreateComputePipeline(state.device.handle, &desc, &candidatePipeline->handle);
+                if (status != VriResult_Success)
+                {
+                    return std::unexpected("Create shader compute pipeline failed: " + std::to_string(status));
+                }
             }
             else
             {
                 uint32_t outputs = 0;
-                for (const auto& shader : pass.program.shaders)
+                for (const auto& shader : pass->program.shaders)
                 {
                     outputs = std::max(outputs, shader.colorOutputs);
                 }
                 if (outputs != context.colors.size())
                 {
-                    throw std::invalid_argument("Pass " + found->name + " requires " + std::to_string(outputs) +
-                                                " color attachments");
+                    return std::unexpected("Pass " + found->name + " requires " + std::to_string(outputs) +
+                                           " color attachments");
                 }
                 std::vector<VriColorAttachmentDesc> colors;
                 for (const auto format : context.colors)
@@ -594,9 +681,9 @@ namespace vultra
                 }
                 VriGraphicsPipelineDesc desc {};
                 desc.pipelineCache  = state.device.pipelineCache;
-                desc.pipelineLayout = pass.layout;
-                desc.shaders        = shaders.data();
-                desc.shaderNum      = uint32_t(shaders.size());
+                desc.pipelineLayout = pass->parameters->layout();
+                desc.shaders        = shaders->data();
+                desc.shaderNum      = uint32_t(shaders->size());
                 if (found->entries.front().stage == VriShaderStage_Vertex)
                 {
                     desc.vertexInput = {context.attributes.data(),
@@ -615,55 +702,110 @@ namespace vultra
                 desc.depthStencil.front.compareMask = 255;
                 desc.depthStencil.front.writeMask   = 255;
                 desc.depthStencil.front.compareOp   = VriCompareOp_Always;
-                detail::applyShaderState(state.asset, state.instance, found->state, context, desc, colors);
+                if (auto applied = detail::applyShaderStateExpected(state.asset,
+                                                                    state.instance,
+                                                                    found->state,
+                                                                    context,
+                                                                    desc,
+                                                                    colors);
+                    !applied)
+                {
+                    return std::unexpected(applied.error());
+                }
                 desc.outputMerger = {colors.data(), uint32_t(colors.size()), context.depth, context.viewMask};
-                check(state.device.core.CreateGraphicsPipeline(state.device.handle, &desc, &handle),
-                      "Create shader graphics pipeline");
+                const auto status =
+                    state.device.core.CreateGraphicsPipeline(state.device.handle, &desc, &candidatePipeline->handle);
+                if (status != VriResult_Success)
+                {
+                    return std::unexpected("Create shader graphics pipeline failed: " + std::to_string(status));
+                }
             }
-            State::Pipeline created {handle, &pass, {std::string(name), context, {resources.begin(), resources.end()}}};
-            pipeline = state.pipelines.emplace(key, std::move(created)).first;
+            if (!candidatePipeline->handle)
+            {
+                return std::unexpected("Shader pipeline creation returned no pipeline");
+            }
+            candidatePipeline->prepared = {std::string(name), context, {}};
         }
-        state.update(pass, resources);
-        pipeline->second.prepared.resources.assign(resources.begin(), resources.end());
-        state.active.insert_or_assign(std::string(name), &pipeline->second);
-        return pipeline->second.handle;
+        // Every fallible resource/uniform check precedes mutation of accepted descriptors and active selection.
+        if (auto updated = state.update(*pass, resources); !updated)
+        {
+            return std::unexpected(updated.error());
+        }
+        if (candidatePass)
+        {
+            state.passes.emplace(passKey, std::move(candidatePass));
+        }
+        if (candidatePipeline)
+        {
+            cached = state.pipelines.emplace(std::move(*key), std::move(candidatePipeline)).first;
+        }
+        auto& pipeline = *cached->second;
+        pipeline.prepared.resources.assign(resources.begin(), resources.end());
+        state.active.insert_or_assign(std::string(name), &pipeline);
+        return pipeline.handle;
     }
 
     void ShaderMaterial::bind(VriCommandBuffer* commands, std::string_view name) const
     {
+        if (auto bound = bindExpected(commands, name); !bound)
+        {
+            throw std::invalid_argument(bound.error());
+        }
+    }
+
+    std::expected<void, std::string> ShaderMaterial::bindExpected(VriCommandBuffer* commands,
+                                                                  std::string_view  name) const
+    {
+        if (!commands)
+        {
+            return std::unexpected("Shader material binding requires a command buffer");
+        }
         const auto found = m_State->active.find(name);
         if (found == m_State->active.end())
         {
-            throw std::logic_error("Shader Pass was not prepared: " + std::string(name));
+            return std::unexpected("Shader Pass was not prepared: " + std::string(name));
         }
-        const auto& pipeline = *found->second;
-        m_State->device.core.CmdSetPipelineLayout(commands, pipeline.pass->layout);
-        m_State->device.core.CmdSetPipeline(commands, pipeline.handle);
-        for (uint32_t index = 0; index < pipeline.pass->sets.size(); ++index)
-        {
-            m_State->device.core.CmdSetDescriptorSet(commands, index, pipeline.pass->sets[index]);
-        }
+        return m_State->bind(commands, *found->second);
     }
 
     void ShaderMaterial::bind(VriCommandBuffer* commands, VriPipeline* prepared) const
     {
-        for (const auto& [key, pipeline] : m_State->pipelines)
+        if (auto bound = bindExpected(commands, prepared); !bound)
         {
+            throw std::invalid_argument(bound.error());
+        }
+    }
+
+    std::expected<void, std::string> ShaderMaterial::bindExpected(VriCommandBuffer* commands,
+                                                                  VriPipeline*      prepared) const
+    {
+        if (!commands)
+        {
+            return std::unexpected("Shader material binding requires a command buffer");
+        }
+        for (const auto& [key, owned] : m_State->pipelines)
+        {
+            const auto& pipeline = *owned;
             if (pipeline.handle == prepared)
             {
-                m_State->device.core.CmdSetPipelineLayout(commands, pipeline.pass->layout);
-                m_State->device.core.CmdSetPipeline(commands, pipeline.handle);
-                for (uint32_t index = 0; index < pipeline.pass->sets.size(); ++index)
-                {
-                    m_State->device.core.CmdSetDescriptorSet(commands, index, pipeline.pass->sets[index]);
-                }
-                return;
+                return m_State->bind(commands, pipeline);
             }
         }
-        throw std::invalid_argument("Pipeline was not prepared by this material");
+        return std::unexpected("Pipeline was not prepared by this material");
     }
 
     const ShaderPass& ShaderMaterial::passForMode(std::string_view mode, bool mesh) const
+    {
+        auto pass = passForModeExpected(mode, mesh);
+        if (!pass)
+        {
+            throw std::invalid_argument(pass.error());
+        }
+        return **pass;
+    }
+
+    std::expected<const ShaderPass*, std::string> ShaderMaterial::passForModeExpected(std::string_view mode,
+                                                                                      bool             mesh) const
     {
         for (const auto& pass : m_State->asset.subshaders[m_State->selected].passes)
         {
@@ -675,15 +817,35 @@ namespace vultra
             if ((pass.lightMode == mode || (mode == "Forward" && pass.generated && pass.name == "MeshForward")) &&
                 meshPass == mesh)
             {
-                return pass;
+                return &pass;
             }
         }
-        throw std::invalid_argument("Shader render contract has no compatible " + std::string(mode) + " Pass");
+        return std::unexpected("Shader render contract has no compatible " + std::string(mode) + " Pass");
     }
 
     uint32_t ShaderMaterial::pushConstantSize(std::string_view name) const
     {
-        return m_State->active.at(std::string(name))->pass->pushSize;
+        auto size = pushConstantSizeExpected(name);
+        if (!size)
+        {
+            throw std::invalid_argument(size.error());
+        }
+        return *size;
+    }
+
+    std::expected<uint32_t, std::string> ShaderMaterial::pushConstantSizeExpected(std::string_view name) const
+    {
+        const auto found = m_State->active.find(name);
+        if (found == m_State->active.end())
+        {
+            return std::unexpected("Shader Pass was not prepared: " + std::string(name));
+        }
+        return found->second->pass->parameters->pushConstantSize();
+    }
+
+    bool ShaderMaterial::belongsTo(const Device& device) const
+    {
+        return &device == &m_State->device;
     }
 
     size_t ShaderMaterial::pipelineCount() const

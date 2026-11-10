@@ -12,6 +12,7 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 namespace vultra
@@ -41,7 +42,7 @@ namespace vultra
             }
         }
 
-        uint64_t readNumber(std::istream& input, int bytes)
+        std::expected<uint64_t, std::string> readNumberExpected(std::istream& input, int bytes)
         {
             uint64_t value = 0;
             for (int i = 0; i < bytes; ++i)
@@ -49,7 +50,7 @@ namespace vultra
                 const int byte = input.get();
                 if (byte == EOF)
                 {
-                    throw std::runtime_error("Truncated VPK index");
+                    return std::unexpected("Truncated VPK number");
                 }
                 value |= uint64_t(uint8_t(byte)) << (8 * i);
             }
@@ -86,12 +87,13 @@ namespace vultra
             }
         };
 
-        uint64_t transferAndHash(std::istream& input, uint64_t size, std::ostream* output = nullptr)
+        std::expected<uint64_t, std::string>
+        transferAndHashExpected(std::istream& input, uint64_t size, std::ostream* output = nullptr)
         {
             std::unique_ptr<XXH3_state_t, decltype(&XXH3_freeState)> hash(XXH3_createState(), &XXH3_freeState);
             if (!hash || XXH3_64bits_reset(hash.get()) == XXH_ERROR)
             {
-                throw std::runtime_error("Initialize embedded VPK checksum");
+                return std::unexpected("Initialize embedded VPK checksum");
             }
             // Keep package I/O buffers off the small default WebAssembly stack.
             std::vector<char> buffer(65536);
@@ -101,180 +103,383 @@ namespace vultra
                 input.read(buffer.data(), count);
                 if (!input)
                 {
-                    throw std::runtime_error("Read embedded VPK payload");
+                    return std::unexpected("Read embedded VPK payload");
                 }
                 if (output)
                 {
                     output->write(buffer.data(), count);
                     if (!*output)
                     {
-                        throw std::runtime_error("Write embedded VPK payload");
+                        return std::unexpected("Write embedded VPK payload");
                     }
                 }
                 if (XXH3_64bits_update(hash.get(), buffer.data(), size_t(count)) == XXH_ERROR)
                 {
-                    throw std::runtime_error("Hash embedded VPK payload");
+                    return std::unexpected("Hash embedded VPK payload");
                 }
                 size -= uint64_t(count);
             }
             return XXH3_64bits_digest(hash.get());
         }
+
+        uint64_t transferAndHash(std::istream& input, uint64_t size, std::ostream* output = nullptr)
+        {
+            auto hash = transferAndHashExpected(input, size, output);
+            if (!hash)
+            {
+                throw std::runtime_error(hash.error()); // Legacy executable writer.
+            }
+            return *hash;
+        }
+
+        bool validUtf8(std::string_view text)
+        {
+            for (size_t i = 0; i < text.size();)
+            {
+                const auto first = uint8_t(text[i++]);
+                if (first < 0x80)
+                {
+                    continue;
+                }
+                uint32_t count = 0;
+                if (first >= 0xc2 && first <= 0xdf)
+                {
+                    count = 1;
+                }
+                else if (first >= 0xe0 && first <= 0xef)
+                {
+                    count = 2;
+                }
+                else if (first >= 0xf0 && first <= 0xf4)
+                {
+                    count = 3;
+                }
+                if (!count || count > text.size() - i)
+                {
+                    return false;
+                }
+                uint32_t value = first & ((1u << (6 - count)) - 1);
+                for (uint32_t j = 0; j < count; ++j)
+                {
+                    const auto next = uint8_t(text[i++]);
+                    if ((next & 0xc0) != 0x80)
+                    {
+                        return false;
+                    }
+                    value = (value << 6) | (next & 0x3f);
+                }
+                if ((count == 1 && value < 0x80) || (count == 2 && value < 0x800) || (count == 3 && value < 0x10000) ||
+                    value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        std::expected<std::filesystem::path, std::string> archiveIdentity(const std::filesystem::path& file)
+        {
+            if (file.empty() ||
+                file.native().find(std::filesystem::path::value_type(0)) != std::filesystem::path::string_type::npos)
+            {
+                return std::unexpected("VPK requires a nonempty identity without NUL characters");
+            }
+            std::error_code error;
+            auto            absolute = std::filesystem::absolute(file, error);
+            if (error)
+            {
+                return std::unexpected("Resolve VPK identity: " + error.message());
+            }
+            return absolute.lexically_normal();
+        }
+
+        // A bounded region of either a file or borrowed immutable package bytes.
+        struct ArchiveInput
+        {
+            std::ifstream              file;
+            std::span<const std::byte> bytes;
+            uint64_t                   offset   = 0;
+            uint64_t                   length   = 0;
+            uint64_t                   position = 0;
+
+            static std::expected<ArchiveInput, std::string>
+            open(const std::filesystem::path& path, std::span<const std::byte> bytes, uint64_t offset, uint64_t length)
+            {
+                ArchiveInput input;
+                input.bytes         = bytes;
+                input.offset        = offset;
+                input.length        = length;
+                uint64_t fileLength = bytes.size();
+                if (bytes.empty())
+                {
+                    input.file.open(path, std::ios::binary | std::ios::ate);
+                    const auto end = input.file ? input.file.tellg() : std::streampos(-1);
+                    if (end < std::streamoff(0))
+                    {
+                        return std::unexpected("Open VPK: " + path.string());
+                    }
+                    fileLength = uint64_t(end);
+                }
+                if (offset > fileLength || length > fileLength - offset)
+                {
+                    return std::unexpected("VPK region leaves its source");
+                }
+                if (auto ready = input.seek(0); !ready)
+                {
+                    return std::unexpected(ready.error());
+                }
+                return input;
+            }
+
+            std::expected<void, std::string> seek(uint64_t next)
+            {
+                if (next > length)
+                {
+                    return std::unexpected("VPK seek leaves its region");
+                }
+                if (file.is_open())
+                {
+                    file.seekg(std::streamoff(offset + next));
+                    if (!file)
+                    {
+                        return std::unexpected("Seek VPK region");
+                    }
+                }
+                position = next;
+                return {};
+            }
+
+            std::expected<void, std::string> read(std::span<char> output)
+            {
+                if (output.size() > length - position)
+                {
+                    return std::unexpected("Truncated VPK region");
+                }
+                if (output.empty())
+                {
+                    return {};
+                }
+                if (!bytes.empty())
+                {
+                    std::memcpy(output.data(), bytes.data() + size_t(offset + position), output.size());
+                }
+                else
+                {
+                    file.read(output.data(), std::streamsize(output.size()));
+                    if (!file)
+                    {
+                        return std::unexpected("Read VPK region");
+                    }
+                }
+                position += output.size();
+                return {};
+            }
+        };
+
+        uint64_t littleEndian(std::span<const char> bytes)
+        {
+            uint64_t value = 0;
+            for (size_t i = 0; i < bytes.size(); ++i)
+            {
+                value |= uint64_t(uint8_t(bytes[i])) << (8 * i);
+            }
+            return value;
+        }
+
     } // namespace
 
-    std::string VpkArchive::canonicalPath(std::string_view text)
+    std::expected<std::string, std::string> VpkArchive::canonicalPathExpected(std::string_view text)
     {
-        const std::u8string utf8(text.begin(), text.end());
-        const auto          path = std::filesystem::path(utf8);
-        if (text.empty() || text.find(char(0)) != std::string_view::npos || text.find('\\') != std::string_view::npos ||
-            path.is_absolute() || path.has_root_name())
+        if (text.empty() || text.size() > kMaxPath || text.front() == '/' ||
+            text.find(char(0)) != std::string_view::npos || text.find('\\') != std::string_view::npos ||
+            !validUtf8(text) ||
+            (text.size() >= 2 && text[1] == ':' &&
+             ((text[0] >= 'a' && text[0] <= 'z') || (text[0] >= 'A' && text[0] <= 'Z'))))
         {
-            throw std::invalid_argument("VPK path must be relative");
+            return std::unexpected("VPK requires a canonical relative UTF-8 file name");
         }
-        for (const auto& part : path)
+        size_t start = 0;
+        while (start <= text.size())
         {
-            if (part == "..")
+            const auto end  = text.find('/', start);
+            const auto part = text.substr(start, end == std::string_view::npos ? end : end - start);
+            if (part.empty() || part == "." || part == "..")
             {
-                throw std::invalid_argument("VPK path may not leave the project");
+                return std::unexpected("VPK path is not canonical");
             }
+            if (end == std::string_view::npos)
+            {
+                break;
+            }
+            start = end + 1;
         }
-        const auto normalized = pathText(path.lexically_normal());
-        if (normalized == "." || normalized != text || normalized.size() > kMaxPath)
+        return std::string(text);
+    }
+
+    std::string VpkArchive::canonicalPath(std::string_view path)
+    {
+        auto canonical = canonicalPathExpected(path);
+        if (!canonical)
         {
-            throw std::invalid_argument("VPK path is not canonical");
+            throw std::invalid_argument(canonical.error());
         }
-        return normalized;
+        return std::move(*canonical);
+    }
+
+    std::expected<VpkArchive, std::string> VpkArchive::open(const std::filesystem::path& file)
+    {
+        auto identity = archiveIdentity(file);
+        if (!identity)
+        {
+            return std::unexpected(identity.error());
+        }
+        std::error_code error;
+        const auto      size = std::filesystem::file_size(*identity, error);
+        if (error)
+        {
+            return std::unexpected("Query VPK size: " + error.message());
+        }
+        VpkArchive archive(Uninitialized {});
+        archive.m_File = std::move(*identity);
+        if (auto loaded = archive.loadExpected(0, size); !loaded)
+        {
+            return std::unexpected(loaded.error());
+        }
+        return archive;
+    }
+
+    std::expected<VpkArchive, std::string> VpkArchive::open(const std::filesystem::path& identity,
+                                                            std::span<const std::byte>   bytes)
+    {
+        auto path = archiveIdentity(identity);
+        if (!path)
+        {
+            return std::unexpected(path.error());
+        }
+        if (bytes.size() < kHeaderSize)
+        {
+            return std::unexpected("Embedded VPK requires a complete header");
+        }
+        VpkArchive archive(Uninitialized {});
+        archive.m_File  = std::move(*path);
+        archive.m_Bytes = bytes;
+        if (auto loaded = archive.loadExpected(0, bytes.size()); !loaded)
+        {
+            return std::unexpected(loaded.error());
+        }
+        return archive;
     }
 
     VpkArchive::VpkArchive(std::filesystem::path file) :
-        m_File(std::filesystem::absolute(file).lexically_normal())
+        VpkArchive(Uninitialized {})
     {
-        load(0, std::filesystem::file_size(m_File));
-    }
-
-    VpkArchive::VpkArchive(std::filesystem::path file, uint64_t offset, uint64_t length) :
-        m_File(std::filesystem::absolute(file).lexically_normal())
-    {
-        load(offset, length);
+        auto archive = open(file);
+        if (!archive)
+        {
+            throw std::runtime_error(archive.error());
+        }
+        *this = std::move(*archive);
     }
 
     VpkArchive::VpkArchive(std::filesystem::path identity, std::span<const std::byte> bytes) :
-        m_File(std::filesystem::absolute(identity).lexically_normal()),
-        m_Bytes(bytes)
+        VpkArchive(Uninitialized {})
     {
-        if (identity.empty() || bytes.size() < kHeaderSize)
+        auto archive = open(identity, bytes);
+        if (!archive)
         {
-            throw std::invalid_argument("Embedded VPK requires an identity and a complete header");
+            throw std::runtime_error(archive.error());
         }
-        load(0, bytes.size());
+        *this = std::move(*archive);
     }
 
-    void VpkArchive::load(uint64_t offset, uint64_t length)
+    std::expected<void, std::string> VpkArchive::loadExpected(uint64_t offset, uint64_t length)
     {
-        std::ifstream input;
-        uint64_t      fileLength = m_Bytes.size();
-        if (m_Bytes.empty())
+        auto input = ArchiveInput::open(m_File, m_Bytes, offset, length);
+        if (!input)
         {
-            input.open(m_File, std::ios::binary | std::ios::ate);
-            if (!input || input.tellg() < 0)
-            {
-                throw std::runtime_error("Open VPK: " + m_File.string());
-            }
-            fileLength = uint64_t(input.tellg());
-            input.seekg(std::streamoff(offset));
+            return std::unexpected(input.error());
         }
-        if (offset > fileLength || length > fileLength - offset || length < kHeaderSize)
+        std::array<char, kHeaderSize> header {};
+        if (auto read = input->read(header); !read)
         {
-            throw std::runtime_error("VPK bounds or header are invalid");
+            return read;
         }
-        m_Offset          = offset;
-        uint64_t position = 0;
-        // One bounded parser for files, executable regions and immutable embedded bytes.
-        const auto read = [&](std::span<char> output)
+        const auto data = std::span(header);
+        if (!std::equal(kMagic.begin(), kMagic.end(), header.begin()) || littleEndian(data.subspan(8, 4)) != kVersion)
         {
-            if (output.size() > length - position)
-            {
-                throw std::runtime_error("Truncated VPK index");
-            }
-            if (!m_Bytes.empty())
-            {
-                std::memcpy(output.data(), m_Bytes.data() + size_t(offset + position), output.size());
-            }
-            else
-            {
-                input.read(output.data(), std::streamsize(output.size()));
-                if (!input)
-                {
-                    throw std::runtime_error("Read VPK index: " + m_File.string());
-                }
-            }
-            position += output.size();
-        };
-        const auto number = [&](size_t count)
-        {
-            std::array<char, 8> data {};
-            read(std::span(data).first(count));
-            uint64_t value = 0;
-            for (size_t i = 0; i < count; ++i)
-            {
-                value |= uint64_t(uint8_t(data[i])) << (8 * i);
-            }
-            return value;
-        };
-        std::array<char, 8> magic {};
-        read(magic);
-        if (magic != kMagic || number(4) != kVersion)
-        {
-            throw std::runtime_error("Unsupported VPK format or version");
+            return std::unexpected("Unsupported VPK format or version");
         }
-        const auto count       = number(4);
-        const auto indexOffset = number(8);
-        if (count > kMaxEntries || indexOffset < kHeaderSize || indexOffset > length)
+        const auto count       = littleEndian(data.subspan(12, 4));
+        const auto indexOffset = littleEndian(data.subspan(16, 8));
+        if (count > kMaxEntries || indexOffset < kHeaderSize || indexOffset > length ||
+            count > (length - indexOffset) / 29)
         {
-            throw std::runtime_error("Invalid VPK index bounds");
+            return std::unexpected("Invalid VPK index bounds");
         }
-        position = indexOffset;
-        if (input.is_open())
+        if (auto seek = input->seek(indexOffset); !seek)
         {
-            input.seekg(std::streamoff(offset + indexOffset));
+            return seek;
         }
-        m_Entries.reserve(size_t(count));
+        std::vector<Entry> entries;
+        entries.reserve(size_t(count));
+        // Reserve the complete entry array before borrowing its names for duplicate detection.
+        std::unordered_set<std::string_view> names;
         for (uint64_t i = 0; i < count; ++i)
         {
-            const auto pathSize = number(4);
-            if (pathSize == 0 || pathSize > kMaxPath || pathSize + 24 > length - position)
+            std::array<char, 4> pathLength {};
+            if (auto read = input->read(pathLength); !read)
             {
-                throw std::runtime_error("Invalid VPK entry path size");
+                return read;
             }
-            std::string path(size_t(pathSize), '\0');
-            read(path);
-            const auto normalized = VpkArchive::canonicalPath(path);
-            Entry      entry {normalized, number(8), number(8), number(8)};
+            const auto pathSize = littleEndian(pathLength);
+            if (!pathSize || pathSize > kMaxPath || pathSize + 24 > length - input->position)
+            {
+                return std::unexpected("Invalid VPK entry path size");
+            }
+            std::string name(size_t(pathSize), char(0));
+            if (auto read = input->read(name); !read)
+            {
+                return read;
+            }
+            auto normalized = canonicalPathExpected(name);
+            if (!normalized)
+            {
+                return std::unexpected(normalized.error());
+            }
+            std::array<char, 24> fields {};
+            if (auto read = input->read(fields); !read)
+            {
+                return read;
+            }
+            const auto values = std::span(fields);
+            Entry      entry {std::move(*normalized),
+                         littleEndian(values.first(8)),
+                         littleEndian(values.subspan(8, 8)),
+                         littleEndian(values.subspan(16, 8))};
             if (entry.offset < kHeaderSize || entry.offset > indexOffset || entry.size > indexOffset - entry.offset ||
-                std::ranges::any_of(m_Entries,
-                                    [&](const Entry& existing)
-                                    {
-                                        return existing.path == entry.path;
-                                    }))
+                names.contains(entry.path))
             {
-                throw std::runtime_error("Invalid or duplicate VPK entry: " + entry.path);
+                return std::unexpected("Invalid or duplicate VPK entry: " + entry.path);
             }
-            m_Entries.push_back(std::move(entry));
+            entries.push_back(std::move(entry));
+            names.insert(entries.back().path);
         }
+        m_Offset  = offset;
+        m_Entries = std::move(entries);
+        return {};
     }
 
-    const VpkArchive::Entry& VpkArchive::entry(std::string_view path) const
+    std::expected<const VpkArchive::Entry*, std::string> VpkArchive::entryExpected(std::string_view path) const
     {
-        const auto normalized = VpkArchive::canonicalPath(path);
-        const auto found      = std::ranges::find_if(m_Entries,
-                                                     [&](const Entry& candidate)
-                                                     {
-                                                    return candidate.path == normalized;
-                                                     });
-        if (found == m_Entries.end())
+        auto normalized = canonicalPathExpected(path);
+        if (!normalized)
         {
-            throw std::invalid_argument("VPK entry not found: " + normalized);
+            return std::unexpected(normalized.error());
         }
-        return *found;
+        const auto found = std::ranges::find(m_Entries, *normalized, &Entry::path);
+        if (found == m_Entries.end())
+            return std::unexpected("VPK entry not found: " + *normalized);
+        return &*found;
     }
 
     const std::filesystem::path& VpkArchive::file() const
@@ -282,77 +487,136 @@ namespace vultra
         return m_File;
     }
 
-    bool VpkArchive::contains(std::string_view path) const
+    std::expected<bool, std::string> VpkArchive::containsExpected(std::string_view path) const
     {
-        const auto normalized = VpkArchive::canonicalPath(path);
-        return std::ranges::any_of(m_Entries,
-                                   [&](const Entry& candidate)
-                                   {
-                                       return candidate.path == normalized;
-                                   });
+        auto normalized = canonicalPathExpected(path);
+        if (!normalized)
+        {
+            return std::unexpected(normalized.error());
+        }
+        return std::ranges::find(m_Entries, *normalized, &Entry::path) != m_Entries.end();
     }
 
-    uint64_t VpkArchive::size(std::string_view path) const
+    std::expected<uint64_t, std::string> VpkArchive::sizeExpected(std::string_view path) const
     {
-        return entry(path).size;
+        auto selected = entryExpected(path);
+        if (!selected)
+        {
+            return std::unexpected(selected.error());
+        }
+        return (*selected)->size;
     }
 
-    std::vector<std::byte> VpkArchive::read(std::string_view path) const
+    std::expected<std::vector<std::byte>, std::string> VpkArchive::readExpected(std::string_view path) const
     {
-        const auto& selected = entry(path);
-        if (selected.size > std::numeric_limits<size_t>::max() ||
-            selected.size > uint64_t(std::numeric_limits<std::streamsize>::max()))
+        auto selected = entryExpected(path);
+        if (!selected)
         {
-            throw std::runtime_error("VPK entry is too large: " + selected.path);
+            return std::unexpected(selected.error());
         }
-        std::vector<std::byte> bytes(size_t(selected.size));
-        if (!m_Bytes.empty())
+        const auto& entry = **selected;
+        if (entry.size > std::numeric_limits<size_t>::max() ||
+            entry.size > uint64_t(std::numeric_limits<std::streamsize>::max()))
         {
-            const auto stored = m_Bytes.subspan(size_t(m_Offset + selected.offset), size_t(selected.size));
-            std::ranges::copy(stored, bytes.begin());
+            return std::unexpected("VPK entry is too large: " + entry.path);
         }
-        else
+        std::vector<std::byte> bytes;
+        if (entry.size > bytes.max_size())
         {
-            std::ifstream input(m_File, std::ios::binary);
-            if (!input)
-            {
-                throw std::runtime_error("Open VPK entry: " + selected.path);
-            }
-            input.seekg(std::streamoff(m_Offset + selected.offset));
-            input.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size()));
-            if (!input)
-            {
-                throw std::runtime_error("Read VPK entry: " + selected.path);
-            }
+            return std::unexpected("VPK entry exceeds container size: " + entry.path);
         }
-        if (XXH3_64bits(bytes.data(), bytes.size()) != selected.hash)
+        bytes.resize(size_t(entry.size));
+        auto input = ArchiveInput::open(m_File, m_Bytes, m_Offset + entry.offset, entry.size);
+        if (!input)
         {
-            throw std::runtime_error("VPK entry checksum failed: " + selected.path);
+            return std::unexpected(input.error());
+        }
+        if (auto read = input->read({reinterpret_cast<char*>(bytes.data()), bytes.size()}); !read)
+        {
+            return std::unexpected(read.error());
+        }
+        if (XXH3_64bits(bytes.data(), bytes.size()) != entry.hash)
+        {
+            return std::unexpected("VPK entry checksum failed: " + entry.path);
         }
         return bytes;
     }
 
-    void VpkArchive::extractTo(const std::filesystem::path& directory) const
+    bool VpkArchive::contains(std::string_view path) const
     {
-        if (std::filesystem::exists(directory))
+        auto result = containsExpected(path);
+        if (!result)
         {
-            throw std::invalid_argument("VPK extraction requires a fresh directory");
+            throw std::invalid_argument(result.error());
         }
-        std::filesystem::create_directories(directory);
-        try
+        return *result;
+    }
+
+    uint64_t VpkArchive::size(std::string_view path) const
+    {
+        auto result = sizeExpected(path);
+        if (!result)
         {
-            for (const auto& selected : m_Entries)
+            throw std::invalid_argument(result.error());
+        }
+        return *result;
+    }
+
+    std::vector<std::byte> VpkArchive::read(std::string_view path) const
+    {
+        auto result = readExpected(path);
+        if (!result)
+        {
+            throw std::runtime_error(result.error());
+        }
+        return std::move(*result);
+    }
+
+    std::expected<void, std::string> VpkArchive::extractToExpected(const std::filesystem::path& directory) const
+    {
+        std::error_code error;
+        const bool      created = std::filesystem::create_directories(directory, error);
+        if (error || !created)
+        {
+            return std::unexpected("VPK extraction requires a fresh directory: " + error.message());
+        }
+        const auto fail = [&](std::string reason) -> std::expected<void, std::string>
+        {
+            std::error_code cleanup;
+            std::filesystem::remove_all(directory, cleanup);
+            if (cleanup)
             {
-                const auto path = directory / selected.path;
-                std::filesystem::create_directories(path.parent_path());
-                const auto bytes = read(selected.path);
-                writeFileAtomically(path, bytes);
+                reason += "; remove extraction directory: " + cleanup.message();
+            }
+            return std::unexpected(std::move(reason));
+        };
+        for (const auto& selected : m_Entries)
+        {
+            const auto path =
+                directory / std::filesystem::path(std::u8string(selected.path.begin(), selected.path.end()));
+            std::filesystem::create_directories(path.parent_path(), error);
+            if (error)
+            {
+                return fail("Create VPK extraction directory: " + error.message());
+            }
+            auto bytes = readExpected(selected.path);
+            if (!bytes)
+            {
+                return fail(bytes.error());
+            }
+            if (auto written = writeFileAtomicallyExpected(path, *bytes); !written)
+            {
+                return fail(written.error());
             }
         }
-        catch (...)
+        return {};
+    }
+
+    void VpkArchive::extractTo(const std::filesystem::path& directory) const
+    {
+        if (auto result = extractToExpected(directory); !result)
         {
-            std::filesystem::remove_all(directory);
-            throw;
+            throw std::runtime_error(result.error());
         }
     }
 
@@ -515,46 +779,81 @@ namespace vultra
         temp.path.clear();
     }
 
-    std::optional<VpkArchive> VpkArchive::embeddedProject(const std::filesystem::path& executable)
+    std::expected<std::optional<VpkArchive>, std::string>
+    VpkArchive::embeddedProjectExpected(const std::filesystem::path& executable)
     {
-        std::ifstream input(executable, std::ios::binary | std::ios::ate);
-        if (!input)
+        auto identity = archiveIdentity(executable);
+        if (!identity)
         {
-            throw std::runtime_error("Open executable for embedded VPK: " + executable.string());
+            return std::unexpected(identity.error());
         }
-        const auto fileLength = input.tellg();
+        std::ifstream input(*identity, std::ios::binary | std::ios::ate);
+        const auto    fileLength = input ? input.tellg() : std::streampos(-1);
+        if (fileLength < std::streamoff(0))
+        {
+            return std::unexpected("Open executable for embedded VPK: " + identity->string());
+        }
         if (fileLength < std::streamoff(kEmbeddedFooterSize))
-        {
-            return std::nullopt;
-        }
+            return std::optional<VpkArchive> {};
         input.seekg(fileLength - std::streamoff(kEmbeddedFooterSize));
         std::array<char, 8> magic {};
         input.read(magic.data(), std::streamsize(magic.size()));
-        if (magic != kEmbeddedMagic)
+        if (!input)
         {
-            return std::nullopt;
+            return std::unexpected("Read embedded VPK footer");
         }
-        const auto version  = readNumber(input, 4);
-        const auto reserved = readNumber(input, 4);
-        const auto packSize = readNumber(input, 8);
-        const auto expected = readNumber(input, 8);
+        if (magic != kEmbeddedMagic)
+            return std::optional<VpkArchive> {};
+        std::array<uint64_t, 4> fields {};
+        for (size_t i = 0; i < fields.size(); ++i)
+        {
+            auto value = readNumberExpected(input, i < 2 ? 4 : 8);
+            if (!value)
+            {
+                return std::unexpected(value.error());
+            }
+            fields[i] = *value;
+        }
+        const auto [version, reserved, packSize, expected] = fields;
         if (version != kEmbeddedVersion || reserved != 0 || packSize < kHeaderSize ||
             packSize > uint64_t(fileLength) - kEmbeddedFooterSize)
+            return std::unexpected("Invalid embedded project VPK footer");
+        const auto offset = uint64_t(fileLength) - kEmbeddedFooterSize - packSize;
+        input.seekg(std::streamoff(offset));
+        auto hash = transferAndHashExpected(input, packSize);
+        if (!hash)
         {
-            throw std::runtime_error("Invalid embedded project VPK footer");
+            return std::unexpected(hash.error());
         }
-        const auto packOffset = uint64_t(fileLength) - kEmbeddedFooterSize - packSize;
-        input.seekg(std::streamoff(packOffset));
-        if (transferAndHash(input, packSize) != expected)
+        if (*hash != expected)
         {
-            throw std::runtime_error("Embedded project VPK checksum failed");
+            return std::unexpected("Embedded project VPK checksum failed");
         }
-        VpkArchive archive(executable, packOffset, packSize);
-        if (!archive.contains("project.vproject"))
+        VpkArchive archive(Uninitialized {});
+        archive.m_File = std::move(*identity);
+        if (auto loaded = archive.loadExpected(offset, packSize); !loaded)
         {
-            throw std::runtime_error("Embedded project VPK has no project manifest");
+            return std::unexpected(loaded.error());
         }
-        return archive;
+        auto manifest = archive.containsExpected("project.vproject");
+        if (!manifest)
+        {
+            return std::unexpected(manifest.error());
+        }
+        if (!*manifest)
+        {
+            return std::unexpected("Embedded project VPK has no project manifest");
+        }
+        return std::optional<VpkArchive> {std::move(archive)};
     }
 
+    std::optional<VpkArchive> VpkArchive::embeddedProject(const std::filesystem::path& executable)
+    {
+        auto archive = embeddedProjectExpected(executable);
+        if (!archive)
+        {
+            throw std::runtime_error(archive.error());
+        }
+        return std::move(*archive);
+    }
 } // namespace vultra

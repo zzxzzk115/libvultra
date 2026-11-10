@@ -1,0 +1,31 @@
+--- a/source/backend_vk/swapchain_vk.cpp
++++ b/source/backend_vk/swapchain_vk.cpp
+@@ -160,17 +160,23 @@
+             std::vector<VkSurfaceFormatKHR> formats(formatCount);
+             vkGetPhysicalDeviceSurfaceFormatsKHR(phys, sc->surface, &formatCount, formats.data());
+ 
+-            const VkFormat     wanted = ToVkFormat(format);
+-            VkSurfaceFormatKHR chosen =
+-                formats.empty() ? VkSurfaceFormatKHR {wanted, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR} : formats[0];
++            const VkFormat wanted = ToVkFormat(format);
++            VkSurfaceFormatKHR chosen {};
++            bool found = false;
+             for (const VkSurfaceFormatKHR& f : formats)
+             {
+-                if (f.format == wanted)
++                // VK_FORMAT_UNDEFINED in the single-format response allows any image format.
++                if (f.format == wanted || (formats.size() == 1 && f.format == VK_FORMAT_UNDEFINED))
+                 {
+-                    chosen = f;
++                    chosen = {wanted, f.colorSpace};
++                    found = true;
+                     break;
+                 }
+             }
++            // Callers create views and pipelines for the requested format. Never silently use
++            // another surface format without a way to report the actual choice to the caller.
++            if (!found)
++                return VriResult_Unsupported;
+ 
+             // present mode: map the requested VriPresentMode -> VkPresentModeKHR, falling back to FIFO
+             // (the only mode guaranteed present) with a warning if the surface lacks the requested one.

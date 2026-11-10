@@ -1,0 +1,12 @@
+--- a/source/slang/slang-ast-val.cpp
++++ b/source/slang/slang-ast-val.cpp
+@@ -1936,6 +1936,9 @@
+     {
+         switch (baseType->getBaseType())
+         {
++        case BaseType::Bool:
++            resultValue = resultValue != 0;
++            return true;
+         case BaseType::Int:
+             resultValue = (int)resultValue;
+             return true;

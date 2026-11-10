@@ -1,5 +1,5 @@
 [[vk::binding(0, 0)]] Texture2D<float4> source;
-[[vk::binding(1, 0)]] RWTexture2D<float4> destination;
+[[vk::binding(1, 0), vk::image_format("rgba16f")]] RWTexture2D<float4> destination;
 
 struct GainParameters
 {

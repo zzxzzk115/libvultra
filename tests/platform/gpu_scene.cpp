@@ -119,8 +119,20 @@ try
         {
             uploadTextureAsset(device, invalid);
         });
-    auto              owned = server.uploadScene(scene, prepared);
-    auto&             gpu   = owned.get();
+    require(!uploadTextureAssetExpected(device, invalid), "Expected upload accepted an invalid mip chain");
+    auto invalidPrepared                = prepared;
+    invalidPrepared.images[sourceImage] = invalid;
+    require(!GpuScene::create(device, scene, invalidPrepared), "Expected scene accepted an invalid texture");
+    reject(
+        [&]
+        {
+            GpuScene invalidScene(device, scene, invalidPrepared);
+        });
+    auto expectedTexture = uploadTextureAssetExpected(device, prepared.images[sourceImage]);
+    require(expectedTexture.has_value(), "Expected texture upload failed");
+    auto  owned                = server.uploadScene(scene, prepared);
+    auto& gpu                  = owned.get();
+    gpu.materialTextures[0][0] = expectedTexture->get();
     constexpr Extent  size {129, 73};
     Texture           target(device, colorTexture(size, VriFormat_RGBA8_UNORM));
     const bool        wgsl = device.core.GetDeviceDesc(device.handle)->graphicsAPI == VriGraphicsAPI_WebGPU;

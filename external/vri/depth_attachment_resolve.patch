@@ -1,0 +1,57 @@
+--- a/include/vri/vri_device_desc.h
++++ b/include/vri/vri_device_desc.h
+@@ -169,6 +169,10 @@
+     /* Buffer byte ranges may have independent access tracking. Native hazards may be conservative. */
+     VriBool hasBufferRangeBarriers;
+     VriBool hasClearDepthStencilTextureRange;
++    /* D16/D32 attachment resolve selects sample zero and supports both source store actions. */
++    VriBool hasDepthAttachmentResolve;
++    /* A depth resolve with Load and no draws executes its resolve operation. */
++    VriBool hasLoadOnlyDepthAttachmentResolve;
+ } VriDeviceDesc;
+ 
+ VRI_EXTERN_C_END
+--- a/include/vri/vri_command.h
++++ b/include/vri/vri_command.h
+@@ -38,7 +38,8 @@
+     VriAttachmentLoadOp  loadOp;
+     VriAttachmentStoreOp storeOp;
+     VriClearValue        clearValue;
+-    VriDescriptor*       resolveView; /* NULL = none; MSAA resolve target (single-sample view) */
++    /* NULL disables resolve. Color averages; a supported D16/D32 depth slot selects sample zero. */
++    VriDescriptor*       resolveView;
+     /* Depth only (including combined stencil): Load + Store, no resolve or stencil slot; writes disabled. */
+     VriBool             readOnly;
+ } VriAttachmentDesc;
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -1133,6 +1133,14 @@
+         m_desc.hasAliasMemoryBarrier = VRI_TRUE;
+         m_desc.hasBufferRangeBarriers = VRI_TRUE;
+         m_desc.hasClearDepthStencilTextureRange = VRI_TRUE;
++        m_desc.hasDepthAttachmentResolve = (props12.supportedDepthResolveModes & VK_RESOLVE_MODE_SAMPLE_ZERO_BIT)
++                                               ? VRI_TRUE : VRI_FALSE;
++        m_desc.hasLoadOnlyDepthAttachmentResolve = m_desc.hasDepthAttachmentResolve;
++#if defined(__ANDROID__)
++        // Adreno drops a loaded depth resolve when the render scope records no draws.
++        if (props.vendorID == 0x5143)
++            m_desc.hasLoadOnlyDepthAttachmentResolve = VRI_FALSE;
++#endif
+         m_desc.hasClearStorageTexture  = VRI_TRUE; // vkCmdClearColorImage is core Vulkan
+         m_desc.hasMultiview            = m_hasMultiview ? VRI_TRUE : VRI_FALSE;
+         m_desc.maxViewCount            = m_hasMultiview ? m_maxViewCount : 0u;
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -1578,6 +1578,12 @@
+             if (a->depth && a->depth->view)
+             {
+                 depth = depthStencilInfo(*a->depth);
++                if (a->depth->resolveView)
++                {
++                    depth.resolveImageView = Desc(a->depth->resolveView)->imageView;
++                    depth.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
++                    depth.resolveMode = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
++                }
+                 ri.pDepthAttachment = &depth;
+             }
+             const VriAttachmentDesc* stencilSource = a->stencil;

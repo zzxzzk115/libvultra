@@ -1,0 +1,36 @@
+#pragma once
+
+// Quantize to the nearest-even binary16 value in binary32. An exactly representable value survives
+// the native image store's choice of rounding mode without requiring float16 arithmetic support.
+float roundToHalfEven(float value)
+{
+    uint bits = asuint(value);
+    uint sign = bits & 0x80000000u;
+    uint magnitude = bits & 0x7fffffffu;
+    if (magnitude >= 0x7f800000u)
+    {
+        return value;
+    }
+    // The midpoint above the largest finite binary16 value rounds to infinity.
+    if (magnitude >= 0x477ff000u)
+    {
+        return asfloat(sign | 0x7f800000u);
+    }
+    if (magnitude < 0x33000000u)
+    {
+        return asfloat(sign);
+    }
+    if (magnitude < 0x38800000u)
+    {
+        // Quantize subnormals in units of 2^-24, retaining the implicit binary32 leading bit.
+        uint significand = (magnitude & 0x7fffffu) | 0x800000u;
+        uint shift = 126u - (magnitude >> 23);
+        uint bias = (1u << (shift - 1)) - 1u;
+        uint rounded = (significand + bias + ((significand >> shift) & 1u)) >> shift;
+        float quantized = float(rounded) * (1.0 / 16777216.0);
+        return asfloat(sign | asuint(quantized));
+    }
+    // A normal binary16 significand retains ten of binary32's 23 fraction bits.
+    uint rounded = magnitude + 0xfffu + ((magnitude >> 13) & 1u);
+    return asfloat(sign | (rounded & 0xffffe000u));
+}

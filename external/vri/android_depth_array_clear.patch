@@ -1,0 +1,37 @@
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -1471,7 +1471,34 @@
+             }
+ #endif
+ 
++            VkClearAttachment depthArrayClear {};
++#if defined(__ANDROID__)
++            // Qualcomm load clears can overwrite earlier depth-array slices in the same command buffer.
++            // Defer only the requested planes, preserving the other attachment's load/store contract.
++            auto deferArrayClear = [&](VkRenderingAttachmentInfo& info, const VriAttachmentDesc* source,
++                                       VkImageAspectFlagBits aspect) {
++                if (!source || !source->view || info.loadOp != VK_ATTACHMENT_LOAD_OP_CLEAR)
++                    return;
++                const DescriptorVK* view = Desc(source->view);
++                if (c->device->Desc().adapter.vendorId != 0x5143 || view->texture->layerNum <= 1)
++                    return;
++                depthArrayClear.aspectMask |= aspect;
++                if (aspect == VK_IMAGE_ASPECT_DEPTH_BIT)
++                    depthArrayClear.clearValue.depthStencil.depth = info.clearValue.depthStencil.depth;
++                else
++                    depthArrayClear.clearValue.depthStencil.stencil = info.clearValue.depthStencil.stencil;
++                info.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
++            };
++            deferArrayClear(depth, a->depth, VK_IMAGE_ASPECT_DEPTH_BIT);
++            deferArrayClear(stencil, stencilSource, VK_IMAGE_ASPECT_STENCIL_BIT);
++#endif
++
+             c->device->Ext().CmdBeginRendering(c->cmd, &ri);
++            if (depthArrayClear.aspectMask)
++            {
++                const VkClearRect rect {ri.renderArea, 0, ri.viewMask ? 1u : ri.layerCount};
++                vkCmdClearAttachments(c->cmd, 1, &depthArrayClear, 1, &rect);
++            }
+ 
+             // Pipelines declare the fragment-shading-rate dynamic state when VRS is enabled, so the
+             // rate must be set before any draw. Prime the no-op 1x1 rate here; CmdSetShadingRate can

@@ -3,7 +3,6 @@
 #include <slang.h>
 
 #include <array>
-#include <stdexcept>
 
 namespace vultra
 {
@@ -48,6 +47,8 @@ namespace vultra
                         return ShaderScalarType::eNone;
                     case Type::Float32:
                         return ShaderScalarType::eFloat;
+                    case Type::Float16:
+                        return ShaderScalarType::eFloat16;
                     case Type::Int32:
                         return ShaderScalarType::eInteger;
                     case Type::UInt32:
@@ -95,17 +96,31 @@ namespace vultra
                 }
             }
 
-            ShaderParameter reflectType(slang::TypeLayoutReflection*     type,
-                                        slang::VariableLayoutReflection* variable,
-                                        std::string                      name,
-                                        uint32_t                         depth)
+            std::expected<ShaderParameter, std::string> reflectType(slang::TypeLayoutReflection*     type,
+                                                                    slang::VariableLayoutReflection* variable,
+                                                                    slang::ShaderReflection*         program,
+                                                                    std::string                      name,
+                                                                    uint32_t                         depth,
+                                                                    uint32_t&                        nodes)
             {
-                if (!type || depth > 64)
+                if (!type || depth > 64 || ++nodes > 100000)
                 {
-                    throw std::invalid_argument("Invalid or excessively nested Slang parameter layout");
+                    return std::unexpected("Invalid or excessively large Slang parameter layout");
                 }
                 ShaderParameter result;
                 result.name = std::move(name);
+                const auto append = [&](slang::TypeLayoutReflection*     childType,
+                                        slang::VariableLayoutReflection* childVariable,
+                                        std::string                      childName) -> std::expected<void, std::string>
+                {
+                    auto child = reflectType(childType, childVariable, program, std::move(childName), depth + 1, nodes);
+                    if (!child)
+                    {
+                        return std::unexpected(child.error());
+                    }
+                    result.fields.push_back(std::move(*child));
+                    return {};
+                };
                 if (const auto* typeName = type->getName())
                 {
                     result.typeName = typeName;
@@ -123,7 +138,7 @@ namespace vultra
                     const auto vectors = result.columnMajor ? result.columns : result.rows;
                     if (!vectors || result.stride % vectors != 0)
                     {
-                        throw std::runtime_error("Slang matrix layout has no integral major-vector stride");
+                        return std::unexpected("Slang matrix layout has no integral major-vector stride");
                     }
                     result.matrixStride = result.stride / vectors;
                 }
@@ -133,8 +148,10 @@ namespace vultra
                     // Structured-buffer elements have a target layout distinct from their descriptor slot.
                     if ((type->getResourceShape() & SLANG_RESOURCE_BASE_SHAPE_MASK) == SLANG_STRUCTURED_BUFFER)
                     {
-                        result.fields.push_back(
-                            reflectType(type->getElementTypeLayout(), nullptr, "$element", depth + 1));
+                        if (auto child = append(type->getElementTypeLayout(), nullptr, "$element"); !child)
+                        {
+                            return std::unexpected(child.error());
+                        }
                     }
                 }
                 constexpr std::array categories {
@@ -163,43 +180,58 @@ namespace vultra
                     for (uint32_t index = 0; index < type->getFieldCount(); ++index)
                     {
                         auto* field = type->getFieldByIndex(index);
-                        result.fields.push_back(
-                            reflectType(field->getTypeLayout(), field, field->getName(), depth + 1));
+                        if (auto child = append(field->getTypeLayout(), field, field->getName()); !child)
+                        {
+                            return std::unexpected(child.error());
+                        }
                     }
                 }
                 else if (result.kind == ShaderParameterKind::eArray)
                 {
-                    result.count  = type->getElementCount();
+                    // The linked program folds expression-sized arrays; the context-free Slang query can throw.
+                    result.count  = type->getElementCount(program);
                     result.stride = type->getElementStride(SLANG_PARAMETER_CATEGORY_UNIFORM);
                     auto* element = type->getElementVarLayout();
-                    result.fields.push_back(
-                        reflectType(element ? element->getTypeLayout() : type->getElementTypeLayout(),
-                                    element,
-                                    "$element",
-                                    depth + 1));
+                    if (auto child = append(element ? element->getTypeLayout() : type->getElementTypeLayout(),
+                                            element,
+                                            "$element");
+                        !child)
+                    {
+                        return std::unexpected(child.error());
+                    }
                 }
                 else if (result.kind == ShaderParameterKind::eConstantBuffer ||
                          result.kind == ShaderParameterKind::eParameterBlock)
                 {
                     if (auto* container = type->getContainerVarLayout())
                     {
-                        result.fields.push_back(
-                            reflectType(container->getTypeLayout(), container, "$container", depth + 1));
+                        if (auto child = append(container->getTypeLayout(), container, "$container"); !child)
+                        {
+                            return std::unexpected(child.error());
+                        }
                     }
                     auto* element = type->getElementVarLayout();
-                    result.fields.push_back(
-                        reflectType(element ? element->getTypeLayout() : type->getElementTypeLayout(),
-                                    element,
-                                    "$element",
-                                    depth + 1));
+                    if (auto child = append(element ? element->getTypeLayout() : type->getElementTypeLayout(),
+                                            element,
+                                            "$element");
+                        !child)
+                    {
+                        return std::unexpected(child.error());
+                    }
                 }
                 return result;
             }
         } // namespace
 
-        ShaderParameter reflectShaderParameters(slang::VariableLayoutReflection* globals)
+        std::expected<ShaderParameter, std::string> reflectShaderParametersExpected(slang::ShaderReflection* program)
         {
-            return reflectType(globals->getTypeLayout(), globals, "$globals", 0);
+            auto* globals = program ? program->getGlobalParamsVarLayout() : nullptr;
+            if (!globals)
+            {
+                return std::unexpected("Slang global parameter layout is unavailable");
+            }
+            uint32_t nodes = 0;
+            return reflectType(globals->getTypeLayout(), globals, program, "$globals", 0, nodes);
         }
     } // namespace detail
 } // namespace vultra

@@ -102,6 +102,8 @@ values and GPU storage/bindings; OpenPBR is one builtin schema. Plain Slang use 
 renderer. Reuse allocations for value changes within a layout and validate each pass's material inputs. An unlit
 block and a distinct custom block must support persistence, inspection, live edits and type/layout rejection with
 image readback before this is complete. MaterialInstance/ShaderMaterial are the existing implementation base.
+Generated raster Surface authoring now includes an independent Unlit output and verified cooked-only rendering.
+This does not complete the generic block/resource policy, additional visibility/reference models or material graphs.
 
 Add finite Bool/Enum keywords with explicit material/pipeline/pass ownership, legal-selection validation and named
 presets. Keep selection/program/layout/pipeline identities separate. Cooking retains used or all-legal combinations

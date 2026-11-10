@@ -7,24 +7,25 @@
 
 #include <cstring>
 #include <limits>
+#include <stdexcept>
 
 namespace vultra
 {
-    SceneImage asset_detail::decodeImage(std::span<const std::byte> bytes)
+    std::expected<SceneImage, std::string> asset_detail::decodeImageExpected(std::span<const std::byte> bytes)
     {
         if (bytes.size() >= 4 && std::memcmp(bytes.data(), "DDS ", 4) == 0)
         {
-            return retainDds(bytes);
+            return retainDdsExpected(bytes);
         }
         if (bytes.empty() || bytes.size() > size_t(std::numeric_limits<int>::max()))
         {
-            throw std::runtime_error("Invalid encoded image size");
+            return std::unexpected("Invalid encoded image size");
         }
         const auto* data = reinterpret_cast<const stbi_uc*>(bytes.data());
         const int   size = int(bytes.size());
         if (stbi_is_16_bit_from_memory(data, size) || stbi_is_hdr_from_memory(data, size))
         {
-            throw std::runtime_error("Material images require 8-bit channels; use Environment for HDR images");
+            return std::unexpected("Material images require 8-bit channels; use Environment for HDR images");
         }
         int                                                        width    = 0;
         int                                                        height   = 0;
@@ -34,9 +35,39 @@ namespace vultra
             &stbi_image_free);
         if (!pixels)
         {
-            throw std::runtime_error(std::string("Decode image: ") + stbi_failure_reason());
+            return std::unexpected(std::string("Decode image: ") + stbi_failure_reason());
         }
-        return {uint32_t(width), uint32_t(height), {pixels.get(), pixels.get() + size_t(width) * height * 4}, {}};
+        return SceneImage {uint32_t(width),
+                           uint32_t(height),
+                           {pixels.get(), pixels.get() + size_t(width) * height * 4},
+                           {}};
+    }
+
+    SceneImage asset_detail::decodeImage(std::span<const std::byte> bytes)
+    {
+        auto image = decodeImageExpected(bytes);
+        if (!image)
+        {
+            throw std::runtime_error(image.error());
+        }
+        return std::move(*image);
+    }
+
+    std::expected<SceneImage, std::string> loadSceneImageExpected(const std::filesystem::path&  path,
+                                                                  const ExpectedSourceObserver& observer,
+                                                                  const AssetSource*            source)
+    {
+        const auto bytes = readSourceFileExpected(path, observer, source);
+        if (!bytes)
+        {
+            return std::unexpected("Image " + path.string() + ": " + bytes.error());
+        }
+        auto image = asset_detail::decodeImageExpected(*bytes);
+        if (!image)
+        {
+            return std::unexpected("Image " + path.string() + ": " + image.error());
+        }
+        return image;
     }
 
     SceneImage
@@ -52,11 +83,11 @@ namespace vultra
         }
     }
 
-    bool asset_detail::imageHasOpaqueAlpha(const SceneImage& image)
+    std::expected<bool, std::string> asset_detail::imageHasOpaqueAlphaExpected(const SceneImage& image)
     {
         if (!image.dds.empty())
         {
-            return ddsHasOpaqueAlpha(image.dds);
+            return ddsHasOpaqueAlphaExpected(image.dds);
         }
         if (image.width == 0 || image.height == 0 || image.pixels.size() % 4 != 0 ||
             image.pixels.size() / 4 != uint64_t(image.width) * image.height)
@@ -73,7 +104,7 @@ namespace vultra
         return true;
     }
 
-    void asset_detail::removeOpaqueOrcaCutouts(SceneData& scene)
+    std::expected<void, std::string> asset_detail::removeOpaqueOrcaCutoutsExpected(SceneData& scene)
     {
         std::vector<bool> candidates(scene.materials.size());
         for (size_t i = 0; i < scene.materials.size(); ++i)
@@ -109,12 +140,18 @@ namespace vultra
             auto& opaque   = opaqueImages[size_t(material.baseColorTexture.image)];
             if (opaque < 0)
             {
-                opaque = imageHasOpaqueAlpha(scene.images[size_t(material.baseColorTexture.image)]) ? 1 : 0;
+                auto result = imageHasOpaqueAlphaExpected(scene.images[size_t(material.baseColorTexture.image)]);
+                if (!result)
+                {
+                    return std::unexpected(result.error());
+                }
+                opaque = *result ? 1 : 0;
             }
             if (opaque != 0)
             {
                 material.alphaCutoff = -1;
             }
         }
+        return {};
     }
 } // namespace vultra

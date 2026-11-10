@@ -1,0 +1,93 @@
+--- a/source/core/validation_layer.cpp
++++ b/source/core/validation_layer.cpp
+@@ -31,6 +31,7 @@
+     namespace
+     {
+         struct DeviceVal;
++        struct CmdBufVal;
+ 
+         struct QueueVal
+         {
+@@ -41,6 +42,7 @@
+         {
+             DeviceVal*           dev;
+             VriCommandAllocator* real;
++            std::vector<CmdBufVal*> commands;
+         };
+         struct FenceVal
+         {
+@@ -84,9 +86,8 @@
+             VriInteropInterface         interop;       // the backend's real native-handle interop table (if supported)
+ 
+             VriCooperativeVectorInterface cooperativeVector {};
+-            // wrappers without an explicit destroy entry point, freed at device teardown
++            // Queue wrappers are freed at device teardown; command wrappers belong to their allocator.
+             std::vector<QueueVal*>  queues;
+-            std::vector<CmdBufVal*> cmds;
+         };
+ 
+         std::unordered_set<const void*> g_valDevices;
+@@ -167,7 +168,14 @@
+         }
+         void VRI_CALL ResetCommandAllocator(VriCommandAllocator* a)
+         {
+-            AV(a)->dev->core.ResetCommandAllocator(AV(a)->real);
++            AllocatorVal* allocator = AV(a);
++            allocator->dev->core.ResetCommandAllocator(allocator->real);
++            for (CmdBufVal* command : allocator->commands)
++            {
++                command->recording        = false;
++                command->insideRenderPass = false;
++                command->recordThread     = {};
++            }
+         }
+         void VRI_CALL DestroyCommandAllocator(VriCommandAllocator* a)
+         {
+@@ -175,6 +183,10 @@
+                 return;
+             AllocatorVal* v = AV(a);
+             v->dev->core.DestroyCommandAllocator(v->real);
++            for (CmdBufVal* command : v->commands)
++            {
++                delete command;
++            }
+             delete v;
+         }
+         VriResult VRI_CALL CreateCommandBuffer(VriCommandAllocator* allocator, VriCommandBuffer** out)
+@@ -185,7 +197,7 @@
+             if (r != VriResult_Success)
+                 return r;
+             CmdBufVal* cv = new CmdBufVal {a->dev, real};
+-            a->dev->cmds.push_back(cv);
++            a->commands.push_back(cv);
+             *out = reinterpret_cast<VriCommandBuffer*>(cv);
+             return VriResult_Success;
+         }
+@@ -194,10 +206,14 @@
+             CmdBufVal* c = CV(cmd);
+             if (c->recording)
+                 Err(c->dev, "BeginCommandBuffer called on a command buffer already recording");
+-            c->recording        = true;
+-            c->insideRenderPass = false;
+-            c->recordThread     = std::this_thread::get_id();
+-            return c->dev->core.BeginCommandBuffer(c->real);
++            const VriResult result = c->dev->core.BeginCommandBuffer(c->real);
++            if (result == VriResult_Success)
++            {
++                c->recording        = true;
++                c->insideRenderPass = false;
++                c->recordThread     = std::this_thread::get_id();
++            }
++            return result;
+         }
+         VriResult VRI_CALL EndCommandBuffer(VriCommandBuffer* cmd)
+         {
+@@ -1315,8 +1331,6 @@
+         delete reinterpret_cast<DeviceBase*>(d->real); // destroy the backend device
+         for (QueueVal* q : d->queues)
+             delete q;
+-        for (CmdBufVal* c : d->cmds)
+-            delete c;
+         delete d;
+     }
+ } // namespace vri::core

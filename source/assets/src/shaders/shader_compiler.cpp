@@ -9,7 +9,6 @@
 #include <xxhash.h>
 
 #include <algorithm>
-#include <fstream>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -18,31 +17,46 @@ namespace vultra
 {
     namespace
     {
-        std::string readText(const std::filesystem::path& file)
+        std::expected<std::string, std::string> quote(std::string_view text)
         {
-            std::ifstream input(file, std::ios::binary);
-            if (!input)
+            const nlohmann::json value(text);
+            auto                 encoded = value.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+            if (nlohmann::json::parse(encoded, nullptr, false) != value)
             {
-                throw std::runtime_error("Open shader source: " + file.string());
+                return std::unexpected("Shader source metadata requires valid UTF-8");
             }
-            return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+            return encoded;
         }
 
-        std::string sourceBlock(const ShaderSourceBlock& block)
+        std::expected<std::string, std::string> sourceBlock(const ShaderSourceBlock& block)
         {
-            return "#line " + std::to_string(block.location.line) + " " +
-                   nlohmann::json(block.location.file.generic_string()).dump() + "\n" + block.text +
+            auto file = quote(block.location.file.generic_string());
+            if (!file)
+            {
+                return std::unexpected(file.error());
+            }
+            return "#line " + std::to_string(block.location.line) + " " + *file + "\n" + block.text +
                    "\n#line 1 \"vultra_generated_adapter\"\n";
         }
 
-        std::string compileFingerprint(const std::filesystem::path& file,
-                                       const ShaderCompileOptions&  options,
-                                       std::string_view             text,
-                                       std::span<const std::string> variants)
+        std::expected<std::string, std::string> compileFingerprint(const std::filesystem::path& file,
+                                                                   const ShaderCompileOptions&  options,
+                                                                   std::string_view             text,
+                                                                   std::span<const std::string> variants)
         {
-            const auto sourceKey  = detail::shaderCompileKey(file, text, options);
-            const auto serialized = sourceKey + kShaderLanguageKey +
-                                    nlohmann::json(std::vector<std::string>(variants.begin(), variants.end())).dump();
+            auto signature = detail::shaderCompileSignatureExpected(file, text, options);
+            if (!signature)
+            {
+                return std::unexpected(signature.error());
+            }
+            const auto sourceKey = std::to_string(XXH3_64bits(signature->data(), signature->size()));
+            const auto selected  = nlohmann::json(std::vector<std::string>(variants.begin(), variants.end()));
+            const auto encoded   = selected.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+            if (nlohmann::json::parse(encoded, nullptr, false) != selected)
+            {
+                return std::unexpected("Selected shader variants require valid UTF-8");
+            }
+            const auto serialized = sourceKey + kShaderLanguageKey + encoded;
             return std::to_string(XXH3_64bits(serialized.data(), serialized.size()));
         }
 
@@ -104,8 +118,12 @@ namespace vultra
         }
     } // namespace
 
-    std::string ShaderAsset::generatedMaterialSource() const
+    std::expected<std::string, std::string> ShaderAsset::generatedMaterialSourceExpected() const
     {
+        if (auto valid = validateExpected(); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
         std::string result = "#line 1 \"vultra_generated_material\"\nstruct VultraMaterialProperties\n{\n";
         if (properties.empty())
         {
@@ -118,8 +136,12 @@ namespace vultra
                                            "TextureCubeArray<float4>"};
         for (const auto& property : properties)
         {
-            result += "#line " + std::to_string(property.location.line) + " " +
-                      nlohmann::json(property.location.file.generic_string()).dump() + "\n";
+            auto file = quote(property.location.file.generic_string());
+            if (!file)
+            {
+                return std::unexpected(file.error());
+            }
+            result += "#line " + std::to_string(property.location.line) + " " + *file + "\n";
             std::string type = "float";
             if (property.type == ShaderPropertyType::eInteger)
             {
@@ -156,24 +178,48 @@ namespace vultra
         return result;
     }
 
-    std::string ShaderAsset::generatedPassSource(uint32_t subshaderIndex, uint32_t passIndex) const
+    std::expected<std::string, std::string> ShaderAsset::generatedPassSourceExpected(uint32_t subshaderIndex,
+                                                                                     uint32_t passIndex) const
     {
-        const auto& subshader = subshaders.at(subshaderIndex);
-        const auto& pass      = subshader.passes.at(passIndex);
-        std::string source    = generatedMaterialSource();
+        if (subshaderIndex >= subshaders.size() || passIndex >= subshaders[subshaderIndex].passes.size())
+        {
+            return std::unexpected("Generated shader SubShader/Pass index is out of range");
+        }
+        const auto& subshader = subshaders[subshaderIndex];
+        const auto& pass      = subshader.passes[passIndex];
+        auto        material  = generatedMaterialSourceExpected();
+        if (!material)
+        {
+            return std::unexpected(material.error());
+        }
+        std::string source = std::move(*material);
         if (pass.generated)
         {
             if (!subshader.surface)
             {
-                throw std::invalid_argument("Generated Pass has no Surface");
+                return std::unexpected("Generated Pass has no Surface");
+            }
+            if (subshader.surface->model == "Unlit")
+            {
+                source += "#define VULTRA_SURFACE_UNLIT 1\n";
             }
             source += "#include \"resources/game_surface.slangh\"\n";
         }
         for (const auto& block : subshader.common)
         {
-            source += sourceBlock(block);
+            auto generated = sourceBlock(block);
+            if (!generated)
+            {
+                return std::unexpected(generated.error());
+            }
+            source += *generated;
         }
-        source += sourceBlock(pass.source);
+        auto generated = sourceBlock(pass.source);
+        if (!generated)
+        {
+            return std::unexpected(generated.error());
+        }
+        source += *generated;
         if (pass.generated)
         {
             source += "#line 1 \"vultra_generated_surface\"\n";
@@ -181,8 +227,11 @@ namespace vultra
             {
                 source += "#define VULTRA_SURFACE_ALPHA_MASK 1\n";
             }
-            source += "SurfaceOutput vultraEvaluateSurface(SurfaceInput input)\n{\n";
-            source += "    SurfaceOutput output = defaultSurfaceOutput();\n";
+            const bool        unlit      = subshader.surface->model == "Unlit";
+            const std::string outputType = unlit ? "UnlitSurfaceOutput" : "SurfaceOutput";
+            source += outputType + " vultraEvaluateSurface(SurfaceInput input)\n{\n";
+            source += "    " + outputType +
+                      " output = " + (unlit ? "defaultUnlitSurfaceOutput" : "defaultSurfaceOutput") + "();\n";
             source += "    " + subshader.surface->entry + "(input, output);\n    return output;\n}\n";
             if (pass.name == "MeshForward")
             {
@@ -209,39 +258,66 @@ namespace vultra
         return source;
     }
 
-    ShaderAsset ShaderAsset::compile(const std::filesystem::path& file,
-                                     const ShaderCompileOptions&  options,
-                                     std::span<const std::string> selectedVariants)
+    std::expected<ShaderAsset, std::string> ShaderAsset::compileExpected(const std::filesystem::path& file,
+                                                                         const ShaderCompileOptions&  options,
+                                                                         std::span<const std::string> selectedVariants)
     {
-        const auto text  = readText(file);
-        auto       asset = compileSource(file, text, options, selectedVariants);
-        if (readText(file) != text)
+        auto text = detail::readShaderTextExpected(file);
+        if (!text)
         {
-            throw std::runtime_error("Shader source changed while compiling: " + file.string());
+            return std::unexpected(text.error());
+        }
+        auto asset = compileSourceExpected(file, *text, options, selectedVariants);
+        if (!asset)
+        {
+            return std::unexpected(asset.error());
+        }
+        auto current = detail::readShaderTextExpected(file);
+        if (!current)
+        {
+            return std::unexpected(current.error());
+        }
+        if (*current != *text)
+        {
+            return std::unexpected("Shader source changed while compiling: " + file.string());
         }
         return asset;
     }
 
-    ShaderAsset ShaderAsset::compileSource(const std::filesystem::path& file,
-                                           std::string_view             text,
-                                           const ShaderCompileOptions&  options,
-                                           std::span<const std::string> selectedVariants)
+    std::expected<ShaderAsset, std::string>
+    ShaderAsset::compileSourceExpected(const std::filesystem::path& file,
+                                       std::string_view             text,
+                                       const ShaderCompileOptions&  options,
+                                       std::span<const std::string> selectedVariants)
     {
-        auto asset       = parse(file, text);
-        asset.compileKey = compileFingerprint(file, options, text, selectedVariants);
+        auto parsed = parseExpected(file, text);
+        if (!parsed)
+        {
+            return std::unexpected(parsed.error());
+        }
+        auto asset = std::move(*parsed);
+        auto key   = compileFingerprint(file, options, text, selectedVariants);
+        if (!key)
+        {
+            return std::unexpected(key.error());
+        }
+        asset.compileKey = std::move(*key);
         if (!options.entries.empty())
         {
-            throw std::invalid_argument("Game shader entries are declared in its Passes, not compile options");
+            return std::unexpected("Game shader entries are declared in its Passes, not compile options");
         }
         if (!selectedVariants.empty())
         {
             std::set<std::string> selected;
             for (const auto& name : selectedVariants)
             {
-                asset.variant(name);
+                if (auto found = asset.variantExpected(name); !found)
+                {
+                    return std::unexpected(found.error());
+                }
                 if (!selected.insert(name).second)
                 {
-                    throw std::invalid_argument("Duplicate selected shader variant");
+                    return std::unexpected("Duplicate selected shader variant");
                 }
             }
             std::erase_if(asset.variants,
@@ -250,11 +326,25 @@ namespace vultra
                               return !selected.contains(variant.name);
                           });
         }
+        for (auto& variant : asset.variants)
+        {
+            auto combined = options.typeConformances;
+            combined.insert(combined.end(), variant.typeConformances.begin(), variant.typeConformances.end());
+            variant.typeConformances = std::move(combined);
+        }
+        if (auto valid = asset.validateExpected(); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
         for (auto& subshader : asset.subshaders)
         {
             expandSurface(subshader);
         }
-        ShaderCompiler compiler;
+        auto compiler = ShaderCompiler::create();
+        if (!compiler)
+        {
+            return std::unexpected(compiler.error());
+        }
         for (uint32_t subshaderIndex = 0; subshaderIndex < asset.subshaders.size(); ++subshaderIndex)
         {
             auto& subshader = asset.subshaders[subshaderIndex];
@@ -265,11 +355,16 @@ namespace vultra
                 {
                     pass.state = inheritState(subshader.state, pass.state);
                 }
-                const auto source = asset.generatedPassSource(subshaderIndex, passIndex);
+                auto source = asset.generatedPassSourceExpected(subshaderIndex, passIndex);
+                if (!source)
+                {
+                    return std::unexpected(source.error());
+                }
                 for (const auto& variant : asset.variants)
                 {
                     auto settings     = options;
                     settings.entries  = pass.entries;
+                    settings.typeConformances = variant.typeConformances;
                     settings.rayQuery = settings.rayQuery ||
                                         ((pass.requiredFeatures | subshader.requiredFeatures) & VriFeature_RayQuery);
                     settings.defines.insert(settings.defines.end(), variant.defines.begin(), variant.defines.end());
@@ -280,18 +375,14 @@ namespace vultra
                     {
                         settings.linkSources.push_back({"vultra_variant_constants", variant.constants});
                     }
-                    ShaderProgram program;
-                    try
+                    auto program = (*compiler)->compileSourceExpected(asset.sourcePath, *source, settings);
+                    if (!program)
                     {
-                        program = compiler.compileSource(asset.sourcePath, source, settings);
+                        return std::unexpected(pass.location.describe() + ": Pass " + pass.name + ", variant " +
+                                               variant.name + "\n" + program.error());
                     }
-                    catch (const std::exception& error)
-                    {
-                        throw std::runtime_error(pass.location.describe() + ": Pass " + pass.name + ", variant " +
-                                                 variant.name + "\n" + error.what());
-                    }
-                    asset.diagnostics += program.diagnostics;
-                    pass.programs.emplace(variant.name, std::move(program));
+                    asset.diagnostics += program->diagnostics;
+                    pass.programs.emplace(variant.name, std::move(*program));
                 }
             }
         }
@@ -301,18 +392,26 @@ namespace vultra
             {
                 for (const auto& [name, program] : pass.programs)
                 {
-                    if (!detail::shaderDependenciesCurrent(program.dependencies, file, options))
+                    auto current = detail::shaderDependenciesCurrentExpected(program.dependencies, file, options);
+                    if (!current)
                     {
-                        throw std::runtime_error("Shader asset dependency changed while compiling: " + file.string());
+                        return std::unexpected(current.error());
+                    }
+                    if (!*current)
+                    {
+                        return std::unexpected("Shader asset dependency changed while compiling: " + file.string());
                     }
                 }
             }
         }
-        asset.validate();
+        if (auto valid = asset.validateExpected(); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
         return asset;
     }
 
-    std::vector<ShaderSourceProjection> ShaderAsset::projectSources() const
+    std::expected<std::vector<ShaderSourceProjection>, std::string> ShaderAsset::projectSourcesExpected() const
     {
         auto expanded = *this;
         for (auto& subshader : expanded.subshaders)
@@ -326,14 +425,19 @@ namespace vultra
             for (uint32_t pass = 0; pass < subshader.passes.size(); ++pass)
             {
                 ShaderSourceProjection document;
-                document.name = "subshader_" + std::to_string(sub) + "_pass_" + std::to_string(pass);
-                document.text = expanded.generatedPassSource(sub, pass);
+                document.name  = "subshader_" + std::to_string(sub) + "_pass_" + std::to_string(pass);
+                auto generated = expanded.generatedPassSourceExpected(sub, pass);
+                if (!generated)
+                {
+                    return std::unexpected(generated.error());
+                }
+                document.text = std::move(*generated);
                 for (const auto& property : properties)
                 {
                     const auto position = document.text.find(" " + property.name + ";\n");
                     if (position == std::string::npos)
                     {
-                        throw std::logic_error("Generated property declaration was lost");
+                        return std::unexpected("Generated property declaration was lost");
                     }
                     const auto line =
                         uint32_t(std::count(document.text.begin(), document.text.begin() + position, '\n')) + 1;
@@ -343,9 +447,15 @@ namespace vultra
                 size_t cursor = 0;
                 for (const auto& block : subshader.common)
                 {
-                    document.mapBlock(block, cursor);
+                    if (auto mapped = document.mapBlockExpected(block, cursor); !mapped)
+                    {
+                        return std::unexpected(mapped.error());
+                    }
                 }
-                document.mapBlock(subshader.passes[pass].source, cursor);
+                if (auto mapped = document.mapBlockExpected(subshader.passes[pass].source, cursor); !mapped)
+                {
+                    return std::unexpected(mapped.error());
+                }
                 // Slangd reports #line-adjusted diagnostic lines but physical completion/definition positions.
                 // Remove adapter directives only; native program text and line counts stay intact.
                 std::istringstream input(document.text);
@@ -375,26 +485,45 @@ namespace vultra
         return documents;
     }
 
-    bool ShaderAsset::cook(const std::filesystem::path& source,
-                           const std::filesystem::path& output,
-                           const ShaderCompileOptions&  options,
-                           std::span<const std::string> variants)
+    std::expected<bool, std::string> ShaderAsset::cookExpected(const std::filesystem::path& source,
+                                                               const std::filesystem::path& output,
+                                                               const ShaderCompileOptions&  options,
+                                                               std::span<const std::string> variants)
     {
-        const auto key = compileFingerprint(source, options, readText(source), variants);
-        if (std::filesystem::is_regular_file(output))
+        auto text = detail::readShaderTextExpected(source);
+        if (!text)
         {
-            try
+            return std::unexpected(text.error());
+        }
+        auto key = compileFingerprint(source, options, *text, variants);
+        if (!key)
+        {
+            return std::unexpected(key.error());
+        }
+        auto regular = detail::shaderRegularFileExpected(output);
+        if (!regular)
+        {
+            return std::unexpected(regular.error());
+        }
+        if (*regular)
+        {
+            auto previous = loadExpected(output);
+            if (previous)
             {
-                const auto previous = load(output);
-                bool       current  = previous.compileKey == key;
-                for (const auto& subshader : previous.subshaders)
+                bool current = previous->compileKey == *key;
+                for (const auto& subshader : previous->subshaders)
                 {
                     for (const auto& pass : subshader.passes)
                     {
                         for (const auto& [variant, program] : pass.programs)
                         {
-                            current =
-                                detail::shaderDependenciesCurrent(program.dependencies, source, options) && current;
+                            auto dependencies =
+                                detail::shaderDependenciesCurrentExpected(program.dependencies, source, options);
+                            if (!dependencies)
+                            {
+                                return std::unexpected(dependencies.error());
+                            }
+                            current = *dependencies && current;
                         }
                     }
                 }
@@ -404,23 +533,98 @@ namespace vultra
                     return false;
                 }
             }
-            catch (const std::exception& error)
+            else
             {
-                Logger::core().warn("Rebuilding unreadable shader cache {}: {}", output.string(), error.what());
+                Logger::core().warn("Rebuilding unreadable shader cache {}: {}", output.string(), previous.error());
             }
             Logger::core().info("Shader source, options or dependency changed: {}", source.string());
         }
         Logger::core().info("Cooking game shader: {}", source.string());
-        auto asset = compile(source, options, variants);
-        asset.save(output);
-        if (!asset.diagnostics.empty())
+        auto asset = compileExpected(source, options, variants);
+        if (!asset)
         {
-            Logger::core().warn("{}", asset.diagnostics);
+            return std::unexpected(asset.error());
+        }
+        if (auto saved = asset->saveExpected(output); !saved)
+        {
+            return std::unexpected(saved.error());
+        }
+        if (!asset->diagnostics.empty())
+        {
+            Logger::core().warn("{}", asset->diagnostics);
         }
         Logger::core().info("Cooked shader {}: {} SubShaders, {} explicit variants",
-                            asset.name,
-                            asset.subshaders.size(),
-                            asset.variants.size());
+                            asset->name,
+                            asset->subshaders.size(),
+                            asset->variants.size());
         return true;
+    }
+
+    std::string ShaderAsset::generatedMaterialSource() const
+    {
+        auto source = generatedMaterialSourceExpected();
+        if (!source)
+        {
+            throw std::invalid_argument(source.error());
+        }
+        return std::move(*source);
+    }
+
+    std::string ShaderAsset::generatedPassSource(uint32_t subshader, uint32_t pass) const
+    {
+        auto source = generatedPassSourceExpected(subshader, pass);
+        if (!source)
+        {
+            throw std::invalid_argument(source.error());
+        }
+        return std::move(*source);
+    }
+
+    std::vector<ShaderSourceProjection> ShaderAsset::projectSources() const
+    {
+        auto documents = projectSourcesExpected();
+        if (!documents)
+        {
+            throw std::invalid_argument(documents.error());
+        }
+        return std::move(*documents);
+    }
+
+    ShaderAsset ShaderAsset::compile(const std::filesystem::path& file,
+                                     const ShaderCompileOptions&  options,
+                                     std::span<const std::string> variants)
+    {
+        auto asset = compileExpected(file, options, variants);
+        if (!asset)
+        {
+            throw std::runtime_error(asset.error());
+        }
+        return std::move(*asset);
+    }
+
+    ShaderAsset ShaderAsset::compileSource(const std::filesystem::path& file,
+                                           std::string_view             source,
+                                           const ShaderCompileOptions&  options,
+                                           std::span<const std::string> variants)
+    {
+        auto asset = compileSourceExpected(file, source, options, variants);
+        if (!asset)
+        {
+            throw std::runtime_error(asset.error());
+        }
+        return std::move(*asset);
+    }
+
+    bool ShaderAsset::cook(const std::filesystem::path& source,
+                           const std::filesystem::path& output,
+                           const ShaderCompileOptions&  options,
+                           std::span<const std::string> variants)
+    {
+        auto cooked = cookExpected(source, output, options, variants);
+        if (!cooked)
+        {
+            throw std::runtime_error(cooked.error());
+        }
+        return *cooked;
     }
 } // namespace vultra

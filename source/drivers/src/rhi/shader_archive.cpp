@@ -8,8 +8,6 @@
 #include <array>
 #include <bit>
 #include <cstring>
-#include <fstream>
-#include <set>
 #include <stdexcept>
 
 namespace vultra::detail
@@ -21,109 +19,36 @@ namespace vultra::detail
         constexpr size_t                 kMaxFileSize = 64 * 1024 * 1024;
         using Json                                    = nlohmann::json;
 
-        Json encodeParameter(const ShaderParameter& parameter)
-        {
-            Json offsets = Json::array();
-            for (const auto& offset : parameter.offsets)
-            {
-                offsets.push_back({{"kind", offset.kind}, {"offset", offset.offset}, {"space", offset.space}});
-            }
-            Json fields = Json::array();
-            for (const auto& field : parameter.fields)
-            {
-                fields.push_back(encodeParameter(field));
-            }
-            return {{"name", parameter.name},
-                    {"type", parameter.typeName},
-                    {"kind", parameter.kind},
-                    {"scalar", parameter.scalar},
-                    {"size", parameter.size},
-                    {"stride", parameter.stride},
-                    {"count", parameter.count},
-                    {"matrix_stride", parameter.matrixStride},
-                    {"rows", parameter.rows},
-                    {"columns", parameter.columns},
-                    {"column_major", parameter.columnMajor},
-                    {"descriptor_type", parameter.descriptorType ? Json(*parameter.descriptorType) : Json()},
-                    {"view_type", parameter.viewType},
-                    {"offsets", offsets},
-                    {"fields", fields}};
-        }
-
-        ShaderParameter decodeParameter(const Json& document, uint32_t depth, uint32_t& nodes)
-        {
-            if (depth > 64 || ++nodes > 100000)
-            {
-                throw std::invalid_argument("Excessively large shader parameter layout");
-            }
-            ShaderParameter parameter;
-            parameter.name     = document.at("name").get<std::string>();
-            parameter.typeName = document.at("type").get<std::string>();
-            const auto kind    = document.at("kind").get<uint32_t>();
-            const auto scalar  = document.at("scalar").get<uint32_t>();
-            if (kind > uint32_t(ShaderParameterKind::eSampler) || scalar > uint32_t(ShaderScalarType::eOther) ||
-                parameter.name.size() > 4096 || parameter.typeName.size() > 4096)
-            {
-                throw std::invalid_argument("Invalid cooked shader parameter type");
-            }
-            parameter.kind         = ShaderParameterKind(kind);
-            parameter.scalar       = ShaderScalarType(scalar);
-            parameter.size         = document.at("size").get<uint64_t>();
-            parameter.stride       = document.at("stride").get<uint64_t>();
-            parameter.count        = document.at("count").get<uint64_t>();
-            parameter.matrixStride = document.at("matrix_stride").get<uint64_t>();
-            parameter.rows         = document.at("rows").get<uint32_t>();
-            parameter.columns      = document.at("columns").get<uint32_t>();
-            parameter.columnMajor  = document.at("column_major").get<bool>();
-            if (!document.at("descriptor_type").is_null())
-            {
-                const auto descriptor = document.at("descriptor_type").get<uint32_t>();
-                if (descriptor > uint32_t(VriDescriptorType_AccelerationStructure))
-                {
-                    throw std::invalid_argument("Invalid cooked shader descriptor type");
-                }
-                parameter.descriptorType = VriDescriptorType(descriptor);
-            }
-            const auto view = document.at("view_type").get<uint32_t>();
-            if (view > uint32_t(VriTextureViewType_CubeArray))
-            {
-                throw std::invalid_argument("Invalid cooked shader texture view type");
-            }
-            parameter.viewType = VriTextureViewType(view);
-            if (!document.at("offsets").is_array() || !document.at("fields").is_array())
-            {
-                throw std::invalid_argument("Invalid cooked shader layout children");
-            }
-            std::set<uint32_t> offsetKinds;
-            for (const auto& offset : document.at("offsets"))
-            {
-                const auto offsetKind = offset.at("kind").get<uint32_t>();
-                if (offsetKind > uint32_t(ShaderOffsetKind::ePushConstant) || !offsetKinds.insert(offsetKind).second)
-                {
-                    throw std::invalid_argument("Invalid cooked shader layout offset");
-                }
-                parameter.offsets.push_back({ShaderOffsetKind(offsetKind),
-                                             offset.at("offset").get<uint64_t>(),
-                                             offset.at("space").get<uint64_t>()});
-            }
-            for (const auto& field : document.at("fields"))
-            {
-                parameter.fields.push_back(decodeParameter(field, depth + 1, nodes));
-            }
-            return parameter;
-        }
-
-        bool validStage(uint32_t stage)
-        {
-            return stage == VriShaderStage_Vertex || stage == VriShaderStage_Fragment ||
-                   stage == VriShaderStage_Compute || stage == VriShaderStage_Geometry ||
-                   stage == VriShaderStage_TessControl || stage == VriShaderStage_TessEval ||
-                   stage == VriShaderStage_Task || stage == VriShaderStage_Mesh || stage == VriShaderStage_RayGen ||
-                   stage == VriShaderStage_Intersection || stage == VriShaderStage_AnyHit ||
-                   stage == VriShaderStage_ClosestHit || stage == VriShaderStage_Miss ||
-                   stage == VriShaderStage_Callable;
-        }
     } // namespace
+
+    Json encodeShaderParameter(const ShaderParameter& parameter)
+    {
+        Json offsets = Json::array();
+        for (const auto& offset : parameter.offsets)
+        {
+            offsets.push_back({{"kind", offset.kind}, {"offset", offset.offset}, {"space", offset.space}});
+        }
+        Json fields = Json::array();
+        for (const auto& field : parameter.fields)
+        {
+            fields.push_back(encodeShaderParameter(field));
+        }
+        return {{"name", parameter.name},
+                {"type", parameter.typeName},
+                {"kind", parameter.kind},
+                {"scalar", parameter.scalar},
+                {"size", parameter.size},
+                {"stride", parameter.stride},
+                {"count", parameter.count},
+                {"matrix_stride", parameter.matrixStride},
+                {"rows", parameter.rows},
+                {"columns", parameter.columns},
+                {"column_major", parameter.columnMajor},
+                {"descriptor_type", parameter.descriptorType ? Json(*parameter.descriptorType) : Json()},
+                {"view_type", parameter.viewType},
+                {"offsets", offsets},
+                {"fields", fields}};
+    }
 
     Json encodeShaderProgram(const ShaderProgram& program)
     {
@@ -132,7 +57,7 @@ namespace vultra::detail
                        {"capabilities", program.capabilities},
                        {"ray_query", program.rayQuery},
                        {"entries", Json::array()},
-                       {"parameters", encodeParameter(program.parameters)},
+                       {"parameters", encodeShaderParameter(program.parameters)},
                        {"dependencies", Json::array()}};
         for (const auto& shader : program.shaders)
         {
@@ -156,89 +81,38 @@ namespace vultra::detail
 
     ShaderProgram decodeShaderProgram(const Json& document)
     {
-        ShaderProgram program;
-        program.profile      = document.at("target").get<std::string>();
-        program.compileKey   = document.at("compile_key").get<std::string>();
-        program.capabilities = document.at("capabilities").get<std::vector<std::string>>();
-        if (program.compileKey.size() > 128 || program.capabilities.size() > 128)
+        auto program = decodeShaderProgramExpected(document);
+        if (!program)
         {
-            throw std::invalid_argument("Invalid cooked shader compiler metadata");
+            throw std::runtime_error(program.error());
         }
-        const bool wgsl = program.profile == "wgsl";
-        if ((!wgsl && !program.profile.starts_with("spirv_")) || program.profile.size() > 64 ||
-            !document.at("ray_query").is_boolean() || !document.at("entries").is_array() ||
-            document.at("entries").empty() || document.at("entries").size() > 256)
-        {
-            throw std::invalid_argument("Unsupported cooked shader program");
-        }
-        program.rayQuery = document.at("ray_query").get<bool>();
-        std::set<std::string> names;
-        for (const auto& entry : document.at("entries"))
-        {
-            const auto  name  = entry.at("name").get<std::string>();
-            const auto& stage = entry.at("stage");
-            const auto& code  = entry.at("code").get_binary();
-            if (name.empty() || name.size() > 4096 || name.find(char(0)) != std::string::npos ||
-                !names.insert(name).second || !stage.is_number_unsigned() || stage.get<uint64_t>() > UINT32_MAX ||
-                !validStage(stage.get<uint32_t>()) || code.empty() ||
-                (!wgsl && (code.size() < 20 || code.size() % sizeof(uint32_t) != 0)))
-            {
-                throw std::invalid_argument("Invalid cooked shader entry: " + name);
-            }
-            CompiledShader shader;
-            shader.entry = {name, VriShaderStageBits(stage.get<uint32_t>())};
-            if (wgsl)
-            {
-                shader.wgsl.assign(reinterpret_cast<const char*>(code.data()), code.size());
-            }
-            else
-            {
-                shader.words.resize(code.size() / sizeof(uint32_t));
-                std::memcpy(shader.words.data(), code.data(), code.size());
-            }
-            shader.colorOutputs = entry.at("color_outputs").get<uint32_t>();
-            shader.threadGroup  = entry.at("thread_group").get<std::array<uint32_t, 3>>();
-            if (shader.colorOutputs > 8)
-            {
-                throw std::invalid_argument("Invalid cooked fragment output count");
-            }
-            if (!wgsl && shader.words.front() != 0x07230203)
-            {
-                throw std::invalid_argument("Invalid cooked SPIR-V: " + name);
-            }
-            program.shaders.push_back(std::move(shader));
-        }
-        uint32_t nodes     = 0;
-        program.parameters = decodeParameter(document.at("parameters"), 0, nodes);
-        if (!document.at("dependencies").is_array() || document.at("dependencies").size() > 10000)
-        {
-            throw std::invalid_argument("Invalid cooked shader dependencies");
-        }
-        for (const auto& dependency : document.at("dependencies"))
-        {
-            const auto path = dependency.at("path").get<std::string>();
-            if (path.empty() || path.size() > 4096)
-            {
-                throw std::invalid_argument("Invalid shader dependency path");
-            }
-            program.dependencies.push_back({std::filesystem::path(path), dependency.at("hash").get<uint64_t>()});
-        }
-        return program;
+        return std::move(*program);
     }
 
-    void writeShaderArchive(const std::filesystem::path& file, const Json& document)
+    std::expected<void, std::string> writeShaderArchiveExpected(const std::filesystem::path& file, const Json& document)
     {
         static_assert(std::endian::native == std::endian::little);
-        const bool developmentCache = document.at("kind") == "development_shader";
-        const auto extension        = developmentCache ? ".vshadercache" : ".vshaderc";
+        if (!document.is_object())
+        {
+            return std::unexpected("Shader archive must be an object");
+        }
+        const auto kind    = document.find("kind");
+        const auto version = document.find("version");
+        if (kind == document.end() || !kind->is_string() || version == document.end() ||
+            !version->is_number_integer() || *version != 1 ||
+            (*kind != "raw_slang" && *kind != "game_shader" && *kind != "development_shader"))
+        {
+            return std::unexpected("Unsupported shader archive format");
+        }
+        const auto extension = *kind == "development_shader" ? ".vshadercache" : ".vshaderc";
         if (file.extension() != extension)
         {
-            throw std::invalid_argument(std::string("Shader output must use ") + extension);
+            return std::unexpected(std::string("Shader output must use ") + extension);
         }
         const auto payload = Json::to_cbor(document);
         if (payload.size() > kMaxFileSize - kHeaderSize)
         {
-            throw std::invalid_argument("Cooked shader exceeds 64 MiB");
+            return std::unexpected("Cooked shader exceeds 64 MiB");
         }
         std::vector<uint8_t> bytes(kHeaderSize);
         std::copy(kMagic.begin(), kMagic.end(), bytes.begin());
@@ -250,55 +124,41 @@ namespace vultra::detail
         bytes.insert(bytes.end(), payload.begin(), payload.end());
         if (!file.parent_path().empty())
         {
-            std::filesystem::create_directories(file.parent_path());
+            std::error_code error;
+            std::filesystem::create_directories(file.parent_path(), error);
+            if (error)
+            {
+                return std::unexpected("Create shader archive directory: " + error.message());
+            }
         }
-        writeFileAtomically(file, std::as_bytes(std::span(bytes)));
+        return writeFileAtomicallyExpected(file, std::as_bytes(std::span(bytes)));
+    }
+
+    void writeShaderArchive(const std::filesystem::path& file, const Json& document)
+    {
+        if (auto result = writeShaderArchiveExpected(file, document); !result)
+        {
+            throw std::runtime_error(result.error());
+        }
     }
 
     Json readShaderArchive(const std::filesystem::path& file)
     {
-        std::ifstream input(file, std::ios::binary | std::ios::ate);
-        if (!input || input.tellg() < std::streamoff(kHeaderSize) || input.tellg() > std::streamoff(kMaxFileSize))
+        auto document = readShaderArchiveExpected(file);
+        if (!document)
         {
-            throw std::runtime_error("Missing or invalid cooked shader: " + file.string());
+            throw std::runtime_error(document.error());
         }
-        std::vector<uint8_t> bytes(static_cast<size_t>(input.tellg()));
-        input.seekg(0);
-        input.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size()));
-        if (!input)
-        {
-            throw std::runtime_error("Read cooked shader: " + file.string());
-        }
-        return readShaderArchive(std::as_bytes(std::span(bytes)), file);
+        return std::move(*document);
     }
 
     Json readShaderArchive(std::span<const std::byte> data, const std::filesystem::path& file)
     {
-        if (data.size() < kHeaderSize || data.size() > kMaxFileSize)
+        auto document = readShaderArchiveExpected(data, file);
+        if (!document)
         {
-            throw std::runtime_error("Invalid cooked shader size: " + file.string());
+            throw std::runtime_error(document.error());
         }
-        const std::span<const uint8_t> bytes(reinterpret_cast<const uint8_t*>(data.data()), data.size());
-        if (!std::equal(kMagic.begin(), kMagic.end(), bytes.begin()))
-        {
-            throw std::runtime_error("Invalid cooked shader header: " + file.string());
-        }
-        uint64_t expected = 0;
-        for (size_t index = 0; index < sizeof(expected); ++index)
-        {
-            expected |= uint64_t(bytes[8 + index]) << (8 * index);
-        }
-        if (XXH3_64bits(bytes.data() + kHeaderSize, bytes.size() - kHeaderSize) != expected)
-        {
-            throw std::runtime_error("Cooked shader checksum failed: " + file.string());
-        }
-        auto document = Json::from_cbor(bytes.begin() + kHeaderSize, bytes.end());
-        if (!document.at("version").is_number_integer() || document.at("version") != 1 ||
-            (document.at("kind") != "raw_slang" && document.at("kind") != "game_shader" &&
-             !(document.at("kind") == "development_shader" && file.extension() == ".vshadercache")))
-        {
-            throw std::invalid_argument("Unsupported cooked shader format: " + file.string());
-        }
-        return document;
+        return std::move(*document);
     }
 } // namespace vultra::detail

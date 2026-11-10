@@ -1,4 +1,5 @@
 #include "lib/color.slangh"
+#include "lib/texture_filter.slangh"
 #include "resources/fullscreen_vertex.slangh"
 
 [[vk::binding(0, 0)]] Texture2D<float4> source;
@@ -11,7 +12,7 @@ struct BlitParameters
     float minimum;
     float maximum;
     uint remap;
-    uint padding0;
+    uint manualFilter;
     uint padding1;
     uint padding2;
 };
@@ -21,7 +22,17 @@ struct BlitParameters
 [shader("fragment")] float4 blitMain(ScreenVertex input) :
     SV_Target
 {
-    float4 color = source.SampleLevel(sourceSampler, input.uv, 0);
+    float4 color;
+    if (parameters.manualFilter != 0)
+    {
+        uint2 size;
+        source.GetDimensions(size.x, size.y);
+        color = sampleBilinearClampLevelZero(source, input.uv, size);
+    }
+    else
+    {
+        color = source.SampleLevel(sourceSampler, input.uv, 0);
+    }
     if (parameters.remap != 0)
     {
         float3 selected = color.rgb;

@@ -1,0 +1,40 @@
+// Ported from the PVW companion renderer.
+#pragma once
+
+#include "resources/mesh_vertex.slangh"
+
+struct VisibilityMaterial { float4 baseColor; float4 surface; float4 emission; float4 coat; float4 specular; float4 flags; };
+struct VisibilityTransform { float4x4 model; float4x4 normal; float4 properties; };
+[[vk::binding(0, 1)]] ByteAddressBuffer vertices[];
+[[vk::binding(1, 1)]] StructuredBuffer<uint> indices;
+[[vk::binding(2, 1)]] StructuredBuffer<uint2> primitives;
+[[vk::binding(3, 1)]] StructuredBuffer<VisibilityTransform> transforms;
+[[vk::binding(4, 1)]] StructuredBuffer<VisibilityMaterial> materials;
+[[vk::binding(0, 2)]] Texture2D<float4> materialTextures[];
+[[vk::binding(0, 3)]] SamplerState materialSamplers[];
+
+void loadVisibilityTriangle(uint3 vertexIndices, out MeshVertex a, out MeshVertex b, out MeshVertex c)
+{
+    uint2 addressing = primitives[0];
+    uint3 pages = vertexIndices >> addressing.x;
+    uint3 local = vertexIndices & addressing.y;
+    // Most triangles stay in one page. Share its descriptor across all attribute loads.
+    if (all(pages == 0))
+    {
+        a = loadMeshVertex(vertices[0], local.x);
+        b = loadMeshVertex(vertices[0], local.y);
+        c = loadMeshVertex(vertices[0], local.z);
+        return;
+    }
+    if (all(pages == pages.x))
+    {
+        ByteAddressBuffer page = vertices[NonUniformResourceIndex(pages.x)];
+        a = loadMeshVertex(page, local.x);
+        b = loadMeshVertex(page, local.y);
+        c = loadMeshVertex(page, local.z);
+        return;
+    }
+    a = loadMeshVertex(vertices[NonUniformResourceIndex(pages.x)], local.x);
+    b = loadMeshVertex(vertices[NonUniformResourceIndex(pages.y)], local.y);
+    c = loadMeshVertex(vertices[NonUniformResourceIndex(pages.z)], local.z);
+}

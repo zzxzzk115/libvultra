@@ -30,12 +30,31 @@ int main()
 try
 {
     using namespace vultra;
-    Device               device;
-    EditorGui            gui(device,
-                  static_cast<Window*>(nullptr),
-                  VriFormat_RGBA8_UNORM,
-                             {.multiViewport = false, .persistLayout = false});
-    const Extent         extent {480, 360};
+    Device device;
+    auto   invalid = EditorGui::create(device, VriFormat_RGBA8_UNORM, {.persistLayout = false});
+    require(!invalid, "Expected GUI creation accepted offscreen detached viewports");
+    auto owner = EditorGui::create(device, VriFormat_RGBA8_UNORM, {.multiViewport = false, .persistLayout = false});
+    require(bool(owner), "Expected GUI creation failed");
+    EditorGui&   gui = **owner;
+    const Extent extent {480, 360};
+    require(!gui.uploadExpected(extent), "Expected GUI upload accepted an inactive frame");
+    require(!gui.beginExpected({0, 1}, 1.0f / 60), "Expected GUI begin accepted an empty extent");
+    require(!gui.beginExpected(extent, std::numeric_limits<float>::quiet_NaN()),
+            "Expected GUI begin accepted a non-finite time step");
+    require(bool(gui.beginExpected(extent, 1.0f / 60)), "Expected GUI frame did not begin");
+    require(!gui.beginExpected(extent, 1.0f / 60), "Expected GUI begin accepted an unfinished frame");
+    ImGui::SetNextWindowPos({20, 20}, ImGuiCond_Always);
+    ImGui::SetNextWindowSize({240, 120}, ImGuiCond_Always);
+    ImGui::Begin("Unsupported callback");
+    ImGui::TextUnformatted("Callback validation");
+    ImGui::GetWindowDrawList()->AddCallback(
+        [](const ImDrawList*, const ImDrawCmd*)
+        {
+        },
+        nullptr);
+    ImGui::End();
+    require(!gui.uploadExpected(extent), "Expected GUI upload accepted an unsupported callback");
+    require(!gui.frameActive(), "Failed GUI upload left the frame active");
     Texture              target(device, colorTexture(extent));
     Frame                frame(device);
     bool                 enabled  = false;
@@ -64,7 +83,7 @@ try
     ImVec2               secondPosition;
     const auto           render = [&]
     {
-        gui.begin(extent, 1.0f / 60);
+        require(bool(gui.beginExpected(extent, 1.0f / 60)), "Expected GUI frame did not recover");
         auto ui = gui.frame();
         ui.setNextWindowPos({20, 20}, ImGuiCond_Always);
         ui.setNextWindowSize({420, 290}, ImGuiCond_Always);
@@ -113,7 +132,10 @@ try
                 propertyTextPosition = itemCenter();
             }
         }
-        gui.upload(extent);
+        if (auto uploaded = gui.uploadExpected(extent); !uploaded)
+        {
+            throw std::runtime_error(uploaded.error());
+        }
         auto* cmd = frame.begin();
         gui.copy(cmd);
         target.transition(

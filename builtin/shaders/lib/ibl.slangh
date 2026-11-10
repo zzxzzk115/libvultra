@@ -25,8 +25,6 @@ float3 evaluateIbl(OpenPbrSurface    surface,
     float  ndv       = max(dot(normal, view), 0.001);
     float3 f0 =
         lerp(f0FromIor(surface.specularIor) * surface.specularColor * surface.specularWeight, baseColor, metallic);
-    float  coatF0      = f0FromIor(surface.coatIor);
-    float  coatView    = fresnelSchlick(coatF0.xxx, ndv).x * surface.coatWeight;
     float3 reflection  = reflect(-view, normal);
     float3 irradiance  = diffuseMap.SampleLevel(environmentSampler, environmentUv(normal), 0).rgb;
     float3 prefiltered = specularMap.SampleLevel(environmentSampler, environmentUv(reflection), roughness * maxMip).rgb;
@@ -35,11 +33,16 @@ float3 evaluateIbl(OpenPbrSurface    surface,
     float3 compensation = 1 + f0 * (1 / max(integrated.x + integrated.y, 0.05) - 1);
     float3 ibl          = irradiance * baseColor * (1 - metallic) * (1 - saturate(energy * compensation));
     ibl += prefiltered * energy * compensation;
+#ifndef VULTRA_OPENPBR_UNCOATED_SURFACE
+    // Uncoated programs require zero submitted coat weight and omit both coat environment lookups.
+    float  coatF0   = f0FromIor(surface.coatIor);
+    float  coatView = fresnelSchlick(coatF0.xxx, ndv).x * surface.coatWeight;
     float2 coatIntegrated = lookupBrdf(brdfLut, environmentSampler, ndv, max(surface.coatRoughness, 0.03));
     float3 coatEnvironment =
         specularMap.SampleLevel(environmentSampler, environmentUv(reflection), surface.coatRoughness * maxMip).rgb;
     ibl = ibl * (1 - coatView) * (1 - coatView) +
           coatEnvironment * (coatF0 * coatIntegrated.x + coatIntegrated.y) * surface.coatWeight;
+#endif
 
     return ibl;
 }

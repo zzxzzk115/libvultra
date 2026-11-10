@@ -3,9 +3,11 @@
 
 #include <array>
 #include <cstddef>
+#include <expected>
 #include <filesystem>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace vultra
@@ -76,10 +78,12 @@ namespace vultra
     Image loadPng(std::span<const std::byte> bytes);
     void  savePng(const Image& image, const std::filesystem::path& path);
     // Lossless float RGB output; PFM has no alpha channel, gamma or tone mapping.
-    void savePfm(const Image& image, const std::filesystem::path& path);
+    std::expected<void, std::string> savePfmExpected(const Image& image, const std::filesystem::path& path);
+    void                             savePfm(const Image& image, const std::filesystem::path& path);
     void dumpFrame(const Image& image, const std::filesystem::path& directory, uint64_t frame);
     // RGB PSNR; Rec.709-weighted luma SSIM, 11x11 Gaussian sigma=1.5, valid windows.
     // Alpha ignored. Both inputs must use the same color space and range. At least 11x11.
     ImageMetrics compare(const Image& reference, const Image& test, double peak = 1.0);
     void         validateImage(const Image& image);
+    std::expected<void, std::string> validateImageExpected(const Image& image);
 } // namespace vultra

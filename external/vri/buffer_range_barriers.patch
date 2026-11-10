@@ -1,0 +1,144 @@
+--- a/include/vri/vri_command.h
++++ b/include/vri/vri_command.h
+@@ -105,6 +105,9 @@
+     VriBuffer*     buffer;
+     VriAccessStage before;
+     VriAccessStage after;
++    /* Buffer-local byte range. Zero size selects the remaining bytes; zero offset/size is the whole buffer. */
++    uint64_t offset;
++    uint64_t size;
+ } VriBufferBarrierDesc;
+ 
+ /* Complete subresources; zero counts select the remaining mips/layers. A 3D mip includes its full depth. */
+--- a/include/vri/vri_core.h
++++ b/include/vri/vri_core.h
+@@ -265,6 +265,8 @@
+        Outside rendering. Does not transfer queue ownership or initialize an image layout/content.
+        Establish separate queue dependencies for work submitted to other queues. */
+     VriResult(VRI_CALL* CmdAliasMemoryBarrier)(VriCommandBuffer* cmd);
++    /* Bounds-checked, outside rendering. Does not supply cross-queue waits or transfer ownership. */
++    VriResult(VRI_CALL* CmdBufferBarrierRange)(VriCommandBuffer* cmd, const VriBufferBarrierDesc* barrier);
+ } VriCoreInterface;
+ 
+ VRI_EXTERN_C_END
+--- a/include/vri/vri_device_desc.h
++++ b/include/vri/vri_device_desc.h
+@@ -166,6 +166,8 @@
+     uint64_t bufferTextureGranularity;
+     /* CmdAliasMemoryBarrier is available; image activation still requires Undefined layout/content. */
+     VriBool hasAliasMemoryBarrier;
++    /* Buffer byte ranges may have independent access tracking. Native hazards may be conservative. */
++    VriBool hasBufferRangeBarriers;
+ } VriDeviceDesc;
+ 
+ VRI_EXTERN_C_END
+--- a/source/core/validation_layer.cpp
++++ b/source/core/validation_layer.cpp
+@@ -592,7 +592,31 @@
+             CmdBufVal* c = CV(cmd);
+             if (!OutsideOk(c, "CmdBarrier must be outside a render pass"))
+                 return;
++            if (!g || (g->bufferNum && !g->buffers) || (g->textureNum && !g->textures))
++            {
++                Err(c->dev, "Invalid barrier group arrays");
++                return;
++            }
++            for (uint32_t i = 0; i < g->bufferNum; ++i)
++            {
++                if ((g->buffers[i].offset || g->buffers[i].size) && !c->dev->desc.hasBufferRangeBarriers)
++                {
++                    Err(c->dev, "Buffer byte-range barriers are not enabled");
++                    return;
++                }
++            }
+             c->dev->core.CmdBarrier(c->real, g);
++        }
++        VriResult VRI_CALL CmdBufferBarrierRange(VriCommandBuffer* cmd, const VriBufferBarrierDesc* barrier)
++        {
++            if (!cmd || !barrier || !barrier->buffer)
++                return VriResult_InvalidArgument;
++            CmdBufVal* c = CV(cmd);
++            if (!c->recording || c->insideRenderPass)
++                return VriResult_InvalidArgument;
++            if (!c->dev->desc.hasBufferRangeBarriers || !c->dev->core.CmdBufferBarrierRange)
++                return VriResult_Unsupported;
++            return c->dev->core.CmdBufferBarrierRange(c->real, barrier);
+         }
+         void VRI_CALL CmdCopyBuffer(VriCommandBuffer* cmd, VriBuffer* dst, VriBuffer* src, const VriBufferCopyDesc* r)
+         {
+@@ -1099,6 +1123,7 @@
+             t.CmdClearStorageTexture      = CmdClearStorageTexture;
+             t.CmdClearStorageTextureRange = CmdClearStorageTextureRange;
+             t.CmdAliasMemoryBarrier = CmdAliasMemoryBarrier;
++            t.CmdBufferBarrierRange = CmdBufferBarrierRange;
+             // Objects pass through, but the device still belongs to this layer.
+             t.EnumerateObjects           = d->core.EnumerateObjects ? EnumerateObjects : nullptr;
+             t.CmdCopyTexture             = CmdCopyTexture;
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -1733,6 +1733,36 @@
+             return VriResult_Success;
+         }
+ 
++        VriResult VRI_CALL CmdBufferBarrierRange(VriCommandBuffer* cmd, const VriBufferBarrierDesc* barrier)
++        {
++            if (!cmd || !barrier || !barrier->buffer)
++                return VriResult_InvalidArgument;
++            CommandBufferVK* c = CB(cmd);
++            BufferVK* buffer = Buf(barrier->buffer);
++            if (buffer->device != c->device || !buffer->buffer || barrier->offset >= buffer->size ||
++                barrier->size > buffer->size - barrier->offset)
++                return VriResult_InvalidArgument;
++#if defined(__APPLE__)
++            if (c->recordingResult != VriResult_Success)
++                return c->recordingResult;
++#endif
++            VkBufferMemoryBarrier2 memory {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
++            memory.srcStageMask = ToVkStages(barrier->before.stages);
++            memory.srcAccessMask = ToVkAccess(barrier->before.access);
++            memory.dstStageMask = ToVkStages(barrier->after.stages);
++            memory.dstAccessMask = ToVkAccess(barrier->after.access);
++            memory.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
++            memory.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
++            memory.buffer = buffer->buffer;
++            memory.offset = barrier->offset;
++            memory.size = barrier->size ? barrier->size : VK_WHOLE_SIZE;
++            VkDependencyInfo dependency {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
++            dependency.bufferMemoryBarrierCount = 1;
++            dependency.pBufferMemoryBarriers = &memory;
++            c->device->Ext().CmdPipelineBarrier2(c->cmd, &dependency);
++            return VriResult_Success;
++        }
++
+         void VRI_CALL CmdBarrier(VriCommandBuffer* cmd, const VriBarrierGroupDesc* group)
+         {
+             CommandBufferVK*                    c = CB(cmd);
+@@ -1750,8 +1780,8 @@
+                 vb.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+                 vb.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+                 vb.buffer                      = Buf(b.buffer)->buffer;
+-                vb.offset                      = 0;
+-                vb.size                        = VK_WHOLE_SIZE;
++                vb.offset                      = b.offset;
++                vb.size                        = b.size ? b.size : VK_WHOLE_SIZE;
+                 bufBarriers.push_back(vb);
+             }
+ 
+@@ -2187,6 +2217,7 @@
+             WaitForFence,
+             CmdClearStorageTextureRange,
+             CmdAliasMemoryBarrier,
++            CmdBufferBarrierRange,
+         };
+     } // namespace
+ 
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -1095,6 +1095,7 @@
+         m_desc.hasClearStorageTextureRange = VRI_TRUE;
+         m_desc.bufferTextureGranularity = props.limits.bufferImageGranularity;
+         m_desc.hasAliasMemoryBarrier = VRI_TRUE;
++        m_desc.hasBufferRangeBarriers = VRI_TRUE;
+         m_desc.hasClearStorageTexture  = VRI_TRUE; // vkCmdClearColorImage is core Vulkan
+         m_desc.hasMultiview            = m_hasMultiview ? VRI_TRUE : VRI_FALSE;
+         m_desc.maxViewCount            = m_hasMultiview ? m_maxViewCount : 0u;

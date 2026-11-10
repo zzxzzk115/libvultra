@@ -1,0 +1,140 @@
+--- a/source/backend_metal/objects_mtl.h
++++ b/source/backend_metal/objects_mtl.h
+@@ -138,6 +138,7 @@
+         uint32_t         sampleNum;
+         uint32_t         texelSize;
+         bool             owned;
++        VriTextureUsageFlags usage = 0;
+     };
+ 
+     struct DescriptorMTL
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -22,6 +22,7 @@
+ 
+ #include <spirv_cross/spirv_msl.hpp>
+ 
++#include <cmath>
+ #include <cstring>
+ #include <string>
+ #include <utility>
+@@ -569,6 +570,7 @@
+             TextureMTL* t = new TextureMTL{};
+             t->device = d;
+             t->format = desc->format;
++            t->usage = desc->usage;
+             t->mtlFormat = td.pixelFormat;
+             t->type = desc->type;
+             t->width = (uint32_t)td.width;
+@@ -1989,6 +1991,85 @@
+             [c->blitEnc fillBuffer:buf range:NSMakeRange((NSUInteger)offset, (NSUInteger)len) value:b];
+         }
+         // A private encoder preserves user bindings; the existing kernels write selected native mips/layers.
++        VriResult VRI_CALL CmdClearDepthStencilTextureRange(VriCommandBuffer* cmd, VriTexture* texture,
++                                                            const VriClearDepthStencil* value,
++                                                            const VriTextureSubresourceRange* selected,
++                                                            VriImageAspectFlags aspects)
++        {
++            if (!cmd || !texture || !value)
++                return VriResult_InvalidArgument;
++            auto* c = CB(cmd);
++            const auto* t = Tex(texture);
++            const auto required = VriTextureUsage_DepthStencilAttachment | VriTextureUsage_TransferDst;
++            if (!c->cmd || c->renderEnc || t->device != c->device || !t->texture || (t->usage & required) != required ||
++                !([t->texture usage] & MTLTextureUsageRenderTarget))
++                return VriResult_InvalidArgument;
++            VriImageAspectFlags available = VriImageAspect_None;
++            switch (t->format)
++            {
++                case VriFormat_D16_UNORM:
++                case VriFormat_D32_SFLOAT: available = VriImageAspect_Depth; break;
++                case VriFormat_S8_UINT: available = VriImageAspect_Stencil; break;
++                case VriFormat_D24_UNORM_S8_UINT:
++                case VriFormat_D32_SFLOAT_S8_UINT: available = VriImageAspect_Depth | VriImageAspect_Stencil; break;
++                default: return VriResult_InvalidArgument;
++            }
++            aspects = aspects ? aspects : available;
++            auto range = selected ? *selected : VriTextureSubresourceRange {};
++            if ((aspects & ~available) || range.baseMip >= t->mipNum || range.baseLayer >= t->layerNum ||
++                ((aspects & VriImageAspect_Depth) && (!std::isfinite(value->depth) || value->depth < 0 || value->depth > 1)) ||
++                ((aspects & VriImageAspect_Stencil) && value->stencil > 255))
++                return VriResult_InvalidArgument;
++            range.mipNum = range.mipNum ? range.mipNum : t->mipNum - range.baseMip;
++            range.layerNum = range.layerNum ? range.layerNum : t->layerNum - range.baseLayer;
++            if (range.mipNum > t->mipNum - range.baseMip || range.layerNum > t->layerNum - range.baseLayer)
++                return VriResult_InvalidArgument;
++            if (t->type != VriTextureType_2D && t->type != VriTextureType_2DArray &&
++                t->type != VriTextureType_Cube && t->type != VriTextureType_CubeArray)
++                return VriResult_Unsupported;
++            if (c->recordingResult != VriResult_Success)
++                return c->recordingResult;
++            EndAux(c);
++            @autoreleasepool
++            {
++                for (uint32_t mip = range.baseMip; mip < range.baseMip + range.mipNum; ++mip)
++                {
++                    for (uint32_t layer = range.baseLayer; layer < range.baseLayer + range.layerNum; ++layer)
++                    {
++                        MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
++                        if (aspects & VriImageAspect_Depth)
++                        {
++                            pass.depthAttachment.texture = t->texture;
++                            pass.depthAttachment.level = mip;
++                            pass.depthAttachment.slice = layer;
++                            pass.depthAttachment.loadAction = MTLLoadActionClear;
++                            pass.depthAttachment.storeAction = MTLStoreActionStore;
++                            pass.depthAttachment.clearDepth = value->depth;
++                        }
++                        if (aspects & VriImageAspect_Stencil)
++                        {
++                            pass.stencilAttachment.texture = t->texture;
++                            pass.stencilAttachment.level = mip;
++                            pass.stencilAttachment.slice = layer;
++                            pass.stencilAttachment.loadAction = MTLLoadActionClear;
++                            pass.stencilAttachment.storeAction = MTLStoreActionStore;
++                            pass.stencilAttachment.clearStencil = value->stencil;
++                        }
++                        // A private encoder leaves user pipeline/descriptor caches available for the next pass.
++                        id<MTLRenderCommandEncoder> encoder = [c->cmd renderCommandEncoderWithDescriptor:pass];
++                        if (!encoder)
++                        {
++                            c->recordingResult = VriResult_Failure;
++                            return c->recordingResult;
++                        }
++                        [encoder setLabel:@"VRI.ClearDepthStencilTextureRange"];
++                        [encoder endEncoding];
++                    }
++                }
++            }
++            return VriResult_Success;
++        }
++
+         VriResult VRI_CALL CmdClearStorageTextureRange(VriCommandBuffer* cmd, VriTexture* texture,
+                                                        const VriClearColor* value,
+                                                        const VriTextureSubresourceRange* selected)
+@@ -2449,6 +2530,7 @@
+             t.CmdBarrier = CmdBarrier;
+             t.CmdAliasMemoryBarrier = CmdAliasMemoryBarrier;
+             t.CmdBufferBarrierRange = CmdBufferBarrierRange;
++            t.CmdClearDepthStencilTextureRange = CmdClearDepthStencilTextureRange;
+             t.CmdCopyBuffer = CmdCopyBuffer;
+             t.CmdCopyTexture = CmdCopyTexture;
+             t.CmdUploadBufferToTexture = CmdUploadBufferToTexture;
+@@ -2508,6 +2590,7 @@
+             t->device = d;
+             t->texture = native;
+             t->format = requested.format;
++            t->usage = requested.usage;
+             t->mtlFormat = native.pixelFormat;
+             t->type = requested.type;
+             t->width = requested.width;
+--- a/source/backend_metal/device_mtl.mm
++++ b/source/backend_metal/device_mtl.mm
+@@ -255,6 +255,7 @@
+         m_desc.bufferTextureGranularity = 1; // Placement heap size/alignment includes native layout constraints.
+         m_desc.hasAliasMemoryBarrier = VRI_TRUE;
+         m_desc.hasBufferRangeBarriers = VRI_TRUE;
++        m_desc.hasClearDepthStencilTextureRange = VRI_TRUE;
+         m_desc.hasGeometryShader = VRI_FALSE; // Metal has no geometry stage
+         m_desc.hasTessellation = VRI_FALSE;   // Metal tessellation differs from VK; not in MVP
+         m_desc.hasCustomBorderColor = VRI_TRUE;

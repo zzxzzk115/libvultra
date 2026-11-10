@@ -3,10 +3,118 @@
 
 #include <vultra/core/base/logger.hpp>
 
-#include <set>
+#ifdef _WIN32
+#include <process.h>
+
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
+
+#include <cerrno>
+#include <system_error>
 
 namespace vultra::detail
 {
+    namespace
+    {
+        std::vector<ShaderDependency> dependencies(const ShaderAsset& asset)
+        {
+            std::vector<ShaderDependency> result;
+            for (const auto& subshader : asset.subshaders)
+            {
+                for (const auto& pass : subshader.passes)
+                {
+                    for (const auto& [name, program] : pass.programs)
+                    {
+                        result.insert(result.end(), program.dependencies.begin(), program.dependencies.end());
+                    }
+                }
+            }
+            return result;
+        }
+    } // namespace
+
+    struct ShaderSourceReload::Job::Native
+    {
+#ifdef _WIN32
+        HANDLE handle = nullptr;
+
+        static unsigned __stdcall enter(void* value)
+        {
+            static_cast<Job*>(value)->compile();
+            return 0;
+        }
+#else
+        pthread_t handle {};
+        bool      running = false;
+
+        static void* enter(void* value)
+        {
+            static_cast<Job*>(value)->compile();
+            return nullptr;
+        }
+#endif
+        std::expected<void, std::string> startExpected(Job& job)
+        {
+#ifdef _WIN32
+            handle = reinterpret_cast<HANDLE>(_beginthreadex(nullptr, 0, enter, &job, 0, nullptr));
+            if (!handle)
+            {
+                return std::unexpected("Start shader compiler thread: " +
+                                       std::error_code(errno, std::generic_category()).message());
+            }
+#else
+            const auto status = pthread_create(&handle, nullptr, enter, &job);
+            if (status != 0)
+            {
+                return std::unexpected("Start shader compiler thread: " +
+                                       std::error_code(status, std::generic_category()).message());
+            }
+            running = true;
+#endif
+            return {};
+        }
+
+        ~Native()
+        {
+#ifdef _WIN32
+            if (handle)
+            {
+                if (WaitForSingleObject(handle, INFINITE) != WAIT_OBJECT_0)
+                {
+                    std::terminate(); // A live uniquely owned compiler thread must remain joinable.
+                }
+                CloseHandle(handle);
+            }
+#else
+            if (running && pthread_join(handle, nullptr) != 0)
+            {
+                std::terminate(); // The owner is never joined by its compiler worker.
+            }
+#endif
+        }
+    };
+
+    ShaderSourceReload::Job::Job() = default;
+
+    ShaderSourceReload::Job::~Job()
+    {
+        worker.reset();
+    }
+
+    std::expected<void, std::string> ShaderSourceReload::Job::startExpected()
+    {
+        worker = std::make_unique<Native>();
+        return worker->startExpected(*this);
+    }
+
+    void ShaderSourceReload::Job::compile()
+    {
+        candidate = ShaderAsset::compileExpected(file, options);
+        done.store(true, std::memory_order_release);
+    }
+
     ShaderSourceReload::ShaderSourceReload(std::filesystem::path  file,
                                            ShaderCompileOptions   options,
                                            std::atomic<uint64_t>& revision) :
@@ -18,150 +126,199 @@ namespace vultra::detail
 
     ShaderSourceReload::~ShaderSourceReload()
     {
-        // Join callbacks before the borrowed revision counter and job storage can expire.
-        watchers.clear();
-        scheduler.waitAll();
+        m_Watchers.clear();
         job.reset();
     }
 
-    void ShaderSourceReload::refreshWatch(const ShaderAsset& asset)
+    std::expected<ShaderSourceReload::WatchPlan, std::string>
+    ShaderSourceReload::prepareDirectoriesExpected(std::vector<ShaderDependency> inputs)
     {
-        std::set<std::filesystem::path> roots {file.parent_path()};
-        for (const auto& subshader : asset.subshaders)
+        auto roots = shaderWatchDirectoriesExpected(inputs, file, options);
+        if (!roots)
         {
-            for (const auto& pass : subshader.passes)
+            return std::unexpected(roots.error());
+        }
+        WatchPlan plan;
+        plan.desired      = std::move(*roots);
+        plan.dependencies = std::move(inputs);
+#if defined(__linux__)
+        // inotify observes one directory; Windows and FSEvents already observe the authored subtree.
+        std::error_code                                     error;
+        std::filesystem::recursive_directory_iterator       entry(file.parent_path(), error);
+        const std::filesystem::recursive_directory_iterator end;
+        while (!error && entry != end)
+        {
+            if (entry->is_directory(error))
             {
-                for (const auto& [name, program] : pass.programs)
+                const auto name = entry->path().filename();
+                if (name == "build" || name == ".git" || name == ".vultra")
                 {
-                    const auto directories = shaderWatchDirectories(program.dependencies, file, options);
-                    roots.insert(directories.begin(), directories.end());
+                    entry.disable_recursion_pending();
+                }
+                else
+                {
+                    plan.desired.insert(entry->path());
                 }
             }
+            if (!error)
+            {
+                entry.increment(error);
+            }
         }
-#if defined(__linux__)
-        // Only the authored shader tree needs recursive discovery; dependency/search parents suffice elsewhere.
-        const auto root = file.parent_path();
-        for (auto entry = std::filesystem::recursive_directory_iterator(root);
-             entry != std::filesystem::recursive_directory_iterator();
-             ++entry)
+        if (error)
         {
-            if (!entry->is_directory())
-            {
-                continue;
-            }
-            const auto name = entry->path().filename();
-            if (name == "build" || name == ".git" || name == ".vultra")
-            {
-                entry.disable_recursion_pending();
-                continue;
-            }
-            roots.insert(entry->path());
+            return std::unexpected("Enumerate shader watch tree: " + error.message());
         }
 #endif
-        for (const auto& root : roots)
+        for (const auto& root : plan.desired)
         {
-            if (watchers.contains(root) || !std::filesystem::is_directory(root))
+            const auto existing = m_Watchers.find(root);
+            if (existing != m_Watchers.end() && existing->second->statusExpected())
             {
                 continue;
             }
-            watchers.emplace(root,
-                             std::make_unique<Watch>(root.string(),
-                                                     [this](const std::string& path, filewatch::Event)
-                                                     {
-                                                         const std::filesystem::path changed(path);
-                                                         for (const auto& part : changed)
-                                                         {
-                                                             if (part == "build" || part == ".git" || part == ".vultra")
-                                                             {
-                                                                 return;
-                                                             }
-                                                         }
-                                                         const auto extension = changed.extension();
-                                                         if (extension.empty() || extension == ".vshader" ||
-                                                             extension == ".slang" || extension == ".slangh" ||
-                                                             extension == ".h")
-                                                         {
-                                                             revision.fetch_add(1, std::memory_order_relaxed);
-                                                         }
-                                                     }));
+            auto watch = Watch::createExpected(
+                root.string(),
+                [this](const std::string& path, filewatch::Event) -> std::expected<void, std::string>
+                {
+                    for (const auto& part : std::filesystem::path(path))
+                    {
+                        if (part == "build" || part == ".git" || part == ".vultra")
+                        {
+                            return {};
+                        }
+                    }
+                    // Includes can use arbitrary suffixes; search-directory changes can change resolution.
+                    revision.fetch_add(1, std::memory_order_relaxed);
+                    return {};
+                });
+            if (!watch)
+            {
+                return std::unexpected("Start game shader watch for " + root.string() + ": " + watch.error());
+            }
+            plan.additions.emplace(root, std::move(*watch));
         }
+        return plan;
     }
 
-    bool ShaderSourceReload::dependenciesCurrent(const ShaderAsset& asset) const
+    void ShaderSourceReload::commitDirectories(WatchPlan& plan)
     {
-        for (const auto& subshader : asset.subshaders)
+        std::erase_if(m_Watchers,
+                      [&](const auto& entry)
+                      {
+                          return !plan.desired.contains(entry.first) || plan.additions.contains(entry.first);
+                      });
+        m_Watchers.merge(plan.additions);
+    }
+
+    std::expected<ShaderSourceReload::WatchPlan, std::string>
+    ShaderSourceReload::prepareAcceptedExpected(const ShaderAsset& asset)
+    {
+        return prepareDirectoriesExpected(dependencies(asset));
+    }
+
+    void ShaderSourceReload::accept(WatchPlan plan)
+    {
+        commitDirectories(plan);
+        m_AcceptedDependencies = std::move(plan.dependencies);
+        m_RetryDependencies.clear();
+        m_WatchPending = false;
+    }
+
+    std::expected<void, std::string> ShaderSourceReload::refreshExpected()
+    {
+        auto inputs = m_AcceptedDependencies;
+        inputs.insert(inputs.end(), m_RetryDependencies.begin(), m_RetryDependencies.end());
+        auto plan = prepareDirectoriesExpected(std::move(inputs));
+        if (!plan)
         {
-            for (const auto& pass : subshader.passes)
+            return std::unexpected(plan.error());
+        }
+        commitDirectories(*plan);
+        m_WatchPending = false;
+        return {};
+    }
+
+    std::expected<void, std::string> ShaderSourceReload::observeCandidateExpected(const ShaderAsset& asset)
+    {
+        m_RetryDependencies = dependencies(asset);
+        m_WatchPending      = true;
+        return refreshExpected();
+    }
+
+    std::expected<bool, std::string> ShaderSourceReload::dependenciesCurrentExpected(const ShaderAsset& asset) const
+    {
+        return shaderDependenciesCurrentExpected(dependencies(asset), file, options);
+    }
+
+    std::expected<bool, std::string> ShaderSourceReload::pollExpected(const PublishCandidate& publish,
+                                                                      std::string&            diagnostics)
+    {
+        if (m_WatchPending)
+        {
+            if (auto refreshed = refreshExpected(); !refreshed)
             {
-                for (const auto& [name, program] : pass.programs)
-                {
-                    if (!shaderDependenciesCurrent(program.dependencies, file, options))
-                    {
-                        return false;
-                    }
-                }
+                return std::unexpected(refreshed.error());
             }
         }
-        return true;
-    }
-
-    bool ShaderSourceReload::poll(const ShaderAsset& asset, const PublishCandidate& publish, std::string& diagnostics)
-    {
+        for (const auto& [root, watch] : m_Watchers)
+        {
+            if (auto status = watch->statusExpected(); !status)
+            {
+                m_WatchPending = true;
+                revision.fetch_add(1, std::memory_order_relaxed);
+                return std::unexpected("Game shader watch for " + root.string() + ": " + status.error());
+            }
+        }
         const auto sourceRevision = revision.load(std::memory_order_relaxed);
         if (sourceRevision != observed)
         {
-            Logger::core().info("Shader source revision {} observed", sourceRevision);
-            observed = sourceRevision;
-            refreshWatch(asset);
+            observed       = sourceRevision;
+            m_WatchPending = true;
+            if (auto refreshed = refreshExpected(); !refreshed)
+            {
+                return std::unexpected(refreshed.error());
+            }
             changed = std::chrono::steady_clock::now();
         }
         bool published = false;
         if (job && job->done.load(std::memory_order_acquire))
         {
-            scheduler.wait(*job->task);
-            if (job->revision == sourceRevision)
+            auto completed = std::move(job);
+            completed->worker.reset();
+            if (completed->revision == revision.load(std::memory_order_relaxed))
             {
-                if (job->candidate)
+                if (!completed->candidate)
                 {
-                    published = publish(std::move(*job->candidate), job->revision);
+                    diagnostics = completed->candidate.error();
+                    return std::unexpected(diagnostics);
                 }
-                else
+                auto result = publish(std::move(*completed->candidate), completed->revision);
+                if (!result)
                 {
-                    diagnostics = job->diagnostics;
-                    Logger::core().warn("Shader compilation failed; previous asset retained: {}", diagnostics);
+                    return std::unexpected(result.error());
                 }
+                published = *result;
             }
             else
             {
-                Logger::core().info("Discarded stale shader compile revision {}", job->revision);
+                Logger::core().info("Discarded stale shader compile revision {}", completed->revision);
             }
-            job.reset();
         }
         if (!job && sourceRevision != started &&
             std::chrono::steady_clock::now() - changed >= std::chrono::milliseconds(150))
         {
-            Logger::core().info("Compiling shader revision {}", sourceRevision);
-            started                   = sourceRevision;
-            job                       = std::make_unique<Job>();
-            job->revision             = sourceRevision;
-            auto*      currentJob     = job.get();
-            const auto sourceFile     = file;
-            const auto compileOptions = options;
-            auto       compile        = [currentJob, sourceFile, compileOptions](vtask::Range)
+            auto candidate      = std::make_unique<Job>();
+            candidate->revision = sourceRevision;
+            candidate->file     = file;
+            candidate->options  = options;
+            if (auto launched = candidate->startExpected(); !launched)
             {
-                try
-                {
-                    currentJob->candidate =
-                        std::make_unique<ShaderAsset>(ShaderAsset::compile(sourceFile, compileOptions));
-                }
-                catch (const std::exception& error)
-                {
-                    currentJob->diagnostics = error.what();
-                }
-                currentJob->done.store(true, std::memory_order_release);
-            };
-            job->task = std::make_unique<vtask::TaskSet>(1, 1, std::move(compile));
-            scheduler.run(*job->task);
+                return std::unexpected(launched.error());
+            }
+            Logger::core().info("Compiling shader revision {}", sourceRevision);
+            started = sourceRevision;
+            job     = std::move(candidate);
         }
         return published;
     }

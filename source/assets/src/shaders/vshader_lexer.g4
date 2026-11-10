@@ -76,6 +76,7 @@ VARIANT: 'Variant';
 CONSTANTS: 'Constants';
 MODULES: 'Modules';
 DEFINES: 'Defines';
+CONFORMANCES: 'Conformances';
 REQUIRES: 'Requires';
 VERTEX: 'Vertex';
 FRAGMENT: 'Fragment';

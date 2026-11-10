@@ -1,0 +1,60 @@
+--- a/source/backend_metal/device_mtl.mm
++++ b/source/backend_metal/device_mtl.mm
+@@ -260,6 +260,10 @@
+             ([m_device supportsFamily:MTLGPUFamilyApple3] || [m_device supportsFamily:MTLGPUFamilyMac2])
+                 ? VRI_TRUE : VRI_FALSE;
+         m_desc.hasLoadOnlyDepthAttachmentResolve = m_desc.hasDepthAttachmentResolve;
++        m_desc.hasStencilAttachmentResolve =
++            ([m_device supportsFamily:MTLGPUFamilyApple5] || [m_device supportsFamily:MTLGPUFamilyMac2])
++                ? VRI_TRUE : VRI_FALSE;
++        m_desc.hasLoadOnlyStencilAttachmentResolve = m_desc.hasStencilAttachmentResolve;
+         m_desc.hasGeometryShader = VRI_FALSE; // Metal has no geometry stage
+         m_desc.hasTessellation = VRI_FALSE;   // Metal tessellation differs from VK; not in MVP
+         m_desc.hasCustomBorderColor = VRI_TRUE;
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -1624,25 +1624,27 @@
+                        f == MTLPixelFormatDepth24Unorm_Stencil8 || f == MTLPixelFormatX32_Stencil8 ||
+                        f == MTLPixelFormatX24_Stencil8;
+             };
+-            if (a->stencil)
+-            {
+-                MTLRenderPassStencilAttachmentDescriptor* sa = rp.stencilAttachment;
+-                sa.texture = Desc(a->stencil->view)->texture;
+-                sa.loadAction = ToMtlLoadAction(a->stencil->loadOp);
+-                sa.storeAction = ToMtlStoreAction(a->stencil->storeOp);
+-                sa.clearStencil = a->stencil->clearValue.depthStencil.stencil;
+-            }
+-            else if (a->depth)
+-            {
+-                // Combined depth-stencil view: mirror the depth attachment onto the stencil slot.
++            const VriAttachmentDesc* stencilSource = a->stencil;
++            if (!stencilSource && a->depth)
++            {
+                 id<MTLTexture> dt = Desc(a->depth->view)->texture;
+                 if (dt && mtlHasStencil([dt pixelFormat]))
+-                {
+-                    MTLRenderPassStencilAttachmentDescriptor* sa = rp.stencilAttachment;
+-                    sa.texture = dt;
+-                    sa.loadAction = ToMtlLoadAction(a->depth->loadOp);
+-                    sa.storeAction = ToMtlStoreAction(a->depth->storeOp);
+-                    sa.clearStencil = a->depth->clearValue.depthStencil.stencil;
++                    stencilSource = a->depth;
++            }
++            if (stencilSource)
++            {
++                MTLRenderPassStencilAttachmentDescriptor* sa = rp.stencilAttachment;
++                sa.texture = Desc(stencilSource->view)->texture;
++                sa.loadAction = ToMtlLoadAction(stencilSource->loadOp);
++                sa.storeAction = ToMtlStoreAction(stencilSource->storeOp);
++                sa.clearStencil = stencilSource->clearValue.depthStencil.stencil;
++                if (stencilSource->resolveView)
++                {
++                    sa.resolveTexture = Desc(stencilSource->resolveView)->texture;
++                    sa.stencilResolveFilter = MTLMultisampleStencilResolveFilterSample0;
++                    sa.storeAction = stencilSource->storeOp == VriAttachmentStoreOp_DontCare
++                                         ? MTLStoreActionMultisampleResolve
++                                         : MTLStoreActionStoreAndMultisampleResolve;
+                 }
+             }
+ 

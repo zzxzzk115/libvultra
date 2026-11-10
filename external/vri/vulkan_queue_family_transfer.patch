@@ -1,0 +1,274 @@
+--- a/include/vri/vri_core.h
++++ b/include/vri/vri_core.h
+@@ -284,4 +284,11 @@
+        Backends without Vulkan queue families leave this entry NULL. */
+     uint32_t(VRI_CALL* GetCommandBufferQueueFamilyIndex)(const VriDevice* device, VriCommandBuffer* cmd);
++    /* Record a matching exclusive Vulkan release/acquire pair on two recording command buffers.
++       The caller orders their submission with an all-commands semaphore dependency and retains the resources.
++       Only disjoint, bound, device-created resource ranges are permitted. Both buffers must be outside rendering.
++       The caller owns the source ranges and supplies their current image layouts and queue-compatible scopes.
++       Backends without Vulkan queue families leave this entry NULL. */
++    VriResult(VRI_CALL* CmdQueueFamilyTransfer)(VriCommandBuffer* release, VriCommandBuffer* acquire,
++                                               const VriBarrierGroupDesc* barriers);
+ } VriCoreInterface;
+ 
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -243,5 +243,9 @@
+         {
+             CommandAllocatorVK* a = CA(allocator);
+-            vkResetCommandPool(a->device->Device(), a->pool, 0);
++            if (vkResetCommandPool(a->device->Device(), a->pool, 0) == VK_SUCCESS)
++            {
++                for (auto* buffer : a->buffers)
++                    buffer->recording = false;
++            }
+         }
+ 
+@@ -291,5 +295,7 @@
+             VkCommandBufferBeginInfo bi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+             bi.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+-            return vkBeginCommandBuffer(c->cmd, &bi) == VK_SUCCESS ? VriResult_Success : VriResult_Failure;
++            c->insideRendering = false;
++            c->recording = vkBeginCommandBuffer(c->cmd, &bi) == VK_SUCCESS;
++            return c->recording ? VriResult_Success : VriResult_Failure;
+         }
+ 
+@@ -367,4 +373,5 @@
+             BufferVK* b = new BufferVK {d, buffer, alloc, desc->size};
+             b->bindingAllowed = desc->memoryLocation == VriMemoryLocation_Undefined;
++            b->familyTransferAllowed = bci.sharingMode == VK_SHARING_MODE_EXCLUSIVE;
+             {
+                 VriObjectInfo info = MakeObjectInfo(VriObjectType_Buffer);
+@@ -484,4 +491,5 @@
+             TextureVK* t  = new TextureVK {};
+             t->bindingAllowed = desc->memoryLocation == VriMemoryLocation_Undefined;
++            t->familyTransferAllowed = ici.sharingMode == VK_SHARING_MODE_EXCLUSIVE;
+             t->usage = desc->usage;
+             t->device     = d;
+@@ -1856,20 +1864,22 @@
+         }
+ 
+-        void VRI_CALL CmdBarrier(VriCommandBuffer* cmd, const VriBarrierGroupDesc* group)
++        void RecordBarriers(CommandBufferVK& commands, const VriBarrierGroupDesc& group,
++                            uint32_t source = VK_QUEUE_FAMILY_IGNORED, uint32_t destination = VK_QUEUE_FAMILY_IGNORED)
+         {
+-            CommandBufferVK*                    c = CB(cmd);
++            const bool sourceScope = commands.familyIndex != destination;
++            const bool destinationScope = commands.familyIndex != source;
+             std::vector<VkBufferMemoryBarrier2> bufBarriers;
+             std::vector<VkImageMemoryBarrier2>  imgBarriers;
+ 
+-            for (uint32_t i = 0; i < group->bufferNum; ++i)
++            for (uint32_t i = 0; i < group.bufferNum; ++i)
+             {
+-                const VriBufferBarrierDesc& b  = group->buffers[i];
++                const VriBufferBarrierDesc& b  = group.buffers[i];
+                 VkBufferMemoryBarrier2      vb = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+-                vb.srcStageMask                = ToVkStages(b.before.stages);
+-                vb.srcAccessMask               = ToVkAccess(b.before.access);
+-                vb.dstStageMask                = ToVkStages(b.after.stages);
+-                vb.dstAccessMask               = ToVkAccess(b.after.access);
+-                vb.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+-                vb.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
++                vb.srcStageMask                = sourceScope ? ToVkStages(b.before.stages) : 0;
++                vb.srcAccessMask               = sourceScope ? ToVkAccess(b.before.access) : 0;
++                vb.dstStageMask                = destinationScope ? ToVkStages(b.after.stages) : 0;
++                vb.dstAccessMask               = destinationScope ? ToVkAccess(b.after.access) : 0;
++                vb.srcQueueFamilyIndex         = source;
++                vb.dstQueueFamilyIndex         = destination;
+                 vb.buffer                      = Buf(b.buffer)->buffer;
+                 vb.offset                      = b.offset;
+@@ -1878,17 +1888,17 @@
+             }
+ 
+-            for (uint32_t i = 0; i < group->textureNum; ++i)
++            for (uint32_t i = 0; i < group.textureNum; ++i)
+             {
+-                const VriTextureBarrierDesc& t     = group->textures[i];
++                const VriTextureBarrierDesc& t     = group.textures[i];
+                 const TextureVK*             tex   = reinterpret_cast<const TextureVK*>(t.texture);
+                 VkImageMemoryBarrier2        vi    = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+-                vi.srcStageMask                    = ToVkStages(t.before.stages);
+-                vi.srcAccessMask                   = ToVkAccess(t.before.access);
+-                vi.dstStageMask                    = ToVkStages(t.after.stages);
+-                vi.dstAccessMask                   = ToVkAccess(t.after.access);
++                vi.srcStageMask                    = sourceScope ? ToVkStages(t.before.stages) : 0;
++                vi.srcAccessMask                   = sourceScope ? ToVkAccess(t.before.access) : 0;
++                vi.dstStageMask                    = destinationScope ? ToVkStages(t.after.stages) : 0;
++                vi.dstAccessMask                   = destinationScope ? ToVkAccess(t.after.access) : 0;
+                 vi.oldLayout                       = ToVkLayout(t.before.layout);
+                 vi.newLayout                       = ToVkLayout(t.after.layout);
+-                vi.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+-                vi.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
++                vi.srcQueueFamilyIndex             = source;
++                vi.dstQueueFamilyIndex             = destination;
+                 vi.image                           = tex->image;
+                 vi.subresourceRange.aspectMask     = t.aspect ? ToVkAspect(t.aspect) : VK_IMAGE_ASPECT_COLOR_BIT;
+@@ -1905,5 +1915,72 @@
+             dep.imageMemoryBarrierCount  = static_cast<uint32_t>(imgBarriers.size());
+             dep.pImageMemoryBarriers     = imgBarriers.data();
+-            c->device->Ext().CmdPipelineBarrier2(c->cmd, &dep);
++            commands.device->Ext().CmdPipelineBarrier2(commands.cmd, &dep);
++        }
++
++        void VRI_CALL CmdBarrier(VriCommandBuffer* cmd, const VriBarrierGroupDesc* group)
++        {
++            RecordBarriers(*CB(cmd), *group);
++        }
++
++        VriResult VRI_CALL CmdQueueFamilyTransfer(VriCommandBuffer* release, VriCommandBuffer* acquire,
++                                                 const VriBarrierGroupDesc* barriers)
++        {
++            if (!release || !acquire || !barriers || (!barriers->bufferNum && !barriers->textureNum) ||
++                (barriers->bufferNum && !barriers->buffers) || (barriers->textureNum && !barriers->textures))
++                return VriResult_InvalidArgument;
++            const auto* source = CB(release);
++            const auto* destination = CB(acquire);
++            if (source->device != destination->device || source->familyIndex == destination->familyIndex ||
++                !source->recording || !destination->recording || source->insideRendering ||
++                destination->insideRendering || source->colorInputPhase || destination->colorInputPhase)
++                return VriResult_InvalidArgument;
++#if defined(__APPLE__)
++            if (source->recordingResult != VriResult_Success)
++                return source->recordingResult;
++            if (destination->recordingResult != VriResult_Success)
++                return destination->recordingResult;
++#endif
++
++            for (uint32_t i = 0; i < barriers->bufferNum; ++i)
++            {
++                const auto& range = barriers->buffers[i];
++                const auto* b = range.buffer ? Buf(range.buffer) : nullptr;
++                if (!b || b->device != source->device || !b->buffer || b->bindingAllowed ||
++                    !b->familyTransferAllowed || range.offset >= b->size || range.size > b->size - range.offset ||
++                    (range.before.access && !range.before.stages) || (range.after.access && !range.after.stages))
++                    return VriResult_InvalidArgument;
++            }
++            for (uint32_t i = 0; i < barriers->textureNum; ++i)
++            {
++                const auto& range = barriers->textures[i];
++                const auto* t = range.texture ? Tex(range.texture) : nullptr;
++                if (!t || t->device != source->device || !t->image || t->bindingAllowed ||
++                    !t->familyTransferAllowed || range.baseMip >= t->mipNum || range.baseLayer >= t->layerNum ||
++                    range.mipNum > t->mipNum - range.baseMip || range.layerNum > t->layerNum - range.baseLayer ||
++                    range.before.layout <= VriLayout_Undefined || range.before.layout >= VriLayout_Present ||
++                    range.after.layout <= VriLayout_Undefined || range.after.layout >= VriLayout_Present ||
++                    (range.before.access && !range.before.stages) || (range.after.access && !range.after.stages))
++                    return VriResult_InvalidArgument;
++
++                VriImageAspectFlags available = VriImageAspect_Color;
++                switch (t->format)
++                {
++                    case VK_FORMAT_D16_UNORM:
++                    case VK_FORMAT_D32_SFLOAT: available = VriImageAspect_Depth; break;
++                    case VK_FORMAT_S8_UINT: available = VriImageAspect_Stencil; break;
++                    case VK_FORMAT_D24_UNORM_S8_UINT:
++                    case VK_FORMAT_D32_SFLOAT_S8_UINT:
++                        available = VriImageAspect_Depth | VriImageAspect_Stencil;
++                        break;
++                    default: break;
++                }
++                if (!range.aspect || (range.aspect & ~available))
++                    return VriResult_InvalidArgument;
++                if (range.aspect != available && !source->device->Desc().hasSeparateDepthStencilLayouts)
++                    return VriResult_Unsupported;
++            }
++            RecordBarriers(*CB(release), *barriers, source->familyIndex, destination->familyIndex);
++            RecordBarriers(*CB(acquire), *barriers, source->familyIndex, destination->familyIndex);
++            return VriResult_Success;
+         }
+ 
+@@ -2277,4 +2354,22 @@
+ 
+ #include "color_input_vk.inl"
++        VriResult VRI_CALL EndTrackedCommandBuffer(VriCommandBuffer* cmd)
++        {
++            CB(cmd)->recording = false;
++            return EndCommandBuffer(cmd);
++        }
++
++        void VRI_CALL CmdBeginTrackedRendering(VriCommandBuffer* cmd, const VriAttachmentsDesc* attachments)
++        {
++            CmdBeginRendering(cmd, attachments);
++            CB(cmd)->insideRendering = true;
++        }
++
++        void VRI_CALL CmdEndTrackedRendering(VriCommandBuffer* cmd)
++        {
++            CmdEndRendering(cmd);
++            CB(cmd)->insideRendering = false;
++        }
++
+         const VriCoreInterface g_coreVK = {
+             GetDeviceDesc,
+@@ -2286,5 +2381,5 @@
+             CreateCommandBuffer,
+             BeginCommandBuffer,
+-            EndCommandBuffer,
++            EndTrackedCommandBuffer,
+             CreateBuffer,
+             DestroyBuffer,
+@@ -2318,6 +2413,6 @@
+             GetFenceValue,
+             Wait,
+-            CmdBeginRendering,
+-            CmdEndRendering,
++            CmdBeginTrackedRendering,
++            CmdEndTrackedRendering,
+             CmdSetViewports,
+             CmdSetScissors,
+@@ -2358,4 +2453,5 @@
+             GetTextureViewFormatSupport,
+             GetCommandBufferQueueFamilyIndex,
++            CmdQueueFamilyTransfer,
+         };
+     } // namespace
+--- a/source/backend_vk/objects_vk.h
++++ b/source/backend_vk/objects_vk.h
+@@ -44,4 +44,6 @@
+         VkCommandBuffer cmd;
+         uint32_t        familyIndex;
++        bool            recording = false;
++        bool            insideRendering = false;
+         // recording state
+         VriPipelineLayout*  boundLayout;
+@@ -78,4 +80,5 @@
+         uint64_t explicitOffset = 0;
+         bool bindingAllowed = false;
++        bool familyTransferAllowed = false;
+         // Set when the buffer owns a dedicated, non-VMA VkDeviceMemory (the exportable
+         // external-memory path; see external_vk.cpp). allocation is null in that case.
+@@ -146,4 +149,5 @@
+         VriFormat sourceFormat = VriFormat_Unknown;
+         bool singleSampleAttachment = false;
++        bool familyTransferAllowed = false;
+         // Set when the image owns a dedicated, non-VMA VkDeviceMemory (exportable path).
+         VkDeviceMemory dedicatedMemory     = VK_NULL_HANDLE;
+--- a/source/core/validation_layer.cpp
++++ b/source/core/validation_layer.cpp
+@@ -679,4 +679,18 @@
+             return c->dev->core.CmdBufferBarrierRange(c->real, barrier);
+         }
++        VriResult VRI_CALL CmdQueueFamilyTransfer(VriCommandBuffer* release, VriCommandBuffer* acquire,
++                                                 const VriBarrierGroupDesc* barriers)
++        {
++            if (!release || !acquire)
++                return VriResult_InvalidArgument;
++            const auto* source = CV(release);
++            const auto* destination = CV(acquire);
++            if (source->dev != destination->dev || !source->recording || !destination->recording ||
++                source->insideRenderPass || destination->insideRenderPass)
++                return VriResult_InvalidArgument;
++            const auto transfer = source->dev->core.CmdQueueFamilyTransfer;
++            return transfer ? transfer(source->real, destination->real, barriers) : VriResult_Unsupported;
++        }
++
+         uint32_t VRI_CALL GetCommandBufferQueueFamilyIndex(const VriDevice* device, VriCommandBuffer* cmd)
+         {
+@@ -1214,4 +1228,5 @@
+             t.GetCommandBufferQueueFamilyIndex =
+                 d->core.GetCommandBufferQueueFamilyIndex ? GetCommandBufferQueueFamilyIndex : nullptr;
++            t.CmdQueueFamilyTransfer = d->core.CmdQueueFamilyTransfer ? CmdQueueFamilyTransfer : nullptr;
+             // Objects pass through, but the device still belongs to this layer.
+             t.EnumerateObjects           = d->core.EnumerateObjects ? EnumerateObjects : nullptr;

@@ -1,13 +1,16 @@
 #pragma once
 
 #include <cstdint>
+#include <expected>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace vultra
 {
     class Device;
+    class SubmissionCompletion;
     class GpuScene;
     struct SceneData;
     struct ImportedAsset;
@@ -32,6 +35,7 @@ namespace vultra
         GpuSceneHandle(const GpuSceneHandle&)            = delete;
         GpuSceneHandle& operator=(const GpuSceneHandle&) = delete;
 
+        std::expected<GpuScene*, std::string> getExpected() const;
         GpuScene&   get() const;
         GpuScene&   operator*() const;
         GpuScene*   operator->() const;
@@ -55,19 +59,26 @@ namespace vultra
         RenderingServer(const RenderingServer&)            = delete;
         RenderingServer& operator=(const RenderingServer&) = delete;
 
+        std::expected<GpuSceneHandle, std::string> uploadSceneExpected(const SceneData&        scene,
+                                                                       const PreparedTextures& textures,
+                                                                       const MeshletData*      meshlets = nullptr);
         GpuSceneHandle
         uploadScene(const SceneData& scene, const PreparedTextures& textures, const MeshletData* meshlets = nullptr);
 #ifdef VULTRA_WITH_SCENE_PREPARATION
         GpuSceneHandle uploadScene(const SceneData& scene, bool meshShading = false, uint32_t workers = 0);
         GpuSceneHandle uploadScene(const ImportedAsset& asset, bool meshShading = false, uint32_t workers = 0);
 #endif
+        std::expected<GpuScene*, std::string> sceneExpected(GpuSceneRid rid) const;
         GpuScene& scene(GpuSceneRid rid) const;
         bool      release(GpuSceneRid rid) noexcept;
         bool      alive(GpuSceneRid rid) const;
         // Call only after the last submitted frame has completed.
         void collectCompletedFrame();
+        // Transfer released scenes behind every outstanding last-use submission; checked failure preserves both.
+        std::expected<void, std::string> deferReleasedExpected(std::vector<SubmissionCompletion>& lastUses);
 
     private:
+        std::expected<GpuSceneHandle, std::string> insertExpected(std::unique_ptr<GpuScene> scene);
         GpuSceneHandle insert(std::unique_ptr<GpuScene> scene);
 
         Device&                                                 m_Device;

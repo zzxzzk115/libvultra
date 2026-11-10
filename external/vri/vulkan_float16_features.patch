@@ -1,0 +1,22 @@
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -498,6 +498,7 @@
+         VkPhysicalDeviceVulkan12Features f12 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+         f12.timelineSemaphore                = VK_TRUE;
+         f12.bufferDeviceAddress              = VK_TRUE;
++        f12.shaderFloat16                     = v12Sup.shaderFloat16;
+         // GPU-driven draw count (CmdDraw[Indexed]IndirectCount). Gated by a feature in 1.2+.
+         f12.drawIndirectCount  = v12Sup.drawIndirectCount;
+         m_hasDrawIndirectCount = v12Sup.drawIndirectCount == VK_TRUE;
+@@ -536,6 +537,11 @@
+                 vkGetPhysicalDeviceProperties2(m_physicalDevice, &p2);
+                 m_maxViewCount = mvProps.maxMultiviewViewCount;
+             }
++            // Binary16 arithmetic and storage are independently optional Vulkan features.
++            f11.storageBuffer16BitAccess = mv11.storageBuffer16BitAccess;
++            f11.uniformAndStorageBuffer16BitAccess = mv11.uniformAndStorageBuffer16BitAccess;
++            f11.storagePushConstant16 = mv11.storagePushConstant16;
++            f11.storageInputOutput16 = mv11.storageInputOutput16;
+         }
+         f11.pNext = &f12;
+ 

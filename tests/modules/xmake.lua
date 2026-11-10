@@ -112,6 +112,15 @@ if features.asset_import then
     target_end()
 end
 
+if features.material_graph then
+    target("module-material-graph")
+        set_kind("binary")
+        add_deps("vultra")
+        add_packages("nlohmann_json")
+        add_files("../material_graph.cpp")
+    target_end()
+end
+
 if features.material_values then
     target("module-material")
         set_kind("binary")

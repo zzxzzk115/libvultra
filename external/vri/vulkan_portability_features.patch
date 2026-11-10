@@ -1,0 +1,62 @@
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -1,3 +1,7 @@
++// Portability subset declarations are private to this Vulkan translation unit.
++#if defined(__APPLE__) && !defined(VK_ENABLE_BETA_EXTENSIONS)
++#define VK_ENABLE_BETA_EXTENSIONS
++#endif
+ #include "device_vk.h"
+ #include "cooperative_vector_vk.h"
+ #include "core_vk.h"
+@@ -584,6 +588,22 @@
+         // (literal name: the macro lives in vulkan_beta.h behind VK_ENABLE_BETA_EXTENSIONS)
+         if (hasExt("VK_KHR_portability_subset"))
+             extensions.push_back("VK_KHR_portability_subset");
++#if defined(__APPLE__)
++        VkPhysicalDevicePortabilitySubsetFeaturesKHR portabilityEn = {
++            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR};
++        if (hasExt(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME))
++        {
++            VkPhysicalDevicePortabilitySubsetFeaturesKHR portabilitySup = {
++                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR};
++            VkPhysicalDeviceFeatures2 query = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
++            query.pNext = &portabilitySup;
++            vkGetPhysicalDeviceFeatures2(m_physicalDevice, &query);
++            m_hasMultisampleArrayImage = portabilitySup.multisampleArrayImage == VK_TRUE;
++            portabilityEn.multisampleArrayImage = portabilitySup.multisampleArrayImage;
++            portabilityEn.pNext = features2.pNext;
++            features2.pNext = &portabilityEn;
++        }
++#endif
+ 
+         // Pre-1.3 device: pull in the extensions that back the core 1.3 features we use.
+         if (!useVk13Core)
+--- a/source/backend_vk/device_vk.h
++++ b/source/backend_vk/device_vk.h
+@@ -89,6 +89,7 @@
+         // Sampler anisotropy: enabled only when the physical device supports it, and requests are
+         // clamped to this limit (asking for more than maxSamplerAnisotropy is a validation error).
+         bool            HasSamplerAnisotropy() const { return m_hasSamplerAnisotropy; }
++        bool            HasMultisampleArrayImage() const { return m_hasMultisampleArrayImage; }
+         float           MaxSamplerAnisotropy() const { return m_maxSamplerAnisotropy; }
+         VkTimeDomainKHR HostTimeDomain() const { return m_hostTimeDomain; }
+ 
+@@ -146,6 +147,7 @@
+         bool            m_hasCustomBorderColor         = false;
+         bool            m_hasPipelineStats             = false;
+         bool            m_hasSamplerAnisotropy         = false;
++        bool            m_hasMultisampleArrayImage     = true;
+         float           m_maxSamplerAnisotropy         = 1.0f;
+         bool            m_hasCalibratedTimestamps      = false;
+         bool            m_hasDrawIndirectCount         = false;
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -387,6 +387,8 @@
+         VriResult VRI_CALL CreateTexture(VriDevice* device, const VriTextureDesc* desc, VriTexture** out)
+         {
+             DeviceVK*         d   = Dev(device);
++            if (desc->sampleNum > 1 && desc->layerNum > 1 && !d->HasMultisampleArrayImage())
++                return VriResult_Unsupported;
+             VkImageCreateInfo ici = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+             ici.imageType         = ToVkImageType(desc->type);
+             ici.format            = ToVkFormat(desc->format);

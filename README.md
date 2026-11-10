@@ -68,7 +68,8 @@ The Damaged Helmet model retains its [upstream attribution and licenses](resourc
 
 ## Scope and contributions
 
-Current scope is static geometry and an opaque OpenPBR material subset.
+Current scope includes static geometry, an opaque OpenPBR subset and generated raster Unlit Surface materials.
+See the [shader/material contracts](docs/architecture.md#shaders-and-assets) for authoring and path coverage.
 Advanced RmlUi effects, D3D12 and clean-machine delivery still have [roadmap gates](docs/roadmap.md).
 XR simulation/offscreen checks do not validate a physical headset.
 

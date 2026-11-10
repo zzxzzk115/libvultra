@@ -51,6 +51,8 @@ target("vultra")
         add_defines("NOMINMAX", "WIN32_LEAN_AND_MEAN", {public = true})
     elseif is_plat("linux") then
         add_files("platform/src/linux/file.cpp", "platform/src/linux/process.cpp", "platform/src/linux/memory.cpp")
+    elseif is_plat("macosx") then
+        add_files("platform/src/linux/file.cpp", "platform/src/macos/memory.cpp", "platform/src/macos/process.cpp")
     elseif is_plat("android") then
         add_files("platform/src/linux/file.cpp", "platform/src/linux/process.cpp", "platform/src/linux/memory.cpp")
         add_files("platform/src/android/asset.cpp")
@@ -88,7 +90,8 @@ target("vultra")
     if features.image_metrics then
         add_files("core/src/image/image_metrics.cpp")
     end
-    if features.asset_source or features.asset_values or features.material_values or features.texture_values then
+    if features.asset_source or features.asset_values or features.material_values or features.texture_values or
+       features.material_graph then
         add_includedirs("assets/include", {public = true})
     end
     if features.asset_source then
@@ -154,6 +157,15 @@ target("vultra")
                   "assets/src/gltf_loader.cpp", "assets/src/obj_loader.cpp")
         add_packages("tinygltf", "tinyobjloader", "openfbx")
     end
+    if features.material_block then
+        add_headerfiles("assets/include/(vultra/assets/material_block.hpp)", "assets/include/(vultra/assets/asset_id.hpp)")
+        add_includedirs("drivers/src")
+        add_files("assets/src/shaders/material_block.cpp")
+    end
+    if features.material_graph then
+        add_headerfiles("assets/include/(vultra/assets/material_graph.hpp)")
+        add_files("assets/src/shaders/material_graph.cpp")
+    end
     if features.game_shader_runtime then
         add_headerfiles("assets/include/(vultra/assets/shader_asset.hpp)")
         add_includedirs("assets/src", "drivers/src")
@@ -168,15 +180,28 @@ target("vultra")
     end
     if features.gpu then
         local api = get_config("libvultra_graphics_api") or (is_plat("wasm") and "webgpu" or "vulkan")
-        local api_enum = {vulkan = "VriGraphicsAPI_Vulkan", webgpu = "VriGraphicsAPI_WebGPU",
+        local api_enum = {vulkan = "VriGraphicsAPI_Vulkan", metal = "VriGraphicsAPI_Metal", webgpu = "VriGraphicsAPI_WebGPU",
                           webgl2 = "VriGraphicsAPI_OpenGLES"}
         add_defines("VULTRA_GRAPHICS_API=" .. api_enum[api])
         add_includedirs("drivers/include", {public = true})
         add_headerfiles("drivers/include/(vultra/**.hpp)")
         add_files("drivers/src/rhi/device.cpp", "drivers/src/rhi/resources.cpp")
-        add_files("drivers/src/rhi/buffer_upload.cpp", "drivers/src/rhi/image_readback.cpp")
+        add_files("drivers/src/rhi/buffer_upload.cpp", "drivers/src/rhi/buffer_readback.cpp",
+                  "drivers/src/rhi/image_readback.cpp")
         add_files("drivers/src/profiling/profiler.cpp", "drivers/src/profiling/memory_report.cpp")
         add_packages("vri", {public = true})
+        if is_plat("macosx") and api == "vulkan" then
+            add_packages("moltenvk-vultra", {public = true})
+        end
+        if is_plat("macosx") and (api == "vulkan" or features.xr) then
+            on_load(function (target)
+                local sdk = os.getenv("VULKAN_SDK")
+                assert(sdk and os.isfile(path.join(sdk, "lib", "libvulkan.1.dylib")),
+                       "macOS Vulkan and OpenXR require VULKAN_SDK with its Vulkan loader in lib/")
+                target:add("rpathdirs", path.join(sdk, "lib"), {public = true})
+                target:add("ldflags", path.join(sdk, "lib", "libvulkan.1.dylib"), {public = true, force = true})
+            end)
+        end
     end
     if features.capture then
         add_defines("VULTRA_WITH_RENDERDOC", {public = true})
@@ -189,6 +214,10 @@ target("vultra")
     local window_backend = get_config("libvultra_window_backend") or "glfw"
     if features.window then
         add_files("platform/src/os/window.cpp", "platform/src/" .. window_backend .. "/**.cpp")
+        if is_plat("macosx") and window_backend == "glfw" then
+            add_files("platform/src/macos/glfw_layer.mm")
+            add_frameworks("AppKit", "QuartzCore")
+        end
         add_defines("VULTRA_WINDOW_" .. window_backend:upper(), {public = true})
         add_packages(window_backend == "sdl3" and "libsdl3" or "glfw", {public = true})
     end
@@ -230,8 +259,9 @@ target("vultra")
         add_files("servers/src/rendering/texture_blit.cpp")
     end
     if features.shader_runtime then
-        add_files("drivers/src/rhi/shader_program.cpp", "drivers/src/rhi/shader_archive.cpp",
+        add_files("drivers/src/rhi/shader_program.cpp", "drivers/src/rhi/shader_archive.cpp", "drivers/src/rhi/shader_archive_expected.cpp",
                   "drivers/src/rhi/shader_parameters.cpp", "drivers/src/rhi/shader_bindings.cpp",
+                  "drivers/src/rhi/shader_uniform_block.cpp",
                   "drivers/src/rhi/shader_pipeline.cpp")
         add_packages("xxhash")
     end
@@ -249,6 +279,7 @@ target("vultra")
                   "drivers/src/rhi/shader_program_compile.cpp", "drivers/src/rhi/shader_reflection.cpp")
         add_deps("filewatch")
         add_packages("slang-static", {public = true})
+        add_packages("spirv-tools")
         add_packages("xxhash")
         add_includedirs("$(builddir)/generated/shaders")
         before_build(function (target)
@@ -265,7 +296,8 @@ target("vultra")
                 return table.concat(identifiers, ";")
             end
             local native = fingerprint({"source/drivers/src/rhi/shader*",
-                                        "source/drivers/include/vultra/drivers/rhi/shader*.hpp"}, {})
+                                        "source/drivers/include/vultra/drivers/rhi/shader*.hpp",
+                                        "external/packages/packages/s/slang-static/*"}, {})
             local contents = '#pragma once\ninline constexpr char kShaderToolchainKey[] = "' .. native .. '";\n'
             if features.game_shader then
                 local language = fingerprint({"source/assets/src/shaders/*",
@@ -279,8 +311,8 @@ target("vultra")
                                              {"antlr-4.13.2", "vultra-shader-language-1"})
                 contents = contents .. 'inline constexpr char kShaderLanguageKey[] = "' .. language .. '";\n'
             end
-            local output = path.join(os.projectdir(), get_config("builddir") or "build",
-                                     "generated/shaders/shader_toolchain_key.hpp")
+            local builddir = path.absolute(get_config("builddir") or "build", os.projectdir())
+            local output = path.join(builddir, "generated/shaders/shader_toolchain_key.hpp")
             -- Native Slang caches do not depend on the optional game-language parser. No build runs Java.
             if not os.isfile(output) or io.readfile(output) ~= contents then
                 io.writefile(output, contents)
@@ -309,10 +341,11 @@ target("vultra")
     end
     if features.gpu_scene then
         add_headerfiles("servers/include/(vultra/servers/rendering/scene.hpp)",
+                        "servers/include/(vultra/servers/rendering/ray_scene.hpp)",
                         "servers/include/(vultra/servers/rendering/meshlets.hpp)",
                         "servers/include/(vultra/servers/rendering/rendering_server.hpp)")
         add_files("servers/src/rendering/meshlets.cpp", "servers/src/rendering/rendering_server.cpp",
-                  "servers/src/rendering/scene.cpp")
+                  "servers/src/rendering/scene.cpp", "servers/src/rendering/ray_scene.cpp")
     end
     if features.scene_prepare then
         add_defines("VULTRA_WITH_SCENE_PREPARATION", {public = true})
@@ -320,6 +353,18 @@ target("vultra")
     end
     if features.rendering then
         add_includedirs("assets/src", "drivers/src")
+        add_includedirs(path.join(vultra_root, "builtin", "shaders"))
+        add_headerfiles("servers/include/(vultra/servers/rendering/builtin/environment.hpp)",
+                        "servers/include/(vultra/servers/rendering/builtin/deferred_lighting.hpp)",
+                        "servers/include/(vultra/servers/rendering/builtin/gbuffer_pipeline.hpp)",
+                        "servers/include/(vultra/servers/rendering/builtin/gbuffer_graph.hpp)",
+                        "servers/include/(vultra/servers/rendering/builtin/clustered_lights.hpp)",
+                        "servers/include/(vultra/servers/rendering/builtin/visibility_resolve_pipeline.hpp)",
+                        "servers/include/(vultra/servers/rendering/builtin/visibility_raster_pipeline.hpp)",
+                        "servers/include/(vultra/servers/rendering/builtin/visibility_scene_bindings.hpp)",
+                        "servers/include/(vultra/servers/rendering/builtin/visibility_graph.hpp)",
+                        "servers/include/(vultra/servers/rendering/builtin/transparency_pipeline.hpp)",
+                        "servers/include/(vultra/servers/rendering/builtin/visibility_requirements.hpp)")
         add_files("servers/src/rendering/builtin/*.cpp")
         add_deps("openpbr")
     end
@@ -382,6 +427,11 @@ target("vultra")
     if features.xr then
         add_defines("VULTRA_WITH_OPENXR", {public = true})
         add_files("drivers/src/openxr/**.cpp")
-        add_packages(is_plat("linux") and "openxr-static" or "openxr", "vulkan-headers", {public = true})
+        if is_plat("macosx") then
+            add_files("drivers/src/openxr/openxr_metal.mm")
+        end
+        local openxr_package = is_plat("linux") and "openxr-static" or
+                               (is_plat("android") and "openxr-android" or "openxr")
+        add_packages(openxr_package, "vulkan-headers", {public = true})
     end
 target_end()

@@ -1,0 +1,164 @@
+--- a/include/vri/vri_core.h
++++ b/include/vri/vri_core.h
+@@ -267,6 +267,14 @@
+     VriResult(VRI_CALL* CmdAliasMemoryBarrier)(VriCommandBuffer* cmd);
+     /* Bounds-checked, outside rendering. Does not supply cross-queue waits or transfer ownership. */
+     VriResult(VRI_CALL* CmdBufferBarrierRange)(VriCommandBuffer* cmd, const VriBufferBarrierDesc* barrier);
++    /* Complete selected depth/stencil mip/layer/aspect subresources, outside rendering on a graphics-capable
++       native command pool. Requires depth/stencil-attachment + transfer-destination usage and CopyDestination
++       barriers for the selected aspects. None selects every format aspect; zero counts select the remainder.
++       Supports native MSAA. Preserves unselected aspects. Failure requires discarding recorded commands. */
++    VriResult(VRI_CALL* CmdClearDepthStencilTextureRange)(VriCommandBuffer* cmd, VriTexture* texture,
++                                                        const VriClearDepthStencil* value,
++                                                        const VriTextureSubresourceRange* range,
++                                                        VriImageAspectFlags aspects);
+ } VriCoreInterface;
+ 
+ VRI_EXTERN_C_END
+--- a/include/vri/vri_device_desc.h
++++ b/include/vri/vri_device_desc.h
+@@ -168,6 +168,7 @@
+     VriBool hasAliasMemoryBarrier;
+     /* Buffer byte ranges may have independent access tracking. Native hazards may be conservative. */
+     VriBool hasBufferRangeBarriers;
++    VriBool hasClearDepthStencilTextureRange;
+ } VriDeviceDesc;
+ 
+ VRI_EXTERN_C_END
+--- a/source/core/validation_layer.cpp
++++ b/source/core/validation_layer.cpp
+@@ -617,6 +617,20 @@
+             if (!c->dev->desc.hasBufferRangeBarriers || !c->dev->core.CmdBufferBarrierRange)
+                 return VriResult_Unsupported;
+             return c->dev->core.CmdBufferBarrierRange(c->real, barrier);
++        }
++        VriResult VRI_CALL CmdClearDepthStencilTextureRange(VriCommandBuffer* cmd, VriTexture* texture,
++                                                            const VriClearDepthStencil* value,
++                                                            const VriTextureSubresourceRange* range,
++                                                            VriImageAspectFlags aspects)
++        {
++            if (!cmd || !texture || !value)
++                return VriResult_InvalidArgument;
++            CmdBufVal* c = CV(cmd);
++            if (!c->recording || c->insideRenderPass)
++                return VriResult_InvalidArgument;
++            if (!c->dev->desc.hasClearDepthStencilTextureRange || !c->dev->core.CmdClearDepthStencilTextureRange)
++                return VriResult_Unsupported;
++            return c->dev->core.CmdClearDepthStencilTextureRange(c->real, texture, value, range, aspects);
+         }
+         void VRI_CALL CmdCopyBuffer(VriCommandBuffer* cmd, VriBuffer* dst, VriBuffer* src, const VriBufferCopyDesc* r)
+         {
+@@ -1124,6 +1138,7 @@
+             t.CmdClearStorageTextureRange = CmdClearStorageTextureRange;
+             t.CmdAliasMemoryBarrier = CmdAliasMemoryBarrier;
+             t.CmdBufferBarrierRange = CmdBufferBarrierRange;
++            t.CmdClearDepthStencilTextureRange = CmdClearDepthStencilTextureRange;
+             // Objects pass through, but the device still belongs to this layer.
+             t.EnumerateObjects           = d->core.EnumerateObjects ? EnumerateObjects : nullptr;
+             t.CmdCopyTexture             = CmdCopyTexture;
+--- a/source/backend_vk/objects_vk.h
++++ b/source/backend_vk/objects_vk.h
+@@ -142,2 +142,3 @@
+         bool          owned;
++        VriTextureUsageFlags usage = 0;
+         // Set when the image owns a dedicated, non-VMA VkDeviceMemory (exportable path).
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -10,3 +10,4 @@
+ #include <algorithm>
++#include <cmath>
+ #include <cstring>
+ #include <deque>
+@@ -465,6 +466,7 @@
+ 
+             TextureVK* t  = new TextureVK {};
+             t->bindingAllowed = desc->memoryLocation == VriMemoryLocation_Undefined;
++            t->usage = desc->usage;
+             t->device     = d;
+             t->image      = image;
+             t->allocation = alloc;
+@@ -1820,6 +1822,49 @@
+         {
+             vkCmdFillBuffer(CB(cmd)->cmd, Buf(buffer)->buffer, offset, size ? size : VK_WHOLE_SIZE, value);
+         }
++        VriResult VRI_CALL CmdClearDepthStencilTextureRange(VriCommandBuffer* cmd, VriTexture* texture,
++                                                            const VriClearDepthStencil* value,
++                                                            const VriTextureSubresourceRange* selected,
++                                                            VriImageAspectFlags aspects)
++        {
++            if (!cmd || !texture || !value)
++                return VriResult_InvalidArgument;
++            auto* c = CB(cmd);
++            const auto* t = Tex(texture);
++            const auto required = VriTextureUsage_DepthStencilAttachment | VriTextureUsage_TransferDst;
++            if (t->device != c->device || !t->image || t->bindingAllowed || (t->usage & required) != required)
++                return VriResult_InvalidArgument;
++            VriImageAspectFlags available = VriImageAspect_None;
++            switch (t->format)
++            {
++                case VK_FORMAT_D16_UNORM:
++                case VK_FORMAT_D32_SFLOAT: available = VriImageAspect_Depth; break;
++                case VK_FORMAT_S8_UINT: available = VriImageAspect_Stencil; break;
++                case VK_FORMAT_D24_UNORM_S8_UINT:
++                case VK_FORMAT_D32_SFLOAT_S8_UINT: available = VriImageAspect_Depth | VriImageAspect_Stencil; break;
++                default: return VriResult_InvalidArgument;
++            }
++            aspects = aspects ? aspects : available;
++            auto range = selected ? *selected : VriTextureSubresourceRange {};
++            if ((aspects & ~available) || range.baseMip >= t->mipNum || range.baseLayer >= t->layerNum ||
++                ((aspects & VriImageAspect_Depth) && (!std::isfinite(value->depth) || value->depth < 0 || value->depth > 1)) ||
++                ((aspects & VriImageAspect_Stencil) && value->stencil > 255))
++                return VriResult_InvalidArgument;
++            range.mipNum = range.mipNum ? range.mipNum : t->mipNum - range.baseMip;
++            range.layerNum = range.layerNum ? range.layerNum : t->layerNum - range.baseLayer;
++            if (range.mipNum > t->mipNum - range.baseMip || range.layerNum > t->layerNum - range.baseLayer)
++                return VriResult_InvalidArgument;
++#if defined(__APPLE__)
++            if (c->recordingResult != VriResult_Success)
++                return c->recordingResult;
++#endif
++            const VkClearDepthStencilValue clear {value->depth, value->stencil};
++            const VkImageSubresourceRange native {ToVkAspect(aspects), range.baseMip, range.mipNum,
++                                                  range.baseLayer, range.layerNum};
++            vkCmdClearDepthStencilImage(c->cmd, t->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &native);
++            return VriResult_Success;
++        }
++
+         VriResult VRI_CALL CmdClearStorageTextureRange(VriCommandBuffer* cmd, VriTexture* texture,
+                                                        const VriClearColor* value,
+                                                        const VriTextureSubresourceRange* selected)
+@@ -2218,6 +2263,7 @@
+             CmdClearStorageTextureRange,
+             CmdAliasMemoryBarrier,
+             CmdBufferBarrierRange,
++            CmdClearDepthStencilTextureRange,
+         };
+     } // namespace
+ 
+--- a/source/backend_vk/interop_vk.cpp
++++ b/source/backend_vk/interop_vk.cpp
+@@ -66,3 +66,4 @@
+             t->owned    = false; // borrowed: DestroyTexture won't free it
++            t->usage    = desc->desc.usage;
+             *out        = ToHandle(t);
+             return VriResult_Success;
+--- a/source/backend_vk/external_vk.cpp
++++ b/source/backend_vk/external_vk.cpp
+@@ -225,6 +225,7 @@
+             t->layerNum            = ici.arrayLayers;
+             t->type                = ici.imageType;
+             t->owned               = true;
++            t->usage               = desc->usage;
+             t->dedicatedMemory     = memory;
+             t->dedicatedMemorySize = req.size;
+             *out                   = ToHandle(t);
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -1096,6 +1096,7 @@
+         m_desc.bufferTextureGranularity = props.limits.bufferImageGranularity;
+         m_desc.hasAliasMemoryBarrier = VRI_TRUE;
+         m_desc.hasBufferRangeBarriers = VRI_TRUE;
++        m_desc.hasClearDepthStencilTextureRange = VRI_TRUE;
+         m_desc.hasClearStorageTexture  = VRI_TRUE; // vkCmdClearColorImage is core Vulkan
+         m_desc.hasMultiview            = m_hasMultiview ? VRI_TRUE : VRI_FALSE;
+         m_desc.maxViewCount            = m_hasMultiview ? m_maxViewCount : 0u;

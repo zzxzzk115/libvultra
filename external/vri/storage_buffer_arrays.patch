@@ -1,0 +1,89 @@
+--- a/include/vri/vri_device_desc.h
++++ b/include/vri/vri_device_desc.h
+@@ -150,6 +150,12 @@
+ 
+     VriBool hasCooperativeVector;         /* enabled shader inference extension, not a general ML-runtime capability */
+     VriCoordinateConventions coordinates; /* Immutable authoring policy selected at creation. */
++
++    /* Ordinary (not update-after-bind) storage descriptors, across all sets visible to one stage.
++       Zero means the backend has not reported this limit. The indexing flag describes enabled
++       non-uniform storage-buffer descriptor indexing, separately from sampled-image bindless. */
++    uint32_t storageBufferDescriptorMaxNum;
++    VriBool hasStorageBufferNonUniformIndexing;
+ } VriDeviceDesc;
+ 
+ VRI_EXTERN_C_END
+--- a/include/vri/vri_descriptor.h
++++ b/include/vri/vri_descriptor.h
+@@ -27,6 +27,10 @@
+        into the bind-group layout (sampler type = Comparison, texture sampleType = Depth) and
+        rejects a mismatch; other backends ignore the flag (comparison comes from the sampler). */
+     VriDescriptorRange_Comparison     = 1u << 2,
++    /* Resource array, including a runtime array whose declared capacity is one. This preserves
++       array addressing in Metal argument buffers; it does not request partially-bound or
++       update-after-bind descriptors, and does not grant non-uniform indexing capabilities. */
++    VriDescriptorRange_Array         = 1u << 3,
+     VriDescriptorRange_MaxEnum       = 0x7fffffff
+ } VriDescriptorRangeBits;
+ 
+--- a/source/backend_vk/device_vk.h
++++ b/source/backend_vk/device_vk.h
+@@ -136,6 +136,7 @@
+         // VK_PHYSICAL_DEVICE_TYPE_CPU device (SwiftShader / lavapipe) and never a GPU.
+         bool     m_software        = false;
+         uint64_t m_enabledFeatures = 0; // granted VriFeatureBits
++        bool m_hasStorageBufferNonUniformIndexing = false;
+         // OpenXR XR_KHR_vulkan_enable2: when set, instance/device creation is routed through these
+         // hooks (which forward to xrCreateVulkan*KHR). Borrowed from the caller's nativeCreateInfo.
+         const VriVulkanCreateHooks* m_vkHooks = nullptr;
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -717,6 +717,7 @@
+             f12.descriptorBindingSampledImageUpdateAfterBind = v12Sup.descriptorBindingSampledImageUpdateAfterBind;
+             f12.descriptorBindingUpdateUnusedWhilePending    = v12Sup.descriptorBindingUpdateUnusedWhilePending;
+             f12.shaderSampledImageArrayNonUniformIndexing    = VK_TRUE;
++            f12.shaderStorageBufferArrayNonUniformIndexing = v12Sup.shaderStorageBufferArrayNonUniformIndexing;
+             return true;
+         };
+ 
+@@ -896,6 +897,7 @@
+             return VriResult_Unsupported;
+ 
+         m_enabledFeatures = granted;
++        m_hasStorageBufferNonUniformIndexing = f12.shaderStorageBufferArrayNonUniformIndexing != VK_FALSE;
+ 
+         VkDeviceCreateInfo ci      = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+         ci.pNext                   = &features2;
+@@ -1011,6 +1013,9 @@
+         m_desc.texture3DMaxDim                 = props.limits.maxImageDimension3D;
+         m_desc.textureArrayLayerMaxNum         = props.limits.maxImageArrayLayers;
+         m_desc.bufferMaxSize                   = props.limits.maxStorageBufferRange;
++        m_desc.storageBufferDescriptorMaxNum = std::min(props.limits.maxPerStageDescriptorStorageBuffers,
++                                                       props.limits.maxDescriptorSetStorageBuffers);
++        m_desc.hasStorageBufferNonUniformIndexing = m_hasStorageBufferNonUniformIndexing ? VRI_TRUE : VRI_FALSE;
+         m_desc.uploadBufferTextureRowAlignment = static_cast<uint32_t>(props.limits.optimalBufferCopyRowPitchAlignment);
+         m_desc.constantBufferOffsetAlignment   = static_cast<uint32_t>(props.limits.minUniformBufferOffsetAlignment);
+         m_desc.storageBufferOffsetAlignment    = static_cast<uint32_t>(props.limits.minStorageBufferOffsetAlignment);
+--- a/source/backend_metal/device_mtl.mm
++++ b/source/backend_metal/device_mtl.mm
+@@ -149,6 +149,8 @@
+ 
+         m_desc.enabledFeatures = m_enabledFeatures;
+         m_desc.hasBindless     = (m_enabledFeatures & VriFeature_Bindless) ? VRI_TRUE : VRI_FALSE;
++        m_desc.hasStorageBufferNonUniformIndexing = m_desc.hasBindless;
++        m_desc.storageBufferDescriptorMaxNum = m_desc.hasBindless ? 500000u : 31u;
+         if (m_desc.hasBindless)
+         {
+             // Tier 2 argument buffers address up to 500,000 resources per buffer on Apple GPUs,
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -672,7 +672,8 @@
+             for (uint32_t r = 0; r < set.rangeNum; ++r)
+             {
+                 const VriDescriptorRangeDesc& range = set.ranges[r];
+-                if (range.flags & (VriDescriptorRange_VariableSized | VriDescriptorRange_PartiallyBound))
++                if (range.flags & (VriDescriptorRange_VariableSized | VriDescriptorRange_PartiallyBound |
++                                   VriDescriptorRange_Array))
+                     return true;
+                 const uint32_t count = range.descriptorNum ? range.descriptorNum : 1;
+                 if (IsTextureType(range.descriptorType))                 textures += count;

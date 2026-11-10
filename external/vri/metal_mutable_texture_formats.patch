@@ -1,0 +1,91 @@
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -607,6 +607,8 @@
+             vkGetPhysicalDeviceFeatures2(m_physicalDevice, &query);
+             m_hasMultisampleArrayImage = portabilitySup.multisampleArrayImage == VK_TRUE;
+             portabilityEn.multisampleArrayImage = portabilitySup.multisampleArrayImage;
++            m_hasImageViewFormatReinterpretation = portabilitySup.imageViewFormatReinterpretation == VK_TRUE;
++            portabilityEn.imageViewFormatReinterpretation = portabilitySup.imageViewFormatReinterpretation;
+             portabilityEn.pNext = features2.pNext;
+             features2.pNext = &portabilityEn;
+         }
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -340,6 +340,15 @@
+             return result;
+         }
+ 
++        VriBool VRI_CALL GetTextureViewFormatSupport(const VriDevice* device, VriFormat source,
++                                                     VriFormat view, VriTextureUsageFlags usage)
++        {
++            if (!device || !vri::TextureViewFormatsCompatible(source, view) ||
++                (source != view && !(usage & VriTextureUsage_MutableFormat))) return VRI_FALSE;
++            return vri::TextureViewUsageSupported(GetFormatSupport(device, source), usage) &&
++                   vri::TextureViewUsageSupported(GetFormatSupport(device, view), usage);
++        }
++
+         VriResult VRI_CALL GetQueue(VriDevice* device, VriQueueType type, uint32_t, VriQueue** outQueue)
+         {
+             if (type >= VriQueueType_Count)
+@@ -543,14 +552,20 @@
+             if (desc->usage & VriTextureUsage_ShaderResourceStorage)  usage |= (MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite);
+             if (desc->usage & (VriTextureUsage_ColorAttachment | VriTextureUsage_DepthStencilAttachment))
+                 usage |= MTLTextureUsageRenderTarget;
+-            // PixelFormatView lets CreateTextureView reinterpret format/type (e.g. cube faces).
+-            usage |= MTLTextureUsagePixelFormatView;
++            // Same-format range/type views need no format-cast permission. Stencil-plane views do.
++            if ((desc->usage & VriTextureUsage_MutableFormat) || vri::FormatHasStencil(desc->format))
++                usage |= MTLTextureUsagePixelFormatView;
+             td.usage = usage;
+             return td; // +1 owned by caller
+         }
+ 
+         VriResult VRI_CALL CreateTexture(VriDevice* device, const VriTextureDesc* desc, VriTexture** out)
+         {
++            if (!device || !desc || !out) return VriResult_InvalidArgument;
++            *out = nullptr;
++            if ((desc->usage & VriTextureUsage_MutableFormat) &&
++                !GetTextureViewFormatSupport(device, desc->format, desc->format, desc->usage))
++                return VriResult_Unsupported;
+             // Native Metal 1D textures, including arrays, have no mip chain.
+             if ((desc->type == VriTextureType_1D || desc->type == VriTextureType_1DArray) && desc->mipNum > 1)
+                 return VriResult_Unsupported;
+@@ -631,7 +646,9 @@
+         void VRI_CALL GetTextureMemoryDesc(const VriDevice* device, const VriTextureDesc* desc, VriMemoryLocation location, VriMemoryDesc* o)
+         {
+             if (!o) return;
+-            *o = {};
++            *o = VriMemoryDesc {};
++            if (!device || !desc || ((desc->usage & VriTextureUsage_MutableFormat) &&
++                !GetTextureViewFormatSupport(device, desc->format, desc->format, desc->usage))) return;
+             MTLTextureDescriptor* td = BuildTextureDescriptor(desc);
+             td.storageMode = location == VriMemoryLocation_Device ? MTLStorageModePrivate : MTLStorageModeShared;
+             MTLSizeAndAlign sa = [Dev(device)->Device() heapTextureSizeAndAlignWithDescriptor:td];
+@@ -727,9 +744,18 @@
+         {
+             @autoreleasepool
+             {
+-                if (!desc || !out || !desc->texture) return VriResult_InvalidArgument;
++                if (!device || !desc || !out || !desc->texture) return VriResult_InvalidArgument;
+                 *out = nullptr;
+                 TextureMTL* t = Tex(desc->texture);
++                if (t->device != Dev(device)) return VriResult_InvalidArgument;
++                const auto requested = desc->format == VriFormat_Unknown ? t->format : desc->format;
++                if (requested != t->format)
++                {
++                    if (!(t->usage & VriTextureUsage_MutableFormat) ||
++                        !vri::TextureViewFormatsCompatible(t->format, requested)) return VriResult_InvalidArgument;
++                    if (!GetTextureViewFormatSupport(device, t->format, requested, t->usage))
++                        return VriResult_Unsupported;
++                }
+                 if (!t->texture || desc->viewType < VriTextureViewType_1D || desc->viewType > VriTextureViewType_CubeArray ||
+                     desc->baseMip >= t->mipNum || desc->baseLayer >= t->layerNum)
+                     return VriResult_InvalidArgument;
+@@ -2492,6 +2518,7 @@
+             t.BindTextureMemory = BindTextureMemory;
+             t.CreateBufferView = CreateBufferView;
+             t.CreateTextureView = CreateTextureView;
++            t.GetTextureViewFormatSupport = GetTextureViewFormatSupport;
+             t.CreateSampler = CreateSampler;
+             t.DestroyDescriptor = DestroyDescriptor;
+             t.CreatePipelineLayout = CreatePipelineLayout;

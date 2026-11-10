@@ -1,0 +1,30 @@
+--- a/source/backend_metal/device_mtl.mm
++++ b/source/backend_metal/device_mtl.mm
+@@ -256,6 +256,10 @@
+         m_desc.hasAliasMemoryBarrier = VRI_TRUE;
+         m_desc.hasBufferRangeBarriers = VRI_TRUE;
+         m_desc.hasClearDepthStencilTextureRange = VRI_TRUE;
++        m_desc.hasDepthAttachmentResolve =
++            ([m_device supportsFamily:MTLGPUFamilyApple3] || [m_device supportsFamily:MTLGPUFamilyMac2])
++                ? VRI_TRUE : VRI_FALSE;
++        m_desc.hasLoadOnlyDepthAttachmentResolve = m_desc.hasDepthAttachmentResolve;
+         m_desc.hasGeometryShader = VRI_FALSE; // Metal has no geometry stage
+         m_desc.hasTessellation = VRI_FALSE;   // Metal tessellation differs from VK; not in MVP
+         m_desc.hasCustomBorderColor = VRI_TRUE;
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -1610,6 +1610,14 @@
+                 // the pipeline must disable writes, as required by readOnly.
+                 da.storeAction = ToMtlStoreAction(a->depth->storeOp);
+                 da.clearDepth = a->depth->clearValue.depthStencil.depth;
++                if (a->depth->resolveView)
++                {
++                    da.resolveTexture = Desc(a->depth->resolveView)->texture;
++                    da.depthResolveFilter = MTLMultisampleDepthResolveFilterSample0;
++                    da.storeAction = a->depth->storeOp == VriAttachmentStoreOp_DontCare
++                                         ? MTLStoreActionMultisampleResolve
++                                         : MTLStoreActionStoreAndMultisampleResolve;
++                }
+             }
+             auto mtlHasStencil = [](MTLPixelFormat f) {
+                 return f == MTLPixelFormatStencil8 || f == MTLPixelFormatDepth32Float_Stencil8 ||

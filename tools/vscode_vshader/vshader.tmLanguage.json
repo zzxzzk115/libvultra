@@ -55,11 +55,11 @@
     },
     {
       "name": "keyword.control.vshader",
-      "match": "\\b(Shader|Properties|SubShader|Pass|Surface|Tags|Variant|Constants|Modules|Defines|Requires|Name|Model|Entry|Vertex|Fragment|Task|Mesh|Compute|Cull|FrontFace|ZWrite|ZTest|DepthBias|Blend|BlendOp|ColorMask|Stencil|Ref|ReadMask|WriteMask|Comp|Fail|ZFail)\\b"
+      "match": "\\b(Shader|Properties|SubShader|Pass|Surface|Tags|Variant|Constants|Modules|Defines|Conformances|Requires|Name|Model|Entry|Vertex|Fragment|Task|Mesh|Compute|Cull|FrontFace|ZWrite|ZTest|DepthBias|Blend|BlendOp|ColorMask|Stencil|Ref|ReadMask|WriteMask|Comp|Fail|ZFail)\\b"
     },
     {
       "name": "support.type.vshader",
-      "match": "\\b(Float|Range|Integer|Boolean|Vector|Color|2DArray|2D|3D|CubeArray|Cube|OpenPBR)\\b"
+      "match": "\\b(Float|Range|Integer|Boolean|Vector|Color|2DArray|2D|3D|CubeArray|Cube|OpenPBR|Unlit)\\b"
     },
     {
       "name": "constant.numeric.vshader",

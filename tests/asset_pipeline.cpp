@@ -4,6 +4,8 @@
 #include <vultra/servers/rendering/scene.hpp>
 #include <vultra/servers/rendering/texture_blit.hpp>
 
+#include <DirectXTex.h>
+
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -111,6 +113,65 @@ namespace
         }
     }
 
+    void testSolidBc7()
+    {
+        const std::array<vultra::Extent, 4> sizes {{{4, 4}, {7, 5}, {33, 17}, {65, 65}}};
+        uint64_t                            checked = 0;
+        for (uint32_t sample = 0; sample < 32; ++sample)
+        {
+            const std::array<uint8_t, 4> color {uint8_t(sample * 17),
+                                                uint8_t(sample * 37 + 53),
+                                                uint8_t(sample * 71 + 131),
+                                                uint8_t(sample * 19)};
+            for (const auto size : sizes)
+            {
+                vultra::SceneImage input {size.width,
+                                          size.height,
+                                          std::vector<uint8_t>(size_t(size.width) * size.height * 4)};
+                for (size_t i = 0; i < input.pixels.size(); ++i)
+                {
+                    input.pixels[i] = color[i % 4];
+                }
+                const auto encoded = vultra::prepareTexture(input, false);
+                require(encoded.format == vultra::TextureFormat::eBc7Unorm, "Solid BC7 test did not encode blocks");
+                for (const auto& level : encoded.levels)
+                {
+                    DirectX::Image compressed {};
+                    compressed.width  = level.size.width;
+                    compressed.height = level.size.height;
+                    compressed.format = DXGI_FORMAT_BC7_UNORM;
+                    require(SUCCEEDED(DirectX::ComputePitch(compressed.format,
+                                                            compressed.width,
+                                                            compressed.height,
+                                                            compressed.rowPitch,
+                                                            compressed.slicePitch)),
+                            "Compute BC7 test pitch");
+                    require(compressed.slicePitch == level.bytes.size(), "BC7 mip payload size changed");
+                    compressed.pixels = reinterpret_cast<uint8_t*>(const_cast<std::byte*>(level.bytes.data()));
+                    DirectX::ScratchImage decoded;
+                    require(SUCCEEDED(DirectX::Decompress(compressed, DXGI_FORMAT_R8G8B8A8_UNORM, decoded)),
+                            "Independent BC7 decoding failed");
+                    const auto* image = decoded.GetImage(0, 0, 0);
+                    require(image != nullptr, "Missing independently decoded BC7 image");
+                    for (size_t y = 0; y < compressed.height; ++y)
+                    {
+                        for (size_t x = 0; x < compressed.width; ++x)
+                        {
+                            for (size_t channel = 0; channel < 4; ++channel)
+                            {
+                                require(image->pixels[y * image->rowPitch + x * 4 + channel] == color[channel],
+                                        "Constant BC7 block lost exact RGBA or fixup selectors");
+                                ++checked;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        vultra::Logger::app().info("Solid BC7: {} exact decoded channels, 32 colors, four extents, mip/batch tails",
+                                   checked);
+    }
+
     void testGpuTextures(const vultra::ImportedAsset& asset)
     {
         vultra::Device      device;
@@ -128,6 +189,16 @@ namespace
             const float reference[] {0.2f, 0.4f, 0.8f, 1};
             for (size_t i = 0; i < image.rgba.size(); ++i)
             {
+                if (std::abs(image.rgba[i] - reference[i % 4]) >= 0.035f)
+                {
+                    vultra::Logger::app().error(
+                        "Texture sampling mismatch: slot {}, format {}, scalar {}, actual {}, reference {}",
+                        slot,
+                        uint32_t(scene.materialTextures.at(0)[slot]->desc.format),
+                        i,
+                        image.rgba[i],
+                        reference[i % 4]);
+                }
                 require(std::abs(image.rgba[i] - reference[i % 4]) < 0.035f,
                         "Cached texture GPU upload/filtering/color space differs from source");
             }
@@ -379,18 +450,16 @@ namespace
         require(glm::length(parallel.vertices[8].normal - glm::normalize(glm::vec3(0, 16, 12))) < 0.000001f,
                 "Non-uniformly scaled geometry generated incorrect normals");
         const uint32_t invalid = 99;
-        std::memcpy(bytes.data() + sizeof(positions), &invalid, sizeof(invalid));
+        auto           corrupted = bytes;
+        std::memcpy(corrupted.data() + sizeof(positions), &invalid, sizeof(invalid));
+        write(root / "shared/normals.bin", corrupted);
+        const auto failed = vultra::loadGltfExpected(gltf, {}, 4);
+        require(!failed && failed.error().contains("glTF index exceeds vertex count"),
+                "Invalid geometry inside a worker was accepted or lost its error");
         write(root / "shared/normals.bin", bytes);
-        bool failed = false;
-        try
-        {
-            vultra::loadGltf(gltf, {}, 4);
-        }
-        catch (const std::runtime_error&)
-        {
-            failed = true;
-        }
-        require(failed, "Invalid geometry inside a worker was accepted");
+        const auto recovered = vultra::loadGltfExpected(gltf, {}, 4);
+        require(recovered.has_value(), "glTF load did not recover after worker failure");
+        sameGeometry(parallel, *recovered);
 
         const auto obj = root / "model/normals.obj";
         write(obj,
@@ -411,6 +480,7 @@ namespace
 int main()
 try
 {
+    testSolidBc7();
     testMipFiltering();
     testParallelTextures();
     testTextureReuse();

@@ -22,17 +22,29 @@ namespace vultra
     {
     public:
         explicit ShaderCompiler(std::filesystem::path cacheDirectory = ".vultra/shaders");
+        static std::expected<std::unique_ptr<ShaderCompiler>, std::string>
+        create(std::filesystem::path cacheDirectory = ".vultra/shaders");
         ~ShaderCompiler();
         ShaderCompiler(const ShaderCompiler&)            = delete;
         ShaderCompiler& operator=(const ShaderCompiler&) = delete;
 
         ShaderProgram compile(const std::filesystem::path& file, const ShaderCompileOptions& options = {});
+        std::expected<ShaderProgram, std::string> compileExpected(const std::filesystem::path& file,
+                                                                  const ShaderCompileOptions&  options = {});
+        std::expected<ShaderProgram, std::string> compileSourceExpected(const std::filesystem::path& file,
+                                                                        std::string_view             text,
+                                                                        const ShaderCompileOptions&  options = {});
         ShaderProgram compileSource(const std::filesystem::path& file,
                                     std::string_view             text,
                                     const ShaderCompileOptions&  options = {});
         const ShaderCompileStatistics& lastCompileStatistics() const;
 
     private:
+        struct Uninitialized
+        {};
+
+        explicit ShaderCompiler(Uninitialized);
+        std::expected<void, std::string> initialize(std::filesystem::path cacheDirectory);
         struct Impl;
         std::unique_ptr<Impl> m_Impl;
     };

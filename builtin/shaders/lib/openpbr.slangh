@@ -7,6 +7,22 @@
 #define OPENPBR_USE_TEXTURE_LUTS 1
 #define OPENPBR_SAMPLE_2D_TEXTURE(id, uv) sampleOpenPbrLut2D(id, uv)
 #define OPENPBR_SAMPLE_3D_TEXTURE(id, uvw) sampleOpenPbrLut3D(id, uvw)
+#if defined(VULTRA_OPENPBR_UNCOATED_SURFACE) && !defined(VULTRA_OPENPBR_OPAQUE_SURFACE)
+#error VULTRA_OPENPBR_UNCOATED_SURFACE requires the opaque surface contract
+#endif
+#ifdef VULTRA_OPENPBR_OPAQUE_SURFACE
+// The current OpenPbrSurface wrapper supplies neither transmission nor dispersion.
+// Callers select the uncoated variant only for submitted materials with zero coat weight.
+#ifdef VULTRA_OPENPBR_UNCOATED_SURFACE
+#define VULTRA_OPENPBR_EnableSheenAndCoat false
+#else
+#define VULTRA_OPENPBR_EnableSheenAndCoat true
+#endif
+#define VULTRA_OPENPBR_EnableDispersion false
+#define VULTRA_OPENPBR_EnableTranslucency false
+#define VULTRA_OPENPBR_EnableMetallic true
+#define OPENPBR_GET_SPECIALIZATION_CONSTANT(name) VULTRA_OPENPBR_##name
+#endif
 #include <openpbr/openpbr.h>
 
 struct OpenPbrSurface
@@ -35,7 +51,11 @@ OpenPBR_PreparedBsdf prepareOpenPbr(OpenPbrSurface surface, float3 normal, float
     inputs.specular_color         = surface.specularColor;
     inputs.specular_roughness     = surface.specularRoughness;
     inputs.specular_ior           = surface.specularIor;
+#ifdef VULTRA_OPENPBR_UNCOATED_SURFACE
+    inputs.coat_weight            = 0;
+#else
     inputs.coat_weight            = surface.coatWeight;
+#endif
     inputs.coat_roughness         = surface.coatRoughness;
     inputs.coat_ior               = surface.coatIor;
     inputs.geometry_basis         = openpbr_make_basis(normal);

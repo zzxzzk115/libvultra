@@ -1,0 +1,194 @@
+--- a/source/backend_metal/objects_mtl.h
++++ b/source/backend_metal/objects_mtl.h
+@@ -68,6 +68,27 @@
+         id<MTLBuffer>               indexBuffer;
+         uint64_t                    indexOffset;
+         MTLIndexType                indexType;
++
++        // Native compute binding tables survive encoder boundaries, including timestamp and copy encoders.
++        // Buffer slots share one namespace with inline constants and argument buffers; later writes replace it.
++        struct ComputeBufferBinding
++        {
++            enum class Kind
++            {
++                Empty,
++                Descriptor,
++                InlineBytes,
++                ArgumentBuffer
++            };
++            Kind                        kind        = Kind::Empty;
++            VriDescriptorType           type        = VriDescriptorType_ConstantBuffer;
++            const struct DescriptorMTL* descriptor  = nullptr;
++            struct DescriptorSetMTL*    argumentSet = nullptr;
++            std::vector<uint8_t>        bytes;
++        };
++        std::vector<ComputeBufferBinding>        computeBuffers;
++        std::vector<const struct DescriptorMTL*> computeTextures;
++        std::vector<const struct DescriptorMTL*> computeSamplers;
+ 
+         // ---- query state (ext/vri_ext_query.h) ----
+         // Occlusion: a single per-command-buffer visibility-result buffer is bound on every render
+--- a/source/backend_metal/core_mtl.mm
++++ b/source/backend_metal/core_mtl.mm
+@@ -262,10 +262,16 @@
+             if (c->computeEnc) { [c->computeEnc endEncoding]; [c->computeEnc release]; c->computeEnc = nil; }
+             if (!c->blitEnc) c->blitEnc = [[c->cmd blitCommandEncoder] retain];
+         }
++        void ApplyComputeState(CommandBufferMTL* c);
++
+         void EnsureCompute(CommandBufferMTL* c)
+         {
+             if (c->blitEnc) { [c->blitEnc endEncoding]; [c->blitEnc release]; c->blitEnc = nil; }
+-            if (!c->computeEnc) c->computeEnc = [[c->cmd computeCommandEncoder] retain];
++            if (!c->computeEnc)
++            {
++                c->computeEnc = [[c->cmd computeCommandEncoder] retain];
++                ApplyComputeState(c);
++            }
+         }
+         void ApplyRenderPipeline(CommandBufferMTL* c); // applies boundPipeline to the live render encoder
+ 
+@@ -336,6 +342,15 @@
+             c->renderEnc = nil; c->computeEnc = nil; c->blitEnc = nil;
+             c->boundLayout = nullptr; c->boundPipeline = nullptr; c->renderPipelineDeferred = false;
+             c->indexBuffer = nil; c->indexOffset = 0; c->indexType = MTLIndexTypeUInt16;
++            for (auto& binding : c->computeBuffers)
++            {
++                binding.kind        = CommandBufferMTL::ComputeBufferBinding::Kind::Empty;
++                binding.descriptor  = nullptr;
++                binding.argumentSet = nullptr;
++                binding.bytes.clear();
++            }
++            std::fill(c->computeTextures.begin(), c->computeTextures.end(), nullptr);
++            std::fill(c->computeSamplers.begin(), c->computeSamplers.end(), nullptr);
+             // Query state resets each begin; the visibility buffer (occlusion) is reused across resets.
+             c->visNextSlot = 0;
+             c->occMarks.clear();
+@@ -1484,11 +1499,106 @@
+                     [c->renderEnc useResource:blas usage:MTLResourceUsageRead stages:stages];
+         }
+ 
++        void ApplyComputeState(CommandBufferMTL* c)
++        {
++            if (c->boundPipeline && c->boundPipeline->isCompute)
++            {
++                [c->computeEnc setComputePipelineState:c->boundPipeline->compute];
++            }
++            using Binding = CommandBufferMTL::ComputeBufferBinding;
++            for (uint32_t index = 0; index < c->computeBuffers.size(); ++index)
++            {
++                const auto& binding = c->computeBuffers[index];
++                switch (binding.kind)
++                {
++                    case Binding::Kind::Descriptor:
++                        BindOne(c, {index, binding.type, VriShaderStage_Compute, binding.descriptor});
++                        break;
++                    case Binding::Kind::InlineBytes:
++                        [c->computeEnc setBytes:binding.bytes.data() length:binding.bytes.size() atIndex:index];
++                        break;
++                    case Binding::Kind::ArgumentBuffer:
++                        BindArgumentBufferSet(c, binding.argumentSet);
++                        break;
++                    case Binding::Kind::Empty:
++                        break;
++                }
++            }
++            for (uint32_t index = 0; index < c->computeTextures.size(); ++index)
++            {
++                if (const auto* descriptor = c->computeTextures[index])
++                {
++                    [c->computeEnc setTexture:descriptor->texture atIndex:index];
++                }
++            }
++            for (uint32_t index = 0; index < c->computeSamplers.size(); ++index)
++            {
++                if (const auto* descriptor = c->computeSamplers[index])
++                {
++                    [c->computeEnc setSamplerState:descriptor->sampler atIndex:index];
++                }
++            }
++        }
++
++        void RememberComputeDescriptor(CommandBufferMTL* c, const DescriptorSetMTL::Bound& binding)
++        {
++            if (!binding.desc)
++            {
++                return;
++            }
++            const size_t count = size_t(binding.mslIndex) + 1;
++            if (IsTextureType(binding.type))
++            {
++                if (c->computeTextures.size() < count)
++                    c->computeTextures.resize(count);
++                c->computeTextures[binding.mslIndex] = binding.desc;
++            }
++            else if (binding.type == VriDescriptorType_Sampler)
++            {
++                if (c->computeSamplers.size() < count)
++                    c->computeSamplers.resize(count);
++                c->computeSamplers[binding.mslIndex] = binding.desc;
++            }
++            else if (IsBufferType(binding.type) || binding.type == VriDescriptorType_AccelerationStructure)
++            {
++                if (c->computeBuffers.size() < count)
++                    c->computeBuffers.resize(count);
++                auto& slot       = c->computeBuffers[binding.mslIndex];
++                slot.kind        = CommandBufferMTL::ComputeBufferBinding::Kind::Descriptor;
++                slot.type        = binding.type;
++                slot.descriptor  = binding.desc;
++                slot.argumentSet = nullptr;
++                slot.bytes.clear();
++            }
++        }
++
+         void VRI_CALL CmdSetDescriptorSet(VriCommandBuffer* cmd, uint32_t, const VriDescriptorSet* set)
+         {
+             if (!set) return;
+             CommandBufferMTL* c = CB(cmd);
+             DescriptorSetMTL* s = const_cast<DescriptorSetMTL*>(reinterpret_cast<const DescriptorSetMTL*>(set));
++            if (c->computeEnc || (c->boundPipeline && c->boundPipeline->isCompute))
++            {
++                EnsureCompute(c);
++                if (s->argBuffer)
++                {
++                    const uint32_t index = s->layout->setLayouts[s->setIndex].argBufferSlot;
++                    if (c->computeBuffers.size() <= index)
++                        c->computeBuffers.resize(size_t(index) + 1);
++                    auto& slot       = c->computeBuffers[index];
++                    slot.kind        = CommandBufferMTL::ComputeBufferBinding::Kind::ArgumentBuffer;
++                    slot.descriptor  = nullptr;
++                    slot.argumentSet = s;
++                    slot.bytes.clear();
++                }
++                else
++                {
++                    for (const auto& binding : s->bound)
++                    {
++                        RememberComputeDescriptor(c, binding);
++                    }
++                }
++            }
+             if (s->argBuffer)
+             {
+                 BindArgumentBufferSet(c, s);
+@@ -1504,8 +1614,19 @@
+             if (!c->boundLayout || !c->boundLayout->hasPush || !data || !size) return;
+             const uint32_t idx = c->boundLayout->pushBufferIndex;
+             const VriShaderStageFlags st = c->boundLayout->pushStages;
+-            if (c->computeEnc)
++            if (c->computeEnc || (c->boundPipeline && c->boundPipeline->isCompute))
++            {
++                EnsureCompute(c);
++                if (c->computeBuffers.size() <= idx)
++                    c->computeBuffers.resize(size_t(idx) + 1);
++                auto& slot        = c->computeBuffers[idx];
++                slot.kind         = CommandBufferMTL::ComputeBufferBinding::Kind::InlineBytes;
++                slot.descriptor   = nullptr;
++                slot.argumentSet  = nullptr;
++                const auto* bytes = static_cast<const uint8_t*>(data);
++                slot.bytes.assign(bytes, bytes + size);
+                 [c->computeEnc setBytes:data length:size atIndex:idx];
++            }
+             else if (c->renderEnc)
+             {
+                 if (st & VriShaderStage_Vertex)   [c->renderEnc setVertexBytes:data length:size atIndex:idx];

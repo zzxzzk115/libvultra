@@ -9,24 +9,44 @@ struct DirectionalLight
     float3 radiance;
 };
 
-float3 evaluateDirectionalLight(OpenPBR_PreparedBsdf bsdf, DirectionalLight light, float visibility)
+float3 evaluateDirectionalLight(OpenPBR_PreparedBsdf bsdf,
+                                DirectionalLight light,
+                                float visibility,
+                                float3 facingNormal)
 {
+#ifdef VULTRA_OPENPBR_OPAQUE_SURFACE
+    // The current wrapper has one base/coat normal and no transmission or subsurface inputs.
+    if (dot(facingNormal, light.directionToLight) <= 0)
+    {
+        return 0;
+    }
+#endif
     // Upstream eval returns BSDF times the incident cosine.
     OpenPBR_DiffuseSpecular response = openpbr_eval(bsdf, light.directionToLight);
     return openpbr_get_sum_of_diffuse_specular(response) * light.radiance * visibility;
 }
 
 // Point/spot intensity follows inverse-square falloff with a smooth finite-range cutoff.
-float3 evaluateSceneLight(OpenPBR_PreparedBsdf bsdf, LightData light, float3 position)
+float3 evaluateSceneLight(OpenPBR_PreparedBsdf bsdf, LightData light, float3 position, float3 facingNormal)
 {
     float3 direction = light.directionKind.xyz;
     float attenuation = 1;
+#ifdef VULTRA_POINT_LIGHTS_ONLY
+    const uint kind = 1;
+#else
     uint kind = uint(light.directionKind.w);
+#endif
     if (kind != 0)
     {
         float3 delta = light.positionRange.xyz - position;
         float distanceSquared = max(dot(delta, delta), 1e-6);
         float distance = sqrt(distanceSquared);
+        // Finite-range lights contribute exactly zero outside their range; avoid the
+        // much more expensive material evaluation for those fragments.
+        if (distance >= light.positionRange.w)
+        {
+            return 0;
+        }
         direction = delta / distance;
         float cutoff = saturate(1 - pow(distance / light.positionRange.w, 4));
         attenuation = cutoff * cutoff / distanceSquared;
@@ -34,6 +54,16 @@ float3 evaluateSceneLight(OpenPBR_PreparedBsdf bsdf, LightData light, float3 pos
         {
             attenuation *= smoothstep(light.cones.y, light.cones.x, dot(direction, light.directionKind.xyz));
         }
+    }
+#ifdef VULTRA_OPENPBR_OPAQUE_SURFACE
+    if (dot(facingNormal, direction) <= 0)
+    {
+        return 0;
+    }
+#endif
+    if (attenuation == 0 || light.colorIntensity.w == 0 || all(light.colorIntensity.rgb == 0))
+    {
+        return 0;
     }
     OpenPBR_DiffuseSpecular response = openpbr_eval(bsdf, direction);
     return openpbr_get_sum_of_diffuse_specular(response) * light.colorIntensity.rgb *

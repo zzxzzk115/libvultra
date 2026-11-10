@@ -1,0 +1,485 @@
+--- /dev/null
++++ b/include/vri/ext/vri_ext_color_input.h
+@@ -0,0 +1,53 @@
++#ifndef VRI_EXT_COLOR_INPUT_H
++#define VRI_EXT_COLOR_INPUT_H
++
++#include "../vri_pipeline.h"
++#include "../vri_resource.h"
++
++VRI_EXTERN_C_BEGIN
++
++#define VRI_INTERFACE_COLOR_INPUT "VriColorInputInterface"
++
++typedef struct VriColorInputPass VriColorInputPass;
++typedef struct VriColorInputTarget VriColorInputTarget;
++
++typedef struct VriColorInputPassDesc
++{
++    VriFormat input;
++    VriFormat output;
++    VriFormat depth; /* Unknown disables depth. Single-sampled, depth-only formats. */
++} VriColorInputPassDesc;
++
++typedef enum VriColorInputPhase
++{
++    VriColorInputPhase_Raster = 0,
++    VriColorInputPhase_Resolve = 1
++} VriColorInputPhase;
++
++/* Two framebuffer-local phases. Raster clears and writes input and optional depth.
++ * Resolve reads input attachment index 0 and writes output. Input contents are discarded
++ * at the end. Output and depth are stored. The caller transitions the images to their
++ * color/depth attachment layouts before recording and owns their later transitions.
++ *
++ * Destroy targets before their pass and views. Destroy all objects only after GPU use ends.
++ * The pipeline must match the phase. Enter, advance and end on the same graphics command buffer.
++ */
++typedef struct VriColorInputInterface
++{
++    VriResult (VRI_CALL *CreatePass)(VriDevice*, const VriColorInputPassDesc*, VriColorInputPass**);
++    void (VRI_CALL *DestroyPass)(VriColorInputPass*);
++    VriResult (VRI_CALL *CreateTarget)(VriColorInputPass*, const VriDescriptor* input,
++                                      const VriDescriptor* output, const VriDescriptor* depth,
++                                      VriColorInputTarget**);
++    void (VRI_CALL *DestroyTarget)(VriColorInputTarget*);
++    VriResult (VRI_CALL *CreatePipeline)(VriColorInputPass*, VriColorInputPhase,
++                                        const VriGraphicsPipelineDesc*, VriPipeline**);
++    VriResult (VRI_CALL *CmdBegin)(VriCommandBuffer*, const VriColorInputTarget*,
++                                  const VriClearValue* inputClear, float depthClear);
++    VriResult (VRI_CALL *CmdResolve)(VriCommandBuffer*);
++    VriResult (VRI_CALL *CmdEnd)(VriCommandBuffer*);
++} VriColorInputInterface;
++
++VRI_EXTERN_C_END
++
++#endif /* VRI_EXT_COLOR_INPUT_H */
+--- a/include/vri/vri_descriptor.h
++++ b/include/vri/vri_descriptor.h
+@@ -85,2 +85,3 @@
+     uint32_t accelerationStructureMaxNum;
++    uint32_t inputAttachmentMaxNum;
+ } VriDescriptorPoolDesc;
+--- a/include/vri/vri_enums.h
++++ b/include/vri/vri_enums.h
+@@ -279,2 +279,3 @@
+     VriDescriptorType_AccelerationStructure,
++    VriDescriptorType_InputAttachment,
+     VriDescriptorType_MaxEnum = 0x7fffffff
+--- a/include/vri/vri_flags.h
++++ b/include/vri/vri_flags.h
+@@ -55,2 +55,3 @@
+     VriTextureUsage_MutableFormat         = 1u << 7,
++    VriTextureUsage_InputAttachment       = 1u << 8, /* framebuffer-local read */
+     VriTextureUsage_MaxEnum               = 0x7fffffff
+--- /dev/null
++++ b/source/backend_vk/color_input_vk.inl
+@@ -0,0 +1,205 @@
++        struct ColorInputPassVK
++        {
++            DeviceVK* device;
++            VkRenderPass pass;
++            VriColorInputPassDesc formats;
++        };
++
++        struct ColorInputTargetVK
++        {
++            ColorInputPassVK* pass;
++            VkFramebuffer framebuffer;
++            VkExtent2D extent;
++        };
++
++        VriResult VRI_CALL CreateColorInputPass(VriDevice* device, const VriColorInputPassDesc* desc,
++                                               VriColorInputPass** out)
++        {
++            if (!out)
++                return VriResult_InvalidArgument;
++            *out = nullptr;
++            if (!device || !desc)
++                return VriResult_InvalidArgument;
++            const bool depth = desc->depth != VriFormat_Unknown;
++            const auto input = ToVkFormat(desc->input);
++            const auto output = ToVkFormat(desc->output);
++            const auto depthFormat = ToVkFormat(desc->depth);
++            if (input == VK_FORMAT_UNDEFINED || output == VK_FORMAT_UNDEFINED ||
++                (depth && desc->depth != VriFormat_D16_UNORM && desc->depth != VriFormat_D32_SFLOAT))
++                return VriResult_InvalidArgument;
++            auto* d = Dev(device);
++            for (auto format : {input, output})
++            {
++                VkFormatProperties properties {};
++                vkGetPhysicalDeviceFormatProperties(d->PhysicalDevice(), format, &properties);
++                if (!(properties.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT))
++                    return VriResult_Unsupported;
++            }
++
++            const VkAttachmentDescription attachments[] = {
++                {0, input, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_DONT_CARE,
++                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
++                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL},
++                {0, output, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_STORE,
++                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
++                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL},
++                {0, depthFormat, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE,
++                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
++                 VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL}};
++            const VkAttachmentReference inputWrite {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
++            const VkAttachmentReference inputRead {0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
++            const VkAttachmentReference outputWrite {1, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
++            const VkAttachmentReference depthWrite {2, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
++            const uint32_t preserveDepth = 2;
++            VkSubpassDescription phases[2] {};
++            phases[0].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
++            phases[0].colorAttachmentCount = 1;
++            phases[0].pColorAttachments = &inputWrite;
++            phases[0].pDepthStencilAttachment = depth ? &depthWrite : nullptr;
++            phases[1].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
++            phases[1].inputAttachmentCount = 1;
++            phases[1].pInputAttachments = &inputRead;
++            phases[1].colorAttachmentCount = 1;
++            phases[1].pColorAttachments = &outputWrite;
++            phases[1].preserveAttachmentCount = depth ? 1u : 0u;
++            phases[1].pPreserveAttachments = depth ? &preserveDepth : nullptr;
++
++            // The input is also subject to the final attachment store operation, even
++            // with DONT_CARE. Order that write after the subpass layout transition.
++            const VkSubpassDependency dependency {
++                0, 1, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
++                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
++                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
++                VK_ACCESS_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
++                VK_DEPENDENCY_BY_REGION_BIT};
++            const VkRenderPassCreateInfo create {
++                VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, nullptr, 0, depth ? 3u : 2u, attachments,
++                2, phases, 1, &dependency};
++            VkRenderPass pass = VK_NULL_HANDLE;
++            if (vkCreateRenderPass(d->Device(), &create, nullptr, &pass) != VK_SUCCESS)
++                return VriResult_Failure;
++            *out = reinterpret_cast<VriColorInputPass*>(new ColorInputPassVK {d, pass, *desc});
++            return VriResult_Success;
++        }
++
++        void VRI_CALL DestroyColorInputPass(VriColorInputPass* handle)
++        {
++            auto* pass = reinterpret_cast<ColorInputPassVK*>(handle);
++            vkDestroyRenderPass(pass->device->Device(), pass->pass, nullptr);
++            delete pass;
++        }
++
++        VriResult VRI_CALL CreateColorInputTarget(VriColorInputPass* handle, const VriDescriptor* input,
++                                                 const VriDescriptor* output, const VriDescriptor* depth,
++                                                 VriColorInputTarget** out)
++        {
++            if (!out)
++                return VriResult_InvalidArgument;
++            *out = nullptr;
++            if (!handle)
++                return VriResult_InvalidArgument;
++            auto* pass = reinterpret_cast<ColorInputPassVK*>(handle);
++            const bool hasDepth = pass->formats.depth != VriFormat_Unknown;
++            if (hasDepth != (depth != nullptr))
++                return VriResult_InvalidArgument;
++            const auto valid = [&](const VriDescriptor* handle, VriFormat format, VkImageAspectFlags aspect,
++                                   VriTextureUsageFlags usage) {
++                const auto* view = Desc(handle);
++                return view && view->kind == DescriptorVK::Kind::TextureView && view->device == pass->device &&
++                       view->format == ToVkFormat(format) && view->aspect == aspect && view->attachmentExtent.width &&
++                       view->attachmentExtent.height && view->texture->singleSampleAttachment &&
++                       (view->texture->usage & usage) == usage;
++            };
++            if (!valid(input, pass->formats.input, VK_IMAGE_ASPECT_COLOR_BIT,
++                       VriTextureUsage_ColorAttachment | VriTextureUsage_InputAttachment) ||
++                !valid(output, pass->formats.output, VK_IMAGE_ASPECT_COLOR_BIT, VriTextureUsage_ColorAttachment) ||
++                (depth && !valid(depth, pass->formats.depth, VK_IMAGE_ASPECT_DEPTH_BIT,
++                                 VriTextureUsage_DepthStencilAttachment)))
++                return VriResult_InvalidArgument;
++
++            const auto extent = Desc(input)->attachmentExtent;
++            const auto sameExtent = [&](const VriDescriptor* handle) {
++                const auto other = Desc(handle)->attachmentExtent;
++                return extent.width == other.width && extent.height == other.height;
++            };
++            if (Desc(input)->texture == Desc(output)->texture || !sameExtent(output) ||
++                (depth && !sameExtent(depth)))
++                return VriResult_InvalidArgument;
++            const VkImageView views[] {Desc(input)->imageView, Desc(output)->imageView,
++                                      depth ? Desc(depth)->imageView : VK_NULL_HANDLE};
++            const VkFramebufferCreateInfo create {
++                VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, nullptr, 0, pass->pass, depth ? 3u : 2u, views,
++                extent.width, extent.height, 1};
++            VkFramebuffer framebuffer = VK_NULL_HANDLE;
++            if (vkCreateFramebuffer(pass->device->Device(), &create, nullptr, &framebuffer) != VK_SUCCESS)
++                return VriResult_Failure;
++            *out = reinterpret_cast<VriColorInputTarget*>(new ColorInputTargetVK {pass, framebuffer, extent});
++            return VriResult_Success;
++        }
++
++        void VRI_CALL DestroyColorInputTarget(VriColorInputTarget* handle)
++        {
++            auto* target = reinterpret_cast<ColorInputTargetVK*>(handle);
++            vkDestroyFramebuffer(target->pass->device->Device(), target->framebuffer, nullptr);
++            delete target;
++        }
++
++        VriResult VRI_CALL CreateColorInputPipeline(VriColorInputPass* handle, VriColorInputPhase phase,
++                                                   const VriGraphicsPipelineDesc* desc, VriPipeline** out)
++        {
++            if (!out)
++                return VriResult_InvalidArgument;
++            *out = nullptr;
++            if (!handle || !desc || (phase != VriColorInputPhase_Raster && phase != VriColorInputPhase_Resolve))
++                return VriResult_InvalidArgument;
++            const auto* pass = reinterpret_cast<const ColorInputPassVK*>(handle);
++            const auto& merger = desc->outputMerger;
++            const bool raster = phase == VriColorInputPhase_Raster;
++            if (merger.viewMask || merger.colorNum != 1 || !merger.colors || desc->multisample.sampleNum != 1 ||
++                merger.colors[0].format != (raster ? pass->formats.input : pass->formats.output) ||
++                merger.depthStencilFormat != (raster ? pass->formats.depth : VriFormat_Unknown))
++                return VriResult_InvalidArgument;
++            return CreateGraphicsPipelineVK(reinterpret_cast<VriDevice*>(pass->device), desc, out, pass->pass, phase);
++        }
++
++        VriResult VRI_CALL CmdBeginColorInput(VriCommandBuffer* cmd, const VriColorInputTarget* handle,
++                                             const VriClearValue* inputClear, float depthClear)
++        {
++            if (!cmd || !handle || !inputClear)
++                return VriResult_InvalidArgument;
++            auto* commands = CB(cmd);
++            const auto* target = reinterpret_cast<const ColorInputTargetVK*>(handle);
++            if (commands->device != target->pass->device || commands->colorInputPhase)
++                return VriResult_InvalidArgument;
++            VkClearValue clear[3] {};
++            std::memcpy(&clear[0].color, &inputClear->color, sizeof(clear[0].color));
++            clear[2].depthStencil.depth = depthClear;
++            const VkRenderPassBeginInfo begin {
++                VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, nullptr, target->pass->pass, target->framebuffer,
++                {{0, 0}, target->extent}, target->pass->formats.depth == VriFormat_Unknown ? 1u : 3u, clear};
++            vkCmdBeginRenderPass(commands->cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
++            commands->colorInputPhase = 1;
++            return VriResult_Success;
++        }
++
++        VriResult VRI_CALL CmdResolveColorInput(VriCommandBuffer* cmd)
++        {
++            if (!cmd || CB(cmd)->colorInputPhase != 1)
++                return VriResult_InvalidArgument;
++            vkCmdNextSubpass(CB(cmd)->cmd, VK_SUBPASS_CONTENTS_INLINE);
++            CB(cmd)->colorInputPhase = 2;
++            return VriResult_Success;
++        }
++
++        VriResult VRI_CALL CmdEndColorInput(VriCommandBuffer* cmd)
++        {
++            if (!cmd || CB(cmd)->colorInputPhase != 2)
++                return VriResult_InvalidArgument;
++            vkCmdEndRenderPass(CB(cmd)->cmd);
++            CB(cmd)->colorInputPhase = 0;
++            return VriResult_Success;
++        }
++
++        const VriColorInputInterface g_colorInputVK {
++            CreateColorInputPass, DestroyColorInputPass, CreateColorInputTarget, DestroyColorInputTarget,
++            CreateColorInputPipeline, CmdBeginColorInput, CmdResolveColorInput, CmdEndColorInput};
+--- a/source/backend_vk/conversions_vk.h
++++ b/source/backend_vk/conversions_vk.h
+@@ -158,2 +158,3 @@
+             {VriTextureUsage_ColorAttachment, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT},
++            {VriTextureUsage_InputAttachment, VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT},
+             {VriTextureUsage_DepthStencilAttachment, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT},
+@@ -386,2 +387,4 @@
+                 return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
++            case VriDescriptorType_InputAttachment:
++                return VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+             case VriDescriptorType_AccelerationStructure:
+--- a/source/backend_vk/core_vk.cpp
++++ b/source/backend_vk/core_vk.cpp
+@@ -264,2 +264,3 @@
+             CommandBufferVK* c          = CB(cmd);
++            c->colorInputPhase          = 0;
+             c->boundLayout              = nullptr;
+@@ -459,2 +460,3 @@
+             t->sourceFormat = desc->format;
++            t->singleSampleAttachment = ici.samples == VK_SAMPLE_COUNT_1_BIT;
+             t->extent     = ici.extent;
+@@ -747,2 +749,10 @@
+             v->texture      = t;
++            const auto& range = ci.subresourceRange;
++            const bool singleMip = range.levelCount == 1 ||
++                (range.levelCount == VK_REMAINING_MIP_LEVELS && range.baseMipLevel + 1 == t->mipNum);
++            const bool singleLayer = range.layerCount == 1 ||
++                (range.layerCount == VK_REMAINING_ARRAY_LAYERS && range.baseArrayLayer + 1 == t->layerNum);
++            if (ci.viewType == VK_IMAGE_VIEW_TYPE_2D && singleMip && singleLayer && range.baseMipLevel < 32)
++                v->attachmentExtent = {std::max(1u, t->extent.width >> range.baseMipLevel),
++                                       std::max(1u, t->extent.height >> range.baseMipLevel)};
+             *out            = ToHandle(v);
+@@ -1000,5 +1010,4 @@
+ 
+-        VriResult VRI_CALL CreateGraphicsPipeline(VriDevice*                     device,
+-                                                  const VriGraphicsPipelineDesc* desc,
+-                                                  VriPipeline**                  out)
++        VriResult CreateGraphicsPipelineVK(VriDevice* device, const VriGraphicsPipelineDesc* desc,
++                                           VriPipeline** out, VkRenderPass renderPass, uint32_t subpass)
+         {
+@@ -1158,3 +1167,3 @@
+             dyn.dynamicStateCount                         = 2;
+-            if (d->EnabledFeatures() & VriFeature_VariableShadingRate)
++            if (!renderPass && (d->EnabledFeatures() & VriFeature_VariableShadingRate))
+                 dynStates[dyn.dynamicStateCount++] = VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR;
+@@ -1177,3 +1186,5 @@
+             VkGraphicsPipelineCreateInfo ci = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+-            ci.pNext                        = &rendering;
++            ci.pNext                        = renderPass ? nullptr : &rendering;
++            ci.renderPass                   = renderPass;
++            ci.subpass                      = subpass;
+             ci.stageCount                   = static_cast<uint32_t>(stages.size());
+@@ -1206,2 +1217,8 @@
+ 
++        VriResult VRI_CALL CreateGraphicsPipeline(VriDevice* device, const VriGraphicsPipelineDesc* desc,
++                                                  VriPipeline** out)
++        {
++            return CreateGraphicsPipelineVK(device, desc, out, VK_NULL_HANDLE, 0);
++        }
++
+         VriResult VRI_CALL CreateComputePipeline(VriDevice*                    device,
+@@ -1253,2 +1270,3 @@
+             add(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, desc->textureMaxNum);
++            add(VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, desc->inputAttachmentMaxNum);
+             add(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, desc->storageTextureMaxNum);
+@@ -1360,2 +1378,3 @@
+                                      info.type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
++                                     info.type == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT ||
+                                      info.type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+@@ -2155,2 +2174,3 @@
+ 
++#include "color_input_vk.inl"
+         const VriCoreInterface g_coreVK = {
+@@ -2253,2 +2273,3 @@
+     const VriCoreInterface* GetCoreInterfaceVK() { return &g_coreVK; }
++    const VriColorInputInterface* GetColorInputInterfaceVK() { return &g_colorInputVK; }
+ } // namespace vri::vk
+--- a/source/backend_vk/core_vk.h
++++ b/source/backend_vk/core_vk.h
+@@ -3,2 +3,3 @@
+ 
++#include <vri/ext/vri_ext_color_input.h>
+ #include <vri/vri_core.h>
+@@ -11,2 +12,3 @@
+     const VriCoreInterface* GetCoreInterfaceVK();
++    const VriColorInputInterface* GetColorInputInterfaceVK();
+ } // namespace vri::vk
+--- a/source/backend_vk/device_vk.cpp
++++ b/source/backend_vk/device_vk.cpp
+@@ -1265,2 +1265,3 @@
+         m_registry.Register(VRI_INTERFACE_CORE, GetCoreInterfaceVK(), sizeof(VriCoreInterface));
++        m_registry.Register(VRI_INTERFACE_COLOR_INPUT, GetColorInputInterfaceVK(), sizeof(VriColorInputInterface));
+         m_registry.Register(VRI_INTERFACE_SWAPCHAIN, GetSwapChainInterfaceVK(), sizeof(VriSwapChainInterface));
+--- a/source/backend_vk/objects_vk.h
++++ b/source/backend_vk/objects_vk.h
+@@ -46,2 +46,3 @@
+         VriPipelineLayout*  boundLayout;
++        uint32_t            colorInputPhase = 0;
+         VkPipelineBindPoint boundBindPoint;
+@@ -134,2 +135,3 @@
+         VriFormat sourceFormat = VriFormat_Unknown;
++        bool singleSampleAttachment = false;
+         // Set when the image owns a dedicated, non-VMA VkDeviceMemory (exportable path).
+@@ -160,2 +162,3 @@
+         const TextureVK*   texture;
++        VkExtent2D         attachmentExtent {};
+         // buffer-view metadata (constant/structured/storage buffer bindings)
+--- a/source/core/validation_layer.cpp
++++ b/source/core/validation_layer.cpp
+@@ -15,2 +15,3 @@
+ 
++#include <vri/ext/vri_ext_color_input.h>
+ #include <vri/ext/vri_ext_swapchain.h>
+@@ -62,2 +63,3 @@
+             bool              insideRenderPass = false;
++            bool              colorInput       = false;
+             // Thread that called BeginCommandBuffer; a single command buffer must be
+@@ -87,2 +89,3 @@
+ 
++            VriColorInputInterface        colorInput {};
+             VriCooperativeVectorInterface cooperativeVector {};
+@@ -181,2 +184,3 @@
+                 command->recording        = false;
++                command->colorInput       = false;
+                 command->insideRenderPass = false;
+@@ -218,2 +222,3 @@
+                 c->recording        = true;
++                c->colorInput       = false;
+                 c->insideRenderPass = false;
+@@ -411,2 +416,46 @@
+         // ---- command recording (scope-checked, forward to real) ------------
++        VriResult VRI_CALL CreateColorInputPass(VriDevice* device, const VriColorInputPassDesc* desc,
++                                               VriColorInputPass** out)
++        {
++            auto* d = DV(device);
++            return d->colorInput.CreatePass(d->real, desc, out);
++        }
++
++        VriResult VRI_CALL BeginColorInput(VriCommandBuffer* cmd, const VriColorInputTarget* target,
++                                          const VriClearValue* clear, float depthClear)
++        {
++            auto* c = CV(cmd);
++            if (!OutsideOk(c, "Color input requires recording outside a render pass"))
++                return VriResult_InvalidArgument;
++            const auto result = c->dev->colorInput.CmdBegin(c->real, target, clear, depthClear);
++            if (result == VriResult_Success)
++            {
++                c->insideRenderPass = true;
++                c->colorInput = true;
++            }
++            return result;
++        }
++
++        VriResult VRI_CALL ResolveColorInput(VriCommandBuffer* cmd)
++        {
++            auto* c = CV(cmd);
++            if (!InsideOk(c, "Color input resolve requires a render pass") || !c->colorInput)
++                return VriResult_InvalidArgument;
++            return c->dev->colorInput.CmdResolve(c->real);
++        }
++
++        VriResult VRI_CALL EndColorInput(VriCommandBuffer* cmd)
++        {
++            auto* c = CV(cmd);
++            if (!InsideOk(c, "Color input end requires a render pass") || !c->colorInput)
++                return VriResult_InvalidArgument;
++            const auto result = c->dev->colorInput.CmdEnd(c->real);
++            if (result == VriResult_Success)
++            {
++                c->insideRenderPass = false;
++                c->colorInput = false;
++            }
++            return result;
++        }
++
+         void VRI_CALL CmdBeginRendering(VriCommandBuffer* cmd, const VriAttachmentsDesc* a)
+@@ -453,2 +502,7 @@
+                 Err(c->dev, "CmdEndRendering called without an active render pass");
++                return;
++            }
++            if (c->colorInput)
++            {
++                Err(c->dev, "Use the color input interface to end its render pass");
+                 return;
+@@ -1217,2 +1271,18 @@
+         }
++        if (nameIs(VRI_INTERFACE_COLOR_INPUT))
++        {
++            if (size != sizeof(VriColorInputInterface))
++                return VriResult_InvalidArgument;
++            const auto result = reinterpret_cast<DeviceBase*>(d->real)->GetInterface(
++                VRI_INTERFACE_COLOR_INPUT, sizeof(d->colorInput), &d->colorInput);
++            if (result != VriResult_Success)
++                return result;
++            auto wrapped = d->colorInput;
++            wrapped.CreatePass = CreateColorInputPass;
++            wrapped.CmdBegin = BeginColorInput;
++            wrapped.CmdResolve = ResolveColorInput;
++            wrapped.CmdEnd = EndColorInput;
++            *static_cast<VriColorInputInterface*>(out) = wrapped;
++            return VriResult_Success;
++        }
+         if (nameIs(VRI_INTERFACE_SWAPCHAIN))

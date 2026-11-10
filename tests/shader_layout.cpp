@@ -1,4 +1,5 @@
 #include <vultra/assets/shader_asset.hpp>
+#include <vultra/drivers/rhi/shader_uniform_block.hpp>
 #include <vultra/platform/os/file.hpp>
 #include <vultra/servers/rendering/shader_material.hpp>
 
@@ -22,7 +23,7 @@ namespace
     SubShader { Pass {
         Name "Layout" Compute main
         SLANGPROGRAM
-        struct LayoutData
+        struct Item
         {
             float3 first;
             float scalar;
@@ -30,15 +31,17 @@ namespace
             column_major float3x2 columnMatrix;
             row_major float2x3 rowMatrix;
         };
+        struct LayoutData { Item items[2]; bool enabled; int count; uint index; };
         [[vk::binding(5, 3)]] ConstantBuffer<LayoutData> extra;
         StructuredBuffer<float> inputs[2];
         RWStructuredBuffer<float4> result;
         [numthreads(1, 1, 1)]
         void main(uint3 index : SV_DispatchThreadID)
         {
-            result[0] = float4(extra.first.x + extra.scalar, extra.values[2],
-                mul(extra.columnMatrix, float2(2, 3)).y,
-                inputs[0][0] + inputs[1][0] + extra.rowMatrix[1][2]) * material.gain;
+            result[0] = float4(extra.items[1].first.x + extra.items[1].scalar, extra.items[1].values[2],
+                mul(extra.items[1].columnMatrix, float2(2, 3)).y,
+                inputs[0][0] + inputs[1][0] + extra.items[1].rowMatrix[1][2] +
+                float(extra.enabled) + float(extra.count) + float(extra.index)) * material.gain;
         }
         ENDSLANG
     } }
@@ -60,30 +63,37 @@ try
     const auto& program = asset.subshaders[0].passes[0].program("Default");
     const auto* layout  = program.parameters.field("extra")->field("$element");
     require(layout != nullptr && layout->size > 0, "Extra target layout was lost");
-    const auto* array  = layout->field("values");
-    const auto* column = layout->field("columnMatrix");
-    const auto* row    = layout->field("rowMatrix");
+    const auto* items = layout->field("items");
+    require(items && items->count == 2 && items->field("$element"), "Nested uniform array layout was lost");
+    const auto* item   = items->field("$element");
+    const auto* array  = item->field("values");
+    const auto* column = item->field("columnMatrix");
+    const auto* row    = item->field("rowMatrix");
     require(array && array->count == 3 && array->stride > 0 && column && column->columnMajor && row &&
                 !row->columnMajor && column->matrixStride && row->matrixStride,
             "Array or explicit matrix target layout was lost");
-    std::vector<std::byte> bytes(layout->size);
-    auto                   write = [&](uint64_t offset, float value)
-    {
-        require(offset + sizeof(value) <= bytes.size(), "Reflected field is outside the uniform buffer");
-        std::memcpy(bytes.data() + offset, &value, sizeof(value));
-    };
-    write(layout->field("first")->offset(ShaderOffsetKind::eUniform), 1);
-    write(layout->field("scalar")->offset(ShaderOffsetKind::eUniform), 2);
-    write(array->offset(ShaderOffsetKind::eUniform) + 2 * array->stride, 9);
-    auto writeMatrix = [&](const ShaderParameter& matrix, uint32_t y, uint32_t x, float value)
-    {
-        const auto major = matrix.columnMajor ? x : y;
-        const auto minor = matrix.columnMajor ? y : x;
-        write(matrix.offset(ShaderOffsetKind::eUniform) + major * matrix.matrixStride + minor * sizeof(float), value);
-    };
-    writeMatrix(*column, 1, 0, 3);
-    writeMatrix(*column, 1, 1, 4);
-    writeMatrix(*row, 1, 2, 7);
+    auto block = ShaderUniformBlock::create(*layout);
+    require(bool(block), block ? "" : block.error().c_str());
+    const std::array first {1.f, 0.f, 0.f};
+    const std::array scalar {2.f};
+    const std::array last {9.f};
+    const std::array columnValues {0.f, 0.f, 3.f, 4.f, 0.f, 0.f};
+    const std::array rowValues {0.f, 0.f, 0.f, 0.f, 0.f, 7.f};
+    const std::array enabled {true};
+    const std::array count {int32_t(-3)};
+    const std::array index {uint32_t(42)};
+    const std::array writes {
+        ShaderUniformWrite {"items[1].first", std::span(first), ShaderParameterKind::eVector, 1, 3},
+        ShaderUniformWrite {"items[1].scalar", std::span(scalar)},
+        ShaderUniformWrite {"items[1].values[2]", std::span(last)},
+        ShaderUniformWrite {"items[1].columnMatrix", std::span(columnValues), ShaderParameterKind::eMatrix, 3, 2},
+        ShaderUniformWrite {"items[1].rowMatrix", std::span(rowValues), ShaderParameterKind::eMatrix, 2, 3},
+        ShaderUniformWrite {"enabled", std::span(enabled)},
+        ShaderUniformWrite {"count", std::span(count)},
+        ShaderUniformWrite {"index", std::span(index)}};
+    auto packed = block->setExpected(writes);
+    require(bool(packed) && *packed, packed ? "Uniform block did not change" : packed.error().c_str());
+    const auto bytes = block->data();
     Device device;
     Buffer uniforms(device, {bytes.size(), 0, VriBufferUsage_ConstantBuffer, VriMemoryLocation_HostUpload});
     auto*  mapped = device.core.MapBuffer(uniforms.handle, 0, bytes.size());
@@ -136,14 +146,15 @@ try
         std::array<float, 4> pixel {};
         std::memcpy(pixel.data(), mapped, 16);
         device.core.UnmapBuffer(readback.handle);
-        require(pixel == std::array<float, 4> {3, 9, 18, 37},
+        require(pixel == std::array<float, 4> {3, 9, 18, 77},
                 "Target reflection did not match GPU matrix/array bindings");
     }
     for (auto* view : views)
     {
         device.core.DestroyDescriptor(view);
     }
-    std::puts("Shader target layout passed: padding, arrays, row/column matrices, resource arrays and sparse "
+    std::puts("Shader target layout passed: reflected uniform block, nested arrays, bool32, row/column matrices, "
+              "resource arrays and sparse "
               "descriptor sets");
     return 0;
 }

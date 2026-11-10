@@ -7,7 +7,7 @@
     SurfaceVertex result;
     PrimitiveTransform instance = primitiveTransforms[material.instance.x];
     result.worldPosition = mul(instance.model, float4(input.position, 1)).xyz;
-    result.position      = mul(frame.lightViewProjection[uint(material.flags.z)], float4(result.worldPosition, 1));
+    result.position      = mul(shadowLightMatrix(uint(material.flags.z)), float4(result.worldPosition, 1));
     result.normal        = mul(instance.normal, float4(input.normal, 0)).xyz;
     result.uv            = input.uv;
     result.color         = input.color;

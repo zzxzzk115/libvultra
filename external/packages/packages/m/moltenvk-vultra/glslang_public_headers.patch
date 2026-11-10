@@ -1,0 +1,11 @@
+--- a/MoltenVKShaderConverter/MoltenVKShaderConverter/GLSLToSPIRVConverter.cpp
++++ b/MoltenVKShaderConverter/MoltenVKShaderConverter/GLSLToSPIRVConverter.cpp
+@@ -22,7 +22,7 @@
+ #include "SPIRVSupport.h"
+ #include "MVKStrings.h"
+ #include <glslang/SPIRV/GlslangToSpv.h>
+-#include <glslang/glslang/Include/intermediate.h>
++#include <glslang/Public/ShaderLang.h>
+ #include <sstream>
+ 
+ using namespace std;

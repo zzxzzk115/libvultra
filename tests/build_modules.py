@@ -28,6 +28,8 @@ def verify_sources(features, sources):
         "builtin_pack": {"builtin_pack.cpp"},
         "asset_values": {"material_parameters.cpp", "material_properties.generated.cpp", "tangents.cpp"},
         "material_values": {"material_instance.cpp", "shader_property.cpp"},
+        "material_block": {"material_block.cpp"},
+        "material_graph": {"material_graph.cpp"},
         "asset_jobs": {"import_jobs.cpp"},
         "meshlet_build": {"meshlet_build.cpp"},
         "texture_import": {"dds_loader.cpp", "image_decode.cpp", "texture_import.cpp"},
@@ -60,8 +62,9 @@ def verify_sources(features, sources):
         if path.name == "random_stream.cpp" and "random" not in features:
             raise RuntimeError(f"Compiled unselected random streams: {file}")
         if "/drivers/src/rhi/" in file and path.name.startswith("shader"):
-            runtime_sources = {"shader_program.cpp", "shader_archive.cpp", "shader_parameters.cpp",
-                               "shader_bindings.cpp", "shader_pipeline.cpp"}
+            runtime_sources = {"shader_program.cpp", "shader_archive.cpp", "shader_archive_expected.cpp",
+                               "shader_parameters.cpp", "shader_bindings.cpp", "shader_uniform_block.cpp",
+                               "shader_pipeline.cpp"}
             owner = "shader_runtime" if path.name in runtime_sources else "shader"
             if owner not in features:
                 raise RuntimeError(f"Compiled an unselected shader implementation: {file}")
@@ -116,6 +119,8 @@ def main():
         env.pop(name, None)
     cases = {
         "foundation": "foundation",
+        "material_block": "material_block",
+        "material_graph": "material_graph",
         "random": "random",
         "gpu": None,  # The embedded-project default must really be GPU-only.
         "graph": "graph",
@@ -223,6 +228,8 @@ def main():
             expected_targets.add("module-import")
         if "material_values" in features:
             expected_targets.add("module-material")
+        if "material_graph" in features:
+            expected_targets.add("module-material-graph")
         if set(manifest["targets"]) != expected_targets:
             raise RuntimeError(f"{name} registered unrelated targets: {manifest['targets']}")
         expected_packages = {"argparse", "spdlog"} | {

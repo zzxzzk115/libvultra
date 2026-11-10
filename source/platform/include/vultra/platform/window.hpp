@@ -7,6 +7,7 @@
 namespace vultra::platform
 {
     VriWindowHandle nativeWindow(const Window& window);
-    // Returns nullptr for automatic selection, or "x11"/"wayland". Invalid environment values throw.
-    const char* requestedWindowSystem();
+    // Returns nullptr for automatic selection, or "x11"/"wayland".
+    std::expected<const char*, std::string> requestedWindowSystemExpected();
+    const char*                             requestedWindowSystem();
 } // namespace vultra::platform

@@ -1,0 +1,96 @@
+--- a/source/backend_vk/rt_vk.cpp
++++ b/source/backend_vk/rt_vk.cpp
+@@ -235,6 +235,7 @@
+             // Temporary probe: how much of a scene's VRAM is acceleration structure, and how much
+             // of THAT is scratch a static scene never builds into again.
+             a->scratchSizeBytes = sizes.buildScratchSize + scratchAlign;
++            a->scratchAlignment = scratchAlign;
+             {
+                 // The case that motivated object tracking: a 462-geometry BLAS is 999.7 MB of
+                 // store plus 735.1 MB of scratch, and nothing in the API could report either.
+@@ -382,13 +383,32 @@
+             DeviceVK*                d = c->device;
+             AccelerationStructureVK* a = AS(desc->dst);
+ 
+-            // ReleaseAccelerationStructureScratch dropped the scratch this build would write
+-            // through. Diagnose rather than hand the driver a null device address.
++            if (c->recordingResult != VriResult_Success)
++                return;
+             if (a->scratch == VK_NULL_HANDLE)
+             {
+-                d->ReportError("CmdBuildAccelerationStructure: scratch was released; the AS can no "
+-                               "longer be rebuilt");
+-                return;
++                // A compacted destination has no original build capacity or scratch requirement.
++                if (a->scratchSizeBytes == 0)
++                {
++                    c->recordingResult = VriResult_Unsupported;
++                    return;
++                }
++                VkBuffer      scratch    = VK_NULL_HANDLE;
++                VmaAllocation allocation = VK_NULL_HANDLE;
++                if (!MakeBuffer(d,
++                                a->scratchSizeBytes,
++                                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
++                                scratch,
++                                allocation))
++                {
++                    c->recordingResult = VriResult_OutOfMemory;
++                    return;
++                }
++                a->scratch        = scratch;
++                a->scratchAlloc   = allocation;
++                const auto base   = BufAddr(d, scratch);
++                a->scratchAddress = (base + a->scratchAlignment - 1) & ~(a->scratchAlignment - 1);
++                d->Objects().Grow(ToHandle(a), a->scratchSizeBytes, static_cast<uint32_t>(a->scratchSizeBytes / 1024u));
+             }
+ 
+             GeomBuild gb;
+--- a/source/backend_vk/objects_vk.h
++++ b/source/backend_vk/objects_vk.h
+@@ -95,6 +95,7 @@
+         VmaAllocation                  scratchAlloc;
+         VkDeviceAddress                deviceAddress;
+         VkDeviceAddress                scratchAddress;
++        uint64_t                       scratchAlignment = 1;
+         uint64_t                       scratchSizeBytes = 0; // for the object registry's accounting
+         VkAccelerationStructureTypeKHR type;
+         // Transient query pool for the compacted-size query (lazily created; freed with the AS).
+--- a/source/core/object_registry.h
++++ b/source/core/object_registry.h
+@@ -85,6 +85,17 @@
+             it->second.height      = newHeight;
+         }
+ 
++        // Restore a released build-scratch allocation without replacing the object's name or identity.
++        void Grow(const void* handle, uint64_t bytes, uint32_t newHeight)
++        {
++            const std::lock_guard<std::mutex> lock {m_mutex};
++            const auto                        it = m_objects.find(handle);
++            if (it == m_objects.end())
++                return;
++            it->second.memoryBytes += bytes;
++            it->second.height = newHeight;
++        }
++
+         // out == nullptr reports the count. Otherwise writes at most *count entries and updates
+         // *count to what was written, so a caller whose array went stale between the two calls
+         // truncates rather than overruns.
+--- a/include/vri/ext/vri_ext_raytracing.h
++++ b/include/vri/ext/vri_ext_raytracing.h
+@@ -246,9 +246,12 @@
+ 
+        ONLY call this once the submission that built the AS has completed (its fence signalled);
+        the scratch is still referenced until then. After it, the AS traces exactly as before but
+-       CANNOT be rebuilt - a further CmdBuildAccelerationStructure on it reports an error and does
+-       nothing. Calling it twice, or on an AS created by CreateAccelerationStructureCompacted
+-       (which never allocates scratch), is a no-op. */
++       can be rebuilt with its original geometry capacity: the Vulkan backend reacquires scratch
++       when CmdBuildAccelerationStructure records another build. Allocation failure rejects recording
++       through EndCommandBuffer; discard that recording before retry. The caller still completes all
++       previous uses before recording a rebuild. Compacted destinations cannot be rebuilt this way.
++       Calling this twice, or on an AS created by CreateAccelerationStructureCompacted (which never
++       allocates scratch), is a no-op. */
+     void(VRI_CALL* ReleaseAccelerationStructureScratch)(VriAccelerationStructure* as);
+ } VriRayTracingInterface;
+ 

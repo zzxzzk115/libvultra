@@ -176,8 +176,13 @@ try
 
     config.persistLayout = true;
     config.iniFile.clear();
-    config.appName = "../escape";
-    bool rejected  = false;
+    config.appName        = "../escape";
+    auto* previousContext = ImGui::GetCurrentContext();
+    auto  invalidExpected = window ? vultra::EditorGui::create(device, *window, VriFormat_BGRA8_UNORM, config) :
+                                     vultra::EditorGui::create(device, VriFormat_BGRA8_UNORM, config);
+    require(!invalidExpected, "Expected GUI creation accepted a directory traversal");
+    require(ImGui::GetCurrentContext() == previousContext, "Rejected GUI creation changed the current context");
+    bool rejected = false;
     try
     {
         auto gui = makeGui(device, window.get(), config);
@@ -214,6 +219,18 @@ try
     }
     if (window)
     {
+        auto guiExpected = vultra::EditorGui::create(device,
+                                                     *window,
+                                                     VriFormat_BGRA8_UNORM,
+                                                     {.multiViewport = false, .persistLayout = false});
+        require(bool(guiExpected), "Expected window GUI creation failed");
+        window->poll();
+        require(bool((*guiExpected)->beginExpected()), "Expected window GUI frame failed to begin");
+        ImGui::Begin("Expected GUI");
+        ImGui::TextUnformatted("Window input and draw data");
+        ImGui::End();
+        require(bool((*guiExpected)->uploadExpected(window->framebufferSize())), "Expected window GUI upload failed");
+        guiExpected->reset();
         vultra::EditorGui gui(device, *window, VriFormat_BGRA8_UNORM, {.persistLayout = false});
         gui.setTheme(vultra::EditorGuiTheme::eGodot);
         require(ImGui::GetStyle().WindowRounding == 0 && ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w == 1,
