@@ -10,13 +10,25 @@ rule("bc7enc.ispc")
         assert(os.isfile(compiler), "Missing ISPC package executable: " .. compiler)
         local object = target:objectfile(sourcefile)
         local headerdir = path.join(target:autogendir(), "bc7-ispc")
-        -- Multi-target ISPC emits a dispatcher and a separate object for each ISA.
         table.insert(target:objectfiles(), object)
-        for _, isa in ipairs({"sse2", "avx2"}) do
+        local isas
+        local arch
+        if target:is_arch("arm64", "aarch64") then
+            -- A single NEON target emits one object without a dispatcher.
+            isas = {}
+            arch = {"--target=neon-i32x4", "--arch=aarch64"}
+        else
+            -- Multi-target ISPC emits a dispatcher and a separate object for each ISA.
+            isas = {"sse2", "avx2"}
+            arch = {"--target=sse2-i32x4,avx2-i32x8", "--arch=x86-64"}
+        end
+        for _, isa in ipairs(isas) do
             table.insert(target:objectfiles(), path.join(path.directory(object),
                 path.basename(object) .. "_" .. isa .. path.extension(object)))
         end
-        local flags = {"--target=sse2-i32x4,avx2-i32x8", "--arch=x86-64", "--target-os=" .. target:plat(),
+        -- ISPC names macOS "macos" while xmake names it "macosx".
+        local targetos = target:is_plat("macosx") and "macos" or target:plat()
+        local flags = {arch[1], arch[2], "--target-os=" .. targetos,
                        "-O2", "--opt=disable-assertions", "-h", path.join(headerdir, "bc7e_ispc.h"),
                        "-o", object, sourcefile}
         if target:is_plat("linux") then

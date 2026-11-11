@@ -78,8 +78,9 @@ namespace vultra
             }
             const auto root = std::filesystem::absolute(directory).lexically_normal();
             wanted.insert(root);
-#if defined(__linux__)
-            // inotify watches one directory; the Windows and macOS backends already watch subtrees.
+#if defined(__linux__) || defined(__APPLE__)
+            // inotify watches one directory, and FileWatch's macOS backend drops FSEvents from subdirectories;
+            // only the Windows backend watches subtrees.
             for (auto entry = std::filesystem::recursive_directory_iterator(root);
                  entry != std::filesystem::recursive_directory_iterator();
                  ++entry)

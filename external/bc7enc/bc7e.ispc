@@ -3081,7 +3081,7 @@ static void encode_bc7_block(void *pBlock, const varying bc7_optimization_result
 			uint32_t n = pResults->m_index_selector ? get_bc7_alpha_index_size(best_mode, pResults->m_index_selector) : get_bc7_color_index_size(best_mode, pResults->m_index_selector);
 
 			if ((idx == anchor[0]) || (idx == anchor[1]) || (idx == anchor[2]))
-				n--;
+				n = n - 1; // ISPC 1.28.2 drops a masked varying n--.
 
 			set_block_bits(pBlock_bytes, pResults->m_index_selector ? alpha_selectors[idx] : color_selectors[idx], n, &cur_bit_ofs);
 		}
@@ -3098,7 +3098,7 @@ static void encode_bc7_block(void *pBlock, const varying bc7_optimization_result
 				uint32_t n = pResults->m_index_selector ? get_bc7_color_index_size(best_mode, pResults->m_index_selector) : get_bc7_alpha_index_size(best_mode, pResults->m_index_selector);
 
 				if ((idx == anchor[0]) || (idx == anchor[1]) || (idx == anchor[2]))
-					n--;
+					n = n - 1; // ISPC 1.28.2 drops a masked varying n--.
 
 				set_block_bits(pBlock_bytes, pResults->m_index_selector ? color_selectors[idx] : alpha_selectors[idx], n, &cur_bit_ofs);
 			}

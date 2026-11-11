@@ -30,6 +30,8 @@ namespace vultra
                 return reinterpret_cast<void*>(native.handle.xlib.window);
             case VriWindowSystem_Wayland:
                 return native.handle.wayland.surface;
+            case VriWindowSystem_Cocoa:
+                return native.handle.cocoa.window;
             default:
                 return makeError("Unsupported native window system");
         }

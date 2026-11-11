@@ -46,7 +46,8 @@ namespace
         {
             require(m_PostUpdated, "Resize happened before the update phases finished");
             require(size == getSwapchain().size(), "Resize callback extent mismatch");
-            resized = resized || size == vultra::Extent {480, 320};
+            // setSize() takes logical units; the swapchain extent is in pixels and differs on high-density displays.
+            resized = resized || getWindow().size() == vultra::Extent {480, 320};
             return {};
         }
 

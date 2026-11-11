@@ -1103,18 +1103,18 @@ namespace filewatch {
                         _previous_event_is_rename = false;
                   }
                   else if (flags & kFSEventStreamEventFlagItemRenamed) {
-                        const auto state = _directory_snapshot.find(pathPair.filename);
-                        assert(state != _directory_snapshot.end());
-                        StringType fdPath = pathOfFd(state->second.fd);
-
-                        // moved/delete to Trash folder
-                        if (!isInDirectory(absolutePath, fdPath)) {
-                              event = Event::removed;
-                              _directory_snapshot.erase(pathPair.filename);
+                        // FSEvents coalesces flags and does not pair the two names of a rename, so an
+                        // atomic save's temporary file can arrive here without a snapshot entry.
+                        // Classify each name by whether it still exists.
+                        struct stat info;
+                        _directory_snapshot.erase(pathPair.filename);
+                        if (::stat(absolutePath.c_str(), &info) == 0) {
+                              _directory_snapshot.insert(std::make_pair(pathPair.filename,
+                                    makeFileState(pathPair.filename)));
+                              event = Event::renamed_new;
                         }
                         else {
-                              event = Event::renamed_old;
-                              _previous_event_is_rename = true;
+                              event = Event::removed;
                         }
                   }
                   else if (flags & kFSEventStreamEventFlagItemCreated) {

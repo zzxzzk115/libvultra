@@ -62,6 +62,9 @@ target("vultra")
         elseif is_plat("linux") then
             add_files("platform/src/linux/*.cpp")
             add_packages("nativefiledialog-extended")
+        elseif is_plat("macosx") then
+            add_files("platform/src/linux/file.cpp", "platform/src/macos/*.cpp")
+            add_packages("nativefiledialog-extended")
         elseif is_plat("android") then
             add_files("platform/src/linux/file.cpp", "platform/src/linux/process.cpp", "platform/src/linux/memory.cpp")
             add_files("platform/src/android/*.cpp")
@@ -90,6 +93,16 @@ target("vultra")
         add_files("gpu/src/profiling/profiler.cpp", "gpu/src/profiling/memory_report.cpp",
                   "gpu/src/profiling/benchmark.cpp")
         add_packages("vri", {public = true})
+        if is_plat("macosx") and api == "vulkan" then
+            -- The VRI package leaves the macOS loader to its consumer. Link the SDK loader by absolute path:
+            -- adding the SDK lib directory would let its glslang/SPIRV archives shadow the packages.
+            local sdk = os.getenv("VULKAN_SDK")
+            if not sdk or not os.isfile(path.join(sdk, "lib", "libvulkan.dylib")) then
+                raise("macOS Vulkan builds require VULKAN_SDK pointing at the LunarG SDK's macOS directory")
+            end
+            add_ldflags(path.join(sdk, "lib", "libvulkan.dylib"), {public = true, force = true})
+            add_rpathdirs(path.join(sdk, "lib"), {public = true})
+        end
         if desktop then
             add_files("gpu/src/swapchain_window.cpp")
         end

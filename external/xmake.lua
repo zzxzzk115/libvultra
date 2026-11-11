@@ -16,6 +16,8 @@ if features.platform then
         add_requires("game-activity 4.4.2")
     elseif is_plat("linux") then
         add_requires("nativefiledialog-extended v1.3.0", {configs = {portal = true}})
+    elseif is_plat("macosx") then
+        add_requires("nativefiledialog-extended v1.3.0")
     end
     if desktop then
         add_requires("libsdl3 3.4.0")
