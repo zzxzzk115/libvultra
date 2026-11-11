@@ -1,4 +1,3 @@
-#include <vultra/api/ui_bridge.hpp>
 #include <vultra/core/base/stable_id.hpp>
 #include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/ui/editor_gui.hpp>
@@ -72,11 +71,7 @@ try
             EditorGuiWindow window(ui, "Offscreen controls");
             require(bool(window), "Offscreen GUI window is not visible");
             fontSize           = ImGui::GetFontSize();
-            uint8_t abiEnabled = enabled;
-            uint8_t changed    = 0;
-            require(uiApi().checkbox(makeUiFrame(gui), "Enabled", 7, &abiEnabled, &changed) == VULTRA_STATUS_OK,
-                    "Generated checkbox ABI failed in a live frame");
-            enabled          = abiEnabled != 0;
+            ui.checkbox("Enabled", &enabled);
             checkboxPosition = itemCenter();
             ui.inputText("Project path", &text);
             textPosition = itemCenter();

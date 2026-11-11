@@ -1,6 +1,5 @@
 #pragma once
 
-#include <vultra/core/base/api_annotations.hpp>
 
 #include <imgui.h>
 
@@ -78,20 +77,6 @@ namespace vultra
         static bool beginProperty(const char* label);
         static void endProperty();
     };
-
-    // The annotated C++ surface is the sole source for generated UI ABI wrappers.
-    VULTRA_BIND_UI bool guiButton(EditorGuiFrame& frame, std::string_view label);
-    VULTRA_BIND_UI void guiText(EditorGuiFrame& frame, std::string_view text);
-    VULTRA_BIND_UI void guiTextWrapped(EditorGuiFrame& frame, std::string_view text);
-    VULTRA_BIND_UI void guiSeparator(EditorGuiFrame& frame, std::string_view label);
-    VULTRA_BIND_UI void guiTooltip(EditorGuiFrame& frame, std::string_view text);
-    VULTRA_BIND_UI bool guiHeader(EditorGuiFrame& frame, std::string_view label, int32_t initiallyOpen = 1);
-    VULTRA_BIND_UI bool guiCheckbox(EditorGuiFrame& frame, std::string_view label, uint8_t& value);
-    VULTRA_BIND_UI bool
-    guiSlider(EditorGuiFrame& frame, std::string_view label, double& value, double minimum, double maximum);
-    VULTRA_BIND_UI bool
-    guiIntegerSlider(EditorGuiFrame& frame, std::string_view label, int32_t& value, int32_t minimum, int32_t maximum);
-    VULTRA_BIND_UI bool guiCombo(EditorGuiFrame& frame, std::string_view label, int32_t& value, std::string_view items);
 
     class EditorGuiWindow
     {

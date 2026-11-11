@@ -1,4 +1,3 @@
-#include <vultra/api/ui_bridge.hpp>
 #include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/ui/editor_gui.hpp>
 
@@ -36,7 +35,6 @@ int main()
 try
 {
     using namespace vultra;
-    require(uiApi().fingerprint == VULTRA_UI_API_FINGERPRINT, "Generated UI ABI fingerprint differs from its table");
     Device       device;
     EditorGui    first(device, VriFormat_RGBA8_UNORM, {.multiViewport = false, .persistLayout = false});
     const Extent size {320, 200};
@@ -46,7 +44,6 @@ try
         EditorGui second(device, VriFormat_RGBA8_UNORM, {.multiViewport = false, .persistLayout = false});
         first.begin(size, 1.0f / 60);
         auto       oldFrame     = first.frame();
-        const auto borrowed     = makeUiFrame(first);
         auto*      firstContext = ImGui::GetCurrentContext();
         second.begin(size, 1.0f / 60);
         require(ImGui::GetCurrentContext() != firstContext, "GUI instances share an ImGui context");
@@ -55,10 +52,6 @@ try
             {
                 oldFrame.textUnformatted("Wrong context");
             });
-        uint8_t abiValue   = 0;
-        uint8_t abiChanged = 0;
-        require(uiApi().checkbox(borrowed, "Wrong", 5, &abiValue, &abiChanged) == VULTRA_STATUS_INVALID_FRAME,
-                "Generated UI ABI accepted a frame from another current context");
         second.upload(size);
         first.upload(size);
         reject(

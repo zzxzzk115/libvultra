@@ -1,4 +1,3 @@
-#include <vultra/api/ui_bridge.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/platform/os/process.hpp>
 #include <vultra/platform/os/window.hpp>
@@ -11,7 +10,6 @@
 #include <memory>
 #include <string_view>
 
-extern "C" int testUiAbi(const VultraUiApi* api, VultraUiFrame frame);
 
 namespace
 {
@@ -78,7 +76,6 @@ namespace
             {
                 gui.begin({640, 480}, 1.0f / 60);
             }
-            const auto uiFrame = vultra::makeUiFrame(gui);
             if (!dock)
             {
                 ImGui::SetNextWindowPos(restore ? ImVec2(5, 5) : position,
@@ -103,15 +100,8 @@ namespace
                 }
             }
             ImGui::TextUnformatted("Persist this panel");
-            const auto failedLine = testUiAbi(&vultra::uiApi(), uiFrame);
-            if (failedLine != 0)
-            {
-                throw std::runtime_error("C UI ABI failed at line " + std::to_string(failedLine));
-            }
             ImGui::End();
             gui.upload(window ? window->framebufferSize() : vultra::Extent {640, 480});
-            require(vultra::uiApi().text(uiFrame, "stale", 5) == VULTRA_STATUS_INVALID_FRAME,
-                    "UI ABI accepted a frame after upload");
         }
         // Destruction must save even though the normal ImGui autosave interval has not elapsed.
     }

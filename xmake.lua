@@ -178,21 +178,3 @@ if has_config("libvultra_build_examples") then
     includes("examples")
 end
 
--- Checked-in bindings keep normal builds independent of Python and libclang.
-if is_root then
-    task("codegen")
-        set_menu {
-            usage = "xmake codegen [options]",
-            options = {{"c", "check", "k", nil, "Check generated files without modifying them"}}
-        }
-        on_run(function ()
-            import("core.base.option")
-            local args = {path.join(os.projectdir(), "scripts", "codegen.py"), "--database",
-                          path.join(os.projectdir(), compile_commands_dir, "compile_commands.json")}
-            if option.get("check") then
-                table.insert(args, "--check")
-            end
-            os.execv("python3", args)
-        end)
-    task_end()
-end

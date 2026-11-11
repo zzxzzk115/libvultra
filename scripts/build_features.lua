@@ -22,7 +22,6 @@ local requirements = {
     graph_json = {"graph", "json"},
     shader_runtime = {"gpu", "json", "asset_source"},
     shader = {"shader_runtime"},
-    compute = {"shader"},
     blit = {"shader_runtime"},
     properties = {"math", "json"},
     editor_gui = {"gpu", "input", "properties"},

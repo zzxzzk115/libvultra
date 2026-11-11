@@ -1,6 +1,5 @@
 #pragma once
 
-#include <vultra/core/base/api_annotations.hpp>
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
 #include <vultra/servers/rendering/builtin/environment.hpp>
 #include <vultra/servers/rendering/builtin/render_light.hpp>
@@ -43,55 +42,31 @@ namespace vultra
         eReinhard
     };
 
-    struct VULTRA_REFLECT RenderSettings
+    struct RenderSettings
     {
-        VULTRA_PROPERTY("label=Path;options=NaiveDeferred|NaiveForward")
         RenderPath path = RenderPath::eNaiveDeferred;
-        VULTRA_PROPERTY("label=directionToLight;flags=serialize|bind")
         glm::vec3 directionToLight {-0.5f, 0.8f, 0.4f};
-        VULTRA_PROPERTY("label=lightColor;flags=serialize|bind")
         glm::vec3 lightColor {1, 0.95f, 0.85f};
-        VULTRA_PROPERTY("label=Ambient color;flags=serialize|bind")
         glm::vec3 ambientColor {0}; // Optional constant raster fill, independent of IBL and direct-light shadows.
-        VULTRA_PROPERTY("label=Sun intensity;min=0;max=10")
         float lightIntensity = 3;
-        VULTRA_PROPERTY("label=environmentIntensity;flags=serialize|bind")
         float environmentIntensity = 1;
-        VULTRA_PROPERTY("label=Exposure (EV);min=-4;max=4")
         float exposure = 0;
-        VULTRA_PROPERTY("label=Tone operator;options=Aces|None|Reinhard")
         ToneOperator toneOperator = ToneOperator::eAces;
-        VULTRA_PROPERTY("label=IBL")
         bool ibl = true;
-        VULTRA_PROPERTY("label=Skybox")
         bool skybox = true;
-        VULTRA_PROPERTY("label=meshShading;flags=serialize|bind")
         bool meshShading = false; // Requires GpuScene meshlets and VriFeature_MeshShader.
-        VULTRA_PROPERTY("label=meshletCulling;flags=serialize|bind")
         bool meshletCulling = true;
-        VULTRA_PROPERTY("label=meshletColors;flags=serialize|bind")
         bool meshletColors = false;
-        VULTRA_PROPERTY("label=shadowFilter;flags=serialize|bind")
         ShadowFilter shadowFilter = ShadowFilter::ePcf;
-        VULTRA_PROPERTY("label=Cache static shadows")
         bool cacheShadows = false; // Opt in for immutable imported geometry/texture contents.
-        VULTRA_PROPERTY("label=shadowResolution;flags=serialize|bind")
         uint32_t shadowResolution = 1024; // Change before assembling the graph.
-        VULTRA_PROPERTY("label=splitLambda;flags=serialize|bind")
         float splitLambda = 0.7f;
-        VULTRA_PROPERTY("label=shadowBias;flags=serialize|bind")
         float shadowBias = 0.0005f; // normalized cascade depth
-        VULTRA_PROPERTY("label=normalBias;flags=serialize|bind")
         float normalBias = 0.5f; // shadow texels in world space
-        VULTRA_PROPERTY("label=sunAngularRadius;flags=serialize|bind")
         float sunAngularRadius = 0.02f; // radians; PCSS penumbra control
-        VULTRA_PROPERTY("label=cascadeBlend;flags=serialize|bind")
         float cascadeBlend = 0.1f;
-        VULTRA_PROPERTY("label=roughnessOverride;flags=serialize|bind")
         float roughnessOverride = -1;
-        VULTRA_PROPERTY("label=metalnessOverride;flags=serialize|bind")
         float metalnessOverride = -1;
-        VULTRA_PROPERTY("label=debugMode;flags=serialize|bind")
         uint32_t debugMode = 0; // 0 lit, 1 base color, 2 normals, 3 cascades, 4 visibility, 5 emission
     };
 

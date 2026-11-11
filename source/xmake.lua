@@ -38,10 +38,6 @@ target("vultra")
         add_includedirs(module .. "/include", {public = true})
         add_headerfiles(module .. "/include/(vultra/**.hpp)")
     end
-    -- Opaque ABI declarations carry no GUI implementation or graphics dependency.
-    add_includedirs("api/include", {public = true})
-    add_headerfiles("api/include/(vultra/api/vultra_abi.generated.h)",
-                    "api/include/(vultra/api/vultra_ui.generated.h)")
     add_files("core/src/base/logger.cpp", "core/src/base/command_line.cpp", "core/src/base/stable_id.cpp")
     add_files("main/src/app/base_app.cpp")
     add_packages("argparse", "spdlog", {public = true})
@@ -115,15 +111,13 @@ target("vultra")
     end
     if features.asset_values then
         add_headerfiles("assets/include/(vultra/assets/material_parameters.hpp)",
-                        "assets/include/(vultra/assets/material_properties.generated.hpp)",
                         "assets/include/(vultra/assets/scene_data.hpp)",
                         "assets/include/(vultra/assets/scene_render_data.hpp)",
                         "assets/include/(vultra/assets/imported_asset.hpp)",
                         "assets/include/(vultra/assets/meshlet_data.hpp)",
                         "assets/include/(vultra/assets/fbx_import.hpp)",
                         "assets/include/(vultra/assets/source_file.hpp)")
-        add_files("assets/src/material_parameters.cpp", "assets/src/material_properties.generated.cpp",
-                  "assets/src/tangents.cpp")
+        add_files("assets/src/material_parameters.cpp", "assets/src/tangents.cpp")
     end
     if features.render_values then
         add_includedirs("servers/include", {public = true})
@@ -235,14 +229,6 @@ target("vultra")
                   "drivers/src/rhi/shader_pipeline.cpp")
         add_packages("xxhash")
     end
-    if features.compute then
-        add_includedirs("api/include", {public = true})
-        add_headerfiles("api/include/(vultra/api/compute_bridge.hpp)",
-                        "api/include/(vultra/api/vultra_compute.generated.h)",
-                        "api/include/(vultra/api/vultra_abi.generated.h)")
-        add_files("drivers/src/compute/compute_context.cpp", "api/src/compute_bridge.cpp",
-                  "api/src/vultra_compute.generated.cpp")
-    end
     if features.shader then
         add_defines("VULTRA_WITH_SHADER_COMPILER", {public = true})
         add_files("drivers/src/rhi/shader_compiler.cpp", "drivers/src/rhi/shader_cache.cpp",
@@ -348,12 +334,9 @@ target("vultra")
     if features.editor_gui then
         add_files("../resources/ui/LatoLatin-Regular.ttf")
         add_includedirs("ui/include", {public = true})
-        add_includedirs("api/include", {public = true})
         add_headerfiles("ui/include/(vultra/ui/editor_gui*.hpp)")
-        add_headerfiles("api/include/(vultra/api/vultra_abi.generated.h)",
-                        "api/include/(vultra/api/vultra_ui.generated.h)", "api/include/(vultra/api/ui_bridge.hpp)")
         add_files("ui/src/editor_gui.cpp", "ui/src/editor_gui_frame.cpp", "ui/src/editor_gui_inspector.cpp",
-                  "ui/src/editor_gui_theme.cpp", "ui/src/editor_gui_textures.cpp", "api/src/vultra_ui.generated.cpp")
+                  "ui/src/editor_gui_theme.cpp", "ui/src/editor_gui_textures.cpp")
         add_packages("imgui", {public = true})
         if features.window then
             add_defines("VULTRA_EDITOR_GUI_WINDOW")
@@ -362,10 +345,6 @@ target("vultra")
         if features.desktop then
             add_files("main/src/app/imgui_app.cpp")
         end
-    end
-    if features.editor_gui and features.rendering then
-        add_headerfiles("api/include/(vultra/api/render_settings.generated.hpp)")
-        add_files("api/src/render_settings.generated.cpp")
     end
     if features.shader_inspector then
         add_files("ui/src/editor_gui_shader_material.cpp")

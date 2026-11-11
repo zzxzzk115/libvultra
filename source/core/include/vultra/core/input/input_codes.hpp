@@ -1,13 +1,12 @@
 #pragma once
 
-#include <vultra/core/base/api_annotations.hpp>
 
 #include <cstdint>
 
 namespace vultra
 {
     // Framework codes, independent of GLFW keys and SDL scancodes.
-    enum class VULTRA_BIND_ENUM KeyCode : uint16_t
+    enum class KeyCode : uint16_t
     {
         eUnknown,
         eA,
@@ -117,7 +116,7 @@ namespace vultra
         eCount
     };
 
-    enum class VULTRA_BIND_ENUM MouseCode : uint8_t
+    enum class MouseCode : uint8_t
     {
         eLeft,
         eMiddle,
@@ -127,14 +126,14 @@ namespace vultra
         eCount
     };
 
-    enum class VULTRA_BIND_ENUM InputAction : uint32_t
+    enum class InputAction : uint32_t
     {
         eRelease,
         ePress,
         eRepeat
     };
 
-    enum class VULTRA_BIND_ENUM InputEventKind : uint32_t
+    enum class InputEventKind : uint32_t
     {
         eKey,
         eMouseButton,
@@ -144,7 +143,7 @@ namespace vultra
         eFocus
     };
 
-    enum class VULTRA_BIND_ENUM InputModifier : uint32_t
+    enum class InputModifier : uint32_t
     {
         eNone    = 0,
         eShift   = 1,
