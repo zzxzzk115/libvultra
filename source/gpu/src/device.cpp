@@ -194,6 +194,14 @@ namespace vultra
                 throw std::runtime_error("VRI does not expose the actual swapchain extent");
             }
             check(core.GetQueue(handle, VriQueueType_Graphics, 0, &queue), "Get graphics queue");
+            if (info.queueCount[VriQueueType_Compute] != 0)
+            {
+                check(core.GetQueue(handle, VriQueueType_Compute, 0, &computeQueue), "Get compute queue");
+                if (computeQueue == queue)
+                {
+                    computeQueue = nullptr;
+                }
+            }
             const auto cacheResult =
                 vriGetInterface(handle, VRI_INTERFACE_PIPELINE_CACHE, sizeof(m_PipelineCacheApi), &m_PipelineCacheApi);
             // WebGPU owns pipeline compilation internally and exposes no application cache interface.
@@ -238,16 +246,26 @@ namespace vultra
     Frame::Frame(Device& device) :
         m_Device(device)
     {
-        auto& c = device.core;
-        check(c.CreateCommandAllocator(device.handle, VriQueueType_Graphics, &m_Allocator), "Create command allocator");
+        auto& c                                    = device.core;
+        m_Queues[size_t(FrameQueue::eGraphics)].queue = device.queue;
+        m_Queues[size_t(FrameQueue::eCompute)].queue  = device.computeQueue;
         try
         {
-            check(c.CreateCommandBuffer(m_Allocator, &m_Commands), "Create command buffer");
-            check(c.CreateFence(device.handle, 0, &m_Fence), "Create frame fence");
+            for (size_t index = 0; index < m_Queues.size(); ++index)
+            {
+                auto& queue = m_Queues[index];
+                if (!queue.queue)
+                {
+                    continue;
+                }
+                const auto type = index == size_t(FrameQueue::eGraphics) ? VriQueueType_Graphics : VriQueueType_Compute;
+                check(c.CreateCommandAllocator(device.handle, type, &queue.allocator), "Create command allocator");
+                check(c.CreateFence(device.handle, 0, &queue.fence), "Create frame fence");
+            }
         }
         catch (...)
         {
-            c.DestroyCommandAllocator(m_Allocator);
+            this->~Frame();
             throw;
         }
     }
@@ -255,30 +273,109 @@ namespace vultra
     Frame::~Frame()
     {
         m_Device.waitIdleForDestruction();
-        m_Device.core.DestroyFence(m_Fence);
-        m_Device.core.DestroyCommandAllocator(m_Allocator);
+        for (auto& queue : m_Queues)
+        {
+            if (queue.fence)
+            {
+                m_Device.core.DestroyFence(queue.fence);
+                queue.fence = nullptr;
+            }
+            if (queue.allocator)
+            {
+                m_Device.core.DestroyCommandAllocator(queue.allocator);
+                queue.allocator = nullptr;
+            }
+        }
+    }
+
+    Frame::Queue& Frame::state(FrameQueue queue)
+    {
+        auto& result = m_Queues[size_t(queue)];
+        if (!result.queue)
+        {
+            throw std::logic_error("This device has no separate compute queue");
+        }
+        return result;
     }
 
     VriCommandBuffer* Frame::begin()
     {
-        m_Device.core.ResetCommandAllocator(m_Allocator);
-        check(m_Device.core.BeginCommandBuffer(m_Commands), "Begin command buffer");
-        return m_Commands;
+        for (auto& queue : m_Queues)
+        {
+            if (queue.allocator)
+            {
+                m_Device.core.ResetCommandAllocator(queue.allocator);
+                queue.used = 0;
+                queue.open = nullptr;
+            }
+        }
+        m_ComputeWait = 0;
+        return commands(FrameQueue::eGraphics);
+    }
+
+    VriCommandBuffer* Frame::commands(FrameQueue queue)
+    {
+        auto& target = state(queue);
+        if (!target.open)
+        {
+            if (target.used == target.buffers.size())
+            {
+                VriCommandBuffer* buffer = nullptr;
+                check(m_Device.core.CreateCommandBuffer(target.allocator, &buffer), "Create command buffer");
+                target.buffers.push_back(buffer);
+            }
+            target.open = target.buffers[target.used++];
+            check(m_Device.core.BeginCommandBuffer(target.open), "Begin command buffer");
+        }
+        return target.open;
+    }
+
+    uint64_t Frame::submit(FrameQueue queue, uint64_t waitOther)
+    {
+        auto& target = state(queue);
+        auto* buffer = commands(queue);
+        auto& c      = m_Device.core;
+        check(c.EndCommandBuffer(buffer), "End command buffer");
+        VriFenceSubmitDesc signal {target.fence, ++target.value, VriPipelineStage_AllCommands};
+        VriQueueSubmitDesc submit {};
+        submit.commandBuffers   = &buffer;
+        submit.commandBufferNum = 1;
+        submit.signalFences     = &signal;
+        submit.signalFenceNum   = 1;
+        VriFenceSubmitDesc wait {};
+        if (waitOther != 0)
+        {
+            const auto other = queue == FrameQueue::eGraphics ? FrameQueue::eCompute : FrameQueue::eGraphics;
+            wait             = {state(other).fence, waitOther, VriPipelineStage_AllCommands};
+            submit.waitFences   = &wait;
+            submit.waitFenceNum = 1;
+        }
+        check(c.QueueSubmit(target.queue, &submit), "Submit frame commands");
+        target.open = nullptr;
+        return target.value;
+    }
+
+    void Frame::waitForCompute(uint64_t point)
+    {
+        m_ComputeWait = std::max(m_ComputeWait, point);
     }
 
     void Frame::submitAndWait()
     {
-        auto& c = m_Device.core;
-        check(c.EndCommandBuffer(m_Commands), "End command buffer");
-        VriFenceSubmitDesc signal {m_Fence, ++m_Value, VriPipelineStage_AllCommands};
-        VriQueueSubmitDesc submit {};
-        submit.commandBuffers   = &m_Commands;
-        submit.commandBufferNum = 1;
-        submit.signalFences     = &signal;
-        submit.signalFenceNum   = 1;
-        check(c.QueueSubmit(m_Device.queue, &submit), "Submit frame");
-        const auto waitStart = std::chrono::steady_clock::now();
-        check(c.WaitForFence(m_Fence, m_Value, UINT64_MAX), "Wait for frame completion");
+        auto& compute = m_Queues[size_t(FrameQueue::eCompute)];
+        if (compute.open)
+        {
+            throw std::logic_error("Submit the open compute command buffer before ending the frame");
+        }
+        const auto graphicsValue = submit(FrameQueue::eGraphics, m_ComputeWait);
+        const auto waitStart     = std::chrono::steady_clock::now();
+        auto&      c             = m_Device.core;
+        check(c.WaitForFence(m_Queues[size_t(FrameQueue::eGraphics)].fence, graphicsValue, UINT64_MAX),
+              "Wait for frame completion");
+        if (compute.fence && compute.used != 0)
+        {
+            check(c.WaitForFence(compute.fence, compute.value, UINT64_MAX), "Wait for compute completion");
+        }
         m_WaitMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - waitStart).count();
     }
 } // namespace vultra

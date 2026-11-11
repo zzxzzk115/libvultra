@@ -2,8 +2,10 @@
 #include <vultra/graph/render_graph.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <optional>
+#include <ostream>
 
 namespace vultra
 {
@@ -124,6 +126,37 @@ namespace vultra
                     return {VriAccess_None, VriLayout_Present, VriPipelineStage_AllCommands};
             }
             throw std::logic_error("Unknown graph usage");
+        }
+
+        // Usages whose layouts and stages are valid on a compute queue.
+        bool computeUsage(Usage usage)
+        {
+            return usage == Usage::eSampled || usage == Usage::eStorageRead || usage == Usage::eStorageWrite ||
+                   usage == Usage::eStorageReadWrite || usage == Usage::eCopySource ||
+                   usage == Usage::eCopyDestination;
+        }
+
+        // A compute queue cannot name these states as the source of a transition.
+        bool graphicsOnly(VriLayout layout, VriPipelineStageFlags stages)
+        {
+            return layout == VriLayout_ColorAttachment || layout == VriLayout_DepthStencilAttachment ||
+                   layout == VriLayout_Present ||
+                   (stages & (VriPipelineStage_ColorAttachmentOutput | VriPipelineStage_EarlyFragmentTests |
+                              VriPipelineStage_LateFragmentTests | VriPipelineStage_VertexInput)) != 0;
+        }
+
+        std::string dotLabel(std::string_view text)
+        {
+            std::string result;
+            for (const char character : text)
+            {
+                if (character == '"' || character == '\\')
+                {
+                    result += '\\';
+                }
+                result += character;
+            }
+            return result;
         }
     } // namespace
 
@@ -253,6 +286,19 @@ namespace vultra
 
     void RenderGraph::addPass(std::string name, std::span<const Use> uses, ExecutePass execute, bool sideEffect)
     {
+        addPass(std::move(name), uses, std::move(execute), PassOptions {.sideEffect = sideEffect});
+    }
+
+    void RenderGraph::addPass(std::string                name,
+                              std::initializer_list<Use> uses,
+                              ExecutePass                execute,
+                              PassOptions                options)
+    {
+        addPass(std::move(name), std::span(uses.begin(), uses.size()), std::move(execute), options);
+    }
+
+    void RenderGraph::addPass(std::string name, std::span<const Use> uses, ExecutePass execute, PassOptions options)
+    {
         edit();
         if (!execute)
         {
@@ -262,7 +308,8 @@ namespace vultra
         {
             lookup(use.resource);
         }
-        m_Passes.push_back({std::move(name), {uses.begin(), uses.end()}, std::move(execute), sideEffect});
+        m_Passes.push_back(
+            {std::move(name), {uses.begin(), uses.end()}, std::move(execute), options.sideEffect, options.queue});
         m_Compiled = false;
     }
 
@@ -419,7 +466,157 @@ namespace vultra
         return m_HistoryEpoch;
     }
 
-    void RenderGraph::compile(bool aliasTransients)
+    void RenderGraph::planBatches(bool asyncCompute)
+    {
+        m_Batches.clear();
+        const bool                         async = asyncCompute && m_Device.computeQueue != nullptr;
+        std::vector<size_t>                batchOf(m_Passes.size(), SIZE_MAX);
+        std::array<std::optional<size_t>, 2> current;
+        for (size_t p = 0; p < m_Passes.size(); ++p)
+        {
+            const auto& pass = m_Passes[p];
+            if (!pass.live)
+            {
+                continue;
+            }
+            if (pass.queue == PassQueue::eAsyncCompute)
+            {
+                // Checked even when the plan stays on one queue, so a graph behaves the same on every device.
+                for (const auto& use : pass.uses)
+                {
+                    if (!computeUsage(use.usage))
+                    {
+                        throw std::invalid_argument(pass.name + ": async compute passes cannot use a resource as " +
+                                                    usageName(use.usage));
+                    }
+                }
+            }
+            const auto          queue = async ? pass.queue : PassQueue::eGraphics;
+            auto&               open  = current[size_t(queue)];
+            std::vector<size_t> waits;
+            bool                fresh = !open;
+            for (const auto dependency : pass.dependencies)
+            {
+                if (!m_Passes[dependency].live)
+                {
+                    continue;
+                }
+                const auto batch = batchOf[dependency];
+                if (m_Batches[batch].queue != queue)
+                {
+                    waits.push_back(batch);
+                    // A batch can only wait for batches submitted before it.
+                    fresh = fresh || batch > *open;
+                }
+            }
+            if (fresh)
+            {
+                m_Batches.push_back({queue});
+                open = m_Batches.size() - 1;
+            }
+            auto& batch = m_Batches[*open];
+            batch.passes.push_back(p);
+            for (const auto wait : waits)
+            {
+                if (std::ranges::find(batch.waits, wait) == batch.waits.end())
+                {
+                    batch.waits.push_back(wait);
+                }
+            }
+            batchOf[p] = *open;
+        }
+        if (m_Batches.size() < 2)
+        {
+            return;
+        }
+
+        // Resources used from both queues are shared between their queue families.
+        std::vector<uint8_t> queues(m_Resources.size());
+        for (const auto& batch : m_Batches)
+        {
+            for (const auto p : batch.passes)
+            {
+                for (const auto& use : m_Passes[p].uses)
+                {
+                    queues[use.resource.index] |= uint8_t(1u << uint32_t(batch.queue));
+                }
+            }
+        }
+        for (size_t r = 0; r < m_Resources.size(); ++r)
+        {
+            auto& entry = m_Resources[r];
+            auto& usage = entry.isTexture ? entry.textureDesc.usage : entry.bufferDesc.usage;
+            const auto flag =
+                entry.isTexture ? uint32_t(VriTextureUsage_ConcurrentQueues) : uint32_t(VriBufferUsage_ConcurrentQueues);
+            if (queues[r] != 3 || (usage & flag) != 0)
+            {
+                continue;
+            }
+            if (entry.texture || entry.buffer)
+            {
+                throw std::invalid_argument(entry.name +
+                                            ": used by graphics and async compute passes; import it with "
+                                            "ConcurrentQueues usage, or add those passes before the first compile");
+            }
+            usage |= flag;
+        }
+
+        // When a compute pass follows a graphics pass on a resource, the graphics batch leaves the resource in
+        // the state the compute pass needs. A resource whose first use in the frame is on the compute queue is
+        // prepared the same way by the last graphics batch of the previous frame.
+        const auto handOff = [this](size_t batch, uint32_t resource, Usage usage)
+        {
+            auto&      handoffs = m_Batches[batch].handoffs;
+            const auto existing = std::ranges::find(handoffs, resource, &Handoff::resource);
+            if (existing == handoffs.end())
+            {
+                handoffs.push_back({resource, usage});
+            }
+            else if (existing->usage != usage)
+            {
+                throw std::invalid_argument(m_Resources[resource].name +
+                                            ": graphics and async compute passes interleave in different states");
+            }
+        };
+        std::vector<std::optional<size_t>> lastBatch(m_Resources.size());
+        std::vector<std::optional<size_t>> lastGraphics(m_Resources.size());
+        std::vector<std::optional<Usage>>  firstCompute(m_Resources.size());
+        for (size_t b = 0; b < m_Batches.size(); ++b)
+        {
+            for (const auto p : m_Batches[b].passes)
+            {
+                for (const auto& use : m_Passes[p].uses)
+                {
+                    const auto r = use.resource.index;
+                    if (m_Batches[b].queue == PassQueue::eAsyncCompute)
+                    {
+                        if (!lastBatch[r])
+                        {
+                            firstCompute[r] = use.usage;
+                        }
+                        else if (m_Batches[*lastBatch[r]].queue == PassQueue::eGraphics)
+                        {
+                            handOff(*lastBatch[r], r, use.usage);
+                        }
+                    }
+                    else
+                    {
+                        lastGraphics[r] = b;
+                    }
+                    lastBatch[r] = b;
+                }
+            }
+        }
+        for (uint32_t r = 0; r < m_Resources.size(); ++r)
+        {
+            if (firstCompute[r] && lastGraphics[r])
+            {
+                handOff(*lastGraphics[r], r, *firstCompute[r]);
+            }
+        }
+    }
+
+    void RenderGraph::compile(bool aliasTransients, bool asyncCompute)
     {
         if (m_Aliased)
         {
@@ -547,6 +744,7 @@ namespace vultra
                 }
             }
         }
+        planBatches(asyncCompute);
         const auto exported = [this](size_t index)
         {
             return std::ranges::any_of(m_Exports,
@@ -644,68 +842,240 @@ namespace vultra
         return m_Aliased;
     }
 
+    void RenderGraph::resetHistoryIfRequested(VriCommandBuffer* cmd)
+    {
+        if (!m_ResetHistory)
+        {
+            return;
+        }
+        m_Device.core.CmdBeginDebugGroup(cmd, "Reset graph history");
+        for (auto& entry : m_Resources)
+        {
+            if (entry.history && entry.texture)
+            {
+                entry.texture->transition(cmd, stateForUsage(Usage::eCopyDestination));
+                m_Device.core.CmdClearStorageTexture(cmd, entry.texture->handle, &entry.initial);
+            }
+        }
+        m_Device.core.CmdEndDebugGroup(cmd);
+        m_ResetHistory = false;
+    }
+
+    void RenderGraph::recordPass(VriCommandBuffer* cmd, const Pass& pass, Profiler* profiler)
+    {
+        m_Device.core.CmdBeginDebugGroup(cmd, pass.name.c_str());
+        if (profiler)
+        {
+            profiler->beginPass(cmd, pass.name);
+        }
+        for (const auto& use : pass.uses)
+        {
+            auto&      entry = lookup(use.resource);
+            const auto state = stateForUsage(use.usage);
+            if (entry.isTexture)
+            {
+                entry.texture->transition(cmd, state);
+            }
+            else
+            {
+                entry.buffer->transition(cmd, {state.access, state.stages});
+            }
+        }
+        if (profiler)
+        {
+            profiler->beginCommands(cmd);
+        }
+        pass.execute(cmd, *this);
+        if (profiler)
+        {
+            profiler->endPass(cmd);
+        }
+        m_Device.core.CmdEndDebugGroup(cmd);
+    }
+
     void RenderGraph::execute(VriCommandBuffer* cmd, Profiler* profiler)
     {
         if (!m_Compiled)
         {
             throw std::logic_error("Compile the graph before Execute");
         }
+        if (m_Batches.size() > 1)
+        {
+            throw std::logic_error("This graph plan uses the compute queue; execute it with a Frame");
+        }
         if (profiler)
         {
             profiler->beginFrame(cmd);
         }
-        if (m_ResetHistory)
-        {
-            m_Device.core.CmdBeginDebugGroup(cmd, "Reset graph history");
-            for (auto& entry : m_Resources)
-            {
-                if (entry.history && entry.texture)
-                {
-                    entry.texture->transition(cmd, stateForUsage(Usage::eCopyDestination));
-                    m_Device.core.CmdClearStorageTexture(cmd, entry.texture->handle, &entry.initial);
-                }
-            }
-            m_Device.core.CmdEndDebugGroup(cmd);
-            m_ResetHistory = false;
-        }
+        resetHistoryIfRequested(cmd);
         for (const auto& pass : m_Passes)
         {
             if (pass.live)
             {
-                m_Device.core.CmdBeginDebugGroup(cmd, pass.name.c_str());
-                if (profiler)
-                {
-                    profiler->beginPass(cmd, pass.name);
-                }
-                for (const auto& use : pass.uses)
-                {
-                    auto&      entry = lookup(use.resource);
-                    const auto state = stateForUsage(use.usage);
-                    if (entry.isTexture)
-                    {
-                        entry.texture->transition(cmd, state);
-                    }
-                    else
-                    {
-                        entry.buffer->transition(cmd, {state.access, state.stages});
-                    }
-                }
-                if (profiler)
-                {
-                    profiler->beginCommands(cmd);
-                }
-                pass.execute(cmd, *this);
-                if (profiler)
-                {
-                    profiler->endPass(cmd);
-                }
-                m_Device.core.CmdEndDebugGroup(cmd);
+                recordPass(cmd, pass, profiler);
             }
         }
         if (profiler)
         {
             profiler->resolve(cmd);
         }
+    }
+
+    void RenderGraph::execute(Frame& frame)
+    {
+        if (!m_Compiled)
+        {
+            throw std::logic_error("Compile the graph before Execute");
+        }
+        resetHistoryIfRequested(frame.commands(FrameQueue::eGraphics));
+        // Timeline point each submitted batch signals on its own queue.
+        std::vector<uint64_t> points(m_Batches.size());
+        const auto            waitPoint = [&](const Batch& batch)
+        {
+            uint64_t point = 0;
+            for (const auto wait : batch.waits)
+            {
+                point = std::max(point, points[wait]);
+            }
+            return point;
+        };
+        for (size_t b = 0; b < m_Batches.size(); ++b)
+        {
+            const auto& batch   = m_Batches[b];
+            const bool  compute = batch.queue == PassQueue::eAsyncCompute;
+            auto*       cmd     = frame.commands(compute ? FrameQueue::eCompute : FrameQueue::eGraphics);
+            for (const auto p : batch.passes)
+            {
+                const auto& pass = m_Passes[p];
+                if (compute)
+                {
+                    for (const auto& use : pass.uses)
+                    {
+                        const auto& entry = lookup(use.resource);
+                        if (entry.isTexture ? graphicsOnly(entry.texture->state.layout, entry.texture->state.stages) :
+                                              graphicsOnly(VriLayout_Undefined, entry.buffer->state.stages))
+                        {
+                            throw std::runtime_error(pass.name + ": " + entry.name +
+                                                     " is in a graphics-only state; a graphics pass of this graph "
+                                                     "must use it before the async compute pass");
+                        }
+                    }
+                }
+                recordPass(cmd, pass, nullptr);
+            }
+            for (const auto& handoff : batch.handoffs)
+            {
+                auto&      entry = m_Resources[handoff.resource];
+                const auto state = stateForUsage(handoff.usage);
+                if (entry.isTexture)
+                {
+                    entry.texture->transition(cmd, state);
+                }
+                else
+                {
+                    entry.buffer->transition(cmd, {state.access, state.stages});
+                }
+            }
+            const bool awaited = std::ranges::any_of(std::span(m_Batches).subspan(b + 1),
+                                                     [b](const Batch& later)
+                                                     {
+                                                         return std::ranges::find(later.waits, b) != later.waits.end();
+                                                     });
+            const bool lastGraphics = !compute && std::ranges::none_of(std::span(m_Batches).subspan(b + 1),
+                                                                       [](const Batch& later)
+                                                                       {
+                                                                           return later.queue == PassQueue::eGraphics;
+                                                                       });
+            if (compute)
+            {
+                points[b] = frame.submit(FrameQueue::eCompute, waitPoint(batch));
+            }
+            else if (awaited || !lastGraphics)
+            {
+                points[b] = frame.submit(FrameQueue::eGraphics, waitPoint(batch));
+            }
+            else
+            {
+                // The caller appends to this batch and submits it with the frame.
+                frame.waitForCompute(waitPoint(batch));
+            }
+        }
+    }
+
+    void RenderGraph::writeDot(std::ostream& output) const
+    {
+        if (!m_Compiled)
+        {
+            throw std::logic_error("Compile the graph before exporting it");
+        }
+        output << "digraph RenderGraph {\n  rankdir=LR;\n  node [fontname=\"Helvetica\", fontsize=10];\n";
+        for (size_t b = 0; b < m_Batches.size(); ++b)
+        {
+            const auto& batch = m_Batches[b];
+            output << "  subgraph cluster_batch" << b << " {\n    label=\"batch " << b << ": "
+                   << (batch.queue == PassQueue::eAsyncCompute ? "async compute" : "graphics")
+                   << " queue\";\n    style=rounded;\n";
+            for (const auto p : batch.passes)
+            {
+                output << "    P" << p << " [shape=box, style=filled, fillcolor="
+                       << (batch.queue == PassQueue::eAsyncCompute ? "gold" : "orange") << ", label=\""
+                       << dotLabel(m_Passes[p].name) << "\"];\n";
+            }
+            output << "  }\n";
+        }
+        std::vector<bool> used(m_Resources.size());
+        for (size_t p = 0; p < m_Passes.size(); ++p)
+        {
+            const auto& pass = m_Passes[p];
+            if (!pass.live)
+            {
+                output << "  P" << p << " [shape=box, style=\"filled,dashed\", fillcolor=gray90, label=\""
+                       << dotLabel(pass.name) << "\\n(culled)\"];\n";
+            }
+            for (const auto& use : pass.uses)
+            {
+                const auto r = use.resource.index;
+                used[r]      = true;
+                const char* style = pass.live ? "" : " [color=gray60]";
+                if (reads(use.usage))
+                {
+                    output << "  R" << r << " -> P" << p << style << ";\n";
+                }
+                if (writes(use.usage))
+                {
+                    output << "  P" << p << " -> R" << r << style << ";\n";
+                }
+            }
+        }
+        for (size_t r = 0; r < m_Resources.size(); ++r)
+        {
+            const auto& entry = m_Resources[r];
+            if (!used[r])
+            {
+                continue;
+            }
+            output << "  R" << r << " [shape=box, style=\"rounded,filled\", fillcolor="
+                   << (entry.firstUse == UINT32_MAX ? "gray90" : (entry.imported ? "lightgreen" : "skyblue"))
+                   << ", label=\"" << dotLabel(entry.name) << "\\n";
+            if (entry.isTexture)
+            {
+                output << entry.textureDesc.width << "x" << entry.textureDesc.height;
+            }
+            else
+            {
+                output << entry.bufferDesc.size << " bytes";
+            }
+            output << "\"];\n";
+        }
+        for (size_t b = 0; b < m_Batches.size(); ++b)
+        {
+            for (const auto wait : m_Batches[b].waits)
+            {
+                output << "  P" << m_Batches[wait].passes.back() << " -> P" << m_Batches[b].passes.front()
+                       << " [style=dashed, constraint=false, label=\"wait\"];\n";
+            }
+        }
+        output << "}\n";
     }
 
     void RenderGraph::bind(Resource resource, Texture& texture)
@@ -781,7 +1151,7 @@ namespace vultra
         }
         for (const auto& pass : m_Passes)
         {
-            PassInfo info {pass.name, pass.live, pass.dependencies, {}, pass.contentDependencies};
+            PassInfo info {pass.name, pass.live, PassQueue::eGraphics, pass.dependencies, {}, pass.contentDependencies};
             for (const auto& use : pass.uses)
             {
                 info.uses.push_back({use.resource.index, use.usage, use.discardPrevious});
@@ -791,6 +1161,14 @@ namespace vultra
                 }
             }
             result.passes.push_back(std::move(info));
+        }
+        for (const auto& batch : m_Batches)
+        {
+            result.batches.push_back({batch.queue, batch.passes, batch.waits});
+            for (const auto p : batch.passes)
+            {
+                result.passes[p].queue = batch.queue;
+            }
         }
         uint32_t   objectCount = 0;
         const auto enumerated  = m_Device.core.EnumerateObjects ?

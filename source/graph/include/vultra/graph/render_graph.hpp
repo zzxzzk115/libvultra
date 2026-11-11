@@ -3,6 +3,7 @@
 
 #include <functional>
 #include <initializer_list>
+#include <iosfwd>
 #include <memory>
 #include <span>
 #include <string>
@@ -29,6 +30,22 @@ namespace vultra
     };
 
     const char* usageName(Usage usage);
+
+    // Where a pass runs. Async compute passes may only use storage, sampled and copy usages; when the device
+    // has no separate compute queue, or async compute is disabled at compile(), they run on the graphics queue
+    // in the same order with the same result.
+    enum class PassQueue
+    {
+        eGraphics,
+        eAsyncCompute
+    };
+
+    struct PassOptions
+    {
+        // Keep the pass and its inputs live even when nothing reads its outputs.
+        bool      sideEffect = false;
+        PassQueue queue      = PassQueue::eGraphics;
+    };
 
     class RenderGraph
     {
@@ -75,16 +92,26 @@ namespace vultra
         {
             std::string              name;
             bool                     active = false;
+            PassQueue                queue  = PassQueue::eGraphics; // Queue the compiled plan assigned.
             std::vector<size_t>      dependencies;
             std::vector<PassUseInfo> uses;
             // Data producers needed for this pass, excluding write-after-read/write ordering alone.
             std::vector<size_t> contentDependencies;
         };
 
+        // Consecutive passes recorded into one command buffer on one queue.
+        struct BatchInfo
+        {
+            PassQueue           queue = PassQueue::eGraphics;
+            std::vector<size_t> passes;
+            std::vector<size_t> waits; // Earlier batches on the other queue that must complete first.
+        };
+
         struct Snapshot
         {
             std::vector<ResourceInfo> resources;
             std::vector<PassInfo>     passes;
+            std::vector<BatchInfo>    batches;
         };
 
         using ExecutePass = std::function<void(VriCommandBuffer*, RenderGraph&)>;
@@ -108,15 +135,26 @@ namespace vultra
         uint64_t historyEpoch() const;
         void addPass(std::string name, std::initializer_list<Use> uses, ExecutePass execute, bool sideEffect = false);
         void addPass(std::string name, std::span<const Use> uses, ExecutePass execute, bool sideEffect = false);
+        void addPass(std::string name, std::initializer_list<Use> uses, ExecutePass execute, PassOptions options);
+        void addPass(std::string name, std::span<const Use> uses, ExecutePass execute, PassOptions options);
         void exportResource(Resource resource);
         void nameResource(Resource resource, std::string name); // Before compile; used by inspection and diagnostics.
         // Insert and export an opt-in copy after the pass writes source, before later writes overwrite it.
         Resource captureAfterPass(const std::string& passName, Resource source, std::string name);
         Resource findResource(std::string_view name) const; // Named outputs/intermediates, also before compile.
         // Aliasing reuses identical transient resources with disjoint live intervals. An aliased plan is immutable.
-        void compile(bool aliasTransients = false);
+        // The plan groups live passes into batches per queue. Async compute needs a device compute queue;
+        // without one, or with asyncCompute false, every pass runs on the graphics queue in one batch.
+        void compile(bool aliasTransients = false, bool asyncCompute = true);
         bool aliasesTransients() const;
+        // Records a single-batch plan into the caller's graphics command buffer.
         void execute(VriCommandBuffer* cmd, Profiler* profiler = nullptr);
+        // Records any plan. Every batch but the final graphics one is submitted here with the waits the plan
+        // requires; the final graphics batch stays open in frame.commands(FrameQueue::eGraphics) so the caller
+        // can append commands before frame.submitAndWait().
+        void execute(Frame& frame);
+        // Graphviz description of the compiled plan: batches per queue, culled passes and cross-queue waits.
+        void writeDot(std::ostream& output) const;
         // Rebind a same-format/size imported backbuffer after acquisition, before execute.
         void                     bind(Resource resource, Texture& texture);
         Texture&                 getTexture(Resource resource);
@@ -155,13 +193,34 @@ namespace vultra
             std::vector<Use>    uses;
             ExecutePass         execute;
             bool                sideEffect = false;
+            PassQueue           queue      = PassQueue::eGraphics;
             bool                live       = false;
             std::vector<size_t> dependencies;
             std::vector<size_t> contentDependencies;
         };
 
+        // A resource state a graphics batch establishes after its passes, because the next user runs on the
+        // compute queue and cannot transition from graphics-only layouts itself.
+        struct Handoff
+        {
+            uint32_t resource;
+            Usage    usage;
+        };
+
+        struct Batch
+        {
+            PassQueue            queue = PassQueue::eGraphics;
+            std::vector<size_t>  passes;
+            std::vector<size_t>  waits;
+            std::vector<Handoff> handoffs;
+        };
+
         Entry&                lookup(Resource resource);
         void                  edit();
+        void                  planBatches(bool asyncCompute);
+        void                  recordPass(VriCommandBuffer* cmd, const Pass& pass, Profiler* profiler);
+        void                  resetHistoryIfRequested(VriCommandBuffer* cmd);
+        std::vector<Batch>    m_Batches;
         Device&               m_Device;
         std::vector<Entry>    m_Resources;
         std::vector<Pass>     m_Passes;
