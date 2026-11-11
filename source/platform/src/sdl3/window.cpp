@@ -4,6 +4,7 @@
 #include <vri/integration/vri_sdl3.h>
 
 #include <stdexcept>
+#include <utility>
 
 namespace vultra
 {
@@ -33,19 +34,29 @@ namespace vultra
         checkSdl(SDL_InitSubSystem(SDL_INIT_VIDEO), "Initialize SDL video");
         try
         {
-            auto* window = SDL_CreateWindow(title,
-                                            int(extent.width),
-                                            int(extent.height),
-                                            SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+            // SDL's native window coordinates include the content scale on Windows/X11; macOS and Wayland
+            // report 1 here and expose density through the framebuffer size instead. Create the window
+            // hidden at its final size so the user never sees an unscaled window being resized.
+            const auto scaled = [extent](float scale)
+            {
+                scale = scale > 0 ? scale : 1;
+                return std::pair {int(float(extent.width) * scale), int(float(extent.height) * scale)};
+            };
+            const auto expected = scaled(SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay()));
+            auto*      window   = SDL_CreateWindow(title,
+                                                   expected.first,
+                                                   expected.second,
+                                                   SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE |
+                                                       SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
             checkSdl(window != nullptr, "Create SDL window");
             m_Window = window;
-            // SDL's native window coordinates include the content scale on Windows/X11.
-            const auto scale = SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(window));
-            if (scale > 0 && scale != 1)
+            // The window manager may have placed it on a display with another content scale.
+            const auto actual = scaled(SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(window)));
+            if (actual != expected)
             {
-                checkSdl(SDL_SetWindowSize(window, int(extent.width * scale), int(extent.height * scale)),
-                         "Scale initial window to display DPI");
+                checkSdl(SDL_SetWindowSize(window, actual.first, actual.second), "Scale initial window to display DPI");
             }
+            checkSdl(SDL_ShowWindow(window), "Show SDL window");
             checkSdl(SDL_SetPointerProperty(SDL_GetWindowProperties(window), kWindowProperty, this),
                      "Attach window input");
             m_Input.setFocused((SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0);
