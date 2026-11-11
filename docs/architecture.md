@@ -67,8 +67,10 @@ Shaders are plain Slang. `ShaderProgram` compiles a file for one target (SPIR-V 
 bindings, parameter layouts, compute group sizes, **user attributes** and scalar field initializers. A program
 cooks to a `.vshaderc` archive that loads without the compiler. `ShaderPipeline` builds a VRI pipeline from a
 source file or a cooked program and reloads it when its sources change; a failed reload keeps the last pipeline
-and reports diagnostics. `ShaderCompileOptions::debugInfo` embeds source text and line information for GPU
-debuggers; it is chosen per compile, not by the C++ build mode, and is part of the cache key.
+and reports diagnostics. Two compile options are chosen per compile, not by the C++ build mode, and are part of the
+cache key: `debugInfo` embeds source text and line information for GPU debuggers, and `optimize` runs the
+SPIRV-Tools performance passes over the generated SPIR-V. The static Slang build carries no optimizer of its
+own, so the compiler links SPIRV-Tools directly. The builtin shader pack is cooked with neither.
 
 User attributes are how a host attaches meaning to shader declarations, for example to describe a render pass
 inside its shader:

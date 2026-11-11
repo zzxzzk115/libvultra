@@ -7,6 +7,7 @@
 
 #include <slang-com-ptr.h>
 #include <slang.h>
+#include <spirv-tools/optimizer.hpp>
 #include <xxhash.h>
 
 #include <algorithm>
@@ -25,6 +26,27 @@ namespace vultra
         double milliseconds(Clock::time_point start)
         {
             return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+        }
+
+        // The static Slang build carries no SPIRV-Opt module, so its optimization level has no effect on SPIR-V.
+        // Stage interface variables are preserved: a stage is optimized without seeing the stages it links to.
+        std::vector<uint32_t> optimizeSpirv(const std::vector<uint32_t>& words, const std::string& entry)
+        {
+            std::string         messages;
+            spvtools::Optimizer optimizer(SPV_ENV_VULKAN_1_3);
+            optimizer.SetMessageConsumer(
+                [&messages](spv_message_level_t, const char*, const spv_position_t&, const char* message)
+                {
+                    messages += message;
+                    messages += '\n';
+                });
+            optimizer.RegisterPerformancePasses(true);
+            std::vector<uint32_t> optimized;
+            if (!optimizer.Run(words.data(), words.size(), &optimized))
+            {
+                throw std::runtime_error("Optimize SPIR-V of " + entry + "\n" + messages);
+            }
+            return optimized;
         }
 
         uint32_t colorOutputs(slang::VariableLayoutReflection* variable)
@@ -478,6 +500,10 @@ namespace vultra
                 }
                 shader.words.resize(code->getBufferSize() / sizeof(uint32_t));
                 std::memcpy(shader.words.data(), code->getBufferPointer(), code->getBufferSize());
+                if (compileOptions.optimize)
+                {
+                    shader.words = optimizeSpirv(shader.words, shader.entry.name);
+                }
             }
             if (shader.entry.stage == VriShaderStage_Fragment)
             {

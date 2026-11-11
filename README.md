@@ -78,6 +78,7 @@ Follow [AGENTS.md](AGENTS.md), the checked-in formatting and static-analysis rul
 - [Native File Dialog Extended](https://github.com/btzy/nativefiledialog-extended/tree/v1.3.0): Linux portal file dialog (zlib license)
 - [Dear ImGui](https://github.com/ocornut/imgui): immediate-mode UI, docking and multiple viewports
 - [Slang](https://github.com/shader-slang/slang): shader compilation to SPIR-V and WGSL
+- [SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools): optional optimization of compiled SPIR-V (Apache-2.0)
 - [argparse](https://github.com/p-ranav/argparse): command-line argument parsing
 - [spdlog](https://github.com/gabime/spdlog): console and file logging
 - [stb](https://github.com/nothings/stb): image loading, SIMD mip filtering and PNG writing

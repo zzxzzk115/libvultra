@@ -137,9 +137,12 @@ namespace vultra
         std::string                        profile  = "spirv_1_5"; // SPIR-V profile or "wgsl".
         bool                               rayQuery = false;
         std::vector<std::string>           capabilities;
-        // Independent of the C++ build mode. Embeds source text and line information in the SPIR-V so a GPU
-        // debugger can show the shader; the generated code is otherwise the same.
+        // Both are independent of the C++ build mode and of each other.
+        // Embeds source text and line information in the SPIR-V so a GPU debugger can show the shader.
         bool debugInfo = false;
+        // Runs the SPIRV-Tools performance passes over the generated SPIR-V. Reflection still describes the
+        // source, so bindings the optimizer removed stay in it. WGSL output is not affected.
+        bool optimize = false;
     };
 
     struct ShaderDependency

@@ -39,6 +39,8 @@ if features.shader or features.assets then
 end
 if shader_compiler then
     add_requires("slang-static 2026.11")
+    -- The static Slang build has no SPIRV-Opt module; the shader compiler runs the optimizer itself.
+    add_requires("spirv-tools 1.4.309+0")
 end
 
 if asset_import then

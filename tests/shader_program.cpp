@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <thread>
 
@@ -178,24 +179,34 @@ void computeMain(uint3 id : SV_DispatchThreadID)
         }
     }
 
-    // Debug information is chosen per compile, not by the C++ build mode.
-    void debugInformation(const std::filesystem::path& root)
+    // Debug information and optimization are chosen per compile, not by the C++ build mode.
+    void compileModes(const std::filesystem::path& root)
     {
         using namespace vultra;
         const char* source  = R"(
 RWStructuredBuffer<float> values;
+float weight(int index)
+{
+    return float(index) * 0.5;
+}
 // vultra-debug-marker
 [shader("compute")] [numthreads(1, 1, 1)]
 void main(uint3 id : SV_DispatchThreadID)
 {
-    values[id.x] = float(id.x) * 0.5;
+    float sum = 0;
+    for (int index = 0; index < 4; ++index)
+    {
+        sum += weight(index);
+    }
+    values[id.x] = sum;
 }
 )";
-        const auto  compile = [&](bool debugInfo)
+        const auto  compile = [&](bool debugInfo, bool optimize)
         {
             ShaderCompileOptions options;
             options.debugInfo = debugInfo;
-            return ShaderProgram::compileSource(root / "debug_info.slang", source, options);
+            options.optimize  = optimize;
+            return ShaderProgram::compileSource(root / "modes.slang", source, options);
         };
         const auto contains = [](const ShaderProgram& program, std::string_view text)
         {
@@ -203,14 +214,26 @@ void main(uint3 id : SV_DispatchThreadID)
             const std::string_view bytes(reinterpret_cast<const char*>(words.data()), words.size() * sizeof(uint32_t));
             return bytes.find(text) != std::string_view::npos;
         };
-        const auto plain    = compile(false);
-        const auto debugged = compile(true);
+        const auto size = [](const ShaderProgram& program)
+        {
+            return program.shaders.at(0).words.size();
+        };
+        const auto plain             = compile(false, false);
+        const auto debugged          = compile(true, false);
+        const auto optimized         = compile(false, true);
+        const auto optimizedDebugged = compile(true, true);
         require(!contains(plain, "vultra-debug-marker") && !contains(plain, "NonSemantic.Shader.DebugInfo"),
                 "A shader compiled without debug information carries its source");
         require(contains(debugged, "NonSemantic.Shader.DebugInfo.100") && contains(debugged, "vultra-debug-marker"),
                 "Debug information does not embed the shader source for GPU debuggers");
-        require(plain.compileKey != debugged.compileKey,
-                "Shaders with and without debug information share a cache key");
+        require(plain.compileKey != debugged.compileKey && plain.compileKey != optimized.compileKey &&
+                    debugged.compileKey != optimizedDebugged.compileKey,
+                "Compile modes share a cache key");
+        std::cout << "SPIR-V words: plain " << size(plain) << ", optimized " << size(optimized) << ", debug "
+                  << size(debugged) << ", optimized debug " << size(optimizedDebugged) << '\n';
+        require(size(optimized) < size(plain), "Optimization did not shrink a shader with a constant loop");
+        require(contains(optimizedDebugged, "vultra-debug-marker") && size(optimizedDebugged) < size(debugged),
+                "An optimized shader with debug information lost its source or was not optimized");
     }
 
     // An edited source file reaches a live pipeline through the file watcher; a broken edit keeps the last one.
@@ -300,7 +323,7 @@ try
     fs::create_directories(root / "source");
     resourceViews(root);
     userAttributes(root);
-    debugInformation(root);
+    compileModes(root);
     watchedReload(root);
     const auto source = root / "source/triangle.slang";
     const auto cooked = root / "source/triangle.vshaderc";

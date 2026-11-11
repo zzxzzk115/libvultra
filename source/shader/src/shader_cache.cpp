@@ -51,6 +51,7 @@ namespace vultra::detail
                   {"ray_query", options.rayQuery},
                   {"capabilities", options.capabilities},
                   {"debug_info", options.debugInfo},
+                  {"optimize", options.optimize},
                   {"entries", Json::array()},
                   {"includes", Json::array()},
                   {"modules", Json::array()},

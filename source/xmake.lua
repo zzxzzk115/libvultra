@@ -116,7 +116,7 @@ target("vultra")
         add_files("shader/src/builtin_pack.cpp")
         add_files("shader/src/shader_compiler.cpp", "shader/src/shader_cache.cpp",
                   "shader/src/shader_program_compile.cpp", "shader/src/shader_reflection.cpp")
-        add_packages("slang-static", {public = true})
+        add_packages("slang-static", "spirv-tools", {public = true})
         add_includedirs("$(builddir)/generated/shaders")
         before_build(function (target)
             local function fingerprint(patterns, identifiers)

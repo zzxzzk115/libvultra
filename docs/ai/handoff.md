@@ -42,7 +42,8 @@ Added:
 - `FileWatcher`, used by shader hot reload.
 - Ray, plane, triangle and rectangle intersection helpers.
 - `--libvultra_vri_dir=<checkout>` to build VRI from a local source tree without patches.
-- `ShaderCompileOptions::debugInfo`: shader debug information per compile instead of per C++ build mode.
+- `ShaderCompileOptions::debugInfo` and `optimize`: shader debug information and SPIRV-Tools optimization per
+  compile instead of per C++ build mode.
 - `LightBuffer`: the frame's lights as one storage buffer (`scene.lights`), read by `ForwardPath`.
 - Import caches made through an `AssetSource` name files relative to its root and survive moving it.
 
@@ -76,8 +77,7 @@ judged by a person.
 ## Known gaps
 
 See [roadmap](../roadmap.md). In short: standard scene resources beyond HDR and depth, subresource support in
-the graph, profiling across batches, a shader optimization level (the static Slang build has no SPIR-V
-optimizer), XR controller input and mesh LOD.
+the graph, profiling across batches, an optimized builtin shader pack, XR controller input and mesh LOD.
 
 ## Local state
 
