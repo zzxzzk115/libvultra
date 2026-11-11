@@ -141,10 +141,3 @@ if features.asset_source then
     target_end()
 end
 
-if features.vgui then
-    target("module-vgui")
-        set_kind("binary")
-        add_deps("vultra")
-        add_files("vgui.cpp")
-    target_end()
-end

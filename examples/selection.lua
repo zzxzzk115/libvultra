@@ -13,7 +13,7 @@ local examples = {
     {"basics.mesh-shading", {app, "shader", "image_io"}},
     {"offline", {is_plat("android") and "shader_runtime" or "shader", "graph_json", "blit", "image_io", "asset_source",
                   is_plat("android") and "android_entry" or "foundation"}},
-    {"ui", {app, shader, "editor_gui", "vgui"}}
+    {"ui", {app, shader, "editor_gui"}}
 }
 
 function vultraExamples()

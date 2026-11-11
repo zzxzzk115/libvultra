@@ -2,7 +2,6 @@
 #include "../common/sample.hpp"
 
 #include <vultra/main/app/imgui_app.hpp>
-#include <vultra/ui/vgui.hpp>
 
 #include <imgui.h>
 
@@ -10,102 +9,10 @@ class UiShowcaseApp final : public vultra::ImGuiApp
 {
 public:
     explicit UiShowcaseApp(const sample::Options& options) :
-        vultra::ImGuiApp({"Vultra | UI - ImGui, EditorGui and VGui", {1440, 900}}),
+        vultra::ImGuiApp({"Vultra | UI - ImGui and EditorGui", {1440, 900}}),
         m_Options(options),
         m_Triangle(getDevice(), getSwapchain().format(), sample::kTriangleVertices, sample::kTriangleIndices)
     {
-        m_VGui = std::make_unique<vultra::VGui>(getDevice(), getWindow(), getSwapchain().format());
-        m_VGui->loadFont("resources/ui/LatoLatin-Regular.ttf");
-        m_VGui->loadDocument("examples/ui/showcase.rml");
-        m_VGui->bindChange("preview-toggle",
-                           [this]
-                           {
-                               m_ShowTarget = m_VGui->isChecked("preview-toggle");
-                           });
-        m_VGui->bindChange("tint-toggle",
-                           [this]
-                           {
-                               m_WarmTint = m_VGui->isChecked("tint-toggle");
-                           });
-        m_VGui->bindChange("sample-volume",
-                           [this]
-                           {
-                               m_VGui->setText("sample-volume-value", m_VGui->value("sample-volume"));
-                           });
-        m_VGui->bindChange("sample-quality",
-                           [this]
-                           {
-                               m_VGui->setText("sample-quality-value", m_VGui->value("sample-quality"));
-                           });
-        m_VGui->bindClick("save-image",
-                          [this]
-                          {
-                              m_SaveTarget = true;
-                          });
-        m_VGui->bindClick("kenney-play",
-                          [this]
-                          {
-                              m_VGui->setText("kenney-status", "Play pressed");
-                          });
-        m_VGui->bindClick("kenney-next",
-                          [this]
-                          {
-                              m_VGui->setText("kenney-status", "Next selected");
-                          });
-        m_VGui->bindClick("kenney-apply",
-                          [this]
-                          {
-                              m_VGui->setText("kenney-status", "Settings applied");
-                          });
-        m_VGui->bindClick("kenney-save",
-                          [this]
-                          {
-                              m_VGui->setText("kenney-status", "Profile saved");
-                          });
-        m_VGui->bindChange("kenney-music",
-                           [this]
-                           {
-                               m_VGui->setText("kenney-status",
-                                               m_VGui->isChecked("kenney-music") ? "Music enabled" : "Music disabled");
-                           });
-        m_VGui->bindChange("kenney-effects",
-                           [this]
-                           {
-                               m_VGui->setText("kenney-status",
-                                               m_VGui->isChecked("kenney-effects") ? "Effects enabled" :
-                                                                                     "Effects disabled");
-                           });
-        m_VGui->bindChange("kenney-normal",
-                           [this]
-                           {
-                               if (m_VGui->isChecked("kenney-normal"))
-                               {
-                                   m_VGui->setText("kenney-status", "Normal difficulty");
-                               }
-                           });
-        m_VGui->bindChange("kenney-hard",
-                           [this]
-                           {
-                               if (m_VGui->isChecked("kenney-hard"))
-                               {
-                                   m_VGui->setText("kenney-status", "Hard difficulty");
-                               }
-                           });
-        m_VGui->bindChange("kenney-volume",
-                           [this]
-                           {
-                               m_VGui->setText("kenney-volume-value", m_VGui->value("kenney-volume"));
-                           });
-        m_VGui->bindChange("kenney-resolution",
-                           [this]
-                           {
-                               m_VGui->setText("kenney-status", "Resolution: " + m_VGui->value("kenney-resolution"));
-                           });
-        m_VGui->bindChange("kenney-player",
-                           [this]
-                           {
-                               m_VGui->setText("kenney-status", "Player: " + m_VGui->value("kenney-player"));
-                           });
     }
 
     ~UiShowcaseApp() override
@@ -129,7 +36,6 @@ private:
     void onUpdate([[maybe_unused]] float deltaSeconds) override
     {
         m_SaveTarget = false;
-        m_VGui->processInput(getWindow().input(), getWindow().framebufferSize(), getEditorGui().inputCapture());
         m_Triangle.pipeline->poll();
     }
 
@@ -210,15 +116,6 @@ private:
         }
     }
 
-    void onPreRender() override
-    {
-        ImGuiApp::onPreRender();
-        m_VGui->setChecked("preview-toggle", m_ShowTarget);
-        m_VGui->setChecked("tint-toggle", m_WarmTint);
-        m_VGui->setText("preview-state", m_ShowTarget ? "Preview visible" : "Preview hidden");
-        m_VGui->update(getSwapchain().size());
-    }
-
     void onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
     {
         m_Triangle.parameters.tint[1] = m_WarmTint ? 0.55f : 1.0f;
@@ -237,7 +134,6 @@ private:
         getDevice().core.CmdCopyTexture(cmd, target.handle, m_Target->handle, &copy);
         m_Target->transition(cmd,
                              {VriAccess_ShaderResourceRead, VriLayout_ShaderResource, VriPipelineStage_FragmentShader});
-        m_VGui->draw(cmd, target);
         drawGui(cmd, target);
     }
 
@@ -253,7 +149,6 @@ private:
     sample::Options                  m_Options;
     sample::ColoredMesh              m_Triangle;
     std::unique_ptr<vultra::Texture> m_Target;
-    std::unique_ptr<vultra::VGui>    m_VGui;
     bool                             m_ShowDemo   = false;
     bool                             m_ShowTarget = true;
     bool                             m_WarmTint   = false;

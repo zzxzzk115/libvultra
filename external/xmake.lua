@@ -74,11 +74,6 @@ if features.dialogs and is_plat("linux") then
     add_requires("nativefiledialog-extended v1.3.0", {configs = {portal = true}})
 end
 
-if features.vgui then
-    add_requires("rmlui 6.2", {configs = {shared = false, lua = false, svg = false, lottie = false}})
-    add_requireconfs("rmlui.zlib", {system = false, configs = {shared = false}, override = true})
-    add_requireconfs("rmlui.freetype.zlib", {system = false, configs = {shared = false}, override = true})
-end
 if features.xr then
     if is_plat("linux") then
         add_requires("openxr-static 1.1.49")

@@ -146,7 +146,7 @@ includes("scripts/build_features.lua")
 local features
 features, featureError = vultraFeatures()
 if has_config("libvultra_build_tests") then
-    for _, name in ipairs({"rendering", "vgui", "editor_gui", "graph_json", "benchmark", "tools", "camera", "random", "input_actions"}) do
+    for _, name in ipairs({"rendering", "editor_gui", "graph_json", "benchmark", "tools", "camera", "random", "input_actions"}) do
         if not features[name] then
             featureError = featureError or ("Repository tests require feature '" .. name ..
                            "'; select all or disable libvultra_build_tests")

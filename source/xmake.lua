@@ -328,8 +328,8 @@ target("vultra")
             add_packages("nativefiledialog-extended")
         end
     end
-    if features.editor_gui or features.vgui then
-        add_rules("utils.bin2c", {extensions = {".ttf", ".png"}})
+    if features.editor_gui then
+        add_rules("utils.bin2c", {extensions = {".ttf"}})
     end
     if features.editor_gui then
         add_files("../resources/ui/LatoLatin-Regular.ttf")
@@ -348,15 +348,6 @@ target("vultra")
     end
     if features.shader_inspector then
         add_files("ui/src/editor_gui_shader_material.cpp")
-    end
-    if features.vgui then
-        add_includedirs("ui/include", {public = true})
-        add_headerfiles("ui/include/vultra/ui/vgui.hpp")
-        add_files("ui/assets/vgui_skin.png", "ui/src/vgui.cpp")
-        if features.window then
-            add_defines("VULTRA_VGUI_WINDOW")
-        end
-        add_packages("rmlui")
     end
     if features.xr then
         add_defines("VULTRA_WITH_OPENXR", {public = true})

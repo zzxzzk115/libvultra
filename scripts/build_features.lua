@@ -47,7 +47,6 @@ local requirements = {
     benchmark = {"gpu"},
     dialogs = {"window"},
     xr = {"desktop"},
-    vgui = {"shader_runtime", "input", "image_io", "asset_source"},
     interactive = {"desktop", "shader", "image_io"},
     tool_import = {"asset_import"},
     tool_shader = {"game_shader"},
