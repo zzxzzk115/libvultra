@@ -42,14 +42,19 @@ Added:
 - `FileWatcher`, used by shader hot reload.
 - Ray, plane, triangle and rectangle intersection helpers.
 - `--libvultra_vri_dir=<checkout>` to build VRI from a local source tree without patches.
+- `ShaderCompileOptions::debugInfo`: shader debug information per compile instead of per C++ build mode.
+- `LightBuffer`: the frame's lights as one storage buffer (`scene.lights`), read by `ForwardPath`.
+- Import caches made through an `AssetSource` name files relative to its root and survive moving it.
 
 ## VRI
 
 The default build still uses the pinned archive `d0c78964` plus the patches in `external/vri/`. Those patches,
-and the Metal patches previously carried by a downstream fork, were rebased onto VRI `master` as four local
-branches in a VRI checkout (`fix/vulkan-correctness`, `fix/web-backends`, `fix/metal-backend`,
-`build/platform-archs`) and are not merged upstream yet. The Vulkan branch was built and tested through this
-library; the Web, Metal and Android branches were only checked to apply.
+and the Metal patches previously carried by a downstream fork, were rebased onto VRI `master` as four branches
+(`fix/vulkan-correctness`, `fix/web-backends`, `fix/metal-backend`, `build/platform-archs`) and are open as
+pull requests 26 to 29 of [zzxzzk115/VRI](https://github.com/zzxzzk115/VRI/pulls); none is merged. The Vulkan
+branch was built and tested through this library; the Web, Metal and Android branches were not built on the
+development machine and rely on VRI's own CI. Repin and delete `external/vri/*.patch` only after a VRI release
+contains all four.
 
 ## Verification
 
@@ -71,7 +76,8 @@ judged by a person.
 ## Known gaps
 
 See [roadmap](../roadmap.md). In short: standard scene resources beyond HDR and depth, subresource support in
-the graph, profiling across batches, a scene light buffer, XR controller input and mesh LOD.
+the graph, profiling across batches, a shader optimization level (the static Slang build has no SPIR-V
+optimizer), XR controller input and mesh LOD.
 
 ## Local state
 

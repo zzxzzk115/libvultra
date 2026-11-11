@@ -10,7 +10,7 @@ All serialized-data and file-format versions remain **1** before a release, with
 
 | Area | What is missing | Acceptance |
 | --- | --- | --- |
-| VRI | The library still pins VRI by commit with local patches as the default. Those patches exist as upstream branches. | Pin a VRI release that contains them and delete `external/vri/*.patch`. |
+| VRI | The library still pins VRI by commit with local patches as the default. Those patches are open as pull requests 26 to 29 of zzxzzk115/VRI. | Pin a VRI release that contains them and delete `external/vri/*.patch`. |
 | Scene resources | Render paths provide only `scene.hdr` and `scene.depth`. Normals, albedo, motion vectors, camera jitter and previous-frame matrices have no standard names yet. | Named, documented resources with format and convention, provided by `ForwardPath` and checked by `validateSceneResources()`. |
 | Render graph resources | Textures are single-mip, single-layer 2D with whole-resource state. | Mip chains, arrays and cubes with matching views, initialization and per-subresource barriers; regressions for each. |
 | Async compute | One compute queue; the per-pass profiler covers single-batch plans only. | Profiling across batches; a regression with several compute batches in one frame. |
