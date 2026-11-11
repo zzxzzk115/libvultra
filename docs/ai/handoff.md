@@ -77,7 +77,8 @@ judged by a person.
 ## Known gaps
 
 See [roadmap](../roadmap.md). In short: standard scene resources beyond HDR and depth, subresource support in
-the graph, profiling across batches, an optimized builtin shader pack, XR controller input and mesh LOD.
+the graph, profiling across batches, XR controller input and mesh LOD. Optimizing the builtin shader pack was measured
+and not adopted; the roadmap records the numbers.
 
 ## Local state
 
