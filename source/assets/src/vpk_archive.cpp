@@ -126,7 +126,7 @@ namespace vultra
         const std::u8string utf8(text.begin(), text.end());
         const auto          path = std::filesystem::path(utf8);
         if (text.empty() || text.find(char(0)) != std::string_view::npos || text.find('\\') != std::string_view::npos ||
-            path.is_absolute() || path.has_root_name())
+            path.is_absolute() || path.has_root_name() || path.has_root_directory())
         {
             throw std::invalid_argument("VPK path must be relative");
         }
