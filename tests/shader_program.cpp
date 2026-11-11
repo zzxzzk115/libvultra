@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <thread>
 #include <stdexcept>
 
 namespace
@@ -176,6 +177,82 @@ void computeMain(uint3 id : SV_DispatchThreadID)
             require(shader.threadGroup == std::array<uint32_t, 3> {8, 4, 1}, "Thread group size changed");
         }
     }
+
+    // An edited source file reaches a live pipeline through the file watcher; a broken edit keeps the last one.
+    void watchedReload(const std::filesystem::path& root)
+    {
+        using namespace vultra;
+        using namespace std::chrono_literals;
+        const auto directory = root / "watched";
+        std::filesystem::create_directories(directory);
+        const auto file  = directory / "kernel.slang";
+        const auto write = [&](const char* body)
+        {
+            std::ofstream(file, std::ios::trunc)
+                << "[shader(\"compute\")] [numthreads(1, 1, 1)] void main() { " << body << " }\n";
+        };
+        write("");
+        Device                      device;
+        VriPipelineLayout*          layout = nullptr;
+        const VriPipelineLayoutDesc layoutDesc {};
+        check(device.core.CreatePipelineLayout(device.handle, &layoutDesc, &layout), "Watched reload layout");
+        {
+            ShaderPipeline pipeline(device,
+                                    file,
+                                    {{"main", VriShaderStage_Compute}},
+                                    [&](std::span<const VriShaderDesc> shaders)
+                                    {
+                                        VriPipeline*                 result = nullptr;
+                                        const VriComputePipelineDesc desc {layout, shaders[0], device.pipelineCache};
+                                        check(device.core.CreateComputePipeline(device.handle, &desc, &result),
+                                              "Watched reload pipeline");
+                                        return result;
+                                    });
+            // Polls like a frame loop until the pipeline reacts to the edit or the time is up.
+            const auto pollUntil = [&](auto&& done)
+            {
+                const auto deadline = std::chrono::steady_clock::now() + 5s;
+                while (std::chrono::steady_clock::now() < deadline)
+                {
+                    const bool reloaded = pipeline.poll();
+                    if (done(reloaded))
+                    {
+                        return true;
+                    }
+                    std::this_thread::sleep_for(16ms);
+                }
+                return false;
+            };
+            const auto generation = pipeline.generation();
+            require(!pipeline.poll(), "An unedited shader reloaded");
+            write("int edited = 1;");
+            require(pollUntil(
+                        [](bool reloaded)
+                        {
+                            return reloaded;
+                        }) &&
+                        pipeline.generation() == generation + 1 && pipeline.diagnostics().empty(),
+                    "An edited shader file did not reload its pipeline");
+            auto* handle = pipeline.handle();
+            write("this is not slang;");
+            require(pollUntil(
+                        [&](bool)
+                        {
+                            return !pipeline.diagnostics().empty();
+                        }) &&
+                        pipeline.handle() == handle && pipeline.generation() == generation + 1,
+                    "A broken shader edit replaced the last valid pipeline");
+            write("int repaired = 2;");
+            require(pollUntil(
+                        [](bool reloaded)
+                        {
+                            return reloaded;
+                        }) &&
+                        pipeline.generation() == generation + 2 && pipeline.diagnostics().empty(),
+                    "A repaired shader file did not recover");
+        }
+        device.core.DestroyPipelineLayout(layout);
+    }
 } // namespace
 
 int main()
@@ -188,6 +265,7 @@ try
     fs::create_directories(root / "source");
     resourceViews(root);
     userAttributes(root);
+    watchedReload(root);
     const auto source = root / "source/triangle.slang";
     const auto cooked = root / "source/triangle.vshaderc";
     fs::copy_file("examples/offline/shaders/triangle.slang", source);

@@ -72,7 +72,8 @@ target("vultra")
             add_files("platform/src/linux/file.cpp", "platform/src/web/input.cpp")
         end
         if desktop then
-            add_files("platform/src/os/window.cpp", "platform/src/sdl3/**.cpp")
+            add_files("platform/src/os/window.cpp", "platform/src/os/file_watcher.cpp", "platform/src/sdl3/**.cpp")
+            add_deps("filewatch")
             add_packages("libsdl3", {public = true})
             -- Window surfaces are described with VRI's native-window types.
             add_packages("vri", {public = true})
@@ -115,7 +116,6 @@ target("vultra")
         add_files("shader/src/builtin_pack.cpp")
         add_files("shader/src/shader_compiler.cpp", "shader/src/shader_cache.cpp",
                   "shader/src/shader_program_compile.cpp", "shader/src/shader_reflection.cpp")
-        add_deps("filewatch")
         add_packages("slang-static", {public = true})
         add_includedirs("$(builddir)/generated/shaders")
         before_build(function (target)

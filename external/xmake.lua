@@ -87,7 +87,7 @@ if features.gpu and not is_plat("wasm") then
     target_end()
 end
 
-if shader_compiler then
+if desktop and features.platform then
     target("filewatch")
         set_kind("headeronly")
         set_default(false)

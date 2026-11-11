@@ -8,24 +8,12 @@
 #include <vultra/shader/shader_pipeline.hpp>
 
 #ifdef VULTRA_WITH_SHADER_COMPILER
+#include <vultra/platform/os/file_watcher.hpp>
 #include <vultra/shader/shader_compiler.hpp>
-
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4005 4068) // upstream FileWatch macros and #pragma mark
-#endif
-#include <FileWatch.hpp>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-
 #endif
 
 #include <xxhash.h>
 
-#include <atomic>
-#include <chrono>
-#include <map>
 #include <set>
 
 namespace vultra
@@ -33,73 +21,15 @@ namespace vultra
 #ifdef VULTRA_WITH_SHADER_COMPILER
     struct ShaderPipeline::Watch
     {
-        std::atomic<uint64_t>                 revision {0};
-        uint64_t                              observed = 0;
-        bool                                  pending  = false;
-        std::chrono::steady_clock::time_point changed {};
-        std::set<std::filesystem::path>       roots;
-        std::set<std::filesystem::path>       dependencyDirectories;
-        // Destroy first: FileWatch joins its threads before callback state is destroyed.
-        std::map<std::filesystem::path, std::unique_ptr<filewatch::FileWatch<std::string>>> watchers;
+        std::set<std::filesystem::path> roots;
+        std::set<std::filesystem::path> dependencyDirectories;
+        FileWatcher                     watcher;
 
         void refreshDirectories()
         {
-            std::set<std::filesystem::path> directories = roots;
-            for (const auto& directory : dependencyDirectories)
-            {
-                if (std::filesystem::is_directory(directory))
-                {
-                    directories.insert(directory);
-                }
-            }
-#if defined(__linux__)
-            // inotify watches one directory; FileWatch's Windows backend already watches subtrees.
-            for (const auto& root : roots)
-            {
-                for (auto entry = std::filesystem::recursive_directory_iterator(root);
-                     entry != std::filesystem::recursive_directory_iterator();
-                     ++entry)
-                {
-                    if (!entry->is_directory())
-                    {
-                        continue;
-                    }
-                    const auto name = entry->path().filename();
-                    if (name == "build" || name == ".git" || name == ".vultra")
-                    {
-                        entry.disable_recursion_pending();
-                        continue;
-                    }
-                    directories.insert(entry->path());
-                }
-            }
-#endif
-            std::erase_if(watchers,
-                          [&](const auto& entry)
-                          {
-                              return !directories.contains(entry.first);
-                          });
-            for (const auto& directory : directories)
-            {
-                if (!watchers.contains(directory))
-                {
-                    auto watcher = std::make_unique<filewatch::FileWatch<std::string>>(
-                        directory.string(),
-                        [this](const std::string& path, filewatch::Event)
-                        {
-                            const std::filesystem::path changed(path);
-                            for (const auto& part : changed)
-                            {
-                                if (part == "build" || part == ".git" || part == ".vultra")
-                                {
-                                    return;
-                                }
-                            }
-                            revision.fetch_add(1, std::memory_order_relaxed);
-                        });
-                    watchers.emplace(directory, std::move(watcher));
-                }
-            }
+            std::vector<std::filesystem::path> directories(roots.begin(), roots.end());
+            directories.insert(directories.end(), dependencyDirectories.begin(), dependencyDirectories.end());
+            watcher.watch(directories);
         }
     };
 
@@ -195,19 +125,11 @@ namespace vultra
         {
             return false;
         }
-        const auto revision = m_Watch->revision.load(std::memory_order_relaxed);
-        const auto now      = std::chrono::steady_clock::now();
-        if (revision != m_Watch->observed)
-        {
-            m_Watch->observed = revision;
-            m_Watch->changed  = now;
-            m_Watch->pending  = true;
-        }
-        if (!m_Watch->pending || now - m_Watch->changed < std::chrono::milliseconds(150))
+        // Any change under the watched shader directories may be an include of this program.
+        if (m_Watch->watcher.poll().empty())
         {
             return false;
         }
-        m_Watch->pending = false;
         m_Watch->refreshDirectories();
         return reload();
 #else
