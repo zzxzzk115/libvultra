@@ -52,13 +52,6 @@ option("libvultra_example_pack")
     set_description("Host-cooked VPK embedded in Web examples that load shader programs")
 option_end()
 
-option("libvultra_window_backend")
-    set_default("glfw")
-    set_values("glfw", "sdl3")
-    set_showmenu(true)
-    set_description("Desktop window and input backend")
-option_end()
-
 option("libvultra_shader_compiler")
     set_default(true)
     set_showmenu(true)

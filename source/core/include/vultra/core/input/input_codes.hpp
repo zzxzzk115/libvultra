@@ -5,7 +5,7 @@
 
 namespace vultra
 {
-    // Framework codes, independent of GLFW keys and SDL scancodes.
+    // Framework codes, independent of SDL scancodes.
     enum class KeyCode : uint16_t
     {
         eUnknown,

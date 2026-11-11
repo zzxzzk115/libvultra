@@ -1,5 +1,4 @@
 local features = vultraFeatures()
-local window_backend = get_config("libvultra_window_backend") or "glfw"
 local desktop = not is_plat("android", "wasm")
 local shader_compiler = features.shader and has_config("libvultra_shader_compiler")
 local asset_import = features.assets and has_config("libvultra_asset_import")
@@ -19,11 +18,7 @@ if features.platform then
         add_requires("nativefiledialog-extended v1.3.0", {configs = {portal = true}})
     end
     if desktop then
-        if window_backend == "sdl3" then
-            add_requires("libsdl3 3.4.0")
-        else
-            add_requires("glfw 3.4", {configs = {wayland = is_plat("linux")}})
-        end
+        add_requires("libsdl3 3.4.0")
     end
 end
 
@@ -59,11 +54,8 @@ end
 
 if features.ui then
     add_requires("imgui v1.92.5-docking", {
-        configs = {glfw = desktop and window_backend == "glfw", sdl3 = desktop and window_backend == "sdl3"}
+        configs = {sdl3 = desktop}
     })
-    if desktop and window_backend == "glfw" then
-        add_requireconfs("imgui.glfw", {configs = {wayland = is_plat("linux")}})
-    end
 end
 
 if features.xr then

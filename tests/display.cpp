@@ -179,9 +179,15 @@ namespace
         device.core.CmdEndRendering(cmd);
         frame.submitAndWait();
         const auto image = readback(device, target);
-        require(image.rgba[(30 * 640 + 30) * 4] > 0.99f, "GUI clipping did not scale with the framebuffer");
-        require(image.rgba[(15 * 640 + 15) * 4] == 0 && image.rgba[(45 * 640 + 45) * 4] == 0,
-                "GUI clipping leaked outside the scaled rectangle");
+        // The window's logical size includes the display content scale, so derive the expected pixels from it.
+        const float scale  = 640.0f / float(window.size().width);
+        const auto  sample = [&](float logical)
+        {
+            const auto pixel = size_t(logical * scale);
+            return image.rgba[(pixel * 640 + pixel) * 4];
+        };
+        require(sample(15) > 0.99f, "GUI clipping did not scale with the framebuffer");
+        require(sample(7) == 0 && sample(23) == 0, "GUI clipping leaked outside the scaled rectangle");
     }
 
     void testMirror()

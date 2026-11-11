@@ -44,7 +44,7 @@ namespace vultra
             return m_Input;
         }
 
-        // Used only at the platform boundary: GLFWwindow* or SDL_Window* for the selected backend.
+        // Used only at the platform boundary: the SDL_Window*.
         void* handle() const
         {
             return m_Window;
@@ -61,7 +61,7 @@ namespace vultra
         std::string m_Title;
         std::string m_TitleSuffix;
         Input       m_Input;
-        // SDL dispatches queued events to the owning GUI context; GLFW uses callback chaining.
+        // SDL dispatches queued events to the owning GUI context.
         std::function<void(const void*)> m_GuiEventHandler;
     };
 } // namespace vultra

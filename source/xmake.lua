@@ -1,6 +1,5 @@
 local vultra_root = path.directory(os.scriptdir())
 local features = vultraFeatures()
-local window_backend = get_config("libvultra_window_backend") or "glfw"
 -- Android and Web hosts own their surface; only desktop platforms build a window backend.
 local desktop = not is_plat("android", "wasm")
 local shader_compiler = features.shader and has_config("libvultra_shader_compiler")
@@ -73,9 +72,8 @@ target("vultra")
             add_files("platform/src/linux/file.cpp", "platform/src/web/input.cpp")
         end
         if desktop then
-            add_files("platform/src/os/window.cpp", "platform/src/" .. window_backend .. "/**.cpp")
-            add_defines("VULTRA_WINDOW_" .. window_backend:upper(), {public = true})
-            add_packages(window_backend == "sdl3" and "libsdl3" or "glfw", {public = true})
+            add_files("platform/src/os/window.cpp", "platform/src/sdl3/**.cpp")
+            add_packages("libsdl3", {public = true})
             -- Window surfaces are described with VRI's native-window types.
             add_packages("vri", {public = true})
         end
@@ -183,7 +181,7 @@ target("vultra")
         add_packages("imgui", {public = true})
         if desktop then
             add_defines("VULTRA_EDITOR_GUI_WINDOW")
-            add_files("ui/src/editor_gui_viewports.cpp", "ui/src/" .. window_backend .. "/**.cpp")
+            add_files("ui/src/editor_gui_viewports.cpp", "ui/src/sdl3/**.cpp")
         end
     end
 
