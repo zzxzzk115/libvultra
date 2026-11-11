@@ -76,7 +76,7 @@ if selected.offline then
         end
         set_rundir("$(projectdir)")
     target_end()
-    if features.shader and not is_plat("android", "wasm") then
+    if features.shader and has_config("libvultra_shader_compiler") and not is_plat("android", "wasm") then
         target("example-offline-cook")
             set_kind("binary")
             set_default(false)

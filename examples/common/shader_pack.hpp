@@ -1,8 +1,8 @@
 #pragma once
 
+#include <vultra/app/app_launch.hpp>
 #include <vultra/assets/vpk_archive.hpp>
-#include <vultra/drivers/rhi/shader_program.hpp>
-#include <vultra/main/app/app_launch.hpp>
+#include <vultra/shader/shader_program.hpp>
 
 #if defined(__ANDROID__)
 #include <vultra/platform/android/asset.hpp>

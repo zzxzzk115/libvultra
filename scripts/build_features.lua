@@ -1,87 +1,37 @@
--- One dependency closure drives source files, package requirements and standalone targets.
+-- Each feature is one source module (source/<name>); its dependencies are selected automatically.
 local requirements = {
-    foundation = {},
-    random = {"foundation"},
-    math = {"foundation"},
-    json = {"foundation"},
-    input = {"math"},
-    input_actions = {"input", "json"},
-    image = {"foundation"},
-    image_io = {"image"},
-    image_metrics = {"image"},
-    gpu = {"image"},
-    window = {"input"},
-    capture = {"gpu"},
-    swapchain = {"gpu"},
-    render_app = {"swapchain"},
-    desktop = {"render_app", "window", "capture"},
-    android_entry = {"foundation"},
-    android_app = {"render_app", "input", "android_entry", "capture"},
-    web_app = {"render_app", "input"},
+    core = {},
+    platform = {"core"},
+    gpu = {"core", "platform"},
+    shader = {"gpu", "assets"},
     graph = {"gpu"},
-    graph_json = {"graph", "json"},
-    shader_runtime = {"gpu", "json", "asset_source"},
-    shader = {"shader_runtime"},
-    blit = {"shader_runtime"},
-    properties = {"math", "json"},
-    editor_gui = {"gpu", "input", "properties"},
-    asset_source = {"foundation"},
-    texture_values = {"foundation"},
-    asset_values = {"properties", "texture_values"},
-    asset_jobs = {"asset_values"},
-    meshlet_build = {"asset_jobs"},
-    texture_upload = {"gpu", "texture_values"},
-    gpu_scene = {"asset_values", "texture_upload"},
-    scene_prepare = {"gpu_scene", "texture_import", "meshlet_build"},
-    texture_import = {"asset_jobs", "image_io", "asset_source"},
-    asset_import = {"texture_import"},
-    camera = {"input"},
-    render_values = {"math"},
-    rendering = {"render_values", "graph", "gpu_scene", "shader_runtime", "blit", "image_io"},
-    resource_pack = {"asset_source"},
-    benchmark = {"gpu"},
-    dialogs = {"window"},
-    xr = {"desktop"},
-    interactive = {"desktop", "shader", "image_io"},
-    tool_import = {"asset_import"},
-    builtin_pack = {"shader", "resource_pack"},
-    tools = {"tool_import", "shader"}
+    assets = {"core", "platform"},
+    render = {"graph", "shader", "assets"},
+    ui = {"gpu", "platform"},
+    app = {"gpu", "platform"},
+    xr = {"gpu"}
 }
 local root = path.directory(os.scriptdir())
 
 function vultraFeatures()
     local requested = get_config("libvultra_features") or (os.projectdir() == root and "all" or "gpu")
     local selected = {}
-    local visiting = {}
     local failure
     local function enable(name)
-        if failure then
+        if failure or selected[name] then
             return
         end
         if not requirements[name] then
             failure = "Unknown libvultra feature: " .. name
             return
         end
-        if visiting[name] then
-            failure = "Cyclic libvultra feature dependency: " .. name
+        if name == "xr" and not has_config("libvultra_with_openxr") then
+            failure = "The xr feature requires libvultra_with_openxr=true"
             return
         end
-        if selected[name] then
-            return
-        end
-        if name == "xr" then
-            if not has_config("libvultra_with_openxr") then
-                failure = "The xr feature requires libvultra_with_openxr=true"
-                return
-            end
-        end
-        visiting[name] = true
+        selected[name] = true
         for _, dependency in ipairs(requirements[name]) do
             enable(dependency)
-        end
-        visiting[name] = nil
-        if not failure then
-            selected[name] = true
         end
     end
     local count = 0
@@ -90,10 +40,7 @@ function vultraFeatures()
         count = count + 1
         if name == "all" then
             for feature in pairs(requirements) do
-                local android = feature == "android_entry" or feature == "android_app"
-                local web = feature == "web_app"
-                if (not android or is_plat("android")) and (not web or is_plat("wasm")) and
-                   (feature ~= "xr" or has_config("libvultra_with_openxr")) then
+                if feature ~= "xr" or has_config("libvultra_with_openxr") then
                     enable(feature)
                 end
             end
@@ -110,10 +57,6 @@ function vultraFeatures()
         for _, feature in ipairs(required) do
             enable(feature)
         end
-    end
-    -- Detached GUI windows use real swapchains; offscreen GUI never selects a window backend.
-    if selected.editor_gui and selected.window then
-        enable("swapchain")
     end
     return selected, failure
 end

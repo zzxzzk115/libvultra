@@ -1,8 +1,8 @@
 #include <vultra/assets/asset_pipeline.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/drivers/rhi/image_readback.hpp>
-#include <vultra/servers/rendering/scene.hpp>
-#include <vultra/servers/rendering/texture_blit.hpp>
+#include <vultra/gpu/image_readback.hpp>
+#include <vultra/render/scene.hpp>
+#include <vultra/render/texture_blit.hpp>
 
 #include <chrono>
 #include <cmath>

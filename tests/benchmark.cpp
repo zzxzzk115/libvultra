@@ -1,4 +1,4 @@
-#include <vultra/drivers/profiling/benchmark.hpp>
+#include <vultra/gpu/profiling/benchmark.hpp>
 
 #include <array>
 #include <chrono>

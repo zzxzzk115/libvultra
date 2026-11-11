@@ -1,0 +1,13 @@
+#pragma once
+
+#include <vultra/assets/texture_asset.hpp>
+#include <vultra/gpu/resources.hpp>
+
+#include <memory>
+
+namespace vultra
+{
+    // Uploads every authored subresource; the caller must establish completion before replacing a live texture.
+    std::unique_ptr<Texture> uploadTextureAsset(Device& device, const TextureAssetData& data);
+    std::unique_ptr<Texture> uploadTextureAsset(Device& device, const TextureData& data);
+} // namespace vultra

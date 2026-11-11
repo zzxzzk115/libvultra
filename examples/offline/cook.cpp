@@ -1,5 +1,5 @@
 #include <vultra/assets/vpk_archive.hpp>
-#include <vultra/drivers/rhi/shader_compiler.hpp>
+#include <vultra/shader/shader_compiler.hpp>
 
 #include <array>
 #include <iostream>

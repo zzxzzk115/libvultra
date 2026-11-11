@@ -4,9 +4,9 @@
 #include <vultra/assets/asset_source.hpp>
 #include <vultra/assets/vpk_archive.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/servers/rendering/builtin/environment.hpp>
-#include <vultra/servers/rendering/scene.hpp>
-#include <vultra/servers/rendering/texture_blit.hpp>
+#include <vultra/render/environment.hpp>
+#include <vultra/render/scene.hpp>
+#include <vultra/render/texture_blit.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>

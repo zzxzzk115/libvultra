@@ -1,8 +1,8 @@
 #include <vultra/core/base/stable_id.hpp>
-#include <vultra/drivers/rhi/resources.hpp>
-#include <vultra/drivers/rhi/shader_compiler.hpp>
-#include <vultra/drivers/rhi/shader_pipeline.hpp>
+#include <vultra/gpu/resources.hpp>
 #include <vultra/platform/os/file.hpp>
+#include <vultra/shader/shader_compiler.hpp>
+#include <vultra/shader/shader_pipeline.hpp>
 
 #include <nlohmann/json.hpp>
 #include <xxhash.h>

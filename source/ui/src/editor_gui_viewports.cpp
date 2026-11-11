@@ -1,4 +1,4 @@
-#include <vultra/drivers/rhi/swapchain.hpp>
+#include <vultra/gpu/swapchain.hpp>
 #include <vultra/platform/os/window.hpp>
 #include <vultra/ui/editor_gui.hpp>
 

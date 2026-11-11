@@ -3,9 +3,9 @@
 #include "offline.hpp"
 
 #include <vultra/core/base/logger.hpp>
-#include <vultra/drivers/profiling/profiler.hpp>
-#include <vultra/drivers/rhi/image_readback.hpp>
-#include <vultra/servers/rendering/texture_blit.hpp>
+#include <vultra/gpu/image_readback.hpp>
+#include <vultra/gpu/profiling/profiler.hpp>
+#include <vultra/render/texture_blit.hpp>
 
 #include <array>
 #include <cmath>

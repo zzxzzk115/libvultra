@@ -1,7 +1,7 @@
+#include <vultra/render/environment.hpp>
 #include <vultra/render/forward_path.hpp>
-#include <vultra/servers/rendering/builtin/environment.hpp>
-#include <vultra/servers/rendering/builtin/openpbr_luts.hpp>
-#include <vultra/servers/rendering/scene.hpp>
+#include <vultra/render/openpbr_luts.hpp>
+#include <vultra/render/scene.hpp>
 
 #include <algorithm>
 #include <cmath>

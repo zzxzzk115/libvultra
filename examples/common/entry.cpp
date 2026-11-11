@@ -1,5 +1,5 @@
+#include <vultra/app/app_launch.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/main/app/app_launch.hpp>
 
 #if defined(__ANDROID__)
 #include <vultra/platform/android/arguments.hpp>

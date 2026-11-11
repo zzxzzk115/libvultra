@@ -1,4 +1,4 @@
-#include <vultra/drivers/rhi/device.hpp>
+#include <vultra/gpu/device.hpp>
 
 #include <iostream>
 #include <memory>

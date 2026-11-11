@@ -1,6 +1,6 @@
 #include "../common/sample.hpp"
 
-#include <vultra/main/app/platform_app.hpp>
+#include <vultra/app/platform_app.hpp>
 
 class WindowApp final : public vultra::PlatformApp
 {

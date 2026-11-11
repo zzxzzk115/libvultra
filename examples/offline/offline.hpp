@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vultra/assets/vpk_archive.hpp>
-#include <vultra/servers/rendering/graph/graph_definition.hpp>
+#include <vultra/graph/graph_definition.hpp>
 
 #include <filesystem>
 #include <optional>

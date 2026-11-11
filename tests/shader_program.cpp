@@ -1,8 +1,8 @@
 #include "../examples/common/triangle.hpp"
 
-#include <vultra/drivers/rhi/image_readback.hpp>
+#include <vultra/gpu/image_readback.hpp>
+#include <vultra/graph/render_graph.hpp>
 #include <vultra/platform/os/file.hpp>
-#include <vultra/servers/rendering/graph/render_graph.hpp>
 
 #include <nlohmann/json.hpp>
 #include <xxhash.h>

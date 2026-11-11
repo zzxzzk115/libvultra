@@ -1,7 +1,7 @@
 #pragma once
 
-#include <vultra/drivers/rhi/shader_program.hpp>
-#include <vultra/servers/rendering/graph/pass_catalog.hpp>
+#include <vultra/graph/pass_catalog.hpp>
+#include <vultra/shader/shader_program.hpp>
 
 namespace research
 {

@@ -1,5 +1,5 @@
 #pragma once
-#include <vultra/drivers/rhi/resources.hpp>
+#include <vultra/gpu/resources.hpp>
 #include <vultra/platform/input/input.hpp>
 #include <vultra/ui/editor_gui_frame.hpp>
 #include <vultra/ui/editor_gui_inspector.hpp>

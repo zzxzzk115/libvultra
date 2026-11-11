@@ -1,6 +1,6 @@
 #include <vultra/assets/asset_source.hpp>
 #include <vultra/core/image/image.hpp>
-#include <vultra/drivers/rhi/image_readback.hpp>
+#include <vultra/gpu/image_readback.hpp>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>

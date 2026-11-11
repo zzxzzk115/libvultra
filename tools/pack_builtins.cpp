@@ -1,4 +1,4 @@
-#include <vultra/assets/builtin_pack.hpp>
+#include <vultra/shader/builtin_pack.hpp>
 #include <vultra/core/base/logger.hpp>
 
 #include <stdexcept>

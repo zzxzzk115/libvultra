@@ -2,9 +2,9 @@
 #include "../common/sample.hpp"
 #include "../common/shader_pack.hpp"
 
-#include <vultra/drivers/profiling/profiler.hpp>
-#include <vultra/main/app/platform_app.hpp>
-#include <vultra/servers/rendering/graph/render_graph.hpp>
+#include <vultra/app/platform_app.hpp>
+#include <vultra/gpu/profiling/profiler.hpp>
+#include <vultra/graph/render_graph.hpp>
 
 class GraphApp final : public vultra::PlatformApp
 {

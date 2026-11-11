@@ -1,11 +1,11 @@
 #include "../examples/common/debug_lines.hpp"
 #include "support/forward_fixture.hpp"
 
-#include <vultra/main/camera/fps_camera.hpp>
-#include <vultra/main/camera/orbit_camera.hpp>
-#include <vultra/servers/rendering/builtin/environment.hpp>
-#include <vultra/servers/rendering/builtin/tone_mapping_pass.hpp>
-#include <vultra/servers/rendering/scene.hpp>
+#include <vultra/app/camera/fps_camera.hpp>
+#include <vultra/app/camera/orbit_camera.hpp>
+#include <vultra/render/environment.hpp>
+#include <vultra/render/scene.hpp>
+#include <vultra/render/tone_mapping_pass.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/gtc/type_ptr.hpp>

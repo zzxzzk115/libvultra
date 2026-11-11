@@ -2,7 +2,7 @@
 #include "../common/sample.hpp"
 #include "../common/shader_pack.hpp"
 
-#include <vultra/main/app/platform_app.hpp>
+#include <vultra/app/platform_app.hpp>
 
 class TriangleApp final : public vultra::PlatformApp
 {

@@ -1,19 +1,11 @@
--- These are application requirements, not higher-level presets for every example.
-local app = "desktop"
-if is_plat("android") then
-    app = "android_app"
-elseif is_plat("wasm") then
-    app = "web_app"
-end
-local shader = is_plat("android", "wasm") and "shader_runtime" or "shader"
+-- Modules each example uses directly; vultraFeatures() adds their dependencies.
 local examples = {
-    {"basics.window", {app, "image_io"}},
-    {"basics.vri", {app, shader, "image_io", "asset_source"}},
-    {"basics.graph", {app, shader, "graph", "image_io", "asset_source"}},
-    {"basics.mesh-shading", {app, "shader", "image_io"}},
-    {"offline", {is_plat("android") and "shader_runtime" or "shader", "graph_json", "blit", "image_io", "asset_source",
-                  is_plat("android") and "android_entry" or "foundation"}},
-    {"ui", {app, shader, "editor_gui"}}
+    {"basics.window", {"app"}},
+    {"basics.vri", {"app", "shader", "assets"}},
+    {"basics.graph", {"app", "shader", "graph", "assets"}},
+    {"basics.mesh-shading", {"app", "shader"}},
+    {"offline", {"shader", "graph", "assets", "render"}},
+    {"ui", {"app", "shader", "ui"}}
 }
 
 function vultraExamples()

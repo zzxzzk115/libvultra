@@ -1,7 +1,7 @@
 #include "../../examples/common/colored_mesh.hpp"
 
 #include <vultra/assets/vpk_archive.hpp>
-#include <vultra/drivers/rhi/image_readback.hpp>
+#include <vultra/gpu/image_readback.hpp>
 
 #include <algorithm>
 #include <cmath>

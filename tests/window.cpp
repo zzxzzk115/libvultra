@@ -1,8 +1,8 @@
 #include "window_events.hpp"
 
 #include <vultra/core/base/logger.hpp>
-#include <vultra/drivers/rhi/image_readback.hpp>
-#include <vultra/drivers/rhi/swapchain.hpp>
+#include <vultra/gpu/image_readback.hpp>
+#include <vultra/gpu/swapchain.hpp>
 #include <vultra/platform/window.hpp>
 #include <vultra/ui/editor_gui.hpp>
 

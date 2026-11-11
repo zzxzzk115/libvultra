@@ -1,10 +1,10 @@
 #include "../examples/common/colored_mesh.hpp"
 #include "window_events.hpp"
 
-#include <vultra/drivers/rhi/image_readback.hpp>
-#include <vultra/main/app/imgui_app.hpp>
-#include <vultra/main/camera/fps_camera.hpp>
-#include <vultra/main/camera/orbit_camera.hpp>
+#include <vultra/app/camera/fps_camera.hpp>
+#include <vultra/app/camera/orbit_camera.hpp>
+#include <vultra/app/imgui_app.hpp>
+#include <vultra/gpu/image_readback.hpp>
 
 #include <glm/gtc/type_ptr.hpp>
 

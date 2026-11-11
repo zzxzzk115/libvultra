@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vultra/drivers/rhi/image_readback.hpp>
+#include <vultra/gpu/image_readback.hpp>
 #include <vultra/render/forward_path.hpp>
 
 #include <cmath>

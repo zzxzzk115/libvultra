@@ -1,8 +1,8 @@
 #include "support/forward_fixture.hpp"
 
 #include <vultra/assets/asset_pipeline.hpp>
-#include <vultra/servers/rendering/builtin/environment.hpp>
-#include <vultra/servers/rendering/scene.hpp>
+#include <vultra/render/environment.hpp>
+#include <vultra/render/scene.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>

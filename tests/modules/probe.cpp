@@ -6,28 +6,28 @@
 #endif
 
 #include <vultra/core/base/logger.hpp>
+#include <vultra/core/image/image.hpp>
+
+#ifdef TEST_PLATFORM
 #include <vultra/platform/os/file.hpp>
 #include <vultra/platform/os/process.hpp>
-
+#endif
 #ifdef TEST_GPU
-#include <vultra/drivers/profiling/profiler.hpp>
-#include <vultra/drivers/rhi/buffer_upload.hpp>
-#include <vultra/drivers/rhi/image_readback.hpp>
+#include <vultra/gpu/buffer_upload.hpp>
+#include <vultra/gpu/image_readback.hpp>
+#include <vultra/gpu/profiling/profiler.hpp>
 #endif
 #ifdef TEST_GRAPH
-#include <vultra/servers/rendering/graph/pass_catalog.hpp>
+#include <vultra/graph/pass_catalog.hpp>
 #endif
 #ifdef TEST_GRAPH_JSON
-#include <vultra/servers/rendering/graph/graph_definition.hpp>
+#include <vultra/graph/graph_definition.hpp>
 #endif
 #ifdef TEST_DESKTOP
-#include <vultra/main/app/desktop_app.hpp>
-#endif
-#ifdef TEST_IMAGE_IO
-#include <vultra/core/image/image.hpp>
+#include <vultra/app/desktop_app.hpp>
 #endif
 #ifdef TEST_SHADER
-#include <vultra/drivers/rhi/shader_compiler.hpp>
+#include <vultra/shader/shader_compiler.hpp>
 #endif
 
 #include <array>
@@ -291,11 +291,13 @@ try
     const std::filesystem::path directory(argv[1]);
     require(!std::filesystem::exists(directory), "Module probe output directory already exists");
     std::filesystem::create_directories(directory);
+#ifdef TEST_PLATFORM
     const std::string expected = "finite experiment\n";
     writeFileAtomically(directory / "result.txt", std::as_bytes(std::span(expected)));
     std::ifstream     input(directory / "result.txt");
     const std::string actual((std::istreambuf_iterator<char>(input)), {});
-    require(actual == expected && !executablePath().empty(), "Foundation file/process APIs failed");
+    require(actual == expected && !executablePath().empty(), "Platform file/process APIs failed");
+#endif
 #ifdef TEST_GPU
     gpu();
 #endif
@@ -305,12 +307,10 @@ try
 #ifdef TEST_SHADER
     shader(directory);
 #endif
-#ifdef TEST_IMAGE_IO
     const Image image {{2, 2}, {1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1}};
     savePng(image, directory / "image.png");
-    require(loadPng(directory / "image.png").rgba == image.rgba, "Optional image codec round trip failed");
+    require(loadPng(directory / "image.png").rgba == image.rgba, "Image codec round trip failed");
     savePfm(image, directory / "image.pfm");
-#endif
 #ifdef TEST_DESKTOP
     if (std::getenv("VULTRA_MODULE_TEST_WINDOW"))
     {

@@ -16,7 +16,7 @@ end
 option("libvultra_features")
     set_default(is_root and "all" or "gpu")
     set_showmenu(true)
-    set_description("Comma-separated Vultra features; dependencies are selected automatically")
+    set_description("Comma-separated Vultra modules; dependencies are selected automatically")
     after_check(function ()
         assert(not featureError, featureError)
     end)
@@ -57,6 +57,18 @@ option("libvultra_window_backend")
     set_values("glfw", "sdl3")
     set_showmenu(true)
     set_description("Desktop window and input backend")
+option_end()
+
+option("libvultra_shader_compiler")
+    set_default(true)
+    set_showmenu(true)
+    set_description("Build the Slang compiler and shader hot reload; when off, shader loads cooked programs only")
+option_end()
+
+option("libvultra_asset_import")
+    set_default(true)
+    set_showmenu(true)
+    set_description("Build model/texture importers, meshlet build and import jobs; when off, assets is values and VPK")
 option_end()
 
 option("libvultra_with_openxr")
@@ -145,12 +157,18 @@ includes("examples/selection.lua")
 includes("scripts/build_features.lua")
 local features
 features, featureError = vultraFeatures()
+local shader_compiler = features.shader and has_config("libvultra_shader_compiler")
+local asset_import = features.assets and has_config("libvultra_asset_import")
 if has_config("libvultra_build_tests") then
-    for _, name in ipairs({"rendering", "editor_gui", "graph_json", "benchmark", "tools", "camera", "random", "input_actions"}) do
+    for _, name in ipairs({"render", "ui", "app"}) do
         if not features[name] then
             featureError = featureError or ("Repository tests require feature '" .. name ..
                            "'; select all or disable libvultra_build_tests")
         end
+    end
+    if not (shader_compiler and asset_import) then
+        featureError = featureError or
+                       "Repository tests require libvultra_shader_compiler and libvultra_asset_import"
     end
 end
 
@@ -160,10 +178,10 @@ includes("external")
 -- include source
 includes("source")
 if is_root then
-    if features.tool_import or features.shader or features.builtin_pack then
+    if asset_import or shader_compiler then
         includes("tools")
     end
-    if features.builtin_pack then
+    if shader_compiler and features.assets then
         includes("builtin")
     end
 end

@@ -18,7 +18,7 @@ target("platform-vpk-memory")
     end
 target_end()
 
-if features.shader and not is_plat("wasm", "android") then
+if features.shader and has_config("libvultra_shader_compiler") and not is_plat("wasm", "android") then
     target("platform-pack")
         set_kind("binary")
         add_deps("vultra")
@@ -27,7 +27,7 @@ if features.shader and not is_plat("wasm", "android") then
 end
 
 if get_config("platform_pack") then
-    if features.shader_runtime and not is_plat("android") then
+    if features.shader and not is_plat("android") then
         target("platform-shader-runtime")
             set_kind("binary")
             add_deps("vultra")

@@ -1,4 +1,4 @@
-#include <vultra/drivers/rhi/image_readback.hpp>
+#include <vultra/gpu/image_readback.hpp>
 #include <vultra/ui/editor_gui.hpp>
 
 #include <iostream>

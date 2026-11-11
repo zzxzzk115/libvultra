@@ -1,7 +1,7 @@
 #pragma once
 
-#include <vultra/drivers/rhi/shader_pipeline.hpp>
 #include <vultra/render/render_path.hpp>
+#include <vultra/shader/shader_pipeline.hpp>
 
 #include <array>
 #include <memory>

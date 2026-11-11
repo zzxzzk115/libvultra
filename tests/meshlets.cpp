@@ -1,4 +1,4 @@
-#include <vultra/servers/rendering/scene.hpp>
+#include <vultra/render/scene.hpp>
 
 #include <algorithm>
 #include <iostream>

@@ -1,6 +1,6 @@
 #include "colored_mesh.hpp"
 
-#include <vultra/drivers/rhi/buffer_upload.hpp>
+#include <vultra/gpu/buffer_upload.hpp>
 
 #include <algorithm>
 #include <cstddef>

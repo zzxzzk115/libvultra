@@ -1,6 +1,6 @@
+#include <vultra/app/imgui_app.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/drivers/rhi/image_readback.hpp>
-#include <vultra/main/app/imgui_app.hpp>
+#include <vultra/gpu/image_readback.hpp>
 
 #include <cmath>
 #include <string>

@@ -1,7 +1,7 @@
 #include "../common/colored_mesh.hpp"
 #include "../common/sample.hpp"
 
-#include <vultra/main/app/imgui_app.hpp>
+#include <vultra/app/imgui_app.hpp>
 
 #include <imgui.h>
 

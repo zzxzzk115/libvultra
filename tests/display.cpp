@@ -1,10 +1,10 @@
 #include "../examples/common/colored_mesh.hpp"
 #include "../examples/common/triangle.hpp"
 
+#include <vultra/app/imgui_app.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/drivers/rhi/image_readback.hpp>
-#include <vultra/main/app/imgui_app.hpp>
-#include <vultra/servers/rendering/texture_blit.hpp>
+#include <vultra/gpu/image_readback.hpp>
+#include <vultra/render/texture_blit.hpp>
 
 #include <cmath>
 

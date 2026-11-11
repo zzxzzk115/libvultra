@@ -1,6 +1,6 @@
 #pragma once
-#include <vultra/drivers/rhi/resources.hpp>
-#include <vultra/drivers/rhi/shader_pipeline.hpp>
+#include <vultra/gpu/resources.hpp>
+#include <vultra/shader/shader_pipeline.hpp>
 
 #include <array>
 

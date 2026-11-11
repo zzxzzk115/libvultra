@@ -1,6 +1,6 @@
 #include "color_gain.hpp"
 
-#include <vultra/drivers/rhi/shader_pipeline.hpp>
+#include <vultra/shader/shader_pipeline.hpp>
 
 #include <array>
 #include <stdexcept>

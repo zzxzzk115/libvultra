@@ -1,5 +1,5 @@
 #include <vultra/assets/asset_source.hpp>
-#include <vultra/drivers/rhi/image_readback.hpp>
+#include <vultra/gpu/image_readback.hpp>
 
 #include <algorithm>
 #include <array>

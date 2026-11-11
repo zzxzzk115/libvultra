@@ -1,8 +1,8 @@
 #include "../examples/offline/color_gain.hpp"
 
-#include <vultra/drivers/rhi/image_readback.hpp>
-#include <vultra/servers/rendering/builtin/tone_mapping_pass.hpp>
-#include <vultra/servers/rendering/graph/graph_definition.hpp>
+#include <vultra/gpu/image_readback.hpp>
+#include <vultra/graph/graph_definition.hpp>
+#include <vultra/render/tone_mapping_pass.hpp>
 
 #include <array>
 #include <chrono>

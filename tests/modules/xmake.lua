@@ -5,38 +5,28 @@ add_rules("plugin.compile_commands.autoupdate", {outputdir = "$(builddir)"})
 includes("../..")
 
 local features = vultraFeatures()
-if features.builtin_pack then
-    target("module-builtin-pack")
-        set_kind("binary")
-        add_deps("vultra")
-        add_files("../../tools/pack_builtins.cpp")
-    target_end()
-end
+local shader_compiler = features.shader and has_config("libvultra_shader_compiler")
+local asset_import = features.assets and has_config("libvultra_asset_import")
 
-if features.random then
-    target("module-random")
-        set_kind("binary")
-        add_deps("vultra")
-        add_files("../random.cpp")
-    target_end()
-end
-if features.meshlet_build then
-    target("module-meshlet-build")
-        set_kind("binary")
-        add_deps("vultra")
-        add_files("../meshlet_data.cpp")
-    target_end()
-end
 target("module-probe")
     set_kind("binary")
     add_deps("vultra")
     add_files("probe.cpp")
-    for _, name in ipairs({"gpu", "graph", "graph_json", "shader", "desktop", "image_io"}) do
+    for _, name in ipairs({"platform", "gpu", "graph"}) do
         if features[name] then
             add_defines("TEST_" .. name:upper())
         end
     end
-    if features.graph and features.shader then
+    if features.graph then
+        add_defines("TEST_GRAPH_JSON")
+    end
+    if shader_compiler then
+        add_defines("TEST_SHADER")
+    end
+    if features.app and not is_plat("android", "wasm") then
+        add_defines("TEST_DESKTOP")
+    end
+    if features.graph and shader_compiler then
         add_defines("TEST_GRAPH_SHADER")
         add_files("../../examples/offline/color_gain.cpp")
     end
@@ -66,7 +56,7 @@ target("module-probe")
     end)
 target_end()
 
-if features.editor_gui and features.image_io then
+if features.ui then
     target("module-gui")
         set_kind("binary")
         add_deps("vultra")
@@ -79,16 +69,7 @@ if features.editor_gui and features.image_io then
     target_end()
 end
 
-if features.properties then
-    target("module-property-schema")
-        set_kind("binary")
-        add_deps("vultra")
-        add_packages("nlohmann_json")
-        add_files("../property_schema.cpp")
-    target_end()
-end
-
-if features.rendering and features.asset_import and features.shader then
+if features.render and asset_import and shader_compiler then
     target("module-rendering")
         set_kind("binary")
         add_deps("vultra", "openpbr")
@@ -96,15 +77,7 @@ if features.rendering and features.asset_import and features.shader then
     target_end()
 end
 
-if features.asset_import then
-    target("module-import")
-        set_kind("binary")
-        add_deps("vultra")
-        add_files("import.cpp")
-    target_end()
-end
-
-if features.asset_source then
+if features.assets then
     target("module-vpk-memory")
         set_kind("binary")
         add_deps("vultra")
@@ -117,3 +90,23 @@ if features.asset_source then
     target_end()
 end
 
+if asset_import then
+    target("module-import")
+        set_kind("binary")
+        add_deps("vultra")
+        add_files("import.cpp")
+    target_end()
+    target("module-meshlet-build")
+        set_kind("binary")
+        add_deps("vultra")
+        add_files("../meshlet_data.cpp")
+    target_end()
+end
+
+if features.assets and shader_compiler then
+    target("module-builtin-pack")
+        set_kind("binary")
+        add_deps("vultra")
+        add_files("../../tools/pack_builtins.cpp")
+    target_end()
+end

@@ -1,8 +1,8 @@
 #pragma once
 
 #include <vultra/core/math/render_camera.hpp>
-#include <vultra/servers/rendering/builtin/render_light.hpp>
-#include <vultra/servers/rendering/graph/render_graph.hpp>
+#include <vultra/graph/render_graph.hpp>
+#include <vultra/render/render_light.hpp>
 
 #include <span>
 #include <string>

@@ -1,7 +1,7 @@
 #include <vultra/core/base/command_line.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/drivers/rhi/shader_program.hpp>
 #include <vultra/platform/os/file.hpp>
+#include <vultra/shader/shader_program.hpp>
 
 #include <nlohmann/json.hpp>
 

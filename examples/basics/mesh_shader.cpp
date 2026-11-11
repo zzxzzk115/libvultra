@@ -1,7 +1,7 @@
 #include "../common/sample.hpp"
 
-#include <vultra/drivers/rhi/shader_pipeline.hpp>
-#include <vultra/main/app/desktop_app.hpp>
+#include <vultra/app/desktop_app.hpp>
+#include <vultra/shader/shader_pipeline.hpp>
 
 #include <vri/ext/vri_ext_meshshader.h>
 
