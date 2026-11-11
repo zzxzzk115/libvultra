@@ -239,13 +239,12 @@ namespace vultra
                 options.push_back(option);
             }
         }
-#ifndef NDEBUG
         slang::CompilerOptionEntry debugInfo {};
-        debugInfo.name            = slang::CompilerOptionName::DebugInformation;
-        debugInfo.value.kind      = slang::CompilerOptionValueKind::Int;
-        debugInfo.value.intValue0 = SLANG_DEBUG_INFO_LEVEL_STANDARD;
+        debugInfo.name       = slang::CompilerOptionName::DebugInformation;
+        debugInfo.value.kind = slang::CompilerOptionValueKind::Int;
+        debugInfo.value.intValue0 =
+            compileOptions.debugInfo ? SLANG_DEBUG_INFO_LEVEL_STANDARD : SLANG_DEBUG_INFO_LEVEL_NONE;
         options.push_back(debugInfo);
-#endif
         auto capabilities = compileOptions.capabilities;
         if (rayQuery)
         {
@@ -425,9 +424,9 @@ namespace vultra
             diagnostics.setNull();
             const auto syntheticPath = source.parent_path() / (linkSource.name + ".slang");
             auto*      linkedModule  = session->loadModuleFromSourceString(linkSource.name.c_str(),
-                                                                           syntheticPath.string().c_str(),
-                                                                           linkSource.value.c_str(),
-                                                                           diagnostics.writeRef());
+                                                                     syntheticPath.string().c_str(),
+                                                                     linkSource.value.c_str(),
+                                                                     diagnostics.writeRef());
             diagnose(linkedModule ? SLANG_OK : SLANG_FAIL, diagnostics, "Load link-time Slang source");
             components.push_back(linkedModule);
         }

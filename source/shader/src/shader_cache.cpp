@@ -50,6 +50,7 @@ namespace vultra::detail
                   {"profile", options.profile},
                   {"ray_query", options.rayQuery},
                   {"capabilities", options.capabilities},
+                  {"debug_info", options.debugInfo},
                   {"entries", Json::array()},
                   {"includes", Json::array()},
                   {"modules", Json::array()},
