@@ -1051,9 +1051,17 @@ namespace vultra
             {
                 continue;
             }
-            output << "  R" << r << " [shape=box, style=\"rounded,filled\", fillcolor="
-                   << (entry.firstUse == UINT32_MAX ? "gray90" : (entry.imported ? "lightgreen" : "skyblue"))
-                   << ", label=\"" << dotLabel(entry.name) << "\\n";
+            const char* color = "skyblue";
+            if (entry.firstUse == UINT32_MAX)
+            {
+                color = "gray90";
+            }
+            else if (entry.imported)
+            {
+                color = "lightgreen";
+            }
+            output << "  R" << r << " [shape=box, style=\"rounded,filled\", fillcolor=" << color << ", label=\""
+                   << dotLabel(entry.name) << "\\n";
             if (entry.isTexture)
             {
                 output << entry.textureDesc.width << "x" << entry.textureDesc.height;

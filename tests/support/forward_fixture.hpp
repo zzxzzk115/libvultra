@@ -38,14 +38,14 @@ namespace support
 
         ForwardFixture(vultra::Device& device, vultra::GpuScene& scene, vultra::Environment& environment) :
             path(device),
-            m_Scene(scene),
-            m_Environment(environment)
+            scene(scene),
+            environment(environment)
         {
         }
 
         Outputs addPasses(vultra::RenderGraph& graph, vultra::Extent size)
         {
-            const auto resources = path.addPasses(graph, m_Scene, m_Environment, size);
+            const auto resources = path.addPasses(graph, scene, environment, size);
             vultra::validateSceneResources(path, resources, graph);
             return {vultra::findSceneResource(resources, vultra::kSceneHdr),
                     vultra::findSceneResource(resources, vultra::kSceneDepth)};
@@ -63,8 +63,8 @@ namespace support
 
         vultra::ForwardPath  path;
         Settings             settings;
-        vultra::GpuScene&    m_Scene;
-        vultra::Environment& m_Environment;
+        vultra::GpuScene&    scene;
+        vultra::Environment& environment;
     };
 
     // Renders one completed frame and returns the checked scene.hdr readback.
