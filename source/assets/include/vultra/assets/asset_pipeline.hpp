@@ -17,6 +17,8 @@ namespace vultra
 
     // Source files stay untouched. Changed dependencies/options invalidate the derived cache.
     // A rejected cache is logged and rebuilt; importer errors remain errors.
+    // A cache made through an asset source names files relative to the source's root: it remains current when
+    // the root directory and the cache directory are moved together. Without one, it names absolute paths.
     ImportedAsset importAsset(const std::filesystem::path& source,
                               const AssetImportOptions&    options     = {},
                               const AssetSource*           assetSource = nullptr);

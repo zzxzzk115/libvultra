@@ -514,6 +514,27 @@ try
     const auto cold        = vultra::importAsset(model, options);
     const auto warm        = vultra::importAsset(model, options);
     require(!cold.cacheHit && warm.cacheHit, "FBX/DDS asset cache did not hit");
+    {
+        // A cache made through an asset source moves with its root, as a packed project does.
+        const auto first  = root / "relocated" / "first";
+        const auto second = root / "relocated" / "second";
+        std::filesystem::create_directories(first / "assets");
+        std::filesystem::copy_file(model, first / "assets" / "model.fbx");
+        std::filesystem::copy_file(colorPath, first / "assets" / "color.dds");
+        auto relocated = options;
+        {
+            const vultra::AssetSource source(first);
+            relocated.cacheDirectory = first / "cache";
+            require(!vultra::importAsset("assets/model.fbx", relocated, &source).cacheHit,
+                    "A new asset source started with a cache hit");
+        }
+        std::filesystem::rename(first, second);
+        const vultra::AssetSource source(second);
+        relocated.cacheDirectory = second / "cache";
+        require(vultra::isAssetCacheCurrent("assets/model.fbx", relocated, &source) &&
+                    vultra::importAsset("assets/model.fbx", relocated, &source).cacheHit,
+                "An asset cache did not survive moving its source root");
+    }
     sameScene(cold.scene, warm.scene);
     const auto slot = warm.textures.materials[0][0];
     require(warm.textures.images[slot].levels[0].bytes == cold.textures.images[slot].levels[0].bytes,

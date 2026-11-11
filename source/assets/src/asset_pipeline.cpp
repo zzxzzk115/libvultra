@@ -42,10 +42,22 @@ namespace vultra
             return std::format("{:016x}", XXH3_64bits(bytes.data(), bytes.size()));
         }
 
-        Json importRecipe(const std::filesystem::path& source, const AssetImportOptions& options)
+        // The name a source file has inside a cache. Through an asset source it is relative to the source's
+        // root, so the cache stays current when that root moves, as it does for a packed project.
+        std::string cacheName(const std::filesystem::path& path, const AssetSource* assetSource)
+        {
+            if (assetSource)
+            {
+                return pathText(assetSource->resolve(path).lexically_relative(assetSource->root()));
+            }
+            return pathText(std::filesystem::canonical(path));
+        }
+
+        Json
+        importRecipe(const std::filesystem::path& source, const std::string& name, const AssetImportOptions& options)
         {
             Json recipe {{"version", kPipelineVersion},
-                         {"source", pathText(source)},
+                         {"source", name},
                          {"mipmaps", options.textures.mipmaps},
                          {"compression", int(options.textures.compression)},
                          {"bc7_encoder", "bc7e-ispc-fast-v1"}};
@@ -309,7 +321,7 @@ namespace vultra
             return false;
         }
         const auto source    = assetSource ? assetSource->resolve(input) : std::filesystem::canonical(input);
-        const auto recipe    = importRecipe(source, options);
+        const auto recipe    = importRecipe(source, cacheName(input, assetSource), options);
         const auto cachePath = cacheFilePath(source, recipe, options);
         if (!std::filesystem::is_regular_file(cachePath))
         {
@@ -335,7 +347,7 @@ namespace vultra
     {
         const auto started   = std::chrono::steady_clock::now();
         const auto source    = assetSource ? assetSource->resolve(input) : std::filesystem::canonical(input);
-        const auto recipe    = importRecipe(source, options);
+        const auto recipe    = importRecipe(source, cacheName(input, assetSource), options);
         const auto cachePath = cacheFilePath(source, recipe, options);
         Logger::core().info("Importing asset: {}", pathText(input));
         Logger::core().info("Loading geometry, materials and source images...");
@@ -345,8 +357,8 @@ namespace vultra
         const SourceObserver               observer =
             [&files, &lastReadLog, assetSource](const auto& path, std::span<const std::byte> bytes)
         {
-            const auto name = pathText(assetSource ? assetSource->resolve(path) : std::filesystem::canonical(path));
-            const auto hash = hashBytes(bytes);
+            const auto name              = cacheName(path, assetSource);
+            const auto hash              = hashBytes(bytes);
             const auto [entry, inserted] = files.emplace(name, hash);
             const auto now               = std::chrono::steady_clock::now();
             if (now - lastReadLog >= std::chrono::milliseconds(500))
@@ -393,7 +405,8 @@ namespace vultra
         for (const auto& [path, hash] : files)
         {
             dependencies.push_back({{"path", path}, {"hash", hash}});
-            asset.dependencies.push_back({std::filesystem::path(std::u8string(path.begin(), path.end())), hash});
+            const std::filesystem::path file = std::u8string(path.begin(), path.end());
+            asset.dependencies.push_back({assetSource ? assetSource->root() / file : file, hash});
         }
         if (options.cache && !options.reimport && std::filesystem::exists(cachePath))
         {
