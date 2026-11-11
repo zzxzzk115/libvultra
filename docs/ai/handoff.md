@@ -55,18 +55,17 @@ Added:
 
 ## VRI
 
-The default build uses the tagged VRI v0.2.0 release through the shared xmake `vri` recipe; `external/vri/`
+The default build uses the tagged VRI v0.2.1 release through the shared xmake `vri` recipe; `external/vri/`
 holds no patches. The former patches, and the Metal patches previously carried by a downstream fork, were
 merged upstream as pull requests 26 to 29 of [zzxzzk115/VRI](https://github.com/zzxzzk115/VRI/pulls). The
 Vulkan changes were built and tested through this library; the Web, Metal and Android changes were not built
 on the development machine and rely on VRI's own CI. The Linux desktop CI job of the tagged commit did not
 reach its build because the runner could not resolve its package mirror; it passed on each pull request.
 
-macOS needs two VRI fixes that are not in v0.2.0, merged into VRI `master` as pull requests 30 (the Vulkan
-backend no longer assumes a 1.3 device; MoltenVK reports 1.2) and 31 (Metal reports point and range timestamps
-separately). Until a release contains them, build on macOS with `--libvultra_vri_dir=<VRI master checkout>`; with
-v0.2.0, Vulkan finds no adapter and Metal apps fail when the profiler is created. After the release, bump the
-`vri` recipe in zzxzzk115/xmake-repo and the pin in `external/xmake.lua`.
+v0.2.1 (pull request 32) adds the two fixes macOS needs, pull requests 30 (the Vulkan backend no longer assumes
+a 1.3 device; MoltenVK reports 1.2) and 31 (Metal reports point and range timestamps separately). With v0.2.0,
+Vulkan found no adapter on macOS and Metal apps failed when the profiler was created. The `vri` recipe in
+zzxzzk115/xmake-repo carries v0.2.1 since its pull request 13.
 
 ## Verification
 
@@ -81,10 +80,10 @@ with all four branches merged:
   GUI offscreen/lifetime/settings, VPK memory, image, input map.
 - `example-offline`, `example-ui` and the window tests ran for a finite number of frames.
 
-macOS 27 (Darwin 27.2), Xcode 27 SDK, Apple M2, release, VRI from a local checkout with pull requests 30 and 31
-merged: `xmake build -y --all` and every test target with `libvultra_graphics_api=vulkan` (MoltenVK from Vulkan
+macOS 27 (Darwin 27.2), Xcode 27 SDK, Apple M2, release, the VRI v0.2.1 package: `xmake build -y --all` and every test target with `libvultra_graphics_api=vulkan` (MoltenVK from Vulkan
 SDK 1.4.309, validation enabled) and `metal`. All pass except `test-meshlets` on Vulkan (MoltenVK has no mesh
-shading); it passes on Metal. Examples were not run, `tests/build_modules.py` was not run, and clang-tidy
+shading); it passes on Metal. `example-basics vri` and `graph` and `example-ui` ran for a finite number of frames on both backends;
+`tests/build_modules.py` was not run, and clang-tidy
 covered only the sources the macOS build compiles.
 
 The macOS work found that ISPC 1.28.2 drops a masked `n--` in bc7e's block encoder, so every solid-color BC7

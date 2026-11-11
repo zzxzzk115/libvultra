@@ -23,7 +23,7 @@ branch; their instructions below are kept as instructions and marked where they 
 
 Dependency versions and package recipes live in [external/xmake.lua](external/xmake.lua) and
 [external/packages](external/packages/packages). The initial source build of Slang takes time. MSVC targets and
-packages use matching MT/MTd runtimes. VRI is the tagged [v0.2.0 release](external/vri/README.md), without local patches.
+packages use matching MT/MTd runtimes. VRI is the tagged [v0.2.1 release](external/vri/README.md), without local patches.
 
 ## Configure and build
 
