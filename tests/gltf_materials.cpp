@@ -23,7 +23,7 @@ namespace
     using support::must;
     using support::require;
 
-    void near(const vultra::Image& image, glm::vec3 expected, const char* message)
+    void nearColor(const vultra::Image& image, glm::vec3 expected, const char* message)
     {
         const size_t center = (size_t(kSize / 2) * kSize + kSize / 2) * 4;
         for (uint32_t c = 0; c < 3; ++c)
@@ -183,11 +183,11 @@ namespace
                 {
                     gpu->primitives[0].material = material;
                     renderer.settings.debugMode = 1;
-                    near(render(device, renderer, graph, outputs, camera()),
+                    nearColor(render(device, renderer, graph, outputs, camera()),
                          sampledColor(material, lod),
                          "glTF wrap/filter/mipmap sampling differs from the reference");
                     renderer.settings.debugMode = 5;
-                    near(render(device, renderer, graph, outputs, camera()),
+                    nearColor(render(device, renderer, graph, outputs, camera()),
                          sampledColor((material + 1) % 12, lod),
                          "Two slots sharing an image lost their independent samplers");
                 }
@@ -215,10 +215,10 @@ namespace
                 must(graph.exportResource(outputs.hdr));
                 must(graph.compile());
                 gpu->primitives[0].material = 0;
-                near(render(device, renderer, graph, outputs, camera()),
+                nearColor(render(device, renderer, graph, outputs, camera()),
                      {0.5f, 0.5f, 1},
                      "Front face was culled or reversed");
-                near(render(device, renderer, graph, outputs, camera(true)),
+                nearColor(render(device, renderer, graph, outputs, camera(true)),
                      kBackground,
                      "Single-sided back face was drawn");
                 gpu->primitives[0].material = 12;
@@ -228,10 +228,10 @@ namespace
                     normal.x = -normal.x;
                 }
                 normal = glm::normalize(normal);
-                near(render(device, renderer, graph, outputs, camera()),
+                nearColor(render(device, renderer, graph, outputs, camera()),
                      normal * 0.5f + 0.5f,
                      "Authored/generated/mirrored tangent frame differs from the reference");
-                near(render(device, renderer, graph, outputs, camera(true)),
+                nearColor(render(device, renderer, graph, outputs, camera(true)),
                      -normal * 0.5f + 0.5f,
                      "Double-sided back face did not reverse the perturbed normal");
             }
