@@ -59,11 +59,18 @@ namespace vultra
             return std::pair {int(float(extent.width) * scale), int(float(extent.height) * scale)};
         };
         const auto expected = scaled(SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay()));
-        auto*      handle = SDL_CreateWindow(title,
-                                             expected.first,
-                                             expected.second,
-                                             SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
-                                                 SDL_WINDOW_HIDDEN);
+#if defined(__APPLE__)
+        // Vulkan (MoltenVK) and Metal both present through the CAMetalLayer VRI attaches; SDL_WINDOW_VULKAN
+        // would also require SDL to load a Vulkan loader, which a Metal build does not link.
+        constexpr SDL_WindowFlags kSurfaceFlag = SDL_WINDOW_METAL;
+#else
+        constexpr SDL_WindowFlags kSurfaceFlag = SDL_WINDOW_VULKAN;
+#endif
+        auto* handle =
+            SDL_CreateWindow(title,
+                             expected.first,
+                             expected.second,
+                             kSurfaceFlag | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
         if (!handle)
         {
             auto error = sdlError("Create SDL window");

@@ -85,8 +85,8 @@ target("vultra")
 
     if features.gpu then
         local api = get_config("libvultra_graphics_api") or (is_plat("wasm") and "webgpu" or "vulkan")
-        local api_enum = {vulkan = "VriGraphicsAPI_Vulkan", webgpu = "VriGraphicsAPI_WebGPU",
-                          webgl2 = "VriGraphicsAPI_OpenGLES"}
+        local api_enum = {vulkan = "VriGraphicsAPI_Vulkan", metal = "VriGraphicsAPI_Metal",
+                          webgpu = "VriGraphicsAPI_WebGPU", webgl2 = "VriGraphicsAPI_OpenGLES"}
         add_defines("VULTRA_GRAPHICS_API=" .. api_enum[api])
         add_files("gpu/src/device.cpp", "gpu/src/resources.cpp", "gpu/src/buffer_upload.cpp",
                   "gpu/src/image_readback.cpp", "gpu/src/swapchain.cpp")

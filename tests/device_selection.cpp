@@ -57,7 +57,7 @@ int main()
 
     support::rejects(vultra::Device::create(true, nullptr, uint64_t(1) << 63),
                      "GPU selection accepted an unsupported required feature",
-                     "No Vulkan GPU provides required features");
+                     "No GPU provides required features");
     std::cout << "GPU selection regression passed\n";
     return 0;
 }

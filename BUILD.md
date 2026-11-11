@@ -3,8 +3,10 @@
 For minimal application code, start with [get_started.md](docs/get_started.md). Modules and concepts are described
 in [architecture.md](docs/architecture.md).
 
-**Verified platform:** Windows x64 with Vulkan. Linux, macOS, Android and Web were not rebuilt after the module
-restructuring on this branch; their instructions below are kept as instructions and marked where they apply.
+**Verified platforms:** Windows x64 with Vulkan. macOS arm64 (Apple M2) with Vulkan through MoltenVK and with Metal:
+the test suite passes on both, except `test-meshlets` on Vulkan, which MoltenVK cannot run without mesh shading;
+the examples were not run there. Linux, Android and Web were not rebuilt after the module restructuring on this
+branch; their instructions below are kept as instructions and marked where they apply.
 
 ## Prerequisites
 
@@ -12,8 +14,11 @@ restructuring on this branch; their instructions below are kept as instructions 
   detects the platform as mingw.
 - Linux x86_64 (not re-verified on this branch): C++23 compiler, CMake, pkg-config, Python 3, Vulkan development
   files, X11/Wayland development libraries, wayland-protocols and xkbcommon.
+- macOS arm64: Xcode with its command line tools. The Vulkan backend needs the LunarG Vulkan SDK with
+  `VULKAN_SDK` pointing at its `macOS` directory; the loader is linked from there. Metal needs no SDK.
 - [xmake](https://xmake.io/guide/quick-start.html#installation) on PATH.
-- A Vulkan 1.3 GPU and driver. Ray tracing, ray queries and mesh shading require their device features.
+- A Vulkan 1.3 GPU and driver, or a Vulkan 1.2 driver exposing dynamic rendering and synchronization2 as
+  extensions (MoltenVK). Ray tracing, ray queries and mesh shading require their device features.
 - Python 3 for `tests/build_modules.py`; clang-format and clang-tidy for the development checks.
 
 Dependency versions and package recipes live in [external/xmake.lua](external/xmake.lua) and
@@ -39,7 +44,7 @@ A root build defaults to all modules, all examples and the tests. Configuration 
 | `libvultra_shader_compiler` | Default on. `n` keeps only the cooked shader runtime: no Slang, no shader hot reload. |
 | `libvultra_asset_import` | Default on. `n` keeps asset values and VPK archives without importers or meshlet building. |
 | `libvultra_with_openxr` | Default on. `n` leaves `xr` out of `all`; selecting `xr` explicitly requires it. |
-| `libvultra_graphics_api` | `vulkan` (default, native platforms); WebAssembly requires `webgpu` or `webgl2`. |
+| `libvultra_graphics_api` | `vulkan` (default, native platforms) or `metal` on macOS; WebAssembly requires `webgpu` or `webgl2`. |
 | `libvultra_vri_dir` | Build VRI from a local checkout instead of the pinned release. |
 | `libvultra_build_examples`, `libvultra_build_tests` | Default on at the root, off when embedded. |
 | `libvultra_examples` | `all`, a group (`basics`, `offline`, `ui`), a mode (`basics.vri`) or a comma-separated union. |

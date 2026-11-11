@@ -46,7 +46,7 @@ namespace vultra
         std::expected<VriDevice*, Error> selectDevice(VriDeviceCreationDesc desc)
         {
             // OpenXR's creation hooks mandate a physical device; do not probe or override it.
-            if (desc.nativeCreateInfo || desc.graphicsAPI != VriGraphicsAPI_Vulkan)
+            if (desc.nativeCreateInfo)
             {
                 VriDevice* device = nullptr;
                 if (auto created = check(vriCreateDevice(&desc, &device), "Create runtime-selected device"); !created)
@@ -56,13 +56,19 @@ namespace vultra
                 return device;
             }
 
-            std::vector<VriAdapterDesc> adapters(vriEnumerateAdapters(desc.graphicsAPI, nullptr, 0));
-            const auto count = vriEnumerateAdapters(desc.graphicsAPI, adapters.data(), uint32_t(adapters.size()));
-            if (count == 0 || count > adapters.size())
+            // Only the Vulkan backend enumerates adapters; the others expose the system default as one candidate.
+            std::vector<VriAdapterDesc> adapters(1);
+            uint32_t                    count = 1;
+            if (desc.graphicsAPI == VriGraphicsAPI_Vulkan)
             {
-                return makeError("No stable Vulkan adapter enumeration available");
+                adapters.resize(vriEnumerateAdapters(desc.graphicsAPI, nullptr, 0));
+                count = vriEnumerateAdapters(desc.graphicsAPI, adapters.data(), uint32_t(adapters.size()));
+                if (count == 0 || count > adapters.size())
+                {
+                    return makeError("No stable Vulkan adapter enumeration available");
+                }
+                adapters.resize(count);
             }
-            adapters.resize(count);
 
             using DeviceOwner = std::unique_ptr<VriDevice, decltype(&vriDestroyDevice)>;
             using Score       = std::tuple<int, uint64_t, uint32_t, uint64_t>;
@@ -140,8 +146,7 @@ namespace vultra
             }
             if (!selected)
             {
-                return makeError("No Vulkan GPU provides required features 0x{:x} and a graphics queue",
-                                 desc.enabledFeatures);
+                return makeError("No GPU provides required features 0x{:x} and a graphics queue", desc.enabledFeatures);
             }
             return selected.release();
         }

@@ -62,6 +62,12 @@ Vulkan changes were built and tested through this library; the Web, Metal and An
 on the development machine and rely on VRI's own CI. The Linux desktop CI job of the tagged commit did not
 reach its build because the runner could not resolve its package mirror; it passed on each pull request.
 
+macOS needs two VRI fixes that are not in v0.2.0, merged into VRI `master` as pull requests 30 (the Vulkan
+backend no longer assumes a 1.3 device; MoltenVK reports 1.2) and 31 (Metal reports point and range timestamps
+separately). Until a release contains them, build on macOS with `--libvultra_vri_dir=<VRI master checkout>`; with
+v0.2.0, Vulkan finds no adapter and Metal apps fail when the profiler is created. After the release, bump the
+`vri` recipe in zzxzzk115/xmake-repo and the pin in `external/xmake.lua`.
+
 ## Verification
 
 Windows 11, MSVC 2022, release, RTX 4090 Laptop (Vulkan, validation enabled), VRI built from the local checkout
@@ -75,7 +81,17 @@ with all four branches merged:
   GUI offscreen/lifetime/settings, VPK memory, image, input map.
 - `example-offline`, `example-ui` and the window tests ran for a finite number of frames.
 
-Not verified: Linux, macOS, Android, Web and any XR runtime or headset. `tests/platform/` is a separate project
+macOS 27 (Darwin 27.2), Xcode 27 SDK, Apple M2, release, VRI from a local checkout with pull requests 30 and 31
+merged: `xmake build -y --all` and every test target with `libvultra_graphics_api=vulkan` (MoltenVK from Vulkan
+SDK 1.4.309, validation enabled) and `metal`. All pass except `test-meshlets` on Vulkan (MoltenVK has no mesh
+shading); it passes on Metal. Examples were not run, `tests/build_modules.py` was not run, and clang-tidy
+covered only the sources the macOS build compiles.
+
+The macOS work found that ISPC 1.28.2 drops a masked `n--` in bc7e's block encoder, so every solid-color BC7
+block was wrong on every ISA; `external/bc7enc` carries a two-line patch. Windows output changes accordingly and
+was not re-verified.
+
+Not verified: Linux, Android, Web and any XR runtime or headset. `tests/platform/` is a separate project
 that was edited by inspection and not built. The interactive feel of windows, hot reload and HiDPI was not
 judged by a person.
 

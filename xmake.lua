@@ -24,13 +24,14 @@ option_end()
 
 option("libvultra_graphics_api")
     set_default("vulkan")
-    set_values("vulkan", "webgpu", "webgl2")
+    set_values("vulkan", "metal", "webgpu", "webgl2")
     set_showmenu(true)
-    set_description("VRI backend: Vulkan on native platforms, WebGPU or WebGL2 on WebAssembly")
+    set_description("VRI backend: Vulkan on native platforms or Metal on macOS, WebGPU or WebGL2 on WebAssembly")
     after_check(function (option)
         local api = option:value()
         assert((is_plat("wasm") and (api == "webgpu" or api == "webgl2")) or
-               (not is_plat("wasm") and api == "vulkan"), "Unsupported Vultra platform/graphics API selection")
+               (not is_plat("wasm") and api == "vulkan") or (is_plat("macosx") and api == "metal"),
+               "Unsupported Vultra platform/graphics API selection")
     end)
 option_end()
 

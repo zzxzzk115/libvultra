@@ -32,7 +32,7 @@ if features.platform then
     add_requires((vri_dir and vri_dir ~= "") and "vri-vultra-local" or "vri v0.2.0", {
         alias = "vri",
         configs = {vulkan = api == "vulkan", gl = api == "webgl2", wgpu = api == "webgpu",
-                   d3d12 = false, metal = false}
+                   d3d12 = false, metal = api == "metal"}
     })
 end
 

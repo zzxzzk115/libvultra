@@ -47,11 +47,12 @@ namespace vultra
 
     std::expected<void, Error> detail::validateShaderProgram(const ShaderProgram& program, const VriDeviceDesc& device)
     {
-        // VRI's GL backends consume SPIR-V through their own SPIRV-Cross path.
-        const bool compatible = program.profile == "wgsl" ? device.graphicsAPI == VriGraphicsAPI_WebGPU :
-                                                            (device.graphicsAPI == VriGraphicsAPI_Vulkan ||
-                                                             device.graphicsAPI == VriGraphicsAPI_OpenGL ||
-                                                             device.graphicsAPI == VriGraphicsAPI_OpenGLES);
+        // VRI's Metal and GL backends consume SPIR-V through their own SPIRV-Cross path.
+        const bool compatible =
+            program.profile == "wgsl" ?
+                device.graphicsAPI == VriGraphicsAPI_WebGPU :
+                (device.graphicsAPI == VriGraphicsAPI_Vulkan || device.graphicsAPI == VriGraphicsAPI_Metal ||
+                 device.graphicsAPI == VriGraphicsAPI_OpenGL || device.graphicsAPI == VriGraphicsAPI_OpenGLES);
         if (!compatible)
         {
             return makeError("Device backend cannot consume shader target: {}", program.profile);

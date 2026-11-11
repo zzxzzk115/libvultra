@@ -8,7 +8,13 @@ namespace vultra
 {
     bool EditorGui::initializePlatform()
     {
-        if (!ImGui_ImplSDL3_InitForVulkan(static_cast<SDL_Window*>(m_Window->handle())))
+        auto* window = static_cast<SDL_Window*>(m_Window->handle());
+#if defined(__APPLE__)
+        // Viewport windows match the main window's Metal surface flag; see Window::create.
+        if (!ImGui_ImplSDL3_InitForMetal(window))
+#else
+        if (!ImGui_ImplSDL3_InitForVulkan(window))
+#endif
         {
             return false;
         }
