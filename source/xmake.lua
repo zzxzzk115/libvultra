@@ -305,6 +305,9 @@ target("vultra")
         add_files("servers/src/rendering/scene_prepare.cpp")
     end
     if features.rendering then
+        add_includedirs("render/include", {public = true})
+        add_headerfiles("render/include/(vultra/**.hpp)")
+        add_files("render/src/*.cpp")
         add_includedirs("assets/src", "drivers/src")
         add_files("servers/src/rendering/builtin/*.cpp")
         add_deps("openpbr")
