@@ -49,18 +49,20 @@ namespace vultra
 
         // Append this path's passes to the graph. The path borrows scene and environment until the last GPU
         // use of this graph completes. Calling it again rebinds the path to another scene or graph.
-        virtual SceneResources addPasses(RenderGraph& graph, GpuScene& scene, Environment& environment, Extent size) = 0;
+        virtual SceneResources
+        addPasses(RenderGraph& graph, GpuScene& scene, Environment& environment, Extent size) = 0;
 
         // Once per frame after graph.compile() and before recording; the previous frame must have completed.
         virtual void prepare(RenderGraph& graph, const RenderCamera& camera, std::span<const RenderLight> lights) = 0;
 
         // Between completed frames. Reloads changed shader sources; a failed reload keeps the last pipeline.
-        virtual void pollShaders() {}
+        virtual void pollShaders()
+        {
+        }
     };
 
     // Checks the contract between provides() and the resources a path returned for this graph:
     // identical names, matching formats and both standard resources present.
-    void validateSceneResources(const RenderPath&              path,
-                                std::span<const SceneResource> resources,
-                                const RenderGraph&             graph);
+    void
+    validateSceneResources(const RenderPath& path, std::span<const SceneResource> resources, const RenderGraph& graph);
 } // namespace vultra

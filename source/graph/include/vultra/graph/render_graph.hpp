@@ -179,7 +179,7 @@ namespace vultra
             Buffer*                  buffer  = nullptr;
             std::unique_ptr<Texture> ownedTexture;
             std::unique_ptr<Buffer>  ownedBuffer;
-            bool                     history = false;
+            bool                     history  = false;
             bool                     preserve = false;
             VriClearColor            initial {};
             uint32_t                 firstUse   = UINT32_MAX;

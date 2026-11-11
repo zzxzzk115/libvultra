@@ -246,7 +246,7 @@ namespace vultra
     Frame::Frame(Device& device) :
         m_Device(device)
     {
-        auto& c                                    = device.core;
+        auto& c                                       = device.core;
         m_Queues[size_t(FrameQueue::eGraphics)].queue = device.queue;
         m_Queues[size_t(FrameQueue::eCompute)].queue  = device.computeQueue;
         try
@@ -345,8 +345,8 @@ namespace vultra
         VriFenceSubmitDesc wait {};
         if (waitOther != 0)
         {
-            const auto other = queue == FrameQueue::eGraphics ? FrameQueue::eCompute : FrameQueue::eGraphics;
-            wait             = {state(other).fence, waitOther, VriPipelineStage_AllCommands};
+            const auto other    = queue == FrameQueue::eGraphics ? FrameQueue::eCompute : FrameQueue::eGraphics;
+            wait                = {state(other).fence, waitOther, VriPipelineStage_AllCommands};
             submit.waitFences   = &wait;
             submit.waitFenceNum = 1;
         }

@@ -132,8 +132,7 @@ namespace vultra
         bool computeUsage(Usage usage)
         {
             return usage == Usage::eSampled || usage == Usage::eStorageRead || usage == Usage::eStorageWrite ||
-                   usage == Usage::eStorageReadWrite || usage == Usage::eCopySource ||
-                   usage == Usage::eCopyDestination;
+                   usage == Usage::eStorageReadWrite || usage == Usage::eCopySource || usage == Usage::eCopyDestination;
         }
 
         // A compute queue cannot name these states as the source of a transition.
@@ -289,10 +288,8 @@ namespace vultra
         addPass(std::move(name), uses, std::move(execute), PassOptions {.sideEffect = sideEffect});
     }
 
-    void RenderGraph::addPass(std::string                name,
-                              std::initializer_list<Use> uses,
-                              ExecutePass                execute,
-                              PassOptions                options)
+    void
+    RenderGraph::addPass(std::string name, std::initializer_list<Use> uses, ExecutePass execute, PassOptions options)
     {
         addPass(std::move(name), std::span(uses.begin(), uses.size()), std::move(execute), options);
     }
@@ -469,8 +466,8 @@ namespace vultra
     void RenderGraph::planBatches(bool asyncCompute)
     {
         m_Batches.clear();
-        const bool                         async = asyncCompute && m_Device.computeQueue != nullptr;
-        std::vector<size_t>                batchOf(m_Passes.size(), SIZE_MAX);
+        const bool                           async = asyncCompute && m_Device.computeQueue != nullptr;
+        std::vector<size_t>                  batchOf(m_Passes.size(), SIZE_MAX);
         std::array<std::optional<size_t>, 2> current;
         for (size_t p = 0; p < m_Passes.size(); ++p)
         {
@@ -544,10 +541,10 @@ namespace vultra
         }
         for (size_t r = 0; r < m_Resources.size(); ++r)
         {
-            auto& entry = m_Resources[r];
-            auto& usage = entry.isTexture ? entry.textureDesc.usage : entry.bufferDesc.usage;
-            const auto flag =
-                entry.isTexture ? uint32_t(VriTextureUsage_ConcurrentQueues) : uint32_t(VriBufferUsage_ConcurrentQueues);
+            auto&      entry = m_Resources[r];
+            auto&      usage = entry.isTexture ? entry.textureDesc.usage : entry.bufferDesc.usage;
+            const auto flag  = entry.isTexture ? uint32_t(VriTextureUsage_ConcurrentQueues) :
+                                                 uint32_t(VriBufferUsage_ConcurrentQueues);
             if (queues[r] != 3 || (usage & flag) != 0)
             {
                 continue;
@@ -976,7 +973,7 @@ namespace vultra
                     entry.buffer->transition(cmd, {state.access, state.stages});
                 }
             }
-            const bool awaited = std::ranges::any_of(std::span(m_Batches).subspan(b + 1),
+            const bool awaited      = std::ranges::any_of(std::span(m_Batches).subspan(b + 1),
                                                      [b](const Batch& later)
                                                      {
                                                          return std::ranges::find(later.waits, b) != later.waits.end();
@@ -1034,8 +1031,8 @@ namespace vultra
             }
             for (const auto& use : pass.uses)
             {
-                const auto r = use.resource.index;
-                used[r]      = true;
+                const auto r      = use.resource.index;
+                used[r]           = true;
                 const char* style = pass.live ? "" : " [color=gray60]";
                 if (reads(use.usage))
                 {
@@ -1132,11 +1129,11 @@ namespace vultra
         {
             const auto& entry    = m_Resources[i];
             const bool  exported = std::any_of(m_Exports.begin(),
-                                               m_Exports.end(),
-                                               [i](Resource resource)
-                                               {
+                                              m_Exports.end(),
+                                              [i](Resource resource)
+                                              {
                                                   return resource.index == i;
-                                               });
+                                              });
             result.resources.push_back({entry.name,
                                         entry.imported,
                                         exported,
@@ -1220,10 +1217,10 @@ namespace vultra
         }
         const auto& entry    = m_Resources[resource.index];
         const bool  exported = std::ranges::any_of(m_Exports,
-                                                   [resource](Resource value)
-                                                   {
+                                                  [resource](Resource value)
+                                                  {
                                                       return value.index == resource.index;
-                                                   });
+                                                  });
         bool        active   = m_Compiled && exported;
         if (m_Compiled && !active)
         {

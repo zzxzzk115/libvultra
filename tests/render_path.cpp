@@ -37,7 +37,7 @@ namespace
         using namespace vultra;
         const auto program   = ShaderProgram::compile("builtin/shaders/passes/texture_blit.slang",
                                                       {},
-                                                      std::array {std::filesystem::path("builtin/shaders")});
+                                                    std::array {std::filesystem::path("builtin/shaders")});
         const auto bindings  = program.resourceBindings();
         const auto constants = std::ranges::find(bindings, true, &ShaderResourceBinding::pushConstant);
         require(constants != bindings.end() && constants->uniformSize == 32,
@@ -247,8 +247,8 @@ namespace
         GpuScene gpu(device, scene);
         require(gpu.primitives.empty() && gpu.vertices && gpu.indices, "Empty scene GPU buffers are missing");
         ForwardFixture renderer(device, gpu, environment);
-        renderer.settings.skybox       = false;
-        renderer.settings.ibl          = false;
+        renderer.settings.skybox = false;
+        renderer.settings.ibl    = false;
         RenderGraph graph(device);
         const auto  outputs = renderer.addPasses(graph, {32, 32});
         graph.exportResource(outputs.hdr);
@@ -303,8 +303,8 @@ namespace
                              10};
         {
             ForwardFixture renderer(device, gpu, environment);
-            renderer.settings.skybox       = false;
-            renderer.settings.ibl          = false;
+            renderer.settings.skybox = false;
+            renderer.settings.ibl    = false;
             RenderGraph graph(device);
             const auto  outputs = renderer.addPasses(graph, {65, 65});
             graph.exportResource(outputs.hdr);
@@ -313,7 +313,7 @@ namespace
             gpu.setPrimitiveTransforms(0, 1, glm::mat4(1));
             const auto stationary = render(device, renderer, graph, outputs, camera);
             require(renderer.path.visiblePrimitives() == 1, "Visible triangle was culled");
-            Frame      mixedFrame(device);
+            Frame mixedFrame(device);
             for (uint32_t iteration = 0; iteration < 2; ++iteration)
             {
                 auto* cmd = mixedFrame.begin();
@@ -339,15 +339,15 @@ namespace
                                            glm::scale(glm::mat4(1), {-0.5f, 0.8f, 1}));
             const auto partial = render(device, renderer, graph, outputs, camera);
             require(renderer.path.visiblePrimitives() == 1 && std::ranges::any_of(partial.rgba,
-                                                                              [](float value)
-                                                                              {
-                                                                                  return value > 1.5f;
-                                                                              }),
+                                                                                  [](float value)
+                                                                                  {
+                                                                                      return value > 1.5f;
+                                                                                  }),
                     "A reflected, nonuniformly scaled triangle intersecting the frustum must remain visible");
             gpu.setPrimitiveTransforms(0, 1, glm::translate(glm::mat4(1), {2, 0, 0}));
             const auto moved = render(device, renderer, graph, outputs, camera);
             require(renderer.path.visiblePrimitives() == 0, "Offscreen triangle was still submitted");
-            const size_t center     = (32 * 65 + 32) * 4;
+            const size_t center = (32 * 65 + 32) * 4;
             require(stationary.rgba[center] > 0.5f && moved.rgba[center] < stationary.rgba[center] * 0.05f,
                     "Primitive transform did not move rendered geometry");
             gpu.setPrimitiveTransforms(0, 1, glm::scale(glm::mat4(1), {-1, 1, 1}));
@@ -368,8 +368,8 @@ namespace
         scene.primitives = {{0, 6, 0}};
         scene.materials.emplace_back();
         scene.radius = 3;
-        vultra::GpuScene        gpu(device, scene);
-        ForwardFixture renderer(device, gpu, environment);
+        vultra::GpuScene gpu(device, scene);
+        ForwardFixture   renderer(device, gpu, environment);
         renderer.settings.ibl              = false;
         renderer.settings.lightIntensity   = 1;
         renderer.settings.lightColor       = {1, 1, 1};
@@ -451,7 +451,6 @@ namespace
         renderer.settings.directionToLight = {0.4f, 0.6f, -1};
         compare({0, 0, 1});
         std::cout << "OpenPBR Slang/C++: " << caseCount << " cases, max error=" << maxError << '\n';
-
     }
 
     void materialTextures(vultra::Device& device, vultra::Environment& environment, vultra::TextureFormat normalFormat)
@@ -484,8 +483,8 @@ namespace
         }
         asset.textures.images.push_back({normalFormat, {{{4, 4}, std::move(block)}}});
         asset.textures.materials[0][2] = normalSlot;
-        vultra::GpuScene        gpu(device, asset);
-        ForwardFixture renderer(device, gpu, environment);
+        vultra::GpuScene gpu(device, asset);
+        ForwardFixture   renderer(device, gpu, environment);
         renderer.settings.ibl              = false;
         renderer.settings.skybox           = false;
         renderer.settings.lightIntensity   = 1;
@@ -553,11 +552,11 @@ namespace
                     vertex.tangent = tangentCase == 1 ? glm::vec4(-1, 0, 0, 1) : glm::vec4(0, 0, 1, 1);
                 }
             }
-            vultra::GpuScene        gpu(device, scene);
-            ForwardFixture renderer(device, gpu, environment);
-            renderer.settings.ibl              = false;
-            renderer.settings.skybox           = false;
-            renderer.settings.lightIntensity   = 0;
+            vultra::GpuScene gpu(device, scene);
+            ForwardFixture   renderer(device, gpu, environment);
+            renderer.settings.ibl            = false;
+            renderer.settings.skybox         = false;
+            renderer.settings.lightIntensity = 0;
             const vultra::RenderCamera camera {glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0)),
                                                glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
                                                0.1f,
@@ -618,7 +617,6 @@ namespace
         }
         std::cout << "Tangent-frame normals and isolated textured HDR emission passed\n";
     }
-
 
     // A second, unrelated render path written only against the public interfaces: it shades world normals
     // with its own shader and layout. Later passes consume it through the same standard resource names.
@@ -702,13 +700,15 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
             return m_Provided;
         }
 
-        vultra::SceneResources
-        addPasses(vultra::RenderGraph& graph, vultra::GpuScene& scene, vultra::Environment&, vultra::Extent size) override
+        vultra::SceneResources addPasses(vultra::RenderGraph& graph,
+                                         vultra::GpuScene&    scene,
+                                         vultra::Environment&,
+                                         vultra::Extent size) override
         {
             using namespace vultra;
             m_Scene          = &scene;
             const auto color = graph.createTexture(std::string(kSceneHdr), colorTexture(size, VriFormat_RGBA16_SFLOAT));
-            auto depthDesc   = depthTexture(size);
+            auto       depthDesc = depthTexture(size);
             depthDesc.usage |= VriTextureUsage_TransferSrc;
             const auto depth = graph.createTexture(std::string(kSceneDepth), depthDesc);
             graph.addPass("Normals",
@@ -754,7 +754,8 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
             return {{std::string(kSceneHdr), color}, {std::string(kSceneDepth), depth}};
         }
 
-        void prepare(vultra::RenderGraph&, const vultra::RenderCamera& camera, std::span<const vultra::RenderLight>) override
+        void
+        prepare(vultra::RenderGraph&, const vultra::RenderCamera& camera, std::span<const vultra::RenderLight>) override
         {
             m_ViewProjection = camera.projection * camera.view;
         }
@@ -766,18 +767,19 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
             glm::mat4 worldFromLocal;
         };
 
-        vultra::Device&                              m_Device;
-        vultra::GpuScene*                            m_Scene  = nullptr;
-        VriPipelineLayout*                           m_Layout = nullptr;
-        std::unique_ptr<vultra::ShaderPipeline>      m_Pipeline;
-        glm::mat4                                    m_ViewProjection {1};
-        std::array<vultra::SceneResourceDesc, 2>     m_Provided {
+        vultra::Device&                          m_Device;
+        vultra::GpuScene*                        m_Scene  = nullptr;
+        VriPipelineLayout*                       m_Layout = nullptr;
+        std::unique_ptr<vultra::ShaderPipeline>  m_Pipeline;
+        glm::mat4                                m_ViewProjection {1};
+        std::array<vultra::SceneResourceDesc, 2> m_Provided {
             vultra::SceneResourceDesc {std::string(vultra::kSceneHdr), VriFormat_RGBA16_SFLOAT, "color.linear.hdr"},
             vultra::SceneResourceDesc {std::string(vultra::kSceneDepth), VriFormat_D32_SFLOAT, "depth"}};
     };
 
     // The same scene, camera and consumer code run through two render paths selected at runtime.
-    void switchRenderPaths(vultra::Device& device, vultra::Environment& environment, const std::filesystem::path& directory)
+    void
+    switchRenderPaths(vultra::Device& device, vultra::Environment& environment, const std::filesystem::path& directory)
     {
         using namespace vultra;
         SceneData scene;
@@ -796,11 +798,11 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                                    glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
                                    0.1f,
                                    10};
-        ForwardPath                forward(device);
-        NormalPath                 normals(device, directory);
-        forward.settings.ibl    = false;
-        forward.settings.skybox = false;
-        constexpr size_t center = (32 * 65 + 32) * 4;
+        ForwardPath        forward(device);
+        NormalPath         normals(device, directory);
+        forward.settings.ibl                       = false;
+        forward.settings.skybox                    = false;
+        constexpr size_t                    center = (32 * 65 + 32) * 4;
         std::array<std::array<float, 3>, 2> colors {};
         std::array<float, 2>                depths {};
         const std::array<RenderPath*, 2>    paths {&forward, &normals};
@@ -835,14 +837,20 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
             {
                 return declared;
             }
+
             SceneResources addPasses(RenderGraph&, GpuScene&, Environment&, Extent) override
             {
                 return {};
             }
-            void prepare(RenderGraph&, const RenderCamera&, std::span<const RenderLight>) override {}
+
+            void prepare(RenderGraph&, const RenderCamera&, std::span<const RenderLight>) override
+            {
+            }
+
             std::array<SceneResourceDesc, 1> declared {
                 SceneResourceDesc {std::string(kSceneHdr), VriFormat_RGBA16_SFLOAT, "color.linear.hdr"}};
         } incomplete;
+
         RenderGraph empty(device);
         bool        rejected = false;
         try
@@ -886,9 +894,8 @@ try
     materialTextures(device, environment, vultra::TextureFormat::eRg8Unorm);
     tangentFramesAndEmission(device, environment);
     switchRenderPaths(device, environment, directory);
-    std::cout
-        << "Forward path tests passed: constant HDR/IBL mip chain, BRDF LUT, upstream OpenPBR C++ reference, "
-           "material textures and live transforms\n";
+    std::cout << "Forward path tests passed: constant HDR/IBL mip chain, BRDF LUT, upstream OpenPBR C++ reference, "
+                 "material textures and live transforms\n";
     return 0;
 }
 catch (const std::exception& error)

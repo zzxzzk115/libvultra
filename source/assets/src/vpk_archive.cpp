@@ -266,10 +266,10 @@ namespace vultra
     {
         const auto normalized = VpkArchive::canonicalPath(path);
         const auto found      = std::ranges::find_if(m_Entries,
-                                                     [&](const Entry& candidate)
-                                                     {
+                                                [&](const Entry& candidate)
+                                                {
                                                     return candidate.path == normalized;
-                                                     });
+                                                });
         if (found == m_Entries.end())
         {
             throw std::invalid_argument("VPK entry not found: " + normalized);

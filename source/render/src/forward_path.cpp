@@ -357,8 +357,8 @@ namespace vultra
     SceneResources ForwardPath::addPasses(RenderGraph& graph, GpuScene& scene, Environment& environment, Extent size)
     {
         bindScene(scene, environment);
-        const auto hdr  = graph.createTexture(std::string(kSceneHdr), colorTexture(size, VriFormat_RGBA16_SFLOAT));
-        auto depthDesc  = depthTexture(size);
+        const auto hdr       = graph.createTexture(std::string(kSceneHdr), colorTexture(size, VriFormat_RGBA16_SFLOAT));
+        auto       depthDesc = depthTexture(size);
         depthDesc.usage |= VriTextureUsage_TransferSrc;
         const auto depth = graph.createTexture(std::string(kSceneDepth), depthDesc);
         graph.addPass("Skybox",
@@ -512,11 +512,11 @@ namespace vultra
         data.lightColor.w          = settings.environmentIntensity;
         data.ambientColor          = {settings.ambientColor, 0};
         data.options               = {settings.ibl ? 1.0f : 0.0f,
-                                      settings.skybox ? 1.0f : 0.0f,
-                                      0,
-                                      float(m_Environment->specular->desc.mipNum - 1)};
-        data.cameraClip            = {camera.nearPlane, camera.farPlane, 0, float(settings.debugMode)};
-        data.overrides             = {-1, -1, 0, 0};
+                        settings.skybox ? 1.0f : 0.0f,
+                        0,
+                        float(m_Environment->specular->desc.mipNum - 1)};
+        data.cameraClip = {camera.nearPlane, camera.farPlane, 0, float(settings.debugMode)};
+        data.overrides  = {-1, -1, 0, 0};
 
         m_Visible.clear();
         const auto planes = frustumPlanes(data.viewProjection);

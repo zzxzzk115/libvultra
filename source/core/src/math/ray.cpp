@@ -60,8 +60,8 @@ namespace vultra
         {
             return std::nullopt;
         }
-        const float lu = glm::dot(local, edgeU);
-        const float lv = glm::dot(local, edgeV);
+        const float     lu = glm::dot(local, edgeU);
+        const float     lv = glm::dot(local, edgeV);
         const glm::vec2 coordinates {(lu * vv - lv * uv) / scale, (lv * uu - lu * uv) / scale};
         if (coordinates.x < 0 || coordinates.x > 1 || coordinates.y < 0 || coordinates.y > 1)
         {
@@ -72,7 +72,7 @@ namespace vultra
 
     Ray cameraRay(const RenderCamera& camera, glm::vec2 ndc)
     {
-        const auto inverse = glm::inverse(camera.projection * camera.view);
+        const auto inverse   = glm::inverse(camera.projection * camera.view);
         const auto unproject = [&](float depth)
         {
             const auto point = inverse * glm::vec4(ndc, depth, 1);

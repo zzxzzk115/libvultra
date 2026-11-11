@@ -155,9 +155,10 @@ void invert(uint3 id : SV_DispatchThreadID)
     Result computeThenGraphics(Device& device, Kernels& kernels, Texture& placeholder, bool async)
     {
         RenderGraph graph(device);
-        const auto  filled = graph.createTexture(
-            "filled",
-            imageDesc(VriTextureUsage_ShaderResourceStorage | VriTextureUsage_ShaderResource | VriTextureUsage_TransferSrc));
+        const auto  filled =
+            graph.createTexture("filled",
+                                imageDesc(VriTextureUsage_ShaderResourceStorage | VriTextureUsage_ShaderResource |
+                                          VriTextureUsage_TransferSrc));
         const auto output =
             graph.createTexture("output", imageDesc(VriTextureUsage_TransferDst | VriTextureUsage_TransferSrc));
         graph.addPass("Fill",
@@ -190,9 +191,10 @@ void invert(uint3 id : SV_DispatchThreadID)
     {
         RenderGraph graph(device);
         const auto  cleared = graph.createTexture("cleared", colorTexture(kSize, VriFormat_RGBA16_SFLOAT));
-        const auto  inverted = graph.createTexture(
-            "inverted",
-            imageDesc(VriTextureUsage_ShaderResourceStorage | VriTextureUsage_ShaderResource | VriTextureUsage_TransferSrc));
+        const auto  inverted =
+            graph.createTexture("inverted",
+                                imageDesc(VriTextureUsage_ShaderResourceStorage | VriTextureUsage_ShaderResource |
+                                          VriTextureUsage_TransferSrc));
         const auto output =
             graph.createTexture("output", imageDesc(VriTextureUsage_TransferDst | VriTextureUsage_TransferSrc));
         graph.addPass("Clear",
@@ -245,7 +247,9 @@ void invert(uint3 id : SV_DispatchThreadID)
         const auto  target = graph.createTexture("target", colorTexture(kSize));
         graph.addPass("Compute attachment",
                       {{target, Usage::eColorWrite, true}},
-                      [](VriCommandBuffer*, RenderGraph&) {},
+                      [](VriCommandBuffer*, RenderGraph&)
+                      {
+                      },
                       {.queue = PassQueue::eAsyncCompute});
         graph.exportResource(target);
         bool rejected = false;
@@ -318,7 +322,8 @@ try
                 chainSingle.dot.find("inverted") != std::string::npos,
             "Graph export is not a Graphviz digraph of passes and resources");
     std::ofstream(directory / "chain.dot") << (dualQueue ? chainAsync.dot : chainSingle.dot);
-    std::cout << "Graph plan passed: " << (dualQueue ? "graphics and compute queues" : "single queue only (no compute queue)")
+    std::cout << "Graph plan passed: "
+              << (dualQueue ? "graphics and compute queues" : "single queue only (no compute queue)")
               << ", single-queue parity, cross-queue waits, attachment rejection and DOT export\n";
     return 0;
 }

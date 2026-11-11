@@ -15,9 +15,8 @@ namespace vultra
         return found->resource;
     }
 
-    void validateSceneResources(const RenderPath&              path,
-                                std::span<const SceneResource> resources,
-                                const RenderGraph&             graph)
+    void
+    validateSceneResources(const RenderPath& path, std::span<const SceneResource> resources, const RenderGraph& graph)
     {
         const auto provided = path.provides();
         for (const auto required : {kSceneHdr, kSceneDepth})

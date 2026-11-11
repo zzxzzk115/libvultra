@@ -49,21 +49,21 @@ namespace vultra
         void releaseScene();
         void drawScene(VriCommandBuffer* cmd);
 
-        Device&                                        m_Device;
-        GpuScene*                                      m_Scene       = nullptr;
-        Environment*                                   m_Environment = nullptr;
-        std::unique_ptr<Texture>                       m_OpenPbrLuts;
-        std::unique_ptr<Buffer>                        m_FrameBuffer;
-        VriDescriptor*                                 m_FrameView          = nullptr;
-        VriDescriptor*                                 m_EnvironmentSampler = nullptr;
-        VriPipelineLayout*                             m_Layout             = nullptr;
+        Device&                  m_Device;
+        GpuScene*                m_Scene       = nullptr;
+        Environment*             m_Environment = nullptr;
+        std::unique_ptr<Texture> m_OpenPbrLuts;
+        std::unique_ptr<Buffer>  m_FrameBuffer;
+        VriDescriptor*           m_FrameView          = nullptr;
+        VriDescriptor*           m_EnvironmentSampler = nullptr;
+        VriPipelineLayout*       m_Layout             = nullptr;
         // Per-scene state, rebuilt by addPasses().
-        VriDescriptor*                                 m_TransformView = nullptr;
-        VriDescriptorPool*                             m_Pool          = nullptr;
-        VriDescriptorSet*                              m_FrameSet      = nullptr;
-        std::vector<VriDescriptorSet*>                 m_MaterialSets;
-        std::vector<VriDescriptor*>                    m_MaterialSamplers;
-        std::vector<uint32_t>                          m_Visible;
+        VriDescriptor*                 m_TransformView = nullptr;
+        VriDescriptorPool*             m_Pool          = nullptr;
+        VriDescriptorSet*              m_FrameSet      = nullptr;
+        std::vector<VriDescriptorSet*> m_MaterialSets;
+        std::vector<VriDescriptor*>    m_MaterialSamplers;
+        std::vector<uint32_t>          m_Visible;
         // Indexed by sidedness (bit 0) and mirrored front face (bit 1).
         std::array<std::unique_ptr<ShaderPipeline>, 4> m_Forward;
         std::unique_ptr<ShaderPipeline>                m_Skybox;

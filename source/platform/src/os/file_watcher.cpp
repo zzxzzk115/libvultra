@@ -38,7 +38,7 @@ namespace vultra
 
     struct FileWatcher::State
     {
-        std::mutex                                       mutex;
+        std::mutex                                         mutex;
         std::map<std::filesystem::path, Clock::time_point> changed;
         // Destroyed first: FileWatch joins its threads before the queue above goes away.
         std::map<std::filesystem::path, std::unique_ptr<filewatch::FileWatch<std::string>>> watchers;

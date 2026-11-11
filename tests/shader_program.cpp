@@ -10,8 +10,8 @@
 #include <chrono>
 #include <cstdio>
 #include <fstream>
-#include <thread>
 #include <stdexcept>
+#include <thread>
 
 namespace
 {
@@ -141,7 +141,7 @@ void computeMain(uint3 id : SV_DispatchThreadID)
     result[id.xy] = source[id.xy] * parameters.gain * parameters.width;
 }
 )");
-        const auto file = root / "attributes.vshaderc";
+        const auto file    = root / "attributes.vshaderc";
         program.save(file);
         const auto restored = ShaderProgram::load(file);
         for (const auto* candidate : {&program, &restored})
@@ -351,11 +351,11 @@ void callableMain(inout Payload payload)
 }
 )";
     const std::array       rayEntries {ShaderEntry {"raygenMain", VriShaderStage_RayGen},
-                                       ShaderEntry {"missMain", VriShaderStage_Miss},
-                                       ShaderEntry {"closestHitMain", VriShaderStage_ClosestHit},
-                                       ShaderEntry {"anyHitMain", VriShaderStage_AnyHit},
-                                       ShaderEntry {"intersectionMain", VriShaderStage_Intersection},
-                                       ShaderEntry {"callableMain", VriShaderStage_Callable}};
+                                 ShaderEntry {"missMain", VriShaderStage_Miss},
+                                 ShaderEntry {"closestHitMain", VriShaderStage_ClosestHit},
+                                 ShaderEntry {"anyHitMain", VriShaderStage_AnyHit},
+                                 ShaderEntry {"intersectionMain", VriShaderStage_Intersection},
+                                 ShaderEntry {"callableMain", VriShaderStage_Callable}};
     const auto             rayProgram = ShaderProgram::compileSource(root / "ray.slang", raySource);
     require(rayProgram.shaders.size() == rayEntries.size(), "Ray tracing entry discovery failed");
     const auto rayCooked = root / "ray.vshaderc";

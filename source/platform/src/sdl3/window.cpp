@@ -44,10 +44,10 @@ namespace vultra
             };
             const auto expected = scaled(SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay()));
             auto*      window   = SDL_CreateWindow(title,
-                                                   expected.first,
-                                                   expected.second,
-                                                   SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE |
-                                                       SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
+                                            expected.first,
+                                            expected.second,
+                                            SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
+                                                SDL_WINDOW_HIDDEN);
             checkSdl(window != nullptr, "Create SDL window");
             m_Window = window;
             // The window manager may have placed it on a display with another content scale.

@@ -40,11 +40,11 @@ namespace vultra
         // Destructors report completion errors without throwing during stack unwinding.
         void waitIdleForDestruction() const noexcept;
 
-        VriDevice*            handle   = nullptr;
-        uint64_t              features = 0;
-        VriQueue*             queue    = nullptr;
+        VriDevice* handle   = nullptr;
+        uint64_t   features = 0;
+        VriQueue*  queue    = nullptr;
         // A queue distinct from `queue` for asynchronous compute work; null when the device has none.
-        VriQueue* computeQueue = nullptr;
+        VriQueue*             computeQueue = nullptr;
         VriCoreInterface      core {};
         VriSwapChainInterface swap {};
         // Pass this device-owned cache to graphics/compute VRI descriptors.
@@ -70,8 +70,8 @@ namespace vultra
     public:
         explicit Frame(Device& device);
         ~Frame();
-        Frame(const Frame&)                       = delete;
-        Frame&            operator=(const Frame&) = delete;
+        Frame(const Frame&)            = delete;
+        Frame& operator=(const Frame&) = delete;
         // Starts the frame and returns its first graphics command buffer.
         VriCommandBuffer* begin();
         // The open command buffer of this queue, starting a new one after a submit().
