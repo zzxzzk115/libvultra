@@ -38,3 +38,7 @@ The checksum-pinned `calibrated_timestamps.patch` selects the KHR or EXT physica
 entry point from the extension actually enabled on that GPU. Instance-level KHR lookup alone can
 return another ICD's trampoline on hybrid-GPU systems. It applies to the pinned v0.2.0 source;
 retain the current dependency revision and other platform patches when rebuilding it.
+
+For coordinated VRI development, `--libvultra_vri_dir=<checkout>` builds VRI from a local source tree as the
+separately named `vri-vultra-local` package. That path applies none of the patches above: the checkout must already
+contain them.

@@ -34,6 +34,12 @@ option("libvultra_graphics_api")
     end)
 option_end()
 
+option("libvultra_vri_dir")
+    set_default("")
+    set_showmenu(true)
+    set_description("Build VRI from this local checkout instead of the pinned archive")
+option_end()
+
 option("libvultra_examples")
     set_default("all")
     set_showmenu(true)
