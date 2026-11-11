@@ -357,6 +357,80 @@ namespace
         }
     }
 
+    // A point light has no main-light fields to travel through: it reaches the shader only as a record of the
+    // scene light buffer.
+    void sceneLightBuffer(vultra::Device& device, vultra::Environment& environment)
+    {
+        vultra::SceneData scene;
+        scene.vertices   = {{{-2, -2, 0}, {0, 0, 1}, {0, 0}},
+                            {{2, -2, 0}, {0, 0, 1}, {1, 0}},
+                            {{2, 2, 0}, {0, 0, 1}, {1, 1}},
+                            {{-2, 2, 0}, {0, 0, 1}, {0, 1}}};
+        scene.indices    = {0, 1, 2, 0, 2, 3};
+        scene.primitives = {{0, 6, 0}};
+        scene.materials.emplace_back();
+        scene.radius = 3;
+        vultra::GpuScene    gpu(device, scene);
+        vultra::ForwardPath path(device);
+        path.settings.ibl = false;
+        const vultra::RenderCamera camera {glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0)),
+                                           glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
+                                           0.1f,
+                                           10};
+        vultra::RenderGraph        graph(device);
+        const auto                 resources = path.addPasses(graph, gpu, environment, {65, 65});
+        const auto                 hdr       = vultra::findSceneResource(resources, vultra::kSceneHdr);
+        graph.exportResource(hdr);
+        graph.compile();
+        const auto render = [&](std::span<const vultra::RenderLight> lights)
+        {
+            path.prepare(graph, camera, lights);
+            vultra::Frame frame(device);
+            graph.execute(frame.begin());
+            frame.submitAndWait();
+            return vultra::readback(device, graph.getTexture(hdr));
+        };
+        const vultra::RenderLight point {.kind      = vultra::RenderLightKind::ePoint,
+                                         .position  = {0, 0, 2},
+                                         .color     = {1, 0.5f, 0.25f},
+                                         .intensity = 2,
+                                         .range     = 4};
+        const auto                image = render(std::span(&point, 1));
+        // Distance 2 of range 4: inverse-square falloff times the squared smooth range cutoff.
+        const float     cutoff      = 1.0f - std::pow(0.5f, 4.0f);
+        const float     attenuation = cutoff * cutoff / 4.0f;
+        const glm::vec3 expected =
+            referenceBrdf(gpu.materials[0], {0, 0, 1}, {0, 0, 1}) * point.color * point.intensity * attenuation;
+        const size_t center = (32 * 65 + 32) * 4;
+        for (uint32_t channel = 0; channel < 3; ++channel)
+        {
+            require(std::abs(image.rgba[center + channel] - expected[channel]) <=
+                        0.003f + std::abs(expected[channel]) * 0.002f,
+                    "A point light did not reach the forward shader through the scene light buffer");
+        }
+        const auto dark = render({});
+        require(dark.rgba[center] == 0 && dark.rgba[center + 1] == 0 && dark.rgba[center + 2] == 0,
+                "Lights of an earlier frame stayed in the scene light buffer");
+
+        vultra::LightBuffer              lights(device);
+        std::vector<vultra::RenderLight> many(vultra::kMaxRenderLights + 1);
+        bool                             rejected = false;
+        try
+        {
+            lights.update(many);
+        }
+        catch (const std::invalid_argument&)
+        {
+            rejected = true;
+        }
+        require(rejected, "A light buffer accepted more lights than it holds");
+        const std::array mixed {point, vultra::RenderLight {.directionToLight = {0, 3, 0}}};
+        lights.update(mixed);
+        require(lights.lights().size() == 2 && lights.mainDirectional() == 1 &&
+                    lights.lights()[1].directionKind == glm::vec4(0, 1, 0, 0),
+                "The light buffer did not record the main directional light with a unit direction");
+    }
+
     void materialReference(vultra::Device& device, vultra::Environment& environment)
     {
         vultra::SceneData scene;
@@ -889,6 +963,7 @@ try
     constantAmbient(device, environment);
     emptyGpuScene(device, environment);
     livePrimitiveTransform(device, environment, directory);
+    sceneLightBuffer(device, environment);
     materialReference(device, environment);
     materialTextures(device, environment, vultra::TextureFormat::eBc5Unorm);
     materialTextures(device, environment, vultra::TextureFormat::eRg8Unorm);

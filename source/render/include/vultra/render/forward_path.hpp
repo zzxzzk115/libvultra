@@ -50,6 +50,7 @@ namespace vultra
         void drawScene(VriCommandBuffer* cmd);
 
         Device&                  m_Device;
+        LightBuffer              m_Lights;
         GpuScene*                m_Scene       = nullptr;
         Environment*             m_Environment = nullptr;
         std::unique_ptr<Texture> m_OpenPbrLuts;

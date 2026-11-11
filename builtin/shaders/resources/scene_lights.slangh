@@ -1,0 +1,10 @@
+#pragma once
+
+// One record of the scene light buffer. Keep in sync with GpuLight in vultra/render/render_light.hpp.
+struct LightData
+{
+    float4 positionRange;  // xyz world position, w range.
+    float4 directionKind;  // xyz unit direction to the light, w kind: 0 directional, 1 point, 2 spot.
+    float4 colorIntensity; // rgb colour, w intensity.
+    float4 cones;          // Cosines of the inner and outer spot angles.
+};

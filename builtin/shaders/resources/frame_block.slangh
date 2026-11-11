@@ -1,12 +1,6 @@
 #pragma once
 
-struct LightData
-{
-    float4 positionRange;
-    float4 directionKind;
-    float4 colorIntensity;
-    float4 cones;
-};
+#include "resources/scene_lights.slangh"
 
 struct FrameData
 {
@@ -25,8 +19,7 @@ struct FrameData
     float4   options;
     float4   cameraClip;
     float4   overrides; // Roughness, metalness, display transfer, meshlet display palette.
-    float4   lightConfig;
-    LightData lights[64];
+    float4   lightConfig; // Light count, index of the main directional light (-1 if absent).
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<FrameData> frame;
@@ -40,3 +33,4 @@ struct FrameData
 [[vk::binding(8, 0)]] Texture2D<float4>         brdfLut;
 [[vk::binding(9, 0)]] Texture2D<float4>         hdrColor;
 [[vk::binding(10, 0)]] SamplerState             environmentSampler;
+[[vk::binding(20, 0)]] StructuredBuffer<LightData> sceneLights;

@@ -67,7 +67,8 @@ Shaders are plain Slang. `ShaderProgram` compiles a file for one target (SPIR-V 
 bindings, parameter layouts, compute group sizes, **user attributes** and scalar field initializers. A program
 cooks to a `.vshaderc` archive that loads without the compiler. `ShaderPipeline` builds a VRI pipeline from a
 source file or a cooked program and reloads it when its sources change; a failed reload keeps the last pipeline
-and reports diagnostics.
+and reports diagnostics. `ShaderCompileOptions::debugInfo` embeds source text and line information for GPU
+debuggers; it is chosen per compile, not by the C++ build mode, and is part of the cache key.
 
 User attributes are how a host attaches meaning to shader declarations, for example to describe a render pass
 inside its shader:
@@ -117,6 +118,11 @@ graph resources through the `RenderPath` interface:
 
 Later passes depend only on resource names, so they work with any path that provides them.
 `validateSceneResources()` checks a path against what it declares.
+
+Lights reach every path the same way: `LightBuffer` validates a frame's `RenderLight` values and uploads them as
+one storage buffer of `GpuLight` records (`LightData` in `resources/scene_lights.slangh`). A path binds its view
+directly, as `ForwardPath` does, or imports the buffer into its graph as `scene.lights` for passes that build
+their own light structures. It holds at most 64 lights.
 
 `ForwardPath` (`vultra.forward`) is the reference path: a skybox and one opaque OpenPBR forward pass with
 analytic lights and image-based lighting. It has no shadows, transparency or mesh shading. Deferred, clustered or

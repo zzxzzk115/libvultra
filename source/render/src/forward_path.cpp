@@ -7,41 +7,31 @@
 #include <cmath>
 #include <cstddef>
 #include <cstring>
-#include <numbers>
 
 namespace vultra
 {
     namespace
     {
-        struct LightData
-        {
-            glm::vec4 positionRange;
-            glm::vec4 directionKind;
-            glm::vec4 colorIntensity;
-            glm::vec4 cones;
-        };
-
         // Keep these layouts in sync with builtin/shaders/resources/frame_block.slangh. The shared block also
         // carries shadow-cascade fields for paths that render shadows; this path leaves them disabled.
         struct FrameData
         {
-            glm::mat4                               viewProjection;
-            glm::mat4                               inverseViewProjection;
-            glm::mat4                               view;
-            std::array<glm::mat4, 4>                lightViewProjection;
-            glm::vec4                               cameraPosition;
-            glm::vec4                               lightDirection; // xyz to the main light, w intensity.
-            glm::vec4                               lightColor;     // rgb main light, w environment intensity.
-            glm::vec4                               ambientColor;
-            glm::vec4                               cascadeSplits;
-            glm::vec4                               cascadeWidths;
-            glm::vec4                               cascadeDepthRanges;
-            glm::vec4                               shadowParameters; // w = 0 disables shadow sampling.
-            glm::vec4                               options;          // IBL, skybox, unused, specular mip count - 1.
-            glm::vec4                               cameraClip;       // near, far, unused, debug mode.
-            glm::vec4                               overrides;        // Negative roughness/metalness keep materials.
-            glm::vec4                               lightConfig;      // Count, main directional index (-1 if absent).
-            std::array<LightData, kMaxRenderLights> lights;
+            glm::mat4                viewProjection;
+            glm::mat4                inverseViewProjection;
+            glm::mat4                view;
+            std::array<glm::mat4, 4> lightViewProjection;
+            glm::vec4                cameraPosition;
+            glm::vec4                lightDirection; // xyz to the main light, w intensity.
+            glm::vec4                lightColor;     // rgb main light, w environment intensity.
+            glm::vec4                ambientColor;
+            glm::vec4                cascadeSplits;
+            glm::vec4                cascadeWidths;
+            glm::vec4                cascadeDepthRanges;
+            glm::vec4                shadowParameters; // w = 0 disables shadow sampling.
+            glm::vec4                options;          // IBL, skybox, unused, specular mip count - 1.
+            glm::vec4                cameraClip;       // near, far, unused, debug mode.
+            glm::vec4                overrides;        // Negative roughness/metalness keep materials.
+            glm::vec4                lightConfig;      // Count, main directional index (-1 if absent).
         };
 
         struct MaterialData
@@ -56,13 +46,11 @@ namespace vultra
             glm::uvec4 instance; // Primitive transform index.
         };
 
-        static_assert(sizeof(LightData) == 64);
-        static_assert(offsetof(FrameData, lightConfig) == 624 && offsetof(FrameData, lights) == 640);
-        static_assert(sizeof(FrameData) == 4736);
+        static_assert(offsetof(FrameData, lightConfig) == 624 && sizeof(FrameData) == 640);
         static_assert(sizeof(MaterialData) == 128);
         static_assert(sizeof(SceneVertex) == 64 && offsetof(SceneVertex, tangent) == 48);
 
-        constexpr uint32_t kFrameBindings = 20;
+        constexpr uint32_t kFrameBindings = 21;
 
         const std::array<SceneResourceDesc, 2> kProvided {
             SceneResourceDesc {std::string(kSceneHdr), VriFormat_RGBA16_SFLOAT, "color.linear.hdr"},
@@ -160,7 +148,8 @@ namespace vultra
     } // namespace
 
     ForwardPath::ForwardPath(Device& device, const AssetSource* shaders) :
-        m_Device(device)
+        m_Device(device),
+        m_Lights(device)
     {
         m_OpenPbrLuts = createOpenPbrLuts(device);
         m_FrameBuffer = std::make_unique<Buffer>(
@@ -189,6 +178,7 @@ namespace vultra
             frameRanges[0].descriptorType  = VriDescriptorType_ConstantBuffer;
             frameRanges[10].descriptorType = VriDescriptorType_Sampler;
             frameRanges[19]                = {19, 1, VriDescriptorType_StructuredBuffer, VriShaderStage_Vertex};
+            frameRanges[20]                = {20, 1, VriDescriptorType_StructuredBuffer, VriShaderStage_Fragment};
             VriDescriptorRangeDesc materialRanges[kMaterialTextureCount + 1] {};
             for (uint32_t i = 0; i <= kMaterialTextureCount; ++i)
             {
@@ -311,7 +301,7 @@ namespace vultra
         pool.textureMaxNum          = count * kMaterialTextureCount + kFrameBindings;
         pool.samplerMaxNum          = count * kMaterialTextureCount + 1;
         pool.constantBufferMaxNum   = 1;
-        pool.structuredBufferMaxNum = 1;
+        pool.structuredBufferMaxNum = 2; // Primitive transforms and scene lights.
         check(m_Device.core.CreateDescriptorPool(m_Device.handle, &pool, &m_Pool), "Create forward path pool");
         check(m_Device.core.AllocateDescriptorSets(m_Pool, m_Layout, 0, &m_FrameSet, 1), "Allocate frame set");
         m_MaterialSets.resize(count);
@@ -464,46 +454,16 @@ namespace vultra
         {
             throw std::invalid_argument("Forward path ambient color and environment intensity must be nonnegative");
         }
-        if (lights.size() > kMaxRenderLights)
-        {
-            throw std::invalid_argument("Forward path exceeds its 64-light limit");
-        }
+        m_Lights.update(lights);
         FrameData data {};
-        data.lightConfig    = {float(lights.size()), -1, 0, 0};
+        data.lightConfig    = {float(lights.size()), float(m_Lights.mainDirectional()), 0, 0};
         data.lightDirection = {0, 1, 0, 0};
-        for (size_t i = 0; i < lights.size(); ++i)
+        // The shader evaluates the first directional light through the main-light fields.
+        if (m_Lights.mainDirectional() >= 0)
         {
-            const auto& light = lights[i];
-            if (light.kind > RenderLightKind::eSpot || !finite(light.position) || !finite(light.directionToLight) ||
-                !finite(light.color) || glm::any(glm::lessThan(light.color, glm::vec3(0))) ||
-                !std::isfinite(light.intensity) || light.intensity < 0 || !std::isfinite(light.range) ||
-                light.range <= 0 || !std::isfinite(light.innerCone) || !std::isfinite(light.outerCone) ||
-                light.innerCone < 0 || light.innerCone >= light.outerCone ||
-                light.outerCone >= std::numbers::pi_v<float> * 0.5f)
-            {
-                throw std::invalid_argument("Invalid render light at index " + std::to_string(i));
-            }
-            auto direction = glm::vec3(0, 0, 1);
-            if (light.kind != RenderLightKind::ePoint)
-            {
-                const auto length = glm::length(light.directionToLight);
-                if (length == 0)
-                {
-                    throw std::invalid_argument("Render light direction is singular at index " + std::to_string(i));
-                }
-                direction = light.directionToLight / length;
-            }
-            data.lights[i] = {{light.position, light.range},
-                              {direction, float(light.kind)},
-                              {light.color, light.intensity},
-                              {std::cos(light.innerCone), std::cos(light.outerCone), 0, 0}};
-            // The shader evaluates the first directional light through the main-light fields.
-            if (light.kind == RenderLightKind::eDirectional && data.lightConfig.y < 0)
-            {
-                data.lightConfig.y  = float(i);
-                data.lightDirection = {direction, light.intensity};
-                data.lightColor     = {light.color, 0};
-            }
+            const auto& main    = m_Lights.lights()[size_t(m_Lights.mainDirectional())];
+            data.lightDirection = {glm::vec3(main.directionKind), main.colorIntensity.w};
+            data.lightColor     = {glm::vec3(main.colorIntensity), 0};
         }
         data.viewProjection        = camera.projection * camera.view;
         data.inverseViewProjection = glm::inverse(data.viewProjection);
@@ -548,6 +508,7 @@ namespace vultra
         descriptors[10] = m_EnvironmentSampler;
         descriptors[11] = m_OpenPbrLuts->view();
         descriptors[19] = m_TransformView;
+        descriptors[20] = m_Lights.view();
         VriDescriptorRangeUpdateDesc updates[kFrameBindings] {};
         for (uint32_t i = 0; i < kFrameBindings; ++i)
         {

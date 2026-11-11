@@ -35,7 +35,7 @@ float3 shadeSurface(SurfaceData sample)
         // The first directional light uses the existing cascades; other lights are currently unshadowed.
         if (int(i) != int(frame.lightConfig.y))
         {
-            result += evaluateSceneLight(bsdf, frame.lights[i], sample.worldPosition);
+            result += evaluateSceneLight(bsdf, sceneLights[i], sample.worldPosition);
         }
     }
     if (frame.options.x > 0.5)
