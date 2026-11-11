@@ -160,7 +160,7 @@ includes("external")
 -- include source
 includes("source")
 if is_root then
-    if features.tool_import or features.tool_shader or features.builtin_pack then
+    if features.tool_import or features.shader or features.builtin_pack then
         includes("tools")
     end
     if features.builtin_pack then

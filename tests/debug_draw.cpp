@@ -1,9 +1,11 @@
 #include "../examples/common/debug_lines.hpp"
+#include "support/forward_fixture.hpp"
 
-#include <vultra/drivers/rhi/image_readback.hpp>
 #include <vultra/main/camera/fps_camera.hpp>
 #include <vultra/main/camera/orbit_camera.hpp>
-#include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
+#include <vultra/servers/rendering/builtin/environment.hpp>
+#include <vultra/servers/rendering/builtin/tone_mapping_pass.hpp>
+#include <vultra/servers/rendering/scene.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -171,11 +173,12 @@ try
     scene.center = {0, 0, -2};
     scene.radius = 1;
     vultra::GpuScene        gpu(device, scene);
-    vultra::BuiltinRenderer renderer(device, gpu, environment);
-    renderer.settings.path             = vultra::RenderPath::eNaiveForward;
-    renderer.settings.skybox           = false;
-    renderer.settings.shadowResolution = 32;
-    sample::Lines lines;
+    support::ForwardFixture renderer(device, gpu, environment);
+    renderer.settings.skybox = false;
+    // Debug lines are drawn on the display image, after tone mapping, against the scene depth.
+    vultra::ToneMappingPass     tone(device);
+    const std::array<double, 3> toneParameters {0, 0, 0};
+    sample::Lines               lines;
     lines.line({-0.9f, -0.4f, -3}, {0.9f, -0.4f, -3}, {1, 0, 0}); // Behind the quad.
     lines.line({-0.9f, 0.4f, -1}, {0.9f, 0.4f, -1}, {0, 1, 0});   // In front.
     lines.line({-0.9f, 0, -2}, {0.9f, 0, -2}, {0, 0, 1});         // On the surface.
@@ -199,34 +202,35 @@ try
     for (const vultra::Extent size : {vultra::Extent {64, 64}, vultra::Extent {128, 96}})
     {
         vultra::RenderGraph graph(device);
-        const auto          outputs   = renderer.addPasses(graph, size);
+        const auto          outputs = renderer.addPasses(graph, size);
+        const std::array    toneInputs {outputs.hdr};
+        const auto          color     = tone.addPasses(graph, "tone", toneInputs, toneParameters).front();
         bool                drawProbe = false;
-        graph.addPass(
-            "Debug lines",
-            {{outputs.color, vultra::Usage::eColorReadWrite}, {outputs.depth, vultra::Usage::eDepthRead}},
-            [&](auto* cmd, auto& resources)
-            {
-                debug.draw(cmd, resources.getTexture(outputs.color), nullptr, &resources.getTexture(outputs.depth));
-            });
+        graph.addPass("Debug lines",
+                      {{color, vultra::Usage::eColorReadWrite}, {outputs.depth, vultra::Usage::eDepthRead}},
+                      [&](auto* cmd, auto& resources)
+                      {
+                          debug.draw(cmd, resources.getTexture(color), nullptr, &resources.getTexture(outputs.depth));
+                      });
         graph.addPass(
             "Depth preservation probe",
-            {{outputs.color, vultra::Usage::eColorReadWrite}, {outputs.depth, vultra::Usage::eDepthRead}},
+            {{color, vultra::Usage::eColorReadWrite}, {outputs.depth, vultra::Usage::eDepthRead}},
             [&](auto* cmd, auto& resources)
             {
                 if (drawProbe)
                 {
-                    probe.draw(cmd, resources.getTexture(outputs.color), nullptr, &resources.getTexture(outputs.depth));
+                    probe.draw(cmd, resources.getTexture(color), nullptr, &resources.getTexture(outputs.depth));
                 }
             });
-        graph.exportResource(outputs.color);
+        graph.exportResource(color);
         graph.compile();
         auto render = [&]
         {
-            renderer.prepare(camera, graph, outputs);
+            renderer.prepare(camera, graph);
             vultra::Frame frame(device);
             graph.execute(frame.begin());
             frame.submitAndWait();
-            return vultra::readback(device, graph.getTexture(outputs.color));
+            return vultra::readback(device, graph.getTexture(color));
         };
         const auto image = render();
         require(countColor(image, {1, 0, 0}) > size.width / 4, "Unoccluded rear line disappeared");

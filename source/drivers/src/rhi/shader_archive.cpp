@@ -351,7 +351,7 @@ namespace vultra::detail
         }
         auto document = Json::from_cbor(bytes.begin() + kHeaderSize, bytes.end());
         if (!document.at("version").is_number_integer() || document.at("version") != 1 ||
-            (document.at("kind") != "raw_slang" && document.at("kind") != "game_shader" &&
+            (document.at("kind") != "raw_slang" &&
              !(document.at("kind") == "development_shader" && file.extension() == ".vshadercache")))
         {
             throw std::invalid_argument("Unsupported cooked shader format: " + file.string());

@@ -3,7 +3,6 @@
 #include <vultra/drivers/rhi/shader_compiler.hpp>
 #include <vultra/drivers/rhi/shader_pipeline.hpp>
 #include <vultra/platform/os/file.hpp>
-#include <vultra/servers/rendering/shader_material.hpp>
 
 #include <nlohmann/json.hpp>
 #include <xxhash.h>
@@ -118,19 +117,6 @@ namespace
             m_Device.core.CmdSetPipelineLayout(commands, m_Layout);
             m_Device.core.CmdSetPipeline(commands, pipeline.handle());
             m_Device.core.CmdSetDescriptorSet(commands, 0, m_Set);
-            return dispatchAndRead(commands);
-        }
-
-        uint32_t run(const vultra::ShaderAsset& asset, const std::string& variant)
-        {
-            vultra::MaterialInstance instance;
-            instance.setVariant(asset, variant);
-            vultra::ShaderMaterial material(m_Device, asset, instance);
-            const std::array output {vultra::ShaderResourceViews {"result", VriDescriptorType_StorageBuffer, {m_View}}};
-            material.prepare("Experiment", {}, output);
-            auto* commands = m_Frame.begin();
-            m_Output.transition(commands, {VriAccess_ShaderResourceStorageWrite, VriPipelineStage_ComputeShader});
-            material.bind(commands, "Experiment");
             return dispatchAndRead(commands);
         }
 
@@ -304,48 +290,6 @@ void main(uint3 index : SV_DispatchThreadID)
             ShaderProgram::load(cacheFile);
         });
 
-    constexpr std::string_view gameText   = R"(Shader "Tests/CompilerVariants"
-{
-    Properties
-    {
-        gain ("Gain", Float) = 3
-    }
-    Variant "Low"
-    {
-        Constants { uint choice = 2 }
-    }
-    Variant "High"
-    {
-        Constants { uint choice = 7 }
-    }
-    SubShader
-    {
-        Pass
-        {
-            Name "Experiment"
-            Compute main
-            SLANGPROGRAM
-            extern static const uint choice;
-            RWStructuredBuffer<uint> result;
-            [numthreads(1, 1, 1)]
-            void main(uint3 index : SV_DispatchThreadID)
-            {
-                result[0] = uint(material.gain) * choice;
-            }
-            ENDSLANG
-        }
-    }
-})";
-    const auto                 gameSource = root / "variants.vshader";
-    writeText(gameSource, gameText);
-    auto game = ShaderAsset::compile(gameSource);
-    require(probe.run(game, "Low") == 6 && probe.run(game, "High") == 21,
-            "Game variants reused incompatible code or material reflection");
-    const auto gameArtifact = root / "variants.vshaderc";
-    game.save(gameArtifact);
-    fs::remove(gameSource);
-    game = ShaderAsset::load(gameArtifact);
-    require(probe.run(game, "High") == 21, "Source-free game variant lost code or material layout");
     require(probe.run(original, false) == 99 && probe.run(original) == 99,
             "Driver pipeline cache changed native compute output");
 

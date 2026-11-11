@@ -33,25 +33,19 @@ local requirements = {
     texture_upload = {"gpu", "texture_values"},
     gpu_scene = {"asset_values", "texture_upload"},
     scene_prepare = {"gpu_scene", "texture_import", "meshlet_build"},
-    material_values = {"json"},
     texture_import = {"asset_jobs", "image_io", "asset_source"},
     asset_import = {"texture_import"},
-    game_shader_runtime = {"shader_runtime", "material_values", "asset_source"},
-    game_shader = {"game_shader_runtime", "shader"},
-    shader_material = {"game_shader_runtime"},
-    shader_inspector = {"editor_gui", "game_shader", "shader_material"},
     camera = {"input"},
     render_values = {"math"},
-    rendering = {"render_values", "graph", "gpu_scene", "shader_material", "blit", "image_io"},
+    rendering = {"render_values", "graph", "gpu_scene", "shader_runtime", "blit", "image_io"},
     resource_pack = {"asset_source"},
     benchmark = {"gpu"},
     dialogs = {"window"},
     xr = {"desktop"},
     interactive = {"desktop", "shader", "image_io"},
     tool_import = {"asset_import"},
-    tool_shader = {"game_shader"},
     builtin_pack = {"shader", "resource_pack"},
-    tools = {"tool_import", "tool_shader"}
+    tools = {"tool_import", "shader"}
 }
 local root = path.directory(os.scriptdir())
 

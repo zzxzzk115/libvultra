@@ -1,7 +1,6 @@
 #include "../examples/offline/color_gain.hpp"
 
 #include <vultra/drivers/rhi/image_readback.hpp>
-#include <vultra/servers/rendering/builtin/raster_passes.hpp>
 #include <vultra/servers/rendering/builtin/tone_mapping_pass.hpp>
 #include <vultra/servers/rendering/graph/graph_definition.hpp>
 
@@ -285,15 +284,8 @@ namespace
         RenderGraph      graph(device);
         const auto       source = graph.createTexture("input", colorTexture({4, 4}, VriFormat_RGBA16_SFLOAT));
         const std::array imports {GraphBinding {"scene.hdr", source}};
-        GraphDefinition  unbound {{{"geometry", "vultra.gbuffer", {}}}, {}, {"geometry.normal_roughness"}};
-        expectError(
-            [&]
-            {
-                unbound.build(graph, catalog, {});
-            },
-            "bindBuiltinRasterPasses");
-        auto invalid          = chain();
-        invalid.edges[0].from = "final.color";
+        auto             invalid = chain();
+        invalid.edges[0].from    = "final.color";
         expectError(
             [&]
             {
@@ -450,7 +442,7 @@ try
     require(catalog.definitions().size() == 1 &&
                 catalog.definition("research.color_gain").type == "research.color_gain",
             "Installing a project pass also installed unrelated renderer definitions");
-    installBuiltinRenderPasses(catalog);
+    catalog.add(toneMappingDefinition());
     invalidGraphs(device, catalog);
     const auto directory =
         std::filesystem::path("build/.tmp") /

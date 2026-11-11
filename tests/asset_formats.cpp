@@ -1,9 +1,10 @@
+#include "support/forward_fixture.hpp"
+
 #include <vultra/assets/asset_pipeline.hpp>
 #include <vultra/assets/asset_source.hpp>
 #include <vultra/assets/vpk_archive.hpp>
 #include <vultra/core/base/logger.hpp>
-#include <vultra/drivers/rhi/image_readback.hpp>
-#include <vultra/servers/rendering/builtin/builtin_renderer.hpp>
+#include <vultra/servers/rendering/builtin/environment.hpp>
 #include <vultra/servers/rendering/scene.hpp>
 #include <vultra/servers/rendering/texture_blit.hpp>
 
@@ -370,44 +371,34 @@ Connections: {
                     phong.scene.materials[0].emissionLuminance == 0,
                 "ORCA interpretation leaked into generic Phong import or missing properties were uninitialized");
 
-        Device          device;
-        GpuScene        gpu(device, warm);
-        Environment     environment(device);
-        BuiltinRenderer renderer(device, gpu, environment);
-        renderer.settings.ibl          = false;
-        renderer.settings.skybox       = false;
-        renderer.settings.shadowFilter = ShadowFilter::eDisabled;
+        Device                  device;
+        GpuScene                gpu(device, warm);
+        Environment             environment(device);
+        support::ForwardFixture renderer(device, gpu, environment);
+        renderer.settings.ibl    = false;
+        renderer.settings.skybox = false;
         const RenderCamera camera {glm::lookAtRH(glm::vec3(3, 1.5f, 3), glm::vec3(3, 1.5f, 0), glm::vec3(0, 1, 0)),
                                    glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
                                    0.1f,
                                    10.0f};
-        renderer.settings.path = RenderPath::eNaiveDeferred;
-        RenderGraph graph(device);
-        const auto  outputs = renderer.addScenePasses(graph, {17, 17});
-        for (const auto resource : {outputs.hdr, outputs.gbuffer[0], outputs.gbuffer[1], outputs.gbuffer[3]})
-        {
-            graph.exportResource(resource);
-        }
+        RenderGraph        graph(device);
+        const auto         outputs = renderer.addPasses(graph, {17, 17});
+        graph.exportResource(outputs.hdr);
         graph.compile();
-        renderer.prepare(camera, graph, outputs);
-        Frame frame(device);
-        graph.execute(frame.begin());
-        frame.submitAndWait();
-        const auto       position        = readback(device, graph.getTexture(outputs.gbuffer[0]));
-        const auto       normalRoughness = readback(device, graph.getTexture(outputs.gbuffer[1]));
-        const auto       emission        = readback(device, graph.getTexture(outputs.gbuffer[3]));
-        constexpr size_t center          = (8 * 17 + 8) * 4;
-        require(std::abs(position.rgba[center + 3] - 1) < 0.01f &&
-                    std::abs(normalRoughness.rgba[center + 3] - 130.0f / 255) < 0.01f,
-                "GPU material did not read metalness from B and roughness from G");
-        const float x = 166.0f / 255 * 2 - 1;
-        const float y = 153.0f / 255 * 2 - 1;
-        require(std::abs(normalRoughness.rgba[center] - x) < 0.01f &&
-                    std::abs(normalRoughness.rgba[center + 1] + y) < 0.01f &&
-                    std::abs(normalRoughness.rgba[center + 2] - std::sqrt(1 - x * x - y * y)) < 0.01f,
+        // The forward path exposes the shaded surface through its debug views: 2 encodes normals, 5 is emission.
+        renderer.settings.debugMode = 2;
+        const auto shadedNormal     = support::render(device, renderer, graph, outputs, camera);
+        renderer.settings.debugMode = 5;
+        const auto       emission   = support::render(device, renderer, graph, outputs, camera);
+        constexpr size_t center     = (8 * 17 + 8) * 4;
+        const float      x          = 166.0f / 255 * 2 - 1;
+        const float      y          = 153.0f / 255 * 2 - 1;
+        // A 0.005 tolerance on the encoded value is 0.01 on the normal component.
+        require(std::abs(shadedNormal.rgba[center] - (x * 0.5f + 0.5f)) < 0.005f &&
+                    std::abs(shadedNormal.rgba[center + 1] - (-y * 0.5f + 0.5f)) < 0.005f &&
+                    std::abs(shadedNormal.rgba[center + 2] - (std::sqrt(1 - x * x - y * y) * 0.5f + 0.5f)) < 0.005f,
                 "GPU BC5 reconstruction or DirectX tangent handedness is incorrect");
-        require(emission.rgba[center] > 0.2f && emission.rgba[center] < 0.3f && emission.rgba[center + 3] == 1,
-                "GPU emission multiplier or reserved ORCA AO channel is incorrect");
+        require(emission.rgba[center] > 0.2f && emission.rgba[center] < 0.3f, "GPU emission multiplier is incorrect");
 
         const std::array files {VpkFile {"orca.FbX", root / "orca.FbX"},
                                 VpkFile {"color.dds", root / "color.dds"},

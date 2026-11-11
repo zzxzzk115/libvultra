@@ -50,9 +50,6 @@ if features.editor_gui then
         add_requireconfs("imgui.glfw", {configs = {wayland = is_plat("linux")}})
     end
 end
-if features.game_shader then
-    add_requires("antlr4-runtime 4.13.2", {configs = {shared = false}, system = false})
-end
 
 if features.asset_import then
     add_requires("tinygltf v2.9.7")
@@ -64,7 +61,7 @@ if features.texture_import then
     add_requires("directxtex 2025.07", {configs = {dx11 = false, dx12 = false}})
     add_requires("ispc 1.28.2", {host = true})
 end
-if features.asset_jobs or (features.shader_material and features.game_shader) then
+if features.asset_jobs then
     add_requires("vtask v0.1.0")
 end
 if features.meshlet_build then

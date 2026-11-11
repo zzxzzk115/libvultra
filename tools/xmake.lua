@@ -10,7 +10,7 @@ if features.tool_import then
     target_end()
 end
 
-if features.tool_shader then
+if features.shader then
     target("vultra-shader")
         set_kind("binary")
         set_default(false)

@@ -84,7 +84,7 @@ target("vultra")
     if features.image_metrics then
         add_files("core/src/image/image_metrics.cpp")
     end
-    if features.asset_source or features.asset_values or features.material_values or features.texture_values then
+    if features.asset_source or features.asset_values or features.texture_values then
         add_includedirs("assets/include", {public = true})
     end
     if features.asset_source then
@@ -123,14 +123,6 @@ target("vultra")
         add_includedirs("servers/include", {public = true})
         add_headerfiles("servers/include/(vultra/servers/rendering/builtin/render_light.hpp)")
     end
-    if features.material_values then
-        add_headerfiles("assets/include/(vultra/assets/material_instance.hpp)",
-                        "assets/include/(vultra/assets/asset_id.hpp)",
-                        "assets/include/(vultra/assets/shader_property.hpp)",
-                        "assets/include/(vultra/assets/asset_entry.hpp)",
-                        "assets/include/(vultra/assets/fbx_import.hpp)")
-        add_files("assets/src/material_instance.cpp", "assets/src/shader_property.cpp")
-    end
     if features.texture_import then
         add_defines("VULTRA_WITH_TEXTURE_IMPORT", {public = true})
         add_headerfiles("assets/include/(vultra/assets/texture_import.hpp)")
@@ -147,18 +139,6 @@ target("vultra")
         add_files("assets/src/asset_options.cpp", "assets/src/asset_pipeline.cpp", "assets/src/fbx_loader.cpp",
                   "assets/src/gltf_loader.cpp", "assets/src/obj_loader.cpp")
         add_packages("tinygltf", "tinyobjloader", "openfbx")
-    end
-    if features.game_shader_runtime then
-        add_headerfiles("assets/include/(vultra/assets/shader_asset.hpp)")
-        add_includedirs("assets/src", "drivers/src")
-        add_files("assets/src/shaders/shader_asset.cpp", "assets/src/shaders/shader_archive.cpp",
-                  "assets/src/shaders/material_instance.cpp")
-    end
-    if features.game_shader then
-        add_defines("VULTRA_WITH_GAME_SHADER_COMPILER", {public = true})
-        add_files("assets/src/shaders/shader_compiler.cpp", "assets/src/shaders/shader_parser.cpp",
-                  "assets/src/shaders/shader_source_map.cpp", "assets/src/shaders/generated/*.cpp")
-        add_packages("antlr4-runtime")
     end
     if features.gpu then
         local api = get_config("libvultra_graphics_api") or (is_plat("wasm") and "webgpu" or "vulkan")
@@ -253,21 +233,8 @@ target("vultra")
             local native = fingerprint({"source/drivers/src/rhi/shader*",
                                         "source/drivers/include/vultra/drivers/rhi/shader*.hpp"}, {})
             local contents = '#pragma once\ninline constexpr char kShaderToolchainKey[] = "' .. native .. '";\n'
-            if features.game_shader then
-                local language = fingerprint({"source/assets/src/shaders/*",
-                                              "source/assets/src/shaders/generated/*.cpp",
-                                              "source/assets/src/shaders/generated/*.h",
-                                              "source/assets/include/vultra/assets/shader_asset.hpp",
-                                              "source/assets/include/vultra/assets/material_instance.hpp",
-                                              "source/assets/include/vultra/assets/shader_property.hpp",
-                                              "source/assets/src/material_instance.cpp",
-                                              "source/assets/src/shader_property.cpp"},
-                                             {"antlr-4.13.2", "vultra-shader-language-1"})
-                contents = contents .. 'inline constexpr char kShaderLanguageKey[] = "' .. language .. '";\n'
-            end
             local output = path.join(os.projectdir(), get_config("builddir") or "build",
                                      "generated/shaders/shader_toolchain_key.hpp")
-            -- Native Slang caches do not depend on the optional game-language parser. No build runs Java.
             if not os.isfile(output) or io.readfile(output) ~= contents then
                 io.writefile(output, contents)
             end
@@ -275,17 +242,6 @@ target("vultra")
     end
     if features.camera then
         add_files("main/src/camera/*.cpp")
-    end
-    if features.shader_material then
-        add_includedirs("servers/include", {public = true})
-        add_headerfiles("servers/include/(vultra/servers/rendering/shader_material.hpp)",
-                        "servers/include/(vultra/servers/rendering/shader_runtime.hpp)")
-        add_files("servers/src/rendering/shader_material.cpp", "servers/src/rendering/shader_pass_state.cpp",
-                  "servers/src/rendering/shader_runtime.cpp")
-        if features.game_shader then
-            add_files("servers/src/rendering/shader_source_reload.cpp")
-            add_packages("vtask")
-        end
     end
     if features.texture_upload then
         add_includedirs("assets/src")
@@ -348,9 +304,6 @@ target("vultra")
         if features.desktop then
             add_files("main/src/app/imgui_app.cpp")
         end
-    end
-    if features.shader_inspector then
-        add_files("ui/src/editor_gui_shader_material.cpp")
     end
     if features.xr then
         add_defines("VULTRA_WITH_OPENXR", {public = true})

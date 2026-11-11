@@ -1,14 +1,3 @@
-#ifdef VULTRA_WITH_SCENE_PREPARATION
-#include "scene_fixture.hpp"
-
-#include <vultra/assets/texture_import.hpp>
-
-#include <nlohmann/json.hpp>
-#endif
-
-#ifdef VULTRA_WITH_GAME_SHADER_COMPILER
-#include <vultra/assets/shader_asset.hpp>
-#endif
 #include <vultra/assets/vpk_archive.hpp>
 #include <vultra/drivers/rhi/shader_compiler.hpp>
 #include <vultra/platform/os/file.hpp>
@@ -51,50 +40,6 @@ try
             }
         }
     }
-#ifdef VULTRA_WITH_GAME_SHADER_COMPILER
-    for (const auto* profile : {"spirv_1_5", "wgsl"})
-    {
-        ShaderCompileOptions options;
-        options.profile = profile;
-        const auto name = std::string("material-") + profile + ".vshaderc";
-        ShaderAsset::compile(source / "material.vshader", options).save(output / name);
-        files.push_back({name, output / name});
-    }
-#endif
-#if defined(VULTRA_WITH_SCENE_PREPARATION) && defined(VULTRA_WITH_GAME_SHADER_COMPILER)
-    const auto scene    = fixture::texturedQuad();
-    const auto prepared = prepareTextures(scene, {.compression = TextureCompression::eNone});
-    writeFileAtomically(output / "scene-vertices.bin", std::as_bytes(std::span(scene.vertices)));
-    writeFileAtomically(output / "scene-indices.bin", std::as_bytes(std::span(scene.indices)));
-    files.push_back({"scene-vertices.bin", output / "scene-vertices.bin"});
-    files.push_back({"scene-indices.bin", output / "scene-indices.bin"});
-    nlohmann::json descriptor {{"version", 1}, {"materials", prepared.materials}, {"images", nlohmann::json::array()}};
-    for (uint32_t index = 0; index < prepared.images.size(); ++index)
-    {
-        const auto&    image  = prepared.images[index];
-        nlohmann::json levels = nlohmann::json::array();
-        for (uint32_t mip = 0; mip < image.levels.size(); ++mip)
-        {
-            const auto& level = image.levels[mip];
-            const auto  name  = "scene-image-" + std::to_string(index) + "-" + std::to_string(mip) + ".bin";
-            writeFileAtomically(output / name, level.bytes);
-            files.push_back({name, output / name});
-            levels.push_back({{"width", level.size.width}, {"height", level.size.height}, {"file", name}});
-        }
-        descriptor["images"].push_back({{"format", image.format}, {"levels", levels}});
-    }
-    const auto text = descriptor.dump();
-    writeFileAtomically(output / "scene-fixture.json", std::as_bytes(std::span(text)));
-    files.push_back({"scene-fixture.json", output / "scene-fixture.json"});
-    for (const auto* profile : {"spirv_1_5", "wgsl"})
-    {
-        ShaderCompileOptions options;
-        options.profile = profile;
-        const auto name = std::string("scene-") + profile + ".vshaderc";
-        ShaderAsset::compile(source / "scene.vshader", options).save(output / name);
-        files.push_back({name, output / name});
-    }
-#endif
     constexpr std::string_view color = "0.08 0.18 0.32 1.0";
     writeFileAtomically(output / "clear.txt", std::as_bytes(std::span(color)));
     files.push_back({"clear.txt", output / "clear.txt"});

@@ -88,19 +88,11 @@ if features.properties then
     target_end()
 end
 
-if features.rendering and features.scene_prepare and features.shader then
+if features.rendering and features.asset_import and features.shader then
     target("module-rendering")
         set_kind("binary")
         add_deps("vultra", "openpbr")
-        add_files("../rendering.cpp")
-    target_end()
-end
-
-if features.rendering and not features.shader and not features.scene_prepare then
-    target("module-rendering-runtime")
-        set_kind("binary")
-        add_deps("vultra")
-        add_files("../rendering_runtime.cpp")
+        add_files("../render_path.cpp")
     target_end()
 end
 
@@ -109,22 +101,6 @@ if features.asset_import then
         set_kind("binary")
         add_deps("vultra")
         add_files("import.cpp")
-    target_end()
-end
-
-if features.material_values then
-    target("module-material")
-        set_kind("binary")
-        add_deps("vultra")
-        add_files("material.cpp")
-    target_end()
-end
-
-if features.game_shader then
-    target("module-game-shader")
-        set_kind("binary")
-        add_deps("vultra")
-        add_files("../shader_asset.cpp")
     target_end()
 end
 
