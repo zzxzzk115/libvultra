@@ -1,117 +1,79 @@
 # Handoff
 
-## UI readability and offline QA, 2026-10-26
-
-Shared EditorGui labels wrap within property columns, disabled captions have higher contrast, and
-headers/table colors follow the active editor palette. A nullable Window constructor exposes the
-existing runtime choice of native/offscreen rendering without duplicating renderer ownership.
-The offscreen GUI regression exercises this path and checks a long label at 250% font size with GPU
-readback, in addition to mouse/text/dropdown/inspector interactions and font-atlas updates.
-Windows release/GLFW, RTX 4090 Laptop Vulkan: the GUI offscreen test, changed C++ clang-tidy and
-format checks pass. Shared code remains backend-independent; no interactive window or physical XR
-session was opened for this cleanup. Existing generated builtin_pack.rc stays excluded.
+Dated snapshot: 2026-11-11, branch `dev-slim`. Verify claims against the code before relying on them.
 
 ## Start here
 
-Continue on `dev-VRI`. Clone that branch to obtain the library source, checked-in generated API and this handoff:
-
 ```sh
-git clone --branch dev-VRI https://github.com/zzxzzk115/libvultra.git
+git clone --branch dev-slim https://github.com/zzxzzk115/libvultra.git
 cd libvultra
 xmake f -m release -y
 xmake build -y --all
 xmake run example-offline --frames 3 --output build/.tmp/first-run
 ```
 
-Configure again on the destination machine; do not copy `.xmake`, compilation databases or binaries.
-
 Read [README](../../README.md), [BUILD](../../BUILD.md), [architecture](../architecture.md) and
-[roadmap](../roadmap.md). They describe supported behavior and the remaining design gates.
+[roadmap](../roadmap.md). On Windows, run xmake from PowerShell or cmd: in Git Bash it detects the platform as
+mingw.
 
-## Repository boundaries
+## What changed on dev-slim
 
-- libvultra owns graphics/platform services, RenderGraph, asset data, generic properties/C ABI and optional UI.
-  Its examples are `example-basics`, `example-offline` and `example-ui`.
-- Vultra owns the EnTT world, scene/resources, project/export semantics and Native/Lua/C# hosts.
-- VultraLab owns experiments, reference rendering, research examples, batch and research passes.
-- VultraPy owns the standalone Python/NumPy compute frontend.
+`dev-slim` branches from `dev-VRI` at `f9aa0575` and reduces the library to a kernel. `source/` went from about
+38,000 to about 23,000 lines of C++.
 
-Consumers pin `external/libvultra` to the corresponding library commit. Use `git clone --recurse-submodules`
-or `git submodule update --init --recursive`; their default builds need no sibling checkout. The optional
-`--libvultra_dir=../libvultra` override is for coordinated development. Keep code and dependent pins synchronized.
-Each product has its own handoff; do not restore engine/research sources here.
+Removed. The last commit that contains all of it is `dev-VRI` `f9aa0575`:
 
-## Last implementation
+- The generated C ABI, the libclang code generator, the compute bridge and reflection annotations
+  (`source/api`, `scripts/codegen*.py`).
+- VGui and the RmlUi dependency.
+- The `.vshader` language with its ANTLR parser, `ShaderAsset`, `MaterialInstance`, `ShaderMaterial` and
+  `ShaderRuntime`.
+- `BuiltinRenderer` with its deferred, shadow-cascade and mesh-shading stages.
+- The GLFW window backend. SDL3 is the only desktop backend.
+- The retained native GUI plan (documentation only; it was never implemented).
 
-RenderGraph now distinguishes content producers from execution hazards. An explicit `discardPrevious` marks a
-full overwrite; preservation remains the default, including partial copies. Side-effect pass definitions remain
-live, history retains its final observable writer, and graph definitions prune unreachable instances before GPU
-factory creation. Invalid metadata/cycles and live capability failures still report errors.
+Added:
 
-The partial-copy regression exposed a VRI Vulkan bug. Keep `external/vri/texture_copy_region.patch` with the other
-seven pinned patches. The package is VRI 0.2.0 at `d0c78964cc50788eb49d4b7daf967ef3222d2530`; the sibling VRI
-checkout is not used by this build. It remains on the older, clean `dev/neural-shader` branch.
+- Ten modules that are also the build features: core, platform, gpu, shader, graph, assets, render, ui, app, xr.
+- `RenderPath` and `ForwardPath` (`vultra.forward`).
+- Slang user-attribute and field-initializer reflection, stored in cooked programs.
+- A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
+  `writeDot()`.
+- `FileWatcher`, used by shader hot reload.
+- Ray, plane, triangle and rectangle intersection helpers.
+- `--libvultra_vri_dir=<checkout>` to build VRI from a local source tree without patches.
 
-The cleanup removed superseded engine/script/research copies after checking their preserved counterparts.
-Library feature/example/tool checks now select only library targets. No rendering algorithm, dependency version,
-image tolerance or public format version changed. The historical editor and script integration tests remain
-with their owning engine migration, rather than pretending to run as library tests.
+## VRI
+
+The default build still uses the pinned archive `d0c78964` plus the patches in `external/vri/`. Those patches,
+and the Metal patches previously carried by a downstream fork, were rebased onto VRI `master` as four local
+branches in a VRI checkout (`fix/vulkan-correctness`, `fix/web-backends`, `fix/metal-backend`,
+`build/platform-archs`) and are not merged upstream yet. The Vulkan branch was built and tested through this
+library; the Web, Metal and Android branches were only checked to apply.
 
 ## Verification
 
-Before cleanup, the graph slice passed three affected library tests, six Lab tests, engine GPU scene-sync,
-minimal `graph`/`graph_json` builds, generation checks and scoped clang-tidy. Finite C++/JSON offline PNG/PFM
-outputs were byte-identical and visually inspected. Logs/images are in `build/.tmp/render-graph-core` on the
-original machine; they are local evidence, not source dependencies.
+Windows 11, MSVC 2022, release, RTX 4090 Laptop (Vulkan, validation enabled), VRI built from the local checkout
+with all four branches merged:
 
-Cleanup checks passed: full library/engine builds, five library tests, ten engine tests, six Lab tests, six Python
-tests, 45 generator tests, four module closures and three copied cooking tools. The offline C++/JSON images still
-match the preceding hashes. Lab's GPU fixture now reads its own shaders instead of the retired library path.
-Modified C++ passes formatting and scoped clang-tidy; library/engine generation is current.
-Repeat commands are in BUILD.md. Evidence directories are local diagnostics, not prerequisites for a clone.
-Linux Vulkan/offscreen results do not establish Windows, Metal, D3D12, clean-machine
-shipping, browser hardware or physical Quest support. Prior Android ARM64/browser probes are not a new port
-acceptance. Use offline QA; visible tests require Workspace 5 and must not alter desktop displays/sockets.
+- `xmake build -y --all` and `python tests/build_modules.py` (each module builds alone).
+- Tests: render path (OpenPBR reference, material textures, live transforms, a second custom path), graph
+  resources, graph definition, graph async (graphics and compute queues, parity with the single-queue plan),
+  shader program (attributes, cooking, watched reload), shader compiler, file watcher, ray, asset pipeline,
+  asset formats, glTF materials, debug draw, meshlets, device, device selection, window, desktop, display,
+  GUI offscreen/lifetime/settings, VPK memory, image, input map.
+- `example-offline`, `example-ui` and the window tests ran for a finite number of frames.
 
-## Continue in this order
+Not verified: Linux, macOS, Android, Web and any XR runtime or headset. `tests/platform/` is a separate project
+that was edited by inspection and not built. The interactive feel of windows, hot reload and HiDPI was not
+judged by a person.
 
-1. RG1: resource dimensions, mips/layers/samples, buffer layouts and subresource initialization/views/barriers.
-2. RG2: declaration/resolve/prepare stages and explicit execution edges, with failed-candidate recovery.
-3. RG3: typed parameters and invalidation/history rules; RG4: diagnostics and backend acceptance.
-4. Finish common binding IR/safe SDK generation and native retained GUI as separate tested slices.
+## Known gaps
 
-The graph still handles single-mip/single-layer 2D textures, whole-resource states and numeric parameters.
-It does not yet meet Falcor's general composition contract. Do not expand Lab's workbench/pass collection to
-hide those gaps. Direct VRI and `addPass()` remain supported.
+See [roadmap](../roadmap.md). In short: standard scene resources beyond HDR and depth, subresource support in
+the graph, profiling across batches, a scene light buffer, XR controller input and mesh LOD.
 
-Other boundaries to preserve: cooked rendering/VGui do not select host compilers/importers; all selected code
-links one `vultra` archive; VGui currently allows one live context; EditorGui frame handles are borrowed; generated
-C tables have size/signature checks but safe SDK generation is incomplete. All file/ABI versions remain **1**.
+## Local state
 
-## Local recovery notes
-
-The original machine retains recovery autostash `884598d3` and pre-cleanup snapshots under
-`build/.tmp/handoff-cleanup/original`. They are not needed to build the committed branch. The earlier transfer
-archive is a pre-publication backup; GitHub branches and dependent submodule pins are the continuation source.
-The abandoned `VRI-api-0.2` worktree remains a separate uncommitted experiment, not the active API or a build
-baseline. VRI source changes are not part of this handoff publication. No release or tag is created.
-
-
-## Windows hybrid GPU and HiDPI repair, 2026-10-26
-
-Integrated onto public `dev-VRI` commit `5dd86f46`, retaining the library split, VRI 0.2.0,
-checked completion operations and EditorGui context lifetime checks. Convenience Vulkan Device
-construction now ranks eligible adapters by type, VRAM and exposed queue coverage/count. Explicit
-creation descriptors and native XR hooks preserve their adapter contract. The timestamp alias patch
-is checksum-pinned to the current VRI source; no dependency downgrade is required.
-
-EditorGui embeds the existing OFL Lato font, handles ImGui 1.92 dynamic atlas updates/destruction
-through VRI, and separates monitor content scale from framebuffer density. GLFW and SDL3 own their
-native scaling paths; detached viewport geometry is not enlarged twice.
-
-Windows release verification on RTX 4090 Laptop / Intel hybrid hardware at 250% desktop scaling:
-device-selection baseline, RayQuery/bindless and impossible-feature rejection; checked device
-completion failures; offscreen font 1x/2x/1x GPU readback; context lifetime; settings/layout and
-320x200 detached native viewport all passed. Independent SDL3 offscreen/settings builds passed the
-same font and native-window checks. Modified C++ passes scoped clang-tidy/formatting. No physical
-headset, live cross-monitor transition, Retina hardware or non-Windows platform acceptance is claimed.
+The uncommitted shadow receiver-culling work that existed on `dev-VRI` is kept as a git stash on the original
+machine ("shadow receiver culling WIP"). It targets the removed renderer and is not part of this branch.

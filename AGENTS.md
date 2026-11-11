@@ -14,10 +14,12 @@ An explicit user request may change a corresponding constraint. An agent must no
 
 ## 2. Architecture Boundaries
 
-- Follow the `source/{core,platform,drivers,assets,servers,scene,ui,main,api}` hierarchy, with `scripting` as an optional implemented module. Each module owns `include/vultra/<module>` and `src`; create future runtime or editor directories only when implemented.
+- Follow the `source/{core,platform,gpu,shader,graph,assets,render,ui,app,xr}` modules. Each directory is one build feature of the same name and owns `include/vultra/<module>` and `src`. A module may use only the modules [architecture](docs/architecture.md) lists as its dependencies; `python tests/build_modules.py` checks this by building each module alone.
+- This library is a kernel. Projects, packages, scripting hosts, command line tools and editors belong to the repositories that build on it; do not add them here.
 - VRI is the rendering abstraction boundary. Use its descriptors and commands directly; do not add another general RHI, resource object hierarchy or backend dispatch layer above it. Keep native interop within the existing platform or XR boundaries.
-- Keep one public `vultra` static library. Basic drawing examples must remain able to use VRI and RenderGraph directly, without constructing a scene tree, importing assets or using the built-in renderer.
-- Keep the explicit, code-driven RenderGraph and the checked-in generated API from annotated C++ declarations. Do not add an external fg library, a second graph executor, a global plugin registry or a separate binding pipeline.
+- Keep one public `vultra` static library. Basic drawing examples must remain able to use VRI and RenderGraph directly, without importing assets or using a render path.
+- Keep the explicit, code-driven RenderGraph with its single executor and execution plan. Do not add an external fg library, a second graph executor or a global plugin registry.
+- A rendering technique is a `RenderPath` implementation or a graph pass. Keep `ForwardPath` a small reference path; shadows, deferred or clustered shading are separate paths written against the public interfaces.
 - Follow the BaseApp / DesktopApp / ImGuiApp lifecycle. Keep logic updates, UI construction, command recording, submission and presentation in their respective phases. Do not construct UI in `onUpdate()`.
 
 ## 3. C++ and Ownership
