@@ -44,13 +44,7 @@ namespace vultra
 
     std::string ShaderProgram::compilerVersion()
     {
-        std::string identity = std::string(spGetBuildTagString()) + ";" + kShaderToolchainKey;
-#ifdef NDEBUG
-        identity += ";debug=none";
-#else
-        identity += ";debug=standard";
-#endif
-        return identity;
+        return std::string(spGetBuildTagString()) + ";" + kShaderToolchainKey;
     }
 
     bool ShaderProgram::cook(const std::filesystem::path& source,
