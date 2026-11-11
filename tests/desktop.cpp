@@ -1,3 +1,5 @@
+#include "support/check.hpp"
+
 #include <vultra/app/imgui_app.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/gpu/image_readback.hpp>
@@ -7,13 +9,10 @@
 
 namespace
 {
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
+
+    using Result = std::expected<void, vultra::Error>;
 
     void frameStatistics()
     {
@@ -30,8 +29,10 @@ namespace
     class TestApp final : public vultra::ImGuiApp
     {
     public:
-        TestApp() :
-            ImGuiApp({"Vultra - application test", {320, 240}}, {.persistLayout = false})
+        static inline const vultra::AppConfig kConfig {"Vultra - application test", {320, 240}};
+
+        explicit TestApp(Services services) :
+            ImGuiApp(std::move(services), kConfig)
         {
         }
 
@@ -41,20 +42,22 @@ namespace
         uint64_t minimizedTicks = 0;
 
     private:
-        void onResize(vultra::Extent size) override
+        Result onResize(vultra::Extent size) override
         {
             require(m_PostUpdated, "Resize happened before the update phases finished");
             require(size == getSwapchain().size(), "Resize callback extent mismatch");
             resized = resized || size == vultra::Extent {480, 320};
+            return {};
         }
 
-        void onPreUpdate(float) override
+        Result onPreUpdate(float) override
         {
             m_Updated     = false;
             m_PostUpdated = false;
+            return {};
         }
 
-        void onUpdate(float seconds) override
+        Result onUpdate(float seconds) override
         {
             require(std::isfinite(seconds) && seconds >= 0, "Invalid frame delta");
             require(completed == frameCount(), "Update happened before previous frame completion");
@@ -68,23 +71,29 @@ namespace
                     getWindow().restore();
                 }
             }
+            return {};
         }
 
-        void onPostUpdate(float) override
+        Result onPostUpdate(float) override
         {
             require(m_Updated, "PostUpdate happened before Update");
             m_PostUpdated = true;
+            return {};
         }
 
-        void onPreRender() override
+        Result onPreRender() override
         {
             require(m_PostUpdated, "Render preparation happened before PostUpdate");
             require(!getWindow().minimized(), "Rendering while minimized");
-            ImGuiApp::onPreRender();
+            if (auto result = ImGuiApp::onPreRender(); !result)
+            {
+                return result;
+            }
             require(ImGui::GetDrawData() && ImGui::GetDrawData()->Valid, "GUI draw data is not finalized");
+            return {};
         }
 
-        void onImGui() override
+        Result onImGui() override
         {
             require(m_PostUpdated, "GUI widgets were built before logic update finished");
             ++guiFrames;
@@ -95,29 +104,30 @@ namespace
             {
                 close(); // The acquired frame must still render, complete and present.
             }
+            return {};
         }
 
-        void onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
+        Result onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
         {
             require(guiFrames == frameCount() + 1, "Render did not receive exactly one GUI frame");
             target.transition(
                 cmd,
                 {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
             const float clear[4] {0.2f, 0.4f, 0.6f, 1};
-            vultra::beginColorPass(getDevice(), cmd, target.view(), getSwapchain().size(), clear);
+            vultra::beginColorPass(getDevice(), cmd, must(target.view()), getSwapchain().size(), clear);
             getDevice().core.CmdEndRendering(cmd);
-            drawGui(cmd, target);
+            return drawGui(cmd, target);
         }
 
-        void onPostRender(vultra::Texture& target) override
+        Result onPostRender(vultra::Texture& target) override
         {
-            const auto image = vultra::readback(getDevice(), target);
+            const auto image = must(vultra::readback(getDevice(), target));
             require(std::abs(image.rgba[0] - 0.2f) < 0.005f, "Completion hook cannot read rendered image");
             require(image.size.width == getSwapchain().size().width, "Readback has stale extent");
             const auto pixel = (16 * image.size.width + 16) * 4;
             if (image.rgba[pixel] < 0.99f)
             {
-                vultra::savePng(image, "build/.tmp/desktop_gui_failure.png");
+                must(vultra::savePng(image, "build/.tmp/desktop_gui_failure.png"));
                 vultra::Logger::app().info("GUI frame {}: vertices {}, origin {}, {}; pixel {}, {}",
                                            frameCount(),
                                            ImGui::GetDrawData()->TotalVtxCount,
@@ -137,6 +147,7 @@ namespace
             {
                 getWindow().minimize();
             }
+            return {};
         }
 
         bool m_Updated     = false;
@@ -146,38 +157,41 @@ namespace
     class CloseDuringUpdateApp final : public vultra::DesktopApp
     {
     public:
-        CloseDuringUpdateApp() :
-            DesktopApp({"Vultra - update close test", {160, 120}})
+        static inline const vultra::AppConfig kConfig {"Vultra - update close test", {160, 120}};
+
+        explicit CloseDuringUpdateApp(Services services) :
+            DesktopApp(std::move(services), kConfig)
         {
         }
 
         bool postUpdated = false;
 
     private:
-        void onUpdate(float) override
+        Result onUpdate(float) override
         {
             close();
+            return {};
         }
 
-        void onPostUpdate(float) override
+        Result onPostUpdate(float) override
         {
             postUpdated = true;
+            return {};
         }
 
-        void onRender(VriCommandBuffer*, vultra::Texture&) override
+        Result onRender(VriCommandBuffer*, vultra::Texture&) override
         {
-            throw std::runtime_error("close() during update must stop before acquiring/rendering a frame");
+            return vultra::makeError("close() during update must stop before acquiring/rendering a frame");
         }
     };
 } // namespace
 
 int main()
-try
 {
     frameStatistics();
     {
-        TestApp app;
-        app.run(20);
+        TestApp app(must(vultra::ImGuiApp::createServices(TestApp::kConfig, {.persistLayout = false})));
+        must(app.run(20));
         require(app.resized, "DesktopApp did not report window resize");
         require(app.minimizedTicks >= 2, "Logic updates stopped while the window was minimized");
         require(app.frameCount() >= 3 && app.frameCount() < 20, "close() did not stop the application");
@@ -193,16 +207,11 @@ try
                 "Changing model title lost or duplicated the statistics suffix");
     }
     {
-        CloseDuringUpdateApp app;
-        app.run(1);
+        CloseDuringUpdateApp app(must(vultra::DesktopApp::createServices(CloseDuringUpdateApp::kConfig)));
+        must(app.run(1));
         require(app.postUpdated && app.frameCount() == 0, "Update close did not finish updates and skip rendering");
     }
     vultra::Logger::app().info("Desktop tests passed: update/render phases, ImGui, readback, minimize/restore, resize, "
                                "close and frame statistics titles");
     return 0;
-}
-catch (const std::exception& error)
-{
-    vultra::Logger::app().error("{}", error.what());
-    return 1;
 }

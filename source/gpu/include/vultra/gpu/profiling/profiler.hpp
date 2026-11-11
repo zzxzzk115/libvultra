@@ -2,6 +2,7 @@
 #include <vultra/gpu/resources.hpp>
 
 #include <chrono>
+#include <expected>
 #include <memory>
 #include <optional>
 #include <string>
@@ -48,19 +49,23 @@ namespace vultra
         uint32_t    depth        = 0;
     };
 
+    // Recorders keep a reference while a frame is open, so the profiler lives behind a unique_ptr.
     class Profiler
     {
     public:
-        explicit Profiler(Device& device, uint32_t eventCapacity = 64);
+        [[nodiscard]] static std::expected<std::unique_ptr<Profiler>, Error> create(Device&  device,
+                                                                                    uint32_t eventCapacity = 64);
         ~Profiler();
-        Profiler(const Profiler&)            = delete;
-        Profiler& operator=(const Profiler&) = delete;
-        void      beginFrame(VriCommandBuffer* cmd);
-        void      beginPass(VriCommandBuffer* cmd, const std::string& name);
-        void      beginCommands(VriCommandBuffer* cmd); // optional boundary after graph barriers
-        void      endPass(VriCommandBuffer* cmd);
-        void      resolve(VriCommandBuffer* cmd);
-        void      collect(); // only after Frame::submitAndWait
+        Profiler(const Profiler&)                                           = delete;
+        Profiler&                                operator=(const Profiler&) = delete;
+        void                                     beginFrame(VriCommandBuffer* cmd);
+        [[nodiscard]] std::expected<void, Error> beginPass(VriCommandBuffer* cmd, const std::string& name);
+        // Optional boundary after graph barriers.
+        [[nodiscard]] std::expected<void, Error> beginCommands(VriCommandBuffer* cmd);
+        [[nodiscard]] std::expected<void, Error> endPass(VriCommandBuffer* cmd);
+        [[nodiscard]] std::expected<void, Error> resolve(VriCommandBuffer* cmd);
+        // Only after Frame::submitAndWait.
+        [[nodiscard]] std::expected<void, Error> collect();
 
         bool hasGpuTimings() const
         {
@@ -82,11 +87,13 @@ namespace vultra
             uint32_t                              lastQuery    = 0;
         };
 
+        Profiler(Device& device, uint32_t eventCapacity);
+
         uint32_t                m_EventCapacity;
         Device&                 m_Device;
         VriQueryInterface       m_Api {};
         VriQueryPool*           m_Pool = nullptr;
-        std::unique_ptr<Buffer> m_Readback;
+        std::optional<Buffer>   m_Readback;
         std::vector<Record>     m_Records;
         std::vector<PassTiming> m_Results;
         std::vector<uint32_t>   m_Stack;

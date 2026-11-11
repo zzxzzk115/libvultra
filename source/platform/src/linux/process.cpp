@@ -2,8 +2,14 @@
 
 namespace vultra
 {
-    std::filesystem::path executablePath()
+    std::expected<std::filesystem::path, Error> executablePath()
     {
-        return std::filesystem::read_symlink("/proc/self/exe");
+        std::error_code error;
+        auto            path = std::filesystem::read_symlink("/proc/self/exe", error);
+        if (error)
+        {
+            return makeError("Query executable path: {}", error.message());
+        }
+        return path;
     }
 } // namespace vultra

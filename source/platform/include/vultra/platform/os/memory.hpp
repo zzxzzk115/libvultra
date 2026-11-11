@@ -1,8 +1,11 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
+
 #include <cstdint>
+#include <expected>
 
 namespace vultra
 {
-    uint64_t availablePhysicalMemory();
+    [[nodiscard]] std::expected<uint64_t, Error> availablePhysicalMemory();
 } // namespace vultra

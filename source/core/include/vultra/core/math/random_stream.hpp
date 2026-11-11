@@ -1,6 +1,9 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
+
 #include <cstdint>
+#include <expected>
 
 namespace vultra
 {
@@ -17,11 +20,12 @@ namespace vultra
     {
     public:
         explicit RandomStream(uint64_t seed = 0, uint64_t sequence = 0);
-        uint32_t    nextUInt();
-        uint32_t    nextUInt(uint32_t bound); // Uniform [0, bound); zero is invalid.
-        double      nextUnit();               // Exactly representable multiples of 2^-32 in [0, 1).
-        RandomState state() const;
-        void        restore(RandomState state);
+        uint32_t nextUInt();
+        // Uniform [0, bound); zero is invalid.
+        [[nodiscard]] std::expected<uint32_t, Error> nextUInt(uint32_t bound);
+        double                                       nextUnit(); // Exactly representable multiples of 2^-32 in [0, 1).
+        RandomState                                  state() const;
+        [[nodiscard]] std::expected<void, Error>     restore(RandomState state);
 
     private:
         uint64_t m_State;

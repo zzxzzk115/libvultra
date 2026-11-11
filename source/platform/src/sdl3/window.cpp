@@ -3,7 +3,6 @@
 
 #include <vri/integration/vri_sdl3.h>
 
-#include <stdexcept>
 #include <utility>
 
 namespace vultra
@@ -12,79 +11,104 @@ namespace vultra
     {
         constexpr const char* kWindowProperty = "vultra.window";
 
-        void checkSdl(bool result, const char* operation)
+        std::unexpected<Error> sdlError(const char* operation)
+        {
+            return makeError("{}: {}", operation, SDL_GetError());
+        }
+
+        // SDL rejects these calls on a live window only when the handle itself is invalid.
+        void requireSdl(bool result, const char* operation)
         {
             if (!result)
             {
-                throw std::runtime_error(std::string(operation) + ": " + SDL_GetError());
+                panic(sdlError(operation).error().message);
             }
         }
     } // namespace
 
-    Window::Window(const char* title, Extent extent) :
-        m_Title(title)
+    Window::Window(void* window, bool owned, std::string title) :
+        m_Window(window),
+        m_Owned(owned),
+        m_Title(std::move(title))
     {
-#if defined(__linux__)
-        if (const auto* requested = platform::requestedWindowSystem())
-        {
-            checkSdl(SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, requested, SDL_HINT_OVERRIDE),
-                     "Select SDL video driver");
-        }
-#endif
-        checkSdl(SDL_InitSubSystem(SDL_INIT_VIDEO), "Initialize SDL video");
-        try
-        {
-            // SDL's native window coordinates include the content scale on Windows/X11; macOS and Wayland
-            // report 1 here and expose density through the framebuffer size instead. Create the window
-            // hidden at its final size so the user never sees an unscaled window being resized.
-            const auto scaled = [extent](float scale)
-            {
-                scale = scale > 0 ? scale : 1;
-                return std::pair {int(float(extent.width) * scale), int(float(extent.height) * scale)};
-            };
-            const auto expected = scaled(SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay()));
-            auto*      window   = SDL_CreateWindow(title,
-                                            expected.first,
-                                            expected.second,
-                                            SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
-                                                SDL_WINDOW_HIDDEN);
-            checkSdl(window != nullptr, "Create SDL window");
-            m_Window = window;
-            // The window manager may have placed it on a display with another content scale.
-            const auto actual = scaled(SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(window)));
-            if (actual != expected)
-            {
-                checkSdl(SDL_SetWindowSize(window, actual.first, actual.second), "Scale initial window to display DPI");
-            }
-            checkSdl(SDL_ShowWindow(window), "Show SDL window");
-            checkSdl(SDL_SetPointerProperty(SDL_GetWindowProperties(window), kWindowProperty, this),
-                     "Attach window input");
-            m_Input.setFocused((SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0);
-        }
-        catch (...)
-        {
-            SDL_DestroyWindow(static_cast<SDL_Window*>(m_Window));
-            SDL_QuitSubSystem(SDL_INIT_VIDEO);
-            throw;
-        }
     }
 
-    Window::Window(void* borrowed) :
-        m_Window(borrowed),
-        m_Owned(false)
+    std::expected<std::unique_ptr<Window>, Error> Window::create(const char* title, Extent extent)
+    {
+#if defined(__linux__)
+        const auto requested = platform::requestedWindowSystem();
+        if (!requested)
+        {
+            return std::unexpected(requested.error());
+        }
+        if (*requested && !SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, *requested, SDL_HINT_OVERRIDE))
+        {
+            return sdlError("Select SDL video driver");
+        }
+#endif
+        if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
+        {
+            return sdlError("Initialize SDL video");
+        }
+        // SDL's native window coordinates include the content scale on Windows/X11; macOS and Wayland
+        // report 1 here and expose density through the framebuffer size instead. Create the window
+        // hidden at its final size so the user never sees an unscaled window being resized.
+        const auto scaled = [extent](float scale)
+        {
+            scale = scale > 0 ? scale : 1;
+            return std::pair {int(float(extent.width) * scale), int(float(extent.height) * scale)};
+        };
+        const auto expected = scaled(SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay()));
+        auto*      handle = SDL_CreateWindow(title,
+                                             expected.first,
+                                             expected.second,
+                                             SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
+                                                 SDL_WINDOW_HIDDEN);
+        if (!handle)
+        {
+            auto error = sdlError("Create SDL window");
+            SDL_QuitSubSystem(SDL_INIT_VIDEO);
+            return error;
+        }
+        // From here the Window owns the handle and the video subsystem reference.
+        std::unique_ptr<Window> window(new Window(handle, true, title));
+        // The window manager may have placed it on a display with another content scale.
+        const auto actual = scaled(SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(handle)));
+        if (actual != expected && !SDL_SetWindowSize(handle, actual.first, actual.second))
+        {
+            return sdlError("Scale initial window to display DPI");
+        }
+        if (!SDL_ShowWindow(handle))
+        {
+            return sdlError("Show SDL window");
+        }
+        if (!SDL_SetPointerProperty(SDL_GetWindowProperties(handle), kWindowProperty, window.get()))
+        {
+            return sdlError("Attach window input");
+        }
+        window->m_Input.setFocused((SDL_GetWindowFlags(handle) & SDL_WINDOW_INPUT_FOCUS) != 0);
+        return window;
+    }
+
+    std::expected<std::unique_ptr<Window>, Error> Window::borrow(void* borrowed)
     {
         if (!borrowed)
         {
-            throw std::invalid_argument("Cannot wrap a null SDL window");
+            return makeError("Cannot wrap a null SDL window");
         }
-        m_Title               = title();
-        const auto properties = SDL_GetWindowProperties(static_cast<SDL_Window*>(m_Window));
-        checkSdl(SDL_SetPointerProperty(properties, kWindowProperty, this), "Attach borrowed window input");
+        auto*                   handle = static_cast<SDL_Window*>(borrowed);
+        std::unique_ptr<Window> window(new Window(borrowed, false, SDL_GetWindowTitle(handle)));
+        if (!SDL_SetPointerProperty(SDL_GetWindowProperties(handle), kWindowProperty, window.get()))
+        {
+            return sdlError("Attach borrowed window input");
+        }
+        return window;
     }
 
     Window::~Window()
     {
         auto* window = static_cast<SDL_Window*>(m_Window);
+        // Clearing a property this window never set is harmless.
         SDL_ClearProperty(SDL_GetWindowProperties(window), kWindowProperty);
         if (m_Owned)
         {
@@ -170,8 +194,8 @@ namespace vultra
 
     void Window::updateTitle()
     {
-        checkSdl(SDL_SetWindowTitle(static_cast<SDL_Window*>(m_Window), (m_Title + m_TitleSuffix).c_str()),
-                 "Set window title");
+        requireSdl(SDL_SetWindowTitle(static_cast<SDL_Window*>(m_Window), (m_Title + m_TitleSuffix).c_str()),
+                   "Set window title");
     }
 
     std::string Window::title() const
@@ -183,8 +207,8 @@ namespace vultra
     {
         int width  = 0;
         int height = 0;
-        checkSdl(SDL_GetWindowSizeInPixels(static_cast<SDL_Window*>(m_Window), &width, &height),
-                 "Query framebuffer size");
+        requireSdl(SDL_GetWindowSizeInPixels(static_cast<SDL_Window*>(m_Window), &width, &height),
+                   "Query framebuffer size");
         return {uint32_t(width), uint32_t(height)};
     }
 
@@ -192,7 +216,7 @@ namespace vultra
     {
         int width  = 0;
         int height = 0;
-        checkSdl(SDL_GetWindowSize(static_cast<SDL_Window*>(m_Window), &width, &height), "Query window size");
+        requireSdl(SDL_GetWindowSize(static_cast<SDL_Window*>(m_Window), &width, &height), "Query window size");
         return {uint32_t(width), uint32_t(height)};
     }
 
@@ -201,25 +225,25 @@ namespace vultra
         auto* window = static_cast<SDL_Window*>(m_Window);
         if (SDL_TextInputActive(window) != enabled)
         {
-            checkSdl(enabled ? SDL_StartTextInput(window) : SDL_StopTextInput(window),
-                     enabled ? "Start SDL text input" : "Stop SDL text input");
+            requireSdl(enabled ? SDL_StartTextInput(window) : SDL_StopTextInput(window),
+                       enabled ? "Start SDL text input" : "Stop SDL text input");
         }
     }
 
     void Window::setSize(Extent extent)
     {
-        checkSdl(SDL_SetWindowSize(static_cast<SDL_Window*>(m_Window), int(extent.width), int(extent.height)),
-                 "Resize window");
+        requireSdl(SDL_SetWindowSize(static_cast<SDL_Window*>(m_Window), int(extent.width), int(extent.height)),
+                   "Resize window");
     }
 
     void Window::minimize()
     {
-        checkSdl(SDL_MinimizeWindow(static_cast<SDL_Window*>(m_Window)), "Minimize window");
+        requireSdl(SDL_MinimizeWindow(static_cast<SDL_Window*>(m_Window)), "Minimize window");
     }
 
     void Window::restore()
     {
-        checkSdl(SDL_RestoreWindow(static_cast<SDL_Window*>(m_Window)), "Restore window");
+        requireSdl(SDL_RestoreWindow(static_cast<SDL_Window*>(m_Window)), "Restore window");
     }
 
     bool Window::minimized() const

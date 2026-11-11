@@ -6,17 +6,20 @@
 // clang-format on
 
 #include <array>
-#include <stdexcept>
-#include <string>
 
 namespace vultra
 {
-    std::optional<std::filesystem::path> openModelDialog(const Window& owner)
+    std::expected<std::optional<std::filesystem::path>, Error> openModelDialog(const Window& owner)
     {
+        const auto handle = owner.nativeHandle();
+        if (!handle)
+        {
+            return std::unexpected(handle.error());
+        }
         std::array<wchar_t, 32768> file {};
         OPENFILENAMEW              info {};
         info.lStructSize = sizeof(info);
-        info.hwndOwner   = static_cast<HWND>(owner.nativeHandle());
+        info.hwndOwner   = static_cast<HWND>(*handle);
         info.lpstrFilter = L"Static models (*.gltf;*.glb;*.obj;*.fbx)\0*.gltf;*.glb;*.obj;*.fbx\0All files\0*.*\0";
         info.lpstrFile   = file.data();
         info.nMaxFile    = DWORD(file.size());
@@ -28,7 +31,7 @@ namespace vultra
         }
         if (const auto error = CommDlgExtendedError())
         {
-            throw std::runtime_error("Open model dialog failed: " + std::to_string(error));
+            return makeError("Open model dialog failed: {}", error);
         }
         return std::nullopt;
     }

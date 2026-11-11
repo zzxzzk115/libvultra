@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <stdexcept>
 #include <type_traits>
 #include <utility>
 
@@ -14,12 +13,48 @@ namespace vultra
     {
         using Json = nlohmann::json;
 
-        void requireFinite(double value, std::string_view property)
+        bool isFinite(const PropertyValue& value)
         {
-            if (!std::isfinite(value))
-            {
-                throw std::invalid_argument(std::string("Property requires a finite number: ") + std::string(property));
-            }
+            return std::visit(
+                [](const auto& item)
+                {
+                    using Value = std::decay_t<decltype(item)>;
+                    if constexpr (std::is_floating_point_v<Value>)
+                    {
+                        return std::isfinite(item);
+                    }
+                    else if constexpr (std::is_same_v<Value, glm::mat4>)
+                    {
+                        for (int column = 0; column < 4; ++column)
+                        {
+                            for (int row = 0; row < 4; ++row)
+                            {
+                                if (!std::isfinite(item[column][row]))
+                                {
+                                    return false;
+                                }
+                            }
+                        }
+                        return true;
+                    }
+                    else if constexpr (std::is_same_v<Value, glm::vec2> || std::is_same_v<Value, glm::vec3> ||
+                                       std::is_same_v<Value, glm::vec4>)
+                    {
+                        for (int index = 0; index < item.length(); ++index)
+                        {
+                            if (!std::isfinite(item[index]))
+                            {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }
+                    else
+                    {
+                        return true;
+                    }
+                },
+                value);
         }
 
         Json writeValue(const PropertyValue& value)
@@ -75,17 +110,18 @@ namespace vultra
                 value);
         }
 
-        int64_t readSigned(const Json& value)
+        std::expected<int64_t, Error> readSigned(const Json& value)
         {
             if (!value.is_number_integer() ||
                 (value.is_number_unsigned() && value.get<uint64_t>() > uint64_t(INT64_MAX)))
             {
-                throw std::invalid_argument("Property requires a signed 64-bit integer");
+                return makeError("Property requires a signed 64-bit integer");
             }
             return value.get<int64_t>();
         }
 
-        PropertyValue readValue(PropertyKind kind, const Json& value, PropertyKind elementKind)
+        // Throws nlohmann::json::exception for mistyped scalars; callers convert it at the parse boundary.
+        std::expected<PropertyValue, Error> readValue(PropertyKind kind, const Json& value, PropertyKind elementKind)
         {
             switch (kind)
             {
@@ -96,7 +132,7 @@ namespace vultra
                 case PropertyKind::eUInt:
                     if (!value.is_number_integer() || (!value.is_number_unsigned() && value.get<int64_t>() < 0))
                     {
-                        throw std::invalid_argument("Property requires an unsigned 64-bit integer");
+                        return makeError("Property requires an unsigned 64-bit integer");
                     }
                     return value.get<uint64_t>();
                 case PropertyKind::eFloat:
@@ -105,8 +141,14 @@ namespace vultra
                     return value.get<double>();
                 case PropertyKind::eString:
                     return value.get<std::string>();
-                case PropertyKind::eEnum:
-                    return PropertyEnum {readSigned(value)};
+                case PropertyKind::eEnum: {
+                    const auto number = readSigned(value);
+                    if (!number)
+                    {
+                        return std::unexpected(number.error());
+                    }
+                    return PropertyEnum {*number};
+                }
                 case PropertyKind::eReference:
                     if (value.is_null())
                     {
@@ -116,17 +158,22 @@ namespace vultra
                     {
                         return PropertyReference {*id};
                     }
-                    throw std::invalid_argument("Property requires a persistent UUID or null");
+                    return makeError("Property requires a persistent UUID or null");
                 case PropertyKind::eArray: {
                     if (!value.is_array() || elementKind == PropertyKind::eArray)
                     {
-                        throw std::invalid_argument("Property requires a homogeneous array of scalar values");
+                        return makeError("Property requires a homogeneous array of scalar values");
                     }
                     PropertyArray result;
                     result.values.reserve(value.size());
                     for (const auto& element : value)
                     {
-                        result.values.push_back(readValue(elementKind, element, PropertyKind::eBool));
+                        auto item = readValue(elementKind, element, PropertyKind::eBool);
+                        if (!item)
+                        {
+                            return std::unexpected(item.error());
+                        }
+                        result.values.push_back(std::move(*item));
                     }
                     return result;
                 }
@@ -139,7 +186,7 @@ namespace vultra
                         kind == PropertyKind::eMatrix4 ? 16 : int(kind) - int(PropertyKind::eVector2) + 2;
                     if (values.size() != size_t(count))
                     {
-                        throw std::invalid_argument("Wrong property vector/matrix length");
+                        return makeError("Wrong property vector/matrix length");
                     }
                     switch (kind)
                     {
@@ -163,81 +210,92 @@ namespace vultra
                     }
                 }
             }
-            throw std::logic_error("Unknown property kind");
+            panic("Unknown property kind");
         }
 
-        void validateShape(const Json& input, const Json& expected, const std::string& path)
+        std::expected<void, Error> validateShape(const Json& input, const Json& expected, const std::string& path)
         {
             if (expected.is_object())
             {
                 if (!input.is_object())
                 {
-                    throw std::invalid_argument("Expected a property object at " + path);
+                    return makeError("Expected a property object at {}", path);
                 }
                 for (const auto& [key, value] : input.items())
                 {
                     if (!expected.contains(key))
                     {
-                        throw std::invalid_argument("Unknown serialized property at " + path + "/" + key);
+                        return makeError("Unknown serialized property at {}/{}", path, key);
                     }
-                    validateShape(value, expected.at(key), path + "/" + key);
+                    if (auto result = validateShape(value, expected.at(key), path + "/" + key); !result)
+                    {
+                        return result;
+                    }
                 }
             }
             else if (expected.is_array())
             {
                 if (!input.is_array() || input.size() != expected.size())
                 {
-                    throw std::invalid_argument("Wrong property array length at " + path);
+                    return makeError("Wrong property array length at {}", path);
                 }
                 for (size_t index = 0; index < input.size(); ++index)
                 {
-                    validateShape(input[index], expected[index], path + "/" + std::to_string(index));
+                    if (auto result = validateShape(input[index], expected[index], path + "/" + std::to_string(index));
+                        !result)
+                    {
+                        return result;
+                    }
                 }
             }
             else if ((expected.is_number() && !input.is_number()) || (expected.is_boolean() && !input.is_boolean()) ||
                      (expected.is_string() && !input.is_string()))
             {
-                throw std::invalid_argument("Wrong property value type at " + path);
+                return makeError("Wrong property value type at {}", path);
             }
+            return {};
         }
     } // namespace
 
-    PropertyValue PropertyInfo::read(const void* object) const
+    std::expected<PropertyValue, Error> PropertyInfo::read(const void* object) const
     {
         if (!object || !get)
         {
-            throw std::invalid_argument("Property read requires a native object and getter");
+            return makeError("Property read requires a native object and getter");
         }
         return get(object);
     }
 
-    void
+    std::expected<void, Error>
     PropertySchema::validateKind(PropertyKind expectedKind, const PropertyValue& value, bool declarationDefault) const
     {
         if (value.index() != size_t(expectedKind))
         {
-            throw std::invalid_argument(std::string("Wrong value type for property ") + name);
+            return makeError("Wrong value type for property {}", name);
         }
         if (expectedKind == PropertyKind::eReference && !nullable && !declarationDefault &&
             !std::get<PropertyReference>(value).id.valid())
         {
-            throw std::invalid_argument(std::string("Property requires a non-null reference: ") + name);
+            return makeError("Property requires a non-null reference: {}", name);
         }
         if (expectedKind == PropertyKind::eArray)
         {
             if (elementKind == PropertyKind::eArray)
             {
-                throw std::invalid_argument("Nested property arrays are not supported");
+                return makeError("Nested property arrays are not supported");
             }
             for (const auto& item : std::get<PropertyArray>(value).values)
             {
-                validateKind(elementKind, item, declarationDefault);
+                if (auto result = validateKind(elementKind, item, declarationDefault); !result)
+                {
+                    return result;
+                }
             }
         }
         if (expectedKind == PropertyKind::eEnum &&
             std::ranges::find(enumValues, std::get<PropertyEnum>(value).value) == enumValues.end())
         {
-            throw std::invalid_argument(std::string("Unknown enum value for property ") + name);
+            return makeError("Unknown enum value for property {}", name);
         }
         if (expectedKind == PropertyKind::eInt && integerBits > 0 && integerBits < 64)
         {
@@ -245,80 +303,61 @@ namespace vultra
             const auto limit  = int64_t {1} << (integerBits - 1);
             if (number < -limit || number >= limit)
             {
-                throw std::invalid_argument(std::string("Integer out of range for property ") + name);
+                return makeError("Integer out of range for property {}", name);
             }
         }
         if (expectedKind == PropertyKind::eUInt && integerBits > 0 && integerBits < 64 &&
             std::get<uint64_t>(value) >= (uint64_t {1} << integerBits))
         {
-            throw std::invalid_argument(std::string("Integer out of range for property ") + name);
+            return makeError("Integer out of range for property {}", name);
         }
-        std::visit(
-            [this](const auto& item)
-            {
-                using Value = std::decay_t<decltype(item)>;
-                if constexpr (std::is_floating_point_v<Value>)
-                {
-                    requireFinite(item, name);
-                }
-                else if constexpr (std::is_same_v<Value, glm::mat4>)
-                {
-                    for (int column = 0; column < 4; ++column)
-                    {
-                        for (int row = 0; row < 4; ++row)
-                        {
-                            requireFinite(item[column][row], name);
-                        }
-                    }
-                }
-                else if constexpr (std::is_same_v<Value, glm::vec2> || std::is_same_v<Value, glm::vec3> ||
-                                   std::is_same_v<Value, glm::vec4>)
-                {
-                    for (int index = 0; index < item.length(); ++index)
-                    {
-                        requireFinite(item[index], name);
-                    }
-                }
-            },
-            value);
+        if (!isFinite(value))
+        {
+            return makeError("Property requires a finite number: {}", name);
+        }
+        return {};
     }
 
-    void PropertySchema::validate(const PropertyValue& value) const
+    std::expected<void, Error> PropertySchema::validate(const PropertyValue& value) const
     {
-        validateKind(kind, value, false);
+        return validateKind(kind, value, false);
     }
 
-    void PropertyInfo::write(void* object, const PropertyValue& value) const
+    std::expected<void, Error> PropertyInfo::write(void* object, const PropertyValue& value) const
     {
         if (!object || !set)
         {
-            throw std::invalid_argument("Property write requires a native object and setter");
+            return makeError("Property write requires a native object and setter");
         }
-        validate(value);
+        if (auto result = validate(value); !result)
+        {
+            return result;
+        }
         set(object, value);
+        return {};
     }
 
-    const PropertyInfo& ObjectTypeInfo::property(std::string_view propertyName) const
+    std::expected<const PropertyInfo*, Error> ObjectTypeInfo::property(std::string_view propertyName) const
     {
         const auto found = std::ranges::find(properties, propertyName, &PropertyInfo::name);
         if (found == properties.end())
         {
-            throw std::invalid_argument(std::string(name) + ": unknown property " + std::string(propertyName));
+            return makeError("{}: unknown property {}", name, propertyName);
         }
-        return *found;
+        return &*found;
     }
 
-    void ObjectTypeCatalog::add(const ObjectTypeInfo& typeInfo)
+    std::expected<void, Error> ObjectTypeCatalog::add(const ObjectTypeInfo& typeInfo)
     {
         if (!typeInfo.name || typeInfo.name[0] == '\0' || typeInfo.category.empty() ||
             typeInfo.category.find('\0') != std::string::npos)
         {
-            throw std::invalid_argument("Property type requires a nonempty name");
+            return makeError("Property type requires a nonempty name");
         }
         if (typeInfo.base && (std::ranges::find(m_Types, typeInfo.base) == m_Types.end() ||
                               typeInfo.base->category != typeInfo.category))
         {
-            throw std::invalid_argument(std::string("Register the matching base category before: ") + typeInfo.name);
+            return makeError("Register the matching base category before: {}", typeInfo.name);
         }
         if (std::ranges::any_of(m_Types,
                                 [&](const auto* type)
@@ -326,29 +365,33 @@ namespace vultra
                                     return type->name == std::string_view(typeInfo.name);
                                 }))
         {
-            throw std::invalid_argument(std::string("Duplicate property type: ") + typeInfo.name);
+            return makeError("Duplicate property type: {}", typeInfo.name);
         }
         for (const auto& property : typeInfo.properties)
         {
-            property.validateDefinition();
+            if (auto result = property.validateDefinition(); !result)
+            {
+                return result;
+            }
             if (!property.get || !property.set)
             {
-                throw std::invalid_argument(std::string("Incomplete native property binding: ") + typeInfo.name);
+                return makeError("Incomplete native property binding: {}", typeInfo.name);
             }
             if (std::ranges::count(typeInfo.properties, std::string_view(property.name), &PropertyInfo::name) != 1)
             {
-                throw std::invalid_argument(std::string("Duplicate effective property: ") + property.name);
+                return makeError("Duplicate effective property: {}", property.name);
             }
         }
         m_Types.push_back(&typeInfo);
+        return {};
     }
 
-    void ObjectTypeCatalog::remove(const ObjectTypeInfo& typeInfo)
+    std::expected<void, Error> ObjectTypeCatalog::remove(const ObjectTypeInfo& typeInfo)
     {
         const auto found = std::ranges::find(m_Types, &typeInfo);
         if (found == m_Types.end())
         {
-            throw std::invalid_argument(std::string("Property type does not belong to this catalog: ") + typeInfo.name);
+            return makeError("Property type does not belong to this catalog: {}", typeInfo.name);
         }
         if (std::ranges::any_of(m_Types,
                                 [&](const auto* type)
@@ -356,12 +399,13 @@ namespace vultra
                                     return type->base == &typeInfo;
                                 }))
         {
-            throw std::logic_error(std::string("Remove derived type registrations before: ") + typeInfo.name);
+            return makeError("Remove derived type registrations before: {}", typeInfo.name);
         }
         m_Types.erase(found);
+        return {};
     }
 
-    const ObjectTypeInfo& ObjectTypeCatalog::type(std::string_view name) const
+    std::expected<const ObjectTypeInfo*, Error> ObjectTypeCatalog::type(std::string_view name) const
     {
         const auto found = std::ranges::find_if(m_Types,
                                                 [&](const auto* type)
@@ -370,9 +414,9 @@ namespace vultra
                                                 });
         if (found == m_Types.end())
         {
-            throw std::invalid_argument("Unknown property type: " + std::string(name));
+            return makeError("Unknown property type: {}", name);
         }
-        return **found;
+        return *found;
     }
 
     std::span<const ObjectTypeInfo* const> ObjectTypeCatalog::types() const
@@ -392,11 +436,11 @@ namespace vultra
         return false;
     }
 
-    std::string serializeProperties(const ObjectTypeInfo& type, const void* object)
+    std::expected<std::string, Error> serializeProperties(const ObjectTypeInfo& type, const void* object)
     {
         if (!object)
         {
-            throw std::invalid_argument("Cannot encode a null property object");
+            return makeError("Cannot encode a null property object");
         }
         auto json = Json::object();
         for (const auto& property : type.properties)
@@ -404,70 +448,119 @@ namespace vultra
             if (hasPropertyFlag(property.flags, PropertyFlags::eSerialize))
             {
                 const auto value = property.read(object);
-                property.validate(value);
-                json[Json::json_pointer(property.jsonPath)] = writeValue(value);
+                if (!value)
+                {
+                    return std::unexpected(value.error());
+                }
+                if (auto result = property.validate(*value); !result)
+                {
+                    return std::unexpected(result.error());
+                }
+                try
+                {
+                    json[Json::json_pointer(property.jsonPath)] = writeValue(*value);
+                }
+                catch (const Json::exception& error)
+                {
+                    return makeError("{}: {}", property.name, error.what());
+                }
             }
         }
         return json.dump();
     }
 
-    void deserializeProperties(const ObjectTypeInfo& type, std::string_view json, void* object)
+    std::expected<void, Error> deserializeProperties(const ObjectTypeInfo& type, std::string_view json, void* object)
     {
         if (!object)
         {
-            throw std::invalid_argument("Cannot decode a null property object");
+            return makeError("Cannot decode a null property object");
         }
-        const auto input    = Json::parse(json);
-        auto       expected = Json::object();
-        for (const auto& property : type.properties)
+        std::vector<std::pair<const PropertyInfo*, PropertyValue>> values;
+        try
         {
-            if (hasPropertyFlag(property.flags, PropertyFlags::eSerialize))
+            const auto input    = Json::parse(json);
+            auto       expected = Json::object();
+            for (const auto& property : type.properties)
             {
-                expected[Json::json_pointer(property.jsonPath)] = writeValue(property.defaultValue);
-                if ((property.kind == PropertyKind::eArray || property.kind == PropertyKind::eReference) &&
-                    input.contains(Json::json_pointer(property.jsonPath)))
+                if (hasPropertyFlag(property.flags, PropertyFlags::eSerialize))
                 {
-                    // Their shape is defined by the descriptor, not by the length/nullness of the default.
-                    expected[Json::json_pointer(property.jsonPath)] = input.at(Json::json_pointer(property.jsonPath));
+                    expected[Json::json_pointer(property.jsonPath)] = writeValue(property.defaultValue);
+                    if ((property.kind == PropertyKind::eArray || property.kind == PropertyKind::eReference) &&
+                        input.contains(Json::json_pointer(property.jsonPath)))
+                    {
+                        // Their shape is defined by the descriptor, not by the length/nullness of the default.
+                        expected[Json::json_pointer(property.jsonPath)] =
+                            input.at(Json::json_pointer(property.jsonPath));
+                    }
+                }
+            }
+            if (auto result = validateShape(input, expected, type.name); !result)
+            {
+                return result;
+            }
+            for (const auto& property : type.properties)
+            {
+                if (hasPropertyFlag(property.flags, PropertyFlags::eSerialize))
+                {
+                    const Json::json_pointer            path(property.jsonPath);
+                    std::expected<PropertyValue, Error> value = property.defaultValue;
+                    if (input.contains(path))
+                    {
+                        value = readValue(property.kind, input.at(path), property.elementKind);
+                    }
+                    if (!value)
+                    {
+                        return std::unexpected(value.error());
+                    }
+                    if (auto result = property.validate(*value); !result)
+                    {
+                        return result;
+                    }
+                    values.emplace_back(&property, std::move(*value));
                 }
             }
         }
-        validateShape(input, expected, type.name);
-        std::vector<std::pair<const PropertyInfo*, PropertyValue>> values;
-        for (const auto& property : type.properties)
+        catch (const Json::exception& error)
         {
-            if (hasPropertyFlag(property.flags, PropertyFlags::eSerialize))
-            {
-                const Json::json_pointer path(property.jsonPath);
-                auto value = input.contains(path) ? readValue(property.kind, input.at(path), property.elementKind) :
-                                                    property.defaultValue;
-                property.validate(value);
-                values.emplace_back(&property, std::move(value));
-            }
+            return makeError("{}: {}", type.name, error.what());
         }
         for (const auto& [property, value] : values)
         {
-            property->write(object, value);
+            if (auto result = property->write(object, value); !result)
+            {
+                return result;
+            }
         }
+        return {};
     }
 
-    std::string serializeProperty(const PropertySchema& property, const PropertyValue& value)
+    std::expected<std::string, Error> serializeProperty(const PropertySchema& property, const PropertyValue& value)
     {
-        property.validate(value);
+        if (auto result = property.validate(value); !result)
+        {
+            return std::unexpected(result.error());
+        }
         return writeValue(value).dump();
     }
 
-    PropertyValue deserializeProperty(const PropertySchema& property, std::string_view json)
+    std::expected<PropertyValue, Error> deserializeProperty(const PropertySchema& property, std::string_view json)
     {
         try
         {
             auto value = readValue(property.kind, Json::parse(json), property.elementKind);
-            property.validate(value);
+            if (!value)
+            {
+                return value;
+            }
+            if (auto result = property.validate(*value); !result)
+            {
+                return std::unexpected(result.error());
+            }
             return value;
         }
         catch (const Json::exception& error)
         {
-            throw std::invalid_argument(std::string(property.name) + ": " + error.what());
+            return makeError("{}: {}", property.name, error.what());
         }
     }
 } // namespace vultra

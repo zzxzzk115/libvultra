@@ -1,10 +1,10 @@
 #pragma once
 
+#include "support/check.hpp"
+
 #include <vultra/platform/os/window.hpp>
 
 #include <SDL3/SDL.h>
-
-#include <stdexcept>
 
 namespace test
 {
@@ -61,7 +61,7 @@ namespace test
             // SDL_ADDEVENT bypasses the real-focus filter above, while exercising normal dispatch.
             if (SDL_PeepEvents(&event, 1, SDL_ADDEVENT, 0, 0) != 1)
             {
-                throw std::runtime_error(SDL_GetError());
+                support::fail(SDL_GetError());
             }
         }
 
@@ -70,11 +70,11 @@ namespace test
         {
             if (!SDL_PushEvent(&event))
             {
-                throw std::runtime_error(SDL_GetError());
+                support::fail(SDL_GetError());
             }
         }
 
-        SDL_WindowID m_Id = 0;
+        SDL_WindowID    m_Id = 0;
         vultra::Window& m_Window;
     };
 } // namespace test

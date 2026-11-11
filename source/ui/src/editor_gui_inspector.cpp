@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cfloat>
-#include <stdexcept>
+#include <utility>
 
 namespace vultra
 {
@@ -135,7 +135,8 @@ namespace vultra
         return ImGui::Combo("##value", index, items, count);
     }
 
-    bool EditorGuiInspector::property(EditorGuiProperty property, void* value, EditorGuiPropertyDrawer drawer)
+    std::expected<bool, Error>
+    EditorGuiInspector::property(EditorGuiProperty property, void* value, EditorGuiPropertyDrawer drawer)
     {
         if (const auto custom = drawCustom(property, value))
         {
@@ -143,7 +144,7 @@ namespace vultra
         }
         if (!drawer.draw)
         {
-            throw std::invalid_argument("EditorGuiInspector property drawer is null");
+            return makeError("EditorGuiInspector property drawer is null");
         }
         beginRow(property);
         PropertyIdScope id(property.id);
@@ -163,7 +164,7 @@ namespace vultra
         return drawer->draw(property, value, drawer->userData);
     }
 
-    bool EditorGuiInspector::properties(const ObjectTypeInfo& type, void* object)
+    std::expected<bool, Error> EditorGuiInspector::properties(const ObjectTypeInfo& type, void* object)
     {
         bool changed = false;
         for (const auto& property : type.properties)
@@ -173,18 +174,33 @@ namespace vultra
                 continue;
             }
             auto value = property.read(object);
-            if (valueField(property, value))
+            if (!value)
             {
-                property.write(object, value);
+                return std::unexpected(value.error());
+            }
+            const auto edited = valueField(property, *value);
+            if (!edited)
+            {
+                return std::unexpected(edited.error());
+            }
+            if (*edited)
+            {
+                if (auto result = property.write(object, *value); !result)
+                {
+                    return std::unexpected(result.error());
+                }
                 changed = true;
             }
         }
         return changed;
     }
 
-    bool EditorGuiInspector::valueField(const PropertySchema& info, PropertyValue& value)
+    std::expected<bool, Error> EditorGuiInspector::valueField(const PropertySchema& info, PropertyValue& value)
     {
-        info.validate(value);
+        if (auto result = info.validate(value); !result)
+        {
+            return std::unexpected(result.error());
+        }
         const EditorGuiProperty property {info.drawerId.empty() ? info.name.c_str() : info.drawerId.c_str(),
                                           info.label.empty() ? info.name.c_str() : info.label.c_str()};
         if (info.kind == PropertyKind::eBool)
@@ -324,24 +340,36 @@ namespace vultra
                 const auto parsed = StableId::parse(text);
                 if (!text.empty() && !parsed)
                 {
-                    throw std::invalid_argument("Reference requires a persistent UUID");
+                    return makeError("Reference requires a persistent UUID");
                 }
                 reference.id = parsed.value_or(StableId {});
-                info.validate(value);
+                if (auto result = info.validate(value); !result)
+                {
+                    return std::unexpected(result.error());
+                }
                 return true;
             }
             case PropertyKind::eArray: {
                 // Custom drawers can provide component-specific collection controls.
                 auto text = serializeProperty(info, value);
-                if (!ImGui::InputText("##value", &text, ImGuiInputTextFlags_EnterReturnsTrue))
+                if (!text)
+                {
+                    return std::unexpected(text.error());
+                }
+                if (!ImGui::InputText("##value", &*text, ImGuiInputTextFlags_EnterReturnsTrue))
                 {
                     return false;
                 }
-                value = deserializeProperty(info, text);
+                auto parsed = deserializeProperty(info, *text);
+                if (!parsed)
+                {
+                    return std::unexpected(parsed.error());
+                }
+                value = std::move(*parsed);
                 return true;
             }
             default:
-                throw std::logic_error("Unsupported property Inspector kind");
+                panic("Unsupported property Inspector kind");
         }
     }
 } // namespace vultra

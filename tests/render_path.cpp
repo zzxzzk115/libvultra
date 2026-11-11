@@ -1,3 +1,4 @@
+#include "support/check.hpp"
 #include "support/forward_fixture.hpp"
 
 #include <vultra/assets/asset_pipeline.hpp>
@@ -20,55 +21,70 @@
 
 namespace
 {
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
-
     using support::finite;
     using support::ForwardFixture;
+    using support::must;
     using support::render;
+    using support::require;
+
+    void run(vultra::Frame& frame, vultra::RenderGraph& graph)
+    {
+        must(graph.execute(must(frame.begin())));
+        must(frame.submitAndWait());
+    }
+
+    // Begins and ends a cleared 4x4 color pass on the target.
+    std::expected<void, vultra::Error>
+    clearPass(vultra::Device& device, VriCommandBuffer* cmd, vultra::Texture& target, const float* color)
+    {
+        const auto view = target.view();
+        if (!view)
+        {
+            return std::unexpected(view.error());
+        }
+        vultra::beginColorPass(device, cmd, *view, {4, 4}, color);
+        device.core.CmdEndRendering(cmd);
+        return {};
+    }
 
     void aovMapping(vultra::Device& device)
     {
         using namespace vultra;
-        const auto program   = ShaderProgram::compile("builtin/shaders/passes/texture_blit.slang",
-                                                      {},
-                                                    std::array {std::filesystem::path("builtin/shaders")});
-        const auto bindings  = program.resourceBindings();
+        const auto program   = must(ShaderProgram::compile("builtin/shaders/passes/texture_blit.slang",
+                                                           {},
+                                                           std::array {std::filesystem::path("builtin/shaders")}));
+        const auto bindings  = must(program.resourceBindings());
         const auto constants = std::ranges::find(bindings, true, &ShaderResourceBinding::pushConstant);
         require(constants != bindings.end() && constants->uniformSize == 32,
                 "Blit target reflection differs from the 32-byte CPU push constants");
         RenderGraph graph(device);
-        const auto  input  = graph.createTexture("raw", colorTexture({4, 4}, VriFormat_RGBA32_SFLOAT));
-        const auto  output = graph.createTexture("mapped", colorTexture({4, 4}, VriFormat_RGBA32_SFLOAT));
+        const auto  input  = must(graph.createTexture("raw", colorTexture({4, 4}, VriFormat_RGBA32_SFLOAT)));
+        const auto  output = must(graph.createTexture("mapped", colorTexture({4, 4}, VriFormat_RGBA32_SFLOAT)));
         const float raw[4] {-2, 0, 2, 4};
-        graph.addPass("Raw AOV",
-                      {{input, Usage::eColorWrite}},
-                      [&](auto* cmd, auto& resources)
-                      {
-                          beginColorPass(device, cmd, resources.getTexture(input).view(), {4, 4}, raw);
-                          device.core.CmdEndRendering(cmd);
-                      });
-        TextureBlit blit(device, VriFormat_RGBA32_SFLOAT);
-        ImageView   view {ImageChannel::eRgb, -2, 2};
-        graph.addPass("Mapped AOV",
-                      {{input, Usage::eSampled}, {output, Usage::eColorWrite}},
-                      [&](auto* cmd, auto& resources)
-                      {
-                          const float clear[4] {0, 0, 0, 0};
-                          beginColorPass(device, cmd, resources.getTexture(output).view(), {4, 4}, clear);
-                          device.core.CmdEndRendering(cmd);
-                          blit.draw(cmd, resources.getTexture(output), {0, 0, 4, 4}, 0, false, view);
-                      });
-        graph.exportResource(input);
-        graph.exportResource(output);
-        graph.compile();
-        blit.setSource(0, graph.getTexture(input));
-        Frame frame(device);
+        must(graph.addPass("Raw AOV",
+                           {{input, Usage::eColorWrite}},
+                           [&](VriCommandBuffer* cmd, RenderGraph& resources)
+                           {
+                               return clearPass(device, cmd, resources.getTexture(input), raw);
+                           }));
+        const auto blit = must(TextureBlit::create(device, VriFormat_RGBA32_SFLOAT));
+        ImageView  view {ImageChannel::eRgb, -2, 2};
+        must(graph.addPass("Mapped AOV",
+                           {{input, Usage::eSampled}, {output, Usage::eColorWrite}},
+                           [&](VriCommandBuffer* cmd, RenderGraph& resources) -> std::expected<void, Error>
+                           {
+                               const float clear[4] {0, 0, 0, 0};
+                               if (auto cleared = clearPass(device, cmd, resources.getTexture(output), clear); !cleared)
+                               {
+                                   return cleared;
+                               }
+                               return blit->draw(cmd, resources.getTexture(output), {0, 0, 4, 4}, 0, false, view);
+                           }));
+        must(graph.exportResource(input));
+        must(graph.exportResource(output));
+        must(graph.compile());
+        must(blit->setSource(0, graph.getTexture(input)));
+        const auto frame = must(Frame::create(device));
         for (const auto channel : {ImageChannel::eRgb,
                                    ImageChannel::eRed,
                                    ImageChannel::eGreen,
@@ -77,16 +93,15 @@ namespace
                                    ImageChannel::eLuminance})
         {
             view.channel = channel;
-            graph.execute(frame.begin());
-            frame.submitAndWait();
-            const auto source   = readback(device, graph.getTexture(input));
-            const auto expected = mapImage(source, view);
-            const auto actual   = readback(device, graph.getTexture(output));
+            run(*frame, graph);
+            const auto source   = must(readback(device, graph.getTexture(input)));
+            const auto expected = must(mapImage(source, view));
+            const auto actual   = must(readback(device, graph.getTexture(output)));
             for (size_t i = 0; i < actual.rgba.size(); ++i)
             {
                 require(std::abs(actual.rgba[i] - expected.rgba[i]) < 1e-6f, "CPU/GPU AOV mapping differs");
             }
-            require(imagePixel(source, 1, 2) == std::array<float, 4> {-2, 0, 2, 4},
+            require(must(imagePixel(source, 1, 2)) == std::array<float, 4> {-2, 0, 2, 4},
                     "Display mapping changed the original float AOV");
         }
     }
@@ -103,13 +118,13 @@ namespace
                         "IBL must preserve constant radiance");
             }
         };
-        constant(vultra::readback(device, *environment.radiance));
-        constant(vultra::readback(device, *environment.diffuse));
+        constant(must(vultra::readback(device, *environment.radiance)));
+        constant(must(vultra::readback(device, *environment.diffuse)));
         for (uint32_t mip : {0u, 4u, 8u})
         {
-            constant(vultra::readback(device, *environment.specular, mip));
+            constant(must(vultra::readback(device, *environment.specular, mip)));
         }
-        const auto lut = vultra::readback(device, *environment.brdfLut);
+        const auto lut = must(vultra::readback(device, *environment.brdfLut));
         finite(lut);
         const size_t mirror = (size_t(1) * lut.size.width + lut.size.width - 2) * 4;
         std::cout << "LUT mirror: " << lut.rgba[mirror] << ", " << lut.rgba[mirror + 1] << std::endl;
@@ -149,45 +164,18 @@ namespace
         scene.materials.emplace_back();
         vultra::RenderingServer first(device);
         vultra::RenderingServer second(device);
-        auto                    firstScene  = first.uploadScene(scene);
-        auto                    secondScene = second.uploadScene(scene);
+        auto                    firstScene  = must(first.uploadScene(scene));
+        auto                    secondScene = must(second.uploadScene(scene));
         const auto              rid         = firstScene.rid();
         require(rid.value != 0 && rid != secondScene.rid(), "GPU scene IDs must be unique");
         require(first.alive(rid) && !second.alive(rid), "GPU scene RID escaped its context");
-        bool wrongContextRejected = false;
-        try
-        {
-            second.scene(rid);
-        }
-        catch (const std::invalid_argument&)
-        {
-            wrongContextRejected = true;
-        }
-        require(wrongContextRejected, "Foreign GPU scene RID was accepted");
+        support::rejects(second.scene(rid), "Foreign GPU scene RID was accepted");
         const vultra::GpuSceneRid wrongType {(rid.value & ((uint64_t(1) << 56) - 1)) | (uint64_t(2) << 56)};
         require(!first.alive(wrongType) && !first.release(wrongType), "Wrong GPU resource type was accepted");
-        bool wrongTypeRejected = false;
-        try
-        {
-            first.scene(wrongType);
-        }
-        catch (const std::invalid_argument&)
-        {
-            wrongTypeRejected = true;
-        }
-        require(wrongTypeRejected, "Wrong GPU resource type was resolved as a scene");
+        support::rejects(first.scene(wrongType), "Wrong GPU resource type was resolved as a scene");
         require(first.release(rid), "First GPU scene release failed");
         require(!first.release(rid) && !first.alive(rid), "Released GPU scene RID remained live");
-        bool staleRejected = false;
-        try
-        {
-            firstScene.get();
-        }
-        catch (const std::invalid_argument&)
-        {
-            staleRejected = true;
-        }
-        require(staleRejected, "Stale GPU scene handle remained usable");
+        support::rejects(firstScene.get(), "Stale GPU scene handle remained usable");
         first.collectCompletedFrame();
     }
 
@@ -206,21 +194,21 @@ namespace
         scene.materials[0].baseMetalness          = 1;
         scene.materials[0].occlusionTexture.image = 0;
         scene.images.push_back({1, 1, {64, 64, 64, 255}});
-        scene.radius = 3;
-        GpuScene           gpu(device, scene);
+        scene.radius           = 3;
+        const auto         gpu = must(GpuScene::create(device, scene));
         const RenderCamera camera {glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0)),
                                    glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
                                    0.1f,
                                    10};
         {
-            ForwardFixture renderer(device, gpu, environment);
+            ForwardFixture renderer(device, *gpu, environment);
             renderer.settings.skybox           = false;
             renderer.settings.ibl              = false;
             renderer.settings.directionToLight = {0, 0, -1}; // Backlit surface receives no direct light.
             RenderGraph graph(device);
             const auto  outputs = renderer.addPasses(graph, {65, 65});
-            graph.exportResource(outputs.hdr);
-            graph.compile();
+            must(graph.exportResource(outputs.hdr));
+            must(graph.compile());
             constexpr size_t center = (32 * 65 + 32) * 4;
             const auto       dark   = render(device, renderer, graph, outputs, camera);
             require(dark.rgba[center] < 0.0001f, "Default raster ambient must remain zero");
@@ -244,15 +232,15 @@ namespace
         using namespace vultra;
         SceneData scene;
         scene.materials.emplace_back();
-        GpuScene gpu(device, scene);
-        require(gpu.primitives.empty() && gpu.vertices && gpu.indices, "Empty scene GPU buffers are missing");
-        ForwardFixture renderer(device, gpu, environment);
+        const auto gpu = must(GpuScene::create(device, scene));
+        require(gpu->primitives.empty() && gpu->vertices && gpu->indices, "Empty scene GPU buffers are missing");
+        ForwardFixture renderer(device, *gpu, environment);
         renderer.settings.skybox = false;
         renderer.settings.ibl    = false;
         RenderGraph graph(device);
         const auto  outputs = renderer.addPasses(graph, {32, 32});
-        graph.exportResource(outputs.hdr);
-        graph.compile();
+        must(graph.exportResource(outputs.hdr));
+        must(graph.compile());
         render(device,
                renderer,
                graph,
@@ -269,24 +257,29 @@ namespace
         std::ofstream(computeFile) << "[shader(\"compute\")] [numthreads(1,1,1)] void main() {}\n";
         VriPipelineLayout*          rawLayout = nullptr;
         const VriPipelineLayoutDesc layoutDesc {};
-        check(device.core.CreatePipelineLayout(device.handle, &layoutDesc, &rawLayout), "Compute fixture layout");
+        must(check(device.core.CreatePipelineLayout(device.handle, &layoutDesc, &rawLayout), "Compute fixture layout"));
         auto destroyLayout = [&device](VriPipelineLayout* handle)
         {
             device.core.DestroyPipelineLayout(handle);
         };
         std::unique_ptr<VriPipelineLayout, decltype(destroyLayout)> computeLayout(rawLayout, destroyLayout);
-        ShaderPipeline                                              compute(
+        const auto                                                  compute = must(ShaderPipeline::create(
             device,
             computeFile,
             {{"main", VriShaderStage_Compute}},
-            [&](std::span<const VriShaderDesc> shaders)
+            [&](std::span<const VriShaderDesc> shaders) -> std::expected<VriPipeline*, Error>
             {
                 VriPipeline*                 result = nullptr;
                 const VriComputePipelineDesc desc {computeLayout.get(), shaders[0], device.pipelineCache};
-                check(device.core.CreateComputePipeline(device.handle, &desc, &result), "Compute fixture pipeline");
+                if (auto created = check(device.core.CreateComputePipeline(device.handle, &desc, &result),
+                                         "Compute fixture pipeline");
+                    !created)
+                {
+                    return std::unexpected(created.error());
+                }
                 return result;
-            });
-        SceneData scene;
+            }));
+        SceneData                                                   scene;
         scene.vertices   = {{{-0.7f, -0.7f, 0}, {0, 0, 1}, {0, 0}},
                             {{0.7f, -0.7f, 0}, {0, 0, 1}, {1, 0}},
                             {{0, 0.7f, 0}, {0, 0, 1}, {0.5f, 1}}};
@@ -296,7 +289,8 @@ namespace
         scene.materials[0].emissionColor     = {1, 0, 0};
         scene.materials[0].emissionLuminance = 2;
         scene.radius                         = 1;
-        GpuScene     gpu(device, scene);
+        const auto   gpuScene                = must(GpuScene::create(device, scene));
+        auto&        gpu                     = *gpuScene;
         RenderCamera camera {glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0)),
                              glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
                              0.1f,
@@ -307,52 +301,52 @@ namespace
             renderer.settings.ibl    = false;
             RenderGraph graph(device);
             const auto  outputs = renderer.addPasses(graph, {65, 65});
-            graph.exportResource(outputs.hdr);
-            graph.exportResource(outputs.hdr);
-            graph.compile();
-            gpu.setPrimitiveTransforms(0, 1, glm::mat4(1));
+            must(graph.exportResource(outputs.hdr));
+            must(graph.exportResource(outputs.hdr));
+            must(graph.compile());
+            must(gpu.setPrimitiveTransforms(0, 1, glm::mat4(1)));
             const auto stationary = render(device, renderer, graph, outputs, camera);
-            require(renderer.path.visiblePrimitives() == 1, "Visible triangle was culled");
-            Frame mixedFrame(device);
+            require(renderer.path->visiblePrimitives() == 1, "Visible triangle was culled");
+            const auto mixedFrame = must(Frame::create(device));
             for (uint32_t iteration = 0; iteration < 2; ++iteration)
             {
-                auto* cmd = mixedFrame.begin();
+                auto* cmd = must(mixedFrame->begin());
                 if (iteration == 0)
                 {
                     device.core.CmdSetPipelineLayout(cmd, computeLayout.get());
-                    device.core.CmdSetPipeline(cmd, compute.handle());
+                    device.core.CmdSetPipeline(cmd, compute->handle());
                     const VriDispatchDesc dispatch {1, 1, 1};
                     device.core.CmdDispatch(cmd, &dispatch);
                 }
                 renderer.prepare(camera, graph);
-                graph.execute(cmd);
+                must(graph.execute(cmd));
                 // Leave compute bound so the next recording also begins after a compute-only final Pass.
                 device.core.CmdSetPipelineLayout(cmd, computeLayout.get());
-                device.core.CmdSetPipeline(cmd, compute.handle());
-                mixedFrame.submitAndWait();
-                require(readback(device, graph.getTexture(outputs.hdr)).rgba == stationary.rgba,
+                device.core.CmdSetPipeline(cmd, compute->handle());
+                must(mixedFrame->submitAndWait());
+                require(must(readback(device, graph.getTexture(outputs.hdr))).rgba == stationary.rgba,
                         "Compute-to-graphics descriptor binding changed geometry output");
             }
-            gpu.setPrimitiveTransforms(0,
-                                       1,
-                                       glm::translate(glm::mat4(1), {1, 0, 0}) *
-                                           glm::scale(glm::mat4(1), {-0.5f, 0.8f, 1}));
+            must(gpu.setPrimitiveTransforms(0,
+                                            1,
+                                            glm::translate(glm::mat4(1), {1, 0, 0}) *
+                                                glm::scale(glm::mat4(1), {-0.5f, 0.8f, 1})));
             const auto partial = render(device, renderer, graph, outputs, camera);
-            require(renderer.path.visiblePrimitives() == 1 && std::ranges::any_of(partial.rgba,
-                                                                                  [](float value)
-                                                                                  {
-                                                                                      return value > 1.5f;
-                                                                                  }),
+            require(renderer.path->visiblePrimitives() == 1 && std::ranges::any_of(partial.rgba,
+                                                                                   [](float value)
+                                                                                   {
+                                                                                       return value > 1.5f;
+                                                                                   }),
                     "A reflected, nonuniformly scaled triangle intersecting the frustum must remain visible");
-            gpu.setPrimitiveTransforms(0, 1, glm::translate(glm::mat4(1), {2, 0, 0}));
+            must(gpu.setPrimitiveTransforms(0, 1, glm::translate(glm::mat4(1), {2, 0, 0})));
             const auto moved = render(device, renderer, graph, outputs, camera);
-            require(renderer.path.visiblePrimitives() == 0, "Offscreen triangle was still submitted");
+            require(renderer.path->visiblePrimitives() == 0, "Offscreen triangle was still submitted");
             const size_t center = (32 * 65 + 32) * 4;
             require(stationary.rgba[center] > 0.5f && moved.rgba[center] < stationary.rgba[center] * 0.05f,
                     "Primitive transform did not move rendered geometry");
-            gpu.setPrimitiveTransforms(0, 1, glm::scale(glm::mat4(1), {-1, 1, 1}));
+            must(gpu.setPrimitiveTransforms(0, 1, glm::scale(glm::mat4(1), {-1, 1, 1})));
             const auto mirrored = render(device, renderer, graph, outputs, camera);
-            require(renderer.path.visiblePrimitives() == 1, "Mirrored bounds were incorrectly culled");
+            require(renderer.path->visiblePrimitives() == 1, "Mirrored bounds were incorrectly culled");
             require(mirrored.rgba[center] > 0.5f, "Mirrored primitive was culled");
         }
     }
@@ -369,26 +363,27 @@ namespace
         scene.indices    = {0, 1, 2, 0, 2, 3};
         scene.primitives = {{0, 6, 0}};
         scene.materials.emplace_back();
-        scene.radius = 3;
-        vultra::GpuScene    gpu(device, scene);
-        vultra::ForwardPath path(device);
-        path.settings.ibl = false;
+        scene.radius        = 3;
+        const auto gpuScene = must(vultra::GpuScene::create(device, scene));
+        auto&      gpu      = *gpuScene;
+        const auto forward  = must(vultra::ForwardPath::create(device));
+        auto&      path     = *forward;
+        path.settings.ibl   = false;
         const vultra::RenderCamera camera {glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0)),
                                            glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
                                            0.1f,
                                            10};
         vultra::RenderGraph        graph(device);
-        const auto                 resources = path.addPasses(graph, gpu, environment, {65, 65});
-        const auto                 hdr       = vultra::findSceneResource(resources, vultra::kSceneHdr);
-        graph.exportResource(hdr);
-        graph.compile();
+        const auto                 resources = must(path.addPasses(graph, gpu, environment, {65, 65}));
+        const auto                 hdr       = must(vultra::findSceneResource(resources, vultra::kSceneHdr));
+        must(graph.exportResource(hdr));
+        must(graph.compile());
         const auto render = [&](std::span<const vultra::RenderLight> lights)
         {
-            path.prepare(graph, camera, lights);
-            vultra::Frame frame(device);
-            graph.execute(frame.begin());
-            frame.submitAndWait();
-            return vultra::readback(device, graph.getTexture(hdr));
+            must(path.prepare(graph, camera, lights));
+            const auto frame = must(vultra::Frame::create(device));
+            run(*frame, graph);
+            return must(vultra::readback(device, graph.getTexture(hdr)));
         };
         const vultra::RenderLight point {.kind      = vultra::RenderLightKind::ePoint,
                                          .position  = {0, 0, 2},
@@ -412,22 +407,13 @@ namespace
         require(dark.rgba[center] == 0 && dark.rgba[center + 1] == 0 && dark.rgba[center + 2] == 0,
                 "Lights of an earlier frame stayed in the scene light buffer");
 
-        vultra::LightBuffer              lights(device);
+        const auto                       lights = must(vultra::LightBuffer::create(device));
         std::vector<vultra::RenderLight> many(vultra::kMaxRenderLights + 1);
-        bool                             rejected = false;
-        try
-        {
-            lights.update(many);
-        }
-        catch (const std::invalid_argument&)
-        {
-            rejected = true;
-        }
-        require(rejected, "A light buffer accepted more lights than it holds");
+        support::rejects(lights->update(many), "A light buffer accepted more lights than it holds");
         const std::array mixed {point, vultra::RenderLight {.directionToLight = {0, 3, 0}}};
-        lights.update(mixed);
-        require(lights.lights().size() == 2 && lights.mainDirectional() == 1 &&
-                    lights.lights()[1].directionKind == glm::vec4(0, 1, 0, 0),
+        must(lights->update(mixed));
+        require(lights->lights().size() == 2 && lights->mainDirectional() == 1 &&
+                    lights->lights()[1].directionKind == glm::vec4(0, 1, 0, 0),
                 "The light buffer did not record the main directional light with a unit direction");
     }
 
@@ -441,9 +427,10 @@ namespace
         scene.indices    = {0, 1, 2, 0, 2, 3};
         scene.primitives = {{0, 6, 0}};
         scene.materials.emplace_back();
-        scene.radius = 3;
-        vultra::GpuScene gpu(device, scene);
-        ForwardFixture   renderer(device, gpu, environment);
+        scene.radius            = 3;
+        const auto     gpuScene = must(vultra::GpuScene::create(device, scene));
+        auto&          gpu      = *gpuScene;
+        ForwardFixture renderer(device, gpu, environment);
         renderer.settings.ibl              = false;
         renderer.settings.lightIntensity   = 1;
         renderer.settings.lightColor       = {1, 1, 1};
@@ -454,8 +441,8 @@ namespace
                                      10};
         vultra::RenderGraph  graph(device);
         const auto           outputs = renderer.addPasses(graph, {65, 65});
-        graph.exportResource(outputs.hdr);
-        graph.compile();
+        must(graph.exportResource(outputs.hdr));
+        must(graph.compile());
         require(graph.activePasses() == std::vector<std::string> {"Skybox", "Forward"},
                 "Forward path must add exactly its skybox and forward passes");
         size_t caseCount = 0;
@@ -475,7 +462,7 @@ namespace
                 {
                     std::cerr << "OpenPBR case " << caseCount << ", channel " << channel
                               << ": Slang=" << image.rgba[center + channel] << ", C++=" << expected[channel] << '\n';
-                    throw std::runtime_error("Slang OpenPBR differs from the upstream C++ backend");
+                    support::fail("Slang OpenPBR differs from the upstream C++ backend");
                 }
             }
             ++caseCount;
@@ -546,7 +533,7 @@ namespace
         material.specularTexture.image      = 0;
         material.specularColorTexture.image = 0;
         scene.radius                        = 3;
-        asset.textures = vultra::prepareTextures(scene, {.compression = vultra::TextureCompression::eNone});
+        asset.textures = must(vultra::prepareTextures(scene, {.compression = vultra::TextureCompression::eNone}));
         // A constant BC5 block with X=Y=128/255; Z must be reconstructed by the shader.
         std::vector<std::byte> block(16);
         block[0] = block[1] = block[8] = block[9] = std::byte(128);
@@ -557,8 +544,9 @@ namespace
         }
         asset.textures.images.push_back({normalFormat, {{{4, 4}, std::move(block)}}});
         asset.textures.materials[0][2] = normalSlot;
-        vultra::GpuScene gpu(device, asset);
-        ForwardFixture   renderer(device, gpu, environment);
+        const auto     gpuScene        = must(vultra::GpuScene::create(device, asset));
+        auto&          gpu             = *gpuScene;
+        ForwardFixture renderer(device, gpu, environment);
         renderer.settings.ibl              = false;
         renderer.settings.skybox           = false;
         renderer.settings.lightIntensity   = 1;
@@ -570,8 +558,8 @@ namespace
                                            10};
         vultra::RenderGraph        graph(device);
         const auto                 outputs = renderer.addPasses(graph, {65, 65});
-        graph.exportResource(outputs.hdr);
-        graph.compile();
+        must(graph.exportResource(outputs.hdr));
+        must(graph.compile());
         auto effective = material;
         effective.specularWeight *= 102.0f / 255;
         effective.specularColor *= glm::vec3(0.05126946f, 0.2158605f, 0.5271151f);
@@ -626,8 +614,9 @@ namespace
                     vertex.tangent = tangentCase == 1 ? glm::vec4(-1, 0, 0, 1) : glm::vec4(0, 0, 1, 1);
                 }
             }
-            vultra::GpuScene gpu(device, scene);
-            ForwardFixture   renderer(device, gpu, environment);
+            const auto     gpuScene = must(vultra::GpuScene::create(device, scene));
+            auto&          gpu      = *gpuScene;
+            ForwardFixture renderer(device, gpu, environment);
             renderer.settings.ibl            = false;
             renderer.settings.skybox         = false;
             renderer.settings.lightIntensity = 0;
@@ -637,8 +626,8 @@ namespace
                                                10};
             vultra::RenderGraph        graph(device);
             const auto                 outputs = renderer.addPasses(graph, {65, 65});
-            graph.exportResource(outputs.hdr);
-            graph.compile();
+            must(graph.exportResource(outputs.hdr));
+            must(graph.compile());
             const size_t center         = (32 * 65 + 32) * 4;
             renderer.settings.debugMode = 2;
             for (float scale : {0.0f, 0.5f, 1.0f})
@@ -722,13 +711,14 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
             layout.pushConstants   = &push;
             layout.pushConstantNum = 1;
             layout.shaderStages    = push.shaderStages;
-            vultra::check(device.core.CreatePipelineLayout(device.handle, &layout, &m_Layout), "Normal path layout");
-            m_Pipeline = std::make_unique<vultra::ShaderPipeline>(
+            must(vultra::check(device.core.CreatePipelineLayout(device.handle, &layout, &m_Layout),
+                               "Normal path layout"));
+            m_Pipeline = must(vultra::ShaderPipeline::create(
                 device,
                 file,
                 std::vector<vultra::ShaderEntry> {{"vertexMain", VriShaderStage_Vertex},
                                                   {"fragmentMain", VriShaderStage_Fragment}},
-                [this](std::span<const VriShaderDesc> shaders)
+                [this](std::span<const VriShaderDesc> shaders) -> std::expected<VriPipeline*, vultra::Error>
                 {
                     VriVertexStreamDesc    stream {sizeof(vultra::SceneVertex), 0, VriVertexStepRate_PerVertex};
                     VriVertexAttributeDesc attributes[2] {};
@@ -756,10 +746,15 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                     desc.depthStencil.depthCompareOp     = VriCompareOp_Less;
                     desc.outputMerger.depthStencilFormat = VriFormat_D32_SFLOAT;
                     VriPipeline* result                  = nullptr;
-                    vultra::check(m_Device.core.CreateGraphicsPipeline(m_Device.handle, &desc, &result),
-                                  "Normal path pipeline");
+                    if (auto created =
+                            vultra::check(m_Device.core.CreateGraphicsPipeline(m_Device.handle, &desc, &result),
+                                          "Normal path pipeline");
+                        !created)
+                    {
+                        return std::unexpected(created.error());
+                    }
                     return result;
-                });
+                }));
         }
 
         ~NormalPath() override
@@ -774,64 +769,90 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
             return m_Provided;
         }
 
-        vultra::SceneResources addPasses(vultra::RenderGraph& graph,
-                                         vultra::GpuScene&    scene,
-                                         vultra::Environment&,
-                                         vultra::Extent size) override
+        std::expected<vultra::SceneResources, vultra::Error> addPasses(vultra::RenderGraph& graph,
+                                                                       vultra::GpuScene&    scene,
+                                                                       vultra::Environment&,
+                                                                       vultra::Extent size) override
         {
             using namespace vultra;
             m_Scene          = &scene;
             const auto color = graph.createTexture(std::string(kSceneHdr), colorTexture(size, VriFormat_RGBA16_SFLOAT));
-            auto       depthDesc = depthTexture(size);
+            if (!color)
+            {
+                return std::unexpected(color.error());
+            }
+            auto depthDesc = depthTexture(size);
             depthDesc.usage |= VriTextureUsage_TransferSrc;
             const auto depth = graph.createTexture(std::string(kSceneDepth), depthDesc);
-            graph.addPass("Normals",
-                          {{color, Usage::eColorWrite, true}, {depth, Usage::eDepthWrite, true}},
-                          [this, color, depth, size](VriCommandBuffer* cmd, RenderGraph& resources)
-                          {
-                              VriAttachmentDesc colorAttachment {};
-                              colorAttachment.view    = resources.getTexture(color).view();
-                              colorAttachment.loadOp  = VriAttachmentLoadOp_Clear;
-                              colorAttachment.storeOp = VriAttachmentStoreOp_Store;
-                              VriAttachmentDesc depthAttachment {};
-                              depthAttachment.view                          = resources.getTexture(depth).view();
-                              depthAttachment.loadOp                        = VriAttachmentLoadOp_Clear;
-                              depthAttachment.storeOp                       = VriAttachmentStoreOp_Store;
-                              depthAttachment.clearValue.depthStencil.depth = 1;
-                              VriAttachmentsDesc attachments {};
-                              attachments.colors     = &colorAttachment;
-                              attachments.colorNum   = 1;
-                              attachments.depth      = &depthAttachment;
-                              attachments.renderArea = {0, 0, size.width, size.height};
-                              attachments.layerNum   = 1;
-                              m_Device.core.CmdBeginRendering(cmd, &attachments);
-                              const VriViewport viewport {0, 0, float(size.width), float(size.height), 0, 1};
-                              const VriRect     scissor {0, 0, size.width, size.height};
-                              m_Device.core.CmdSetViewports(cmd, &viewport, 1);
-                              m_Device.core.CmdSetScissors(cmd, &scissor, 1);
-                              m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
-                              m_Device.core.CmdSetPipeline(cmd, m_Pipeline->handle());
-                              const VriVertexBufferBinding vertices {m_Scene->vertices->handle, 0};
-                              m_Device.core.CmdSetVertexBuffers(cmd, 0, &vertices, 1);
-                              m_Device.core.CmdSetIndexBuffer(cmd, m_Scene->indices->handle, 0, VriIndexType_UInt32);
-                              for (uint32_t index = 0; index < m_Scene->primitives.size(); ++index)
-                              {
-                                  const auto&      primitive = m_Scene->primitives[index];
-                                  const auto&      world     = m_Scene->primitiveTransform(index);
-                                  const Parameters parameters {m_ViewProjection * world, world};
-                                  m_Device.core.CmdSetConstants(cmd, 0, &parameters, sizeof(parameters));
-                                  const VriDrawIndexedDesc draw {primitive.indexCount, 1, primitive.firstIndex, 0, 0};
-                                  m_Device.core.CmdDrawIndexed(cmd, &draw);
-                              }
-                              m_Device.core.CmdEndRendering(cmd);
-                          });
-            return {{std::string(kSceneHdr), color}, {std::string(kSceneDepth), depth}};
+            if (!depth)
+            {
+                return std::unexpected(depth.error());
+            }
+            auto added = graph.addPass(
+                "Normals",
+                {{*color, Usage::eColorWrite, true}, {*depth, Usage::eDepthWrite, true}},
+                [this, color = *color, depth = *depth, size](VriCommandBuffer* cmd,
+                                                             RenderGraph&      resources) -> std::expected<void, Error>
+                {
+                    const auto colorView = resources.getTexture(color).view();
+                    if (!colorView)
+                    {
+                        return std::unexpected(colorView.error());
+                    }
+                    const auto depthView = resources.getTexture(depth).view();
+                    if (!depthView)
+                    {
+                        return std::unexpected(depthView.error());
+                    }
+                    VriAttachmentDesc colorAttachment {};
+                    colorAttachment.view    = *colorView;
+                    colorAttachment.loadOp  = VriAttachmentLoadOp_Clear;
+                    colorAttachment.storeOp = VriAttachmentStoreOp_Store;
+                    VriAttachmentDesc depthAttachment {};
+                    depthAttachment.view                          = *depthView;
+                    depthAttachment.loadOp                        = VriAttachmentLoadOp_Clear;
+                    depthAttachment.storeOp                       = VriAttachmentStoreOp_Store;
+                    depthAttachment.clearValue.depthStencil.depth = 1;
+                    VriAttachmentsDesc attachments {};
+                    attachments.colors     = &colorAttachment;
+                    attachments.colorNum   = 1;
+                    attachments.depth      = &depthAttachment;
+                    attachments.renderArea = {0, 0, size.width, size.height};
+                    attachments.layerNum   = 1;
+                    m_Device.core.CmdBeginRendering(cmd, &attachments);
+                    const VriViewport viewport {0, 0, float(size.width), float(size.height), 0, 1};
+                    const VriRect     scissor {0, 0, size.width, size.height};
+                    m_Device.core.CmdSetViewports(cmd, &viewport, 1);
+                    m_Device.core.CmdSetScissors(cmd, &scissor, 1);
+                    m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
+                    m_Device.core.CmdSetPipeline(cmd, m_Pipeline->handle());
+                    const VriVertexBufferBinding vertices {m_Scene->vertices->handle, 0};
+                    m_Device.core.CmdSetVertexBuffers(cmd, 0, &vertices, 1);
+                    m_Device.core.CmdSetIndexBuffer(cmd, m_Scene->indices->handle, 0, VriIndexType_UInt32);
+                    for (uint32_t index = 0; index < m_Scene->primitives.size(); ++index)
+                    {
+                        const auto&      primitive = m_Scene->primitives[index];
+                        const auto&      world     = m_Scene->primitiveTransform(index);
+                        const Parameters parameters {m_ViewProjection * world, world};
+                        m_Device.core.CmdSetConstants(cmd, 0, &parameters, sizeof(parameters));
+                        const VriDrawIndexedDesc draw {primitive.indexCount, 1, primitive.firstIndex, 0, 0};
+                        m_Device.core.CmdDrawIndexed(cmd, &draw);
+                    }
+                    m_Device.core.CmdEndRendering(cmd);
+                    return {};
+                });
+            if (!added)
+            {
+                return std::unexpected(added.error());
+            }
+            return SceneResources {{std::string(kSceneHdr), *color}, {std::string(kSceneDepth), *depth}};
         }
 
-        void
+        std::expected<void, vultra::Error>
         prepare(vultra::RenderGraph&, const vultra::RenderCamera& camera, std::span<const vultra::RenderLight>) override
         {
             m_ViewProjection = camera.projection * camera.view;
+            return {};
         }
 
     private:
@@ -867,12 +888,13 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         scene.materials[0].emissionColor     = {0, 0, 1};
         scene.materials[0].emissionLuminance = 3;
         scene.radius                         = 3;
-        GpuScene           gpu(device, scene);
+        const auto         gpu               = must(GpuScene::create(device, scene));
         const RenderCamera camera {glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0)),
                                    glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
                                    0.1f,
                                    10};
-        ForwardPath        forward(device);
+        const auto         forwardPath = must(ForwardPath::create(device));
+        auto&              forward     = *forwardPath;
         NormalPath         normals(device, directory);
         forward.settings.ibl                       = false;
         forward.settings.skybox                    = false;
@@ -883,21 +905,20 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         for (size_t index = 0; index < paths.size(); ++index)
         {
             RenderGraph graph(device);
-            const auto  resources = paths[index]->addPasses(graph, gpu, environment, {65, 65});
-            validateSceneResources(*paths[index], resources, graph);
-            const auto hdr   = findSceneResource(resources, kSceneHdr);
-            const auto depth = findSceneResource(resources, kSceneDepth);
-            graph.exportResource(hdr);
-            graph.exportResource(depth);
-            graph.compile();
-            paths[index]->prepare(graph, camera, {});
-            Frame frame(device);
-            graph.execute(frame.begin());
-            frame.submitAndWait();
-            const auto color = readback(device, graph.getTexture(hdr));
+            const auto  resources = must(paths[index]->addPasses(graph, *gpu, environment, {65, 65}));
+            must(validateSceneResources(*paths[index], resources, graph));
+            const auto hdr   = must(findSceneResource(resources, kSceneHdr));
+            const auto depth = must(findSceneResource(resources, kSceneDepth));
+            must(graph.exportResource(hdr));
+            must(graph.exportResource(depth));
+            must(graph.compile());
+            must(paths[index]->prepare(graph, camera, {}));
+            const auto frame = must(Frame::create(device));
+            run(*frame, graph);
+            const auto color = must(readback(device, graph.getTexture(hdr)));
             finite(color);
             colors[index] = {color.rgba[center], color.rgba[center + 1], color.rgba[center + 2]};
-            depths[index] = readback(device, graph.getTexture(depth)).rgba[center];
+            depths[index] = must(readback(device, graph.getTexture(depth))).rgba[center];
         }
         require(colors[0][2] > 2.9f && colors[0][0] < 0.01f, "Forward path did not shade the emissive quad");
         require(std::abs(colors[1][0] - 0.5f) < 0.01f && std::abs(colors[1][1] - 0.5f) < 0.01f && colors[1][2] > 0.99f,
@@ -912,13 +933,14 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                 return declared;
             }
 
-            SceneResources addPasses(RenderGraph&, GpuScene&, Environment&, Extent) override
+            std::expected<SceneResources, Error> addPasses(RenderGraph&, GpuScene&, Environment&, Extent) override
             {
-                return {};
+                return SceneResources {};
             }
 
-            void prepare(RenderGraph&, const RenderCamera&, std::span<const RenderLight>) override
+            std::expected<void, Error> prepare(RenderGraph&, const RenderCamera&, std::span<const RenderLight>) override
             {
+                return {};
             }
 
             std::array<SceneResourceDesc, 1> declared {
@@ -926,22 +948,13 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         } incomplete;
 
         RenderGraph empty(device);
-        bool        rejected = false;
-        try
-        {
-            validateSceneResources(incomplete, {}, empty);
-        }
-        catch (const std::logic_error&)
-        {
-            rejected = true;
-        }
-        require(rejected, "A render path without scene.depth passed validation");
+        support::rejects(validateSceneResources(incomplete, {}, empty),
+                         "A render path without scene.depth passed validation");
         std::cout << "Render paths: forward and a custom normal path share scene.hdr/scene.depth; contract checked\n";
     }
 } // namespace
 
 int main()
-try
 {
     const auto directory = std::filesystem::path("build/.tmp/renderer-tests") /
                            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -955,10 +968,12 @@ try
         file.write(reinterpret_cast<const char*>(pixel), 4);
     }
     file.close();
-    vultra::Device device;
+    const auto devicePtr = must(vultra::Device::create());
+    auto&      device    = *devicePtr;
     renderingServerIds(device);
     aovMapping(device);
-    vultra::Environment environment(device, hdr);
+    const auto environmentPtr = must(vultra::Environment::create(device, hdr));
+    auto&      environment    = *environmentPtr;
     constantEnvironment(device, environment);
     constantAmbient(device, environment);
     emptyGpuScene(device, environment);
@@ -972,9 +987,4 @@ try
     std::cout << "Forward path tests passed: constant HDR/IBL mip chain, BRDF LUT, upstream OpenPBR C++ reference, "
                  "material textures and live transforms\n";
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }

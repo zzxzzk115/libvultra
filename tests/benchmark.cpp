@@ -1,20 +1,16 @@
+#include "support/check.hpp"
+
 #include <vultra/gpu/profiling/benchmark.hpp>
 
 #include <array>
 #include <chrono>
 #include <fstream>
 #include <iterator>
-#include <stdexcept>
 
 namespace
 {
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
 
     std::string read(const std::filesystem::path& path)
     {
@@ -34,7 +30,7 @@ int main()
         frame.totalMs    = double((i + 1) * 10);
         frame.gpuMs      = 2;
         const std::array passes {vultra::PassTiming {"tri,\"angle", 1, 2, 0.25, 0.5}};
-        capture.add(frame, passes);
+        must(capture.add(frame, passes));
     }
     require(capture.size() == 4, "Benchmark lost a frame");
     VriDeviceDesc device {};
@@ -53,7 +49,7 @@ int main()
     metadata.parameters     = {{"quoted", "a\"b"}};
     const auto directory = std::filesystem::path("build/.tmp") /
                            ("benchmark-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-    capture.write(directory, metadata, device);
+    must(capture.write(directory, metadata, device));
     const auto manifest = read(directory / "manifest.json");
     require(manifest.find("\"version\": 1") != std::string::npos &&
                 manifest.find("\"enabled_features\": 17") != std::string::npos &&
@@ -67,14 +63,5 @@ int main()
             "Summary metric name was not CSV-escaped");
     require(read(directory / "passes.csv").find(R"("tri,""angle",1,0.25,0.75,2,0.5,1.5,0,,0)") != std::string::npos,
             "Pass barrier and command time were not separated");
-    bool rejected = false;
-    try
-    {
-        capture.write(directory, metadata, device);
-    }
-    catch (const std::invalid_argument&)
-    {
-        rejected = true;
-    }
-    require(rejected, "Benchmark overwrote an existing run");
+    support::rejects(capture.write(directory, metadata, device), "Benchmark overwrote an existing run");
 }

@@ -1,31 +1,19 @@
+#include "support/check.hpp"
+
 #include <vultra/gpu/device.hpp>
 
-#include <functional>
 #include <iostream>
 #include <string_view>
 
 namespace
 {
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
 
-    void expectFailure(const char* operation, const std::function<void()>& action)
+    void expectFailure(const char* operation, const std::expected<void, vultra::Error>& result)
     {
-        try
-        {
-            action();
-        }
-        catch (const std::runtime_error& error)
-        {
-            require(std::string_view(error.what()).starts_with(operation), "Failure lost its operation");
-            return;
-        }
-        throw std::runtime_error("GPU operation failure was ignored");
+        require(!result, "GPU operation failure was ignored");
+        require(std::string_view(result.error().message).starts_with(operation), "Failure lost its operation");
     }
 
     struct RestoreCore
@@ -41,7 +29,7 @@ namespace
 
     void completionFailures(vultra::Device& device)
     {
-        vultra::Frame frame(device);
+        const auto frame = must(vultra::Frame::create(device));
         {
             RestoreCore     restore {device, device.core};
             static uint32_t waitCalls = 0;
@@ -55,66 +43,48 @@ namespace
             {
                 return VriResult_InvalidArgument;
             };
-            frame.begin();
-            expectFailure("Submit frame",
-                          [&]
-                          {
-                              frame.submitAndWait();
-                          });
+            must(frame->begin());
+            expectFailure("Submit frame", frame->submitAndWait());
             require(waitCalls == 0, "Failed submission must not wait for an unsignaled fence");
 
             device.core.QueueSubmit = [](VriQueue*, const VriQueueSubmitDesc*)
             {
                 return VriResult_Success;
             };
-            frame.begin();
-            expectFailure("Wait for frame completion",
-                          [&]
-                          {
-                              frame.submitAndWait();
-                          });
+            must(frame->begin());
+            expectFailure("Wait for frame completion", frame->submitAndWait());
             require(waitCalls == 1, "Frame completion must use the status-returning wait");
 
             device.core.DeviceWaitIdle = [](VriDevice*)
             {
                 return VriResult_DeviceLost;
             };
-            expectFailure("Wait for device idle",
-                          [&]
-                          {
-                              device.waitIdle();
-                          });
+            expectFailure("Wait for device idle", device.waitIdle());
         }
         // Fault injection submits no GPU work. Restore the real table before retry and destruction.
-        frame.begin();
-        frame.submitAndWait();
-        device.waitIdle();
+        must(frame->begin());
+        must(frame->submitAndWait());
+        must(device.waitIdle());
     }
 } // namespace
 
 int main()
-try
 {
-    vultra::Device           device;
+    const auto               device = must(vultra::Device::create());
     VriCoordinateConventions authored {};
-    vultra::check(vriGetCoordinateConventions(device.handle, &authored), "Query builtin conventions");
+    must(vultra::check(vriGetCoordinateConventions(device->handle, &authored), "Query builtin conventions"));
     require(authored.clipSpaceY == VriClipSpaceY_Up, "Builtin authoring convention changed");
-    completionFailures(device);
+    completionFailures(*device);
 
-    auto desc                      = vriDefaultDeviceCreationDesc();
-    desc.graphicsAPI               = device.core.GetDeviceDesc(device.handle)->graphicsAPI;
-    desc.enableValidation          = true;
-    desc.coordinates.textureOrigin = VriTextureOrigin_BottomLeft;
-    vultra::Device           configured(desc);
+    auto desc                           = vriDefaultDeviceCreationDesc();
+    desc.graphicsAPI                    = device->core.GetDeviceDesc(device->handle)->graphicsAPI;
+    desc.enableValidation               = true;
+    desc.coordinates.textureOrigin      = VriTextureOrigin_BottomLeft;
+    const auto               configured = must(vultra::Device::create(desc));
     VriCoordinateConventions actual {};
-    vultra::check(vriGetCoordinateConventions(configured.handle, &actual), "Query requested conventions");
+    must(vultra::check(vriGetCoordinateConventions(configured->handle, &actual), "Query requested conventions"));
     require(actual.clipSpaceY == VriClipSpaceY_Down && actual.textureOrigin == VriTextureOrigin_BottomLeft,
             "Device ownership wrapper overwrote requested conventions");
     std::cout << "Device configuration and completion failures passed\n";
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }

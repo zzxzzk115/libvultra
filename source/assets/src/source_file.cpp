@@ -2,40 +2,54 @@
 #include <vultra/assets/source_file.hpp>
 
 #include <fstream>
-#include <stdexcept>
 
 namespace vultra
 {
-    std::vector<std::byte>
+    std::expected<std::vector<std::byte>, Error>
     readSourceFile(const std::filesystem::path& path, const SourceObserver& observer, const AssetSource* source)
     {
         if (source)
         {
             auto bytes = source->read(path);
-            if (bytes.empty())
+            if (!bytes)
             {
-                throw std::runtime_error("Cannot read empty asset source: " + path.string());
+                return std::unexpected(bytes.error());
+            }
+            if (bytes->empty())
+            {
+                return makeError("Cannot read empty asset source: {}", path.string());
             }
             if (observer)
             {
-                observer(source->resolve(path), bytes);
+                const auto resolved = source->resolve(path);
+                if (!resolved)
+                {
+                    return std::unexpected(resolved.error());
+                }
+                if (auto result = observer(*resolved, *bytes); !result)
+                {
+                    return std::unexpected(result.error());
+                }
             }
             return bytes;
         }
         std::ifstream file(path, std::ios::binary | std::ios::ate);
         if (!file || file.tellg() <= 0)
         {
-            throw std::runtime_error("Cannot read asset source: " + path.string());
+            return makeError("Cannot read asset source: {}", path.string());
         }
         std::vector<std::byte> bytes(static_cast<size_t>(file.tellg()));
         file.seekg(0);
         if (!file.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size())))
         {
-            throw std::runtime_error("Truncated asset source: " + path.string());
+            return makeError("Truncated asset source: {}", path.string());
         }
         if (observer)
         {
-            observer(path, bytes);
+            if (auto result = observer(path, bytes); !result)
+            {
+                return std::unexpected(result.error());
+            }
         }
         return bytes;
     }

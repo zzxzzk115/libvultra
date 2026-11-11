@@ -1,9 +1,12 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
 #include <vultra/core/math/extent.hpp>
 #include <vultra/platform/input/input.hpp>
 
+#include <expected>
 #include <functional>
+#include <memory>
 #include <string>
 
 namespace vultra
@@ -13,10 +16,12 @@ namespace vultra
     class Window
     {
     public:
-        // Initial extent is in base-DPI units; the platform applies the monitor content scale.
-        Window(const char* title, Extent extent = {1280, 720});
+        // Initial extent is in base-DPI units; the platform applies the monitor content scale. The window
+        // registers its own address with SDL, so it lives behind a unique_ptr and never moves.
+        [[nodiscard]] static std::expected<std::unique_ptr<Window>, Error> create(const char* title,
+                                                                                  Extent      extent = {1280, 720});
         // Borrow a backend window that has no Window wrapper. It must outlive this wrapper.
-        explicit Window(void* borrowed);
+        [[nodiscard]] static std::expected<std::unique_ptr<Window>, Error> borrow(void* borrowed);
         ~Window();
         Window(const Window&)                = delete;
         Window&     operator=(const Window&) = delete;
@@ -32,7 +37,8 @@ namespace vultra
         Extent      framebufferSize() const;
         Extent      size() const; // Logical window units, matching mouse coordinates.
         void        setTextInputEnabled(bool enabled);
-        void*       nativeHandle() const;
+        // The OS window handle; an error when the backend reports a window system Vultra does not know.
+        [[nodiscard]] std::expected<void*, Error> nativeHandle() const;
 
         Input& input()
         {
@@ -51,6 +57,7 @@ namespace vultra
         }
 
     private:
+        Window(void* window, bool owned, std::string title);
         friend class EditorGui;
         void        updateTitle();
         static void dispatchEvent(const void* event);

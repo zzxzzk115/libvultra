@@ -1,8 +1,10 @@
 #pragma once
 
 #include <vultra/assets/vpk_archive.hpp>
+#include <vultra/core/base/error.hpp>
 #include <vultra/graph/graph_definition.hpp>
 
+#include <expected>
 #include <filesystem>
 #include <optional>
 
@@ -15,4 +17,5 @@ struct OfflineOptions
 };
 
 // The same graph/draw code runs with desktop Slang sources or host-cooked VPK entries.
-void runOfflineExample(const OfflineOptions& options, const vultra::VpkArchive* shaders = nullptr);
+[[nodiscard]] std::expected<void, vultra::Error> runOfflineExample(const OfflineOptions&     options,
+                                                                   const vultra::VpkArchive* shaders = nullptr);

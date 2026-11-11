@@ -1,8 +1,11 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
 #include <vultra/shader/shader_program.hpp>
 
 #include <nlohmann/json.hpp>
+
+#include <expected>
 
 namespace slang
 {
@@ -12,13 +15,20 @@ namespace slang
 
 namespace vultra::detail
 {
-    void            validateShaderProgram(const ShaderProgram& program);
-    void            validateShaderProgram(const ShaderProgram& program, const VriDeviceDesc& device);
-    ShaderParameter reflectShaderParameters(slang::VariableLayoutReflection* globals);
-    std::vector<ShaderAttribute> reflectShaderAttributes(slang::FunctionReflection* function);
-    nlohmann::json  encodeShaderProgram(const ShaderProgram& program);
-    ShaderProgram   decodeShaderProgram(const nlohmann::json& document);
-    nlohmann::json  readShaderArchive(const std::filesystem::path& file);
-    nlohmann::json  readShaderArchive(std::span<const std::byte> bytes, const std::filesystem::path& file);
-    void            writeShaderArchive(const std::filesystem::path& file, const nlohmann::json& document);
+    [[nodiscard]] std::expected<void, Error> validateShaderProgram(const ShaderProgram& program);
+    [[nodiscard]] std::expected<void, Error> validateShaderProgram(const ShaderProgram& program,
+                                                                   const VriDeviceDesc& device);
+    [[nodiscard]] std::expected<ShaderParameter, Error>
+    reflectShaderParameters(slang::VariableLayoutReflection* globals);
+    [[nodiscard]] std::expected<std::vector<ShaderAttribute>, Error>
+                                                       reflectShaderAttributes(slang::FunctionReflection* function);
+    nlohmann::json                                     encodeShaderProgram(const ShaderProgram& program);
+    [[nodiscard]] std::expected<ShaderProgram, Error>  decodeShaderProgram(const nlohmann::json& document);
+    [[nodiscard]] std::expected<nlohmann::json, Error> readShaderArchive(const std::filesystem::path& file);
+    [[nodiscard]] std::expected<nlohmann::json, Error> readShaderArchive(std::span<const std::byte>   bytes,
+                                                                         const std::filesystem::path& file);
+    [[nodiscard]] std::expected<void, Error>           writeShaderArchive(const std::filesystem::path& file,
+                                                                          const nlohmann::json&        document);
+    // std::filesystem::absolute, reporting a failed current-directory query instead of throwing.
+    [[nodiscard]] std::expected<std::filesystem::path, Error> absolutePath(const std::filesystem::path& path);
 } // namespace vultra::detail

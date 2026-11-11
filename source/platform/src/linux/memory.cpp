@@ -2,12 +2,11 @@
 
 #include <fstream>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 
 namespace vultra
 {
-    uint64_t availablePhysicalMemory()
+    std::expected<uint64_t, Error> availablePhysicalMemory()
     {
         std::ifstream stream("/proc/meminfo");
         std::string   line;
@@ -26,6 +25,6 @@ namespace vultra
                 break;
             }
         }
-        throw std::runtime_error("Query available physical memory: cannot read MemAvailable from /proc/meminfo");
+        return makeError("Query available physical memory: cannot read MemAvailable from /proc/meminfo");
     }
 } // namespace vultra

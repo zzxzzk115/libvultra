@@ -1,3 +1,5 @@
+#include "support/check.hpp"
+
 #include <vultra/core/image/image.hpp>
 
 #include <array>
@@ -7,32 +9,11 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
-#include <stdexcept>
 
 namespace
 {
-    void require(bool ok, const char* message)
-    {
-        if (!ok)
-        {
-            throw std::runtime_error(message);
-        }
-    }
-
-    template<class F>
-    void reject(F&& f)
-    {
-        bool rejected = false;
-        try
-        {
-            f();
-        }
-        catch (const std::invalid_argument&)
-        {
-            rejected = true;
-        }
-        require(rejected, "Expected invalid input rejection");
-    }
+    using support::must;
+    using support::require;
 
     // Independent direct 2D SSIM reference (no separable convolution).
     double directSsim(const vultra::Image& a, const vultra::Image& b)
@@ -82,16 +63,16 @@ namespace
         return total / count;
     }
 } // namespace
+
 int main()
-try
 {
     using namespace vultra;
     Image a {{19, 17}, std::vector<float>(19 * 17 * 4, 0)};
     Image b     = a;
-    auto  equal = compare(a, b);
+    auto  equal = must(compare(a, b));
     require(equal.mse == 0 && std::isinf(equal.psnr) && std::abs(equal.ssim - 1) < 1e-12, "Identity metrics");
     std::fill(b.rgba.begin(), b.rgba.end(), 1.0f);
-    auto contrast = compare(a, b);
+    auto contrast = must(compare(a, b));
     require(std::abs(contrast.psnr) < 1e-12 && std::abs(contrast.ssim - 0.0001 / 1.0001) < 1e-10,
             "Constant contrast metrics");
     for (size_t i = 0; i < a.rgba.size(); ++i)
@@ -103,7 +84,7 @@ try
     const auto  pfmPath =
         std::filesystem::path("build/.tmp") /
         ("float-image-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".pfm");
-    savePfm(hdr, pfmPath);
+    must(savePfm(hdr, pfmPath));
     std::ifstream pfm(pfmPath, std::ios::binary);
     std::string   header;
     std::getline(pfm, header);
@@ -117,84 +98,43 @@ try
     require(bool(pfm) && pfm.peek() == std::char_traits<char>::eof(), "PFM payload size is wrong");
     require(pixels == std::array<float, 12> {4, 5, 6, -7, 8, 9, 3, -0.5f, 0.25f, 0, 1, 2},
             "PFM lost signed HDR values, included alpha or changed row order");
-    const auto rawPixel = imagePixel(hdr, 0, 0);
+    const auto rawPixel = must(imagePixel(hdr, 0, 0));
     require(rawPixel == std::array<float, 4> {3, -0.5f, 0.25f, 0.1f}, "Pixel probe lost signed HDR or alpha");
-    const auto mapped = mapImage(hdr, {ImageChannel::eGreen, -0.5f, 1.0f});
+    const auto mapped = must(mapImage(hdr, {ImageChannel::eGreen, -0.5f, 1.0f}));
     require(mapped.rgba[0] == 0 && mapped.rgba[4] == 1 && mapped.rgba[3] == 1,
             "AOV mapping does not clamp the declared display range");
-    require(imagePixel(hdr, 0, 0) == rawPixel, "Display mapping mutated the original image");
+    require(must(imagePixel(hdr, 0, 0)) == rawPixel, "Display mapping mutated the original image");
     const Image tiny {{1, 1}, {0, 0, 0, 0}};
-    const auto  tinyMapped = mapImage(tiny, {ImageChannel::eRgb, 0, std::numeric_limits<float>::min() / 2});
+    const auto  tinyMapped = must(mapImage(tiny, {ImageChannel::eRgb, 0, std::numeric_limits<float>::min() / 2}));
     require(tinyMapped.rgba[0] == 0, "Narrow finite display range produced NaN");
-    reject(
-        [&]
-        {
-            imagePixel(hdr, 2, 0);
-        });
-    reject(
-        [&]
-        {
-            mapImage(hdr, {ImageChannel::eRgb, 1, 1});
-        });
-    reject(
-        [&]
-        {
-            mapImage(hdr, {ImageChannel::eRgb, 2, 1});
-        });
-    reject(
-        [&]
-        {
-            mapImage(hdr, {ImageChannel(6), 0, 1});
-        });
-    reject(
-        [&]
-        {
-            mapImage(hdr, {ImageChannel::eRgb, 0, std::numeric_limits<float>::infinity()});
-        });
-    reject(
-        [&]
-        {
-            mapImage(hdr, {ImageChannel::eRgb, -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()});
-        });
-    require(std::abs(compare(a, b).ssim - directSsim(a, b)) < 1e-10, "SSIM differs from direct 2D reference");
+    support::rejects(imagePixel(hdr, 2, 0), "Expected invalid input rejection");
+    support::rejects(mapImage(hdr, {ImageChannel::eRgb, 1, 1}), "Expected invalid input rejection");
+    support::rejects(mapImage(hdr, {ImageChannel::eRgb, 2, 1}), "Expected invalid input rejection");
+    support::rejects(mapImage(hdr, {ImageChannel(6), 0, 1}), "Expected invalid input rejection");
+    support::rejects(mapImage(hdr, {ImageChannel::eRgb, 0, std::numeric_limits<float>::infinity()}),
+                     "Expected invalid input rejection");
+    support::rejects(
+        mapImage(hdr, {ImageChannel::eRgb, -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()}),
+        "Expected invalid input rejection");
+    require(std::abs(must(compare(a, b)).ssim - directSsim(a, b)) < 1e-10, "SSIM differs from direct 2D reference");
     b = a;
     for (size_t i = 3; i < b.rgba.size(); i += 4)
     {
         b.rgba[i] = 1 - b.rgba[i];
     }
-    require(compare(a, b).mse == 0, "Alpha should not affect RGB metrics");
-    reject(
-        [&]
-        {
-            compare(a, b, 0);
-        });
-    reject(
-        [&]
-        {
-            compare(a, b, std::numeric_limits<double>::infinity());
-        });
+    require(must(compare(a, b)).mse == 0, "Alpha should not affect RGB metrics");
+    support::rejects(compare(a, b, 0), "Expected invalid input rejection");
+    support::rejects(compare(a, b, std::numeric_limits<double>::infinity()), "Expected invalid input rejection");
     b.rgba[0] = std::numeric_limits<float>::quiet_NaN();
-    reject(
-        [&]
-        {
-            compare(a, b);
-        });
+    support::rejects(compare(a, b), "Expected invalid input rejection");
     b = a;
     b.rgba.pop_back();
-    reject(
-        [&]
-        {
-            compare(a, b);
-        });
+    support::rejects(compare(a, b), "Expected invalid input rejection");
     b = {{10, 10}, std::vector<float>(400)};
-    reject(
-        [&]
-        {
-            compare(b, b);
-        });
+    support::rejects(compare(b, b), "Expected invalid input rejection");
     const auto path = std::filesystem::path("build/.tmp/image-tests/roundtrip.png");
-    savePng(a, path);
-    const auto loaded = loadPng(path);
+    must(savePng(a, path));
+    const auto loaded = must(loadPng(path));
     require(loaded.size == a.size, "PNG dimensions changed");
     for (size_t i = 0; i < a.rgba.size(); ++i)
     {
@@ -202,9 +142,4 @@ try
     }
     std::cout << "Image tests passed: analytic metrics, SSIM reference, invalid inputs, PNG and signed HDR PFM\n";
     return 0;
-}
-catch (const std::exception& e)
-{
-    std::cerr << e.what() << '\n';
-    return 1;
 }

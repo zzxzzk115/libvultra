@@ -1,3 +1,5 @@
+#include "support/check.hpp"
+
 #include <vultra/platform/os/file_watcher.hpp>
 
 #include <algorithm>
@@ -5,7 +7,6 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
-#include <stdexcept>
 #include <thread>
 
 namespace
@@ -13,13 +14,8 @@ namespace
     namespace fs = std::filesystem;
     using namespace std::chrono_literals;
 
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
 
     void write(const fs::path& file, const char* text)
     {
@@ -56,7 +52,6 @@ namespace
 } // namespace
 
 int main()
-try
 {
     const auto root = fs::absolute("build/.tmp/file-watcher") /
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -70,7 +65,7 @@ try
     {
         vultra::FileWatcher watcher;
         const std::array    watched {root / "shaders", root / "missing"};
-        watcher.watch(watched);
+        must(watcher.watch(watched));
         std::this_thread::sleep_for(100ms);
         require(watcher.poll().empty(), "A new watcher reported changes before any edit");
 
@@ -111,7 +106,7 @@ try
 
         // Replacing the watched set stops reports from directories that are no longer in it.
         const std::array moved {root / "other"};
-        watcher.watch(moved);
+        must(watcher.watch(moved));
         write(shader, "v5");
         write(root / "other/unwatched.txt", "now watched");
         reported = drain(watcher);
@@ -125,9 +120,4 @@ try
     std::cout << "File watcher passed: single report, burst merge, subdirectories, rename, recreate, ignore rules "
                  "and destruction\n";
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }

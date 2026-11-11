@@ -2,6 +2,7 @@
 
 #include <vultra/app/app_launch.hpp>
 #include <vultra/assets/vpk_archive.hpp>
+#include <vultra/core/base/error.hpp>
 #include <vultra/shader/shader_program.hpp>
 
 #if defined(__ANDROID__)
@@ -10,21 +11,39 @@
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #endif
 
+#include <expected>
 #include <optional>
 #include <string_view>
 
 namespace sample
 {
-    inline std::optional<vultra::ShaderProgram> cookedShader(const vultra::AppLaunch& launch, std::string_view entry)
+    // Android and Web load the host-cooked entry from the packaged VPK; desktop compiles the Slang source instead.
+    inline std::expected<std::optional<vultra::ShaderProgram>, vultra::Error>
+    cookedShader(const vultra::AppLaunch& launch, std::string_view entry)
     {
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
 #if defined(__ANDROID__)
-        vultra::AndroidAsset mapping(*launch.activity->activity->assetManager, "project.vpk");
-        vultra::VpkArchive   pack("/project.vpk", mapping.bytes());
-        return vultra::ShaderProgram::load(pack.read(entry), entry);
-#elif defined(__EMSCRIPTEN__)
+        const auto mapping = vultra::AndroidAsset::open(*launch.activity->activity->assetManager, "project.vpk");
+        if (!mapping)
+        {
+            return std::unexpected(mapping.error());
+        }
+        const auto pack = vultra::VpkArchive::create("/project.vpk", (*mapping)->bytes());
+#else
         static_cast<void>(launch);
-        vultra::VpkArchive pack("/project.vpk");
-        return vultra::ShaderProgram::load(pack.read(entry), entry);
+        const auto pack = vultra::VpkArchive::create("/project.vpk");
+#endif
+        if (!pack)
+        {
+            return std::unexpected(pack.error());
+        }
+        const auto bytes = pack->read(entry);
+        if (!bytes)
+        {
+            return std::unexpected(bytes.error());
+        }
+        // The program owns its bytecode, so the mapping and archive may close after loading.
+        return vultra::ShaderProgram::load(*bytes, entry);
 #else
         static_cast<void>(launch);
         static_cast<void>(entry);

@@ -1,10 +1,12 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
 #include <vultra/core/base/stable_id.hpp>
 
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <optional>
 #include <span>
@@ -138,11 +140,12 @@ namespace vultra
         bool                           nullable = true;
         std::optional<PropertyClassId> referenceClass {};
 
-        void validate(const PropertyValue& value) const;
-        void validateDefinition() const;
+        [[nodiscard]] std::expected<void, Error> validate(const PropertyValue& value) const;
+        [[nodiscard]] std::expected<void, Error> validateDefinition() const;
 
     private:
-        void validateKind(PropertyKind expectedKind, const PropertyValue& value, bool declarationDefault) const;
+        std::expected<void, Error>
+        validateKind(PropertyKind expectedKind, const PropertyValue& value, bool declarationDefault) const;
     };
 
     // Native bindings add accessors to the same schema used by VM-owned fields; extension bindings own captures.
@@ -151,8 +154,8 @@ namespace vultra
         std::function<PropertyValue(const void* object)>              get;
         std::function<void(void* object, const PropertyValue& value)> set;
 
-        PropertyValue read(const void* object) const;
-        void          write(void* object, const PropertyValue& value) const;
+        [[nodiscard]] std::expected<PropertyValue, Error> read(const void* object) const;
+        [[nodiscard]] std::expected<void, Error>          write(void* object, const PropertyValue& value) const;
     };
 
     struct ObjectTypeInfo
@@ -164,32 +167,35 @@ namespace vultra
 
         // Generated descriptors contain effective inherited properties with correctly typed accessors.
 
-        const PropertyInfo& property(std::string_view name) const;
-        bool                isA(std::string_view typeName) const;
+        [[nodiscard]] std::expected<const PropertyInfo*, Error> property(std::string_view name) const;
+        bool                                                    isA(std::string_view typeName) const;
     };
 
     // Descriptors are borrowed. Remove plugin descriptors before unloading their code.
     class ObjectTypeCatalog
     {
     public:
-        void                                   add(const ObjectTypeInfo& type);
-        void                                   remove(const ObjectTypeInfo& type);
-        const ObjectTypeInfo&                  type(std::string_view name) const;
-        std::span<const ObjectTypeInfo* const> types() const;
+        [[nodiscard]] std::expected<void, Error>                  add(const ObjectTypeInfo& type);
+        [[nodiscard]] std::expected<void, Error>                  remove(const ObjectTypeInfo& type);
+        [[nodiscard]] std::expected<const ObjectTypeInfo*, Error> type(std::string_view name) const;
+        std::span<const ObjectTypeInfo* const>                    types() const;
 
     private:
         std::vector<const ObjectTypeInfo*> m_Types;
     };
 
-    std::string serializeProperties(const ObjectTypeInfo& type, const void* object);
+    [[nodiscard]] std::expected<std::string, Error> serializeProperties(const ObjectTypeInfo& type, const void* object);
     // Owned version-1 metadata, without object access or callback pointers. Defaults describe declarations;
     // required constructor inputs/references can still make those defaults unsuitable for a live instance.
-    std::string serializeTypeDescription(const ObjectTypeInfo& type);
+    [[nodiscard]] std::expected<std::string, Error> serializeTypeDescription(const ObjectTypeInfo& type);
     // The same version-1 field description, owned and usable without native accessors or a live object.
-    std::string    serializePropertySchema(const PropertySchema& schema);
-    PropertySchema parsePropertySchema(std::string_view json);
+    [[nodiscard]] std::expected<std::string, Error>    serializePropertySchema(const PropertySchema& schema);
+    [[nodiscard]] std::expected<PropertySchema, Error> parsePropertySchema(std::string_view json);
     // Decode and validate all fields before mutation. Missing serialized fields use C++ defaults.
-    void          deserializeProperties(const ObjectTypeInfo& type, std::string_view json, void* object);
-    std::string   serializeProperty(const PropertySchema& property, const PropertyValue& value);
-    PropertyValue deserializeProperty(const PropertySchema& property, std::string_view json);
+    [[nodiscard]] std::expected<void, Error>
+    deserializeProperties(const ObjectTypeInfo& type, std::string_view json, void* object);
+    [[nodiscard]] std::expected<std::string, Error>   serializeProperty(const PropertySchema& property,
+                                                                        const PropertyValue&  value);
+    [[nodiscard]] std::expected<PropertyValue, Error> deserializeProperty(const PropertySchema& property,
+                                                                          std::string_view      json);
 } // namespace vultra

@@ -1,9 +1,12 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
 #include <vultra/gpu/resources.hpp>
 #include <vultra/shader/shader_pipeline.hpp>
 
 #include <array>
+#include <expected>
+#include <memory>
 #include <span>
 
 namespace sample
@@ -15,11 +18,12 @@ namespace sample
     };
 
     // Example-only vertex/index buffers and pipeline. All VRI state is set in colored_mesh.cpp.
+    // The pipeline builder keeps this object's address, so it lives behind a unique_ptr.
     struct ColoredMesh
     {
         vultra::Device&                         device;
-        std::unique_ptr<vultra::Buffer>         vertices;
-        std::unique_ptr<vultra::Buffer>         indices;
+        vultra::Buffer                          vertices;
+        vultra::Buffer                          indices;
         uint32_t                                indexCount = 0;
         VriPipelineLayout*                      layout     = nullptr;
         std::unique_ptr<vultra::ShaderPipeline> pipeline;
@@ -30,18 +34,27 @@ namespace sample
             float                 tint[4] {1, 1, 1, 1};
         } parameters;
 
-        ColoredMesh(vultra::Device&                device,
-                    VriFormat                      format,
-                    std::span<const ColoredVertex> vertices,
-                    std::span<const uint32_t>      indices,
-                    VriPrimitiveTopology           topology  = VriPrimitiveTopology_TriangleList,
-                    bool                           depthTest = false,
-                    const vultra::ShaderProgram*   program   = nullptr);
+        [[nodiscard]] static std::expected<std::unique_ptr<ColoredMesh>, vultra::Error>
+        create(vultra::Device&                device,
+               VriFormat                      format,
+               std::span<const ColoredVertex> vertices,
+               std::span<const uint32_t>      indices,
+               VriPrimitiveTopology           topology  = VriPrimitiveTopology_TriangleList,
+               bool                           depthTest = false,
+               const vultra::ShaderProgram*   program   = nullptr);
         ~ColoredMesh();
         ColoredMesh(const ColoredMesh&)            = delete;
         ColoredMesh& operator=(const ColoredMesh&) = delete;
         // Optional D32 scene depth is loaded and tested without writing it.
-        void draw(VriCommandBuffer* cmd, vultra::Texture& target, const float* clear, vultra::Texture* depth = nullptr);
+        [[nodiscard]] std::expected<void, vultra::Error>
+        draw(VriCommandBuffer* cmd, vultra::Texture& target, const float* clear, vultra::Texture* depth = nullptr);
+
+    private:
+        ColoredMesh(vultra::Device&    device,
+                    vultra::Buffer     vertices,
+                    vultra::Buffer     indices,
+                    uint32_t           indexCount,
+                    VriPipelineLayout* layout);
     };
 
     // CCW, linear RGB: top red, bottom-left green, bottom-right blue.

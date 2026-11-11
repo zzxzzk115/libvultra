@@ -2,7 +2,6 @@
 #include <vultra/platform/window.hpp>
 
 #include <cstdlib>
-#include <stdexcept>
 #include <string_view>
 #include <utility>
 
@@ -20,7 +19,7 @@ namespace vultra
         updateTitle();
     }
 
-    void* Window::nativeHandle() const
+    std::expected<void*, Error> Window::nativeHandle() const
     {
         const auto native = platform::nativeWindow(*this);
         switch (native.type)
@@ -32,22 +31,22 @@ namespace vultra
             case VriWindowSystem_Wayland:
                 return native.handle.wayland.surface;
             default:
-                throw std::runtime_error("Unsupported native window system");
+                return makeError("Unsupported native window system");
         }
     }
 
     namespace platform
     {
-        const char* requestedWindowSystem()
+        std::expected<const char*, Error> requestedWindowSystem()
         {
-            const auto* value = std::getenv("VULTRA_WINDOW_SYSTEM");
+            const char* value = std::getenv("VULTRA_WINDOW_SYSTEM");
             if (!value || std::string_view(value).empty())
             {
                 return nullptr;
             }
             if (std::string_view(value) != "x11" && std::string_view(value) != "wayland")
             {
-                throw std::invalid_argument("VULTRA_WINDOW_SYSTEM must be x11 or wayland");
+                return makeError("VULTRA_WINDOW_SYSTEM must be x11 or wayland");
             }
             return value;
         }

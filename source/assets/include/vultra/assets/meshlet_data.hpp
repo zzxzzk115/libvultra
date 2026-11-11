@@ -1,8 +1,11 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
+
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <expected>
 #include <vector>
 
 namespace vultra
@@ -35,7 +38,7 @@ namespace vultra
     };
 
 #ifdef VULTRA_WITH_MESHLET_BUILD
-    MeshletData buildMeshlets(const SceneData& scene, uint32_t workers = 0);
+    [[nodiscard]] std::expected<MeshletData, Error> buildMeshlets(const SceneData& scene, uint32_t workers = 0);
 #endif
 
 } // namespace vultra

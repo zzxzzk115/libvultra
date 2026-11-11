@@ -5,41 +5,74 @@
 
 #include <imgui.h>
 
+#include <optional>
+
 class UiShowcaseApp final : public vultra::ImGuiApp
 {
 public:
-    explicit UiShowcaseApp(const sample::Options& options) :
-        vultra::ImGuiApp({"Vultra | UI - ImGui and EditorGui", {1440, 900}}),
-        m_Options(options),
-        m_Triangle(getDevice(), getSwapchain().format(), sample::kTriangleVertices, sample::kTriangleIndices)
+    static std::expected<std::unique_ptr<UiShowcaseApp>, vultra::Error>
+    create(Services services, const vultra::AppConfig& config, const sample::Options& options)
     {
+        auto triangle = sample::ColoredMesh::create(services.device(),
+                                                    services.swapchain().format(),
+                                                    sample::kTriangleVertices,
+                                                    sample::kTriangleIndices);
+        if (!triangle)
+        {
+            return std::unexpected(triangle.error());
+        }
+        return std::unique_ptr<UiShowcaseApp>(
+            new UiShowcaseApp(std::move(services), config, options, std::move(*triangle)));
     }
 
     ~UiShowcaseApp() override
     {
         if (m_Target)
         {
-            getEditorGui().forgetTexture(*m_Target);
+            if (auto forgotten = getEditorGui().forgetTexture(*m_Target); !forgotten)
+            {
+                vultra::Logger::app().error("{}", forgotten.error().message);
+            }
         }
     }
 
 private:
-    void onResize(vultra::Extent size) override
+    UiShowcaseApp(Services                             services,
+                  const vultra::AppConfig&             config,
+                  const sample::Options&               options,
+                  std::unique_ptr<sample::ColoredMesh> triangle) :
+        vultra::ImGuiApp(std::move(services), config),
+        m_Options(options),
+        m_Triangle(std::move(triangle))
+    {
+    }
+
+    std::expected<void, vultra::Error> onResize(vultra::Extent size) override
     {
         if (m_Target)
         {
-            getEditorGui().forgetTexture(*m_Target);
+            if (auto forgotten = getEditorGui().forgetTexture(*m_Target); !forgotten)
+            {
+                return forgotten;
+            }
         }
-        m_Target = std::make_unique<vultra::Texture>(getDevice(), vultra::colorTexture(size, getSwapchain().format()));
+        auto target = vultra::Texture::create(getDevice(), vultra::colorTexture(size, getSwapchain().format()));
+        if (!target)
+        {
+            return std::unexpected(target.error());
+        }
+        m_Target = std::move(*target);
+        return {};
     }
 
-    void onUpdate([[maybe_unused]] float deltaSeconds) override
+    std::expected<void, vultra::Error> onUpdate([[maybe_unused]] float deltaSeconds) override
     {
         m_SaveTarget = false;
-        m_Triangle.pipeline->poll();
+        m_Triangle->pipeline->poll();
+        return {};
     }
 
-    void onImGui() override
+    std::expected<void, vultra::Error> onImGui() override
     {
         const auto viewport = ImGui::GetMainViewport();
         const auto left     = viewport->Pos.x + (viewport->Size.x - 1368.0f) * 0.5f;
@@ -89,9 +122,9 @@ private:
                 }
                 ui.endCombo();
             }
-            if (!m_Triangle.pipeline->diagnostics().empty())
+            if (!m_Triangle->pipeline->diagnostics().empty())
             {
-                ui.textWrapped("%s", m_Triangle.pipeline->diagnostics().c_str());
+                ui.textWrapped("%s", m_Triangle->pipeline->diagnostics().c_str());
             }
         }
         if (m_ShowDemo)
@@ -109,21 +142,29 @@ private:
                 const float scale = std::min(available.x / m_Target->desc.width, available.y / m_Target->desc.height);
                 if (scale > 0)
                 {
-                    ui.image(getEditorGui().textureId(*m_Target),
-                             {m_Target->desc.width * scale, m_Target->desc.height * scale});
+                    const auto texture = getEditorGui().textureId(*m_Target);
+                    if (!texture)
+                    {
+                        return std::unexpected(texture.error());
+                    }
+                    ui.image(*texture, {m_Target->desc.width * scale, m_Target->desc.height * scale});
                 }
             }
         }
+        return {};
     }
 
-    void onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
+    std::expected<void, vultra::Error> onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
     {
-        m_Triangle.parameters.tint[1] = m_WarmTint ? 0.55f : 1.0f;
-        m_Triangle.parameters.tint[2] = m_WarmTint ? 0.25f : 1.0f;
+        m_Triangle->parameters.tint[1] = m_WarmTint ? 0.55f : 1.0f;
+        m_Triangle->parameters.tint[2] = m_WarmTint ? 0.25f : 1.0f;
         m_Target->transition(
             cmd,
             {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
-        m_Triangle.draw(cmd, *m_Target, m_Clear);
+        if (auto drawn = m_Triangle->draw(cmd, *m_Target, m_Clear); !drawn)
+        {
+            return drawn;
+        }
         m_Target->transition(cmd, {VriAccess_CopySourceRead, VriLayout_CopySource, VriPipelineStage_Transfer});
         target.transition(cmd, {VriAccess_CopyDestinationWrite, VriLayout_CopyDestination, VriPipelineStage_Transfer});
         VriTextureCopyDesc copy {};
@@ -134,43 +175,63 @@ private:
         getDevice().core.CmdCopyTexture(cmd, target.handle, m_Target->handle, &copy);
         m_Target->transition(cmd,
                              {VriAccess_ShaderResourceRead, VriLayout_ShaderResource, VriPipelineStage_FragmentShader});
-        drawGui(cmd, target);
+        return drawGui(cmd, target);
     }
 
-    void onPostRender(vultra::Texture& target) override
+    std::expected<void, vultra::Error> onPostRender(vultra::Texture& target) override
     {
-        sample::captureFrame(m_Options, frameCount(), getDevice(), target);
-        if (m_SaveTarget)
+        if (auto captured = sample::captureFrame(m_Options, frameCount(), getDevice(), target); !captured)
         {
-            vultra::savePng(vultra::readback(getDevice(), *m_Target), "captures/imgui_render_target.png");
+            return captured;
         }
+        if (!m_SaveTarget)
+        {
+            return {};
+        }
+        const auto image = vultra::readback(getDevice(), *m_Target);
+        if (!image)
+        {
+            return std::unexpected(image.error());
+        }
+        return vultra::savePng(*image, "captures/imgui_render_target.png");
     }
 
-    sample::Options                  m_Options;
-    sample::ColoredMesh              m_Triangle;
-    std::unique_ptr<vultra::Texture> m_Target;
-    bool                             m_ShowDemo   = false;
-    bool                             m_ShowTarget = true;
-    bool                             m_WarmTint   = false;
-    bool                             m_SaveTarget = false;
-    float                            m_Clear[4] {0, 0, 0, 1};
+    sample::Options                      m_Options;
+    std::unique_ptr<sample::ColoredMesh> m_Triangle;
+    std::optional<vultra::Texture>       m_Target;
+    bool                                 m_ShowDemo   = false;
+    bool                                 m_ShowTarget = true;
+    bool                                 m_WarmTint   = false;
+    bool                                 m_SaveTarget = false;
+    float                                m_Clear[4] {0, 0, 0, 1};
 };
 
 int main(int argc, char** argv)
-try
 {
     const auto options = sample::readOptions(argc, argv);
     if (!options)
     {
+        return sample::fail(options.error());
+    }
+    if (!*options)
+    {
         return 0;
     }
-    UiShowcaseApp app(*options);
-    app.run(options->frames);
-    vultra::Logger::app().info("UI showcase: {} frames", app.frameCount());
+    const vultra::AppConfig config {.title = "Vultra | UI - ImGui and EditorGui", .size = {1440, 900}};
+    auto                    services = vultra::ImGuiApp::createServices(config);
+    if (!services)
+    {
+        return sample::fail(services.error());
+    }
+    const auto app = UiShowcaseApp::create(std::move(*services), config, **options);
+    if (!app)
+    {
+        return sample::fail(app.error());
+    }
+    if (auto result = (*app)->run((*options)->frames); !result)
+    {
+        return sample::fail(result.error());
+    }
+    vultra::Logger::app().info("UI showcase: {} frames", (*app)->frameCount());
     return 0;
-}
-catch (const std::exception& error)
-{
-    vultra::Logger::app().error("{}", error.what());
-    return 1;
 }

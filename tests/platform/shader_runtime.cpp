@@ -1,4 +1,5 @@
 #include "../../examples/common/colored_mesh.hpp"
+#include "../support/check.hpp"
 
 #include <vultra/assets/vpk_archive.hpp>
 #include <vultra/gpu/image_readback.hpp>
@@ -6,7 +7,6 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
-#include <stdexcept>
 
 namespace
 {
@@ -16,31 +16,33 @@ namespace
 } // namespace
 
 int main(int argc, char** argv)
-try
 {
     using namespace vultra;
+    using support::must;
     if (argc != 2)
     {
-        throw std::invalid_argument("Usage: platform-shader-runtime output.png");
+        support::fail("Usage: platform-shader-runtime output.png");
     }
     const std::filesystem::path output(argv[1]);
     if (std::filesystem::exists(output))
     {
-        throw std::invalid_argument("Use a fresh output image path");
+        support::fail("Use a fresh output image path");
     }
-    const VpkArchive    pack("/embedded/project.vpk", std::as_bytes(std::span(kProject)));
-    const auto          program = ShaderProgram::load(pack.read("mesh.vshaderc"), "mesh.vshaderc");
-    Device              device;
-    constexpr Extent    size {129, 73};
-    Texture             target(device, colorTexture(size, VriFormat_RGBA8_UNORM));
-    Frame               frame(device);
-    sample::ColoredMesh triangle(device,
-                                 target.desc.format,
-                                 sample::kTriangleVertices,
-                                 sample::kTriangleIndices,
-                                 VriPrimitiveTopology_TriangleList,
-                                 false,
-                                 &program);
+    const auto       pack      = must(VpkArchive::create("/embedded/project.vpk", std::as_bytes(std::span(kProject))));
+    const auto       program   = must(ShaderProgram::load(must(pack.read("mesh.vshaderc")), "mesh.vshaderc"));
+    const auto       devicePtr = must(Device::create());
+    auto&            device    = *devicePtr;
+    constexpr Extent size {129, 73};
+    auto             target       = must(Texture::create(device, colorTexture(size, VriFormat_RGBA8_UNORM)));
+    const auto       frame        = must(Frame::create(device));
+    const auto       triangleMesh = must(sample::ColoredMesh::create(device,
+                                                                     target.desc.format,
+                                                                     sample::kTriangleVertices,
+                                                                     sample::kTriangleIndices,
+                                                                     VriPrimitiveTopology_TriangleList,
+                                                                     false,
+                                                                     &program));
+    auto&            triangle     = *triangleMesh;
     // A translated, nonuniform scale catches transposed matrices and wrong push-constant packing.
     triangle.parameters.transform[0]  = 0.7f;
     triangle.parameters.transform[5]  = 0.8f;
@@ -51,15 +53,15 @@ try
         triangle.parameters.tint[0] = float(index + 1) / 12;
         triangle.parameters.tint[1] = float(index + 1) / 6;
         triangle.parameters.tint[2] = float(index + 1) / 4;
-        auto* commands              = frame.begin();
+        auto* commands              = must(frame->begin());
         target.transition(
             commands,
             {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
         const float clear[4] {0, 0, 0, 1};
-        triangle.draw(commands, target, clear);
-        frame.submitAndWait();
+        must(triangle.draw(commands, target, clear));
+        must(frame->submitAndWait());
     }
-    const auto image        = readback(device, target);
+    const auto image        = must(readback(device, target));
     size_t     checked      = 0;
     float      maximumError = 0;
     for (uint32_t y = 0; y < size.height; ++y)
@@ -84,22 +86,17 @@ try
             }
             if (image.rgba[offset + 3] != 1)
             {
-                throw std::runtime_error("Cooked shader changed target alpha");
+                support::fail("Cooked shader changed target alpha");
             }
         }
     }
-    savePng(image, output);
+    must(savePng(image, output));
     if (checked < 100 || maximumError > 1.5f / 255)
     {
-        throw std::runtime_error("Cooked shader transform/tint disagrees with CPU reference; error " +
-                                 std::to_string(maximumError));
+        support::fail("Cooked shader transform/tint disagrees with CPU reference; error " +
+                      std::to_string(maximumError));
     }
     std::cout << "SHADER_RUNTIME_PASSED: " << program.profile << ", " << checked << " pixels, max error "
               << maximumError << ", adapter " << device.core.GetDeviceDesc(device.handle)->adapter.name << '\n';
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }

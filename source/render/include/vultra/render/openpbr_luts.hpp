@@ -1,10 +1,12 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
 #include <vultra/gpu/resources.hpp>
 
+#include <expected>
 #include <memory>
 
 namespace vultra
 {
-    std::unique_ptr<Texture> createOpenPbrLuts(Device& device);
+    [[nodiscard]] std::expected<std::unique_ptr<Texture>, Error> createOpenPbrLuts(Device& device);
 }

@@ -13,25 +13,25 @@ namespace vultra
 {
     static_assert(sizeof(Meshlet) == 32);
 
-    MeshletData buildMeshlets(const SceneData& scene, uint32_t workers)
+    std::expected<MeshletData, Error> buildMeshlets(const SceneData& scene, uint32_t workers)
     {
         if (scene.primitives.empty())
         {
             if (!scene.vertices.empty() || !scene.indices.empty())
             {
-                throw std::invalid_argument("Meshlet geometry requires a primitive");
+                return makeError("Meshlet geometry requires a primitive");
             }
-            return {};
+            return MeshletData {};
         }
         if (scene.vertices.empty())
         {
-            throw std::invalid_argument("Meshlets require nonempty scene geometry");
+            return makeError("Meshlets require nonempty scene geometry");
         }
         for (uint32_t index : scene.indices)
         {
             if (index >= scene.vertices.size())
             {
-                throw std::invalid_argument("Meshlet vertex index exceeds the scene");
+                return makeError("Meshlet vertex index exceeds the scene");
             }
         }
         size_t largestIndexCount = 0;
@@ -40,7 +40,7 @@ namespace vultra
             if (primitive.indexCount % 3 != 0 ||
                 uint64_t(primitive.firstIndex) + primitive.indexCount > scene.indices.size())
             {
-                throw std::invalid_argument("Meshlets require valid triangle primitive ranges");
+                return makeError("Meshlets require valid triangle primitive ranges");
             }
             largestIndexCount = std::max(largestIndexCount, size_t(primitive.indexCount));
         }
@@ -54,17 +54,17 @@ namespace vultra
 
         std::vector<Job> jobs(scene.primitives.size());
         const auto*      positions = &scene.vertices.front().position.x;
-        asset_detail::runImportJobs(
+        const auto       built     = asset_detail::runImportJobs(
             "Building meshlets",
             uint32_t(jobs.size()),
             workers,
             scene.vertices.size() * 32 + largestIndexCount * 32,
-            [&](uint32_t jobIndex)
+            [&](uint32_t jobIndex) -> std::expected<void, Error>
             {
                 const auto& primitive = scene.primitives[jobIndex];
                 if (primitive.indexCount == 0)
                 {
-                    return;
+                    return {};
                 }
                 auto& job = jobs[jobIndex];
                 // Keep dev's per-submesh clusterization. SceneData indices are global here,
@@ -109,7 +109,12 @@ namespace vultra
                 {
                     vertex += baseVertex;
                 }
+                return {};
             });
+        if (!built)
+        {
+            return std::unexpected(built.error());
+        }
         MeshletData result;
         for (const auto& job : jobs)
         {
@@ -119,7 +124,7 @@ namespace vultra
                 if (result.vertices.size() + meshlet.vertex_count > std::numeric_limits<uint32_t>::max() ||
                     result.triangles.size() + meshlet.triangle_count > std::numeric_limits<uint32_t>::max())
                 {
-                    throw std::runtime_error("Meshlet data exceeds 32-bit indexing");
+                    return makeError("Meshlet data exceeds 32-bit indexing");
                 }
                 const auto* vertices  = job.vertices.data() + meshlet.vertex_offset;
                 const auto* triangles = job.triangles.data() + meshlet.triangle_offset;

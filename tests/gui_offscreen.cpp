@@ -1,3 +1,5 @@
+#include "support/check.hpp"
+
 #include <vultra/core/base/stable_id.hpp>
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/ui/editor_gui.hpp>
@@ -5,17 +7,11 @@
 #include <array>
 #include <iostream>
 #include <limits>
-#include <stdexcept>
 
 namespace
 {
-    void require(bool value, const char* message)
-    {
-        if (!value)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
 
     ImVec2 itemCenter()
     {
@@ -26,17 +22,16 @@ namespace
 } // namespace
 
 int main()
-try
 {
     using namespace vultra;
-    Device               device;
-    EditorGui            gui(device,
-                  static_cast<Window*>(nullptr),
-                  VriFormat_RGBA8_UNORM,
-                             {.multiViewport = false, .persistLayout = false});
+    const auto           device = must(Device::create());
+    const auto           gui    = must(EditorGui::create(*device,
+                                                         static_cast<Window*>(nullptr),
+                                                         VriFormat_RGBA8_UNORM,
+                                                         {.multiViewport = false, .persistLayout = false}));
     const Extent         extent {480, 360};
-    Texture              target(device, colorTexture(extent));
-    Frame                frame(device);
+    auto                 target   = must(Texture::create(*device, colorTexture(extent)));
+    const auto           frame    = must(Frame::create(*device));
     bool                 enabled  = false;
     std::string          text     = "short";
     int                  selected = 0;
@@ -48,8 +43,8 @@ try
                                           .kind         = PropertyKind::eFloat,
                                           .speed        = 0.01f,
                                           .defaultValue = 0.5f};
-    const auto           schema                    = parsePropertySchema(serializePropertySchema(thresholdSchema));
-    PropertyValue        threshold                 = schema.defaultValue;
+    const auto           schema    = must(parsePropertySchema(must(serializePropertySchema(thresholdSchema))));
+    PropertyValue        threshold = schema.defaultValue;
     bool                 thresholdChangedWhileHeld = false;
     std::array<float, 3> vector {};
     std::string          propertyText = "Property";
@@ -63,14 +58,14 @@ try
     ImVec2               secondPosition;
     const auto           render = [&]
     {
-        gui.begin(extent, 1.0f / 60);
-        auto ui = gui.frame();
+        must(gui->begin(extent, 1.0f / 60));
+        auto ui = gui->frame();
         ui.setNextWindowPos({20, 20}, ImGuiCond_Always);
         ui.setNextWindowSize({420, 290}, ImGuiCond_Always);
         {
             EditorGuiWindow window(ui, "Offscreen controls");
             require(bool(window), "Offscreen GUI window is not visible");
-            fontSize           = ImGui::GetFontSize();
+            fontSize = ImGui::GetFontSize();
             ui.checkbox("Enabled", &enabled);
             checkboxPosition = itemCenter();
             ui.inputText("Project path", &text);
@@ -93,10 +88,10 @@ try
             {
                 comboPosition = itemCenter();
             }
-            EditorGuiInspector inspector(gui, "typed-properties");
+            EditorGuiInspector inspector(*gui, "typed-properties");
             if (inspector)
             {
-                inspector.valueField(schema, threshold);
+                must(inspector.valueField(schema, threshold));
                 thresholdChangedWhileHeld |=
                     ImGui::IsItemActive() && ImGui::GetIO().MouseDown[0] && std::get<float>(threshold) > 0.5f;
                 floatPosition = itemCenter();
@@ -108,28 +103,20 @@ try
                 propertyTextPosition = itemCenter();
             }
         }
-        gui.upload(extent);
-        auto* cmd = frame.begin();
-        gui.copy(cmd);
+        must(gui->upload(extent));
+        auto* cmd = must(frame->begin());
+        gui->copy(cmd);
         target.transition(
             cmd,
             {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
         const float clear[4] {0, 0, 0, 1};
-        beginColorPass(device, cmd, target.view(), extent, clear);
-        gui.draw(cmd);
-        device.core.CmdEndRendering(cmd);
-        frame.submitAndWait();
+        beginColorPass(*device, cmd, must(target.view()), extent, clear);
+        gui->draw(cmd);
+        device->core.CmdEndRendering(cmd);
+        must(frame->submitAndWait());
     };
-    bool rejected = false;
-    try
-    {
-        gui.begin(extent, std::numeric_limits<float>::quiet_NaN());
-    }
-    catch (const std::invalid_argument&)
-    {
-        rejected = true;
-    }
-    require(rejected, "Offscreen frame accepted a non-finite time step");
+    support::rejects(gui->begin(extent, std::numeric_limits<float>::quiet_NaN()),
+                     "Offscreen frame accepted a non-finite time step");
     render();
     render();
     const auto click = [&](ImVec2 point)
@@ -173,14 +160,15 @@ try
     ImGui::GetIO().AddInputCharactersUTF8(appended.c_str());
     render();
     require(propertyText.size() == 520, "Inspector text field did not resize its borrowed string");
-    const auto image = readback(device, target);
+    const auto image = must(readback(*device, target));
     bool       hasUi = false;
     for (size_t i = 0; i < image.rgba.size(); i += 4)
     {
         hasUi |= image.rgba[i] > 0.5f;
     }
     require(hasUi && gain == 1, "Offscreen GPU output lost the widgets or changed an unedited value");
-    savePng(image, std::filesystem::path("build/.tmp") / ("gui-offscreen-" + StableId::generate().toString() + ".png"));
+    must(savePng(image,
+                 std::filesystem::path("build/.tmp") / ("gui-offscreen-" + StableId::generate().toString() + ".png")));
     // Exercise atlas updates at new font sizes and switching back, with real GPU draws/readback.
     const auto baseFontSize = fontSize;
     for (const auto scale : {2.0f, 1.0f})
@@ -188,7 +176,7 @@ try
         ImGui::GetStyle().FontScaleMain = scale;
         render();
         render();
-        const auto scaledImage = readback(device, target);
+        const auto scaledImage = must(readback(*device, target));
         require(fontSize == baseFontSize * scale, "Font size did not follow UI scale");
         size_t textPixels = 0;
         for (size_t pixel = 0; pixel < scaledImage.rgba.size(); pixel += 4)
@@ -196,44 +184,40 @@ try
             textPixels += scaledImage.rgba[pixel] > 0.5f;
         }
         require(textPixels > 100, "Resized font atlas lost visible text");
-        savePng(scaledImage,
-                std::filesystem::path("build/.tmp") /
-                    ("gui-font-" + std::to_string(int(scale)) + "x-" + StableId::generate().toString() + ".png"));
+        must(savePng(scaledImage,
+                     std::filesystem::path("build/.tmp") /
+                         ("gui-font-" + std::to_string(int(scale)) + "x-" + StableId::generate().toString() + ".png")));
     }
     // A narrow inspector must keep long labels visible when the font atlas grows for HiDPI.
     ImGui::GetStyle().FontScaleMain = 2.5f;
     for (int pass = 0; pass < 2; ++pass)
     {
-        gui.begin(extent, 1.0f / 60);
+        must(gui->begin(extent, 1.0f / 60));
         ImGui::SetNextWindowPos({20, 20}, ImGuiCond_Always);
         ImGui::SetNextWindowSize({420, 290}, ImGuiCond_Always);
         ImGui::Begin("HiDPI property");
         const auto rowStart = ImGui::GetCursorPosY();
-        auto       ui       = gui.frame();
+        auto       ui       = gui->frame();
         ui.checkbox("Environment intensity", &enabled);
         require(ImGui::GetCursorPosY() - rowStart > ImGui::GetTextLineHeight() * 1.5f,
                 "Long HiDPI property label was clipped instead of wrapping");
         ImGui::End();
-        gui.upload(extent);
-        auto* cmd = frame.begin();
-        gui.copy(cmd);
+        must(gui->upload(extent));
+        auto* cmd = must(frame->begin());
+        gui->copy(cmd);
         target.transition(
             cmd,
             {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
         const float clear[4] {0, 0, 0, 1};
-        beginColorPass(device, cmd, target.view(), extent, clear);
-        gui.draw(cmd);
-        device.core.CmdEndRendering(cmd);
-        frame.submitAndWait();
+        beginColorPass(*device, cmd, must(target.view()), extent, clear);
+        gui->draw(cmd);
+        device->core.CmdEndRendering(cmd);
+        must(frame->submitAndWait());
     }
-    savePng(readback(device, target),
-            std::filesystem::path("build/.tmp") / ("gui-property-250-" + StableId::generate().toString() + ".png"));
+    must(savePng(must(readback(*device, target)),
+                 std::filesystem::path("build/.tmp") /
+                     ("gui-property-250-" + StableId::generate().toString() + ".png")));
     std::cout
         << "Offscreen GUI tests passed: mouse, resized text, property scalar/vector/text, dropdown and GPU image\n";
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }

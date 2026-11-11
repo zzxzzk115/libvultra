@@ -1,3 +1,4 @@
+#include "support/check.hpp"
 #include "support/forward_fixture.hpp"
 
 #include <vultra/assets/asset_pipeline.hpp>
@@ -19,13 +20,8 @@ namespace
     constexpr uint32_t  kSize = 65;
     constexpr glm::vec3 kBackground {0.02f, 0.025f, 0.035f};
 
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
 
     void near(const vultra::Image& image, glm::vec3 expected, const char* message)
     {
@@ -37,7 +33,7 @@ namespace
             {
                 std::cerr << message << ": channel " << c << ", actual=" << actual << ", expected=" << expected[c]
                           << '\n';
-                throw std::runtime_error(message);
+                support::fail(message);
             }
         }
     }
@@ -55,14 +51,14 @@ namespace
         }
         const uint32_t indices[] {0, 1, 2, 0, 2, 3};
         std::ofstream  geometry(root / "quad.bin", std::ios::binary);
-        geometry.exceptions(std::ios::failbit | std::ios::badbit);
         geometry.write(reinterpret_cast<const char*>(vertices.data()), sizeof(vertices));
         geometry.write(reinterpret_cast<const char*>(indices), sizeof(indices));
-        vultra::savePng({{2, 2}, {1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1}}, root / "color.png");
-        vultra::savePng({{1, 1}, {204.0f / 255, 128.0f / 255, 230.0f / 255, 1}}, root / "normal.png");
+        geometry.close();
+        require(!geometry.fail(), "Cannot write the glTF geometry fixture");
+        must(vultra::savePng({{2, 2}, {1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1}}, root / "color.png"));
+        must(vultra::savePng({{1, 1}, {204.0f / 255, 128.0f / 255, 230.0f / 255, 1}}, root / "normal.png"));
         const auto    path = root / "quad.gltf";
         std::ofstream json(path);
-        json.exceptions(std::ios::failbit | std::ios::badbit);
         json << R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],
             "nodes":[{"mesh":0,"scale":[)"
              << (mirrored ? -1 : 1) << R"(,1,1]}],
@@ -103,6 +99,8 @@ namespace
             json << R"(,"TANGENT":3)";
         }
         json << R"(},"indices":4,"material":0}]}]})";
+        json.close();
+        require(!json.fail(), "Cannot write the glTF fixture");
         return path;
     }
 
@@ -163,7 +161,7 @@ namespace
             options.textures.compression = vultra::TextureCompression::eNone;
             for (bool warm : {false, true})
             {
-                const auto asset = vultra::importAsset(path, options);
+                const auto asset = must(vultra::importAsset(path, options));
                 require(asset.cacheHit == warm, "glTF sampler fixture must exercise cold and warm imports");
                 require(!asset.scene.materials[0].doubleSided && !asset.scene.materials.back().doubleSided &&
                             asset.scene.materials[12].doubleSided,
@@ -173,17 +171,17 @@ namespace
                     require(asset.textures.materials[i][0] == asset.textures.materials[0][0],
                             "Different samplers must reuse the same prepared image");
                 }
-                vultra::GpuScene        gpu(device, asset);
-                support::ForwardFixture renderer(device, gpu, environment);
+                const auto              gpu = must(vultra::GpuScene::create(device, asset));
+                support::ForwardFixture renderer(device, *gpu, environment);
                 renderer.settings.ibl    = false;
                 renderer.settings.skybox = false;
                 vultra::RenderGraph graph(device);
                 const auto          outputs = renderer.addPasses(graph, {kSize, kSize});
-                graph.exportResource(outputs.hdr);
-                graph.compile();
+                must(graph.exportResource(outputs.hdr));
+                must(graph.compile());
                 for (uint32_t material = 0; material < 12; ++material)
                 {
-                    gpu.primitives[0].material  = material;
+                    gpu->primitives[0].material = material;
                     renderer.settings.debugMode = 1;
                     near(render(device, renderer, graph, outputs, camera()),
                          sampledColor(material, lod),
@@ -206,25 +204,25 @@ namespace
             {
                 const auto path =
                     fixture(root / (std::to_string(mirrored) + std::to_string(authored)), 1, mirrored, authored);
-                const auto              scene = vultra::loadGltf(path);
-                vultra::GpuScene        gpu(device, scene);
-                support::ForwardFixture renderer(device, gpu, environment);
+                const auto              scene = must(vultra::loadGltf(path));
+                const auto              gpu   = must(vultra::GpuScene::create(device, scene));
+                support::ForwardFixture renderer(device, *gpu, environment);
                 renderer.settings.ibl       = false;
                 renderer.settings.skybox    = false;
                 renderer.settings.debugMode = 2;
                 vultra::RenderGraph graph(device);
                 const auto          outputs = renderer.addPasses(graph, {kSize, kSize});
-                graph.exportResource(outputs.hdr);
-                graph.compile();
-                gpu.primitives[0].material = 0;
+                must(graph.exportResource(outputs.hdr));
+                must(graph.compile());
+                gpu->primitives[0].material = 0;
                 near(render(device, renderer, graph, outputs, camera()),
                      {0.5f, 0.5f, 1},
                      "Front face was culled or reversed");
                 near(render(device, renderer, graph, outputs, camera(true)),
                      kBackground,
                      "Single-sided back face was drawn");
-                gpu.primitives[0].material = 12;
-                auto normal                = glm::vec3(204, 128, 230) / 255.0f * 2.0f - 1.0f;
+                gpu->primitives[0].material = 12;
+                auto normal                 = glm::vec3(204, 128, 230) / 255.0f * 2.0f - 1.0f;
                 if (mirrored)
                 {
                     normal.x = -normal.x;
@@ -254,34 +252,21 @@ namespace
             auto invalid = valid;
             invalid.replace(invalid.find(from), std::char_traits<char>::length(from), to);
             std::ofstream(path) << invalid;
-            bool rejected = false;
-            try
-            {
-                vultra::loadGltf(path);
-            }
-            catch (const std::exception& error)
-            {
-                rejected = std::string_view(error.what()).find("sampler") != std::string_view::npos;
-            }
-            require(rejected, "Invalid glTF sampler was accepted or reported without sampler context");
+            support::rejects(vultra::loadGltf(path),
+                             "Invalid glTF sampler was accepted or reported without sampler context",
+                             "sampler");
         }
     }
 } // namespace
 
 int main()
-try
 {
     const auto root = std::filesystem::path("build/.tmp/gltf-material-tests") /
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     invalidSamplers(root / "invalid");
-    vultra::Device      device;
-    vultra::Environment environment(device);
-    sampling(device, environment, root / "sampling");
-    sidedness(device, environment, root / "sidedness");
+    const auto device      = must(vultra::Device::create());
+    const auto environment = must(vultra::Environment::create(*device));
+    sampling(*device, *environment, root / "sampling");
+    sidedness(*device, *environment, root / "sidedness");
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }

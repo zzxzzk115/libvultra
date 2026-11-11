@@ -1,9 +1,12 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
+
 #include <vri/vri.h>
 
 #include <array>
 #include <cstddef>
+#include <expected>
 #include <filesystem>
 #include <optional>
 #include <span>
@@ -177,23 +180,29 @@ namespace vultra
 
 #ifdef VULTRA_WITH_SHADER_COMPILER
         // Empty entries discovers all annotated shader entries.
-        static ShaderProgram compile(const std::filesystem::path&           file,
-                                     std::span<const ShaderEntry>           entries  = {},
-                                     std::span<const std::filesystem::path> includes = {},
-                                     bool                                   rayQuery = false);
-        static ShaderProgram compile(const std::filesystem::path& file, const ShaderCompileOptions& options);
-        static ShaderProgram compileSource(const std::filesystem::path& sourcePath,
-                                           std::string_view             source,
-                                           const ShaderCompileOptions&  options = {});
-        static bool          cook(const std::filesystem::path& source,
-                                  const std::filesystem::path& output,
-                                  const ShaderCompileOptions&  options = {});
-        static std::string   compilerVersion();
+        [[nodiscard]] static std::expected<ShaderProgram, Error>
+        compile(const std::filesystem::path&           file,
+                std::span<const ShaderEntry>           entries  = {},
+                std::span<const std::filesystem::path> includes = {},
+                bool                                   rayQuery = false);
+        [[nodiscard]] static std::expected<ShaderProgram, Error> compile(const std::filesystem::path& file,
+                                                                         const ShaderCompileOptions&  options);
+        [[nodiscard]] static std::expected<ShaderProgram, Error>
+        compileSource(const std::filesystem::path& sourcePath,
+                      std::string_view             source,
+                      const ShaderCompileOptions&  options = {});
+        // Returns false when the existing output is current.
+        [[nodiscard]] static std::expected<bool, Error> cook(const std::filesystem::path& source,
+                                                             const std::filesystem::path& output,
+                                                             const ShaderCompileOptions&  options = {});
+        static std::string                              compilerVersion();
 #endif
-        static ShaderProgram       load(const std::filesystem::path& file);
-        static ShaderProgram       load(std::span<const std::byte> bytes, const std::filesystem::path& identity);
-        void                       save(const std::filesystem::path& file) const;
-        std::vector<VriShaderDesc> descriptors(std::span<const ShaderEntry> entries) const;
-        std::vector<ShaderResourceBinding> resourceBindings() const;
+        [[nodiscard]] static std::expected<ShaderProgram, Error> load(const std::filesystem::path& file);
+        [[nodiscard]] static std::expected<ShaderProgram, Error> load(std::span<const std::byte>   bytes,
+                                                                      const std::filesystem::path& identity);
+        [[nodiscard]] std::expected<void, Error>                 save(const std::filesystem::path& file) const;
+        [[nodiscard]] std::expected<std::vector<VriShaderDesc>, Error>
+        descriptors(std::span<const ShaderEntry> entries) const;
+        [[nodiscard]] std::expected<std::vector<ShaderResourceBinding>, Error> resourceBindings() const;
     };
 } // namespace vultra

@@ -15,6 +15,7 @@
 #include <tiny_gltf.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -22,13 +23,12 @@
 #include <functional>
 #include <limits>
 #include <optional>
-#include <stdexcept>
 
 namespace vultra
 {
     namespace
     {
-        SamplerAddressMode addressMode(int wrap)
+        std::expected<SamplerAddressMode, Error> addressMode(int wrap)
         {
             switch (wrap)
             {
@@ -39,15 +39,25 @@ namespace vultra
                 case TINYGLTF_TEXTURE_WRAP_MIRRORED_REPEAT:
                     return SamplerAddressMode::eMirroredRepeat;
                 default:
-                    throw std::runtime_error("Invalid glTF sampler wrap mode: " + std::to_string(wrap));
+                    return makeError("Invalid glTF sampler wrap mode: {}", wrap);
             }
         }
 
-        SceneSampler samplerDesc(const tinygltf::Sampler& sampler)
+        std::expected<SceneSampler, Error> samplerDesc(const tinygltf::Sampler& sampler)
         {
+            const auto addressU = addressMode(sampler.wrapS);
+            if (!addressU)
+            {
+                return std::unexpected(addressU.error());
+            }
+            const auto addressV = addressMode(sampler.wrapT);
+            if (!addressV)
+            {
+                return std::unexpected(addressV.error());
+            }
             SceneSampler result {};
-            result.addressModeU = addressMode(sampler.wrapS);
-            result.addressModeV = addressMode(sampler.wrapT);
+            result.addressModeU = *addressU;
+            result.addressModeV = *addressV;
             result.addressModeW = SamplerAddressMode::eRepeat;
             result.maxLod       = 32;
             switch (sampler.magFilter)
@@ -60,7 +70,7 @@ namespace vultra
                     result.magFilter = SamplerFilter::eLinear;
                     break;
                 default:
-                    throw std::runtime_error("Invalid glTF sampler magnification filter");
+                    return makeError("Invalid glTF sampler magnification filter");
             }
             switch (sampler.minFilter)
             {
@@ -90,7 +100,7 @@ namespace vultra
                     result.mipmapMode = SamplerMipmapMode::eLinear;
                     break;
                 default:
-                    throw std::runtime_error("Invalid glTF sampler minification filter");
+                    return makeError("Invalid glTF sampler minification filter");
             }
             return result;
         }
@@ -104,68 +114,112 @@ namespace vultra
             return value;
         }
 
+        // A validated accessor. create() checks the layout, bounds and component type; callers check the element
+        // count and components they read against desc.count and components.
         struct Accessor
         {
-            const tinygltf::Accessor& desc;
+            const tinygltf::Accessor* desc;
             const unsigned char*      data;
             size_t                    stride;
             size_t                    componentSize;
             int                       components;
 
-            Accessor(const tinygltf::Model& model, int index) :
-                desc(model.accessors.at(index))
+            static std::expected<Accessor, Error> create(const tinygltf::Model& model, int index)
             {
+                if (index < 0 || size_t(index) >= model.accessors.size())
+                {
+                    return makeError("Invalid glTF accessor index");
+                }
+                const auto& desc = model.accessors[size_t(index)];
                 if (desc.sparse.isSparse || desc.bufferView < 0)
                 {
-                    throw std::runtime_error("Sparse or missing glTF buffer views are unsupported");
+                    return makeError("Sparse or missing glTF buffer views are unsupported");
                 }
-                const auto& view     = model.bufferViews.at(desc.bufferView);
-                const auto& buffer   = model.buffers.at(view.buffer).data;
-                components           = tinygltf::GetNumComponentsInType(desc.type);
-                const int bytes      = tinygltf::GetComponentSizeInBytes(desc.componentType);
-                const int byteStride = desc.ByteStride(view);
+                if (size_t(desc.bufferView) >= model.bufferViews.size())
+                {
+                    return makeError("glTF buffer view is out of bounds");
+                }
+                const auto& view = model.bufferViews[size_t(desc.bufferView)];
+                if (view.buffer < 0 || size_t(view.buffer) >= model.buffers.size())
+                {
+                    return makeError("glTF buffer view is out of bounds");
+                }
+                const auto& buffer     = model.buffers[size_t(view.buffer)].data;
+                const int   components = tinygltf::GetNumComponentsInType(desc.type);
+                const int   bytes      = tinygltf::GetComponentSizeInBytes(desc.componentType);
+                const int   byteStride = desc.ByteStride(view);
                 if (components < 1 || components > 4 || bytes <= 0 || byteStride <= 0)
                 {
-                    throw std::runtime_error("Invalid glTF accessor layout");
+                    return makeError("Invalid glTF accessor layout");
                 }
-                componentSize            = size_t(bytes);
-                stride                   = size_t(byteStride);
-                const size_t elementSize = componentSize * components;
+                if (desc.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT &&
+                    desc.componentType != TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE &&
+                    desc.componentType != TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT &&
+                    desc.componentType != TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT)
+                {
+                    return makeError("Unsupported glTF component type");
+                }
+                const auto   componentSize = size_t(bytes);
+                const auto   stride        = size_t(byteStride);
+                const size_t elementSize   = componentSize * components;
                 if (stride < elementSize || view.byteOffset > buffer.size() ||
                     view.byteLength > buffer.size() - view.byteOffset || desc.byteOffset > view.byteLength)
                 {
-                    throw std::runtime_error("glTF buffer view is out of bounds");
+                    return makeError("glTF buffer view is out of bounds");
                 }
                 const size_t available = view.byteLength - desc.byteOffset;
                 if (desc.count && (available < elementSize || desc.count - 1 > (available - elementSize) / stride))
                 {
-                    throw std::runtime_error("glTF accessor is out of bounds");
+                    return makeError("glTF accessor is out of bounds");
                 }
-                data = buffer.data() + view.byteOffset + desc.byteOffset;
+                return Accessor {&desc,
+                                 buffer.data() + view.byteOffset + desc.byteOffset,
+                                 stride,
+                                 componentSize,
+                                 components};
             }
 
+            // Requires element < desc->count and channel < components.
             double component(size_t element, int channel) const
             {
-                if (element >= desc.count || channel >= components)
-                {
-                    throw std::runtime_error("Mismatched glTF attribute count");
-                }
                 const auto* bytes = data + element * stride + channel * componentSize;
-                switch (desc.componentType)
+                switch (desc->componentType)
                 {
-                    case TINYGLTF_COMPONENT_TYPE_FLOAT:
-                        return readComponent<float>(bytes);
                     case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
-                        return double(*bytes) / (desc.normalized ? 255 : 1);
+                        return double(*bytes) / (desc->normalized ? 255 : 1);
                     case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
-                        return double(readComponent<uint16_t>(bytes)) / (desc.normalized ? 65535 : 1);
+                        return double(readComponent<uint16_t>(bytes)) / (desc->normalized ? 65535 : 1);
                     case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
                         return readComponent<uint32_t>(bytes);
-                    default:
-                        throw std::runtime_error("Unsupported glTF component type");
+                    default: // TINYGLTF_COMPONENT_TYPE_FLOAT; create() rejects every other type.
+                        return readComponent<float>(bytes);
                 }
             }
         };
+
+        // The attribute must supply every vertex and at least the channels the importer reads.
+        std::expected<std::optional<Accessor>, Error> vertexAttribute(const tinygltf::Model&     model,
+                                                                      const tinygltf::Primitive& primitive,
+                                                                      const char*                name,
+                                                                      size_t                     vertexCount,
+                                                                      int                        components)
+        {
+            const auto found = primitive.attributes.find(name);
+            if (found == primitive.attributes.end())
+            {
+                return std::nullopt;
+            }
+            auto accessor = Accessor::create(model, found->second);
+            if (!accessor)
+            {
+                return std::unexpected(accessor.error());
+            }
+            if (accessor->desc->count < vertexCount || accessor->components < components)
+            {
+                return makeError("Mismatched glTF attribute count");
+            }
+            return *accessor;
+        }
 
         glm::mat4 nodeTransform(const tinygltf::Node& node)
         {
@@ -201,23 +255,38 @@ namespace vultra
         }
     } // namespace
 
-    SceneData loadGltf(const std::filesystem::path& path,
-                       const SourceObserver&        observer,
-                       uint32_t                     workers,
-                       const AssetSource*           assetSource)
+    std::expected<SceneData, Error> loadGltf(const std::filesystem::path& path,
+                                             const SourceObserver&        observer,
+                                             uint32_t                     workers,
+                                             const AssetSource*           assetSource)
     {
         const auto         parseStarted = std::chrono::steady_clock::now();
         tinygltf::TinyGLTF loader;
         tinygltf::Model    model;
         std::string        error;
         std::string        warning;
+        // TinyGLTF's existence callback cannot report why a path was rejected; keep it for the load error.
+        std::optional<Error> sourceError;
         if (observer || assetSource)
         {
             tinygltf::FsCallbacks callbacks {
-                [assetSource](const std::string& filename, void*)
+                [assetSource, &sourceError](const std::string& filename, void*)
                 {
-                    const std::filesystem::path file = std::u8string(filename.begin(), filename.end());
-                    return assetSource ? assetSource->contains(file) : tinygltf::FileExists(filename, nullptr);
+                    if (!assetSource)
+                    {
+                        return tinygltf::FileExists(filename, nullptr);
+                    }
+                    const std::filesystem::path file     = std::u8string(filename.begin(), filename.end());
+                    const auto                  contains = assetSource->contains(file);
+                    if (!contains)
+                    {
+                        if (!sourceError)
+                        {
+                            sourceError = contains.error();
+                        }
+                        return false;
+                    }
+                    return *contains;
                 },
                 [assetSource](const std::string& filename, void*)
                 {
@@ -226,19 +295,16 @@ namespace vultra
                 [&observer,
                  assetSource](std::vector<unsigned char>* bytes, std::string* error, const std::string& filename, void*)
                 {
-                    try
+                    const std::filesystem::path file = std::u8string(filename.begin(), filename.end());
+                    const auto                  data = readSourceFile(file, observer, assetSource);
+                    if (!data)
                     {
-                        const std::filesystem::path file = std::u8string(filename.begin(), filename.end());
-                        const auto                  data = readSourceFile(file, observer, assetSource);
-                        bytes->resize(data.size());
-                        std::memcpy(bytes->data(), data.data(), data.size());
-                        return true;
-                    }
-                    catch (const std::exception& failure)
-                    {
-                        *error = failure.what();
+                        *error = data.error().message;
                         return false;
                     }
+                    bytes->resize(data->size());
+                    std::memcpy(bytes->data(), data->data(), data->size());
+                    return true;
                 },
                 tinygltf::WriteWholeFile,
                 [assetSource](size_t* size, std::string* error, const std::string& filename, void*)
@@ -247,27 +313,25 @@ namespace vultra
                     {
                         return tinygltf::GetFileSizeInBytes(size, error, filename, nullptr);
                     }
-                    try
+                    const std::filesystem::path file  = std::u8string(filename.begin(), filename.end());
+                    const auto                  count = assetSource->size(file);
+                    if (!count)
                     {
-                        const std::filesystem::path file  = std::u8string(filename.begin(), filename.end());
-                        const auto                  count = assetSource->size(file);
-                        if (count > SIZE_MAX)
-                        {
-                            throw std::runtime_error("glTF dependency exceeds addressable memory: " + filename);
-                        }
-                        *size = size_t(count);
-                        return true;
-                    }
-                    catch (const std::exception& failure)
-                    {
-                        *error = failure.what();
+                        *error = count.error().message;
                         return false;
                     }
+                    if (*count > SIZE_MAX)
+                    {
+                        *error = "glTF dependency exceeds addressable memory: " + filename;
+                        return false;
+                    }
+                    *size = size_t(*count);
+                    return true;
                 },
                 nullptr};
             if (!loader.SetFsCallbacks(std::move(callbacks), &error))
             {
-                throw std::runtime_error("Configure glTF source tracking: " + error);
+                return makeError("Configure glTF source tracking: {}", error);
             }
         }
         loader.SetImageLoader(
@@ -294,9 +358,13 @@ namespace vultra
         {
             Logger::core().warn("[glTF] {}", warning);
         }
+        if (sourceError)
+        {
+            return withContext("Load glTF", *sourceError);
+        }
         if (!loaded)
         {
-            throw std::runtime_error("Load glTF: " + error);
+            return makeError("Load glTF: {}", error);
         }
         for (const auto& extension : model.extensionsRequired)
         {
@@ -304,12 +372,12 @@ namespace vultra
                 extension != "KHR_materials_clearcoat" && extension != "KHR_materials_specular" &&
                 extension != "MSFT_texture_dds")
             {
-                throw std::runtime_error("Unsupported required glTF extension: " + extension);
+                return makeError("Unsupported required glTF extension: {}", extension);
             }
         }
         if (!model.skins.empty())
         {
-            throw std::runtime_error("Required glTF extensions and skinning are outside this static viewer");
+            return makeError("Required glTF extensions and skinning are outside this static viewer");
         }
         if (!model.animations.empty())
         {
@@ -323,27 +391,34 @@ namespace vultra
         scene.images.resize(model.images.size());
         for (const auto& sampler : model.samplers)
         {
-            scene.samplers.push_back(samplerDesc(sampler));
+            const auto desc = samplerDesc(sampler);
+            if (!desc)
+            {
+                return std::unexpected(desc.error());
+            }
+            scene.samplers.push_back(*desc);
         }
-        asset_detail::runImportJobs("Decoding glTF images",
-                                    uint32_t(model.images.size()),
-                                    workers,
-                                    64 * 1024 * 1024,
-                                    [&](uint32_t i)
-                                    {
-                                        auto& image = model.images[i];
-                                        try
-                                        {
-                                            scene.images[i] =
-                                                asset_detail::decodeImage(std::as_bytes(std::span(image.image)));
-                                            std::vector<unsigned char>().swap(image.image);
-                                        }
-                                        catch (const std::exception& error)
-                                        {
-                                            throw std::runtime_error("glTF image " + std::to_string(i) + " (" +
-                                                                     image.uri + "): " + error.what());
-                                        }
-                                    });
+        const auto decoded = asset_detail::runImportJobs(
+            "Decoding glTF images",
+            uint32_t(model.images.size()),
+            workers,
+            64 * 1024 * 1024,
+            [&](uint32_t i) -> std::expected<void, Error>
+            {
+                auto& image      = model.images[i];
+                auto  sceneImage = asset_detail::decodeImage(std::as_bytes(std::span(image.image)));
+                if (!sceneImage)
+                {
+                    return withContext(std::format("glTF image {} ({})", i, image.uri), sceneImage.error());
+                }
+                scene.images[i] = std::move(*sceneImage);
+                std::vector<unsigned char>().swap(image.image);
+                return {};
+            });
+        if (!decoded)
+        {
+            return std::unexpected(decoded.error());
+        }
         for (auto& texture : model.textures)
         {
             const auto dds = texture.extensions.find("MSFT_texture_dds");
@@ -351,7 +426,7 @@ namespace vultra
             {
                 if (!dds->second.IsObject() || !dds->second.Has("source") || !dds->second.Get("source").IsInt())
                 {
-                    throw std::runtime_error("Invalid MSFT_texture_dds source index");
+                    return makeError("Invalid MSFT_texture_dds source index");
                 }
                 texture.source = dds->second.Get("source").GetNumberAsInt();
             }
@@ -359,50 +434,64 @@ namespace vultra
         size_t blendMaterials = 0;
         for (const auto& material : model.materials)
         {
-            const auto&     pbr = material.pbrMetallicRoughness;
+            const auto& pbr = material.pbrMetallicRoughness;
+            if (pbr.baseColorFactor.size() < 4 || material.emissiveFactor.size() < 3)
+            {
+                return makeError("Invalid glTF material color factor");
+            }
             SurfaceMaterial result;
             for (int i = 0; i < 4; ++i)
             {
-                result.baseColor[i] = float(pbr.baseColorFactor.at(i));
+                result.baseColor[i] = float(pbr.baseColorFactor[i]);
             }
-            auto materialTexture = [&](const auto& info) -> MaterialTexture
+            auto materialTexture = [&](const auto& info) -> std::expected<MaterialTexture, Error>
             {
                 if (info.index < 0)
                 {
-                    return {};
+                    return MaterialTexture {};
                 }
                 if (info.texCoord != 0 || !info.extensions.empty())
                 {
-                    throw std::runtime_error("Only untransformed TEXCOORD_0 textures are supported");
+                    return makeError("Only untransformed TEXCOORD_0 textures are supported");
                 }
                 if (size_t(info.index) >= model.textures.size())
                 {
-                    throw std::runtime_error("Invalid glTF material texture index");
+                    return makeError("Invalid glTF material texture index");
                 }
                 const auto& texture = model.textures[info.index];
                 if (texture.source < 0 || size_t(texture.source) >= scene.images.size())
                 {
-                    throw std::runtime_error("Invalid glTF texture image");
+                    return makeError("Invalid glTF texture image");
                 }
                 if (texture.sampler < -1 || (texture.sampler >= 0 && size_t(texture.sampler) >= scene.samplers.size()))
                 {
-                    throw std::runtime_error("Invalid glTF texture sampler index");
+                    return makeError("Invalid glTF texture sampler index");
                 }
-                return {texture.source, texture.sampler};
+                return MaterialTexture {texture.source, texture.sampler};
             };
-            result.doubleSided              = material.doubleSided;
-            result.baseColorTexture         = materialTexture(pbr.baseColorTexture);
-            result.baseMetalness            = float(pbr.metallicFactor);
-            result.specularRoughness        = float(pbr.roughnessFactor);
-            result.metallicRoughnessTexture = materialTexture(pbr.metallicRoughnessTexture);
-            result.normalTexture            = materialTexture(material.normalTexture);
-            result.normalScale              = float(material.normalTexture.scale);
-            result.occlusionTexture         = materialTexture(material.occlusionTexture);
-            result.occlusionStrength        = float(material.occlusionTexture.strength);
-            result.emissionTexture          = materialTexture(material.emissiveTexture);
+            const std::array<std::pair<MaterialTexture*, std::expected<MaterialTexture, Error>>, 5> textures {{
+                {&result.baseColorTexture, materialTexture(pbr.baseColorTexture)},
+                {&result.metallicRoughnessTexture, materialTexture(pbr.metallicRoughnessTexture)},
+                {&result.normalTexture, materialTexture(material.normalTexture)},
+                {&result.occlusionTexture, materialTexture(material.occlusionTexture)},
+                {&result.emissionTexture, materialTexture(material.emissiveTexture)},
+            }};
+            for (const auto& [slot, texture] : textures)
+            {
+                if (!texture)
+                {
+                    return std::unexpected(texture.error());
+                }
+                *slot = *texture;
+            }
+            result.doubleSided       = material.doubleSided;
+            result.baseMetalness     = float(pbr.metallicFactor);
+            result.specularRoughness = float(pbr.roughnessFactor);
+            result.normalScale       = float(material.normalTexture.scale);
+            result.occlusionStrength = float(material.occlusionTexture.strength);
             for (int i = 0; i < 3; ++i)
             {
-                result.emissionColor[i] = float(material.emissiveFactor.at(i));
+                result.emissionColor[i] = float(material.emissiveFactor[i]);
             }
             auto parameter = [&](const char* extension, const char* name, float fallback)
             {
@@ -424,15 +513,15 @@ namespace vultra
                     (extension.Has("clearcoatTexture") || extension.Has("clearcoatNormalTexture") ||
                      extension.Has("clearcoatRoughnessTexture")))
                 {
-                    throw std::runtime_error("Clearcoat textures are not supported; use scalar coat parameters");
+                    return makeError("Clearcoat textures are not supported; use scalar coat parameters");
                 }
                 if (name == "KHR_materials_specular")
                 {
-                    auto extensionTexture = [&](const char* name) -> MaterialTexture
+                    auto extensionTexture = [&](const char* name) -> std::expected<MaterialTexture, Error>
                     {
                         if (!extension.Has(name))
                         {
-                            return {};
+                            return MaterialTexture {};
                         }
                         const auto& value = extension.Get(name);
                         if (!value.IsObject() || !value.Has("index") || !value.Get("index").IsInt() ||
@@ -441,14 +530,24 @@ namespace vultra
                              (!value.Get("texCoord").IsInt() || value.Get("texCoord").GetNumberAsInt() != 0)) ||
                             value.Has("extensions"))
                         {
-                            throw std::runtime_error("Unsupported specular texture coordinates or invalid index");
+                            return makeError("Unsupported specular texture coordinates or invalid index");
                         }
                         tinygltf::TextureInfo info;
                         info.index = value.Get("index").GetNumberAsInt();
                         return materialTexture(info);
                     };
-                    result.specularTexture      = extensionTexture("specularTexture");
-                    result.specularColorTexture = extensionTexture("specularColorTexture");
+                    const auto specular = extensionTexture("specularTexture");
+                    if (!specular)
+                    {
+                        return std::unexpected(specular.error());
+                    }
+                    const auto specularColor = extensionTexture("specularColorTexture");
+                    if (!specularColor)
+                    {
+                        return std::unexpected(specularColor.error());
+                    }
+                    result.specularTexture      = *specular;
+                    result.specularColorTexture = *specularColor;
                     if (extension.Has("specularColorFactor"))
                     {
                         for (int i = 0; i < 3; ++i)
@@ -488,32 +587,47 @@ namespace vultra
             uint32_t                   firstIndex;
         };
 
-        std::vector<GeometryJob>                   jobs;
-        size_t                                     totalVertices  = 0;
-        size_t                                     totalIndices   = 0;
-        uint64_t                                   largestScratch = 1024 * 1024;
-        std::vector<bool>                          visiting(model.nodes.size(), false);
-        std::function<void(int, const glm::mat4&)> visit;
-        visit = [&](int index, const glm::mat4& parent)
+        std::vector<GeometryJob>                                         jobs;
+        size_t                                                           totalVertices  = 0;
+        size_t                                                           totalIndices   = 0;
+        uint64_t                                                         largestScratch = 1024 * 1024;
+        std::vector<bool>                                                visiting(model.nodes.size(), false);
+        std::function<std::expected<void, Error>(int, const glm::mat4&)> visit;
+        visit = [&](int index, const glm::mat4& parent) -> std::expected<void, Error>
         {
-            const auto& node = model.nodes.at(index);
-            if (visiting.at(index))
+            if (index < 0 || size_t(index) >= model.nodes.size())
             {
-                throw std::runtime_error("Cycle in glTF node hierarchy");
+                return makeError("Invalid glTF node index");
             }
-            visiting[index]  = true;
-            const auto world = parent * nodeTransform(node);
+            const auto& node = model.nodes[size_t(index)];
+            if (visiting[size_t(index)])
+            {
+                return makeError("Cycle in glTF node hierarchy");
+            }
+            visiting[size_t(index)] = true;
+            const auto world        = parent * nodeTransform(node);
             if (node.mesh >= 0)
             {
-                for (const auto& primitive : model.meshes.at(node.mesh).primitives)
+                if (size_t(node.mesh) >= model.meshes.size())
                 {
-                    const auto vertexCount = model.accessors.at(primitive.attributes.at("POSITION")).count;
+                    return makeError("Invalid glTF mesh index");
+                }
+                for (const auto& primitive : model.meshes[size_t(node.mesh)].primitives)
+                {
+                    const auto position = primitive.attributes.find("POSITION");
+                    if (position == primitive.attributes.end() || position->second < 0 ||
+                        size_t(position->second) >= model.accessors.size() ||
+                        (primitive.indices >= 0 && size_t(primitive.indices) >= model.accessors.size()))
+                    {
+                        return makeError("Invalid glTF accessor index");
+                    }
+                    const auto vertexCount = model.accessors[size_t(position->second)].count;
                     const auto indexCount =
-                        primitive.indices < 0 ? vertexCount : model.accessors.at(primitive.indices).count;
+                        primitive.indices < 0 ? vertexCount : model.accessors[size_t(primitive.indices)].count;
                     if (vertexCount > std::numeric_limits<uint32_t>::max() - totalVertices ||
                         indexCount > std::numeric_limits<uint32_t>::max() - totalIndices)
                     {
-                        throw std::runtime_error("SceneData exceeds 32-bit indexing");
+                        return makeError("SceneData exceeds 32-bit indexing");
                     }
                     jobs.push_back({&primitive, world, uint32_t(totalVertices), uint32_t(totalIndices)});
                     totalVertices += vertexCount;
@@ -523,14 +637,25 @@ namespace vultra
             }
             for (int child : node.children)
             {
-                visit(child, world);
+                if (auto result = visit(child, world); !result)
+                {
+                    return result;
+                }
             }
-            visiting[index] = false;
+            visiting[size_t(index)] = false;
+            return {};
         };
         const int sceneIndex = model.defaultScene >= 0 ? model.defaultScene : 0;
-        for (int node : model.scenes.at(sceneIndex).nodes)
+        if (size_t(sceneIndex) >= model.scenes.size())
         {
-            visit(node, glm::mat4(1));
+            return makeError("Invalid glTF scene index");
+        }
+        for (int node : model.scenes[size_t(sceneIndex)].nodes)
+        {
+            if (auto result = visit(node, glm::mat4(1)); !result)
+            {
+                return std::unexpected(result.error());
+            }
         }
         // One disjoint range per primitive instance. Normal accumulation stays local
         // and follows triangle order, so jobs need no floating-point atomics.
@@ -539,12 +664,12 @@ namespace vultra
         scene.primitives.resize(jobs.size());
         std::vector<glm::vec3> lows(jobs.size(), glm::vec3(std::numeric_limits<float>::max()));
         std::vector<glm::vec3> highs(jobs.size(), glm::vec3(std::numeric_limits<float>::lowest()));
-        asset_detail::runImportJobs(
+        const auto             built = asset_detail::runImportJobs(
             "glTF geometry primitives",
             uint32_t(jobs.size()),
             workers,
             largestScratch,
-            [&](uint32_t jobIndex)
+            [&](uint32_t jobIndex) -> std::expected<void, Error>
             {
                 const auto& job          = jobs[jobIndex];
                 const auto& primitive    = *job.primitive;
@@ -552,60 +677,75 @@ namespace vultra
                 const auto  normalMatrix = glm::transpose(glm::inverse(glm::mat3(world)));
                 if ((primitive.mode != TINYGLTF_MODE_TRIANGLES && primitive.mode != -1) || !primitive.targets.empty())
                 {
-                    throw std::runtime_error("Only static triangle primitives are supported");
+                    return makeError("Only static triangle primitives are supported");
                 }
-                Accessor                positions(model, primitive.attributes.at("POSITION"));
-                std::optional<Accessor> colors;
-                if (primitive.attributes.contains("COLOR_0"))
+                // visit() admitted only primitives with a POSITION accessor.
+                const auto positions = Accessor::create(model, primitive.attributes.find("POSITION")->second);
+                if (!positions)
                 {
-                    colors.emplace(model, primitive.attributes.at("COLOR_0"));
+                    return std::unexpected(positions.error());
                 }
-                std::optional<Accessor> normals;
-                std::optional<Accessor> uvs;
+                if (positions->components < 3)
+                {
+                    return makeError("Mismatched glTF attribute count");
+                }
+                const size_t vertexCount = positions->desc->count;
+                const auto   colors      = vertexAttribute(model, primitive, "COLOR_0", vertexCount, 1);
+                if (!colors)
+                {
+                    return std::unexpected(colors.error());
+                }
+                const auto normals = vertexAttribute(model, primitive, "NORMAL", vertexCount, 3);
+                if (!normals)
+                {
+                    return std::unexpected(normals.error());
+                }
+                const auto uvs = vertexAttribute(model, primitive, "TEXCOORD_0", vertexCount, 2);
+                if (!uvs)
+                {
+                    return std::unexpected(uvs.error());
+                }
                 std::optional<Accessor> tangents;
-                if (primitive.attributes.contains("NORMAL"))
+                if (const auto tangent = primitive.attributes.find("TANGENT"); tangent != primitive.attributes.end())
                 {
-                    normals.emplace(model, primitive.attributes.at("NORMAL"));
-                }
-                if (primitive.attributes.contains("TEXCOORD_0"))
-                {
-                    uvs.emplace(model, primitive.attributes.at("TEXCOORD_0"));
-                }
-                if (primitive.attributes.contains("TANGENT"))
-                {
-                    tangents.emplace(model, primitive.attributes.at("TANGENT"));
-                    if (!normals || tangents->components != 4 || tangents->desc.count != positions.desc.count)
+                    auto accessor = Accessor::create(model, tangent->second);
+                    if (!accessor)
                     {
-                        throw std::runtime_error("Invalid glTF tangent attribute");
+                        return std::unexpected(accessor.error());
                     }
+                    if (!*normals || accessor->components != 4 || accessor->desc->count != vertexCount)
+                    {
+                        return makeError("Invalid glTF tangent attribute");
+                    }
+                    tangents = *accessor;
                 }
                 const auto  linear      = glm::mat3(world);
                 const float determinant = glm::determinant(linear);
                 if (!std::isfinite(determinant) || determinant == 0)
                 {
-                    throw std::runtime_error("Invalid glTF mesh transform");
+                    return makeError("Invalid glTF mesh transform");
                 }
                 const auto baseVertex = job.baseVertex;
-                for (size_t i = 0; i < positions.desc.count; ++i)
+                for (size_t i = 0; i < vertexCount; ++i)
                 {
                     SceneVertex vertex {};
-                    if (colors)
+                    if (*colors)
                     {
-                        for (int c = 0; c < colors->components; ++c)
+                        for (int c = 0; c < (*colors)->components; ++c)
                         {
-                            vertex.color[c] = float(colors->component(i, c));
+                            vertex.color[c] = float((*colors)->component(i, c));
                         }
                     }
                     for (int c = 0; c < 3; ++c)
                     {
-                        vertex.position[c] = float(positions.component(i, c));
-                        if (normals)
+                        vertex.position[c] = float(positions->component(i, c));
+                        if (*normals)
                         {
-                            vertex.normal[c] = float(normals->component(i, c));
+                            vertex.normal[c] = float((*normals)->component(i, c));
                         }
                     }
                     vertex.position = glm::vec3(world * glm::vec4(vertex.position, 1));
-                    if (normals)
+                    if (*normals)
                     {
                         vertex.normal = glm::normalize(normalMatrix * vertex.normal);
                     }
@@ -621,17 +761,17 @@ namespace vultra
                         const float sign   = float(tangents->component(i, 3));
                         if (!std::isfinite(length) || length <= 0 || (sign != -1 && sign != 1))
                         {
-                            throw std::runtime_error(std::format(
+                            return makeError(
                                 "{}: invalid glTF tangent direction or handedness at primitive job {}, vertex {}",
                                 path.string(),
                                 jobIndex,
-                                i));
+                                i);
                         }
                         vertex.tangent = glm::vec4(tangent / length, determinant < 0 ? -sign : sign);
                     }
-                    if (uvs)
+                    if (*uvs)
                     {
-                        vertex.uv = {float(uvs->component(i, 0)), float(uvs->component(i, 1))};
+                        vertex.uv = {float((*uvs)->component(i, 0)), float((*uvs)->component(i, 1))};
                     }
                     scene.vertices[baseVertex + i] = vertex;
                 }
@@ -639,26 +779,31 @@ namespace vultra
                 std::optional<Accessor> indices;
                 if (primitive.indices >= 0)
                 {
-                    indices.emplace(model, primitive.indices);
-                    if (indices->components != 1 || indices->desc.normalized ||
-                        (indices->desc.componentType != TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE &&
-                         indices->desc.componentType != TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT &&
-                         indices->desc.componentType != TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT))
+                    auto accessor = Accessor::create(model, primitive.indices);
+                    if (!accessor)
                     {
-                        throw std::runtime_error("Invalid glTF indices");
+                        return std::unexpected(accessor.error());
                     }
+                    if (accessor->components != 1 || accessor->desc->normalized ||
+                        (accessor->desc->componentType != TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE &&
+                         accessor->desc->componentType != TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT &&
+                         accessor->desc->componentType != TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT))
+                    {
+                        return makeError("Invalid glTF indices");
+                    }
+                    indices = *accessor;
                 }
-                const size_t count = indices ? indices->desc.count : positions.desc.count;
+                const size_t count = indices ? indices->desc->count : vertexCount;
                 if (count % 3)
                 {
-                    throw std::runtime_error("Invalid triangle index count");
+                    return makeError("Invalid triangle index count");
                 }
                 for (size_t i = 0; i < count; ++i)
                 {
                     const auto vertexIndex = indices ? uint32_t(indices->component(i, 0)) : uint32_t(i);
-                    if (vertexIndex >= positions.desc.count)
+                    if (vertexIndex >= vertexCount)
                     {
-                        throw std::runtime_error("glTF index exceeds vertex count");
+                        return makeError("glTF index exceeds vertex count");
                     }
                     scene.indices[firstIndex + i] = baseVertex + vertexIndex;
                 }
@@ -669,7 +814,7 @@ namespace vultra
                         std::swap(scene.indices[i + 1], scene.indices[i + 2]);
                     }
                 }
-                if (!normals)
+                if (!*normals)
                 {
                     for (size_t i = firstIndex; i < firstIndex + count; i += 3)
                     {
@@ -681,34 +826,43 @@ namespace vultra
                         b.normal += normal;
                         c.normal += normal;
                     }
-                    for (size_t i = baseVertex; i < baseVertex + positions.desc.count; ++i)
+                    for (size_t i = baseVertex; i < baseVertex + vertexCount; ++i)
                     {
                         auto& normal = scene.vertices[i].normal;
                         normal       = glm::length(normal) > 0 ? glm::normalize(normal) : glm::vec3(0, 1, 0);
                     }
                 }
-                if (uvs && !tangents)
+                if (*uvs && !tangents)
                 {
-                    generateTangents(std::span(scene.vertices).subspan(baseVertex, positions.desc.count),
-                                     std::span(scene.indices).subspan(firstIndex, count),
-                                     baseVertex);
+                    if (auto generated = generateTangents(std::span(scene.vertices).subspan(baseVertex, vertexCount),
+                                                          std::span(scene.indices).subspan(firstIndex, count),
+                                                          baseVertex);
+                        !generated)
+                    {
+                        return generated;
+                    }
                 }
                 const auto material =
                     primitive.material < 0 ? uint32_t(scene.materials.size() - 1) : uint32_t(primitive.material);
                 if (material >= scene.materials.size() - 1 && primitive.material >= 0)
                 {
-                    throw std::runtime_error("Invalid glTF material index");
+                    return makeError("Invalid glTF material index");
                 }
                 scene.primitives[jobIndex] = {firstIndex, uint32_t(count), material};
-                for (size_t i = baseVertex; i < baseVertex + positions.desc.count; ++i)
+                for (size_t i = baseVertex; i < baseVertex + vertexCount; ++i)
                 {
                     lows[jobIndex]  = glm::min(lows[jobIndex], scene.vertices[i].position);
                     highs[jobIndex] = glm::max(highs[jobIndex], scene.vertices[i].position);
                 }
+                return {};
             });
+        if (!built)
+        {
+            return std::unexpected(built.error());
+        }
         if (scene.indices.empty())
         {
-            throw std::runtime_error("glTF scene contains no triangles");
+            return makeError("glTF scene contains no triangles");
         }
         glm::vec3 low(std::numeric_limits<float>::max());
         glm::vec3 high(std::numeric_limits<float>::lowest());

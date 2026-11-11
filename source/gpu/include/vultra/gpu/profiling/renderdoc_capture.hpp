@@ -1,6 +1,10 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
+
+#include <expected>
 #include <filesystem>
+#include <memory>
 
 namespace vultra
 {
@@ -8,15 +12,18 @@ namespace vultra
     class RenderDocCapture
     {
     public:
-        explicit RenderDocCapture(const std::filesystem::path& outputTemplate = {});
+        [[nodiscard]] static std::expected<std::unique_ptr<RenderDocCapture>, Error>
+        create(const std::filesystem::path& outputTemplate = {});
         ~RenderDocCapture();
-        RenderDocCapture(const RenderDocCapture&)                       = delete;
-        RenderDocCapture&            operator=(const RenderDocCapture&) = delete;
-        void                         begin();
-        void                         end();
-        const std::filesystem::path& file() const; // Saved capture from the last completed begin/end pair.
+        RenderDocCapture(const RenderDocCapture&)                                   = delete;
+        RenderDocCapture&                        operator=(const RenderDocCapture&) = delete;
+        [[nodiscard]] std::expected<void, Error> begin();
+        [[nodiscard]] std::expected<void, Error> end();
+        const std::filesystem::path&             file() const; // Saved capture from the last completed begin/end pair.
 
     private:
+        RenderDocCapture() = default;
+
         void*                 m_Module       = nullptr;
         void*                 m_Api          = nullptr;
         bool                  m_Active       = false;

@@ -1,42 +1,114 @@
 #include <vultra/gpu/resources.hpp>
 
 #include <algorithm>
+#include <utility>
 
 namespace vultra
 {
+    namespace
+    {
+        VriTextureViewType viewType(VriTextureType type)
+        {
+            switch (type)
+            {
+                case VriTextureType_2DArray:
+                    return VriTextureViewType_2DArray;
+                case VriTextureType_3D:
+                    return VriTextureViewType_3D;
+                case VriTextureType_Cube:
+                    return VriTextureViewType_Cube;
+                case VriTextureType_CubeArray:
+                    return VriTextureViewType_CubeArray;
+                default:
+                    return VriTextureViewType_2D;
+            }
+        }
+    } // namespace
+
     Texture::Texture(Device&               device,
                      const VriTextureDesc& description,
-                     VriTexture*           borrowed,
+                     VriTexture*           texture,
+                     bool                  owned,
                      VriImageAspectFlags   aspect) :
-        handle(borrowed),
+        handle(texture),
         desc(description),
-        m_Device(device),
-        m_Owned(!borrowed),
+        m_Device(&device),
+        m_Owned(owned),
         m_Aspect(aspect)
     {
-        if (m_Owned)
+    }
+
+    std::expected<Texture, Error>
+    Texture::create(Device& device, const VriTextureDesc& description, VriTexture* borrowed, VriImageAspectFlags aspect)
+    {
+        if (borrowed)
         {
-            check(device.core.CreateTexture(device.handle, &desc, &handle), "Create texture");
+            return Texture(device, description, borrowed, false, aspect);
         }
+        VriTexture* texture = nullptr;
+        if (auto created = check(device.core.CreateTexture(device.handle, &description, &texture), "Create texture");
+            !created)
+        {
+            return std::unexpected(created.error());
+        }
+        return Texture(device, description, texture, true, aspect);
+    }
+
+    Texture::Texture(Texture&& other) noexcept :
+        handle(std::exchange(other.handle, nullptr)),
+        desc(other.desc),
+        state(other.state),
+        m_Device(other.m_Device),
+        m_Owned(std::exchange(other.m_Owned, false)),
+        m_Aspect(other.m_Aspect),
+        m_View(std::exchange(other.m_View, nullptr)),
+        m_MipViews(std::exchange(other.m_MipViews, {}))
+    {
+    }
+
+    Texture& Texture::operator=(Texture&& other) noexcept
+    {
+        if (this != &other)
+        {
+            release();
+            handle     = std::exchange(other.handle, nullptr);
+            desc       = other.desc;
+            state      = other.state;
+            m_Device   = other.m_Device;
+            m_Owned    = std::exchange(other.m_Owned, false);
+            m_Aspect   = other.m_Aspect;
+            m_View     = std::exchange(other.m_View, nullptr);
+            m_MipViews = std::exchange(other.m_MipViews, {});
+        }
+        return *this;
     }
 
     Texture::~Texture()
+    {
+        release();
+    }
+
+    void Texture::release()
     {
         for (auto* view : m_MipViews)
         {
             if (view)
             {
-                m_Device.core.DestroyDescriptor(view);
+                m_Device->core.DestroyDescriptor(view);
             }
         }
+        m_MipViews.clear();
         if (m_View)
         {
-            m_Device.core.DestroyDescriptor(m_View);
+            m_Device->core.DestroyDescriptor(m_View);
+            m_View = nullptr;
         }
-        if (m_Owned)
+        if (m_Owned && handle)
         {
-            m_Device.core.DestroyTexture(handle);
+            m_Device->core.DestroyTexture(handle);
         }
+        handle  = nullptr;
+        m_Owned = false;
     }
 
     void Texture::transition(VriCommandBuffer* cmd, VriAccessLayoutStage next)
@@ -50,91 +122,105 @@ namespace vultra
         VriBarrierGroupDesc group {};
         group.textures   = &barrier;
         group.textureNum = 1;
-        m_Device.core.CmdBarrier(cmd, &group);
+        m_Device->core.CmdBarrier(cmd, &group);
         state = next;
     }
 
-    VriDescriptor* Texture::view()
+    std::expected<VriDescriptor*, Error> Texture::view()
     {
         if (!m_View)
         {
             VriTextureViewDesc vd {};
-            vd.texture = handle;
-            switch (desc.type)
-            {
-                case VriTextureType_2DArray:
-                    vd.viewType = VriTextureViewType_2DArray;
-                    break;
-                case VriTextureType_3D:
-                    vd.viewType = VriTextureViewType_3D;
-                    break;
-                case VriTextureType_Cube:
-                    vd.viewType = VriTextureViewType_Cube;
-                    break;
-                case VriTextureType_CubeArray:
-                    vd.viewType = VriTextureViewType_CubeArray;
-                    break;
-                default:
-                    vd.viewType = VriTextureViewType_2D;
-                    break;
-            }
+            vd.texture  = handle;
+            vd.viewType = viewType(desc.type);
             vd.format   = desc.format;
             vd.aspect   = m_Aspect;
             vd.layerNum = desc.layerNum;
-            check(m_Device.core.CreateTextureView(m_Device.handle, &vd, &m_View), "Create texture view");
+            if (auto created =
+                    check(m_Device->core.CreateTextureView(m_Device->handle, &vd, &m_View), "Create texture view");
+                !created)
+            {
+                return std::unexpected(created.error());
+            }
         }
         return m_View;
     }
 
-    VriDescriptor* Texture::mipView(uint32_t mip)
+    std::expected<VriDescriptor*, Error> Texture::mipView(uint32_t mip)
     {
         if (mip >= desc.mipNum)
         {
-            throw std::out_of_range("Texture mip view");
+            return makeError("Texture mip view");
         }
         m_MipViews.resize(desc.mipNum, nullptr);
         if (!m_MipViews[mip])
         {
             VriTextureViewDesc view {};
-            view.texture = handle;
-            switch (desc.type)
-            {
-                case VriTextureType_2DArray:
-                    view.viewType = VriTextureViewType_2DArray;
-                    break;
-                case VriTextureType_3D:
-                    view.viewType = VriTextureViewType_3D;
-                    break;
-                case VriTextureType_Cube:
-                    view.viewType = VriTextureViewType_Cube;
-                    break;
-                case VriTextureType_CubeArray:
-                    view.viewType = VriTextureViewType_CubeArray;
-                    break;
-                default:
-                    view.viewType = VriTextureViewType_2D;
-                    break;
-            }
+            view.texture  = handle;
+            view.viewType = viewType(desc.type);
             view.format   = desc.format;
             view.aspect   = m_Aspect;
             view.baseMip  = mip;
             view.mipNum   = 1;
             view.layerNum = desc.layerNum;
-            check(m_Device.core.CreateTextureView(m_Device.handle, &view, &m_MipViews[mip]), "Create mip view");
+            if (auto created = check(m_Device->core.CreateTextureView(m_Device->handle, &view, &m_MipViews[mip]),
+                                     "Create mip view");
+                !created)
+            {
+                return std::unexpected(created.error());
+            }
         }
         return m_MipViews[mip];
     }
 
-    Buffer::Buffer(Device& device, const VriBufferDesc& description) :
+    Buffer::Buffer(Device& device, const VriBufferDesc& description, VriBuffer* buffer) :
+        handle(buffer),
         desc(description),
-        m_Device(device)
+        m_Device(&device)
     {
-        check(device.core.CreateBuffer(device.handle, &desc, &handle), "Create buffer");
+    }
+
+    std::expected<Buffer, Error> Buffer::create(Device& device, const VriBufferDesc& description)
+    {
+        VriBuffer* buffer = nullptr;
+        if (auto created = check(device.core.CreateBuffer(device.handle, &description, &buffer), "Create buffer");
+            !created)
+        {
+            return std::unexpected(created.error());
+        }
+        return Buffer(device, description, buffer);
+    }
+
+    Buffer::Buffer(Buffer&& other) noexcept :
+        handle(std::exchange(other.handle, nullptr)),
+        desc(other.desc),
+        state(other.state),
+        m_Device(other.m_Device)
+    {
+    }
+
+    Buffer& Buffer::operator=(Buffer&& other) noexcept
+    {
+        if (this != &other)
+        {
+            if (handle)
+            {
+                m_Device->core.DestroyBuffer(handle);
+            }
+            handle   = std::exchange(other.handle, nullptr);
+            desc     = other.desc;
+            state    = other.state;
+            m_Device = other.m_Device;
+        }
+        return *this;
     }
 
     Buffer::~Buffer()
     {
-        m_Device.core.DestroyBuffer(handle);
+        if (handle)
+        {
+            m_Device->core.DestroyBuffer(handle);
+        }
     }
 
     void Buffer::transition(VriCommandBuffer* cmd, VriAccessStage next)
@@ -143,7 +229,7 @@ namespace vultra
         VriBarrierGroupDesc  group {};
         group.buffers   = &barrier;
         group.bufferNum = 1;
-        m_Device.core.CmdBarrier(cmd, &group);
+        m_Device->core.CmdBarrier(cmd, &group);
         state = next;
     }
 

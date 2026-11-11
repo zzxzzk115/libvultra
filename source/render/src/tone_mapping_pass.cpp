@@ -1,75 +1,97 @@
 #include <vultra/render/tone_mapping_pass.hpp>
 
 #include <array>
+#include <utility>
 
 namespace vultra
 {
-    ToneMappingPass::ToneMappingPass(Device& device, VriFormat format, const AssetSource* shaders) :
+    ToneMappingPass::ToneMappingPass(Device& device, VriFormat format) :
         m_Device(device),
         m_Format(format)
     {
+    }
+
+    std::expected<std::unique_ptr<ToneMappingPass>, Error>
+    ToneMappingPass::create(Device& device, VriFormat format, const AssetSource* shaders)
+    {
         if (format != VriFormat_RGBA8_UNORM && format != VriFormat_BGRA8_UNORM && format != VriFormat_RGBA16_SFLOAT)
         {
-            throw std::invalid_argument("Tone mapping requires display UNORM or linear RGBA16_SFLOAT output");
+            return makeError("Tone mapping requires display UNORM or linear RGBA16_SFLOAT output");
         }
-        try
+        // The destructor releases whatever was created when a later step fails.
+        std::unique_ptr<ToneMappingPass> pass(new ToneMappingPass(device, format));
+        const VriDescriptorRangeDesc     range {0, 1, VriDescriptorType_Texture, VriShaderStage_Fragment};
+        const VriDescriptorSetDesc       set {0, &range, 1};
+        const VriPushConstantDesc        push {0, 16, VriShaderStage_Fragment};
+        VriPipelineLayoutDesc            layout {};
+        layout.descriptorSets   = &set;
+        layout.descriptorSetNum = 1;
+        layout.pushConstants    = &push;
+        layout.pushConstantNum  = 1;
+        if (auto created = check(device.core.CreatePipelineLayout(device.handle, &layout, &pass->m_Layout),
+                                 "Create tone mapping layout");
+            !created)
         {
-            const VriDescriptorRangeDesc range {0, 1, VriDescriptorType_Texture, VriShaderStage_Fragment};
-            const VriDescriptorSetDesc   set {0, &range, 1};
-            const VriPushConstantDesc    push {0, 16, VriShaderStage_Fragment};
-            VriPipelineLayoutDesc        layout {};
-            layout.descriptorSets   = &set;
-            layout.descriptorSetNum = 1;
-            layout.pushConstants    = &push;
-            layout.pushConstantNum  = 1;
-            check(device.core.CreatePipelineLayout(device.handle, &layout, &m_Layout), "Create tone mapping layout");
-            VriDescriptorPoolDesc pool {};
-            pool.descriptorSetMaxNum = 1;
-            pool.textureMaxNum       = 1;
-            check(device.core.CreateDescriptorPool(device.handle, &pool, &m_Pool), "Create tone mapping pool");
-            check(device.core.AllocateDescriptorSets(m_Pool, m_Layout, 0, &m_Set, 1), "Allocate tone mapping set");
-            m_Pipeline = std::make_unique<ShaderPipeline>(
-                device,
-                "builtin/shaders/passes/tone_mapping.slang",
-                std::vector<ShaderEntry> {{"screenVertex", VriShaderStage_Vertex},
-                                          {"fragmentMain", VriShaderStage_Fragment}},
-                [this](std::span<const VriShaderDesc> shaders)
+            return std::unexpected(created.error());
+        }
+        VriDescriptorPoolDesc pool {};
+        pool.descriptorSetMaxNum = 1;
+        pool.textureMaxNum       = 1;
+        if (auto created = check(device.core.CreateDescriptorPool(device.handle, &pool, &pass->m_Pool),
+                                 "Create tone mapping pool");
+            !created)
+        {
+            return std::unexpected(created.error());
+        }
+        if (auto allocated = check(device.core.AllocateDescriptorSets(pass->m_Pool, pass->m_Layout, 0, &pass->m_Set, 1),
+                                   "Allocate tone mapping set");
+            !allocated)
+        {
+            return std::unexpected(allocated.error());
+        }
+        auto* self     = pass.get();
+        auto  pipeline = ShaderPipeline::create(
+            device,
+            "builtin/shaders/passes/tone_mapping.slang",
+            std::vector<ShaderEntry> {{"screenVertex", VriShaderStage_Vertex},
+                                      {"fragmentMain", VriShaderStage_Fragment}},
+            [self](std::span<const VriShaderDesc> stageShaders) -> std::expected<VriPipeline*, Error>
+            {
+                const VriColorAttachmentDesc color {.format = self->m_Format, .colorWriteMask = VriColorWrite_RGBA};
+                VriGraphicsPipelineDesc      desc {};
+                desc.pipelineCache           = self->m_Device.pipelineCache;
+                desc.pipelineLayout          = self->m_Layout;
+                desc.shaders                 = stageShaders.data();
+                desc.shaderNum               = uint32_t(stageShaders.size());
+                desc.inputAssembly.topology  = VriPrimitiveTopology_TriangleList;
+                desc.rasterization.cullMode  = VriCullMode_None;
+                desc.rasterization.frontFace = VriFrontFace_CounterClockwise;
+                desc.rasterization.lineWidth = 1;
+                desc.multisample.sampleNum   = 1;
+                desc.outputMerger.colors     = &color;
+                desc.outputMerger.colorNum   = 1;
+                VriPipeline* result          = nullptr;
+                if (auto created =
+                        check(self->m_Device.core.CreateGraphicsPipeline(self->m_Device.handle, &desc, &result),
+                              "Create tone mapping pipeline");
+                    !created)
                 {
-                    const VriColorAttachmentDesc color {.format = m_Format, .colorWriteMask = VriColorWrite_RGBA};
-                    VriGraphicsPipelineDesc      desc {};
-                    desc.pipelineCache           = m_Device.pipelineCache;
-                    desc.pipelineLayout          = m_Layout;
-                    desc.shaders                 = shaders.data();
-                    desc.shaderNum               = uint32_t(shaders.size());
-                    desc.inputAssembly.topology  = VriPrimitiveTopology_TriangleList;
-                    desc.rasterization.cullMode  = VriCullMode_None;
-                    desc.rasterization.frontFace = VriFrontFace_CounterClockwise;
-                    desc.rasterization.lineWidth = 1;
-                    desc.multisample.sampleNum   = 1;
-                    desc.outputMerger.colors     = &color;
-                    desc.outputMerger.colorNum   = 1;
-                    VriPipeline* pipeline        = nullptr;
-                    check(m_Device.core.CreateGraphicsPipeline(m_Device.handle, &desc, &pipeline),
-                          "Create tone mapping pipeline");
-                    return pipeline;
-                },
-                "builtin/shaders",
-                std::vector<std::filesystem::path> {"builtin/shaders"},
-                shaders);
-        }
-        catch (...)
+                    return std::unexpected(created.error());
+                }
+                return result;
+            },
+            "builtin/shaders",
+            std::vector<std::filesystem::path> {"builtin/shaders"},
+            shaders);
+        if (!pipeline)
         {
-            release();
-            throw;
+            return std::unexpected(pipeline.error());
         }
+        pass->m_Pipeline = std::move(*pipeline);
+        return pass;
     }
 
     ToneMappingPass::~ToneMappingPass()
-    {
-        release();
-    }
-
-    void ToneMappingPass::release()
     {
         m_Pipeline.reset();
         if (m_Pool)
@@ -82,52 +104,79 @@ namespace vultra
         }
     }
 
-    std::vector<RenderGraph::Resource> ToneMappingPass::addPasses(RenderGraph&                           graph,
-                                                                  std::string_view                       name,
-                                                                  std::span<const RenderGraph::Resource> inputs,
-                                                                  std::span<const double>                parameters)
+    std::expected<std::vector<RenderGraph::Resource>, Error>
+    ToneMappingPass::addPasses(RenderGraph&                           graph,
+                               std::string_view                       name,
+                               std::span<const RenderGraph::Resource> inputs,
+                               std::span<const double>                parameters)
     {
         if (inputs.size() != 1 || parameters.size() != 3 || &graph.device() != &m_Device)
         {
-            throw std::invalid_argument(
-                "Tone mapping needs one HDR input and exposure/bypass/operator parameters on its device");
+            return makeError("Tone mapping needs one HDR input and exposure/bypass/operator parameters on its device");
         }
         const auto source = inputs.front();
         const auto info   = graph.resourceInfo(source);
-        if (!info.isTexture ||
-            (info.textureDesc.format != VriFormat_RGBA16_SFLOAT && info.textureDesc.format != VriFormat_RGBA32_SFLOAT))
+        if (!info)
         {
-            throw std::invalid_argument("Tone mapping input must be an RGBA16_SFLOAT or RGBA32_SFLOAT texture");
+            return std::unexpected(info.error());
         }
-        const Extent size {info.textureDesc.width, info.textureDesc.height};
+        if (!info->isTexture || (info->textureDesc.format != VriFormat_RGBA16_SFLOAT &&
+                                 info->textureDesc.format != VriFormat_RGBA32_SFLOAT))
+        {
+            return makeError("Tone mapping input must be an RGBA16_SFLOAT or RGBA32_SFLOAT texture");
+        }
+        const Extent size {info->textureDesc.width, info->textureDesc.height};
         const auto   output = graph.createTexture(std::string(name) + ".color", colorTexture(size, m_Format));
-        graph.addPass(std::string(name),
-                      {{source, Usage::eSampled}, {output, Usage::eColorWrite}},
-                      [this, source, output, size, parameters](auto* cmd, auto& current)
-                      {
-                          const VriDescriptor*               view = current.getTexture(source).view();
-                          const VriDescriptorRangeUpdateDesc update {&view, 1};
-                          m_Device.core.UpdateDescriptorRanges(m_Set, 0, 1, &update);
-                          // This pass fully initializes its output; LOAD would require an undeclared attachment read.
-                          const float clear[4] {};
-                          beginColorPass(m_Device, cmd, current.getTexture(output).view(), size, clear);
-                          m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
-                          m_Device.core.CmdSetPipeline(cmd, m_Pipeline->handle());
-                          m_Device.core.CmdSetDescriptorSet(cmd, 0, m_Set);
-                          const std::array constants {float(parameters[0]),
-                                                      m_Format == VriFormat_RGBA16_SFLOAT ? 0.0f : 1.0f,
-                                                      float(parameters[1]),
-                                                      float(parameters[2])};
-                          m_Device.core.CmdSetConstants(cmd, 0, constants.data(), sizeof(constants));
-                          const VriViewport viewport {0, 0, float(size.width), float(size.height), 0, 1};
-                          const VriRect     scissor {0, 0, size.width, size.height};
-                          m_Device.core.CmdSetViewports(cmd, &viewport, 1);
-                          m_Device.core.CmdSetScissors(cmd, &scissor, 1);
-                          const VriDrawDesc draw {3, 1, 0, 0};
-                          m_Device.core.CmdDraw(cmd, &draw);
-                          m_Device.core.CmdEndRendering(cmd);
-                      });
-        return {output};
+        if (!output)
+        {
+            return std::unexpected(output.error());
+        }
+        const auto target = *output;
+        const auto added =
+            graph.addPass(std::string(name),
+                          {{source, Usage::eSampled}, {target, Usage::eColorWrite}},
+                          [this, source, target, size, parameters](VriCommandBuffer* cmd,
+                                                                   RenderGraph& current) -> std::expected<void, Error>
+                          {
+                              const auto sourceView = current.getTexture(source).view();
+                              if (!sourceView)
+                              {
+                                  return std::unexpected(sourceView.error());
+                              }
+                              const auto targetView = current.getTexture(target).view();
+                              if (!targetView)
+                              {
+                                  return std::unexpected(targetView.error());
+                              }
+                              const VriDescriptor*               view = *sourceView;
+                              const VriDescriptorRangeUpdateDesc update {&view, 1};
+                              m_Device.core.UpdateDescriptorRanges(m_Set, 0, 1, &update);
+                              // This pass fully initializes its output; LOAD would require an undeclared attachment
+                              // read.
+                              const float clear[4] {};
+                              beginColorPass(m_Device, cmd, *targetView, size, clear);
+                              m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
+                              m_Device.core.CmdSetPipeline(cmd, m_Pipeline->handle());
+                              m_Device.core.CmdSetDescriptorSet(cmd, 0, m_Set);
+                              const std::array constants {float(parameters[0]),
+                                                          m_Format == VriFormat_RGBA16_SFLOAT ? 0.0f : 1.0f,
+                                                          float(parameters[1]),
+                                                          float(parameters[2])};
+                              m_Device.core.CmdSetConstants(cmd, 0, constants.data(), sizeof(constants));
+                              const VriViewport viewport {0, 0, float(size.width), float(size.height), 0, 1};
+                              const VriRect     scissor {0, 0, size.width, size.height};
+                              m_Device.core.CmdSetViewports(cmd, &viewport, 1);
+                              m_Device.core.CmdSetScissors(cmd, &scissor, 1);
+                              const VriDrawDesc draw {3, 1, 0, 0};
+                              m_Device.core.CmdDraw(cmd, &draw);
+                              m_Device.core.CmdEndRendering(cmd);
+                              return {};
+                          });
+        if (!added)
+        {
+            return std::unexpected(added.error());
+        }
+        return std::vector<RenderGraph::Resource> {target};
     }
 
     ShaderPipeline& ToneMappingPass::shader()
@@ -151,9 +200,14 @@ namespace vultra
                   PassControl::eChoice,
                   {{"ACES", 0}, {"None", 1}, {"Reinhard", 2}}}},
                 0,
-                [](Device& device)
+                [](Device& device) -> std::expected<std::unique_ptr<GraphPass>, Error>
                 {
-                    return std::make_unique<ToneMappingPass>(device);
+                    auto pass = ToneMappingPass::create(device);
+                    if (!pass)
+                    {
+                        return std::unexpected(pass.error());
+                    }
+                    return std::unique_ptr<GraphPass>(std::move(*pass));
                 }};
     }
 } // namespace vultra

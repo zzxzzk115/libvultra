@@ -7,14 +7,45 @@
 #include <slang.h>
 
 #include <fstream>
-#include <stdexcept>
 
 namespace vultra
 {
-    ShaderProgram ShaderProgram::compile(const std::filesystem::path&           file,
-                                         std::span<const ShaderEntry>           requested,
-                                         std::span<const std::filesystem::path> includeDirectories,
-                                         bool                                   rayQuery)
+    namespace
+    {
+        std::expected<std::string, Error> readSource(const std::filesystem::path& file)
+        {
+            std::ifstream input(file, std::ios::binary);
+            if (!input)
+            {
+                return makeError("Open Slang source: {}", file.string());
+            }
+            return std::string {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+        }
+
+        // Whether an existing cooked program was built from the same request and the same inputs.
+        std::expected<bool, Error> cookedProgramCurrent(const std::filesystem::path& source,
+                                                        const std::filesystem::path& output,
+                                                        const std::string&           key,
+                                                        const ShaderCompileOptions&  options)
+        {
+            const auto previous = ShaderProgram::load(output);
+            if (!previous)
+            {
+                return std::unexpected(previous.error());
+            }
+            if (previous->compileKey != key)
+            {
+                return false;
+            }
+            return detail::shaderDependenciesCurrent(previous->dependencies, source, options);
+        }
+    } // namespace
+
+    std::expected<ShaderProgram, Error>
+    ShaderProgram::compile(const std::filesystem::path&           file,
+                           std::span<const ShaderEntry>           requested,
+                           std::span<const std::filesystem::path> includeDirectories,
+                           bool                                   rayQuery)
     {
         ShaderCompileOptions options;
         options.entries.assign(requested.begin(), requested.end());
@@ -23,23 +54,27 @@ namespace vultra
         return compile(file, options);
     }
 
-    ShaderProgram ShaderProgram::compile(const std::filesystem::path& file, const ShaderCompileOptions& options)
+    std::expected<ShaderProgram, Error> ShaderProgram::compile(const std::filesystem::path& file,
+                                                               const ShaderCompileOptions&  options)
     {
-        std::ifstream input(file, std::ios::binary);
-        if (!input)
+        const auto source = readSource(file);
+        if (!source)
         {
-            throw std::runtime_error("Open Slang source: " + file.string());
+            return std::unexpected(source.error());
         }
-        const std::string source {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
-        return compileSource(file, source, options);
+        return compileSource(file, *source, options);
     }
 
-    ShaderProgram ShaderProgram::compileSource(const std::filesystem::path& file,
-                                               std::string_view             text,
-                                               const ShaderCompileOptions&  options)
+    std::expected<ShaderProgram, Error> ShaderProgram::compileSource(const std::filesystem::path& file,
+                                                                     std::string_view             text,
+                                                                     const ShaderCompileOptions&  options)
     {
-        ShaderCompiler compiler;
-        return compiler.compileSource(file, text, options);
+        auto compiler = ShaderCompiler::create();
+        if (!compiler)
+        {
+            return std::unexpected(compiler.error());
+        }
+        return compiler->compileSource(file, text, options);
     }
 
     std::string ShaderProgram::compilerVersion()
@@ -47,42 +82,50 @@ namespace vultra
         return std::string(spGetBuildTagString()) + ";" + kShaderToolchainKey;
     }
 
-    bool ShaderProgram::cook(const std::filesystem::path& source,
-                             const std::filesystem::path& output,
-                             const ShaderCompileOptions&  options)
+    std::expected<bool, Error> ShaderProgram::cook(const std::filesystem::path& source,
+                                                   const std::filesystem::path& output,
+                                                   const ShaderCompileOptions&  options)
     {
-        std::ifstream input(source, std::ios::binary);
-        if (!input)
+        const auto text = readSource(source);
+        if (!text)
         {
-            throw std::runtime_error("Open Slang source: " + source.string());
+            return std::unexpected(text.error());
         }
-        const std::string text {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
-        const auto        key = detail::shaderCompileKey(source, text, options);
-        if (std::filesystem::is_regular_file(output))
+        const auto key = detail::shaderCompileKey(source, *text, options);
+        if (!key)
         {
-            try
+            return std::unexpected(key.error());
+        }
+        std::error_code error;
+        if (std::filesystem::is_regular_file(output, error))
+        {
+            const auto current = cookedProgramCurrent(source, output, *key, options);
+            if (!current)
             {
-                const auto previous = load(output);
-                if (previous.compileKey == key &&
-                    detail::shaderDependenciesCurrent(previous.dependencies, source, options))
-                {
-                    Logger::core().info("Shader cache hit: {}", source.string());
-                    return false;
-                }
+                Logger::core().warn("Rebuilding unreadable shader cache {}: {}",
+                                    output.string(),
+                                    current.error().message);
             }
-            catch (const std::exception& error)
+            else if (*current)
             {
-                Logger::core().warn("Rebuilding unreadable shader cache {}: {}", output.string(), error.what());
+                Logger::core().info("Shader cache hit: {}", source.string());
+                return false;
             }
         }
         Logger::core().info("Cooking raw Slang shader: {}", source.string());
-        auto candidate = compileSource(source, text, options);
-        candidate.save(output);
-        if (!candidate.diagnostics.empty())
+        auto candidate = compileSource(source, *text, options);
+        if (!candidate)
         {
-            Logger::core().warn("{}", candidate.diagnostics);
+            return std::unexpected(candidate.error());
+        }
+        if (auto saved = candidate->save(output); !saved)
+        {
+            return std::unexpected(saved.error());
+        }
+        if (!candidate->diagnostics.empty())
+        {
+            Logger::core().warn("{}", candidate->diagnostics);
         }
         return true;
     }
-
 } // namespace vultra

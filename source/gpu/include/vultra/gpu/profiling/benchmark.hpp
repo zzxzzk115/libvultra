@@ -2,6 +2,7 @@
 
 #include <vultra/gpu/profiling/profiler.hpp>
 
+#include <expected>
 #include <filesystem>
 #include <span>
 #include <string>
@@ -29,10 +30,11 @@ namespace vultra
     class BenchmarkCapture
     {
     public:
-        void add(const FrameTiming& frame, std::span<const PassTiming> passes);
-        void write(const std::filesystem::path& directory,
-                   const BenchmarkMetadata&     metadata,
-                   const VriDeviceDesc&         device) const;
+        [[nodiscard]] std::expected<void, Error> add(const FrameTiming& frame, std::span<const PassTiming> passes);
+        // Refuses to overwrite an existing run directory.
+        [[nodiscard]] std::expected<void, Error> write(const std::filesystem::path& directory,
+                                                       const BenchmarkMetadata&     metadata,
+                                                       const VriDeviceDesc&         device) const;
 
         size_t size() const
         {

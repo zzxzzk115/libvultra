@@ -1,6 +1,8 @@
 #pragma once
+#include <vultra/core/base/error.hpp>
 #include <vultra/gpu/resources.hpp>
 
+#include <expected>
 #include <functional>
 #include <initializer_list>
 #include <iosfwd>
@@ -114,7 +116,8 @@ namespace vultra
             std::vector<BatchInfo>    batches;
         };
 
-        using ExecutePass = std::function<void(VriCommandBuffer*, RenderGraph&)>;
+        // Returns an error when recording fails (for example a texture view could not be created).
+        using ExecutePass = std::function<std::expected<void, Error>(VriCommandBuffer*, RenderGraph&)>;
 
         explicit RenderGraph(Device& device) :
             m_Device(device)
@@ -123,46 +126,58 @@ namespace vultra
 
         RenderGraph(const RenderGraph&)            = delete;
         RenderGraph& operator=(const RenderGraph&) = delete;
-        Resource     importResource(std::string name, Texture& texture, bool initialized = true);
-        Resource     importResource(std::string name, Buffer& buffer, bool initialized = true);
-        Resource     createTexture(std::string name, const VriTextureDesc& desc);
-        Resource     createBuffer(std::string name, const VriBufferDesc& desc);
+        [[nodiscard]] std::expected<Resource, Error>
+        importResource(std::string name, Texture& texture, bool initialized = true);
+        [[nodiscard]] std::expected<Resource, Error>
+        importResource(std::string name, Buffer& buffer, bool initialized = true);
+        [[nodiscard]] std::expected<Resource, Error> createTexture(std::string name, const VriTextureDesc& desc);
+        [[nodiscard]] std::expected<Resource, Error> createBuffer(std::string name, const VriBufferDesc& desc);
         // A cached producer may skip writes; preserve its contents without rooting or clearing it.
-        void preserveContents(Resource resource);
+        [[nodiscard]] std::expected<void, Error> preserveContents(Resource resource);
         // History belongs to this graph. Its initial value is restored before the first use after a reset.
-        Resource createHistoryTexture(std::string name, const VriTextureDesc& desc, VriClearColor initial = {});
+        [[nodiscard]] std::expected<Resource, Error>
+                 createHistoryTexture(std::string name, const VriTextureDesc& desc, VriClearColor initial = {});
         void     resetHistory(); // Between completed frames; keep allocations and descriptor identities.
         uint64_t historyEpoch() const;
-        void addPass(std::string name, std::initializer_list<Use> uses, ExecutePass execute, bool sideEffect = false);
-        void addPass(std::string name, std::span<const Use> uses, ExecutePass execute, bool sideEffect = false);
-        void addPass(std::string name, std::initializer_list<Use> uses, ExecutePass execute, PassOptions options);
-        void addPass(std::string name, std::span<const Use> uses, ExecutePass execute, PassOptions options);
-        void exportResource(Resource resource);
-        void nameResource(Resource resource, std::string name); // Before compile; used by inspection and diagnostics.
+        [[nodiscard]] std::expected<void, Error>
+        addPass(std::string name, std::initializer_list<Use> uses, ExecutePass execute, bool sideEffect = false);
+        [[nodiscard]] std::expected<void, Error>
+        addPass(std::string name, std::span<const Use> uses, ExecutePass execute, bool sideEffect = false);
+        [[nodiscard]] std::expected<void, Error>
+        addPass(std::string name, std::initializer_list<Use> uses, ExecutePass execute, PassOptions options);
+        [[nodiscard]] std::expected<void, Error>
+        addPass(std::string name, std::span<const Use> uses, ExecutePass execute, PassOptions options);
+        [[nodiscard]] std::expected<void, Error> exportResource(Resource resource);
+        // Before compile; used by inspection and diagnostics.
+        [[nodiscard]] std::expected<void, Error> nameResource(Resource resource, std::string name);
         // Insert and export an opt-in copy after the pass writes source, before later writes overwrite it.
-        Resource captureAfterPass(const std::string& passName, Resource source, std::string name);
-        Resource findResource(std::string_view name) const; // Named outputs/intermediates, also before compile.
+        [[nodiscard]] std::expected<Resource, Error>
+        captureAfterPass(const std::string& passName, Resource source, std::string name);
+        // Named outputs/intermediates, also before compile.
+        [[nodiscard]] std::expected<Resource, Error> findResource(std::string_view name) const;
         // Aliasing reuses identical transient resources with disjoint live intervals. An aliased plan is immutable.
         // The plan groups live passes into batches per queue. Async compute needs a device compute queue;
         // without one, or with asyncCompute false, every pass runs on the graphics queue in one batch.
-        void compile(bool aliasTransients = false, bool asyncCompute = true);
-        bool aliasesTransients() const;
+        [[nodiscard]] std::expected<void, Error> compile(bool aliasTransients = false, bool asyncCompute = true);
+        bool                                     aliasesTransients() const;
         // Records a single-batch plan into the caller's graphics command buffer.
-        void execute(VriCommandBuffer* cmd, Profiler* profiler = nullptr);
+        [[nodiscard]] std::expected<void, Error> execute(VriCommandBuffer* cmd, Profiler* profiler = nullptr);
         // Records any plan. Every batch but the final graphics one is submitted here with the waits the plan
         // requires; the final graphics batch stays open in frame.commands(FrameQueue::eGraphics) so the caller
         // can append commands before frame.submitAndWait().
-        void execute(Frame& frame);
+        [[nodiscard]] std::expected<void, Error> execute(Frame& frame);
         // Graphviz description of the compiled plan: batches per queue, culled passes and cross-queue waits.
-        void writeDot(std::ostream& output) const;
+        [[nodiscard]] std::expected<void, Error> writeDot(std::ostream& output) const;
         // Rebind a same-format/size imported backbuffer after acquisition, before execute.
-        void                     bind(Resource resource, Texture& texture);
-        Texture&                 getTexture(Resource resource);
-        Buffer&                  getBuffer(Resource resource);
-        Device&                  device() const;
-        ResourceInfo             resourceInfo(Resource resource) const;
-        std::vector<std::string> activePasses() const;
-        Snapshot                 snapshot() const; // compiled pass/resource plan; no GPU readback
+        [[nodiscard]] std::expected<void, Error> bind(Resource resource, Texture& texture);
+        // A resource of this graph that compile() allocated; anything else is a programming error and aborts.
+        Texture&                                         getTexture(Resource resource);
+        Buffer&                                          getBuffer(Resource resource);
+        Device&                                          device() const;
+        [[nodiscard]] std::expected<ResourceInfo, Error> resourceInfo(Resource resource) const;
+        std::vector<std::string>                         activePasses() const;
+        // Compiled pass/resource plan; no GPU readback.
+        [[nodiscard]] std::expected<Snapshot, Error> snapshot() const;
 
     private:
         friend class PassCatalog;
@@ -215,19 +230,21 @@ namespace vultra
             std::vector<Handoff> handoffs;
         };
 
-        Entry&                lookup(Resource resource);
-        void                  edit();
-        void                  planBatches(bool asyncCompute);
-        void                  recordPass(VriCommandBuffer* cmd, const Pass& pass, Profiler* profiler);
-        void                  resetHistoryIfRequested(VriCommandBuffer* cmd);
-        std::vector<Batch>    m_Batches;
-        Device&               m_Device;
-        std::vector<Entry>    m_Resources;
-        std::vector<Pass>     m_Passes;
-        std::vector<Resource> m_Exports;
-        bool                  m_Compiled     = false;
-        bool                  m_Aliased      = false;
-        bool                  m_ResetHistory = true;
-        uint64_t              m_HistoryEpoch = 1;
+        // Resources a pass or export refers to were checked by lookup() when it was added; later stages index
+        // m_Resources directly.
+        std::expected<Entry*, Error> lookup(Resource resource);
+        std::expected<void, Error>   edit() const;
+        std::expected<void, Error>   planBatches(bool asyncCompute);
+        std::expected<void, Error>   recordPass(VriCommandBuffer* cmd, const Pass& pass, Profiler* profiler);
+        void                         resetHistoryIfRequested(VriCommandBuffer* cmd);
+        std::vector<Batch>           m_Batches;
+        Device&                      m_Device;
+        std::vector<Entry>           m_Resources;
+        std::vector<Pass>            m_Passes;
+        std::vector<Resource>        m_Exports;
+        bool                         m_Compiled     = false;
+        bool                         m_Aliased      = false;
+        bool                         m_ResetHistory = true;
+        uint64_t                     m_HistoryEpoch = 1;
     };
 } // namespace vultra

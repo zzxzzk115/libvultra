@@ -1,7 +1,9 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
 #include <vultra/graph/render_graph.hpp>
 
+#include <expected>
 #include <functional>
 #include <map>
 #include <memory>
@@ -63,27 +65,31 @@ namespace vultra
         virtual ~GraphPass() = default;
         // Append this instance's command passes; do not edit command passes owned by preceding instances.
         // The parameter span stays valid with the owning BuiltPass. Read it when recording commands.
-        virtual std::vector<RenderGraph::Resource> addPasses(RenderGraph&                           graph,
-                                                             std::string_view                       name,
-                                                             std::span<const RenderGraph::Resource> inputs,
-                                                             std::span<const double>                parameters) = 0;
+        virtual std::expected<std::vector<RenderGraph::Resource>, Error>
+        addPasses(RenderGraph&                           graph,
+                  std::string_view                       name,
+                  std::span<const RenderGraph::Resource> inputs,
+                  std::span<const double>                parameters) = 0;
     };
+
+    using GraphPassFactory = std::function<std::expected<std::unique_ptr<GraphPass>, Error>(Device&)>;
 
     struct PassDefinition
     {
-        std::string                                        type;
-        std::vector<PassPort>                              inputs;
-        std::vector<PassPort>                              outputs;
-        std::vector<PassParameter>                         parameters;
-        uint64_t                                           requiredFeatures = 0;
-        std::function<std::unique_ptr<GraphPass>(Device&)> create;
-        std::string                                        displayName;
-        std::string                                        description;
+        std::string                type;
+        std::vector<PassPort>      inputs;
+        std::vector<PassPort>      outputs;
+        std::vector<PassParameter> parameters;
+        uint64_t                   requiredFeatures = 0;
+        GraphPassFactory           create;
+        std::string                displayName;
+        std::string                description;
         // Retain this instance and its inputs even if no marked output reaches it.
         bool sideEffect = false;
 
         // CPU-only schema validation; no device feature query, pipeline creation or resource allocation.
-        std::vector<double> parameterValues(std::string_view instance, const PassParameters& supplied = {}) const;
+        [[nodiscard]] std::expected<std::vector<double>, Error>
+        parameterValues(std::string_view instance, const PassParameters& supplied = {}) const;
     };
 
     // Own this state until the graph's final submission completes and its callbacks are discarded.
@@ -103,24 +109,24 @@ namespace vultra
     public:
         // Starts empty. The caller installs only the pass definitions its experiment uses.
         explicit PassCatalog(Device& device);
-        void add(PassDefinition definition);
+        [[nodiscard]] std::expected<void, Error> add(PassDefinition definition);
         // Bind a context-owned scene factory without changing the port/parameter contract.
-        void bindFactory(std::string_view type, std::function<std::unique_ptr<GraphPass>(Device&)> create);
-        const PassDefinition& definition(std::string_view type) const;
+        [[nodiscard]] std::expected<void, Error> bindFactory(std::string_view type, GraphPassFactory create);
+        [[nodiscard]] std::expected<const PassDefinition*, Error> definition(std::string_view type) const;
 
         std::span<const PassDefinition> definitions() const
         {
             return m_Definitions;
         }
 
-        BuiltPass build(RenderGraph&                           graph,
-                        std::string_view                       type,
-                        std::string_view                       name,
-                        std::span<const RenderGraph::Resource> inputs,
-                        const PassParameters&                  parameters = {}) const;
+        [[nodiscard]] std::expected<BuiltPass, Error> build(RenderGraph&                           graph,
+                                                            std::string_view                       type,
+                                                            std::string_view                       name,
+                                                            std::span<const RenderGraph::Resource> inputs,
+                                                            const PassParameters& parameters = {}) const;
 
         // After previous GPU use completes and before recording. Invalid values leave the pass unchanged.
-        void setParameters(BuiltPass& pass, const PassParameters& parameters) const;
+        [[nodiscard]] std::expected<void, Error> setParameters(BuiltPass& pass, const PassParameters& parameters) const;
 
     private:
         Device&                     m_Device;

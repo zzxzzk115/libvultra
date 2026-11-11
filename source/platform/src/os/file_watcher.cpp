@@ -14,6 +14,7 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <system_error>
 
 namespace vultra
 {
@@ -51,7 +52,22 @@ namespace vultra
 
     FileWatcher::~FileWatcher() = default;
 
-    void FileWatcher::watch(std::span<const std::filesystem::path> directories)
+    std::expected<void, Error> FileWatcher::watch(std::span<const std::filesystem::path> directories)
+    {
+        // std::filesystem and FileWatch report failures only as std::system_error (filesystem_error derives
+        // from it). This is the boundary that converts them.
+        try
+        {
+            watchDirectories(directories);
+        }
+        catch (const std::system_error& error)
+        {
+            return makeError("Watch directories: {}", error.what());
+        }
+        return {};
+    }
+
+    void FileWatcher::watchDirectories(std::span<const std::filesystem::path> directories)
     {
         std::set<std::filesystem::path> wanted;
         for (const auto& directory : directories)

@@ -1,9 +1,12 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
+
 #include <imgui.h>
 
 #include <cstdarg>
 #include <cstdint>
+#include <expected>
 #include <string>
 #include <string_view>
 
@@ -11,13 +14,14 @@ namespace vultra
 {
     class EditorGui;
 
-    // Immediate-mode widgets for the current EditorGui frame. This value owns no ImGui state.
+    // Immediate-mode widgets for the current EditorGui frame. This value owns no ImGui state. Constructing it or
+    // calling a widget outside its frame or ImGui context is a programming error and aborts.
     class EditorGuiFrame
     {
     public:
         explicit EditorGuiFrame(EditorGui& gui);
         // Call before mixing raw ImGui commands into this borrowed frame.
-        void requireActive() const;
+        [[nodiscard]] std::expected<void, Error> requireActive() const;
 
         void   setNextWindowPos(ImVec2 position, ImGuiCond condition = 0);
         void   setNextWindowSize(ImVec2 size, ImGuiCond condition = 0);

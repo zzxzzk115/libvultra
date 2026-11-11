@@ -1,3 +1,4 @@
+#include "support/check.hpp"
 #include "support/forward_fixture.hpp"
 
 #include <vultra/assets/asset_pipeline.hpp>
@@ -20,39 +21,21 @@
 
 namespace
 {
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::rejects;
+    using support::require;
 
     void write(const std::filesystem::path& path, std::span<const std::byte> bytes)
     {
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
-        file.exceptions(std::ios::failbit | std::ios::badbit);
         file.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
+        file.close();
+        require(!file.fail(), "Could not write a test fixture file");
     }
 
     void writeText(const std::filesystem::path& path, std::string_view text)
     {
         write(path, std::as_bytes(std::span(text)));
-    }
-
-    template<typename F>
-    void requireFailure(F&& operation, const char* message)
-    {
-        bool failed = false;
-        try
-        {
-            operation();
-        }
-        catch (const std::exception&)
-        {
-            failed = true;
-        }
-        require(failed, message);
     }
 
     // Independent DX10 DDS fixture: 4x4 BC1, three authored mips, opaque RGB565 gray.
@@ -177,15 +160,15 @@ Connections: {
         asset.scene.primitives.push_back({0, 3, 0});
         asset.textures.images.push_back(texture);
         asset.textures.materials.push_back({0, 0, 0, 0, 0});
-        vultra::Device      device;
-        vultra::GpuScene    gpu(device, asset);
-        vultra::Texture     output(device, vultra::colorTexture({1, 1}));
-        vultra::TextureBlit blit(device, output.desc.format);
-        blit.setSource(0, *gpu.textures[0]);
-        vultra::Frame frame(device);
-        blit.draw(frame.begin(), output, {0, 0, 1, 1}, 0, encode);
-        frame.submitAndWait();
-        const auto image = vultra::readback(device, output);
+        const auto device = must(vultra::Device::create());
+        const auto gpu    = must(vultra::GpuScene::create(*device, asset));
+        auto       output = must(vultra::Texture::create(*device, vultra::colorTexture({1, 1})));
+        const auto blit   = must(vultra::TextureBlit::create(*device, output.desc.format));
+        must(blit->setSource(0, *gpu->textures[0]));
+        const auto frame = must(vultra::Frame::create(*device));
+        must(blit->draw(must(frame->begin()), output, {0, 0, 1, 1}, 0, encode));
+        must(frame->submitAndWait());
+        const auto image = must(vultra::readback(*device, output));
         require(std::abs(image.rgba[0] - expected) < 0.02f && image.rgba[3] > 0.99f,
                 "DDS GPU upload or transfer function is incorrect");
     }
@@ -207,8 +190,8 @@ Connections: {
                 "extensions":{"KHR_materials_specular":{"specularFactor":0.7,"specularColorFactor":[0.2,0.4,0.8],
                     "specularTexture":{"index":0},"specularColorTexture":{"index":0}}}}]
         })");
-        const auto parallel = vultra::loadGltf(root / "dds.gltf", {}, 4);
-        const auto serial   = vultra::loadGltf(root / "dds.gltf", {}, 1);
+        const auto parallel = must(vultra::loadGltf(root / "dds.gltf", {}, 4));
+        const auto serial   = must(vultra::loadGltf(root / "dds.gltf", {}, 1));
         require(parallel.images.size() == 2 && parallel.materials[0].baseColorTexture.image == 1,
                 "Required MSFT_texture_dds source was not selected");
         const auto& material = parallel.materials[0];
@@ -218,8 +201,8 @@ Connections: {
                 "Specular extension or documented opaque coverage mapping was lost");
         vultra::AssetImportOptions options;
         options.cacheDirectory = root / "gltf-cache";
-        const auto cold        = vultra::importAsset(root / "dds.gltf", options);
-        const auto warm        = vultra::importAsset(root / "dds.gltf", options);
+        const auto cold        = must(vultra::importAsset(root / "dds.gltf", options));
+        const auto warm        = must(vultra::importAsset(root / "dds.gltf", options));
         require(!cold.cacheHit && warm.cacheHit && cold.textures.materials == warm.textures.materials &&
                     warm.scene.materials[0].specularTexture.image == 1 &&
                     warm.scene.materials[0].specularColorTexture.image == 1 &&
@@ -248,8 +231,8 @@ Connections: {
             large[offset + 1] = std::byte(0x84);
         }
         write(root / "color.dds", large);
-        const auto largeCold = vultra::importAsset(root / "dds.gltf", options);
-        const auto largeWarm = vultra::importAsset(root / "dds.gltf", options);
+        const auto largeCold = must(vultra::importAsset(root / "dds.gltf", options));
+        const auto largeWarm = must(vultra::importAsset(root / "dds.gltf", options));
         require(!largeCold.cacheHit && largeWarm.cacheHit &&
                     std::filesystem::file_size(largeCold.cachePath) < 16 * 1024,
                 "Cache duplicated authored DDS mip payloads");
@@ -341,8 +324,8 @@ Connections: {
         options.cacheDirectory = root / "orca-cache";
         options.workers        = 4;
         options.fbx            = {FbxMaterialConvention::eOrcaMetallicRoughness, true};
-        const auto cold        = importAsset(root / "orca.FbX", options);
-        const auto warm        = importAsset(root / "orca.FbX", options);
+        const auto cold        = must(importAsset(root / "orca.FbX", options));
+        const auto warm        = must(importAsset(root / "orca.FbX", options));
         require(!cold.cacheHit && warm.cacheHit, "ORCA cache did not hit");
         sameScene(cold.scene, warm.scene);
         const auto& material = warm.scene.materials[0];
@@ -354,8 +337,8 @@ Connections: {
         require(warm.textures.images[warm.textures.materials[0][2]].format == TextureFormat::eBc5Unorm,
                 "ORCA BC5 normal blocks were converted");
         options.fbx.directXNormalMaps = false;
-        require(!isAssetCacheCurrent(root / "orca.FbX", options), "Normal convention omitted from cache key");
-        const auto opengl = importAsset(root / "orca.FbX", options);
+        require(!must(isAssetCacheCurrent(root / "orca.FbX", options)), "Normal convention omitted from cache key");
+        const auto opengl = must(importAsset(root / "orca.FbX", options));
         require(!opengl.cacheHit && opengl.cachePath != cold.cachePath,
                 "Normal convention reused incompatible cached tangents");
         for (size_t vertex = 0; vertex < cold.scene.vertices.size(); ++vertex)
@@ -364,32 +347,32 @@ Connections: {
                     "DirectX normal-map inversion was lost or applied twice");
         }
         options.fbx.materialConvention = FbxMaterialConvention::ePhong;
-        const auto phong               = importAsset(root / "orca.FbX", options);
+        const auto phong               = must(importAsset(root / "orca.FbX", options));
         require(!phong.cacheHit && phong.cachePath != opengl.cachePath &&
                     phong.scene.materials[0].baseColor == glm::vec4(0, 0, 0, 1) &&
                     phong.scene.materials[0].metallicRoughnessTexture.image == -1 &&
                     phong.scene.materials[0].emissionLuminance == 0,
                 "ORCA interpretation leaked into generic Phong import or missing properties were uninitialized");
 
-        Device                  device;
-        GpuScene                gpu(device, warm);
-        Environment             environment(device);
-        support::ForwardFixture renderer(device, gpu, environment);
+        const auto              device      = must(Device::create());
+        const auto              gpu         = must(GpuScene::create(*device, warm));
+        const auto              environment = must(Environment::create(*device));
+        support::ForwardFixture renderer(*device, *gpu, *environment);
         renderer.settings.ibl    = false;
         renderer.settings.skybox = false;
         const RenderCamera camera {glm::lookAtRH(glm::vec3(3, 1.5f, 3), glm::vec3(3, 1.5f, 0), glm::vec3(0, 1, 0)),
                                    glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
                                    0.1f,
                                    10.0f};
-        RenderGraph        graph(device);
+        RenderGraph        graph(*device);
         const auto         outputs = renderer.addPasses(graph, {17, 17});
-        graph.exportResource(outputs.hdr);
-        graph.compile();
+        must(graph.exportResource(outputs.hdr));
+        must(graph.compile());
         // The forward path exposes the shaded surface through its debug views: 2 encodes normals, 5 is emission.
         renderer.settings.debugMode = 2;
-        const auto shadedNormal     = support::render(device, renderer, graph, outputs, camera);
+        const auto shadedNormal     = support::render(*device, renderer, graph, outputs, camera);
         renderer.settings.debugMode = 5;
-        const auto       emission   = support::render(device, renderer, graph, outputs, camera);
+        const auto       emission   = support::render(*device, renderer, graph, outputs, camera);
         constexpr size_t center     = (8 * 17 + 8) * 4;
         const float      x          = 166.0f / 255 * 2 - 1;
         const float      y          = 153.0f / 255 * 2 - 1;
@@ -405,11 +388,11 @@ Connections: {
                                 VpkFile {"Textures/packed.dds", root / "Textures/packed.dds"},
                                 VpkFile {"Textures/normal.dds", root / "Textures/normal.dds"},
                                 VpkFile {"Textures/emission.dds", root / "Textures/emission.dds"}};
-        VpkArchive::pack(files, root / "orca.vpk");
-        AssetSource source {VpkArchive(root / "orca.vpk")};
+        must(VpkArchive::pack(files, root / "orca.vpk"));
+        AssetSource source {must(VpkArchive::create(root / "orca.vpk"))};
         options.cacheDirectory = root / "orca-package-cache";
         options.fbx            = {FbxMaterialConvention::eOrcaMetallicRoughness, true};
-        const auto packedAsset = importAsset(source.resolve("orca.FbX"), options, &source);
+        const auto packedAsset = must(importAsset(must(source.resolve("orca.FbX")), options, &source));
         require(packedAsset.scene.materials[0].baseMetalness == 1 &&
                     packedAsset.textures.images[packedAsset.textures.materials[0][2]].levels[0].bytes ==
                         cold.textures.images[cold.textures.materials[0][2]].levels[0].bytes,
@@ -418,14 +401,13 @@ Connections: {
 } // namespace
 
 int main()
-try
 {
     const auto root = std::filesystem::path("build/.tmp/asset-formats") / u8"assets é" /
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root);
     const auto colorPath = root / "color.dds";
     write(colorPath, dds(true));
-    const auto color = vultra::loadDds(colorPath);
+    const auto color = must(vultra::loadDds(colorPath));
     require(color.format == vultra::TextureFormat::eRgba8Srgb && color.levels.size() == 3 &&
                 color.levels[2].size == vultra::Extent {1, 1},
             "sRGB DDS lost its authored mips or hardware sRGB format");
@@ -434,17 +416,18 @@ try
     authored[164] = std::byte(0);
     authored[165] = std::byte(0xf8); // The last mip is red, unlike the gray base level.
     write(root / "authored.dds", authored);
-    const auto authoredMips = vultra::loadDds(root / "authored.dds");
+    const auto authoredMips = must(vultra::loadDds(root / "authored.dds"));
     require(authoredMips.levels[2].bytes[0] == std::byte(255) && authoredMips.levels[2].bytes[1] == std::byte(0),
             "DDS authored mip was regenerated from level zero");
     sampleDds(color, false, 0.2307f);
-    const auto sourceImage = vultra::loadSceneImage(colorPath);
+    const auto sourceImage = must(vultra::loadSceneImage(colorPath));
     require(sourceImage.pixels.empty() && sourceImage.dds == dds(true), "DDS source bytes were decoded prematurely");
-    const auto linear = vultra::prepareTexture(sourceImage, false);
+    const auto linear = must(vultra::prepareTexture(sourceImage, false));
     require(linear.format == vultra::TextureFormat::eBc1Unorm && linear.levels[0].bytes.size() == 8,
             "Linear DDS lost native blocks");
     sampleDds(linear, false, 132.0f / 255);
-    const auto plain = vultra::prepareTexture(sourceImage, false, {.compression = vultra::TextureCompression::eNone});
+    const auto plain =
+        must(vultra::prepareTexture(sourceImage, false, {.compression = vultra::TextureCompression::eNone}));
     require(plain.format == vultra::TextureFormat::eRgba8Unorm && plain.levels.size() == 3,
             "DDS ignored uncompressed import");
     auto           bc5       = dds(false);
@@ -457,48 +440,34 @@ try
         bc5[offset] = bc5[offset + 1] = std::byte(128);
     }
     write(root / "normal.dds", bc5);
-    const auto normal = vultra::prepareTexture(vultra::loadSceneImage(root / "normal.dds"),
-                                               false,
-                                               {.compression = vultra::TextureCompression::eNone});
+    const auto normal = must(vultra::prepareTexture(must(vultra::loadSceneImage(root / "normal.dds")),
+                                                    false,
+                                                    {.compression = vultra::TextureCompression::eNone}));
     require(normal.format == vultra::TextureFormat::eRg8Unorm && normal.levels.size() == 3 &&
                 normal.levels[0].bytes == std::vector<std::byte>(4 * 4 * 2, std::byte(128)),
             "Decompressed BC5 lost its two-channel normal representation");
-    require(vultra::prepareTexture(sourceImage, true, {.mipmaps = false}).levels.size() == 1, "DDS ignored mip option");
+    require(must(vultra::prepareTexture(sourceImage, true, {.mipmaps = false})).levels.size() == 1,
+            "DDS ignored mip option");
     write(root / "array.dds", dds(false, 2));
-    requireFailure(
-        [&]
-        {
-            vultra::loadDds(root / "array.dds");
-        },
-        "DDS array was silently flattened");
+    rejects(vultra::loadDds(root / "array.dds"), "DDS array was silently flattened");
     auto truncated = dds(false);
     truncated.pop_back();
     write(root / "truncated.dds", truncated);
-    requireFailure(
-        [&]
-        {
-            vultra::loadDds(root / "truncated.dds");
-        },
-        "Truncated DDS was accepted");
+    rejects(vultra::loadDds(root / "truncated.dds"), "Truncated DDS was accepted");
     writeText(root / "invalid.dds", "not a texture");
-    requireFailure(
-        [&]
-        {
-            vultra::loadDds(root / "invalid.dds");
-        },
-        "Malformed DDS was accepted");
+    rejects(vultra::loadDds(root / "invalid.dds"), "Malformed DDS was accepted");
 
     testGltfDds(root);
     testOrca(root);
-    const auto embedded = vultra::loadFbx("tests/fixtures/embedded_dds.fbx", {}, 4);
+    const auto embedded = must(vultra::loadFbx("tests/fixtures/embedded_dds.fbx", {}, 4));
     require(embedded.indices.size() == 3 && embedded.images.size() == 1 && !embedded.images[0].dds.empty(),
             "Binary FBX embedded DDS image was not loaded");
-    require(vultra::prepareTexture(embedded.images[0], true).format == vultra::TextureFormat::eRgba8Srgb,
+    require(must(vultra::prepareTexture(embedded.images[0], true)).format == vultra::TextureFormat::eRgba8Srgb,
             "Embedded DDS lost its sRGB interpretation");
     const auto model = root / "model.fbx";
     writeText(model, kFbx);
-    const auto parallel = vultra::loadFbx(model, {}, 4);
-    sameScene(parallel, vultra::loadFbx(model, {}, 1));
+    const auto parallel = must(vultra::loadFbx(model, {}, 4));
+    sameScene(parallel, must(vultra::loadFbx(model, {}, 1)));
     require(parallel.indices.size() == 12 && parallel.primitives.size() == 2,
             "FBX quad instances were not triangulated");
     require(parallel.center == glm::vec3(0.5f, 1.5f, 0), "FBX hierarchy, units or mirrored transforms are wrong");
@@ -511,8 +480,8 @@ try
     vultra::AssetImportOptions options;
     options.cacheDirectory = root / "cache";
     options.workers        = 4;
-    const auto cold        = vultra::importAsset(model, options);
-    const auto warm        = vultra::importAsset(model, options);
+    const auto cold        = must(vultra::importAsset(model, options));
+    const auto warm        = must(vultra::importAsset(model, options));
     require(!cold.cacheHit && warm.cacheHit, "FBX/DDS asset cache did not hit");
     {
         // A cache made through an asset source moves with its root, as a packed project does.
@@ -523,16 +492,16 @@ try
         std::filesystem::copy_file(colorPath, first / "assets" / "color.dds");
         auto relocated = options;
         {
-            const vultra::AssetSource source(first);
+            const auto source        = must(vultra::AssetSource::create(first));
             relocated.cacheDirectory = first / "cache";
-            require(!vultra::importAsset("assets/model.fbx", relocated, &source).cacheHit,
+            require(!must(vultra::importAsset("assets/model.fbx", relocated, source.get())).cacheHit,
                     "A new asset source started with a cache hit");
         }
         std::filesystem::rename(first, second);
-        const vultra::AssetSource source(second);
+        const auto source        = must(vultra::AssetSource::create(second));
         relocated.cacheDirectory = second / "cache";
-        require(vultra::isAssetCacheCurrent("assets/model.fbx", relocated, &source) &&
-                    vultra::importAsset("assets/model.fbx", relocated, &source).cacheHit,
+        require(must(vultra::isAssetCacheCurrent("assets/model.fbx", relocated, source.get())) &&
+                    must(vultra::importAsset("assets/model.fbx", relocated, source.get())).cacheHit,
                 "An asset cache did not survive moving its source root");
     }
     sameScene(cold.scene, warm.scene);
@@ -544,63 +513,53 @@ try
     changed[148]       = std::byte(0xff);
     write(colorPath, changed);
     std::filesystem::last_write_time(colorPath, stamp);
-    require(!vultra::importAsset(model, options).cacheHit, "FBX external DDS content change was missed");
-    const auto cache = vultra::readSourceFile(cold.cachePath);
+    require(!must(vultra::importAsset(model, options)).cacheHit, "FBX external DDS content change was missed");
+    const auto cache = must(vultra::readSourceFile(cold.cachePath));
     writeText(colorPath, "broken DDS");
-    requireFailure(
-        [&]
-        {
-            vultra::importAsset(model, options);
-        },
-        "FBX image worker swallowed decode failure");
-    require(vultra::readSourceFile(cold.cachePath) == cache, "Failed FBX import replaced a valid cache");
+    rejects(vultra::importAsset(model, options), "FBX image worker swallowed decode failure");
+    require(must(vultra::readSourceFile(cold.cachePath)) == cache, "Failed FBX import replaced a valid cache");
     write(colorPath, dds(true));
-    require(!vultra::importAsset(model, options).cacheHit, "FBX import did not recover after image failure");
-    require(vultra::readSourceFile(model) ==
+    require(!must(vultra::importAsset(model, options)).cacheHit, "FBX import did not recover after image failure");
+    require(must(vultra::readSourceFile(model)) ==
                 std::vector<std::byte>(reinterpret_cast<const std::byte*>(kFbx),
                                        reinterpret_cast<const std::byte*>(kFbx) + std::strlen(kFbx)),
             "FBX source was modified");
     writeText(root / "invalid.fbx", "not FBX");
-    requireFailure(
-        [&]
-        {
-            vultra::loadFbx(root / "invalid.fbx");
-        },
-        "Malformed FBX was accepted");
+    rejects(vultra::loadFbx(root / "invalid.fbx"), "Malformed FBX was accepted");
 
     writeText(root / "triangle.obj", "mtllib paint.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl paint\nf 1 2 3\n");
     writeText(root / "paint.mtl", "newmtl paint\nKd 0.2 0.4 0.8\n");
-    const auto                   object = vultra::loadObj(root / "triangle.obj");
-    const auto                   gltf   = vultra::loadGltf(root / "dds.gltf");
+    const auto                   object = must(vultra::loadObj(root / "triangle.obj"));
+    const auto                   gltf   = must(vultra::loadGltf(root / "dds.gltf"));
     std::vector<vultra::VpkFile> files;
     for (const auto* path : {"model.fbx", "color.dds", "dds.gltf", "triangle.bin", "triangle.obj", "paint.mtl"})
     {
         files.push_back({path, root / path});
     }
     const auto package = root / "assets.vpk";
-    vultra::VpkArchive::pack(files, package);
-    vultra::AssetSource assets {vultra::VpkArchive(package)};
+    must(vultra::VpkArchive::pack(files, package));
+    vultra::AssetSource assets {must(vultra::VpkArchive::create(package))};
     for (const auto& file : files)
     {
         std::filesystem::remove(file.source);
     }
-    sameScene(parallel, vultra::loadFbx(assets.resolve("model.fbx"), {}, 4, &assets));
-    sameScene(gltf, vultra::loadGltf(assets.resolve("dds.gltf"), {}, 4, &assets));
-    const auto packedObject = vultra::loadObj(assets.resolve("triangle.obj"), {}, 1, &assets);
+    sameScene(parallel, must(vultra::loadFbx(must(assets.resolve("model.fbx")), {}, 4, &assets)));
+    sameScene(gltf, must(vultra::loadGltf(must(assets.resolve("dds.gltf")), {}, 4, &assets)));
+    const auto packedObject = must(vultra::loadObj(must(assets.resolve("triangle.obj")), {}, 1, &assets));
     sameScene(object, packedObject);
     require(packedObject.materials[0].baseColor == object.materials[0].baseColor,
             "VPK-backed OBJ lost its MTL dependency");
     options.cacheDirectory  = root / "package-cache";
-    const auto packagedCold = vultra::importAsset(assets.resolve("model.fbx"), options, &assets);
-    const auto packagedWarm = vultra::importAsset(assets.resolve("model.fbx"), options, &assets);
+    const auto packagedCold = must(vultra::importAsset(must(assets.resolve("model.fbx")), options, &assets));
+    const auto packagedWarm = must(vultra::importAsset(must(assets.resolve("model.fbx")), options, &assets));
     require(!packagedCold.cacheHit && packagedWarm.cacheHit &&
-                vultra::isAssetCacheCurrent(assets.resolve("model.fbx"), options, &assets),
+                must(vultra::isAssetCacheCurrent(must(assets.resolve("model.fbx")), options, &assets)),
             "Package asset cache required extracted source dependencies");
     require(packagedWarm.textures.images[slot].levels[0].bytes == warm.textures.images[slot].levels[0].bytes,
             "VPK-backed FBX or DDS changed texture bytes");
-    require(!std::filesystem::exists(assets.resolve("model.fbx")), "Import extracted package geometry");
-    const auto validCache       = vultra::readSourceFile(packagedCold.cachePath);
-    const auto validPackage     = vultra::readSourceFile(package);
+    require(!std::filesystem::exists(must(assets.resolve("model.fbx"))), "Import extracted package geometry");
+    const auto validCache       = must(vultra::readSourceFile(packagedCold.cachePath));
+    const auto validPackage     = must(vultra::readSourceFile(package));
     auto       corruptedPackage = validPackage;
     const auto imageBytes       = dds(true);
     const auto payload =
@@ -608,25 +567,16 @@ try
     require(payload != corruptedPackage.end(), "Packaged DDS corruption fixture has no payload");
     payload[148] ^= std::byte(1);
     write(package, corruptedPackage);
-    require(!vultra::isAssetCacheCurrent(assets.resolve("model.fbx"), options, &assets),
+    require(!must(vultra::isAssetCacheCurrent(must(assets.resolve("model.fbx")), options, &assets)),
             "Package cache accepted a corrupt source dependency");
-    requireFailure(
-        [&]
-        {
-            vultra::importAsset(assets.resolve("model.fbx"), options, &assets);
-        },
-        "Package import concealed a corrupt image dependency");
-    require(vultra::readSourceFile(packagedCold.cachePath) == validCache,
+    rejects(vultra::importAsset(must(assets.resolve("model.fbx")), options, &assets),
+            "Package import concealed a corrupt image dependency");
+    require(must(vultra::readSourceFile(packagedCold.cachePath)) == validCache,
             "Failed package import replaced the preceding valid cache");
     write(package, validPackage);
-    require(vultra::importAsset(assets.resolve("model.fbx"), options, &assets).cacheHit,
+    require(must(vultra::importAsset(must(assets.resolve("model.fbx")), options, &assets)).cacheHit,
             "Package import did not recover after restoring the source");
     vultra::Logger::app().info("Asset format tests passed: FBX transforms/normals/materials, DDS blocks/mips/sRGB GPU "
                                "sampling, cache and worker failure recovery");
     return 0;
-}
-catch (const std::exception& error)
-{
-    vultra::Logger::app().error("{}", error.what());
-    return 1;
 }

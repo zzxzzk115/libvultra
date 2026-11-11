@@ -1,4 +1,5 @@
 #include "../examples/common/colored_mesh.hpp"
+#include "support/check.hpp"
 #include "window_events.hpp"
 
 #include <vultra/app/camera/fps_camera.hpp>
@@ -18,13 +19,10 @@ namespace
     // Present initial frames before exact comparisons: Wayland negotiates surface size and scale asynchronously.
     constexpr uint64_t kWarmupFrames = 4;
 
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
+
+    using Result = std::expected<void, vultra::Error>;
 
     void inputAndControllers()
     {
@@ -107,9 +105,15 @@ namespace
     class CameraApp final : public vultra::ImGuiApp
     {
     public:
-        CameraApp() :
-            ImGuiApp({"Vultra - camera input test", {640, 480}}, {.persistLayout = false}),
-            m_Triangle(getDevice(), getSwapchain().format(), sample::kTriangleVertices, sample::kTriangleIndices),
+        static inline const vultra::AppConfig kConfig {"Vultra - camera input test", {640, 480}};
+
+        // The fixture's own GPU objects are expected to build; a failure ends the test.
+        explicit CameraApp(Services services) :
+            ImGuiApp(std::move(services), kConfig),
+            m_Triangle(must(sample::ColoredMesh::create(getDevice(),
+                                                        getSwapchain().format(),
+                                                        sample::kTriangleVertices,
+                                                        sample::kTriangleIndices))),
             m_Events(getWindow())
         {
             m_Camera.yaw      = 0;
@@ -119,14 +123,18 @@ namespace
         }
 
     private:
-        void onPreUpdate(float) override
+        Result onPreUpdate(float) override
         {
             ImGui::SetNextFrameWantCaptureMouse(frameCount() == kWarmupFrames + 3);
+            return {};
         }
 
-        void onPreRender() override
+        Result onPreRender() override
         {
-            ImGuiApp::onPreRender();
+            if (auto result = ImGuiApp::onPreRender(); !result)
+            {
+                return result;
+            }
             const auto& input = getWindow().input();
             if (frameCount() == kWarmupFrames + 1)
             {
@@ -136,28 +144,29 @@ namespace
                 require(ImGui::GetIO().MouseWheel == 0, "Fixture must read after ImGui clears its wheel");
             }
             m_Camera.update(input, getWindow().size(), getEditorGui().inputCapture());
+            return {};
         }
 
-        void onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
+        Result onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
         {
             const auto camera = m_Camera.camera(getSwapchain().size());
             const auto matrix = camera.projection * camera.view;
-            std::copy_n(glm::value_ptr(matrix), 16, m_Triangle.parameters.transform.begin());
+            std::copy_n(glm::value_ptr(matrix), 16, m_Triangle->parameters.transform.begin());
             const float clear[4] {0, 0, 0, 1};
             target.transition(
                 cmd,
                 {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
-            m_Triangle.draw(cmd, target, clear);
+            return m_Triangle->draw(cmd, target, clear);
         }
 
-        void onPostRender(vultra::Texture& target) override
+        Result onPostRender(vultra::Texture& target) override
         {
             if (frameCount() < kWarmupFrames)
             {
-                return;
+                return {};
             }
             const auto testFrame = frameCount() - kWarmupFrames;
-            const auto image     = vultra::readback(getDevice(), target);
+            const auto image     = must(vultra::readback(getDevice(), target));
             size_t     pixels    = 0;
             for (size_t i = 0; i < image.rgba.size(); i += 4)
             {
@@ -198,39 +207,31 @@ namespace
                         "Backend focus event failed to release held keys");
                 require(pixels == m_BaselinePixels, "An unfocused window moved the camera");
             }
+            return {};
         }
 
-        vultra::OrbitCamera m_Camera;
-        sample::ColoredMesh m_Triangle;
-        test::WindowEvents  m_Events;
-        size_t              m_BaselinePixels = 0;
-        vultra::Image       m_Zoomed;
+        vultra::OrbitCamera                  m_Camera;
+        std::unique_ptr<sample::ColoredMesh> m_Triangle;
+        test::WindowEvents                   m_Events;
+        size_t                               m_BaselinePixels = 0;
+        vultra::Image                        m_Zoomed;
     };
 } // namespace
 
 int main(int argc, char** argv)
-try
 {
     const bool offline = argc == 2 && std::string_view(argv[1]) == "--offline";
-    if (argc != 1 && !offline)
-    {
-        throw std::invalid_argument("Usage: test-camera [--offline]");
-    }
+    require(argc == 1 || offline, "Usage: test-camera [--offline]");
     inputAndControllers();
     if (offline)
     {
         std::cout << "Offline camera tests passed: input state, orbit/pan/zoom, FPS, focus and UI capture\n";
         return 0;
     }
-    CameraApp app;
-    app.run(kWarmupFrames + 6);
+    CameraApp app(must(vultra::ImGuiApp::createServices(CameraApp::kConfig, {.persistLayout = false})));
+    must(app.run(kWarmupFrames + 6));
     require(app.frameCount() == kWarmupFrames + 6, "Camera regression did not complete every frame");
     std::cout << "Camera tests passed: window input, backend/ImGui event forwarding, orbit/pan/zoom, FPS, focus, UI "
                  "capture, GPU zoom\n";
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }

@@ -1,10 +1,12 @@
 #pragma once
 
 #include <vultra/assets/scene_data.hpp>
+#include <vultra/core/base/error.hpp>
 #include <vultra/gpu/resources.hpp>
 #include <vultra/render/meshlets.hpp>
 
 #include <array>
+#include <expected>
 #include <memory>
 #include <vector>
 
@@ -22,16 +24,23 @@ namespace vultra
     class GpuScene
     {
     public:
-        GpuScene(Device&                 device,
-                 const SceneData&        scene,
-                 const PreparedTextures& textures,
-                 const MeshletData*      meshlets = nullptr);
+        // Render paths and servers keep the scene's address, so it lives behind a unique_ptr.
+        [[nodiscard]] static std::expected<std::unique_ptr<GpuScene>, Error>
+        create(Device&                 device,
+               const SceneData&        scene,
+               const PreparedTextures& textures,
+               const MeshletData*      meshlets = nullptr);
 #ifdef VULTRA_WITH_SCENE_PREPARATION
-        GpuScene(Device& device, const SceneData& scene, bool meshShading = false, uint32_t workers = 0);
-        GpuScene(Device& device, const ImportedAsset& asset, bool meshShading = false, uint32_t workers = 0);
+        [[nodiscard]] static std::expected<std::unique_ptr<GpuScene>, Error>
+        create(Device& device, const SceneData& scene, bool meshShading = false, uint32_t workers = 0);
+        [[nodiscard]] static std::expected<std::unique_ptr<GpuScene>, Error>
+        create(Device& device, const ImportedAsset& asset, bool meshShading = false, uint32_t workers = 0);
 #endif
+        GpuScene(const GpuScene&)            = delete;
+        GpuScene& operator=(const GpuScene&) = delete;
         // The caller writes only after the previous frame completes.
-        void                   setPrimitiveTransforms(uint32_t first, uint32_t count, const glm::mat4& transform);
+        [[nodiscard]] std::expected<void, Error>
+                               setPrimitiveTransforms(uint32_t first, uint32_t count, const glm::mat4& transform);
         bool                   primitiveMirrored(uint32_t index) const;
         const glm::mat4&       primitiveTransform(uint32_t index) const;
         const PrimitiveBounds& primitiveBounds(uint32_t index) const;
@@ -50,6 +59,8 @@ namespace vultra
         std::unique_ptr<GpuMeshlets>                             meshlets;
 
     private:
+        GpuScene(Device& device, const SceneData& scene);
+
         Device&                      m_Device;
         std::vector<uint8_t>         m_Mirrored;
         std::vector<glm::mat4>       m_Transforms;

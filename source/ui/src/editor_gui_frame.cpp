@@ -5,7 +5,6 @@
 
 #include <cfloat>
 #include <cmath>
-#include <stdexcept>
 #include <string>
 
 namespace vultra
@@ -14,65 +13,65 @@ namespace vultra
         m_Gui(gui),
         m_Serial(gui.frameSerial())
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
     }
 
-    void EditorGuiFrame::requireActive() const
+    std::expected<void, Error> EditorGuiFrame::requireActive() const
     {
-        m_Gui.requireFrame(m_Serial);
+        return m_Gui.checkFrame(m_Serial);
     }
 
     void EditorGuiFrame::setNextWindowPos(ImVec2 position, ImGuiCond condition)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::SetNextWindowPos(position, condition);
     }
 
     void EditorGuiFrame::setNextWindowSize(ImVec2 size, ImGuiCond condition)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::SetNextWindowSize(size, condition);
     }
 
     ImVec2 EditorGuiFrame::mainViewportPos() const
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         return ImGui::GetMainViewport()->Pos;
     }
 
     ImVec2 EditorGuiFrame::contentRegionAvail() const
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         return ImGui::GetContentRegionAvail();
     }
 
     bool EditorGuiFrame::beginWindow(const char* title, bool* open, ImGuiWindowFlags flags)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         return ImGui::Begin(title, open, flags);
     }
 
     void EditorGuiFrame::endWindow()
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::End();
     }
 
     bool EditorGuiFrame::beginChild(const char* id, ImVec2 size, ImGuiChildFlags flags)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         return ImGui::BeginChild(id, size, flags);
     }
 
     void EditorGuiFrame::endChild()
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::EndChild();
     }
 
     void EditorGuiFrame::text(const char* format, ...)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         va_list args;
         va_start(args, format);
         ImGui::TextV(format, args);
@@ -81,7 +80,7 @@ namespace vultra
 
     void EditorGuiFrame::textWrapped(const char* format, ...)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         va_list args;
         va_start(args, format);
         ImGui::TextWrappedV(format, args);
@@ -90,7 +89,7 @@ namespace vultra
 
     void EditorGuiFrame::textDisabled(const char* format, ...)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         va_list args;
         va_start(args, format);
         ImGui::TextDisabledV(format, args);
@@ -99,7 +98,7 @@ namespace vultra
 
     void EditorGuiFrame::bulletText(const char* format, ...)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         va_list args;
         va_start(args, format);
         ImGui::BulletTextV(format, args);
@@ -108,43 +107,43 @@ namespace vultra
 
     void EditorGuiFrame::textUnformatted(const char* value)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::TextUnformatted(value);
     }
 
     void EditorGuiFrame::separator()
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::Separator();
     }
 
     void EditorGuiFrame::separatorText(const char* value)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::SeparatorText(value);
     }
 
     bool EditorGuiFrame::button(const char* label)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         return ImGui::Button(label);
     }
 
     void EditorGuiFrame::sameLine()
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::SameLine();
     }
 
     void EditorGuiFrame::image(ImTextureID texture, ImVec2 size)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::Image(texture, size);
     }
 
     void EditorGuiFrame::showDemoWindow(bool* open)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::ShowDemoWindow(open);
     }
 
@@ -176,7 +175,7 @@ namespace vultra
 
     bool EditorGuiFrame::checkbox(const char* label, bool* value)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -188,7 +187,7 @@ namespace vultra
 
     bool EditorGuiFrame::sliderFloat(const char* label, float* value, float min, float max, const char* format)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -200,7 +199,7 @@ namespace vultra
 
     bool EditorGuiFrame::inputText(const char* label, std::string* value)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -212,7 +211,7 @@ namespace vultra
 
     bool EditorGuiFrame::sliderDouble(const char* label, double* value, double min, double max)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -230,7 +229,7 @@ namespace vultra
 
     bool EditorGuiFrame::sliderFloat3(const char* label, float* value, float min, float max)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -242,7 +241,7 @@ namespace vultra
 
     bool EditorGuiFrame::colorEdit3(const char* label, float* color)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -254,7 +253,7 @@ namespace vultra
 
     bool EditorGuiFrame::combo(const char* label, int* selected, const char* items)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -266,13 +265,13 @@ namespace vultra
 
     bool EditorGuiFrame::comboValue(int* selected, const char* items)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         return ImGui::Combo("##value", selected, items);
     }
 
     bool EditorGuiFrame::beginCombo(const char* label, const char* preview)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         if (!EditorGuiLayout::beginProperty(label))
         {
             return false;
@@ -287,26 +286,26 @@ namespace vultra
 
     void EditorGuiFrame::endCombo()
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::EndCombo();
         EditorGuiLayout::endProperty();
     }
 
     bool EditorGuiFrame::selectable(const char* label, bool selected)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         return ImGui::Selectable(label, selected);
     }
 
     bool EditorGuiFrame::collapsingHeader(const char* label)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         return ImGui::CollapsingHeader(label);
     }
 
     bool EditorGuiFrame::treeNodeEx(const char* id, ImGuiTreeNodeFlags flags, const char* format, ...)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         va_list args;
         va_start(args, format);
         const bool open = ImGui::TreeNodeExV(id, flags, format, args);
@@ -316,61 +315,61 @@ namespace vultra
 
     bool EditorGuiFrame::isItemClicked() const
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         return ImGui::IsItemClicked();
     }
 
     void EditorGuiFrame::treePop()
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::TreePop();
     }
 
     void EditorGuiFrame::pushId(const char* id)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::PushID(id);
     }
 
     void EditorGuiFrame::pushId(int id)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::PushID(id);
     }
 
     void EditorGuiFrame::popId()
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::PopID();
     }
 
     void EditorGuiFrame::pushItemWidth(float width)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::PushItemWidth(width);
     }
 
     void EditorGuiFrame::popItemWidth()
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::PopItemWidth();
     }
 
     void EditorGuiFrame::setNextItemWidth(float width)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::SetNextItemWidth(width);
     }
 
     void EditorGuiFrame::beginDisabled(bool disabled)
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::BeginDisabled(disabled);
     }
 
     void EditorGuiFrame::endDisabled()
     {
-        requireActive();
+        m_Gui.requireFrame(m_Serial);
         ImGui::EndDisabled();
     }
 

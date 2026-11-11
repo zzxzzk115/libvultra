@@ -32,27 +32,50 @@ namespace vultra
         m_EventCapacity(eventCapacity),
         m_Device(device)
     {
+    }
+
+    std::expected<std::unique_ptr<Profiler>, Error> Profiler::create(Device& device, uint32_t eventCapacity)
+    {
         if (eventCapacity == 0 || eventCapacity > UINT32_MAX / 3)
         {
-            throw std::invalid_argument("Profiler event capacity must fit three queries per event");
+            return makeError("Profiler event capacity must fit three queries per event");
         }
-        m_Records.reserve(eventCapacity);
-        m_Results.reserve(eventCapacity);
-        m_Stack.reserve(eventCapacity);
-        const auto* desc = device.core.GetDeviceDesc(device.handle);
-        m_TickNs         = desc->timestampPeriodNanoseconds;
-        if (!desc->hasTimestampQueries || m_TickNs <= 0)
+        std::unique_ptr<Profiler> profiler(new Profiler(device, eventCapacity));
+        profiler->m_Records.reserve(eventCapacity);
+        profiler->m_Results.reserve(eventCapacity);
+        profiler->m_Stack.reserve(eventCapacity);
+        const auto* desc   = device.core.GetDeviceDesc(device.handle);
+        profiler->m_TickNs = desc->timestampPeriodNanoseconds;
+        if (!desc->hasTimestampQueries || profiler->m_TickNs <= 0)
         {
-            return;
+            return profiler;
         }
-        check(vriGetInterface(device.handle, VRI_INTERFACE_QUERY, sizeof(m_Api), &m_Api), "Get timestamp interface");
-        m_Readback = std::make_unique<Buffer>(device,
-                                              VriBufferDesc {uint64_t(eventCapacity) * 3 * sizeof(uint64_t),
-                                                             0,
-                                                             VriBufferUsage_TransferDst,
-                                                             VriMemoryLocation_HostReadback});
+        auto& api = profiler->m_Api;
+        if (auto found = check(vriGetInterface(device.handle, VRI_INTERFACE_QUERY, sizeof(api), &api),
+                               "Get timestamp interface");
+            !found)
+        {
+            return std::unexpected(found.error());
+        }
+        auto readback = Buffer::create(device,
+                                       VriBufferDesc {uint64_t(eventCapacity) * 3 * sizeof(uint64_t),
+                                                      0,
+                                                      VriBufferUsage_TransferDst,
+                                                      VriMemoryLocation_HostReadback});
+        if (!readback)
+        {
+            return std::unexpected(readback.error());
+        }
+        profiler->m_Readback = std::move(*readback);
         VriQueryPoolDesc query {VriQueryType_Timestamp, eventCapacity * 3};
-        check(m_Api.CreateQueryPool(device.handle, &query, &m_Pool), "Create timestamp pool");
+        if (auto created =
+                check(api.CreateQueryPool(device.handle, &query, &profiler->m_Pool), "Create timestamp pool");
+            !created)
+        {
+            profiler->m_Pool = nullptr;
+            return std::unexpected(created.error());
+        }
+        return profiler;
     }
 
     Profiler::~Profiler()
@@ -75,11 +98,11 @@ namespace vultra
         }
     }
 
-    void Profiler::beginPass(VriCommandBuffer* cmd, const std::string& name)
+    std::expected<void, Error> Profiler::beginPass(VriCommandBuffer* cmd, const std::string& name)
     {
         if (m_Records.size() == m_EventCapacity)
         {
-            throw std::runtime_error(std::format("Profiler supports at most {} events per frame", m_EventCapacity));
+            return makeError("Profiler supports at most {} events per frame", m_EventCapacity);
         }
         Record record;
         record.timing.name   = name;
@@ -93,13 +116,14 @@ namespace vultra
         {
             m_Api.CmdWriteTimestamp(cmd, m_Pool, m_QueryCount++);
         }
+        return {};
     }
 
-    void Profiler::beginCommands(VriCommandBuffer* cmd)
+    std::expected<void, Error> Profiler::beginCommands(VriCommandBuffer* cmd)
     {
         if (m_Stack.empty() || m_Records[m_Stack.back()].commandQuery != UINT32_MAX)
         {
-            throw std::logic_error("Profiler expects one command boundary in an open event");
+            return makeError("Profiler expects one command boundary in an open event");
         }
         auto& record = m_Records[m_Stack.back()];
         record.timing.cpuBarrierMs =
@@ -109,13 +133,14 @@ namespace vultra
         {
             m_Api.CmdWriteTimestamp(cmd, m_Pool, m_QueryCount++);
         }
+        return {};
     }
 
-    void Profiler::endPass(VriCommandBuffer* cmd)
+    std::expected<void, Error> Profiler::endPass(VriCommandBuffer* cmd)
     {
         if (m_Stack.empty())
         {
-            throw std::logic_error("Unmatched profiler end event");
+            return makeError("Unmatched profiler end event");
         }
         auto& record = m_Records[m_Stack.back()];
         record.timing.cpuMs =
@@ -126,25 +151,27 @@ namespace vultra
             m_Api.CmdWriteTimestamp(cmd, m_Pool, m_QueryCount++);
         }
         m_Stack.pop_back();
+        return {};
     }
 
-    void Profiler::resolve(VriCommandBuffer* cmd)
+    std::expected<void, Error> Profiler::resolve(VriCommandBuffer* cmd)
     {
         if (!m_Stack.empty())
         {
-            throw std::logic_error("Unclosed profiler event");
+            return makeError("Unclosed profiler event");
         }
         if (m_Pool && !m_Records.empty())
         {
             m_Api.CmdCopyQueries(cmd, m_Pool, 0, m_QueryCount, m_Readback->handle, 0);
         }
+        return {};
     }
 
-    void Profiler::collect()
+    std::expected<void, Error> Profiler::collect()
     {
         if (!m_Stack.empty())
         {
-            throw std::logic_error("Complete profiler events before collecting");
+            return makeError("Complete profiler events before collecting");
         }
         m_Results.clear();
         for (const auto& record : m_Records)
@@ -153,12 +180,12 @@ namespace vultra
         }
         if (!m_Pool || m_Results.empty())
         {
-            return;
+            return {};
         }
         auto* data = m_Device.core.MapBuffer(m_Readback->handle, 0, m_QueryCount * sizeof(uint64_t));
         if (!data)
         {
-            throw std::runtime_error("Map timestamp results failed");
+            return makeError("Map timestamp results failed");
         }
         const auto tick = [&](uint32_t query)
         {
@@ -178,5 +205,6 @@ namespace vultra
             }
         }
         m_Device.core.UnmapBuffer(m_Readback->handle);
+        return {};
     }
 } // namespace vultra

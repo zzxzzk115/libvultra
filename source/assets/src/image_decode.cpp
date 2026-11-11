@@ -10,7 +10,7 @@
 
 namespace vultra
 {
-    SceneImage asset_detail::decodeImage(std::span<const std::byte> bytes)
+    std::expected<SceneImage, Error> asset_detail::decodeImage(std::span<const std::byte> bytes)
     {
         if (bytes.size() >= 4 && std::memcmp(bytes.data(), "DDS ", 4) == 0)
         {
@@ -18,13 +18,13 @@ namespace vultra
         }
         if (bytes.empty() || bytes.size() > size_t(std::numeric_limits<int>::max()))
         {
-            throw std::runtime_error("Invalid encoded image size");
+            return makeError("Invalid encoded image size");
         }
         const auto* data = reinterpret_cast<const stbi_uc*>(bytes.data());
         const int   size = int(bytes.size());
         if (stbi_is_16_bit_from_memory(data, size) || stbi_is_hdr_from_memory(data, size))
         {
-            throw std::runtime_error("Material images require 8-bit channels; use Environment for HDR images");
+            return makeError("Material images require 8-bit channels; use Environment for HDR images");
         }
         int                                                        width    = 0;
         int                                                        height   = 0;
@@ -34,25 +34,31 @@ namespace vultra
             &stbi_image_free);
         if (!pixels)
         {
-            throw std::runtime_error(std::string("Decode image: ") + stbi_failure_reason());
+            return makeError("Decode image: {}", stbi_failure_reason());
         }
-        return {uint32_t(width), uint32_t(height), {pixels.get(), pixels.get() + size_t(width) * height * 4}, {}};
+        return SceneImage {uint32_t(width),
+                           uint32_t(height),
+                           {pixels.get(), pixels.get() + size_t(width) * height * 4},
+                           {}};
     }
 
-    SceneImage
+    std::expected<SceneImage, Error>
     loadSceneImage(const std::filesystem::path& path, const SourceObserver& observer, const AssetSource* source)
     {
-        try
+        const auto bytes = readSourceFile(path, observer, source);
+        if (!bytes)
         {
-            return asset_detail::decodeImage(readSourceFile(path, observer, source));
+            return withContext("Image " + path.string(), bytes.error());
         }
-        catch (const std::exception& error)
+        auto image = asset_detail::decodeImage(*bytes);
+        if (!image)
         {
-            throw std::runtime_error("Image " + path.string() + ": " + error.what());
+            return withContext("Image " + path.string(), image.error());
         }
+        return image;
     }
 
-    bool asset_detail::imageHasOpaqueAlpha(const SceneImage& image)
+    std::expected<bool, Error> asset_detail::imageHasOpaqueAlpha(const SceneImage& image)
     {
         if (!image.dds.empty())
         {
@@ -73,7 +79,7 @@ namespace vultra
         return true;
     }
 
-    void asset_detail::removeOpaqueOrcaCutouts(SceneData& scene)
+    std::expected<void, Error> asset_detail::removeOpaqueOrcaCutouts(SceneData& scene)
     {
         std::vector<bool> candidates(scene.materials.size());
         for (size_t i = 0; i < scene.materials.size(); ++i)
@@ -109,12 +115,18 @@ namespace vultra
             auto& opaque   = opaqueImages[size_t(material.baseColorTexture.image)];
             if (opaque < 0)
             {
-                opaque = imageHasOpaqueAlpha(scene.images[size_t(material.baseColorTexture.image)]) ? 1 : 0;
+                const auto proven = imageHasOpaqueAlpha(scene.images[size_t(material.baseColorTexture.image)]);
+                if (!proven)
+                {
+                    return std::unexpected(proven.error());
+                }
+                opaque = *proven ? 1 : 0;
             }
             if (opaque != 0)
             {
                 material.alphaCutoff = -1;
             }
         }
+        return {};
     }
 } // namespace vultra

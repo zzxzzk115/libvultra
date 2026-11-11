@@ -1,3 +1,5 @@
+#include "../support/check.hpp"
+
 #include <vultra/assets/asset_source.hpp>
 #include <vultra/core/image/image.hpp>
 #include <vultra/gpu/image_readback.hpp>
@@ -13,7 +15,6 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
-#include <stdexcept>
 
 void renderMultipassProbe(vultra::Device& device, vultra::AssetSource& assets, const std::filesystem::path& capture);
 void renderComputeProbe(vultra::Device& device, vultra::AssetSource& assets, const std::filesystem::path& capture);
@@ -26,26 +27,22 @@ namespace
     };
 #endif
 
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
 } // namespace
 
 void renderPlatformProbe(std::span<const std::byte> package, const std::filesystem::path& capture)
 {
     using namespace vultra;
-    AssetSource          assets(VpkArchive("/embedded/project.vpk", package));
-    const auto           colorBytes = assets.read("clear.txt");
+    AssetSource          assets(must(VpkArchive::create("/embedded/project.vpk", package)));
+    const auto           colorBytes = must(assets.read("clear.txt"));
     std::istringstream   text(std::string(reinterpret_cast<const char*>(colorBytes.data()), colorBytes.size()));
     std::array<float, 4> clear {};
     require(bool(text >> clear[0] >> clear[1] >> clear[2] >> clear[3]), "Invalid packed clear color");
     // Ask VRI to enable the supported subset, then choose paths from granted capabilities, not API names.
-    constexpr uint64_t optional = VriFeature_RayTracing | VriFeature_RayQuery | VriFeature_MeshShader;
-    Device             device(true, nullptr, optional, true);
+    constexpr uint64_t optional     = VriFeature_RayTracing | VriFeature_RayQuery | VriFeature_MeshShader;
+    const auto         devicePtr    = must(Device::create(true, nullptr, optional, true));
+    auto&              device       = *devicePtr;
     const auto&        capabilities = *device.core.GetDeviceDesc(device.handle);
     require(device.features == capabilities.enabledFeatures, "Device exposed requested rather than granted features");
     const auto api = capabilities.graphicsAPI;
@@ -69,8 +66,8 @@ void renderPlatformProbe(std::span<const std::byte> package, const std::filesyst
               << ", RT=" << int(capabilities.hasRayTracing) << ", ray query=" << int(capabilities.hasRayQuery)
               << ", mesh=" << int(capabilities.hasMeshShader) << '\n';
     const bool webgpu   = api == VriGraphicsAPI_WebGPU;
-    auto       vertex   = assets.read(webgpu ? "vertexMain.wgsl" : "vertexMain.spv");
-    auto       fragment = assets.read(webgpu ? "fragmentMain.wgsl" : "fragmentMain.spv");
+    auto       vertex   = must(assets.read(webgpu ? "vertexMain.wgsl" : "vertexMain.spv"));
+    auto       fragment = must(assets.read(webgpu ? "fragmentMain.wgsl" : "fragmentMain.spv"));
     if (webgpu)
     {
         // VRI's WGSL entry points consume NUL-terminated text rather than SPIR-V words.
@@ -82,7 +79,7 @@ void renderPlatformProbe(std::span<const std::byte> package, const std::filesyst
         VriShaderDesc {VriShaderStage_Fragment, fragment.data(), fragment.size(), "fragmentMain"}};
     VriPipelineLayout*          layout = nullptr;
     const VriPipelineLayoutDesc layoutDesc {};
-    check(device.core.CreatePipelineLayout(device.handle, &layoutDesc, &layout), "Create probe layout");
+    must(check(device.core.CreatePipelineLayout(device.handle, &layoutDesc, &layout), "Create probe layout"));
     const auto destroyLayout = [&](VriPipelineLayout* value)
     {
         device.core.DestroyPipelineLayout(value);
@@ -102,7 +99,7 @@ void renderPlatformProbe(std::span<const std::byte> package, const std::filesyst
     description.outputMerger.colors     = &color;
     description.outputMerger.colorNum   = 1;
     VriPipeline* pipeline               = nullptr;
-    check(device.core.CreateGraphicsPipeline(device.handle, &description, &pipeline), "Create probe pipeline");
+    must(check(device.core.CreateGraphicsPipeline(device.handle, &description, &pipeline), "Create probe pipeline"));
     const auto destroyPipeline = [&](VriPipeline* value)
     {
         device.core.DestroyPipeline(value);
@@ -110,16 +107,16 @@ void renderPlatformProbe(std::span<const std::byte> package, const std::filesyst
     const std::unique_ptr<VriPipeline, decltype(destroyPipeline)> pipelineOwner(pipeline, destroyPipeline);
     // Non-aligned width exercises backend readback row packing as well as drawing.
     constexpr Extent size {137, 101};
-    Texture          target(device, colorTexture(size, color.format));
-    Frame            frame(device);
+    auto             target = must(Texture::create(device, colorTexture(size, color.format)));
+    const auto       frame  = must(Frame::create(device));
     for (int i = 0; i < 3; ++i)
     {
-        auto* commands = frame.begin();
+        auto* commands = must(frame->begin());
         target.transition(
             commands,
             {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
         VriAttachmentDesc attachment {};
-        attachment.view    = target.view();
+        attachment.view    = must(target.view());
         attachment.loadOp  = VriAttachmentLoadOp_Clear;
         attachment.storeOp = VriAttachmentStoreOp_Store;
         std::ranges::copy(clear, attachment.clearValue.color.f32);
@@ -137,21 +134,21 @@ void renderPlatformProbe(std::span<const std::byte> package, const std::filesyst
         const VriDrawDesc draw {3, 1, 0, 0};
         device.core.CmdDraw(commands, &draw);
         device.core.CmdEndRendering(commands);
-        frame.submitAndWait();
+        must(frame->submitAndWait());
     }
-    ImageReadback readback(device, target);
-    readback.record(frame.begin(), target);
-    frame.submitAndWait();
-    const auto image  = readback.consume();
-    const auto center = imagePixel(image, size.width / 2, size.height / 2);
-    const auto corner = imagePixel(image, 0, 0);
+    auto readback = must(ImageReadback::create(device, target));
+    must(readback.record(must(frame->begin()), target));
+    must(frame->submitAndWait());
+    const auto image  = must(readback.consume());
+    const auto center = must(imagePixel(image, size.width / 2, size.height / 2));
+    const auto corner = must(imagePixel(image, 0, 0));
     require(center[0] > 0.1f && center[1] > 0.1f && center[2] > 0.1f && center[3] == 1,
             "Packed shaders did not render the colored triangle");
     for (size_t i = 0; i < 4; ++i)
     {
         require(std::abs(corner[i] - clear[i]) <= 1.0f / 255, "GPU clear differs from packed data");
     }
-    savePng(image, capture.parent_path() / (capture.stem().string() + "-triangle.png"));
+    must(savePng(image, capture.parent_path() / (capture.stem().string() + "-triangle.png")));
     renderComputeProbe(device, assets, capture.parent_path() / (capture.stem().string() + "-compute.png"));
     if (multipass)
     {
@@ -161,7 +158,7 @@ void renderPlatformProbe(std::span<const std::byte> package, const std::filesyst
     else
     {
         std::cout << "SCENE_PATH: simple triangle (required color/depth format capabilities unavailable)\n";
-        savePng(image, capture);
+        must(savePng(image, capture));
     }
 #ifdef __EMSCRIPTEN__
     EM_ASM(
@@ -183,14 +180,8 @@ void renderPlatformProbe(std::span<const std::byte> package, const std::filesyst
 
 #ifndef __ANDROID__
 int main(int argc, char** argv)
-try
 {
     renderPlatformProbe(std::as_bytes(std::span(kProject)), argc > 1 ? argv[1] : "platform.png");
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }
 #endif

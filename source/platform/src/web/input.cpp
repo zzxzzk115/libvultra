@@ -4,7 +4,6 @@
 #include <emscripten/html5.h>
 
 #include <array>
-#include <stdexcept>
 #include <string_view>
 #include <utility>
 
@@ -12,13 +11,6 @@ namespace vultra::platform
 {
     namespace
     {
-        void checkEvent(EMSCRIPTEN_RESULT result)
-        {
-            if (result != EMSCRIPTEN_RESULT_SUCCESS)
-            {
-                throw std::runtime_error("Register Web input callback failed: " + std::to_string(result));
-            }
-        }
 
         KeyCode keyCode(std::string_view code)
         {
@@ -218,34 +210,55 @@ namespace vultra::platform
             return EM_TRUE;
         }
 
-        void attach()
+        // ~Impl unregisters every callback, including those registered before a failure.
+        std::expected<void, Error> attach()
         {
-            const auto* target = canvas.c_str();
-            checkEvent(emscripten_set_keydown_callback(target, this, false, keyboard));
-            checkEvent(emscripten_set_keyup_callback(target, this, false, keyboard));
-            checkEvent(emscripten_set_keypress_callback(target, this, false, keyboard));
-            checkEvent(emscripten_set_mousedown_callback(target, this, false, mouse));
-            checkEvent(emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, false, mouse));
-            checkEvent(emscripten_set_mousemove_callback(target, this, false, mouse));
-            checkEvent(emscripten_set_wheel_callback(target, this, false, wheel));
-            checkEvent(emscripten_set_focus_callback(target, this, false, focus));
-            checkEvent(emscripten_set_blur_callback(target, this, false, focus));
-            checkEvent(emscripten_set_touchstart_callback(target, this, false, touchEvent));
-            checkEvent(emscripten_set_touchmove_callback(target, this, false, touchEvent));
-            checkEvent(emscripten_set_touchend_callback(target, this, false, touchEvent));
-            checkEvent(emscripten_set_touchcancel_callback(target, this, false, touchEvent));
-            checkEvent(emscripten_set_visibilitychange_callback(this, false, visibility));
-            checkEvent(emscripten_set_webglcontextlost_callback(target, this, false, contextLost));
+            const auto*      target = canvas.c_str();
+            const std::array results {
+                emscripten_set_keydown_callback(target, this, false, keyboard),
+                emscripten_set_keyup_callback(target, this, false, keyboard),
+                emscripten_set_keypress_callback(target, this, false, keyboard),
+                emscripten_set_mousedown_callback(target, this, false, mouse),
+                emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, false, mouse),
+                emscripten_set_mousemove_callback(target, this, false, mouse),
+                emscripten_set_wheel_callback(target, this, false, wheel),
+                emscripten_set_focus_callback(target, this, false, focus),
+                emscripten_set_blur_callback(target, this, false, focus),
+                emscripten_set_touchstart_callback(target, this, false, touchEvent),
+                emscripten_set_touchmove_callback(target, this, false, touchEvent),
+                emscripten_set_touchend_callback(target, this, false, touchEvent),
+                emscripten_set_touchcancel_callback(target, this, false, touchEvent),
+                emscripten_set_visibilitychange_callback(this, false, visibility),
+                emscripten_set_webglcontextlost_callback(target, this, false, contextLost)};
+            for (const EMSCRIPTEN_RESULT result : results)
+            {
+                if (result != EMSCRIPTEN_RESULT_SUCCESS)
+                {
+                    return makeError("Register Web input callback failed: {}", result);
+                }
+            }
+            return {};
         }
     };
 
-    WebInput::WebInput(std::string canvas) :
-        m_Impl(std::make_unique<Impl>(std::move(canvas)))
+    WebInput::WebInput(std::unique_ptr<Impl> impl) :
+        m_Impl(std::move(impl))
     {
-        m_Impl->attach();
     }
 
-    WebInput::~WebInput() = default;
+    std::expected<WebInput, Error> WebInput::create(std::string canvas)
+    {
+        auto impl = std::make_unique<Impl>(std::move(canvas));
+        if (auto attached = impl->attach(); !attached)
+        {
+            return std::unexpected(attached.error());
+        }
+        return WebInput(std::move(impl));
+    }
+
+    WebInput::WebInput(WebInput&&) noexcept            = default;
+    WebInput& WebInput::operator=(WebInput&&) noexcept = default;
+    WebInput::~WebInput()                              = default;
 
     Input& WebInput::input()
     {

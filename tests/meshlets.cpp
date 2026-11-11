@@ -1,18 +1,14 @@
+#include "support/check.hpp"
+
 #include <vultra/render/scene.hpp>
 
 #include <algorithm>
 #include <iostream>
-#include <stdexcept>
 
 namespace
 {
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
 
     vultra::SceneData makeScene()
     {
@@ -57,8 +53,8 @@ namespace
 
     void verifyClusters(const vultra::SceneData& scene)
     {
-        const auto parallel = vultra::buildMeshlets(scene, 4);
-        const auto serial   = vultra::buildMeshlets(scene, 1);
+        const auto parallel = must(vultra::buildMeshlets(scene, 4));
+        const auto serial   = must(vultra::buildMeshlets(scene, 1));
         require(parallel.vertices == serial.vertices && parallel.triangles == serial.triangles &&
                     parallel.meshlets.size() == serial.meshlets.size(),
                 "Meshlet generation depends on worker order");
@@ -115,16 +111,17 @@ namespace
 
     void verifyUpload(const vultra::SceneData& scene)
     {
-        vultra::Device device(true, nullptr, VriFeature_MeshShader);
+        const auto device = must(vultra::Device::create(true, nullptr, VriFeature_MeshShader));
         {
             vultra::SceneData emptyScene;
             emptyScene.materials.emplace_back();
-            vultra::GpuScene emptyGpu(device, emptyScene, true);
-            require(emptyGpu.meshlets && emptyGpu.meshlets->count == 0,
+            const auto emptyGpu = must(vultra::GpuScene::create(*device, emptyScene, true));
+            require(emptyGpu->meshlets && emptyGpu->meshlets->count == 0,
                     "Empty meshlet scene did not retain valid bindings");
         }
-        const auto       expected = vultra::buildMeshlets(scene, 4);
-        vultra::GpuScene gpu(device, scene, true, 4);
+        const auto  expected = must(vultra::buildMeshlets(scene, 4));
+        const auto  gpuScene = must(vultra::GpuScene::create(*device, scene, true, 4));
+        const auto& gpu      = *gpuScene;
         require(gpu.meshlets && gpu.meshlets->count == expected.meshlets.size(), "GPU meshlet count differs");
         require(std::ranges::none_of(gpu.meshlets->views,
                                      [](const VriDescriptor* view)
@@ -143,7 +140,6 @@ namespace
 } // namespace
 
 int main()
-try
 {
     const auto scene = makeScene();
     verifyClusters(scene);
@@ -151,9 +147,4 @@ try
     std::cout << "Meshlet tests passed: triangle/material preservation, bounds, vtask determinism, partial task "
                  "groups, GPU upload ranges\n";
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }

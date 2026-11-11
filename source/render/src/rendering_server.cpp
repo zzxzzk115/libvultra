@@ -2,7 +2,6 @@
 #include <vultra/render/scene.hpp>
 
 #include <atomic>
-#include <stdexcept>
 #include <utility>
 
 namespace vultra
@@ -58,23 +57,28 @@ namespace vultra
         }
     }
 
-    GpuScene& GpuSceneHandle::get() const
+    std::expected<GpuScene*, Error> GpuSceneHandle::get() const
     {
         if (!m_Server)
         {
-            throw std::invalid_argument("GPU scene handle is empty");
+            return makeError("GPU scene handle is empty");
         }
         return m_Server->scene(m_Rid);
     }
 
     GpuScene& GpuSceneHandle::operator*() const
     {
-        return get();
+        return *operator->();
     }
 
     GpuScene* GpuSceneHandle::operator->() const
     {
-        return &get();
+        const auto scene = get();
+        if (!scene)
+        {
+            panic(scene.error().message);
+        }
+        return *scene;
     }
 
     GpuSceneRid GpuSceneHandle::rid() const
@@ -89,10 +93,15 @@ namespace vultra
 
     RenderingServer::~RenderingServer() = default;
 
-    GpuSceneHandle
+    std::expected<GpuSceneHandle, Error>
     RenderingServer::uploadScene(const SceneData& scene, const PreparedTextures& textures, const MeshletData* meshlets)
     {
-        return insert(std::make_unique<GpuScene>(m_Device, scene, textures, meshlets));
+        auto created = GpuScene::create(m_Device, scene, textures, meshlets);
+        if (!created)
+        {
+            return std::unexpected(created.error());
+        }
+        return insert(std::move(*created));
     }
 
     GpuSceneHandle RenderingServer::insert(std::unique_ptr<GpuScene> scene)
@@ -102,7 +111,7 @@ namespace vultra
         {
             if (counter == 0 || counter > kRidCounterMask)
             {
-                throw std::overflow_error("GPU resource ID space exhausted");
+                panic("GPU resource ID space exhausted");
             }
             if (nextRid.compare_exchange_weak(counter, counter + 1, std::memory_order_relaxed))
             {
@@ -115,19 +124,19 @@ namespace vultra
         auto [entry, inserted] = m_Scenes.emplace(value, std::move(scene));
         if (!inserted)
         {
-            throw std::logic_error("GPU resource ID collision");
+            panic("GPU resource ID collision");
         }
         return {*this, {entry->first}};
     }
 
-    GpuScene& RenderingServer::scene(GpuSceneRid rid) const
+    std::expected<GpuScene*, Error> RenderingServer::scene(GpuSceneRid rid) const
     {
         auto entry = m_Scenes.find(rid.value);
         if (!sceneRid(rid) || entry == m_Scenes.end())
         {
-            throw std::invalid_argument("Invalid GPU scene RID for this rendering server");
+            return makeError("Invalid GPU scene RID for this rendering server");
         }
-        return *entry->second;
+        return entry->second.get();
     }
 
     bool RenderingServer::release(GpuSceneRid rid) noexcept

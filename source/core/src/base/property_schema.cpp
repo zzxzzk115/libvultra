@@ -6,7 +6,6 @@
 #include <array>
 #include <cmath>
 #include <initializer_list>
-#include <stdexcept>
 #include <utility>
 
 namespace vultra
@@ -33,12 +32,20 @@ namespace vultra
                                      std::pair {PropertyFlags::eBind, "bind"},
                                      std::pair {PropertyFlags::eReload, "reload"}};
 
-        Json schemaDescription(const PropertySchema& property)
+        std::expected<Json, Error> schemaDescription(const PropertySchema& property)
         {
-            property.validateDefinition();
+            if (auto result = property.validateDefinition(); !result)
+            {
+                return std::unexpected(result.error());
+            }
             auto defaultContract     = property;
             defaultContract.nullable = true;
-            const auto defaultValue  = Json::parse(serializeProperty(defaultContract, property.defaultValue));
+            const auto defaultText   = serializeProperty(defaultContract, property.defaultValue);
+            if (!defaultText)
+            {
+                return std::unexpected(defaultText.error());
+            }
+            const auto defaultValue = Json::parse(*defaultText);
             Json       description {{"name", property.name},
                                     {"label", property.label.empty() ? Json(nullptr) : Json(property.label)},
                                     {"kind", kPropertyKinds.at(size_t(property.kind))},
@@ -85,49 +92,219 @@ namespace vultra
             return description;
         }
 
-        void requireMembers(const Json& object, std::initializer_list<std::string_view> keys)
+        std::expected<void, Error> requireMembers(const Json& object, std::initializer_list<std::string_view> keys)
         {
             if (!object.is_object())
             {
-                throw std::invalid_argument("Property schema requires an object");
+                return makeError("Property schema requires an object");
             }
             for (const auto& [key, value] : object.items())
             {
                 if (std::ranges::find(keys, key) == keys.end())
                 {
-                    throw std::invalid_argument("Unknown property schema field: " + key);
+                    return makeError("Unknown property schema field: {}", key);
                 }
             }
+            return {};
         }
 
-        PropertyKind readKind(const Json& value)
+        // Throws nlohmann::json::exception for a non-string; parsePropertySchema converts it.
+        std::expected<PropertyKind, Error> readKind(const Json& value)
         {
             const auto name  = value.get<std::string>();
             const auto found = std::ranges::find(kPropertyKinds, name);
             if (found == kPropertyKinds.end())
             {
-                throw std::invalid_argument("Unknown property kind: " + name);
+                return makeError("Unknown property kind: {}", name);
             }
             return PropertyKind(found - kPropertyKinds.begin());
         }
 
-        int64_t readInteger(const Json& value)
+        std::expected<int64_t, Error> readInteger(const Json& value)
         {
             if (!value.is_number_integer() ||
                 (value.is_number_unsigned() && value.get<uint64_t>() > uint64_t(INT64_MAX)))
             {
-                throw std::invalid_argument("Property schema requires a signed 64-bit integer");
+                return makeError("Property schema requires a signed 64-bit integer");
             }
             return value.get<int64_t>();
         }
+
+        std::expected<PropertySchema, Error> readSchema(const Json& document)
+        {
+            if (auto result = requireMembers(document, {"version", "property"}); !result)
+            {
+                return std::unexpected(result.error());
+            }
+            if (!document.at("version").is_number_integer() || document.at("version") != 1)
+            {
+                return makeError("Property schema requires version 1");
+            }
+            const auto& data = document.at("property");
+            if (auto result = requireMembers(data,
+                                             {"name",
+                                              "label",
+                                              "kind",
+                                              "json_path",
+                                              "flags",
+                                              "default",
+                                              "drawer",
+                                              "widget",
+                                              "speed",
+                                              "integer_bits",
+                                              "choices",
+                                              "enum_values",
+                                              "range_hint",
+                                              "element_kind",
+                                              "reference"});
+                !result)
+            {
+                return std::unexpected(result.error());
+            }
+            PropertySchema schema;
+            schema.name     = data.at("name").get<std::string>();
+            schema.label    = data.at("label").is_null() ? "" : data.at("label").get<std::string>();
+            schema.drawerId = data.at("drawer").is_null() ? "" : data.at("drawer").get<std::string>();
+            schema.jsonPath = data.at("json_path").get<std::string>();
+            const auto kind = readKind(data.at("kind"));
+            if (!kind)
+            {
+                return std::unexpected(kind.error());
+            }
+            schema.kind       = *kind;
+            const auto widget = data.at("widget").get<std::string>();
+            if (widget != "drag" && widget != "slider")
+            {
+                return makeError("Unknown property widget: {}", widget);
+            }
+            schema.widget   = widget == "drag" ? PropertyWidget::eDrag : PropertyWidget::eSlider;
+            schema.speed    = data.at("speed").get<float>();
+            const auto bits = readInteger(data.at("integer_bits"));
+            if (!bits)
+            {
+                return std::unexpected(bits.error());
+            }
+            if (*bits < 0 || *bits > 64)
+            {
+                return makeError("Invalid property integer width");
+            }
+            schema.integerBits = uint8_t(*bits);
+            schema.flags       = PropertyFlags(0);
+            const auto& usages = data.at("flags");
+            if (!usages.is_array() || !data.at("choices").is_array() || !data.at("enum_values").is_array())
+            {
+                return makeError("Property flags, choices and enum values require arrays");
+            }
+            for (const auto& usage : usages)
+            {
+                const auto name  = usage.get<std::string>();
+                const auto found = std::ranges::find(kFlags, name, &std::pair<PropertyFlags, const char*>::second);
+                if (found == kFlags.end() || hasPropertyFlag(schema.flags, found->first))
+                {
+                    return makeError("Unknown/duplicate property flag: {}", name);
+                }
+                schema.flags = schema.flags | found->first;
+            }
+            for (const auto& value : data.at("enum_values"))
+            {
+                const auto number = readInteger(value);
+                if (!number)
+                {
+                    return std::unexpected(number.error());
+                }
+                schema.enumValues.push_back(*number);
+            }
+            for (const auto& choice : data.at("choices"))
+            {
+                if (auto result = requireMembers(choice, {"label", "value"}); !result)
+                {
+                    return std::unexpected(result.error());
+                }
+                const auto value = readInteger(choice.at("value"));
+                if (!value)
+                {
+                    return std::unexpected(value.error());
+                }
+                schema.choices.push_back({choice.at("label").get<std::string>(), *value});
+            }
+            if (data.contains("range_hint"))
+            {
+                const auto& range = data.at("range_hint");
+                if (auto result = requireMembers(range, {"min", "max"}); !result)
+                {
+                    return std::unexpected(result.error());
+                }
+                schema.min = range.at("min").get<double>();
+                schema.max = range.at("max").get<double>();
+            }
+            if (schema.kind == PropertyKind::eArray)
+            {
+                const auto elementKind = readKind(data.at("element_kind"));
+                if (!elementKind)
+                {
+                    return std::unexpected(elementKind.error());
+                }
+                schema.elementKind = *elementKind;
+            }
+            else if (data.contains("element_kind"))
+            {
+                return makeError("Only arrays have an element kind");
+            }
+            const bool reference =
+                schema.kind == PropertyKind::eReference ||
+                (schema.kind == PropertyKind::eArray && schema.elementKind == PropertyKind::eReference);
+            if (reference)
+            {
+                const auto& target = data.at("reference");
+                if (auto result = requireMembers(target, {"category", "type", "nullable", "class"}); !result)
+                {
+                    return std::unexpected(result.error());
+                }
+                const auto category = target.at("category").get<std::string>();
+                if (category.empty() || category.find('\0') != std::string::npos)
+                {
+                    return makeError("Reference schema requires a category");
+                }
+                schema.referenceCategory = category;
+                schema.referenceType     = target.at("type").get<std::string>();
+                schema.nullable          = target.at("nullable").get<bool>();
+                if (target.contains("class"))
+                {
+                    const auto& type = target.at("class");
+                    if (auto result = requireMembers(type, {"module", "name"}); !result)
+                    {
+                        return std::unexpected(result.error());
+                    }
+                    schema.referenceClass =
+                        PropertyClassId {type.at("module").get<std::string>(), type.at("name").get<std::string>()};
+                }
+            }
+            else if (data.contains("reference"))
+            {
+                return makeError("Only references have a target type");
+            }
+            auto defaultContract     = schema;
+            defaultContract.nullable = true;
+            auto defaultValue        = deserializeProperty(defaultContract, data.at("default").dump());
+            if (!defaultValue)
+            {
+                return std::unexpected(defaultValue.error());
+            }
+            schema.defaultValue = std::move(*defaultValue);
+            if (auto result = schema.validateDefinition(); !result)
+            {
+                return std::unexpected(result.error());
+            }
+            return schema;
+        }
     } // namespace
 
-    void PropertySchema::validateDefinition() const
+    std::expected<void, Error> PropertySchema::validateDefinition() const
     {
         if (name.empty() || jsonPath.empty() || jsonPath.front() != '/' || name.find('\0') != std::string::npos ||
             drawerId.find('\0') != std::string::npos || label.find('\0') != std::string::npos)
         {
-            throw std::invalid_argument("Property requires a name and a JSON pointer: " + name);
+            return makeError("Property requires a name and a JSON pointer: {}", name);
         }
         try
         {
@@ -135,7 +312,7 @@ namespace vultra
         }
         catch (const Json::exception& error)
         {
-            throw std::invalid_argument("Invalid property JSON pointer: " + jsonPath + ": " + error.what());
+            return makeError("Invalid property JSON pointer: {}: {}", jsonPath, error.what());
         }
         if (size_t(kind) >= kPropertyKinds.size() || size_t(elementKind) >= kPropertyKinds.size() ||
             (kind == PropertyKind::eArray && elementKind == PropertyKind::eArray) ||
@@ -143,48 +320,48 @@ namespace vultra
             (uint8_t(flags) & ~uint8_t(15)) != 0 ||
             (widget != PropertyWidget::eDrag && widget != PropertyWidget::eSlider))
         {
-            throw std::invalid_argument("Invalid property type or usage: " + name);
+            return makeError("Invalid property type or usage: {}", name);
         }
         const auto scalarKind = kind == PropertyKind::eArray ? elementKind : kind;
         if (referenceClass && (scalarKind != PropertyKind::eReference || referenceCategory.empty() ||
                                referenceClass->name.empty() || referenceClass->name.find('\0') != std::string::npos ||
                                referenceClass->module.find('\0') != std::string::npos))
         {
-            throw std::invalid_argument("Class constraints require a named reference: " + name);
+            return makeError("Class constraints require a named reference: {}", name);
         }
         if (integerBits != 0 && scalarKind != PropertyKind::eInt && scalarKind != PropertyKind::eUInt)
         {
-            throw std::invalid_argument("Only integer properties have an integer width: " + name);
+            return makeError("Only integer properties have an integer width: {}", name);
         }
         if (!std::isfinite(min) || !std::isfinite(max) || !std::isfinite(speed) || max < min || speed <= 0)
         {
-            throw std::invalid_argument("Invalid property Inspector hints: " + name);
+            return makeError("Invalid property Inspector hints: {}", name);
         }
         for (const auto value : enumValues)
         {
             if (std::ranges::count(enumValues, value) != 1)
             {
-                throw std::invalid_argument("Duplicate enum value: " + name);
+                return makeError("Duplicate enum value: {}", name);
             }
         }
         for (const auto& choice : choices)
         {
             if (std::ranges::find(enumValues, choice.value) == enumValues.end())
             {
-                throw std::invalid_argument("Inspector choice has no enum value: " + name);
+                return makeError("Inspector choice has no enum value: {}", name);
             }
         }
         if ((kind == PropertyKind::eReference ||
              (kind == PropertyKind::eArray && elementKind == PropertyKind::eReference)) &&
             (referenceType.empty() || referenceCategory.empty() || referenceCategory.find('\0') != std::string::npos))
         {
-            throw std::invalid_argument("Reference needs a category and target type: " + name);
+            return makeError("Reference needs a category and target type: {}", name);
         }
         // Required references may be supplied after construction, before lifecycle entry.
-        validateKind(kind, defaultValue, true);
+        return validateKind(kind, defaultValue, true);
     }
 
-    std::string serializeTypeDescription(const ObjectTypeInfo& type)
+    std::expected<std::string, Error> serializeTypeDescription(const ObjectTypeInfo& type)
     {
         Json document {{"version", 1},
                        {"name", type.name},
@@ -193,138 +370,35 @@ namespace vultra
                        {"properties", Json::array()}};
         for (const auto& property : type.properties)
         {
-            document["properties"].push_back(schemaDescription(property));
+            auto description = schemaDescription(property);
+            if (!description)
+            {
+                return std::unexpected(description.error());
+            }
+            document["properties"].push_back(std::move(*description));
         }
         return document.dump();
     }
 
-    std::string serializePropertySchema(const PropertySchema& schema)
+    std::expected<std::string, Error> serializePropertySchema(const PropertySchema& schema)
     {
-        return Json {{"version", 1}, {"property", schemaDescription(schema)}}.dump();
+        auto description = schemaDescription(schema);
+        if (!description)
+        {
+            return std::unexpected(description.error());
+        }
+        return Json {{"version", 1}, {"property", std::move(*description)}}.dump();
     }
 
-    PropertySchema parsePropertySchema(std::string_view text)
+    std::expected<PropertySchema, Error> parsePropertySchema(std::string_view text)
     {
         try
         {
-            const auto document = Json::parse(text);
-            requireMembers(document, {"version", "property"});
-            if (!document.at("version").is_number_integer() || document.at("version") != 1)
-            {
-                throw std::invalid_argument("Property schema requires version 1");
-            }
-            const auto& data = document.at("property");
-            requireMembers(data,
-                           {"name",
-                            "label",
-                            "kind",
-                            "json_path",
-                            "flags",
-                            "default",
-                            "drawer",
-                            "widget",
-                            "speed",
-                            "integer_bits",
-                            "choices",
-                            "enum_values",
-                            "range_hint",
-                            "element_kind",
-                            "reference"});
-            PropertySchema schema;
-            schema.name       = data.at("name").get<std::string>();
-            schema.label      = data.at("label").is_null() ? "" : data.at("label").get<std::string>();
-            schema.drawerId   = data.at("drawer").is_null() ? "" : data.at("drawer").get<std::string>();
-            schema.jsonPath   = data.at("json_path").get<std::string>();
-            schema.kind       = readKind(data.at("kind"));
-            const auto widget = data.at("widget").get<std::string>();
-            if (widget != "drag" && widget != "slider")
-            {
-                throw std::invalid_argument("Unknown property widget: " + widget);
-            }
-            schema.widget   = widget == "drag" ? PropertyWidget::eDrag : PropertyWidget::eSlider;
-            schema.speed    = data.at("speed").get<float>();
-            const auto bits = readInteger(data.at("integer_bits"));
-            if (bits < 0 || bits > 64)
-            {
-                throw std::invalid_argument("Invalid property integer width");
-            }
-            schema.integerBits = uint8_t(bits);
-            schema.flags       = PropertyFlags(0);
-            const auto& usages = data.at("flags");
-            if (!usages.is_array() || !data.at("choices").is_array() || !data.at("enum_values").is_array())
-            {
-                throw std::invalid_argument("Property flags, choices and enum values require arrays");
-            }
-            for (const auto& usage : usages)
-            {
-                const auto name  = usage.get<std::string>();
-                const auto found = std::ranges::find(kFlags, name, &std::pair<PropertyFlags, const char*>::second);
-                if (found == kFlags.end() || hasPropertyFlag(schema.flags, found->first))
-                {
-                    throw std::invalid_argument("Unknown/duplicate property flag: " + name);
-                }
-                schema.flags = schema.flags | found->first;
-            }
-            for (const auto& value : data.at("enum_values"))
-            {
-                schema.enumValues.push_back(readInteger(value));
-            }
-            for (const auto& choice : data.at("choices"))
-            {
-                requireMembers(choice, {"label", "value"});
-                schema.choices.push_back({choice.at("label").get<std::string>(), readInteger(choice.at("value"))});
-            }
-            if (data.contains("range_hint"))
-            {
-                const auto& range = data.at("range_hint");
-                requireMembers(range, {"min", "max"});
-                schema.min = range.at("min").get<double>();
-                schema.max = range.at("max").get<double>();
-            }
-            if (schema.kind == PropertyKind::eArray)
-            {
-                schema.elementKind = readKind(data.at("element_kind"));
-            }
-            else if (data.contains("element_kind"))
-            {
-                throw std::invalid_argument("Only arrays have an element kind");
-            }
-            const bool reference =
-                schema.kind == PropertyKind::eReference ||
-                (schema.kind == PropertyKind::eArray && schema.elementKind == PropertyKind::eReference);
-            if (reference)
-            {
-                const auto& target = data.at("reference");
-                requireMembers(target, {"category", "type", "nullable", "class"});
-                const auto category = target.at("category").get<std::string>();
-                if (category.empty() || category.find('\0') != std::string::npos)
-                {
-                    throw std::invalid_argument("Reference schema requires a category");
-                }
-                schema.referenceCategory = category;
-                schema.referenceType     = target.at("type").get<std::string>();
-                schema.nullable          = target.at("nullable").get<bool>();
-                if (target.contains("class"))
-                {
-                    const auto& type = target.at("class");
-                    requireMembers(type, {"module", "name"});
-                    schema.referenceClass =
-                        PropertyClassId {type.at("module").get<std::string>(), type.at("name").get<std::string>()};
-                }
-            }
-            else if (data.contains("reference"))
-            {
-                throw std::invalid_argument("Only references have a target type");
-            }
-            auto defaultContract     = schema;
-            defaultContract.nullable = true;
-            schema.defaultValue      = deserializeProperty(defaultContract, data.at("default").dump());
-            schema.validateDefinition();
-            return schema;
+            return readSchema(Json::parse(text));
         }
         catch (const Json::exception& error)
         {
-            throw std::invalid_argument(std::string("Invalid property schema: ") + error.what());
+            return makeError("Invalid property schema: {}", error.what());
         }
     }
 } // namespace vultra

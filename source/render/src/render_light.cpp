@@ -4,40 +4,58 @@
 #include <cmath>
 #include <cstring>
 #include <numbers>
-#include <stdexcept>
-#include <string>
+#include <utility>
 
 namespace vultra
 {
     static_assert(sizeof(GpuLight) == 64);
 
-    LightBuffer::LightBuffer(Device& device) :
+    LightBuffer::LightBuffer(Device& device, Buffer buffer) :
         m_Device(device),
-        m_Buffer(device,
-                 VriBufferDesc {sizeof(GpuLight) * kMaxRenderLights,
-                                sizeof(GpuLight),
-                                VriBufferUsage_StorageBuffer,
-                                VriMemoryLocation_HostUpload})
+        m_Buffer(std::move(buffer))
     {
-        const VriBufferViewDesc view {m_Buffer.handle,
-                                      VriDescriptorType_StructuredBuffer,
-                                      VriFormat_Unknown,
-                                      0,
-                                      m_Buffer.desc.size};
-        check(device.core.CreateBufferView(device.handle, &view, &m_View), "Create scene light view");
+    }
+
+    std::expected<std::unique_ptr<LightBuffer>, Error> LightBuffer::create(Device& device)
+    {
+        auto buffer = Buffer::create(device,
+                                     VriBufferDesc {sizeof(GpuLight) * kMaxRenderLights,
+                                                    sizeof(GpuLight),
+                                                    VriBufferUsage_StorageBuffer,
+                                                    VriMemoryLocation_HostUpload});
+        if (!buffer)
+        {
+            return std::unexpected(buffer.error());
+        }
+        std::unique_ptr<LightBuffer> result(new LightBuffer(device, std::move(*buffer)));
+        const VriBufferViewDesc      view {result->m_Buffer.handle,
+                                           VriDescriptorType_StructuredBuffer,
+                                           VriFormat_Unknown,
+                                           0,
+                                           result->m_Buffer.desc.size};
+        if (auto created =
+                check(device.core.CreateBufferView(device.handle, &view, &result->m_View), "Create scene light view");
+            !created)
+        {
+            return std::unexpected(created.error());
+        }
+        return result;
     }
 
     LightBuffer::~LightBuffer()
     {
         m_Device.waitIdleForDestruction();
-        m_Device.core.DestroyDescriptor(m_View);
+        if (m_View)
+        {
+            m_Device.core.DestroyDescriptor(m_View);
+        }
     }
 
-    void LightBuffer::update(std::span<const RenderLight> lights)
+    std::expected<void, Error> LightBuffer::update(std::span<const RenderLight> lights)
     {
         if (lights.size() > kMaxRenderLights)
         {
-            throw std::invalid_argument("A frame has more than " + std::to_string(kMaxRenderLights) + " lights");
+            return makeError("A frame has more than {} lights", kMaxRenderLights);
         }
         const auto finite = [](glm::vec3 value)
         {
@@ -55,7 +73,7 @@ namespace vultra
                 light.innerCone < 0 || light.innerCone >= light.outerCone ||
                 light.outerCone >= std::numbers::pi_v<float> * 0.5f)
             {
-                throw std::invalid_argument("Invalid render light at index " + std::to_string(i));
+                return makeError("Invalid render light at index {}", i);
             }
             auto direction = glm::vec3(0, 0, 1);
             if (light.kind != RenderLightKind::ePoint)
@@ -63,7 +81,7 @@ namespace vultra
                 const auto length = glm::length(light.directionToLight);
                 if (length == 0)
                 {
-                    throw std::invalid_argument("Render light direction is singular at index " + std::to_string(i));
+                    return makeError("Render light direction is singular at index {}", i);
                 }
                 direction = light.directionToLight / length;
             }
@@ -79,13 +97,14 @@ namespace vultra
         auto* mapped = m_Device.core.MapBuffer(m_Buffer.handle, 0, sizeof(packed));
         if (!mapped)
         {
-            throw std::runtime_error("Map scene light buffer");
+            return makeError("Map scene light buffer");
         }
         std::memcpy(mapped, packed.data(), sizeof(packed));
         m_Device.core.UnmapBuffer(m_Buffer.handle);
         m_Lights          = packed;
         m_Count           = uint32_t(lights.size());
         m_MainDirectional = mainDirectional;
+        return {};
     }
 
     Buffer& LightBuffer::buffer()

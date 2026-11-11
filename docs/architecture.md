@@ -46,6 +46,20 @@ shader runtime (no Slang, no file watching), and `libvultra_asset_import=n` keep
 importers. `python tests/build_modules.py` builds every module on its own; the table above is what that check
 enforces. Android and Web pieces are selected by platform inside `platform` and `app`.
 
+## Errors
+
+Vultra reports failures as values and does not throw. Every operation that can fail on initialization, external
+input, file or GPU I/O, or misuse of an API returns `std::expected<T, vultra::Error>`, where `Error::message` names
+the operation and its cause. Objects whose construction can fail, such as `Device`, `Frame`, `Window`, `Swapchain`
+and `EditorGui`, are made by a static `create()` that returns `std::expected`; the ones other objects keep
+references to are held by `std::unique_ptr`, while `Texture` and `Buffer` are movable values. A program checks each
+result and logs or returns the error. A state no input can reach (an exhausted 64-bit id space, an unknown
+enumerator) logs through `vultra::panic()` and aborts.
+
+Libraries that report errors by throwing (argparse, nlohmann_json, `std::filesystem`, the model importers) are
+wrapped where Vultra calls them, so their exceptions never cross a Vultra function. Allocation failure is not
+handled.
+
 ## GPU and frames
 
 VRI is the rendering abstraction. Code uses VRI descriptors and commands directly; there is no second RHI above

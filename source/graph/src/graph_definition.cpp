@@ -7,7 +7,6 @@
 #include <fstream>
 #include <iterator>
 #include <set>
-#include <stdexcept>
 
 namespace vultra
 {
@@ -15,18 +14,19 @@ namespace vultra
     {
         using Json = nlohmann::json;
 
-        std::pair<std::string, std::string> endpoint(const std::string& text)
+        std::expected<std::pair<std::string, std::string>, Error> endpoint(const std::string& text)
         {
             const auto dot = text.find('.');
             if (dot == 0 || dot == std::string::npos || dot + 1 == text.size() ||
                 text.find('.', dot + 1) != std::string::npos)
             {
-                throw std::invalid_argument("Graph endpoint needs an instance.port name: " + text);
+                return makeError("Graph endpoint needs an instance.port name: {}", text);
             }
-            return {text.substr(0, dot), text.substr(dot + 1)};
+            return std::pair {text.substr(0, dot), text.substr(dot + 1)};
         }
 
-        size_t portIndex(const std::vector<PassPort>& ports, const std::string& name, const std::string& label)
+        std::expected<size_t, Error>
+        portIndex(const std::vector<PassPort>& ports, const std::string& name, const std::string& label)
         {
             const auto found = std::ranges::find_if(ports,
                                                     [&](const auto& port)
@@ -35,7 +35,7 @@ namespace vultra
                                                     });
             if (found == ports.end())
             {
-                throw std::invalid_argument("Unknown graph port: " + label);
+                return makeError("Unknown graph port: {}", label);
             }
             return size_t(found - ports.begin());
         }
@@ -59,25 +59,30 @@ namespace vultra
         return data.dump(2) + '\n';
     }
 
-    GraphDefinition GraphDefinition::parse(std::string_view text)
+    std::expected<GraphDefinition, Error> GraphDefinition::parse(std::string_view text)
     {
+        const auto data = Json::parse(text, nullptr, false);
+        if (data.is_discarded())
+        {
+            return makeError("Invalid graph definition: malformed JSON");
+        }
+        // nlohmann reports missing keys and mistyped values from at() and get<>() only by throwing.
         try
         {
-            const auto data = Json::parse(text);
             if (data.at("format") != "vultra.graph" || data.at("version") != 1)
             {
-                throw std::invalid_argument("Expected vultra.graph version 1");
+                return makeError("Expected vultra.graph version 1");
             }
             if (!data.at("passes").is_array() || !data.at("edges").is_array() || !data.at("outputs").is_array())
             {
-                throw std::invalid_argument("Invalid graph definition: passes, edges and outputs must be arrays");
+                return makeError("Invalid graph definition: passes, edges and outputs must be arrays");
             }
             GraphDefinition definition;
             for (const auto& pass : data.at("passes"))
             {
                 if (!pass.at("parameters").is_object())
                 {
-                    throw std::invalid_argument("Invalid graph definition: pass parameters must be an object");
+                    return makeError("Invalid graph definition: pass parameters must be an object");
                 }
                 definition.passes.push_back({pass.at("id").get<std::string>(),
                                              pass.at("type").get<std::string>(),
@@ -92,58 +97,76 @@ namespace vultra
         }
         catch (const Json::exception& error)
         {
-            throw std::invalid_argument(std::string("Invalid graph definition: ") + error.what());
+            return makeError("Invalid graph definition: {}", error.what());
         }
     }
 
-    void GraphDefinition::save(const std::filesystem::path& file) const
+    std::expected<void, Error> GraphDefinition::save(const std::filesystem::path& file) const
     {
         const auto text = serialize();
-        writeFileAtomically(file, std::as_bytes(std::span(text)));
+        return writeFileAtomically(file, std::as_bytes(std::span(text)));
     }
 
-    GraphDefinition GraphDefinition::load(const std::filesystem::path& file)
+    std::expected<GraphDefinition, Error> GraphDefinition::load(const std::filesystem::path& file)
     {
         std::ifstream source(file, std::ios::binary);
         if (!source)
         {
-            throw std::runtime_error("Cannot open graph definition: " + file.string());
+            return makeError("Cannot open graph definition: {}", file.string());
         }
         const std::string text {std::istreambuf_iterator<char>(source), std::istreambuf_iterator<char>()};
         return parse(text);
     }
 
-    GraphBuild
+    std::expected<GraphBuild, Error>
     GraphDefinition::build(RenderGraph& graph, const PassCatalog& catalog, std::span<const GraphBinding> imports) const
     {
         if (outputs.empty())
         {
-            throw std::invalid_argument("Graph definition needs at least one output");
+            return makeError("Graph definition needs at least one output");
         }
         std::map<std::string, size_t>                indices;
         std::map<std::string, RenderGraph::Resource> resources;
         for (const auto& input : imports)
         {
-            endpoint(input.name);
-            graph.resourceInfo(input.resource);
+            if (auto valid = endpoint(input.name); !valid)
+            {
+                return std::unexpected(valid.error());
+            }
+            if (auto info = graph.resourceInfo(input.resource); !info)
+            {
+                return std::unexpected(info.error());
+            }
             if (!resources.emplace(input.name, input.resource).second)
             {
-                throw std::invalid_argument("Duplicate graph import: " + input.name);
+                return makeError("Duplicate graph import: {}", input.name);
             }
         }
+        // Resolved once; the catalog is not modified while this definition builds.
+        std::vector<const PassDefinition*> definitions(passes.size());
         for (size_t i = 0; i < passes.size(); ++i)
         {
             const auto& pass = passes[i];
             if (pass.id.empty() || pass.id.find('.') != std::string::npos || !indices.emplace(pass.id, i).second)
             {
-                throw std::invalid_argument("Invalid or duplicate pass instance: " + pass.id);
+                return makeError("Invalid or duplicate pass instance: {}", pass.id);
             }
-            catalog.definition(pass.type).parameterValues(pass.id, pass.parameters);
+            const auto found = catalog.definition(pass.type);
+            if (!found)
+            {
+                return std::unexpected(found.error());
+            }
+            definitions[i] = *found;
+            if (auto values = definitions[i]->parameterValues(pass.id, pass.parameters); !values)
+            {
+                return std::unexpected(values.error());
+            }
             for (const auto& input : imports)
             {
-                if (endpoint(input.name).first == pass.id)
+                // Import names were validated above.
+                if (endpoint(input.name)->first == pass.id)
                 {
-                    throw std::invalid_argument("Pass instance conflicts with graph import: " + pass.id);
+                    return makeError("Pass instance conflicts with graph import: {}", pass.id);
                 }
             }
         }
@@ -151,52 +174,74 @@ namespace vultra
         std::vector<std::set<size_t>>         dependencies(passes.size());
         for (size_t i = 0; i < passes.size(); ++i)
         {
-            sources[i].resize(catalog.definition(passes[i].type).inputs.size());
+            sources[i].resize(definitions[i]->inputs.size());
         }
-        const auto validateSource = [&](const std::string& name) -> std::optional<size_t>
+        const auto validateSource = [&](const std::string& name) -> std::expected<std::optional<size_t>, Error>
         {
             if (resources.contains(name))
             {
                 return std::nullopt;
             }
-            const auto [id, port] = endpoint(name);
-            const auto found      = indices.find(id);
+            const auto parts = endpoint(name);
+            if (!parts)
+            {
+                return std::unexpected(parts.error());
+            }
+            const auto& [id, port] = *parts;
+            const auto found       = indices.find(id);
             if (found == indices.end())
             {
-                throw std::invalid_argument("Unknown graph source: " + name);
+                return makeError("Unknown graph source: {}", name);
             }
-            portIndex(catalog.definition(passes[found->second].type).outputs, port, name);
+            if (auto output = portIndex(definitions[found->second]->outputs, port, name); !output)
+            {
+                return std::unexpected(output.error());
+            }
             return found->second;
         };
         for (const auto& edge : edges)
         {
-            const auto [id, port] = endpoint(edge.to);
-            const auto found      = indices.find(id);
+            const auto parts = endpoint(edge.to);
+            if (!parts)
+            {
+                return std::unexpected(parts.error());
+            }
+            const auto& [id, port] = *parts;
+            const auto found       = indices.find(id);
             if (found == indices.end())
             {
-                throw std::invalid_argument("Unknown graph destination: " + edge.to);
+                return makeError("Unknown graph destination: {}", edge.to);
             }
             const auto index = found->second;
-            const auto input = portIndex(catalog.definition(passes[index].type).inputs, port, edge.to);
-            if (!sources[index][input].empty())
+            const auto input = portIndex(definitions[index]->inputs, port, edge.to);
+            if (!input)
             {
-                throw std::invalid_argument("Graph input connected more than once: " + edge.to);
+                return std::unexpected(input.error());
             }
-            sources[index][input] = edge.from;
-            if (const auto dependency = validateSource(edge.from))
+            if (!sources[index][*input].empty())
             {
-                dependencies[index].insert(*dependency);
+                return makeError("Graph input connected more than once: {}", edge.to);
+            }
+            sources[index][*input] = edge.from;
+            const auto dependency  = validateSource(edge.from);
+            if (!dependency)
+            {
+                return std::unexpected(dependency.error());
+            }
+            if (*dependency)
+            {
+                dependencies[index].insert(**dependency);
             }
         }
         for (size_t i = 0; i < passes.size(); ++i)
         {
-            const auto& desc = catalog.definition(passes[i].type);
             for (size_t input = 0; input < sources[i].size(); ++input)
             {
                 if (sources[i][input].empty())
                 {
-                    throw std::invalid_argument("Unconnected graph input: " + passes[i].id + "." +
-                                                desc.inputs[input].name);
+                    return makeError("Unconnected graph input: {}.{}",
+                                     passes[i].id,
+                                     definitions[i]->inputs[input].name);
                 }
             }
         }
@@ -204,7 +249,7 @@ namespace vultra
         std::vector<size_t> pending;
         for (size_t i = 0; i < passes.size(); ++i)
         {
-            if (catalog.definition(passes[i].type).sideEffect)
+            if (definitions[i]->sideEffect)
             {
                 pending.push_back(i);
             }
@@ -212,13 +257,18 @@ namespace vultra
         std::set<std::string> outputNames;
         for (const auto& output : outputs)
         {
-            if (const auto producer = validateSource(output))
+            const auto producer = validateSource(output);
+            if (!producer)
             {
-                pending.push_back(*producer);
+                return std::unexpected(producer.error());
+            }
+            if (*producer)
+            {
+                pending.push_back(**producer);
             }
             if (!outputNames.insert(output).second)
             {
-                throw std::invalid_argument("Duplicate graph output: " + output);
+                return makeError("Duplicate graph output: {}", output);
             }
         }
         while (!pending.empty())
@@ -251,7 +301,7 @@ namespace vultra
             }
             if (order.size() == before)
             {
-                throw std::invalid_argument("Graph definition contains a dependency cycle");
+                return makeError("Graph definition contains a dependency cycle");
             }
         }
         GraphBuild built;
@@ -262,23 +312,30 @@ namespace vultra
                 continue;
             }
             const auto&                        pass = passes[index];
-            const auto&                        desc = catalog.definition(pass.type);
+            const auto&                        desc = *definitions[index];
             std::vector<RenderGraph::Resource> inputs;
             for (const auto& source : sources[index])
             {
                 inputs.push_back(resources.at(source));
             }
             auto instance = catalog.build(graph, pass.type, pass.id, inputs, pass.parameters);
+            if (!instance)
+            {
+                return std::unexpected(instance.error());
+            }
             for (size_t i = 0; i < desc.outputs.size(); ++i)
             {
-                resources.emplace(pass.id + "." + desc.outputs[i].name, instance.outputs[i]);
+                resources.emplace(pass.id + "." + desc.outputs[i].name, instance->outputs[i]);
             }
-            built.passes.push_back(std::move(instance));
+            built.passes.push_back(std::move(*instance));
         }
         for (const auto& name : outputs)
         {
             const auto resource = resources.at(name);
-            graph.exportResource(resource);
+            if (auto exported = graph.exportResource(resource); !exported)
+            {
+                return std::unexpected(exported.error());
+            }
             built.outputs.push_back({name, resource});
         }
         return built;

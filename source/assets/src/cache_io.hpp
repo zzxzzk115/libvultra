@@ -1,9 +1,11 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
+
 #include <cstdint>
 #include <cstring>
+#include <expected>
 #include <span>
-#include <stdexcept>
 #include <type_traits>
 #include <vector>
 
@@ -48,12 +50,12 @@ namespace vultra::asset_detail
         }
 
         template<typename T>
-        T value()
+        [[nodiscard]] std::expected<T, Error> value()
         {
             static_assert(std::is_trivially_copyable_v<T>);
             if (m_Remaining.size() < sizeof(T))
             {
-                throw std::runtime_error("Truncated asset cache");
+                return makeError("Truncated asset cache");
             }
             T result;
             std::memcpy(&result, m_Remaining.data(), sizeof(T));
@@ -62,28 +64,36 @@ namespace vultra::asset_detail
         }
 
         template<typename T>
-        std::vector<T> array()
+        [[nodiscard]] std::expected<std::vector<T>, Error> array()
         {
-            const auto     bytes = arrayBytes<T>();
-            std::vector<T> result(bytes.size() / sizeof(T));
-            if (!bytes.empty())
+            const auto bytes = arrayBytes<T>();
+            if (!bytes)
             {
-                std::memcpy(result.data(), bytes.data(), bytes.size());
+                return std::unexpected(bytes.error());
+            }
+            std::vector<T> result(bytes->size() / sizeof(T));
+            if (!bytes->empty())
+            {
+                std::memcpy(result.data(), bytes->data(), bytes->size());
             }
             return result;
         }
 
         // Keep byte views unaligned. Callers may copy independent payloads after indexing the archive.
         template<typename T>
-        std::span<const std::byte> arrayBytes()
+        [[nodiscard]] std::expected<std::span<const std::byte>, Error> arrayBytes()
         {
             static_assert(std::is_trivially_copyable_v<T>);
             const auto count = value<uint64_t>();
-            if (count > m_Remaining.size() / sizeof(T))
+            if (!count)
             {
-                throw std::runtime_error("Invalid asset cache array length");
+                return std::unexpected(count.error());
             }
-            const auto result = m_Remaining.first(size_t(count) * sizeof(T));
+            if (*count > m_Remaining.size() / sizeof(T))
+            {
+                return makeError("Invalid asset cache array length");
+            }
+            const auto result = m_Remaining.first(size_t(*count) * sizeof(T));
             m_Remaining       = m_Remaining.subspan(result.size());
             return result;
         }

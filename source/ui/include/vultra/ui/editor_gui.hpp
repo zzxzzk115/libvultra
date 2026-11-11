@@ -1,4 +1,5 @@
 #pragma once
+#include <vultra/core/base/error.hpp>
 #include <vultra/gpu/resources.hpp>
 #include <vultra/platform/input/input.hpp>
 #include <vultra/ui/editor_gui_frame.hpp>
@@ -8,6 +9,7 @@
 #include <imgui.h>
 
 #include <cstdint>
+#include <expected>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -30,21 +32,27 @@ namespace vultra
         EditorGuiTheme        theme = EditorGuiTheme::eUnreal;
     };
 
-    // VRI renders native viewports or an explicitly offscreen GUI target.
+    // VRI renders native viewports or an explicitly offscreen GUI target. The instance registers its address with
+    // ImGui and the window, so it lives behind a unique_ptr and never moves.
     class EditorGui
     {
     public:
-        EditorGui(Device& device, Window& window, VriFormat targetFormat, const EditorGuiConfig& config = {});
+        [[nodiscard]] static std::expected<std::unique_ptr<EditorGui>, Error>
+        create(Device& device, Window& window, VriFormat targetFormat, const EditorGuiConfig& config = {});
         // Offscreen rendering uses the same VRI renderer, with no window backend or detached viewports.
-        EditorGui(Device& device, VriFormat targetFormat, const EditorGuiConfig& config);
+        [[nodiscard]] static std::expected<std::unique_ptr<EditorGui>, Error>
+        create(Device& device, VriFormat targetFormat, const EditorGuiConfig& config);
         // A null window selects offscreen rendering when the target is chosen at runtime.
-        EditorGui(Device& device, Window* window, VriFormat targetFormat, const EditorGuiConfig& config);
+        [[nodiscard]] static std::expected<std::unique_ptr<EditorGui>, Error>
+        create(Device& device, Window* window, VriFormat targetFormat, const EditorGuiConfig& config);
         ~EditorGui();
         EditorGui(const EditorGui&)            = delete;
         EditorGui& operator=(const EditorGui&) = delete;
-        void       begin();
-        void       begin(Extent size, float deltaSeconds);
 
+        [[nodiscard]] std::expected<void, Error> begin();
+        [[nodiscard]] std::expected<void, Error> begin(Extent size, float deltaSeconds);
+
+        // Widgets of a frame that is not the current one are a programming error and abort.
         EditorGuiFrame frame()
         {
             return EditorGuiFrame(*this);
@@ -62,11 +70,11 @@ namespace vultra
 
         bool isCurrentFrame(uint64_t serial) const;
 
-        void                                   setPropertyDrawer(std::string id, EditorGuiPropertyDrawer drawer);
-        void                                   removePropertyDrawer(std::string_view id);
-        std::optional<EditorGuiPropertyDrawer> propertyDrawer(std::string_view id) const;
-        void                                   setTheme(EditorGuiTheme theme);
-        InputCapture                           inputCapture() const;
+        [[nodiscard]] std::expected<void, Error> setPropertyDrawer(std::string id, EditorGuiPropertyDrawer drawer);
+        void                                     removePropertyDrawer(std::string_view id);
+        std::optional<EditorGuiPropertyDrawer>   propertyDrawer(std::string_view id) const;
+        void                                     setTheme(EditorGuiTheme theme);
+        InputCapture                             inputCapture() const;
 
         EditorGuiTheme theme() const
         {
@@ -78,28 +86,32 @@ namespace vultra
             return m_Dockspace;
         }
 
-        void        upload(Extent framebuffer);  // ends ImGui frame; call before recording GUI commands
-        void        copy(VriCommandBuffer* cmd); // outside a rendering pass
-        void        draw(VriCommandBuffer* cmd); // inside a rendering pass
-        ImTextureID textureId(Texture& texture);
+        // Ends the ImGui frame; call before recording GUI commands.
+        [[nodiscard]] std::expected<void, Error>        upload(Extent framebuffer);
+        void                                            copy(VriCommandBuffer* cmd); // outside a rendering pass
+        void                                            draw(VriCommandBuffer* cmd); // inside a rendering pass
+        [[nodiscard]] std::expected<ImTextureID, Error> textureId(Texture& texture);
         // Previous GPU frame must be complete. Call before destroying/resizing a displayed texture.
-        void forgetTexture(Texture& texture);
+        [[nodiscard]] std::expected<void, Error> forgetTexture(Texture& texture);
         // Call once after the main GPU frame/present, while sampled textures are still alive.
-        void renderPlatformWindows();
+        [[nodiscard]] std::expected<void, Error> renderPlatformWindows();
 
     private:
         friend class EditorGuiFrame;
         friend class EditorGuiInspector;
-        void  requireFrame(uint64_t serial) const;
-        void  beginFrame();
-        void  updateTextures();
-        void  destroyTextures();
-        float platformDpiScale() const;
+        EditorGui(Device& device, Window* window, std::string iniFile);
+        std::expected<void, Error> initialize(VriFormat targetFormat, const EditorGuiConfig& config);
+        std::expected<void, Error> checkFrame(uint64_t serial) const;
+        void                       requireFrame(uint64_t serial) const;
+        void                       beginFrame();
+        std::expected<void, Error> updateTextures();
+        void                       destroyTextures();
+        float                      platformDpiScale() const;
         struct Viewport;
 
         struct DrawData
         {
-            void                             update(const ImDrawData* draw, Extent framebuffer);
+            std::expected<void, Error>       update(const ImDrawData* draw, Extent framebuffer);
             VriImguiDrawData                 data {};
             std::vector<VriImguiVertex>      vertices;
             std::vector<ImDrawIdx>           indices;
@@ -120,7 +132,10 @@ namespace vultra
         ImGuiContext*     m_Context  = nullptr;
         DrawData          m_DrawData;
 
-        std::unordered_map<VriDescriptor*, std::unique_ptr<Texture>> m_Textures;
+        std::unordered_map<VriDescriptor*, Texture> m_Textures;
+        bool                                        m_PlatformReady = false;
+        // ImGui's renderer callbacks cannot return errors; the first one is reported by renderPlatformWindows().
+        std::optional<Error> m_ViewportError;
 
         float          m_DpiScale    = 1;
         ImGuiID        m_Dockspace   = 0;

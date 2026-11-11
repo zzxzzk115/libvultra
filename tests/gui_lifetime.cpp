@@ -1,119 +1,89 @@
+#include "support/check.hpp"
+
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/ui/editor_gui.hpp>
 
 #include <iostream>
-#include <stdexcept>
 #include <utility>
 
 namespace
 {
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
 
-    template<class Function>
-    void reject(Function&& function)
-    {
-        bool rejected = false;
-        try
-        {
-            function();
-        }
-        catch (const std::logic_error&)
-        {
-            rejected = true;
-        }
-        require(rejected, "Expired or wrong-context GUI frame was accepted");
-    }
+    // Widgets of an expired or wrong-context frame abort, so the test checks the detection they rely on.
+    constexpr std::string_view kAccepted = "Expired or wrong-context GUI frame was accepted";
 } // namespace
 
 int main()
-try
 {
     using namespace vultra;
-    Device       device;
-    EditorGui    first(device, VriFormat_RGBA8_UNORM, {.multiViewport = false, .persistLayout = false});
+    const auto device = must(Device::create());
+    const auto first =
+        must(EditorGui::create(*device, VriFormat_RGBA8_UNORM, {.multiViewport = false, .persistLayout = false}));
     const Extent size {320, 200};
-    Texture      target(device, colorTexture(size));
-    Frame        submission(device);
+    auto         target     = must(Texture::create(*device, colorTexture(size)));
+    const auto   submission = must(Frame::create(*device));
     {
-        EditorGui second(device, VriFormat_RGBA8_UNORM, {.multiViewport = false, .persistLayout = false});
-        first.begin(size, 1.0f / 60);
-        auto       oldFrame     = first.frame();
-        auto*      firstContext = ImGui::GetCurrentContext();
-        second.begin(size, 1.0f / 60);
+        const auto second =
+            must(EditorGui::create(*device, VriFormat_RGBA8_UNORM, {.multiViewport = false, .persistLayout = false}));
+        must(first->begin(size, 1.0f / 60));
+        auto  oldFrame     = first->frame();
+        auto* firstContext = ImGui::GetCurrentContext();
+        must(second->begin(size, 1.0f / 60));
         require(ImGui::GetCurrentContext() != firstContext, "GUI instances share an ImGui context");
-        reject(
-            [&]
-            {
-                oldFrame.textUnformatted("Wrong context");
-            });
-        second.upload(size);
-        first.upload(size);
-        reject(
-            [&]
-            {
-                oldFrame.button("Expired frame");
-            });
-        first.begin(size, 1.0f / 60);
-        reject(
-            [&]
-            {
-                oldFrame.separator();
-            });
-        auto ui = first.frame();
+        support::rejects(oldFrame.requireActive(), kAccepted);
+        must(second->upload(size));
+        must(first->upload(size));
+        support::rejects(oldFrame.requireActive(), kAccepted);
+        must(first->begin(size, 1.0f / 60));
+        support::rejects(oldFrame.requireActive(), kAccepted);
+        auto ui = first->frame();
+        must(ui.requireActive());
         ui.setNextWindowPos({10, 10}, ImGuiCond_Always);
         ui.setNextWindowSize({290, 170}, ImGuiCond_Always);
         {
             EditorGuiWindow window(ui, "Independent context");
             int             calls = 0;
-            std::pair       state {&first, &calls};
-            first.setPropertyDrawer("self-removing",
-                                    {[](EditorGuiProperty, void*, void* data)
-                                     {
-                                         auto& state = *static_cast<std::pair<EditorGui*, int*>*>(data);
-                                         ++*state.second;
-                                         state.first->removePropertyDrawer("self-removing");
-                                         return true;
-                                     },
-                                     &state});
+            std::pair       state {first.get(), &calls};
+            must(first->setPropertyDrawer("self-removing",
+                                          {[](EditorGuiProperty, void*, void* data)
+                                           {
+                                               auto& state = *static_cast<std::pair<EditorGui*, int*>*>(data);
+                                               ++*state.second;
+                                               state.first->removePropertyDrawer("self-removing");
+                                               return true;
+                                           },
+                                           &state}));
             bool               value = false;
-            EditorGuiInspector inspector(first, "properties");
+            EditorGuiInspector inspector(*first, "properties");
             require(inspector.boolField({"self-removing", "Enabled"}, &value) && calls == 1,
                     "Self-removing property drawer did not finish its call");
-            require(!first.propertyDrawer("self-removing") && !second.propertyDrawer("self-removing"),
+            require(!first->propertyDrawer("self-removing") && !second->propertyDrawer("self-removing"),
                     "Drawer registration escaped its owning GUI context");
         }
-        first.upload(size);
-        auto* commands = submission.begin();
-        first.copy(commands);
+        must(first->upload(size));
+        auto* commands = must(submission->begin());
+        first->copy(commands);
         target.transition(
             commands,
             {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
         const float clear[4] {0, 0, 0, 1};
-        beginColorPass(device, commands, target.view(), size, clear);
-        first.draw(commands);
-        device.core.CmdEndRendering(commands);
-        submission.submitAndWait();
-        const auto image = readback(device, target);
-        require(imagePixel(image, 30, 30)[0] > 0.01f, "Independent GUI context did not render");
+        beginColorPass(*device, commands, must(target.view()), size, clear);
+        first->draw(commands);
+        device->core.CmdEndRendering(commands);
+        must(submission->submitAndWait());
+        const auto image = must(readback(*device, target));
+        require(must(imagePixel(image, 30, 30))[0] > 0.01f, "Independent GUI context did not render");
     }
-    first.begin(size, 1.0f / 60);
-    auto ui = first.frame();
+    must(first->begin(size, 1.0f / 60));
+    auto ui = first->frame();
     ui.setNextWindowSize({100, 100}, ImGuiCond_Always);
     {
         EditorGuiWindow window(ui, "Surviving context");
         ui.textUnformatted("Still alive");
     }
-    first.upload(size);
+    must(first->upload(size));
     std::cout << "GUI context isolation, expired frames, drawer revocation and destruction passed\n";
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
+    return 0;
 }

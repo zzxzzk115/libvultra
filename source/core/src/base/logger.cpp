@@ -33,18 +33,31 @@ namespace vultra
         }
     } // namespace
 
-    void Logger::configure(spdlog::level::level_enum level, const std::filesystem::path& file)
+    std::expected<void, Error> Logger::configure(spdlog::level::level_enum level, const std::filesystem::path& file)
     {
         // Configure on the main thread before starting devices or worker threads.
         auto&                         state = loggers();
         std::vector<spdlog::sink_ptr> sinks {state.console};
         if (!file.empty())
         {
+            std::error_code error;
             if (!file.parent_path().empty())
             {
-                std::filesystem::create_directories(file.parent_path());
+                std::filesystem::create_directories(file.parent_path(), error);
             }
-            sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(file.string(), false));
+            if (error)
+            {
+                return makeError("Create log directory {}: {}", file.parent_path().string(), error.message());
+            }
+            // spdlog reports a file it cannot open only by throwing.
+            try
+            {
+                sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(file.string(), false));
+            }
+            catch (const spdlog::spdlog_ex& failure)
+            {
+                return makeError("Open log file {}: {}", file.string(), failure.what());
+            }
         }
         for (auto* logger : {&state.core, &state.app})
         {
@@ -53,6 +66,7 @@ namespace vultra
             logger->set_level(level);
             logger->flush_on(spdlog::level::warn);
         }
+        return {};
     }
 
     spdlog::logger& Logger::core()

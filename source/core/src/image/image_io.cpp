@@ -10,80 +10,94 @@
 #include <bit>
 #include <climits>
 #include <fstream>
+#include <iomanip>
 #include <limits>
+#include <memory>
 #include <sstream>
-#include <stdexcept>
 
 namespace vultra
 {
-    Image loadPng(const std::filesystem::path& path)
+    namespace
+    {
+        std::expected<void, Error> createParentDirectory(const std::filesystem::path& path)
+        {
+            std::error_code error;
+            if (!path.parent_path().empty())
+            {
+                std::filesystem::create_directories(path.parent_path(), error);
+            }
+            if (error)
+            {
+                return makeError("Create directory {}: {}", path.parent_path().string(), error.message());
+            }
+            return {};
+        }
+    } // namespace
+
+    std::expected<Image, Error> loadPng(const std::filesystem::path& path)
     {
         std::ifstream input(path, std::ios::binary | std::ios::ate);
         if (!input)
         {
-            throw std::runtime_error("Cannot open PNG: " + path.string());
+            return makeError("Cannot open PNG: {}", path.string());
         }
         const auto length = input.tellg();
         if (length <= 0 || length > INT_MAX)
         {
-            throw std::runtime_error("PNG file size is unsupported");
+            return makeError("PNG file size is unsupported");
         }
         std::vector<unsigned char> bytes(static_cast<size_t>(length));
         input.seekg(0);
         input.read(reinterpret_cast<char*>(bytes.data()), length);
         if (!input)
         {
-            throw std::runtime_error("Cannot read PNG");
+            return makeError("Cannot read PNG");
         }
         return loadPng(std::as_bytes(std::span(bytes)));
     }
 
-    Image loadPng(std::span<const std::byte> bytes)
+    std::expected<Image, Error> loadPng(std::span<const std::byte> bytes)
     {
         if (bytes.empty() || bytes.size() > INT_MAX)
         {
-            throw std::invalid_argument("PNG data size is unsupported");
+            return makeError("PNG data size is unsupported");
         }
-        int   width;
-        int   height;
-        int   channels;
-        auto* pixels = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(bytes.data()),
-                                             int(bytes.size()),
-                                             &width,
-                                             &height,
-                                             &channels,
-                                             4);
+        int                                                  width;
+        int                                                  height;
+        int                                                  channels;
+        std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> pixels(
+            stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(bytes.data()),
+                                  int(bytes.size()),
+                                  &width,
+                                  &height,
+                                  &channels,
+                                  4),
+            stbi_image_free);
         if (!pixels)
         {
-            throw std::runtime_error(std::string("PNG decode failed: ") + stbi_failure_reason());
+            return makeError("PNG decode failed: {}", stbi_failure_reason());
         }
         Image image {{uint32_t(width), uint32_t(height)}, {}};
-        try
-        {
-            image.rgba.resize(size_t(width) * height * 4);
-            std::transform(pixels,
-                           pixels + image.rgba.size(),
-                           image.rgba.begin(),
-                           [](unsigned char v)
-                           {
-                               return float(v) / 255;
-                           });
-        }
-        catch (...)
-        {
-            stbi_image_free(pixels);
-            throw;
-        }
-        stbi_image_free(pixels);
+        image.rgba.resize(size_t(width) * height * 4);
+        std::transform(pixels.get(),
+                       pixels.get() + image.rgba.size(),
+                       image.rgba.begin(),
+                       [](unsigned char v)
+                       {
+                           return float(v) / 255;
+                       });
         return image;
     }
 
-    void savePng(const Image& image, const std::filesystem::path& path)
+    std::expected<void, Error> savePng(const Image& image, const std::filesystem::path& path)
     {
-        validateImage(image);
-        if (!path.parent_path().empty())
+        if (auto result = validateImage(image); !result)
         {
-            std::filesystem::create_directories(path.parent_path());
+            return result;
+        }
+        if (auto result = createParentDirectory(path); !result)
+        {
+            return result;
         }
         std::vector<unsigned char> bytes(image.rgba.size());
         std::transform(image.rgba.begin(),
@@ -96,7 +110,7 @@ namespace vultra
         std::ofstream output(path, std::ios::binary);
         if (!output)
         {
-            throw std::runtime_error("Cannot create PNG: " + path.string());
+            return makeError("Cannot create PNG: {}", path.string());
         }
         const auto write = [](void* context, void* data, int size)
         {
@@ -112,22 +126,26 @@ namespace vultra
         output.flush();
         if (!success || !output)
         {
-            throw std::runtime_error("PNG write failed: " + path.string());
+            return makeError("PNG write failed: {}", path.string());
         }
+        return {};
     }
 
-    void savePfm(const Image& image, const std::filesystem::path& path)
+    std::expected<void, Error> savePfm(const Image& image, const std::filesystem::path& path)
     {
         static_assert(sizeof(float) == 4 && std::numeric_limits<float>::is_iec559);
-        validateImage(image);
-        if (!path.parent_path().empty())
+        if (auto result = validateImage(image); !result)
         {
-            std::filesystem::create_directories(path.parent_path());
+            return result;
+        }
+        if (auto result = createParentDirectory(path); !result)
+        {
+            return result;
         }
         std::ofstream output(path, std::ios::binary);
         if (!output)
         {
-            throw std::runtime_error("Cannot create PFM: " + path.string());
+            return makeError("Cannot create PFM: {}", path.string());
         }
         output << "PF\n"
                << image.size.width << ' ' << image.size.height << '\n'
@@ -146,19 +164,21 @@ namespace vultra
         output.flush();
         if (!output)
         {
-            throw std::runtime_error("PFM write failed: " + path.string());
+            return makeError("PFM write failed: {}", path.string());
         }
+        return {};
     }
 
-    void dumpFrame(const Image& image, const std::filesystem::path& directory, uint64_t frame)
+    std::expected<void, Error> dumpFrame(const Image& image, const std::filesystem::path& directory, uint64_t frame)
     {
         std::ostringstream name;
         name << "frame_" << std::setfill('0') << std::setw(6) << frame << ".png";
-        const auto path = directory / name.str();
-        if (std::filesystem::exists(path))
+        const auto      path = directory / name.str();
+        std::error_code error;
+        if (std::filesystem::exists(path, error) || error)
         {
-            throw std::runtime_error("Frame already exists: " + path.string());
+            return makeError("Frame already exists: {}", path.string());
         }
-        savePng(image, path);
+        return savePng(image, path);
     }
 } // namespace vultra

@@ -4,28 +4,34 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace vultra
 {
-    GpuMeshlets::GpuMeshlets(Device& device, Buffer& vertices, const MeshletData& data) :
+    GpuMeshlets::GpuMeshlets(Device& device) :
         m_Device(device)
+    {
+    }
+
+    std::expected<std::unique_ptr<GpuMeshlets>, Error>
+    GpuMeshlets::create(Device& device, Buffer& vertices, const MeshletData& data)
     {
         if (!(device.features & VriFeature_MeshShader))
         {
-            throw std::invalid_argument("Meshlet upload requires the enabled mesh shader feature");
+            return makeError("Meshlet upload requires the enabled mesh shader feature");
         }
         for (const auto& range : data.primitives)
         {
             if (uint64_t(range.first) + range.count > data.meshlets.size())
             {
-                throw std::invalid_argument("Meshlet primitive range exceeds its payload");
+                return makeError("Meshlet primitive range exceeds its payload");
             }
         }
         for (const auto index : data.vertices)
         {
             if (index >= vertices.desc.size / sizeof(SceneVertex))
             {
-                throw std::invalid_argument("Meshlet vertex exceeds its scene buffer");
+                return makeError("Meshlet vertex exceeds its scene buffer");
             }
         }
         for (const auto& meshlet : data.meshlets)
@@ -37,7 +43,7 @@ namespace vultra
                 !std::isfinite(meshlet.bounds.y) || !std::isfinite(meshlet.bounds.z) ||
                 !std::isfinite(meshlet.bounds.w) || meshlet.bounds.w < 0)
             {
-                throw std::invalid_argument("Invalid meshlet geometry or bounds");
+                return makeError("Invalid meshlet geometry or bounds");
             }
             for (uint32_t index = 0; index < geometry.w; ++index)
             {
@@ -45,52 +51,63 @@ namespace vultra
                 if ((triangle & 255) >= geometry.z || ((triangle >> 8) & 255) >= geometry.z ||
                     ((triangle >> 16) & 255) >= geometry.z)
                 {
-                    throw std::invalid_argument("Meshlet triangle exceeds its local vertices");
+                    return makeError("Meshlet triangle exceeds its local vertices");
                 }
             }
         }
-        Frame transition(device);
-        vertices.transition(transition.begin(),
+        auto transition = Frame::create(device);
+        if (!transition)
+        {
+            return std::unexpected(transition.error());
+        }
+        const auto cmd = (*transition)->begin();
+        if (!cmd)
+        {
+            return std::unexpected(cmd.error());
+        }
+        vertices.transition(*cmd,
                             {VriAccess_VertexBufferRead | VriAccess_ShaderResourceRead,
                              VriPipelineStage_VertexInput | VriPipelineStage_MeshShader});
-        transition.submitAndWait();
-        count      = uint32_t(data.meshlets.size());
-        primitives = data.primitives;
+        if (auto submitted = (*transition)->submitAndWait(); !submitted)
+        {
+            return std::unexpected(submitted.error());
+        }
+        // The destructor releases whatever views exist when a later step fails.
+        std::unique_ptr<GpuMeshlets> result(new GpuMeshlets(device));
+        result->count      = uint32_t(data.meshlets.size());
+        result->primitives = data.primitives;
         const VriAccessStage ready {VriAccess_ShaderResourceRead,
                                     VriPipelineStage_TaskShader | VriPipelineStage_MeshShader};
         const std::array<std::span<const std::byte>, 3> bytes {std::as_bytes(std::span(data.meshlets)),
                                                                std::as_bytes(std::span(data.vertices)),
                                                                std::as_bytes(std::span(data.triangles))};
-        try
+        const std::array<std::byte, 64>                 emptyBuffer {};
+        for (size_t i = 0; i < result->m_Buffers.size(); ++i)
         {
-            const std::array<std::byte, 64> emptyBuffer {};
-            for (size_t i = 0; i < m_Buffers.size(); ++i)
+            const auto payload  = bytes[i].empty() ? std::span<const std::byte>(emptyBuffer) : bytes[i];
+            auto       uploaded = uploadBuffer(device, payload, VriBufferUsage_StorageBuffer, ready);
+            if (!uploaded)
             {
-                const auto data = bytes[i].empty() ? std::span<const std::byte>(emptyBuffer) : bytes[i];
-                m_Buffers[i]    = uploadBuffer(device, data, VriBufferUsage_StorageBuffer, ready);
+                return std::unexpected(uploaded.error());
             }
-            for (size_t i = 0; i < views.size(); ++i)
+            result->m_Buffers[i] = std::make_unique<Buffer>(std::move(*uploaded));
+        }
+        for (size_t i = 0; i < result->views.size(); ++i)
+        {
+            const auto&             buffer = i == 0 ? vertices : *result->m_Buffers[i - 1];
+            const VriBufferViewDesc desc {buffer.handle,
+                                          VriDescriptorType_StructuredBuffer,
+                                          VriFormat_Unknown,
+                                          0,
+                                          buffer.desc.size};
+            if (auto created = check(device.core.CreateBufferView(device.handle, &desc, &result->views[i]),
+                                     "Create meshlet buffer view");
+                !created)
             {
-                const auto&             buffer = i == 0 ? vertices : *m_Buffers[i - 1];
-                const VriBufferViewDesc desc {buffer.handle,
-                                              VriDescriptorType_StructuredBuffer,
-                                              VriFormat_Unknown,
-                                              0,
-                                              buffer.desc.size};
-                check(device.core.CreateBufferView(device.handle, &desc, &views[i]), "Create meshlet buffer view");
+                return std::unexpected(created.error());
             }
         }
-        catch (...)
-        {
-            for (auto* view : views)
-            {
-                if (view)
-                {
-                    device.core.DestroyDescriptor(view);
-                }
-            }
-            throw;
-        }
+        return result;
     }
 
     std::array<VriBuffer*, 3> GpuMeshlets::buffers() const
@@ -103,7 +120,10 @@ namespace vultra
         m_Device.waitIdleForDestruction();
         for (auto* view : views)
         {
-            m_Device.core.DestroyDescriptor(view);
+            if (view)
+            {
+                m_Device.core.DestroyDescriptor(view);
+            }
         }
     }
 } // namespace vultra

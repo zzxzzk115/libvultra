@@ -1,4 +1,5 @@
 #include "../examples/offline/color_gain.hpp"
+#include "support/check.hpp"
 
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/graph/graph_definition.hpp>
@@ -7,36 +8,56 @@
 #include <array>
 #include <chrono>
 #include <cmath>
-#include <functional>
 #include <iostream>
 #include <limits>
-#include <stdexcept>
 
 namespace
 {
     using namespace vultra;
+    using support::must;
+    using support::require;
 
-    void require(bool value, const char* message)
+    template<typename T>
+    void expectError(const std::expected<T, Error>& result, std::string_view expected)
     {
-        if (!value)
-        {
-            throw std::runtime_error(message);
-        }
+        require(!result, "Invalid graph was accepted");
+        require(result.error().message.find(expected) != std::string::npos,
+                "Graph error did not identify the failed boundary");
     }
 
-    void expectError(const std::function<void()>& action, std::string_view expected)
+    void run(Frame& frame, RenderGraph& graph)
     {
-        try
+        must(graph.execute(must(frame.begin())));
+        must(frame.submitAndWait());
+    }
+
+    // Begins and ends a cleared color pass on the target.
+    std::expected<void, Error>
+    clearPass(Device& device, VriCommandBuffer* cmd, Texture& target, Extent extent, const float* color)
+    {
+        const auto view = target.view();
+        if (!view)
         {
-            action();
+            return std::unexpected(view.error());
         }
-        catch (const std::invalid_argument& error)
+        beginColorPass(device, cmd, *view, extent, color);
+        device.core.CmdEndRendering(cmd);
+        return {};
+    }
+
+    // Builds the definition into a fresh candidate graph that imports the source texture.
+    std::expected<void, Error>
+    buildCandidate(Device& device, Texture& source, const GraphDefinition& definition, const PassCatalog& catalog)
+    {
+        RenderGraph      candidate(device);
+        const auto       input = must(candidate.importResource("input", source));
+        const std::array bindings {GraphBinding {"scene.hdr", input}};
+        const auto       built = definition.build(candidate, catalog, bindings);
+        if (!built)
         {
-            require(std::string_view(error.what()).find(expected) != std::string_view::npos,
-                    "Graph error did not identify the failed boundary");
-            return;
+            return std::unexpected(built.error());
         }
-        throw std::runtime_error("Invalid graph was accepted");
+        return {};
     }
 
     GraphDefinition chain()
@@ -55,19 +76,25 @@ namespace
         {
         }
 
-        std::vector<RenderGraph::Resource> addPasses(RenderGraph&                           graph,
-                                                     std::string_view                       name,
-                                                     std::span<const RenderGraph::Resource> inputs,
-                                                     std::span<const double>) override
+        std::expected<std::vector<RenderGraph::Resource>, Error>
+        addPasses(RenderGraph&                           graph,
+                  std::string_view                       name,
+                  std::span<const RenderGraph::Resource> inputs,
+                  std::span<const double>) override
         {
             // The catalog's sideEffect declaration must retain this command pass without a graph output.
-            graph.addPass(std::string(name),
-                          {{inputs[0], Usage::eSampled}},
-                          [this](auto*, auto&)
-                          {
-                              ++m_Calls;
-                          });
-            return {};
+            auto added = graph.addPass(std::string(name),
+                                       {{inputs[0], Usage::eSampled}},
+                                       [this](VriCommandBuffer*, RenderGraph&) -> std::expected<void, Error>
+                                       {
+                                           ++m_Calls;
+                                           return {};
+                                       });
+            if (!added)
+            {
+                return std::unexpected(added.error());
+            }
+            return std::vector<RenderGraph::Resource> {};
         }
 
     private:
@@ -80,29 +107,29 @@ namespace
         int         observed        = 0;
         int         inactiveCreated = 0;
         PassCatalog catalog(device);
-        catalog.add(research::colorGainDefinition());
+        must(catalog.add(research::colorGainDefinition()));
         auto inactive   = research::colorGainDefinition();
         inactive.type   = "unused";
-        inactive.create = [&](Device&) -> std::unique_ptr<GraphPass>
+        inactive.create = [&](Device&) -> std::expected<std::unique_ptr<GraphPass>, Error>
         {
             ++inactiveCreated;
-            throw std::runtime_error("Unused pass initialized its GPU implementation");
+            return makeError("Unused pass initialized its GPU implementation");
         };
-        catalog.add(std::move(inactive));
+        must(catalog.add(std::move(inactive)));
         auto unavailable             = research::colorGainDefinition();
         unavailable.type             = "unsupported";
         unavailable.requiredFeatures = uint64_t(1) << 63;
-        catalog.add(std::move(unavailable));
+        must(catalog.add(std::move(unavailable)));
         PassDefinition observation;
         observation.type       = "observation";
         observation.inputs     = {{"source", PassResourceKind::eTexture, VriFormat_RGBA16_SFLOAT}};
         observation.sideEffect = true;
-        observation.create     = [&](Device&) -> std::unique_ptr<GraphPass>
+        observation.create     = [&](Device&) -> std::expected<std::unique_ptr<GraphPass>, Error>
         {
             ++created;
             return std::make_unique<ObservationPass>(observed);
         };
-        catalog.add(std::move(observation));
+        must(catalog.add(std::move(observation)));
         auto definition           = chain();
         definition.passes[0].type = "unused";
         definition.passes.push_back({"record", "observation", {}});
@@ -112,51 +139,32 @@ namespace
         definition.outputs = {"scene.hdr"};
         GraphBuild  state;
         RenderGraph graph(device);
-        const auto  source = graph.createTexture("source", colorTexture({8, 8}, VriFormat_RGBA16_SFLOAT));
-        graph.addPass("Source",
-                      {{source, Usage::eColorWrite}},
-                      [&](auto* cmd, auto& current)
-                      {
-                          const float color[4] {0.25f, 0.5f, 1, 1};
-                          beginColorPass(device, cmd, current.getTexture(source).view(), {8, 8}, color);
-                          device.core.CmdEndRendering(cmd);
-                      });
+        const auto  source = must(graph.createTexture("source", colorTexture({8, 8}, VriFormat_RGBA16_SFLOAT)));
+        must(graph.addPass("Source",
+                           {{source, Usage::eColorWrite}},
+                           [&](VriCommandBuffer* cmd, RenderGraph& current)
+                           {
+                               const float color[4] {0.25f, 0.5f, 1, 1};
+                               return clearPass(device, cmd, current.getTexture(source), {8, 8}, color);
+                           }));
         const std::array imports {GraphBinding {"scene.hdr", source}};
-        state = definition.build(graph, catalog, imports);
-        graph.compile();
+        state = must(definition.build(graph, catalog, imports));
+        must(graph.compile());
         require(created == 1 && inactiveCreated == 0 && state.passes.size() == 2,
                 "Definition constructed unused or unsupported GPU passes");
         require(graph.activePasses() == std::vector<std::string> {"Source", "boost", "record"},
                 "Declared side effect or its input producer was culled");
-        Frame frame(device);
-        graph.execute(frame.begin());
-        frame.submitAndWait();
-        require(observed == 1 && readback(device, graph.getTexture(state.passes[0].outputs[0])).rgba[0] == 0.5f,
+        const auto frame = must(Frame::create(device));
+        run(*frame, graph);
+        require(observed == 1 && must(readback(device, graph.getTexture(state.passes[0].outputs[0]))).rgba[0] == 0.5f,
                 "Side-effect input was not produced by its retained compute pass");
         // Reachability must not hide malformed file metadata or disable capability checks on live nodes.
         definition.passes[0].parameters["gaim"] = 1;
-        expectError(
-            [&]
-            {
-                RenderGraph      candidate(device);
-                const auto       input = candidate.importResource("input", graph.getTexture(source));
-                const std::array bindings {GraphBinding {"scene.hdr", input}};
-                definition.build(candidate, catalog, bindings);
-            },
-            "gaim");
+        expectError(buildCandidate(device, graph.getTexture(source), definition, catalog), "gaim");
         definition.passes[0].parameters.erase("gaim");
         definition.outputs = {"unavailable.color"};
-        expectError(
-            [&]
-            {
-                RenderGraph      candidate(device);
-                const auto       input = candidate.importResource("input", graph.getTexture(source));
-                const std::array bindings {GraphBinding {"scene.hdr", input}};
-                definition.build(candidate, catalog, bindings);
-            },
-            "VRI features");
-        graph.execute(frame.begin());
-        frame.submitAndWait();
+        expectError(buildCandidate(device, graph.getTexture(source), definition, catalog), "VRI features");
+        run(*frame, graph);
         require(observed == 2 && inactiveCreated == 0, "Failed replacement damaged the preceding live graph");
     }
 
@@ -165,57 +173,50 @@ namespace
         GraphBuild   state;
         RenderGraph  graph(device);
         const Extent extent {13, 9};
-        const auto   source = graph.createTexture("scene_hdr", colorTexture(extent, VriFormat_RGBA16_SFLOAT));
-        graph.addPass("Scene",
-                      {{source, Usage::eColorWrite}},
-                      [&](auto* cmd, auto& resources)
-                      {
-                          const float color[4] {0.25f, 0.5f, 4, 0.75f};
-                          beginColorPass(device, cmd, resources.getTexture(source).view(), extent, color);
-                          device.core.CmdEndRendering(cmd);
-                      });
+        const auto   source = must(graph.createTexture("scene_hdr", colorTexture(extent, VriFormat_RGBA16_SFLOAT)));
+        must(graph.addPass("Scene",
+                           {{source, Usage::eColorWrite}},
+                           [&](VriCommandBuffer* cmd, RenderGraph& resources)
+                           {
+                               const float color[4] {0.25f, 0.5f, 4, 0.75f};
+                               return clearPass(device, cmd, resources.getTexture(source), extent, color);
+                           }));
         RenderGraph::Resource output {};
         if (definition)
         {
             const std::array imports {GraphBinding {"scene.hdr", source}};
-            state  = definition->build(graph, catalog, imports);
+            state  = must(definition->build(graph, catalog, imports));
             output = state.outputs.front().resource;
         }
         else
         {
             const std::array firstInput {source};
-            auto             first = catalog.build(graph, "research.color_gain", "boost", firstInput, {{"gain", 2}});
+            auto first = must(catalog.build(graph, "research.color_gain", "boost", firstInput, {{"gain", 2}}));
             const std::array secondInput {first.outputs.front()};
-            auto second = catalog.build(graph, "research.color_gain", "final", secondInput, {{"gain", 0.25}});
+            auto second = must(catalog.build(graph, "research.color_gain", "final", secondInput, {{"gain", 0.25}}));
             output      = second.outputs.front();
             state.passes.push_back(std::move(first));
             state.passes.push_back(std::move(second));
-            graph.exportResource(output);
+            must(graph.exportResource(output));
         }
-        graph.compile();
+        must(graph.compile());
         require(graph.activePasses() == std::vector<std::string> {"Scene", "boost", "final"},
                 "Graph definition did not resolve dependency order into the existing graph");
-        require(graph.resourceInfo(output).active && graph.resourceInfo(output).exported,
-                "Output metadata lost compiled liveness");
-        Frame frame(device);
-        Image previous;
+        const auto outputInfo = must(graph.resourceInfo(output));
+        require(outputInfo.active && outputInfo.exported, "Output metadata lost compiled liveness");
+        const auto frame = must(Frame::create(device));
+        Image      previous;
         for (size_t i = 0; i < 3; ++i)
         {
             // BuiltPass moves must keep the captured parameter span valid, including subsequent live edits.
             auto& last = state.passes.back();
-            catalog.setParameters(last, {{"gain", i == 0 ? 0.5 : 0.25}});
+            must(catalog.setParameters(last, {{"gain", i == 0 ? 0.5 : 0.25}}));
             const auto* values = last.parameterValues.data();
-            expectError(
-                [&]
-                {
-                    catalog.setParameters(last, {{"gain", 9}});
-                },
-                "final");
+            expectError(catalog.setParameters(last, {{"gain", 9}}), "final");
             require(last.parameterValues.data() == values && last.parameterValues.front() == (i == 0 ? 0.5 : 0.25),
                     "Rejected parameter update changed values or invalidated callbacks");
-            graph.execute(frame.begin());
-            frame.submitAndWait();
-            auto             image = readback(device, graph.getTexture(output));
+            run(*frame, graph);
+            auto             image = must(readback(device, graph.getTexture(output)));
             const float      scale = i == 0 ? 2.0f : 1.0f;
             const std::array expected {0.125f * scale, 0.25f * scale, 2.0f * scale, 0.75f};
             for (size_t channel = 0; channel < image.rgba.size(); ++channel)
@@ -239,40 +240,38 @@ namespace
 
     Image renderTone(Device& device, const PassCatalog& catalog, bool definitionDriven)
     {
-        ToneMappingPass tone(device);
-        GraphBuild      build;
-        RenderGraph     graph(device);
-        const Extent    size {13, 9};
-        const auto      hdr = graph.createTexture("hdr", colorTexture(size, VriFormat_RGBA16_SFLOAT));
-        graph.addPass("Clear HDR",
-                      {{hdr, Usage::eColorWrite}},
-                      [&](auto* cmd, auto& current)
-                      {
-                          const float color[4] {0.25f, 0.5f, 4, 0.75f};
-                          beginColorPass(device, cmd, current.getTexture(hdr).view(), size, color);
-                          device.core.CmdEndRendering(cmd);
-                      });
+        const auto   tone = must(ToneMappingPass::create(device));
+        GraphBuild   build;
+        RenderGraph  graph(device);
+        const Extent size {13, 9};
+        const auto   hdr = must(graph.createTexture("hdr", colorTexture(size, VriFormat_RGBA16_SFLOAT)));
+        must(graph.addPass("Clear HDR",
+                           {{hdr, Usage::eColorWrite}},
+                           [&](VriCommandBuffer* cmd, RenderGraph& current)
+                           {
+                               const float color[4] {0.25f, 0.5f, 4, 0.75f};
+                               return clearPass(device, cmd, current.getTexture(hdr), size, color);
+                           }));
         RenderGraph::Resource       color;
         const std::array<double, 3> parameters {0, 0, 0};
         if (definitionDriven)
         {
-            const auto definition = GraphDefinition::parse(
-                R"({"format":"vultra.graph","version":1,"passes":[{"id":"tone","type":"vultra.tone_mapping","parameters":{}}],"edges":[{"from":"scene.hdr","to":"tone.hdr"}],"outputs":["tone.color"]})");
+            const auto       definition = must(GraphDefinition::parse(
+                R"({"format":"vultra.graph","version":1,"passes":[{"id":"tone","type":"vultra.tone_mapping","parameters":{}}],"edges":[{"from":"scene.hdr","to":"tone.hdr"}],"outputs":["tone.color"]})"));
             const std::array imports {GraphBinding {"scene.hdr", hdr}};
-            build = definition.build(graph, catalog, imports);
+            build = must(definition.build(graph, catalog, imports));
             color = build.outputs.front().resource;
         }
         else
         {
             const std::array inputs {hdr};
-            color = tone.addPasses(graph, "tone", inputs, parameters).front();
-            graph.exportResource(color);
+            color = must(tone->addPasses(graph, "tone", inputs, parameters)).front();
+            must(graph.exportResource(color));
         }
-        graph.compile();
-        Frame frame(device);
-        graph.execute(frame.begin());
-        frame.submitAndWait();
-        const auto result = readback(device, graph.getTexture(color));
+        must(graph.compile());
+        const auto frame = must(Frame::create(device));
+        run(*frame, graph);
+        const auto result = must(readback(device, graph.getTexture(color)));
         require(std::abs(result.rgba[0] - 0.6454f) < 0.005f && std::abs(result.rgba[1] - 0.8073f) < 0.005f &&
                     std::abs(result.rgba[2] - 0.9882f) < 0.005f && result.rgba[3] == 1,
                 "Catalog tone mapping lost the ACES fit, display transfer or opaque output");
@@ -282,186 +281,96 @@ namespace
     void invalidGraphs(Device& device, PassCatalog& catalog)
     {
         RenderGraph      graph(device);
-        const auto       source = graph.createTexture("input", colorTexture({4, 4}, VriFormat_RGBA16_SFLOAT));
+        const auto       source = must(graph.createTexture("input", colorTexture({4, 4}, VriFormat_RGBA16_SFLOAT)));
         const std::array imports {GraphBinding {"scene.hdr", source}};
         auto             invalid = chain();
         invalid.edges[0].from    = "final.color";
-        expectError(
-            [&]
-            {
-                invalid.build(graph, catalog, imports);
-            },
-            "cycle");
+        expectError(invalid.build(graph, catalog, imports), "cycle");
         invalid = chain();
         invalid.edges.pop_back();
-        expectError(
-            [&]
-            {
-                invalid.build(graph, catalog, imports);
-            },
-            "final.source");
+        expectError(invalid.build(graph, catalog, imports), "final.source");
         invalid = chain();
         invalid.edges.push_back(invalid.edges.front());
-        expectError(
-            [&]
-            {
-                invalid.build(graph, catalog, imports);
-            },
-            "boost.source");
+        expectError(invalid.build(graph, catalog, imports), "boost.source");
         invalid               = chain();
         invalid.edges[0].from = "scene.missing";
-        expectError(
-            [&]
-            {
-                invalid.build(graph, catalog, imports);
-            },
-            "scene.missing");
+        expectError(invalid.build(graph, catalog, imports), "scene.missing");
         invalid         = chain();
         invalid.outputs = {"boost.missing"};
-        expectError(
-            [&]
-            {
-                invalid.build(graph, catalog, imports);
-            },
-            "boost.missing");
+        expectError(invalid.build(graph, catalog, imports), "boost.missing");
         invalid              = chain();
         invalid.passes[1].id = "final";
-        expectError(
-            [&]
-            {
-                invalid.build(graph, catalog, imports);
-            },
-            "duplicate");
+        expectError(invalid.build(graph, catalog, imports), "duplicate");
         const std::array inputs {source};
-        expectError(
-            [&]
-            {
-                catalog.build(graph, "research.color_gain", "gain", inputs, {{"gaim", 1}});
-            },
-            "gaim");
-        expectError(
-            [&]
-            {
-                catalog.build(graph, "research.color_gain", "gain", inputs, {{"gain", 9}});
-            },
-            "gain");
-        expectError(
-            [&]
-            {
-                catalog.build(graph,
-                              "research.color_gain",
-                              "gain",
-                              inputs,
-                              {{"gain", std::numeric_limits<double>::quiet_NaN()}});
-            },
-            "gain");
-        const auto       wrongFormat = graph.createTexture("unorm", colorTexture({4, 4}));
+        expectError(catalog.build(graph, "research.color_gain", "gain", inputs, {{"gaim", 1}}), "gaim");
+        expectError(catalog.build(graph, "research.color_gain", "gain", inputs, {{"gain", 9}}), "gain");
+        expectError(catalog.build(graph,
+                                  "research.color_gain",
+                                  "gain",
+                                  inputs,
+                                  {{"gain", std::numeric_limits<double>::quiet_NaN()}}),
+                    "gain");
+        const auto       wrongFormat = must(graph.createTexture("unorm", colorTexture({4, 4})));
         const std::array unormInput {wrongFormat};
-        expectError(
-            [&]
-            {
-                catalog.build(graph, "research.color_gain", "gain", unormInput);
-            },
-            "gain.source");
+        expectError(catalog.build(graph, "research.color_gain", "gain", unormInput), "gain.source");
         const auto buffer =
-            graph.createBuffer("buffer", {64, 0, VriBufferUsage_StorageBuffer, VriMemoryLocation_Device});
+            must(graph.createBuffer("buffer", {64, 0, VriBufferUsage_StorageBuffer, VriMemoryLocation_Device}));
         const std::array bufferInput {buffer};
-        expectError(
-            [&]
-            {
-                catalog.build(graph, "research.color_gain", "gain", bufferInput);
-            },
-            "gain.source");
+        expectError(catalog.build(graph, "research.color_gain", "gain", bufferInput), "gain.source");
         auto matchingInputs = research::colorGainDefinition();
         matchingInputs.type = "matching_inputs";
         matchingInputs.inputs.push_back({"reference", PassResourceKind::eTexture, VriFormat_RGBA16_SFLOAT, 0});
-        catalog.add(std::move(matchingInputs));
-        const auto differentSize = graph.createTexture("different_size", colorTexture({8, 4}, VriFormat_RGBA16_SFLOAT));
+        must(catalog.add(std::move(matchingInputs)));
+        const auto differentSize =
+            must(graph.createTexture("different_size", colorTexture({8, 4}, VriFormat_RGBA16_SFLOAT)));
         const std::array mismatchedInputs {source, differentSize};
-        expectError(
-            [&]
-            {
-                catalog.build(graph, "matching_inputs", "extent", mismatchedInputs);
-            },
-            "extent.reference");
+        expectError(catalog.build(graph, "matching_inputs", "extent", mismatchedInputs), "extent.reference");
         RenderGraph foreignGraph(device);
-        const auto foreignSource = foreignGraph.createTexture("foreign", colorTexture({4, 4}, VriFormat_RGBA16_SFLOAT));
+        const auto  foreignSource =
+            must(foreignGraph.createTexture("foreign", colorTexture({4, 4}, VriFormat_RGBA16_SFLOAT)));
         const std::array foreignInput {foreignSource};
-        expectError(
-            [&]
-            {
-                catalog.build(graph, "research.color_gain", "gain", foreignInput);
-            },
-            "another graph");
+        expectError(catalog.build(graph, "research.color_gain", "gain", foreignInput), "another graph");
         auto unavailable             = research::colorGainDefinition();
         unavailable.type             = "unavailable";
         unavailable.requiredFeatures = uint64_t(1) << 63;
-        catalog.add(std::move(unavailable));
+        must(catalog.add(std::move(unavailable)));
+        expectError(catalog.build(graph, "unavailable", "unsupported", inputs), "VRI features");
+        expectError(catalog.add(research::colorGainDefinition()), "Duplicate pass type");
+        expectError(GraphDefinition::parse(R"({"format":"vultra.graph","version":2})"), "version 1");
+        expectError(GraphDefinition::parse(R"({"format":"vultra.graph","version":1,"passes":false})"),
+                    "Invalid graph definition");
         expectError(
-            [&]
-            {
-                catalog.build(graph, "unavailable", "unsupported", inputs);
-            },
-            "VRI features");
-        expectError(
-            [&]
-            {
-                catalog.add(research::colorGainDefinition());
-            },
-            "Duplicate pass type");
-        expectError(
-            [&]
-            {
-                GraphDefinition::parse(R"({"format":"vultra.graph","version":2})");
-            },
-            "version 1");
-        expectError(
-            [&]
-            {
-                GraphDefinition::parse(R"({"format":"vultra.graph","version":1,"passes":false})");
-            },
-            "Invalid graph definition");
-        expectError(
-            [&]
-            {
-                GraphDefinition::parse(R"({"format":"vultra.graph","version":1,"passes":{},"edges":[],"outputs":[]})");
-            },
+            GraphDefinition::parse(R"({"format":"vultra.graph","version":1,"passes":{},"edges":[],"outputs":[]})"),
             "arrays");
         require(graph.activePasses().empty(), "Rejected graphs recorded or scheduled GPU work");
     }
 } // namespace
 
 int main()
-try
 {
-    Device device;
-    pruneBeforeConstruction(device);
-    PassCatalog catalog(device);
+    const auto device = must(Device::create());
+    pruneBeforeConstruction(*device);
+    PassCatalog catalog(*device);
     require(catalog.definitions().empty(), "A graph catalog must not implicitly install a renderer");
-    catalog.add(research::colorGainDefinition());
+    must(catalog.add(research::colorGainDefinition()));
     require(catalog.definitions().size() == 1 &&
-                catalog.definition("research.color_gain").type == "research.color_gain",
+                must(catalog.definition("research.color_gain"))->type == "research.color_gain",
             "Installing a project pass also installed unrelated renderer definitions");
-    catalog.add(toneMappingDefinition());
-    invalidGraphs(device, catalog);
+    must(catalog.add(toneMappingDefinition()));
+    invalidGraphs(*device, catalog);
     const auto directory =
         std::filesystem::path("build/.tmp") /
         ("graph-definition-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::filesystem::create_directories(directory);
     const auto original = chain();
-    original.save(directory / "chain.vgraph");
-    const auto loaded = GraphDefinition::load(directory / "chain.vgraph");
+    must(original.save(directory / "chain.vgraph"));
+    const auto loaded = must(GraphDefinition::load(directory / "chain.vgraph"));
     require(loaded.serialize() == original.serialize(), "Graph definition save/load is not deterministic");
-    const auto direct     = render(device, catalog, nullptr);
-    const auto dataDriven = render(device, catalog, &loaded);
+    const auto direct     = render(*device, catalog, nullptr);
+    const auto dataDriven = render(*device, catalog, &loaded);
     require(direct.rgba == dataDriven.rgba, "C++ and definition graph GPU readbacks differ");
-    require(renderTone(device, catalog, false).rgba == renderTone(device, catalog, true).rgba,
+    require(renderTone(*device, catalog, false).rgba == renderTone(*device, catalog, true).rgba,
             "Direct built-in tone mapping and the catalog definition differ");
     std::cout << "C++ and version-1 definition outputs match with live parameter updates across completed frames\n";
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }

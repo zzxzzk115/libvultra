@@ -3,21 +3,21 @@
 
 namespace vultra
 {
-    Swapchain::Swapchain(Device& device, VriWindowHandle window, Extent size, VriFormat format) :
-        m_Device(device),
-        m_Window(window),
-        m_NativeSize(size),
-        m_Format(format)
+    namespace
     {
-        if (format != VriFormat_BGRA8_SRGB && format != VriFormat_BGRA8_UNORM && format != VriFormat_RGBA8_SRGB &&
-            format != VriFormat_RGBA8_UNORM)
+        std::expected<VriFormat, Error> supportedFormat(Device& device, VriFormat format)
         {
-            throw std::invalid_argument("Swapchain requires an RGBA8 or BGRA8 UNORM/sRGB format");
-        }
-        if (!(device.core.GetFormatSupport(device.handle, m_Format) & VriFormatSupport_ColorAttachment))
-        {
+            if (format != VriFormat_BGRA8_SRGB && format != VriFormat_BGRA8_UNORM && format != VriFormat_RGBA8_SRGB &&
+                format != VriFormat_RGBA8_UNORM)
+            {
+                return makeError("Swapchain requires an RGBA8 or BGRA8 UNORM/sRGB format");
+            }
+            if (device.core.GetFormatSupport(device.handle, format) & VriFormatSupport_ColorAttachment)
+            {
+                return format;
+            }
             VriFormat alternate = VriFormat_Unknown;
-            switch (m_Format)
+            switch (format)
             {
                 case VriFormat_BGRA8_SRGB:
                     alternate = VriFormat_RGBA8_SRGB;
@@ -36,26 +36,67 @@ namespace vultra
             }
             if (!(device.core.GetFormatSupport(device.handle, alternate) & VriFormatSupport_ColorAttachment))
             {
-                throw std::runtime_error("No RGBA/BGRA swapchain target supports the requested color encoding");
+                return makeError("No RGBA/BGRA swapchain target supports the requested color encoding");
             }
             Logger::core().info("Swapchain format {} is unsupported; using {} with the same color encoding",
-                                uint32_t(m_Format),
+                                uint32_t(format),
                                 uint32_t(alternate));
-            m_Format = alternate;
+            return alternate;
         }
-        create();
+    } // namespace
+
+    Swapchain::Swapchain(Device&                 device,
+                         VriWindowHandle         window,
+                         Extent                  size,
+                         VriFormat               format,
+                         std::function<Extent()> windowSize) :
+        m_Device(device),
+        m_Window(window),
+        m_NativeSize(size),
+        m_WindowSize(std::move(windowSize)),
+        m_Format(format)
+    {
     }
 
-    void Swapchain::resize(Extent size)
+    std::expected<std::unique_ptr<Swapchain>, Error>
+    Swapchain::create(Device& device, VriWindowHandle window, Extent size, VriFormat format)
+    {
+        return create(device, window, size, format, {});
+    }
+
+    std::expected<std::unique_ptr<Swapchain>, Error> Swapchain::create(Device&                 device,
+                                                                       VriWindowHandle         window,
+                                                                       Extent                  size,
+                                                                       VriFormat               format,
+                                                                       std::function<Extent()> windowSize)
+    {
+        const auto supported = supportedFormat(device, format);
+        if (!supported)
+        {
+            return std::unexpected(supported.error());
+        }
+        std::unique_ptr<Swapchain> swapchain(new Swapchain(device, window, size, *supported, std::move(windowSize)));
+        if (auto created = swapchain->createHandle(); !created)
+        {
+            return std::unexpected(created.error());
+        }
+        return swapchain;
+    }
+
+    std::expected<void, Error> Swapchain::resize(Extent size)
     {
         m_NativeSize = size;
         if (!m_WindowSize && !size.empty())
         {
-            prepare(size);
+            if (auto prepared = prepare(size); !prepared)
+            {
+                return std::unexpected(prepared.error());
+            }
         }
+        return {};
     }
 
-    void Swapchain::create()
+    std::expected<void, Error> Swapchain::createHandle()
     {
         m_Requested = (m_WindowSize ? m_WindowSize() : m_NativeSize);
         VriSwapChainDesc desc {};
@@ -66,73 +107,111 @@ namespace vultra
         desc.height      = m_Requested.height;
         desc.textureNum  = 2;
         desc.presentMode = m_PresentMode;
-        check(m_Device.swap.CreateSwapChain(m_Device.handle, &desc, &m_Handle), "Create swapchain");
-        try
+        if (auto created = check(m_Device.swap.CreateSwapChain(m_Device.handle, &desc, &m_Handle), "Create swapchain");
+            !created)
         {
-            refresh();
+            m_Handle = nullptr;
+            return created;
         }
-        catch (...)
+        if (auto refreshed = refresh(); !refreshed)
+        {
+            destroyHandle();
+            return refreshed;
+        }
+        return {};
+    }
+
+    void Swapchain::destroyHandle()
+    {
+        // Views must be destroyed before the swapchain destroys its images.
+        m_Images.clear();
+        if (m_Handle)
         {
             m_Device.swap.DestroySwapChain(m_Handle);
             m_Handle = nullptr;
-            throw;
         }
     }
 
     Swapchain::~Swapchain()
     {
         m_Device.waitIdleForDestruction();
-        m_Images.clear();
-        m_Device.swap.DestroySwapChain(m_Handle);
+        destroyHandle();
     }
 
-    void Swapchain::setVsync(bool enabled)
+    std::expected<void, Error> Swapchain::setVsync(bool enabled)
     {
         const auto mode = enabled ? VriPresentMode_Fifo : VriPresentMode_Immediate;
         if (m_PresentMode == mode || (m_WindowSize ? m_WindowSize() : m_NativeSize).empty())
         {
-            return;
+            return {};
         }
-        m_Device.waitIdle();
+        if (auto idle = m_Device.waitIdle(); !idle)
+        {
+            return idle;
+        }
         const auto previous = m_PresentMode;
-        m_Images.clear();
-        m_Device.swap.DestroySwapChain(m_Handle);
-        m_Handle      = nullptr;
+        destroyHandle();
         m_PresentMode = mode;
-        try
+        auto created  = createHandle();
+        if (!created)
         {
-            create();
-            m_Rebuild = false;
-        }
-        catch (...)
-        {
+            // Keep a usable swapchain in the previous mode and still report why the switch failed.
             m_PresentMode = previous;
-            create();
-            throw;
+            if (auto restored = createHandle(); !restored)
+            {
+                return restored;
+            }
+            return created;
         }
+        m_Rebuild = false;
+        return {};
     }
 
-    void Swapchain::refresh()
+    std::expected<void, Error> Swapchain::refresh()
     {
         // Window resize notifications can lag behind the surface's actual image extent.
-        check(m_Device.swap.GetSwapChainExtent(m_Handle, &m_Extent.width, &m_Extent.height), "Get swapchain extent");
+        if (auto queried = check(m_Device.swap.GetSwapChainExtent(m_Handle, &m_Extent.width, &m_Extent.height),
+                                 "Get swapchain extent");
+            !queried)
+        {
+            return queried;
+        }
         uint32_t count = 0;
-        check(m_Device.swap.GetSwapChainTextures(m_Handle, nullptr, &count), "Count swapchain images");
+        if (auto counted =
+                check(m_Device.swap.GetSwapChainTextures(m_Handle, nullptr, &count), "Count swapchain images");
+            !counted)
+        {
+            return counted;
+        }
         std::vector<VriTexture*> images(count);
-        check(m_Device.swap.GetSwapChainTextures(m_Handle, images.data(), &count), "Get swapchain images");
+        if (auto listed =
+                check(m_Device.swap.GetSwapChainTextures(m_Handle, images.data(), &count), "Get swapchain images");
+            !listed)
+        {
+            return listed;
+        }
         images.resize(count);
         m_Images.clear();
         for (auto* image : images)
         {
-            m_Images.push_back(std::make_unique<Texture>(m_Device, colorTexture(m_Extent, format()), image));
+            auto texture = Texture::create(m_Device, colorTexture(m_Extent, format()), image);
+            if (!texture)
+            {
+                return std::unexpected(texture.error());
+            }
+            m_Images.push_back(std::move(*texture));
         }
+        return {};
     }
 
-    bool Swapchain::prepare(Extent size)
+    std::expected<bool, Error> Swapchain::prepare(Extent size)
     {
         if (m_Rebuild || size != m_Requested)
         {
-            m_Device.waitIdle();
+            if (auto idle = m_Device.waitIdle(); !idle)
+            {
+                return std::unexpected(idle.error());
+            }
             m_Images.clear(); // views must be destroyed before Resize destroys the images
             const auto result = m_Device.swap.Resize(m_Handle, size.width, size.height);
             m_Rebuild         = result == VriResult_OutOfDate;
@@ -140,21 +219,32 @@ namespace vultra
             {
                 return false;
             }
-            check(result, "Resize swapchain");
+            if (auto resized = check(result, "Resize swapchain"); !resized)
+            {
+                return std::unexpected(resized.error());
+            }
             m_Requested = size;
-            refresh();
+            if (auto refreshed = refresh(); !refreshed)
+            {
+                return std::unexpected(refreshed.error());
+            }
         }
         return true;
     }
 
-    Texture* Swapchain::acquire()
+    std::expected<Texture*, Error> Swapchain::acquire()
     {
         const auto size = (m_WindowSize ? m_WindowSize() : m_NativeSize);
         if (size.empty())
         {
             return nullptr;
         }
-        if (!prepare(size))
+        const auto prepared = prepare(size);
+        if (!prepared)
+        {
+            return std::unexpected(prepared.error());
+        }
+        if (!*prepared)
         {
             return nullptr;
         }
@@ -165,26 +255,35 @@ namespace vultra
             m_Rebuild = true;
             return nullptr;
         }
-        check(result, "Acquire swapchain image");
+        if (auto acquired = check(result, "Acquire swapchain image"); !acquired)
+        {
+            return std::unexpected(acquired.error());
+        }
+        if (index >= m_Images.size())
+        {
+            return makeError("Acquire swapchain image: index {} is outside the {} images", index, m_Images.size());
+        }
         if (m_Device.core.GetDeviceDesc(m_Device.handle)->graphicsAPI == VriGraphicsAPI_WebGPU)
         {
             // VRI reuses a texture handle for successive browser canvas images. Its views do not persist.
-            auto* image     = m_Images.at(index)->handle;
-            m_Images[index] = std::make_unique<Texture>(m_Device, colorTexture(m_Extent, format()), image);
+            auto texture = Texture::create(m_Device, colorTexture(m_Extent, format()), m_Images[index].handle);
+            if (!texture)
+            {
+                return std::unexpected(texture.error());
+            }
+            m_Images[index] = std::move(*texture);
         }
-        return m_Images.at(index).get();
+        return &m_Images[index];
     }
 
-    void Swapchain::present()
+    std::expected<void, Error> Swapchain::present()
     {
         const auto result = m_Device.swap.Present(m_Handle, nullptr, 0);
         if (result == VriResult_OutOfDate)
         {
             m_Rebuild = true;
+            return {};
         }
-        else
-        {
-            check(result, "Present");
-        }
+        return check(result, "Present");
     }
 } // namespace vultra

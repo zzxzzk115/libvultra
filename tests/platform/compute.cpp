@@ -1,15 +1,17 @@
+#include "../support/check.hpp"
+
 #include <vultra/assets/asset_source.hpp>
 #include <vultra/gpu/image_readback.hpp>
 
 #include <array>
 #include <cmath>
 #include <iostream>
-#include <memory>
-#include <stdexcept>
+#include <optional>
 
 namespace
 {
     using namespace vultra;
+    using support::must;
 
     struct PatternResources
     {
@@ -51,25 +53,25 @@ void renderComputeProbe(vultra::Device& device, vultra::AssetSource& assets, con
     const bool       webgpu       = capabilities.graphicsAPI == VriGraphicsAPI_WebGPU;
     auto             outputDesc   = colorTexture(size);
     outputDesc.usage |= VriTextureUsage_TransferDst;
-    Texture                      output(device, outputDesc);
-    std::unique_ptr<Buffer>      values;
+    auto                         output = must(Texture::create(device, outputDesc));
+    std::optional<Buffer>        values;
     PatternResources             resources {device};
-    Frame                        frame(device);
+    const auto                   frame = must(Frame::create(device));
     VriPipelineLayoutDesc        layout {};
     const VriDescriptorRangeDesc range {0, 1, VriDescriptorType_StorageBuffer, VriShaderStage_Compute};
     const VriDescriptorSetDesc   set {0, &range, 1};
     if (compute)
     {
-        values = std::make_unique<Buffer>(device,
-                                          VriBufferDesc {size.width * size.height * 4,
-                                                         4,
-                                                         VriBufferUsage_StorageBuffer | VriBufferUsage_TransferSrc,
-                                                         VriMemoryLocation_Device});
+        values = must(Buffer::create(device,
+                                     VriBufferDesc {size.width * size.height * 4,
+                                                    4,
+                                                    VriBufferUsage_StorageBuffer | VriBufferUsage_TransferSrc,
+                                                    VriMemoryLocation_Device}));
         layout.descriptorSets   = &set;
         layout.descriptorSetNum = 1;
         layout.shaderStages     = VriShaderStage_Compute;
     }
-    check(device.core.CreatePipelineLayout(device.handle, &layout, &resources.layout), "Create pattern layout");
+    must(check(device.core.CreatePipelineLayout(device.handle, &layout, &resources.layout), "Create pattern layout"));
     if (compute)
     {
         const VriBufferViewDesc view {values->handle,
@@ -77,17 +79,17 @@ void renderComputeProbe(vultra::Device& device, vultra::AssetSource& assets, con
                                       VriFormat_Unknown,
                                       0,
                                       values->desc.size};
-        check(device.core.CreateBufferView(device.handle, &view, &resources.view), "Create compute output view");
+        must(check(device.core.CreateBufferView(device.handle, &view, &resources.view), "Create compute output view"));
         VriDescriptorPoolDesc pool {};
         pool.descriptorSetMaxNum = 1;
         pool.storageBufferMaxNum = 1;
-        check(device.core.CreateDescriptorPool(device.handle, &pool, &resources.pool), "Create compute pool");
-        check(device.core.AllocateDescriptorSets(resources.pool, resources.layout, 0, &resources.set, 1),
-              "Allocate compute set");
+        must(check(device.core.CreateDescriptorPool(device.handle, &pool, &resources.pool), "Create compute pool"));
+        must(check(device.core.AllocateDescriptorSets(resources.pool, resources.layout, 0, &resources.set, 1),
+                   "Allocate compute set"));
         const VriDescriptor*               descriptor = resources.view;
         const VriDescriptorRangeUpdateDesc update {&descriptor, 1, 0};
         device.core.UpdateDescriptorRanges(resources.set, 0, 1, &update);
-        auto code = assets.read(webgpu ? "computeMain.wgsl" : "computeMain.spv");
+        auto code = must(assets.read(webgpu ? "computeMain.wgsl" : "computeMain.spv"));
         if (webgpu)
         {
             code.push_back(std::byte {0});
@@ -96,13 +98,13 @@ void renderComputeProbe(vultra::Device& device, vultra::AssetSource& assets, con
         VriComputePipelineDesc pipeline {};
         pipeline.pipelineLayout = resources.layout;
         pipeline.shader         = shader;
-        check(device.core.CreateComputePipeline(device.handle, &pipeline, &resources.pipeline),
-              "Create compute pattern pipeline");
+        must(check(device.core.CreateComputePipeline(device.handle, &pipeline, &resources.pipeline),
+                   "Create compute pattern pipeline"));
     }
     else
     {
-        auto vertex   = assets.read(webgpu ? "fallbackVertex.wgsl" : "fallbackVertex.spv");
-        auto fragment = assets.read(webgpu ? "fallbackFragment.wgsl" : "fallbackFragment.spv");
+        auto vertex   = must(assets.read(webgpu ? "fallbackVertex.wgsl" : "fallbackVertex.spv"));
+        auto fragment = must(assets.read(webgpu ? "fallbackFragment.wgsl" : "fallbackFragment.spv"));
         if (webgpu)
         {
             vertex.push_back(std::byte {0});
@@ -124,10 +126,10 @@ void renderComputeProbe(vultra::Device& device, vultra::AssetSource& assets, con
         pipeline.multisample.sampleNum   = 1;
         pipeline.outputMerger.colors     = &color;
         pipeline.outputMerger.colorNum   = 1;
-        check(device.core.CreateGraphicsPipeline(device.handle, &pipeline, &resources.pipeline),
-              "Create raster pattern fallback");
+        must(check(device.core.CreateGraphicsPipeline(device.handle, &pipeline, &resources.pipeline),
+                   "Create raster pattern fallback"));
     }
-    auto* commands = frame.begin();
+    auto* commands = must(frame->begin());
     device.core.CmdSetPipelineLayout(commands, resources.layout);
     if (compute)
     {
@@ -151,7 +153,7 @@ void renderComputeProbe(vultra::Device& device, vultra::AssetSource& assets, con
             commands,
             {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
         constexpr std::array<float, 4> clear {};
-        beginColorPass(device, commands, output.view(), size, clear.data());
+        beginColorPass(device, commands, must(output.view()), size, clear.data());
         const VriViewport viewport {0, 0, float(size.width), float(size.height), 0, 1};
         const VriRect     scissor {0, 0, size.width, size.height};
         device.core.CmdSetViewports(commands, &viewport, 1);
@@ -161,20 +163,20 @@ void renderComputeProbe(vultra::Device& device, vultra::AssetSource& assets, con
         device.core.CmdDraw(commands, &draw);
         device.core.CmdEndRendering(commands);
     }
-    frame.submitAndWait();
-    const auto image = readback(device, output);
-    savePng(image, capture);
+    must(frame->submitAndWait());
+    const auto image = must(readback(device, output));
+    must(savePng(image, capture));
     for (uint32_t y = 0; y < size.height; ++y)
     {
         for (uint32_t x = 0; x < size.width; ++x)
         {
             const std::array<uint32_t, 4> expected {x * 4, y * 4, (x ^ y) * 4, 255};
-            const auto                    pixel = imagePixel(image, x, y);
+            const auto                    pixel = must(imagePixel(image, x, y));
             for (size_t channel = 0; channel < 4; ++channel)
             {
                 if (std::abs(pixel[channel] - float(expected[channel]) / 255) > 0.00001f)
                 {
-                    throw std::runtime_error("Compute/raster pattern differs from its exact CPU reference");
+                    support::fail("Compute/raster pattern differs from its exact CPU reference");
                 }
             }
         }

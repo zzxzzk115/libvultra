@@ -5,13 +5,14 @@
 
 namespace vultra
 {
-    uint64_t availablePhysicalMemory()
+    std::expected<uint64_t, Error> availablePhysicalMemory()
     {
         MEMORYSTATUSEX status {};
         status.dwLength = sizeof(status);
         if (!GlobalMemoryStatusEx(&status))
         {
-            throw std::system_error(int(GetLastError()), std::system_category(), "Query available physical memory");
+            return makeError("Query available physical memory: {}",
+                             std::error_code(int(GetLastError()), std::system_category()).message());
         }
         return status.ullAvailPhys;
     }

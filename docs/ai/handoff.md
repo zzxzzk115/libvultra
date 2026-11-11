@@ -46,6 +46,12 @@ Added:
   compile instead of per C++ build mode.
 - `LightBuffer`: the frame's lights as one storage buffer (`scene.lights`), read by `ForwardPath`.
 - Import caches made through an `AssetSource` name files relative to its root and survive moving it.
+- Errors as values: every fallible operation returns `std::expected<T, vultra::Error>`, fallible types are made by
+  static `create()`, app hooks and RenderGraph pass callbacks return `std::expected<void, Error>`, and
+  unreachable states call `vultra::panic()`. Remaining `catch` blocks only convert third-party throws
+  (argparse, nlohmann_json, spdlog, `std::filesystem` via FileWatch) where Vultra calls them. On macOS the
+  OpenXR loader's hidden `std::exception`/`std::logic_error` typeinfos made base-class catches fail, which is why
+  catches name the exact thrown type.
 
 ## VRI
 

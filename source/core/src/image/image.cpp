@@ -3,16 +3,15 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
-#include <stdexcept>
 
 namespace vultra
 {
-    void validateImage(const Image& image)
+    std::expected<void, Error> validateImage(const Image& image)
     {
         if (image.size.empty() || image.size.width > uint32_t(INT_MAX / 4) || image.size.height > uint32_t(INT_MAX) ||
             uint64_t(image.size.width) * image.size.height * 4 != image.rgba.size())
         {
-            throw std::invalid_argument("Invalid image dimensions or RGBA storage");
+            return makeError("Invalid image dimensions or RGBA storage");
         }
         if (!std::all_of(image.rgba.begin(),
                          image.rgba.end(),
@@ -21,34 +20,42 @@ namespace vultra
                              return std::isfinite(v);
                          }))
         {
-            throw std::invalid_argument("Image contains NaN or infinity");
+            return makeError("Image contains NaN or infinity");
         }
+        return {};
     }
 
-    void validateImageView(const ImageView& view)
+    std::expected<void, Error> validateImageView(const ImageView& view)
     {
         if (view.channel > ImageChannel::eLuminance || !std::isfinite(view.minimum) || !std::isfinite(view.maximum) ||
             view.maximum <= view.minimum || !std::isfinite(view.maximum - view.minimum))
         {
-            throw std::invalid_argument("Image view requires a valid channel and finite increasing range");
+            return makeError("Image view requires a valid channel and finite increasing range");
         }
+        return {};
     }
 
-    std::array<float, 4> imagePixel(const Image& image, uint32_t x, uint32_t y)
+    std::expected<std::array<float, 4>, Error> imagePixel(const Image& image, uint32_t x, uint32_t y)
     {
         if (x >= image.size.width || y >= image.size.height ||
             image.rgba.size() != size_t(image.size.width) * image.size.height * 4)
         {
-            throw std::invalid_argument("Pixel probe is outside the image");
+            return makeError("Pixel probe is outside the image");
         }
         const auto offset = (size_t(y) * image.size.width + x) * 4;
-        return {image.rgba[offset], image.rgba[offset + 1], image.rgba[offset + 2], image.rgba[offset + 3]};
+        return std::array {image.rgba[offset], image.rgba[offset + 1], image.rgba[offset + 2], image.rgba[offset + 3]};
     }
 
-    Image mapImage(const Image& image, const ImageView& view)
+    std::expected<Image, Error> mapImage(const Image& image, const ImageView& view)
     {
-        validateImage(image);
-        validateImageView(view);
+        if (auto result = validateImage(image); !result)
+        {
+            return std::unexpected(result.error());
+        }
+        if (auto result = validateImageView(view); !result)
+        {
+            return std::unexpected(result.error());
+        }
         Image result {image.size, std::vector<float>(image.rgba.size())};
         for (size_t i = 0; i < image.rgba.size(); i += 4)
         {

@@ -4,11 +4,10 @@
 
 #include <cmath>
 #include <cstddef>
-#include <stdexcept>
 
 namespace vultra
 {
-    void validateRigidPose(const glm::mat4& pose)
+    std::expected<void, Error> validateRigidPose(const glm::mat4& pose)
     {
         for (size_t column = 0; column < 4; ++column)
         {
@@ -16,7 +15,7 @@ namespace vultra
             {
                 if (!std::isfinite(pose[column][row]))
                 {
-                    throw std::invalid_argument("Rigid pose contains a non-finite element");
+                    return makeError("Rigid pose contains a non-finite element");
                 }
             }
         }
@@ -28,7 +27,7 @@ namespace vultra
             {
                 if (std::abs(identity[column][row] - float(column == row)) > 1e-4f)
                 {
-                    throw std::invalid_argument("Rigid pose contains scale or shear");
+                    return makeError("Rigid pose contains scale or shear");
                 }
             }
         }
@@ -36,7 +35,8 @@ namespace vultra
             std::abs(pose[0][3]) + std::abs(pose[1][3]) + std::abs(pose[2][3]) > 1e-5f ||
             std::abs(pose[3][3] - 1) > 1e-5f)
         {
-            throw std::invalid_argument("Rigid pose must be affine with a proper rotation");
+            return makeError("Rigid pose must be affine with a proper rotation");
         }
+        return {};
     }
 } // namespace vultra

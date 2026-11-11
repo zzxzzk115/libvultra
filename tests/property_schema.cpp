@@ -1,38 +1,19 @@
+#include "support/check.hpp"
+
 #include <vultra/core/base/property.hpp>
 
 #include <nlohmann/json.hpp>
 
 #include <iostream>
 #include <limits>
-#include <stdexcept>
 #include <string>
 
 namespace
 {
     using namespace vultra;
     using Json = nlohmann::json;
-
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
-
-    template<class Callback>
-    void reject(Callback&& callback)
-    {
-        try
-        {
-            callback();
-        }
-        catch (const std::invalid_argument&)
-        {
-            return;
-        }
-        throw std::runtime_error("Invalid property schema or value was accepted");
-    }
+    using support::must;
+    using support::require;
 
     PropertySchema speedSchema()
     {
@@ -52,7 +33,7 @@ namespace
     void ownedMetadata()
     {
         auto original = speedSchema();
-        auto decoded  = parsePropertySchema(serializePropertySchema(original));
+        auto decoded  = must(parsePropertySchema(must(serializePropertySchema(original))));
         original.name = "discarded";
         original.label.clear();
         require(decoded.name == "speed" && decoded.label == "Speed \xe2\x86\x92" &&
@@ -60,23 +41,16 @@ namespace
                 "Runtime metadata retained borrowed strings or queried native field accessors");
         auto first  = decoded.defaultValue;
         auto second = decoded.defaultValue;
-        first       = deserializeProperty(decoded, "2.5");
+        first       = must(deserializeProperty(decoded, "2.5"));
         require(first == PropertyValue(2.5f) && second == PropertyValue(1.5f) &&
                     decoded.defaultValue == PropertyValue(1.5f),
                 "Independent field values share mutable storage or overwrite declaration defaults");
-        require(serializePropertySchema(decoded) == serializePropertySchema(speedSchema()),
+        require(must(serializePropertySchema(decoded)) == must(serializePropertySchema(speedSchema())),
                 "Schema round trip changed UTF-8 or Inspector hints");
-        decoded.validate(15.0f);
-        reject(
-            [&]
-            {
-                decoded.validate(true);
-            });
-        reject(
-            [&]
-            {
-                decoded.validate(std::numeric_limits<float>::infinity());
-            });
+        must(decoded.validate(15.0f));
+        support::rejects(decoded.validate(true), "Invalid property schema or value was accepted");
+        support::rejects(decoded.validate(std::numeric_limits<float>::infinity()),
+                         "Invalid property schema or value was accepted");
     }
 
     void collectionsAndReferences()
@@ -87,105 +61,74 @@ namespace
         schema.enumValues   = {2, 7};
         schema.choices      = {{"First", 2}, {"Second", 7}};
         schema.defaultValue = PropertyArray {{PropertyEnum {2}, PropertyEnum {7}}};
-        auto decoded        = parsePropertySchema(serializePropertySchema(schema));
+        auto decoded        = must(parsePropertySchema(must(serializePropertySchema(schema))));
         schema.choices.clear();
         schema.enumValues.clear();
         schema.defaultValue = PropertyArray {};
         require(decoded.choices[1].label == "Second" && decoded.enumValues[1] == 7 &&
                     std::get<PropertyArray>(decoded.defaultValue).values.size() == 2,
                 "Schema collections/defaults were borrowed or flattened");
-        decoded.validate(deserializeProperty(decoded, "[7,2,7]"));
-        reject(
-            [&]
-            {
-                deserializeProperty(decoded, "[2,99]");
-            });
+        must(decoded.validate(must(deserializeProperty(decoded, "[7,2,7]"))));
+        support::rejects(deserializeProperty(decoded, "[2,99]"), "Invalid property schema or value was accepted");
         schema                   = speedSchema();
         schema.kind              = PropertyKind::eReference;
         schema.referenceType     = "Node3D";
         schema.referenceCategory = "simulation_body";
         schema.nullable          = false;
         schema.defaultValue      = PropertyReference {};
-        decoded                  = parsePropertySchema(serializePropertySchema(schema));
+        decoded                  = must(parsePropertySchema(must(serializePropertySchema(schema))));
         require(!decoded.nullable && decoded.referenceType == "Node3D",
                 "Required references lost their declaration/instance distinction");
-        reject(
-            [&]
-            {
-                deserializeProperty(decoded, "null");
-            });
-        decoded.validate(PropertyReference {StableId::generate()});
+        support::rejects(deserializeProperty(decoded, "null"), "Invalid property schema or value was accepted");
+        must(decoded.validate(PropertyReference {StableId::generate()}));
         schema.referenceClass       = PropertyClassId {"project/control", "Beacon"};
-        decoded                     = parsePropertySchema(serializePropertySchema(schema));
+        decoded                     = must(parsePropertySchema(must(serializePropertySchema(schema))));
         schema.referenceClass->name = "Discarded";
         require(decoded.referenceClass == PropertyClassId {"project/control", "Beacon"},
                 "Behavior class identity was borrowed or lost during schema round trip");
         const auto id = StableId::generate();
-        require(serializeProperty(decoded, PropertyReference {id}) == Json(id.toString()).dump(),
+        require(must(serializeProperty(decoded, PropertyReference {id})) == Json(id.toString()).dump(),
                 "Class-qualified references changed the persistent UUID value encoding");
         decoded.kind         = PropertyKind::eArray;
         decoded.elementKind  = PropertyKind::eReference;
         decoded.defaultValue = PropertyArray {};
-        decoded.validateDefinition();
-        decoded.validate(PropertyArray {{PropertyReference {id}}});
+        must(decoded.validateDefinition());
+        must(decoded.validate(PropertyArray {{PropertyReference {id}}}));
         auto invalidClass = decoded;
         invalidClass.referenceCategory.clear();
-        reject(
-            [&]
-            {
-                invalidClass.validateDefinition();
-            });
+        support::rejects(invalidClass.validateDefinition(), "Invalid property schema or value was accepted");
         invalidClass = decoded;
         invalidClass.referenceClass->name.clear();
-        reject(
-            [&]
-            {
-                invalidClass.validateDefinition();
-            });
+        support::rejects(invalidClass.validateDefinition(), "Invalid property schema or value was accepted");
         invalidClass                        = decoded;
         invalidClass.referenceClass->module = std::string("a\0b", 3);
-        reject(
-            [&]
-            {
-                invalidClass.validateDefinition();
-            });
-        auto invalidDocument                                         = Json::parse(serializePropertySchema(decoded));
+        support::rejects(invalidClass.validateDefinition(), "Invalid property schema or value was accepted");
+        auto invalidDocument = Json::parse(must(serializePropertySchema(decoded)));
         invalidDocument["property"]["reference"]["class"]["address"] = 1;
-        reject(
-            [&]
-            {
-                parsePropertySchema(invalidDocument.dump());
-            });
+        support::rejects(parsePropertySchema(invalidDocument.dump()), "Invalid property schema or value was accepted");
         schema              = speedSchema();
         schema.kind         = PropertyKind::eInt;
         schema.integerBits  = 32;
         schema.defaultValue = int64_t {2};
-        decoded             = parsePropertySchema(serializePropertySchema(schema));
-        reject(
-            [&]
-            {
-                deserializeProperty(decoded, "2147483648");
-            });
+        decoded             = must(parsePropertySchema(must(serializePropertySchema(schema))));
+        support::rejects(deserializeProperty(decoded, "2147483648"), "Invalid property schema or value was accepted");
         schema.kind         = PropertyKind::eMatrix4;
         schema.integerBits  = 0;
         schema.defaultValue = glm::mat4 {1};
-        decoded             = parsePropertySchema(serializePropertySchema(schema));
-        require(deserializeProperty(decoded, serializeProperty(decoded, decoded.defaultValue)) == decoded.defaultValue,
+        decoded             = must(parsePropertySchema(must(serializePropertySchema(schema))));
+        require(must(deserializeProperty(decoded, must(serializeProperty(decoded, decoded.defaultValue)))) ==
+                    decoded.defaultValue,
                 "Owned matrix schema changed column-major value encoding");
     }
 
     void invalidDefinitions()
     {
-        const auto source     = Json::parse(serializePropertySchema(speedSchema()));
+        const auto source     = Json::parse(must(serializePropertySchema(speedSchema())));
         const auto rejectEdit = [&](auto edit)
         {
             auto candidate = source;
             edit(candidate);
-            reject(
-                [&]
-                {
-                    parsePropertySchema(candidate.dump());
-                });
+            support::rejects(parsePropertySchema(candidate.dump()), "Invalid property schema or value was accepted");
         };
         rejectEdit(
             [](Json& value)
@@ -261,7 +204,6 @@ namespace
 } // namespace
 
 int main()
-try
 {
     ownedMetadata();
     collectionsAndReferences();
@@ -269,9 +211,4 @@ try
     std::cout << "Property schema tests passed: owned metadata/defaults, independent values, typed collections, "
                  "references and strict version-1 decoding\n";
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }

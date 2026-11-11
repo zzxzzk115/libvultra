@@ -1,7 +1,9 @@
 # Get started
 
 Choose the modules your program needs and add more as the experiment grows. The programs below are complete
-alternatives for `main.cpp`; none uses example-only helpers. Install the prerequisites in
+alternatives for `main.cpp`; none uses example-only helpers. Fallible calls return
+`std::expected<T, vultra::Error>` instead of throwing; each program returns the first error to `main`, which logs
+its message and exits with status 1. Install the prerequisites in
 [BUILD.md](../BUILD.md#prerequisites) first. The library is verified on Windows with Vulkan only.
 
 | Start here | Module | What your code owns |
@@ -44,40 +46,49 @@ This creates a window and clears it each frame:
 #include <vultra/core/base/logger.hpp>
 #include <vultra/gpu/resources.hpp>
 
-#include <exception>
-
 class ClearApp final : public vultra::DesktopApp
 {
 public:
-    ClearApp() :
-        vultra::DesktopApp({.title = "My study", .size = {640, 360}, .swapchainFormat = VriFormat_BGRA8_SRGB})
-    {
-    }
+    using DesktopApp::DesktopApp;
 
 private:
-    void onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
+    std::expected<void, vultra::Error> onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
     {
         target.transition(
             cmd,
             {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
+        const auto view = target.view();
+        if (!view)
+        {
+            return std::unexpected(view.error());
+        }
         const float clear[4] {0.02f, 0.04f, 0.08f, 1};
-        vultra::beginColorPass(getDevice(), cmd, target.view(), getSwapchain().size(), clear);
+        vultra::beginColorPass(getDevice(), cmd, *view, getSwapchain().size(), clear);
         getDevice().core.CmdEndRendering(cmd);
+        return {};
     }
 };
 
-int main()
-try
+std::expected<void, vultra::Error> run()
 {
-    vultra::Logger::configure();
-    ClearApp app;
-    app.run();
-    return 0;
+    const vultra::AppConfig config {.title = "My study", .size = {640, 360}, .swapchainFormat = VriFormat_BGRA8_SRGB};
+    auto                    services = vultra::DesktopApp::createServices(config);
+    if (!services)
+    {
+        return std::unexpected(services.error());
+    }
+    ClearApp app(std::move(*services), config);
+    return app.run();
 }
-catch (const std::exception& error)
+
+int main()
 {
-    vultra::Logger::app().error("{}", error.what());
-    return 1;
+    if (auto result = vultra::Logger::configure().and_then(run); !result)
+    {
+        vultra::Logger::app().error("{}", result.error().message);
+        return 1;
+    }
+    return 0;
 }
 ```
 
@@ -89,7 +100,12 @@ xmake run study
 
 Close the window or press Escape to exit; `app.run(60)` stops after 60 frames. Put logic in `onUpdate(float)`,
 CPU render preparation in `onPreRender()` and GPU commands in `onRender()`. `DesktopApp` submits, waits and
-presents; readback belongs in `onPostRender()`, after the frame completed.
+presents; readback belongs in `onPostRender()`, after the frame completed. Every hook returns
+`std::expected<void, vultra::Error>`; `run()` stops at the first error and returns it.
+
+`DesktopApp::createServices()` creates the window, device and swapchain before the application exists. An
+application that owns GPU objects of its own creates them from `services.device()` in a static `create()` and passes
+them to a private constructor, as the [VRI triangle](../examples/basics/vri_triangle.cpp) does.
 
 ## Offline RenderGraph
 
@@ -102,38 +118,83 @@ transitions:
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/graph/render_graph.hpp>
 
-#include <exception>
-
-int main()
-try
+std::expected<void, vultra::Error> run()
 {
-    vultra::Logger::configure();
-    vultra::Device           device;
-    vultra::RenderGraph      graph(device);
+    auto device = vultra::Device::create();
+    if (!device)
+    {
+        return std::unexpected(device.error());
+    }
+    vultra::RenderGraph      graph(**device);
     constexpr vultra::Extent size {640, 360};
     const auto               color = graph.createTexture("color", vultra::colorTexture(size, VriFormat_RGBA8_SRGB));
+    if (!color)
+    {
+        return std::unexpected(color.error());
+    }
+    if (auto added = graph.addPass("Clear",
+                                   {{*color, vultra::Usage::eColorWrite}},
+                                   [&device = **device, color = *color, size](
+                                       VriCommandBuffer*    cmd,
+                                       vultra::RenderGraph& active) -> std::expected<void, vultra::Error>
+                                   {
+                                       const auto view = active.getTexture(color).view();
+                                       if (!view)
+                                       {
+                                           return std::unexpected(view.error());
+                                       }
+                                       const float clear[4] {0.02f, 0.04f, 0.08f, 1};
+                                       vultra::beginColorPass(device, cmd, *view, size, clear);
+                                       device.core.CmdEndRendering(cmd);
+                                       return {};
+                                   });
+        !added)
+    {
+        return added;
+    }
+    if (auto exported = graph.exportResource(*color); !exported)
+    {
+        return exported;
+    }
+    if (auto compiled = graph.compile(); !compiled)
+    {
+        return compiled;
+    }
 
-    graph.addPass("Clear",
-                  {{color, vultra::Usage::eColorWrite}},
-                  [&device, color, size](VriCommandBuffer* cmd, vultra::RenderGraph& active)
-                  {
-                      const float clear[4] {0.02f, 0.04f, 0.08f, 1};
-                      vultra::beginColorPass(device, cmd, active.getTexture(color).view(), size, clear);
-                      device.core.CmdEndRendering(cmd);
-                  });
-    graph.exportResource(color);
-    graph.compile();
-
-    vultra::Frame frame(device);
-    graph.execute(frame.begin());
-    frame.submitAndWait();
-    vultra::savePng(vultra::readback(device, graph.getTexture(color)), "output/graph.png");
-    return 0;
+    auto frame = vultra::Frame::create(**device);
+    if (!frame)
+    {
+        return std::unexpected(frame.error());
+    }
+    const auto cmd = (*frame)->begin();
+    if (!cmd)
+    {
+        return std::unexpected(cmd.error());
+    }
+    if (auto executed = graph.execute(*cmd); !executed)
+    {
+        return executed;
+    }
+    if (auto completed = (*frame)->submitAndWait(); !completed)
+    {
+        return completed;
+    }
+    const auto image = vultra::readback(**device, graph.getTexture(*color));
+    if (!image)
+    {
+        return std::unexpected(image.error());
+    }
+    return vultra::savePng(*image, "output/graph.png");
 }
-catch (const std::exception& error)
+
+int main()
 {
-    vultra::Logger::app().error("{}", error.what());
-    return 1;
+    if (auto result = vultra::Logger::configure().and_then(run); !result)
+    {
+        vultra::Logger::app().error("{}", result.error().message);
+        return 1;
+    }
+    return 0;
 }
 ```
 
@@ -147,7 +208,7 @@ xmake run study
 producing pass alive; unobserved passes are culled. `Frame::submitAndWait()` is the completion boundary;
 `readback()` then performs its own blocking transfer. For repeated frames, reuse the graph and execute it again.
 `graph.writeDot(stream)` writes the compiled plan for Graphviz. A graph with `PassQueue::eAsyncCompute` passes is
-executed with `frame.begin(); graph.execute(frame);` instead, which submits every batch but the final graphics one.
+executed with `graph.execute(frame)` after `frame.begin()` instead, which submits every batch but the final graphics one.
 
 ## Scene with ForwardPath
 
@@ -165,47 +226,106 @@ A render path turns a scene into named graph resources. This imports a model, re
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
-#include <exception>
-
-int main()
-try
+std::expected<void, vultra::Error> run()
 {
-    vultra::Logger::configure();
-    vultra::Device      device;
-    const auto          asset = vultra::importAsset("resources/models/DamagedHelmet/DamagedHelmet.glb",
-                                                    {.cache = false}); // Do not write an import cache.
-    vultra::GpuScene    scene(device, asset);
-    vultra::Environment environment(device); // Built-in analytic studio environment.
-    vultra::ForwardPath path(device);
-    vultra::RenderGraph graph(device);
+    auto device = vultra::Device::create();
+    if (!device)
+    {
+        return std::unexpected(device.error());
+    }
+    const auto asset = vultra::importAsset("resources/models/DamagedHelmet/DamagedHelmet.glb",
+                                           {.cache = false}); // Do not write an import cache.
+    if (!asset)
+    {
+        return std::unexpected(asset.error());
+    }
+    auto scene = vultra::GpuScene::create(**device, *asset);
+    if (!scene)
+    {
+        return std::unexpected(scene.error());
+    }
+    auto environment = vultra::Environment::create(**device); // Built-in analytic studio environment.
+    if (!environment)
+    {
+        return std::unexpected(environment.error());
+    }
+    auto path = vultra::ForwardPath::create(**device);
+    if (!path)
+    {
+        return std::unexpected(path.error());
+    }
+    vultra::RenderGraph graph(**device);
 
     constexpr vultra::Extent size {640, 360};
-    const auto               resources = path.addPasses(graph, scene, environment, size);
-    const auto               hdr       = vultra::findSceneResource(resources, vultra::kSceneHdr);
-    graph.exportResource(hdr);
-    graph.compile();
+    const auto               resources = (*path)->addPasses(graph, **scene, **environment, size);
+    if (!resources)
+    {
+        return std::unexpected(resources.error());
+    }
+    const auto hdr = vultra::findSceneResource(*resources, vultra::kSceneHdr);
+    if (!hdr)
+    {
+        return std::unexpected(hdr.error());
+    }
+    if (auto exported = graph.exportResource(*hdr); !exported)
+    {
+        return exported;
+    }
+    if (auto compiled = graph.compile(); !compiled)
+    {
+        return compiled;
+    }
 
-    const float                distance = scene.radius * 3;
+    const glm::vec3            center   = (*scene)->center;
+    const float                radius   = (*scene)->radius;
+    const float                distance = radius * 3;
     const vultra::RenderCamera camera {
-        glm::lookAtRH(scene.center + glm::vec3(0, 0, distance), scene.center, glm::vec3(0, 1, 0)),
-        glm::perspectiveRH_ZO(glm::radians(45.0f), float(size.width) / float(size.height), scene.radius, distance * 2),
-        scene.radius,
+        glm::lookAtRH(center + glm::vec3(0, 0, distance), center, glm::vec3(0, 1, 0)),
+        glm::perspectiveRH_ZO(glm::radians(45.0f), float(size.width) / float(size.height), radius, distance * 2),
+        radius,
         distance * 2};
     const vultra::RenderLight sun {.kind             = vultra::RenderLightKind::eDirectional,
                                    .directionToLight = {-0.5f, 0.8f, 0.4f},
                                    .intensity        = 3};
-    path.prepare(graph, camera, std::span(&sun, 1));
+    if (auto prepared = (*path)->prepare(graph, camera, std::span(&sun, 1)); !prepared)
+    {
+        return prepared;
+    }
 
-    vultra::Frame frame(device);
-    graph.execute(frame.begin());
-    frame.submitAndWait();
-    vultra::savePfm(vultra::readback(device, graph.getTexture(hdr)), "build/.tmp/forward.pfm");
-    return 0;
+    auto frame = vultra::Frame::create(**device);
+    if (!frame)
+    {
+        return std::unexpected(frame.error());
+    }
+    const auto cmd = (*frame)->begin();
+    if (!cmd)
+    {
+        return std::unexpected(cmd.error());
+    }
+    if (auto executed = graph.execute(*cmd); !executed)
+    {
+        return executed;
+    }
+    if (auto completed = (*frame)->submitAndWait(); !completed)
+    {
+        return completed;
+    }
+    const auto image = vultra::readback(**device, graph.getTexture(*hdr));
+    if (!image)
+    {
+        return std::unexpected(image.error());
+    }
+    return vultra::savePfm(*image, "build/.tmp/forward.pfm");
 }
-catch (const std::exception& error)
+
+int main()
 {
-    vultra::Logger::app().error("{}", error.what());
-    return 1;
+    if (auto result = vultra::Logger::configure().and_then(run); !result)
+    {
+        vultra::Logger::app().error("{}", result.error().message);
+        return 1;
+    }
+    return 0;
 }
 ```
 

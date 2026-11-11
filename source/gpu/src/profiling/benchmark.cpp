@@ -6,7 +6,6 @@
 #include <iomanip>
 #include <map>
 #include <numeric>
-#include <stdexcept>
 
 namespace vultra
 {
@@ -67,35 +66,41 @@ namespace vultra
         }
     } // namespace
 
-    void BenchmarkCapture::add(const FrameTiming& frame, std::span<const PassTiming> passes)
+    std::expected<void, Error> BenchmarkCapture::add(const FrameTiming& frame, std::span<const PassTiming> passes)
     {
         if (!m_Samples.empty() && frame.frameIndex != m_Samples.back().frame.frameIndex + 1)
         {
-            throw std::invalid_argument("Benchmark frames must be consecutive");
+            return makeError("Benchmark frames must be consecutive");
         }
         m_Samples.push_back({frame, {passes.begin(), passes.end()}});
+        return {};
     }
 
-    void BenchmarkCapture::write(const std::filesystem::path& directory,
-                                 const BenchmarkMetadata&     metadata,
-                                 const VriDeviceDesc&         device) const
+    std::expected<void, Error> BenchmarkCapture::write(const std::filesystem::path& directory,
+                                                       const BenchmarkMetadata&     metadata,
+                                                       const VriDeviceDesc&         device) const
     {
         if (m_Samples.empty())
         {
-            throw std::invalid_argument("Benchmark has no measured frames");
+            return makeError("Benchmark has no measured frames");
         }
-        if (std::filesystem::exists(directory))
+        std::error_code error;
+        if (std::filesystem::exists(directory, error) || error)
         {
-            throw std::invalid_argument("Benchmark output directory already exists");
+            return makeError("Benchmark output directory already exists");
         }
-        std::filesystem::create_directories(directory);
+        std::filesystem::create_directories(directory, error);
+        if (error)
+        {
+            return makeError("Create benchmark output directory {}: {}", directory.string(), error.message());
+        }
         std::ofstream manifest(directory / "manifest.json");
         std::ofstream frames(directory / "frames.csv");
         std::ofstream passes(directory / "passes.csv");
         std::ofstream summary(directory / "summary.csv");
         if (!manifest || !frames || !passes || !summary)
         {
-            throw std::runtime_error("Cannot create benchmark output files");
+            return makeError("Cannot create benchmark output files");
         }
         manifest << "{\n  \"version\": 1,\n  \"experiment\": " << jsonString(metadata.experiment)
                  << ",\n  \"source_revision\": " << jsonString(metadata.sourceRevision)
@@ -181,7 +186,8 @@ namespace vultra
         }
         if (!manifest || !frames || !passes || !summary)
         {
-            throw std::runtime_error("Writing benchmark output failed");
+            return makeError("Writing benchmark output failed");
         }
+        return {};
     }
 } // namespace vultra

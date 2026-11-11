@@ -1,7 +1,9 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
 #include <vultra/platform/input/input.hpp>
 
+#include <expected>
 #include <map>
 #include <span>
 #include <string>
@@ -24,17 +26,19 @@ namespace vultra
     class InputMap
     {
     public:
-        void        bind(std::string action, InputBinding binding);
-        void        remove(std::string_view action);
-        void        update(std::span<const InputEvent> events, InputCapture capture = {});
-        ActionState action(std::string_view name) const;
+        [[nodiscard]] std::expected<void, Error> bind(std::string action, InputBinding binding);
+        [[nodiscard]] std::expected<void, Error> remove(std::string_view action);
+        // Rejects injected events with invalid codes before applying any of them.
+        [[nodiscard]] std::expected<void, Error> update(std::span<const InputEvent> events, InputCapture capture = {});
+        [[nodiscard]] std::expected<ActionState, Error> action(std::string_view name) const;
         // Match one raw event, independently of aggregate frame edges and UI ownership.
-        ActionState eventAction(std::string_view name, const InputEvent& event) const;
+        [[nodiscard]] std::expected<ActionState, Error> eventAction(std::string_view  name,
+                                                                    const InputEvent& event) const;
         // Publish accumulated edges once, before each fixed step; catch-up steps do not repeat them.
-        void            beginPhysicsTick();
-        ActionState     physicsAction(std::string_view name) const;
-        std::string     serialize() const;
-        static InputMap parse(std::string_view json);
+        void                                                beginPhysicsTick();
+        [[nodiscard]] std::expected<ActionState, Error>     physicsAction(std::string_view name) const;
+        std::string                                         serialize() const;
+        [[nodiscard]] static std::expected<InputMap, Error> parse(std::string_view json);
 
     private:
         struct Entry

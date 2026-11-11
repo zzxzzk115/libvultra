@@ -1,3 +1,5 @@
+#include "support/check.hpp"
+
 #include <vultra/core/base/command_line.hpp>
 #include <vultra/core/base/logger.hpp>
 
@@ -6,15 +8,10 @@
 
 namespace
 {
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
 
-    bool parse(argparse::ArgumentParser& parser, std::vector<std::string> arguments)
+    std::expected<bool, vultra::Error> parse(argparse::ArgumentParser& parser, std::vector<std::string> arguments)
     {
         std::vector<char*> argv;
         for (auto& argument : arguments)
@@ -26,14 +23,13 @@ namespace
 } // namespace
 
 int main()
-try
 {
     for (const auto* help : {"-h", "--help"})
     {
         argparse::ArgumentParser helpParser("import", "0.1.0", argparse::default_arguments::none);
         vultra::addAppOptions(helpParser);
         helpParser.add_argument("source");
-        require(!parse(helpParser, {"import", help}), "Help required a positional input before displaying usage");
+        require(!must(parse(helpParser, {"import", help})), "Help required a positional input before displaying usage");
     }
     const std::vector<std::vector<std::string>> invalid {{"app", "--frames"},
                                                          {"app", "--frames", "-1"},
@@ -52,23 +48,14 @@ try
         vultra::addAppOptions(parser);
         parser.add_argument("--capture");
         parser.add_argument("--debug").scan<'i', int>().choices(0, 1, 2, 3, 4);
-        bool rejected = false;
-        try
-        {
-            parse(parser, arguments);
-        }
-        catch (const std::invalid_argument&)
-        {
-            rejected = true;
-        }
-        require(rejected, "Invalid or incomplete command line accepted");
+        support::rejects(parse(parser, arguments), "Invalid or incomplete command line accepted");
     }
 
     const auto file = std::filesystem::path("build/.tmp/cli-tests") /
                       (std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".log");
     argparse::ArgumentParser parser("app", "0.1.0", argparse::default_arguments::none);
     vultra::addAppOptions(parser);
-    require(parse(parser, {"app", "--frames", "3", "--log-file", file.string(), "--log-level", "warn"}),
+    require(must(parse(parser, {"app", "--frames", "3", "--log-file", file.string(), "--log-level", "warn"})),
             "Valid command line rejected");
     require(parser.present<uint64_t>("--frames").value_or(0) == 3, "Frame count parse failed");
     vultra::Logger::core().info("hidden-info");
@@ -81,13 +68,8 @@ try
     require(log.find("hidden-info") == std::string::npos && log.find("core-warning") != std::string::npos &&
                 log.find("application-error") != std::string::npos,
             "Shared file sink or severity filtering failed");
-    vultra::Logger::configure();
+    must(vultra::Logger::configure());
     vultra::Logger::app().info(
         "CLI tests passed: numeric bounds, missing values, choices, duplicate options and logging");
     return 0;
-}
-catch (const std::exception& error)
-{
-    vultra::Logger::app().error("{}", error.what());
-    return 1;
 }

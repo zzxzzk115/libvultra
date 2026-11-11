@@ -1,36 +1,15 @@
 #include "image_decode.hpp"
+#include "support/check.hpp"
 
 #include <array>
 #include <cstring>
 #include <iostream>
-#include <stdexcept>
 
 namespace
 {
     using namespace vultra;
-
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
-
-    template<typename F>
-    void requireFailure(F&& operation)
-    {
-        bool failed = false;
-        try
-        {
-            operation();
-        }
-        catch (const std::exception&)
-        {
-            failed = true;
-        }
-        require(failed, "Malformed supported DDS did not report an import failure");
-    }
+    using support::must;
+    using support::require;
 
     std::vector<std::byte> bc1(uint16_t first, uint16_t second, uint32_t selectors = 0)
     {
@@ -107,7 +86,10 @@ namespace
 
     void testImages()
     {
-        using asset_detail::imageHasOpaqueAlpha;
+        const auto imageHasOpaqueAlpha = [](const SceneImage& image)
+        {
+            return must(asset_detail::imageHasOpaqueAlpha(image));
+        };
         require(imageHasOpaqueAlpha({1, 1, {12, 34, 56, 255}, {}}), "Opaque RGBA was rejected");
         require(!imageHasOpaqueAlpha({1, 1, {12, 34, 56, 254}, {}}), "Nonopaque RGBA was accepted");
         require(!imageHasOpaqueAlpha({}), "Empty pixels were mistaken for opaque DDS or RGBA");
@@ -147,22 +129,19 @@ namespace
                 "Unproved DDS format was treated as opaque");
         auto broken = dds(71, 4, 4, {bc1(65535, 0)});
         broken.dds.pop_back();
-        requireFailure(
-            [&]
-            {
-                imageHasOpaqueAlpha(broken);
-            });
+        support::rejects(asset_detail::imageHasOpaqueAlpha(broken),
+                         "Malformed supported DDS did not report an import failure");
         broken.dds.resize(4);
-        requireFailure(
-            [&]
-            {
-                imageHasOpaqueAlpha(broken);
-            });
+        support::rejects(asset_detail::imageHasOpaqueAlpha(broken),
+                         "Malformed supported DDS did not report an import failure");
     }
 
     void testMaterials()
     {
-        using asset_detail::removeOpaqueOrcaCutouts;
+        const auto removeOpaqueOrcaCutouts = [](SceneData& scene)
+        {
+            must(asset_detail::removeOpaqueOrcaCutouts(scene));
+        };
         auto value = scene();
         removeOpaqueOrcaCutouts(value);
         require(value.materials[0].alphaCutoff == -1, "Opaque referenced vertices did not remove redundant cutout");
@@ -197,16 +176,10 @@ namespace
 } // namespace
 
 int main()
-try
 {
     testImages();
     testMaterials();
     std::cout
         << "Asset opacity tests passed: BC1/BC3 palettes, mips, partial blocks, malformed data and material guards\n";
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }

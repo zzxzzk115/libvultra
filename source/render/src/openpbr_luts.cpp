@@ -15,7 +15,7 @@
 
 namespace vultra
 {
-    std::unique_ptr<Texture> createOpenPbrLuts(Device& device)
+    std::expected<std::unique_ptr<Texture>, Error> createOpenPbrLuts(Device& device)
     {
         // One 32-wide atlas. Row 0 stores {offset, width, height, depth} for each upstream LUT ID.
         // Tables follow in upstream row-major order, with normalized energy in R and LTC in RGB.

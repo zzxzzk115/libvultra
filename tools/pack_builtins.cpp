@@ -1,20 +1,17 @@
-#include <vultra/shader/builtin_pack.hpp>
 #include <vultra/core/base/logger.hpp>
-
-#include <stdexcept>
+#include <vultra/shader/builtin_pack.hpp>
 
 int main(int argc, char** argv)
-try
 {
     if (argc != 3)
     {
-        throw std::invalid_argument("Usage: vultra-builtins library-root output.vpk");
+        vultra::Logger::app().error("Usage: vultra-builtins library-root output.vpk");
+        return 1;
     }
-    vultra::packBuiltins(argv[1], argv[2]);
+    if (auto packed = vultra::packBuiltins(argv[1], argv[2]); !packed)
+    {
+        vultra::Logger::app().error("{}", packed.error().message);
+        return 1;
+    }
     return 0;
-}
-catch (const std::exception& error)
-{
-    vultra::Logger::app().error("{}", error.what());
-    return 1;
 }

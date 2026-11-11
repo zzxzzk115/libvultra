@@ -3,7 +3,6 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
-#include <stdexcept>
 #include <type_traits>
 
 namespace vultra
@@ -69,46 +68,41 @@ namespace vultra
         static_assert(std::size(kButtons) == size_t(MouseCode::eCount));
     } // namespace
 
-    void InputMap::bind(std::string name, InputBinding binding)
+    std::expected<void, Error> InputMap::bind(std::string name, InputBinding binding)
     {
         if (name.empty())
         {
-            throw std::invalid_argument("Input action requires a nonempty name");
+            return makeError("Input action requires a nonempty name");
         }
-        std::visit(
-            [](auto code)
-            {
-                using Code = decltype(code);
-                if constexpr (std::is_same_v<Code, KeyCode>)
-                {
-                    if (code == KeyCode::eUnknown || code >= KeyCode::eCount)
-                    {
-                        throw std::invalid_argument("Invalid action key");
-                    }
-                }
-                else if (code >= MouseCode::eCount)
-                {
-                    throw std::invalid_argument("Invalid action mouse button");
-                }
-            },
-            binding);
-        auto& entry = m_Actions[name];
-        if (std::ranges::find(entry.bindings, binding) != entry.bindings.end())
+        if (const auto* key = std::get_if<KeyCode>(&binding);
+            key && (*key == KeyCode::eUnknown || *key >= KeyCode::eCount))
         {
-            throw std::invalid_argument("Duplicate input binding: " + name);
+            return makeError("Invalid action key");
         }
-        entry.bindings.push_back(binding);
+        if (const auto* button = std::get_if<MouseCode>(&binding); button && *button >= MouseCode::eCount)
+        {
+            return makeError("Invalid action mouse button");
+        }
+        const auto existing = m_Actions.find(name);
+        if (existing != m_Actions.end() &&
+            std::ranges::find(existing->second.bindings, binding) != existing->second.bindings.end())
+        {
+            return makeError("Duplicate input binding: {}", name);
+        }
+        m_Actions[name].bindings.push_back(binding);
         refreshActions();
+        return {};
     }
 
-    void InputMap::remove(std::string_view name)
+    std::expected<void, Error> InputMap::remove(std::string_view name)
     {
         const auto found = m_Actions.find(name);
         if (found == m_Actions.end())
         {
-            throw std::invalid_argument("Unknown input action: " + std::string(name));
+            return makeError("Unknown input action: {}", name);
         }
         m_Actions.erase(found);
+        return {};
     }
 
     void InputMap::refreshActions()
@@ -141,8 +135,21 @@ namespace vultra
         }
     }
 
-    void InputMap::update(std::span<const InputEvent> events, InputCapture capture)
+    std::expected<void, Error> InputMap::update(std::span<const InputEvent> events, InputCapture capture)
     {
+        for (const auto& event : events)
+        {
+            if (const auto* key = std::get_if<KeyInput>(&event.value);
+                key && (key->key == KeyCode::eUnknown || key->key >= KeyCode::eCount))
+            {
+                return makeError("Invalid injected action key");
+            }
+            if (const auto* button = std::get_if<MouseButtonInput>(&event.value);
+                button && button->button >= MouseCode::eCount)
+            {
+                return makeError("Invalid injected action mouse button");
+            }
+        }
         for (auto& [name, entry] : m_Actions)
         {
             entry.frame.pressed  = false;
@@ -156,10 +163,6 @@ namespace vultra
                     using Event = std::decay_t<decltype(value)>;
                     if constexpr (std::is_same_v<Event, KeyInput>)
                     {
-                        if (value.key == KeyCode::eUnknown || value.key >= KeyCode::eCount)
-                        {
-                            throw std::invalid_argument("Invalid injected action key");
-                        }
                         if (value.action == InputAction::eRelease)
                         {
                             m_Keys[size_t(value.key)] = false;
@@ -171,10 +174,6 @@ namespace vultra
                     }
                     else if constexpr (std::is_same_v<Event, MouseButtonInput>)
                     {
-                        if (value.button >= MouseCode::eCount)
-                        {
-                            throw std::invalid_argument("Invalid injected action mouse button");
-                        }
                         if (!value.held || !inputCaptured(event, capture))
                         {
                             m_Buttons[size_t(value.button)] = value.held;
@@ -192,24 +191,25 @@ namespace vultra
                 event.value);
             refreshActions();
         }
+        return {};
     }
 
-    ActionState InputMap::action(std::string_view name) const
+    std::expected<ActionState, Error> InputMap::action(std::string_view name) const
     {
         const auto found = m_Actions.find(name);
         if (found == m_Actions.end())
         {
-            throw std::invalid_argument("Unknown input action: " + std::string(name));
+            return makeError("Unknown input action: {}", name);
         }
         return found->second.frame;
     }
 
-    ActionState InputMap::eventAction(std::string_view name, const InputEvent& event) const
+    std::expected<ActionState, Error> InputMap::eventAction(std::string_view name, const InputEvent& event) const
     {
         const auto found = m_Actions.find(name);
         if (found == m_Actions.end())
         {
-            throw std::invalid_argument("Unknown input action: " + std::string(name));
+            return makeError("Unknown input action: {}", name);
         }
         return std::visit(
             [&](const auto& value) -> ActionState
@@ -248,12 +248,12 @@ namespace vultra
         }
     }
 
-    ActionState InputMap::physicsAction(std::string_view name) const
+    std::expected<ActionState, Error> InputMap::physicsAction(std::string_view name) const
     {
         const auto found = m_Actions.find(name);
         if (found == m_Actions.end())
         {
-            throw std::invalid_argument("Unknown input action: " + std::string(name));
+            return makeError("Unknown input action: {}", name);
         }
         return found->second.physics;
     }
@@ -285,48 +285,58 @@ namespace vultra
         return Json {{"format", "vultra.input_map"}, {"version", 1}, {"actions", std::move(actions)}}.dump(2) + "\n";
     }
 
-    InputMap InputMap::parse(std::string_view json)
+    std::expected<InputMap, Error> InputMap::parse(std::string_view json)
     {
-        const auto data = Json::parse(json);
-        if (data.at("format") != "vultra.input_map" || data.at("version") != 1 || data.size() != 3 ||
-            !data.at("actions").is_object())
+        const auto data = Json::parse(json, nullptr, false);
+        if (data.is_discarded() || !data.is_object() || data.size() != 3 || !data.contains("format") ||
+            data.at("format") != "vultra.input_map" || !data.contains("version") || data.at("version") != 1 ||
+            !data.contains("actions") || !data.at("actions").is_object())
         {
-            throw std::invalid_argument("Invalid input map format/version");
+            return makeError("Invalid input map format/version");
         }
         InputMap result;
         for (const auto& [name, bindings] : data.at("actions").items())
         {
             if (!bindings.is_array() || bindings.empty())
             {
-                throw std::invalid_argument("Input action requires an array of bindings: " + name);
+                return makeError("Input action requires an array of bindings: {}", name);
             }
             for (const auto& binding : bindings)
             {
                 if (!binding.is_object() || binding.size() != 1)
                 {
-                    throw std::invalid_argument("Input binding requires one key or mouse button");
+                    return makeError("Input binding requires one key or mouse button");
                 }
+                InputBinding code;
                 if (binding.contains("key"))
                 {
-                    const auto key = std::ranges::find(kKeys, binding.at("key").get<std::string>());
+                    const auto& value = binding.at("key");
+                    const auto  key =
+                        value.is_string() ? std::ranges::find(kKeys, value.get<std::string>()) : std::end(kKeys);
                     if (key == std::end(kKeys))
                     {
-                        throw std::invalid_argument("Unknown action key");
+                        return makeError("Unknown action key");
                     }
-                    result.bind(name, KeyCode(key - std::begin(kKeys)));
+                    code = KeyCode(key - std::begin(kKeys));
                 }
                 else if (binding.contains("mouse"))
                 {
-                    const auto button = std::ranges::find(kButtons, binding.at("mouse").get<std::string>());
+                    const auto& value = binding.at("mouse");
+                    const auto  button =
+                        value.is_string() ? std::ranges::find(kButtons, value.get<std::string>()) : std::end(kButtons);
                     if (button == std::end(kButtons))
                     {
-                        throw std::invalid_argument("Unknown action mouse button");
+                        return makeError("Unknown action mouse button");
                     }
-                    result.bind(name, MouseCode(button - std::begin(kButtons)));
+                    code = MouseCode(button - std::begin(kButtons));
                 }
                 else
                 {
-                    throw std::invalid_argument("Unknown input binding kind");
+                    return makeError("Unknown input binding kind");
+                }
+                if (auto bound = result.bind(name, code); !bound)
+                {
+                    return std::unexpected(bound.error());
                 }
             }
         }

@@ -1,3 +1,5 @@
+#include "support/check.hpp"
+
 #include <vultra/core/math/projection.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
@@ -6,7 +8,6 @@
 #include <array>
 #include <cmath>
 #include <iostream>
-#include <stdexcept>
 
 namespace
 {
@@ -14,7 +15,7 @@ namespace
     {
         if (std::abs(actual - expected) > 0.00001f)
         {
-            throw std::runtime_error(message);
+            support::fail(message);
         }
     }
 
@@ -40,7 +41,7 @@ namespace
         }
         if (vultra::flipProjectionY(flipped) != original)
         {
-            throw std::runtime_error("Two Y flips did not restore the projection");
+            support::fail("Two Y flips did not restore the projection");
         }
     }
 
@@ -74,16 +75,8 @@ namespace
 
 int main()
 {
-    try
-    {
-        projectionY();
-        projectionDepth();
-        std::cout << "Projection Y and depth conversion checks passed\n";
-        return 0;
-    }
-    catch (const std::exception& error)
-    {
-        std::cerr << error.what() << '\n';
-        return 1;
-    }
+    projectionY();
+    projectionDepth();
+    std::cout << "Projection Y and depth conversion checks passed\n";
+    return 0;
 }

@@ -1,21 +1,21 @@
 #include <vultra/render/render_path.hpp>
 
 #include <algorithm>
-#include <stdexcept>
 
 namespace vultra
 {
-    RenderGraph::Resource findSceneResource(std::span<const SceneResource> resources, std::string_view name)
+    std::expected<RenderGraph::Resource, Error> findSceneResource(std::span<const SceneResource> resources,
+                                                                  std::string_view               name)
     {
         const auto found = std::ranges::find(resources, name, &SceneResource::name);
         if (found == resources.end())
         {
-            throw std::invalid_argument("Render path does not provide " + std::string(name));
+            return makeError("Render path does not provide {}", name);
         }
         return found->resource;
     }
 
-    void
+    std::expected<void, Error>
     validateSceneResources(const RenderPath& path, std::span<const SceneResource> resources, const RenderGraph& graph)
     {
         const auto provided = path.provides();
@@ -23,20 +23,30 @@ namespace vultra
         {
             if (std::ranges::find(provided, required, &SceneResourceDesc::name) == provided.end())
             {
-                throw std::logic_error("Render path must provide " + std::string(required));
+                return makeError("Render path must provide {}", required);
             }
         }
         if (resources.size() != provided.size())
         {
-            throw std::logic_error("Render path returned a different resource set than it provides");
+            return makeError("Render path returned a different resource set than it provides");
         }
         for (const auto& desc : provided)
         {
-            const auto info = graph.resourceInfo(findSceneResource(resources, desc.name));
-            if (!info.isTexture || info.textureDesc.format != desc.format)
+            const auto resource = findSceneResource(resources, desc.name);
+            if (!resource)
             {
-                throw std::logic_error("Render path resource does not match its declared format: " + desc.name);
+                return std::unexpected(resource.error());
+            }
+            const auto info = graph.resourceInfo(*resource);
+            if (!info)
+            {
+                return std::unexpected(info.error());
+            }
+            if (!info->isTexture || info->textureDesc.format != desc.format)
+            {
+                return makeError("Render path resource does not match its declared format: {}", desc.name);
             }
         }
+        return {};
     }
 } // namespace vultra

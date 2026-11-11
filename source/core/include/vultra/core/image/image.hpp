@@ -1,8 +1,10 @@
 #pragma once
+#include <vultra/core/base/error.hpp>
 #include <vultra/core/math/extent.hpp>
 
 #include <array>
 #include <cstddef>
+#include <expected>
 #include <filesystem>
 #include <optional>
 #include <span>
@@ -43,12 +45,13 @@ namespace vultra
 
     // Binary mask: one finite 0 or 1 per image pixel. SSIM includes selected window centers;
     // each complete 11x11 window must fit inside the ROI. Empty selections have absent metrics.
-    MetricRegion  validateMetricRegion(Extent size, MetricRegion region, std::span<const float> mask = {});
-    RegionMetrics compareRegion(const Image&           reference,
-                                const Image&           test,
-                                MetricRegion           region = {},
-                                std::span<const float> mask   = {},
-                                double                 peak   = 1);
+    [[nodiscard]] std::expected<MetricRegion, Error>
+    validateMetricRegion(Extent size, MetricRegion region, std::span<const float> mask = {});
+    [[nodiscard]] std::expected<RegionMetrics, Error> compareRegion(const Image&           reference,
+                                                                    const Image&           test,
+                                                                    MetricRegion           region = {},
+                                                                    std::span<const float> mask   = {},
+                                                                    double                 peak   = 1);
 
     enum class ImageChannel : uint32_t
     {
@@ -68,18 +71,20 @@ namespace vultra
         float        maximum = 1;
     };
 
-    void                 validateImageView(const ImageView& view);
-    Image                mapImage(const Image& image, const ImageView& view);
-    std::array<float, 4> imagePixel(const Image& image, uint32_t x, uint32_t y);
+    [[nodiscard]] std::expected<void, Error>                 validateImageView(const ImageView& view);
+    [[nodiscard]] std::expected<Image, Error>                mapImage(const Image& image, const ImageView& view);
+    [[nodiscard]] std::expected<std::array<float, 4>, Error> imagePixel(const Image& image, uint32_t x, uint32_t y);
 
-    Image loadPng(const std::filesystem::path& path);
-    Image loadPng(std::span<const std::byte> bytes);
-    void  savePng(const Image& image, const std::filesystem::path& path);
+    [[nodiscard]] std::expected<Image, Error> loadPng(const std::filesystem::path& path);
+    [[nodiscard]] std::expected<Image, Error> loadPng(std::span<const std::byte> bytes);
+    [[nodiscard]] std::expected<void, Error>  savePng(const Image& image, const std::filesystem::path& path);
     // Lossless float RGB output; PFM has no alpha channel, gamma or tone mapping.
-    void savePfm(const Image& image, const std::filesystem::path& path);
-    void dumpFrame(const Image& image, const std::filesystem::path& directory, uint64_t frame);
+    [[nodiscard]] std::expected<void, Error> savePfm(const Image& image, const std::filesystem::path& path);
+    [[nodiscard]] std::expected<void, Error>
+    dumpFrame(const Image& image, const std::filesystem::path& directory, uint64_t frame);
     // RGB PSNR; Rec.709-weighted luma SSIM, 11x11 Gaussian sigma=1.5, valid windows.
     // Alpha ignored. Both inputs must use the same color space and range. At least 11x11.
-    ImageMetrics compare(const Image& reference, const Image& test, double peak = 1.0);
-    void         validateImage(const Image& image);
+    [[nodiscard]] std::expected<ImageMetrics, Error>
+                                             compare(const Image& reference, const Image& test, double peak = 1.0);
+    [[nodiscard]] std::expected<void, Error> validateImage(const Image& image);
 } // namespace vultra

@@ -14,36 +14,41 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <utility>
 
 namespace vultra
 {
     namespace
     {
-        void checkXr(XrResult result, const char* operation)
+        [[nodiscard]] std::expected<void, Error> checkXr(XrResult result, const char* operation)
         {
             if (result == XR_ERROR_FORM_FACTOR_UNAVAILABLE)
             {
-                throw std::runtime_error(std::string(operation) + ": the OpenXR runtime reports no available headset");
+                return makeError("{}: the OpenXR runtime reports no available headset", operation);
             }
             if (XR_FAILED(result))
             {
-                throw std::runtime_error(std::string(operation) + " failed: " + std::to_string(result));
+                return makeError("{} failed: {}", operation, int(result));
             }
+            return {};
         }
 
         template<class F>
-        F loadXr(XrInstance instance, const char* name)
+        [[nodiscard]] std::expected<F, Error> loadXr(XrInstance instance, const char* name)
         {
             PFN_xrVoidFunction function = nullptr;
-            checkXr(xrGetInstanceProcAddr(instance, name, &function), name);
+            if (auto result = checkXr(xrGetInstanceProcAddr(instance, name, &function), name); !result)
+            {
+                return std::unexpected(result.error());
+            }
             if (!function)
             {
-                throw std::runtime_error(std::string("Missing XR function: ") + name);
+                return makeError("Missing XR function: {}", name);
             }
             return reinterpret_cast<F>(function);
         }
 
-        // Creation hooks cross a C ABI: report both errors without throwing through VRI.
+        // Creation hooks cross a C ABI: log both results and return a VkResult to VRI.
         void logVulkanError(XrInstance instance, const char* operation, XrResult xr, VkResult vk)
         {
             char name[XR_MAX_RESULT_STRING_SIZE] {};
@@ -149,27 +154,65 @@ namespace vultra
         }
     };
 
-    OpenXRSystem::OpenXRSystem(const char* name) :
+    OpenXRSystem::OpenXRSystem() :
         m_Impl(std::make_unique<Impl>())
     {
-        auto&                s         = *m_Impl;
+    }
+
+    std::expected<std::unique_ptr<OpenXRSystem>, Error> OpenXRSystem::create(const char* applicationName)
+    {
+        auto                 system    = std::unique_ptr<OpenXRSystem>(new OpenXRSystem());
+        auto&                s         = *system->m_Impl;
         const char*          extension = XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME;
         XrInstanceCreateInfo info {XR_TYPE_INSTANCE_CREATE_INFO};
-        std::strncpy(info.applicationInfo.applicationName, name, XR_MAX_APPLICATION_NAME_SIZE - 1);
+        std::strncpy(info.applicationInfo.applicationName, applicationName, XR_MAX_APPLICATION_NAME_SIZE - 1);
         info.applicationInfo.apiVersion = XR_API_VERSION_1_0;
         info.enabledExtensionCount      = 1;
         info.enabledExtensionNames      = &extension;
-        checkXr(xrCreateInstance(&info, &s.instance), "Create OpenXR instance (check active runtime)");
+        if (auto result =
+                checkXr(xrCreateInstance(&info, &s.instance), "Create OpenXR instance (check active runtime)");
+            !result)
+        {
+            return std::unexpected(result.error());
+        }
         XrSystemGetInfo systemInfo {XR_TYPE_SYSTEM_GET_INFO};
         systemInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
-        checkXr(xrGetSystem(s.instance, &systemInfo, &s.system), "Get OpenXR HMD system");
+        if (auto result = checkXr(xrGetSystem(s.instance, &systemInfo, &s.system), "Get OpenXR HMD system"); !result)
+        {
+            return std::unexpected(result.error());
+        }
         const auto getRequirements =
             loadXr<PFN_xrGetVulkanGraphicsRequirements2KHR>(s.instance, "xrGetVulkanGraphicsRequirements2KHR");
-        checkXr(getRequirements(s.instance, s.system, &s.requirements), "Get Vulkan graphics requirements");
-        s.createInstance = loadXr<PFN_xrCreateVulkanInstanceKHR>(s.instance, "xrCreateVulkanInstanceKHR");
-        s.createDevice   = loadXr<PFN_xrCreateVulkanDeviceKHR>(s.instance, "xrCreateVulkanDeviceKHR");
-        s.getDevice      = loadXr<PFN_xrGetVulkanGraphicsDevice2KHR>(s.instance, "xrGetVulkanGraphicsDevice2KHR");
+        if (!getRequirements)
+        {
+            return std::unexpected(getRequirements.error());
+        }
+        if (auto result =
+                checkXr((*getRequirements)(s.instance, s.system, &s.requirements), "Get Vulkan graphics requirements");
+            !result)
+        {
+            return std::unexpected(result.error());
+        }
+        const auto createInstance = loadXr<PFN_xrCreateVulkanInstanceKHR>(s.instance, "xrCreateVulkanInstanceKHR");
+        if (!createInstance)
+        {
+            return std::unexpected(createInstance.error());
+        }
+        const auto createDevice = loadXr<PFN_xrCreateVulkanDeviceKHR>(s.instance, "xrCreateVulkanDeviceKHR");
+        if (!createDevice)
+        {
+            return std::unexpected(createDevice.error());
+        }
+        const auto getDevice = loadXr<PFN_xrGetVulkanGraphicsDevice2KHR>(s.instance, "xrGetVulkanGraphicsDevice2KHR");
+        if (!getDevice)
+        {
+            return std::unexpected(getDevice.error());
+        }
+        s.createInstance = *createInstance;
+        s.createDevice   = *createDevice;
+        s.getDevice      = *getDevice;
         s.hooks          = {VriGraphicsAPI_Vulkan, Impl::onCreateInstance, Impl::onCreateDevice, &s, nullptr};
+        return system;
     }
 
     OpenXRSystem::~OpenXRSystem() = default;
@@ -197,11 +240,11 @@ namespace vultra
                    glm::quat(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z));
     }
 
-    glm::mat4 XRFrame::headPose() const
+    std::expected<glm::mat4, Error> XRFrame::headPose() const
     {
         if (!shouldRender)
         {
-            throw std::invalid_argument("Head pose requires located, renderable XR views");
+            return makeError("Head pose requires located, renderable XR views");
         }
         const auto& left  = eyes[0].view.pose;
         const auto& right = eyes[1].view.pose;
@@ -215,11 +258,11 @@ namespace vultra
         return glm::translate(glm::mat4(1), midpoint) * glm::mat4_cast(orientation);
     }
 
-    glm::mat4 XREye::viewProjection(float nearZ, float farZ) const
+    std::expected<glm::mat4, Error> XREye::viewProjection(float nearZ, float farZ) const
     {
         if (!(nearZ > 0 && farZ > nearZ))
         {
-            throw std::invalid_argument("Require 0 < near < far");
+            return makeError("Require 0 < near < far");
         }
         const auto& f = view.fov;
         const float l = std::tan(f.angleLeft);
@@ -241,139 +284,211 @@ namespace vultra
         m_System(system),
         m_Device(device)
     {
-        try
+    }
+
+    std::expected<std::unique_ptr<OpenXRSession>, Error> OpenXRSession::create(OpenXRSystem& system, Device& device)
+    {
+        // The destructor releases whatever initialize() created before a failure.
+        auto session = std::unique_ptr<OpenXRSession>(new OpenXRSession(system, device));
+        if (auto result = session->initialize(); !result)
         {
-            VriInteropInterface interop {};
-            check(vriGetInterface(device.handle, VRI_INTERFACE_INTEROP, sizeof(interop), &interop), "Get VRI interop");
-            VriDeviceNativeHandles native {};
-            check(interop.GetDeviceNativeHandles(device.handle, &native), "Get Vulkan handles");
-            XrGraphicsBindingVulkanKHR binding {XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR};
-            binding.instance         = static_cast<VkInstance>(native.u.vulkan.instance);
-            binding.physicalDevice   = static_cast<VkPhysicalDevice>(native.u.vulkan.physicalDevice);
-            binding.device           = static_cast<VkDevice>(native.u.vulkan.device);
-            binding.queueFamilyIndex = native.u.vulkan.graphicsQueueFamilyIndex;
-            binding.queueIndex       = native.u.vulkan.graphicsQueueIndex;
-            XrSessionCreateInfo session {XR_TYPE_SESSION_CREATE_INFO};
-            session.next     = &binding;
-            session.systemId = system.system();
-            checkXr(xrCreateSession(system.instance(), &session, &m_Session), "Create XR session");
-            XrReferenceSpaceCreateInfo space {XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
-            space.referenceSpaceType                 = XR_REFERENCE_SPACE_TYPE_LOCAL;
-            space.poseInReferenceSpace.orientation.w = 1;
-            checkXr(xrCreateReferenceSpace(m_Session, &space, &m_Space), "Create local reference space");
-            uint32_t count = 0;
-            checkXr(xrEnumerateViewConfigurationViews(system.instance(),
-                                                      system.system(),
-                                                      XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
-                                                      0,
-                                                      &count,
-                                                      nullptr),
-                    "Count stereo views");
-            if (count != 2)
+            return std::unexpected(result.error());
+        }
+        return session;
+    }
+
+    std::expected<void, Error> OpenXRSession::initialize()
+    {
+        VriInteropInterface interop {};
+        if (auto result = check(vriGetInterface(m_Device.handle, VRI_INTERFACE_INTEROP, sizeof(interop), &interop),
+                                "Get VRI interop");
+            !result)
+        {
+            return result;
+        }
+        VriDeviceNativeHandles native {};
+        if (auto result = check(interop.GetDeviceNativeHandles(m_Device.handle, &native), "Get Vulkan handles");
+            !result)
+        {
+            return result;
+        }
+        XrGraphicsBindingVulkanKHR binding {XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR};
+        binding.instance         = static_cast<VkInstance>(native.u.vulkan.instance);
+        binding.physicalDevice   = static_cast<VkPhysicalDevice>(native.u.vulkan.physicalDevice);
+        binding.device           = static_cast<VkDevice>(native.u.vulkan.device);
+        binding.queueFamilyIndex = native.u.vulkan.graphicsQueueFamilyIndex;
+        binding.queueIndex       = native.u.vulkan.graphicsQueueIndex;
+        XrSessionCreateInfo session {XR_TYPE_SESSION_CREATE_INFO};
+        session.next     = &binding;
+        session.systemId = m_System.system();
+        if (auto result = checkXr(xrCreateSession(m_System.instance(), &session, &m_Session), "Create XR session");
+            !result)
+        {
+            return result;
+        }
+        XrReferenceSpaceCreateInfo space {XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
+        space.referenceSpaceType                 = XR_REFERENCE_SPACE_TYPE_LOCAL;
+        space.poseInReferenceSpace.orientation.w = 1;
+        if (auto result = checkXr(xrCreateReferenceSpace(m_Session, &space, &m_Space), "Create local reference space");
+            !result)
+        {
+            return result;
+        }
+        uint32_t count = 0;
+        if (auto result = checkXr(xrEnumerateViewConfigurationViews(m_System.instance(),
+                                                                    m_System.system(),
+                                                                    XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
+                                                                    0,
+                                                                    &count,
+                                                                    nullptr),
+                                  "Count stereo views");
+            !result)
+        {
+            return result;
+        }
+        if (count != 2)
+        {
+            return makeError("Vultra requires PRIMARY_STEREO with two views");
+        }
+        XrViewConfigurationView views[2] {{XR_TYPE_VIEW_CONFIGURATION_VIEW}, {XR_TYPE_VIEW_CONFIGURATION_VIEW}};
+        if (auto result = checkXr(xrEnumerateViewConfigurationViews(m_System.instance(),
+                                                                    m_System.system(),
+                                                                    XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
+                                                                    2,
+                                                                    &count,
+                                                                    views),
+                                  "Get stereo views");
+            !result)
+        {
+            return result;
+        }
+        if (auto result = checkXr(xrEnumerateEnvironmentBlendModes(m_System.instance(),
+                                                                   m_System.system(),
+                                                                   XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
+                                                                   0,
+                                                                   &count,
+                                                                   nullptr),
+                                  "Count blend modes");
+            !result)
+        {
+            return result;
+        }
+        std::vector<XrEnvironmentBlendMode> modes(count);
+        if (auto result = checkXr(xrEnumerateEnvironmentBlendModes(m_System.instance(),
+                                                                   m_System.system(),
+                                                                   XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
+                                                                   count,
+                                                                   &count,
+                                                                   modes.data()),
+                                  "Get blend modes");
+            !result)
+        {
+            return result;
+        }
+        if (modes.empty())
+        {
+            return makeError("No XR environment blend mode");
+        }
+        m_Blend = std::find(modes.begin(), modes.end(), XR_ENVIRONMENT_BLEND_MODE_OPAQUE) != modes.end() ?
+                      XR_ENVIRONMENT_BLEND_MODE_OPAQUE :
+                      modes.front();
+        if (auto result = checkXr(xrEnumerateSwapchainFormats(m_Session, 0, &count, nullptr), "Count XR formats");
+            !result)
+        {
+            return result;
+        }
+        std::vector<int64_t> formats(count);
+        if (auto result =
+                checkXr(xrEnumerateSwapchainFormats(m_Session, count, &count, formats.data()), "Get XR formats");
+            !result)
+        {
+            return result;
+        }
+        int64_t format = 0;
+        for (const auto candidate :
+             {VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8A8_UNORM})
+        {
+            if (std::find(formats.begin(), formats.end(), candidate) != formats.end())
             {
-                throw std::runtime_error("Vultra requires PRIMARY_STEREO with two views");
-            }
-            XrViewConfigurationView views[2] {{XR_TYPE_VIEW_CONFIGURATION_VIEW}, {XR_TYPE_VIEW_CONFIGURATION_VIEW}};
-            checkXr(xrEnumerateViewConfigurationViews(system.instance(),
-                                                      system.system(),
-                                                      XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
-                                                      2,
-                                                      &count,
-                                                      views),
-                    "Get stereo views");
-            checkXr(xrEnumerateEnvironmentBlendModes(system.instance(),
-                                                     system.system(),
-                                                     XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
-                                                     0,
-                                                     &count,
-                                                     nullptr),
-                    "Count blend modes");
-            std::vector<XrEnvironmentBlendMode> modes(count);
-            checkXr(xrEnumerateEnvironmentBlendModes(system.instance(),
-                                                     system.system(),
-                                                     XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
-                                                     count,
-                                                     &count,
-                                                     modes.data()),
-                    "Get blend modes");
-            if (modes.empty())
-            {
-                throw std::runtime_error("No XR environment blend mode");
-            }
-            m_Blend = std::find(modes.begin(), modes.end(), XR_ENVIRONMENT_BLEND_MODE_OPAQUE) != modes.end() ?
-                          XR_ENVIRONMENT_BLEND_MODE_OPAQUE :
-                          modes.front();
-            checkXr(xrEnumerateSwapchainFormats(m_Session, 0, &count, nullptr), "Count XR formats");
-            std::vector<int64_t> formats(count);
-            checkXr(xrEnumerateSwapchainFormats(m_Session, count, &count, formats.data()), "Get XR formats");
-            int64_t format = 0;
-            for (const auto candidate :
-                 {VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8A8_UNORM})
-            {
-                if (std::find(formats.begin(), formats.end(), candidate) != formats.end())
-                {
-                    format = candidate;
-                    break;
-                }
-            }
-            switch (format)
-            {
-                case VK_FORMAT_R8G8B8A8_SRGB:
-                    m_Format = VriFormat_RGBA8_SRGB;
-                    break;
-                case VK_FORMAT_R8G8B8A8_UNORM:
-                    m_Format = VriFormat_RGBA8_UNORM;
-                    break;
-                case VK_FORMAT_B8G8R8A8_SRGB:
-                    m_Format = VriFormat_BGRA8_SRGB;
-                    break;
-                case VK_FORMAT_B8G8R8A8_UNORM:
-                    m_Format = VriFormat_BGRA8_UNORM;
-                    break;
-                default:
-                    throw std::runtime_error("XR runtime has no supported RGBA/BGRA8 format");
-            }
-            for (size_t e = 0; e < 2; ++e)
-            {
-                auto& eye = m_Eyes[e];
-                eye.size  = {views[e].recommendedImageRectWidth, views[e].recommendedImageRectHeight};
-                XrSwapchainCreateInfo info {XR_TYPE_SWAPCHAIN_CREATE_INFO};
-                info.usageFlags  = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
-                info.format      = format;
-                info.width       = eye.size.width;
-                info.height      = eye.size.height;
-                info.sampleCount = 1;
-                info.faceCount   = 1;
-                info.arraySize   = 1;
-                info.mipCount    = 1;
-                checkXr(xrCreateSwapchain(m_Session, &info, &eye.handle), "Create eye swapchain");
-                checkXr(xrEnumerateSwapchainImages(eye.handle, 0, &count, nullptr), "Count eye images");
-                std::vector<XrSwapchainImageVulkanKHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
-                checkXr(xrEnumerateSwapchainImages(eye.handle,
-                                                   count,
-                                                   &count,
-                                                   reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())),
-                        "Get eye images");
-                eye.wrappers.reserve(count);
-                eye.textures.reserve(count);
-                for (const auto& image : images)
-                {
-                    VriWrapTextureDesc wrap {};
-                    wrap.nativeTexture  = image.image;
-                    wrap.desc           = colorTexture(eye.size, m_Format);
-                    wrap.desc.usage     = VriTextureUsage_ColorAttachment | VriTextureUsage_ShaderResource;
-                    VriTexture* texture = nullptr;
-                    check(interop.WrapTexture(device.handle, &wrap, &texture), "Wrap eye image");
-                    eye.wrappers.push_back(texture);
-                    eye.textures.push_back(std::make_unique<Texture>(device, wrap.desc, texture));
-                }
+                format = candidate;
+                break;
             }
         }
-        catch (...)
+        switch (format)
         {
-            cleanup();
-            throw;
+            case VK_FORMAT_R8G8B8A8_SRGB:
+                m_Format = VriFormat_RGBA8_SRGB;
+                break;
+            case VK_FORMAT_R8G8B8A8_UNORM:
+                m_Format = VriFormat_RGBA8_UNORM;
+                break;
+            case VK_FORMAT_B8G8R8A8_SRGB:
+                m_Format = VriFormat_BGRA8_SRGB;
+                break;
+            case VK_FORMAT_B8G8R8A8_UNORM:
+                m_Format = VriFormat_BGRA8_UNORM;
+                break;
+            default:
+                return makeError("XR runtime has no supported RGBA/BGRA8 format");
         }
+        for (size_t e = 0; e < 2; ++e)
+        {
+            auto& eye = m_Eyes[e];
+            eye.size  = {views[e].recommendedImageRectWidth, views[e].recommendedImageRectHeight};
+            XrSwapchainCreateInfo info {XR_TYPE_SWAPCHAIN_CREATE_INFO};
+            info.usageFlags  = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+            info.format      = format;
+            info.width       = eye.size.width;
+            info.height      = eye.size.height;
+            info.sampleCount = 1;
+            info.faceCount   = 1;
+            info.arraySize   = 1;
+            info.mipCount    = 1;
+            if (auto result = checkXr(xrCreateSwapchain(m_Session, &info, &eye.handle), "Create eye swapchain");
+                !result)
+            {
+                return result;
+            }
+            if (auto result = checkXr(xrEnumerateSwapchainImages(eye.handle, 0, &count, nullptr), "Count eye images");
+                !result)
+            {
+                return result;
+            }
+            std::vector<XrSwapchainImageVulkanKHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
+            if (auto result =
+                    checkXr(xrEnumerateSwapchainImages(eye.handle,
+                                                       count,
+                                                       &count,
+                                                       reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())),
+                            "Get eye images");
+                !result)
+            {
+                return result;
+            }
+            eye.wrappers.reserve(count);
+            eye.textures.reserve(count);
+            for (const auto& image : images)
+            {
+                VriWrapTextureDesc wrap {};
+                wrap.nativeTexture  = image.image;
+                wrap.desc           = colorTexture(eye.size, m_Format);
+                wrap.desc.usage     = VriTextureUsage_ColorAttachment | VriTextureUsage_ShaderResource;
+                VriTexture* wrapper = nullptr;
+                if (auto result = check(interop.WrapTexture(m_Device.handle, &wrap, &wrapper), "Wrap eye image");
+                    !result)
+                {
+                    return result;
+                }
+                eye.wrappers.push_back(wrapper);
+                auto texture = Texture::create(m_Device, wrap.desc, wrapper);
+                if (!texture)
+                {
+                    return std::unexpected(texture.error());
+                }
+                eye.textures.push_back(std::move(*texture));
+            }
+        }
+        return {};
     }
 
     OpenXRSession::~OpenXRSession()
@@ -388,12 +503,10 @@ namespace vultra
         m_Frame.shouldRender = false;
         if (m_Frame.begun)
         {
-            try
+            if (auto result = endFrame(); !result)
             {
-                endFrame();
-            }
-            catch (...)
-            {
+                Logger::core().error("[OpenXR] Pairing the interrupted frame during shutdown: {}",
+                                     result.error().message);
             }
         }
         for (auto& eye : m_Eyes)
@@ -422,7 +535,7 @@ namespace vultra
         m_Session = XR_NULL_HANDLE;
     }
 
-    void OpenXRSession::pollEvents()
+    std::expected<void, Error> OpenXRSession::pollEvents()
     {
         XrEventDataBuffer event {XR_TYPE_EVENT_DATA_BUFFER};
         XrResult          result;
@@ -441,12 +554,18 @@ namespace vultra
                     {
                         XrSessionBeginInfo info {XR_TYPE_SESSION_BEGIN_INFO};
                         info.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-                        checkXr(xrBeginSession(m_Session, &info), "Begin XR session");
+                        if (auto begun = checkXr(xrBeginSession(m_Session, &info), "Begin XR session"); !begun)
+                        {
+                            return begun;
+                        }
                         m_Running = true;
                     }
                     if (changed.state == XR_SESSION_STATE_STOPPING && m_Running)
                     {
-                        checkXr(xrEndSession(m_Session), "End XR session");
+                        if (auto ended = checkXr(xrEndSession(m_Session), "End XR session"); !ended)
+                        {
+                            return ended;
+                        }
                         m_Running = false;
                     }
                     if (changed.state == XR_SESSION_STATE_EXITING || changed.state == XR_SESSION_STATE_LOSS_PENDING)
@@ -459,27 +578,37 @@ namespace vultra
         }
         if (result != XR_EVENT_UNAVAILABLE)
         {
-            checkXr(result, "Poll XR events");
+            return checkXr(result, "Poll XR events");
         }
+        return {};
     }
 
-    XRFrame OpenXRSession::beginFrame()
+    std::expected<XRFrame, Error> OpenXRSession::beginFrame()
     {
         if (m_Frame.begun)
         {
-            throw std::logic_error("End the previous XR frame first");
+            return makeError("End the previous XR frame first");
         }
         m_Frame = {};
-        pollEvents();
+        if (auto result = pollEvents(); !result)
+        {
+            return std::unexpected(result.error());
+        }
         if (!m_Running || m_Exiting)
         {
             return m_Frame;
         }
         XrFrameWaitInfo wait {XR_TYPE_FRAME_WAIT_INFO};
         XrFrameState    state {XR_TYPE_FRAME_STATE};
-        checkXr(xrWaitFrame(m_Session, &wait, &state), "Wait XR frame");
+        if (auto result = checkXr(xrWaitFrame(m_Session, &wait, &state), "Wait XR frame"); !result)
+        {
+            return std::unexpected(result.error());
+        }
         XrFrameBeginInfo begin {XR_TYPE_FRAME_BEGIN_INFO};
-        checkXr(xrBeginFrame(m_Session, &begin), "Begin XR frame");
+        if (auto result = checkXr(xrBeginFrame(m_Session, &begin), "Begin XR frame"); !result)
+        {
+            return std::unexpected(result.error());
+        }
         m_Frame.begun       = true;
         m_Frame.displayTime = state.predictedDisplayTime;
         if (!state.shouldRender)
@@ -493,7 +622,11 @@ namespace vultra
         XrViewState viewState {XR_TYPE_VIEW_STATE};
         XrView      views[2] {{XR_TYPE_VIEW}, {XR_TYPE_VIEW}};
         uint32_t    count = 0;
-        checkXr(xrLocateViews(m_Session, &locate, &viewState, 2, &count, views), "Locate eye views");
+        if (auto result = checkXr(xrLocateViews(m_Session, &locate, &viewState, 2, &count, views), "Locate eye views");
+            !result)
+        {
+            return std::unexpected(result.error());
+        }
         const auto valid = XR_VIEW_STATE_ORIENTATION_VALID_BIT | XR_VIEW_STATE_POSITION_VALID_BIT;
         if (count != 2 || (viewState.viewStateFlags & valid) != valid)
         {
@@ -503,13 +636,20 @@ namespace vultra
         {
             auto&                       eye = m_Eyes[e];
             XrSwapchainImageAcquireInfo acquire {XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
-            checkXr(xrAcquireSwapchainImage(eye.handle, &acquire, &eye.index), "Acquire eye image");
+            if (auto result = checkXr(xrAcquireSwapchainImage(eye.handle, &acquire, &eye.index), "Acquire eye image");
+                !result)
+            {
+                return std::unexpected(result.error());
+            }
             eye.acquired = true;
             XrSwapchainImageWaitInfo imageWait {XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
             imageWait.timeout = XR_INFINITE_DURATION;
-            checkXr(xrWaitSwapchainImage(eye.handle, &imageWait), "Wait eye image");
+            if (auto result = checkXr(xrWaitSwapchainImage(eye.handle, &imageWait), "Wait eye image"); !result)
+            {
+                return std::unexpected(result.error());
+            }
             eye.waited      = true;
-            auto& target    = *eye.textures.at(eye.index);
+            auto& target    = eye.textures.at(eye.index);
             target.state    = {}; // XR acquisition discards the previous frame's contents
             m_Frame.eyes[e] = {&target, views[e]};
         }
@@ -531,11 +671,11 @@ namespace vultra
         }
     }
 
-    void OpenXRSession::endFrame()
+    std::expected<void, Error> OpenXRSession::endFrame()
     {
         if (!m_Frame.begun)
         {
-            return;
+            return {};
         }
         XrCompositionLayerProjectionView views[2] {{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},
                                                    {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}};
@@ -545,7 +685,10 @@ namespace vultra
             if (eye.acquired && eye.waited)
             {
                 XrSwapchainImageReleaseInfo release {XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-                checkXr(xrReleaseSwapchainImage(eye.handle, &release), "Release eye image");
+                if (auto result = checkXr(xrReleaseSwapchainImage(eye.handle, &release), "Release eye image"); !result)
+                {
+                    return result;
+                }
                 eye.acquired = false;
                 eye.waited   = false;
             }
@@ -565,6 +708,6 @@ namespace vultra
         end.layerCount           = m_Frame.shouldRender ? 1 : 0;
         end.layers               = m_Frame.shouldRender ? &base : nullptr;
         m_Frame.begun            = false;
-        checkXr(xrEndFrame(m_Session, &end), "End XR frame");
+        return checkXr(xrEndFrame(m_Session, &end), "End XR frame");
     }
 } // namespace vultra

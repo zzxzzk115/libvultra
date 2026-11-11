@@ -1,4 +1,5 @@
 #include "../examples/common/triangle.hpp"
+#include "support/check.hpp"
 
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/graph/render_graph.hpp>
@@ -11,33 +12,14 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
-#include <stdexcept>
 #include <thread>
 
 namespace
 {
-    void require(bool value, const char* message)
-    {
-        if (!value)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
 
-    template<class Callback>
-    void reject(Callback&& callback)
-    {
-        bool rejected = false;
-        try
-        {
-            callback();
-        }
-        catch (const std::exception&)
-        {
-            rejected = true;
-        }
-        require(rejected, "Expected shader input rejection");
-    }
+    constexpr std::string_view kRejected = "Expected shader input rejection";
 
     std::vector<uint8_t> readBytes(const std::filesystem::path& file)
     {
@@ -50,7 +32,8 @@ namespace
     template<class Callback>
     void alterDocument(const std::filesystem::path& file, const std::vector<uint8_t>& original, Callback&& callback)
     {
-        auto document = nlohmann::json::from_cbor(original.begin() + 16, original.end());
+        auto document = nlohmann::json::from_cbor(original.begin() + 16, original.end(), true, false);
+        require(!document.is_discarded(), "Shader artifact payload is not CBOR");
         callback(document);
         const auto           payload = nlohmann::json::to_cbor(document);
         std::vector<uint8_t> bytes(original.begin(), original.begin() + 16);
@@ -60,18 +43,14 @@ namespace
             bytes[8 + i] = uint8_t(hash >> (8 * i));
         }
         bytes.insert(bytes.end(), payload.begin(), payload.end());
-        vultra::writeFileAtomically(file, std::as_bytes(std::span(bytes)));
-        reject(
-            [&]
-            {
-                vultra::ShaderProgram::load(file);
-            });
+        must(vultra::writeFileAtomically(file, std::as_bytes(std::span(bytes))));
+        support::rejects(vultra::ShaderProgram::load(file), kRejected);
     }
 
     void resourceViews(const std::filesystem::path& root)
     {
         using namespace vultra;
-        const auto program = ShaderProgram::compileSource(root / "resource_views.slang", R"(
+        const auto program = must(ShaderProgram::compileSource(root / "resource_views.slang", R"(
 Texture1D<float4> line;
 Texture1DArray<float4> lines;
 Texture2D<float4> plane;
@@ -90,10 +69,10 @@ void computeMain()
                 volume.SampleLevel(filter, float3(0.5), 0) + cube.SampleLevel(filter, float3(0, 0, 1), 0) +
                 cubes.SampleLevel(filter, float4(0, 0, 1, 0), 0);
 }
-)");
+)"));
         const auto file    = root / "resource_views.vshaderc";
-        program.save(file);
-        const auto       restored = ShaderProgram::load(file);
+        must(program.save(file));
+        const auto       restored = must(ShaderProgram::load(file));
         const std::array expected {std::pair {"line", VriTextureViewType_1D},
                                    std::pair {"lines", VriTextureViewType_1DArray},
                                    std::pair {"plane", VriTextureViewType_2D},
@@ -103,7 +82,7 @@ void computeMain()
                                    std::pair {"cubes", VriTextureViewType_CubeArray}};
         for (const auto* candidate : {&program, &restored})
         {
-            const auto bindings = candidate->resourceBindings();
+            const auto bindings = must(candidate->resourceBindings());
             for (const auto& [name, view] : expected)
             {
                 const auto binding = std::ranges::find(bindings, name, &ShaderResourceBinding::name);
@@ -117,7 +96,7 @@ void computeMain()
     void userAttributes(const std::filesystem::path& root)
     {
         using namespace vultra;
-        const auto program = ShaderProgram::compileSource(root / "attributes.slang", R"(
+        const auto program = must(ShaderProgram::compileSource(root / "attributes.slang", R"(
 [__AttributeUsage(_AttributeTargets.Var)]
 struct PassInputAttribute { string resource; };
 [__AttributeUsage(_AttributeTargets.Var)]
@@ -141,10 +120,10 @@ void computeMain(uint3 id : SV_DispatchThreadID)
 {
     result[id.xy] = source[id.xy] * parameters.gain * parameters.width;
 }
-)");
+)"));
         const auto file    = root / "attributes.vshaderc";
-        program.save(file);
-        const auto restored = ShaderProgram::load(file);
+        must(program.save(file));
+        const auto restored = must(ShaderProgram::load(file));
         for (const auto* candidate : {&program, &restored})
         {
             const auto* input = candidate->parameters.field("source");
@@ -206,7 +185,7 @@ void main(uint3 id : SV_DispatchThreadID)
             ShaderCompileOptions options;
             options.debugInfo = debugInfo;
             options.optimize  = optimize;
-            return ShaderProgram::compileSource(root / "modes.slang", source, options);
+            return must(ShaderProgram::compileSource(root / "modes.slang", source, options));
         };
         const auto contains = [](const ShaderProgram& program, std::string_view text)
         {
@@ -250,22 +229,28 @@ void main(uint3 id : SV_DispatchThreadID)
                 << "[shader(\"compute\")] [numthreads(1, 1, 1)] void main() { " << body << " }\n";
         };
         write("");
-        Device                      device;
+        const auto                  device = must(Device::create());
         VriPipelineLayout*          layout = nullptr;
         const VriPipelineLayoutDesc layoutDesc {};
-        check(device.core.CreatePipelineLayout(device.handle, &layoutDesc, &layout), "Watched reload layout");
+        must(check(device->core.CreatePipelineLayout(device->handle, &layoutDesc, &layout), "Watched reload layout"));
         {
-            ShaderPipeline pipeline(device,
-                                    file,
-                                    {{"main", VriShaderStage_Compute}},
-                                    [&](std::span<const VriShaderDesc> shaders)
-                                    {
-                                        VriPipeline*                 result = nullptr;
-                                        const VriComputePipelineDesc desc {layout, shaders[0], device.pipelineCache};
-                                        check(device.core.CreateComputePipeline(device.handle, &desc, &result),
+            const auto watched  = must(ShaderPipeline::create(
+                *device,
+                file,
+                std::vector<ShaderEntry> {{"main", VriShaderStage_Compute}},
+                [&](std::span<const VriShaderDesc> shaders) -> std::expected<VriPipeline*, Error>
+                {
+                    VriPipeline*                 result = nullptr;
+                    const VriComputePipelineDesc desc {layout, shaders[0], device->pipelineCache};
+                    if (auto pipeline = check(device->core.CreateComputePipeline(device->handle, &desc, &result),
                                               "Watched reload pipeline");
-                                        return result;
-                                    });
+                        !pipeline)
+                    {
+                        return std::unexpected(pipeline.error());
+                    }
+                    return result;
+                }));
+            auto&      pipeline = *watched;
             // Polls like a frame loop until the pipeline reacts to the edit or the time is up.
             const auto pollUntil = [&](auto&& done)
             {
@@ -309,12 +294,11 @@ void main(uint3 id : SV_DispatchThreadID)
                         pipeline.generation() == generation + 2 && pipeline.diagnostics().empty(),
                     "A repaired shader file did not recover");
         }
-        device.core.DestroyPipelineLayout(layout);
+        device->core.DestroyPipelineLayout(layout);
     }
 } // namespace
 
 int main()
-try
 {
     using namespace vultra;
     namespace fs    = std::filesystem;
@@ -332,20 +316,21 @@ try
     const std::array includes {fs::path("builtin/shaders"), fs::path("examples/common")};
     const std::array entries {ShaderEntry {"vertexMain", VriShaderStage_Vertex},
                               ShaderEntry {"fragmentMain", VriShaderStage_Fragment}};
-    const auto       program = ShaderProgram::compile(source, {}, includes);
+    const auto       program = must(ShaderProgram::compile(source, {}, includes));
     require(program.shaders.size() == 2 && !program.rayQuery, "Shader entry discovery failed");
-    program.save(cooked);
+    must(program.save(cooked));
     ShaderCompileOptions cacheOptions;
     cacheOptions.includeDirectories.assign(includes.begin(), includes.end());
-    require(!ShaderProgram::cook(source, cooked, cacheOptions), "Raw Slang unchanged cache missed");
+    require(!must(ShaderProgram::cook(source, cooked, cacheOptions)), "Raw Slang unchanged cache missed");
     auto defineOptions = cacheOptions;
     defineOptions.defines.push_back({"TEST_CACHE_DEFINE", "1"});
-    require(ShaderProgram::cook(source, cooked, defineOptions) && !ShaderProgram::cook(source, cooked, defineOptions),
+    require(must(ShaderProgram::cook(source, cooked, defineOptions)) &&
+                !must(ShaderProgram::cook(source, cooked, defineOptions)),
             "Macro options did not invalidate/cache raw Slang");
-    program.save(cooked);
+    must(program.save(cooked));
     const auto original   = readBytes(cooked);
-    const auto restored   = ShaderProgram::load(cooked);
-    const auto fromMemory = ShaderProgram::load(std::as_bytes(std::span(original)), "embedded/triangle.vshaderc");
+    const auto restored   = must(ShaderProgram::load(cooked));
+    const auto fromMemory = must(ShaderProgram::load(std::as_bytes(std::span(original)), "embedded/triangle.vshaderc"));
     require(fromMemory.shaders.size() == restored.shaders.size() &&
                 fromMemory.shaders[0].words == restored.shaders[0].words &&
                 fromMemory.shaders[1].words == restored.shaders[1].words &&
@@ -353,21 +338,14 @@ try
             "Embedded shader archive differs from filesystem loading");
     auto damaged = original;
     damaged.back() ^= 1;
-    reject(
-        [&]
-        {
-            ShaderProgram::load(std::as_bytes(std::span(damaged)), "embedded/damaged.vshaderc");
-        });
-    reject(
-        [&]
-        {
-            ShaderProgram::load(std::as_bytes(std::span(original)).first(15), "embedded/truncated.vshaderc");
-        });
+    support::rejects(ShaderProgram::load(std::as_bytes(std::span(damaged)), "embedded/damaged.vshaderc"), kRejected);
+    support::rejects(ShaderProgram::load(std::as_bytes(std::span(original)).first(15), "embedded/truncated.vshaderc"),
+                     kRejected);
     require(restored.shaders.size() == program.shaders.size() &&
                 restored.shaders[0].words == program.shaders[0].words &&
                 restored.shaders[1].words == program.shaders[1].words,
             "Cooked bytecode changed during roundtrip");
-    const auto views = restored.descriptors(entries);
+    const auto views = must(restored.descriptors(entries));
     require(views.size() == 2 && std::string_view(views[0].entryPointName) == "vertexMain" &&
                 views[1].stage == VriShaderStage_Fragment,
             "Cooked descriptor selection failed");
@@ -410,20 +388,20 @@ void callableMain(inout Payload payload)
 }
 )";
     const std::array       rayEntries {ShaderEntry {"raygenMain", VriShaderStage_RayGen},
-                                 ShaderEntry {"missMain", VriShaderStage_Miss},
-                                 ShaderEntry {"closestHitMain", VriShaderStage_ClosestHit},
-                                 ShaderEntry {"anyHitMain", VriShaderStage_AnyHit},
-                                 ShaderEntry {"intersectionMain", VriShaderStage_Intersection},
-                                 ShaderEntry {"callableMain", VriShaderStage_Callable}};
-    const auto             rayProgram = ShaderProgram::compileSource(root / "ray.slang", raySource);
+                                       ShaderEntry {"missMain", VriShaderStage_Miss},
+                                       ShaderEntry {"closestHitMain", VriShaderStage_ClosestHit},
+                                       ShaderEntry {"anyHitMain", VriShaderStage_AnyHit},
+                                       ShaderEntry {"intersectionMain", VriShaderStage_Intersection},
+                                       ShaderEntry {"callableMain", VriShaderStage_Callable}};
+    const auto             rayProgram = must(ShaderProgram::compileSource(root / "ray.slang", raySource));
     require(rayProgram.shaders.size() == rayEntries.size(), "Ray tracing entry discovery failed");
     const auto rayCooked = root / "ray.vshaderc";
-    rayProgram.save(rayCooked);
-    const auto           rayRestored = ShaderProgram::load(rayCooked);
-    const auto           rayViews    = rayRestored.descriptors(rayEntries);
+    must(rayProgram.save(rayCooked));
+    const auto           rayRestored = must(ShaderProgram::load(rayCooked));
+    const auto           rayViews    = must(rayRestored.descriptors(rayEntries));
     ShaderCompileOptions rayOptions;
     rayOptions.entries.assign(rayEntries.begin(), rayEntries.end());
-    const auto rayRequested = ShaderProgram::compileSource(root / "ray.slang", raySource, rayOptions);
+    const auto rayRequested = must(ShaderProgram::compileSource(root / "ray.slang", raySource, rayOptions));
     for (size_t i = 0; i < rayEntries.size(); ++i)
     {
         require(rayViews[i].stage == rayEntries[i].stage &&
@@ -439,22 +417,10 @@ void callableMain(inout Payload payload)
                       document["entries"][0]["stage"] = uint32_t(VriShaderStage_RayGen | VriShaderStage_Miss);
                   });
     const std::array wrongStage {ShaderEntry {"vertexMain", VriShaderStage_Fragment}};
-    reject(
-        [&]
-        {
-            ShaderProgram::compile(source, wrongStage, includes);
-        });
-    reject(
-        [&]
-        {
-            restored.descriptors(wrongStage);
-        });
+    support::rejects(ShaderProgram::compile(source, wrongStage, includes), kRejected);
+    support::rejects(restored.descriptors(wrongStage), kRejected);
     const std::array missing {ShaderEntry {"missing", VriShaderStage_Vertex}};
-    reject(
-        [&]
-        {
-            restored.descriptors(missing);
-        });
+    support::rejects(restored.descriptors(missing), kRejected);
     alterDocument(cooked,
                   original,
                   [](auto& document)
@@ -497,21 +463,17 @@ void callableMain(inout Payload payload)
                   {
                       document["parameters"]["view_type"] = 99;
                   });
-    writeFileAtomically(cooked, std::as_bytes(std::span(original)));
+    must(writeFileAtomically(cooked, std::as_bytes(std::span(original))));
     auto invalid                = program;
     invalid.shaders[0].words[0] = 0;
-    reject(
-        [&]
-        {
-            invalid.save(cooked);
-        });
+    support::rejects(invalid.save(cooked), kRejected);
     require(readBytes(cooked) == original, "Rejected shader save overwrote last good artifact");
 
-    Device               device;
+    const auto           device = must(Device::create());
     ShaderCompileOptions wgslOptions;
     wgslOptions.profile = "wgsl";
     wgslOptions.includeDirectories.assign(includes.begin(), includes.end());
-    const auto wgsl = ShaderProgram::compile(source, wgslOptions);
+    const auto wgsl = must(ShaderProgram::compile(source, wgslOptions));
     require(wgsl.profile == "wgsl" && wgsl.compileKey != program.compileKey && wgsl.shaders.size() == 2,
             "WGSL target shared the SPIR-V compiler identity or lost shader entries");
     for (const auto& shader : wgsl.shaders)
@@ -519,14 +481,14 @@ void callableMain(inout Payload payload)
         require(shader.words.empty() && !shader.wgsl.empty(), "WGSL program retained the wrong target payload");
     }
     const auto wgslFile = root / "triangle-wgsl.vshaderc";
-    wgsl.save(wgslFile);
+    must(wgsl.save(wgslFile));
     const auto wgslBytes = readBytes(wgslFile);
     const auto wgslRestored =
-        ShaderProgram::load(std::as_bytes(std::span(wgslBytes)), "embedded/triangle-wgsl.vshaderc");
+        must(ShaderProgram::load(std::as_bytes(std::span(wgslBytes)), "embedded/triangle-wgsl.vshaderc"));
     require(wgslRestored.profile == "wgsl" && wgslRestored.shaders[0].wgsl == wgsl.shaders[0].wgsl &&
                 wgslRestored.shaders[1].wgsl == wgsl.shaders[1].wgsl,
             "Cooked WGSL changed during embedded archive loading");
-    const auto wgslDescriptors = wgslRestored.descriptors(entries);
+    const auto wgslDescriptors = must(wgslRestored.descriptors(entries));
     require(std::string_view(static_cast<const char*>(wgslDescriptors[0].bytecode)) == wgsl.shaders[0].wgsl &&
                 wgslDescriptors[0].bytecodeSize == wgsl.shaders[0].wgsl.size() + 1,
             "VRI did not receive owned, NUL-terminated WGSL");
@@ -538,77 +500,66 @@ void callableMain(inout Payload payload)
                   });
     auto invalidWgsl             = wgsl;
     invalidWgsl.shaders[0].words = program.shaders[0].words;
-    reject(
-        [&]
-        {
-            invalidWgsl.save(wgslFile);
-        });
+    support::rejects(invalidWgsl.save(wgslFile), kRejected);
     wgslOptions.rayQuery = true;
-    reject(
-        [&]
-        {
-            ShaderProgram::compile(source, wgslOptions);
-        });
+    support::rejects(ShaderProgram::compile(source, wgslOptions), kRejected);
     bool builderCalled = false;
-    reject(
-        [&]
-        {
-            ShaderPipeline incompatible(device,
-                                        wgslRestored,
-                                        {entries.begin(), entries.end()},
-                                        [&](auto) -> VriPipeline*
-                                        {
-                                            builderCalled = true;
-                                            return nullptr;
-                                        });
-        });
+    support::rejects(ShaderPipeline::create(*device,
+                                            wgslRestored,
+                                            {entries.begin(), entries.end()},
+                                            [&](auto) -> std::expected<VriPipeline*, Error>
+                                            {
+                                                builderCalled = true;
+                                                return nullptr;
+                                            }),
+                     kRejected);
     require(!builderCalled, "A mismatched shader target reached the device pipeline builder");
-    Frame       frame(device);
-    Texture     target(device, colorTexture({129, 73}, VriFormat_BGRA8_UNORM));
+    const auto  frame  = must(Frame::create(*device));
+    auto        target = must(Texture::create(*device, colorTexture({129, 73}, VriFormat_BGRA8_UNORM)));
     Image       baseline;
     const float clear[4] {0.1f, 0.2f, 0.7f, 1};
     auto        render = [&](Triangle& triangle)
     {
-        auto* commands = frame.begin();
+        auto* commands = must(frame->begin());
         target.transition(
             commands,
             {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
-        triangle.draw(commands, target, clear);
-        frame.submitAndWait();
-        return readback(device, target);
+        must(triangle.draw(commands, target, clear));
+        must(frame->submitAndWait());
+        return must(readback(*device, target));
     };
     {
-        Triangle triangle(device, VriFormat_BGRA8_UNORM, source, root / "source", {includes.begin(), includes.end()});
-        baseline = render(triangle);
+        const auto triangle = must(Triangle::create(*device,
+                                                    VriFormat_BGRA8_UNORM,
+                                                    source,
+                                                    root / "source",
+                                                    {includes.begin(), includes.end()}));
+        baseline            = render(*triangle);
     }
     fs::remove(source);
     fs::remove(root / "source/color.slangh");
     // The ordinary source path resolves its cooked sibling, without includes or an existing watch directory.
-    Triangle shipped(device, VriFormat_BGRA8_UNORM, source, root / "missing-watch-root", {});
-    require(!shipped.pipeline->poll(), "Cooked program unexpectedly created a watcher");
-    require(compare(baseline, render(shipped)).mse == 0, "Source and source-free cooked GPU pixels differ");
-    const auto handle     = shipped.pipeline->handle();
-    const auto generation = shipped.pipeline->generation();
+    const auto shipped =
+        must(Triangle::create(*device, VriFormat_BGRA8_UNORM, source, root / "missing-watch-root", {}));
+    require(!shipped->pipeline->poll(), "Cooked program unexpectedly created a watcher");
+    require(must(compare(baseline, render(*shipped))).mse == 0, "Source and source-free cooked GPU pixels differ");
+    const auto handle     = shipped->pipeline->handle();
+    const auto generation = shipped->pipeline->generation();
     auto       corrupt    = original;
     corrupt.back() ^= 1;
-    writeFileAtomically(cooked, std::as_bytes(std::span(corrupt)));
-    require(!shipped.pipeline->reload() && shipped.pipeline->handle() == handle &&
-                shipped.pipeline->generation() == generation,
+    must(writeFileAtomically(cooked, std::as_bytes(std::span(corrupt))));
+    require(!shipped->pipeline->reload() && shipped->pipeline->handle() == handle &&
+                shipped->pipeline->generation() == generation,
             "Corrupt cooked replacement destroyed last good pipeline");
-    require(shipped.pipeline->diagnostics().find("checksum") != std::string::npos &&
-                compare(baseline, render(shipped)).mse == 0,
+    require(shipped->pipeline->diagnostics().find("checksum") != std::string::npos &&
+                must(compare(baseline, render(*shipped))).mse == 0,
             "Cooked failure lost diagnostics or changed image");
-    writeFileAtomically(cooked, std::as_bytes(std::span(original)));
-    require(shipped.pipeline->reload() && shipped.pipeline->generation() == generation + 1 &&
-                compare(baseline, render(shipped)).mse == 0,
+    must(writeFileAtomically(cooked, std::as_bytes(std::span(original))));
+    require(shipped->pipeline->reload() && shipped->pipeline->generation() == generation + 1 &&
+                must(compare(baseline, render(*shipped))).mse == 0,
             "Cooked replacement recovery failed");
-    Triangle explicitCooked(device, VriFormat_BGRA8_UNORM, cooked, {}, {});
-    require(compare(baseline, render(explicitCooked)).mse == 0, "Explicit cooked file changed pixels");
+    const auto explicitCooked = must(Triangle::create(*device, VriFormat_BGRA8_UNORM, cooked, {}, {}));
+    require(must(compare(baseline, render(*explicitCooked))).mse == 0, "Explicit cooked file changed pixels");
     std::puts("Shader cooking passed: source-free GPU parity, metadata validation and replacement failure/recovery");
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::fprintf(stderr, "Shader program test: %s\n", error.what());
-    return 1;
 }

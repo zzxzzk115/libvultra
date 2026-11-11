@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <stdexcept>
 
 namespace vultra
 {
@@ -43,7 +42,7 @@ namespace vultra
         material.alphaCutoff          = alphaCutoff;
     }
 
-    void MaterialParameters::validate() const
+    std::expected<void, Error> MaterialParameters::validate() const
     {
         const std::array values {baseRed,
                                  baseGreen,
@@ -74,7 +73,7 @@ namespace vultra
                                     return !std::isfinite(value);
                                 }))
         {
-            throw std::invalid_argument("Material parameters must be finite");
+            return makeError("Material parameters must be finite");
         }
         const std::array unitValues {baseAlpha,
                                      baseWeight,
@@ -94,8 +93,9 @@ namespace vultra
             emissionRed < 0 || emissionGreen < 0 || emissionBlue < 0 || emissionLuminance < 0 || normalScale < 0 ||
             specularIor < 1 || coatIor < 1 || alphaCutoff < -1 || alphaCutoff > 1)
         {
-            throw std::invalid_argument("Material weights/roughness/alpha must be in [0,1], colors/scales nonnegative, "
-                                        "IOR at least 1 and alpha cutoff in [-1,1]");
+            return makeError("Material weights/roughness/alpha must be in [0,1], colors/scales nonnegative, "
+                             "IOR at least 1 and alpha cutoff in [-1,1]");
         }
+        return {};
     }
 } // namespace vultra

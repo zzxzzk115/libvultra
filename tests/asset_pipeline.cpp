@@ -1,3 +1,5 @@
+#include "support/check.hpp"
+
 #include <vultra/assets/asset_pipeline.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/gpu/image_readback.hpp>
@@ -12,19 +14,15 @@
 
 namespace
 {
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
 
     void write(const std::filesystem::path& path, std::string_view text)
     {
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
-        file.exceptions(std::ios::failbit | std::ios::badbit);
         file.write(text.data(), std::streamsize(text.size()));
+        file.close();
+        require(!file.fail(), "Cannot write fixture");
     }
 
     std::string read(const std::filesystem::path& path)
@@ -52,7 +50,7 @@ namespace
             image.rgba[i + 2] = 0.8f;
             image.rgba[i + 3] = 1;
         }
-        vultra::savePng(image, root / "shared/source image.png");
+        must(vultra::savePng(image, root / "shared/source image.png"));
         write(root / "model/triangle.gltf", R"({
             "asset":{"version":"2.0"}, "scene":0,
             "scenes":[{"nodes":[0]}], "nodes":[{"mesh":0}],
@@ -79,15 +77,15 @@ namespace
         {
             image.rgba[i] = float((i * 17) % 256) / 255;
         }
-        vultra::savePng(image, root / "shared/source image.png");
+        must(vultra::savePng(image, root / "shared/source image.png"));
         vultra::AssetImportOptions options;
         options.cacheDirectory       = root / "cache";
         options.textures.compression = vultra::TextureCompression::eNone;
         for (bool mips : {false, true})
         {
             options.textures.mipmaps = mips;
-            const auto cold          = vultra::importAsset(root / "model/triangle.gltf", options);
-            const auto warm          = vultra::importAsset(root / "model/triangle.gltf", options);
+            const auto cold          = must(vultra::importAsset(root / "model/triangle.gltf", options));
+            const auto warm          = must(vultra::importAsset(root / "model/triangle.gltf", options));
             require(!cold.cacheHit && warm.cacheHit, "Derived-only cache did not hit");
             // Two color-space uses contain 512 KiB of source pixels. Only their additional
             // mips (about 171 KiB) and small metadata belong in the archive.
@@ -113,18 +111,18 @@ namespace
 
     void testGpuTextures(const vultra::ImportedAsset& asset)
     {
-        vultra::Device      device;
-        vultra::GpuScene    scene(device, asset);
-        vultra::Texture     output(device, vultra::colorTexture({16, 16}));
-        vultra::TextureBlit blit(device, output.desc.format);
-        vultra::Frame       frame(device);
+        const auto device = must(vultra::Device::create());
+        const auto scene  = must(vultra::GpuScene::create(*device, asset));
+        auto       output = must(vultra::Texture::create(*device, vultra::colorTexture({16, 16})));
+        const auto blit   = must(vultra::TextureBlit::create(*device, output.desc.format));
+        const auto frame  = must(vultra::Frame::create(*device));
         for (const uint32_t slot : {0u, 2u})
         {
-            blit.setSource(0, *scene.materialTextures.at(0)[slot]);
-            auto* cmd = frame.begin();
-            blit.draw(cmd, output, {0, 0, 16, 16}, 0, slot == 0);
-            frame.submitAndWait();
-            const auto  image = vultra::readback(device, output);
+            must(blit->setSource(0, *scene->materialTextures.at(0)[slot]));
+            auto* cmd = must(frame->begin());
+            must(blit->draw(cmd, output, {0, 0, 16, 16}, 0, slot == 0));
+            must(frame->submitAndWait());
+            const auto  image = must(vultra::readback(*device, output));
             const float reference[] {0.2f, 0.4f, 0.8f, 1};
             for (size_t i = 0; i < image.rgba.size(); ++i)
             {
@@ -139,14 +137,14 @@ namespace
         vultra::TextureImportOptions options;
         options.compression = vultra::TextureCompression::eNone;
         const vultra::SceneImage image {2, 2, {0, 0, 0, 0, 255, 255, 255, 255, 0, 0, 0, 0, 255, 255, 255, 255}};
-        const auto               color  = vultra::prepareTexture(image, true, options);
-        const auto               linear = vultra::prepareTexture(image, false, options);
+        const auto               color  = must(vultra::prepareTexture(image, true, options));
+        const auto               linear = must(vultra::prepareTexture(image, false, options));
         require(std::abs(int(color.levels.back().bytes[0]) - 188) <= 1, "sRGB mip did not average in linear light");
         require(std::abs(int(color.levels.back().bytes[3]) - 128) <= 1, "sRGB mip incorrectly gamma-converted alpha");
         require(std::abs(int(linear.levels.back().bytes[0]) - 128) <= 1,
                 "Packed data mip was alpha-weighted or gamma-converted");
         const auto odd =
-            vultra::prepareTexture({3, 1, {0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255, 255}}, false, options);
+            must(vultra::prepareTexture({3, 1, {0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255, 255}}, false, options));
         require(std::abs(int(odd.levels.back().bytes[0]) - 85) <= 1, "Odd-sized mip discarded its edge texel");
     }
 
@@ -163,11 +161,11 @@ namespace
             scene.materials[i].baseColorTexture.image = i;
             scene.materials[i].normalTexture.image    = i;
         }
-        const auto textures = vultra::prepareTextures(scene, {}, 4);
+        const auto textures = must(vultra::prepareTextures(scene, {}, 4));
         require(textures.materials[0] == textures.materials[1], "Identical images were prepared more than once");
         require(textures.materials[0][0] != textures.materials[0][2], "Content reuse mixed sRGB and linear data");
         require(textures.materials[0][0] != textures.materials[2][0], "Content reuse lost image dimensions");
-        const auto  reference = vultra::prepareTexture(image, false);
+        const auto  reference = must(vultra::prepareTexture(image, false));
         const auto& reused    = textures.images[textures.materials[1][2]];
         for (size_t mip = 0; mip < reference.levels.size(); ++mip)
         {
@@ -175,7 +173,7 @@ namespace
                     "Content reuse changed the mip or compression result");
         }
         scene.images[1].pixels[0] = 129;
-        const auto changed        = vultra::prepareTextures(scene, {}, 4);
+        const auto changed        = must(vultra::prepareTextures(scene, {}, 4));
         require(changed.materials[0][0] != changed.materials[1][0], "Different image contents were merged");
     }
 
@@ -196,8 +194,8 @@ namespace
             scene.materials.push_back(material);
         }
         vultra::TextureImportOptions options;
-        const auto                   parallel = vultra::prepareTextures(scene, options, 4);
-        const auto                   serial   = vultra::prepareTextures(scene, options, 1);
+        const auto                   parallel = must(vultra::prepareTextures(scene, options, 4));
+        const auto                   serial   = must(vultra::prepareTextures(scene, options, 1));
         require(parallel.materials == serial.materials && parallel.images.size() == serial.images.size(),
                 "Worker count changed material texture indices");
         for (size_t i = 0; i < serial.images.size(); ++i)
@@ -212,18 +210,10 @@ namespace
             }
         }
         scene.images[3].pixels.pop_back();
-        bool failed = false;
-        try
-        {
-            vultra::prepareTextures(scene, options, 4);
-        }
-        catch (const std::invalid_argument&)
-        {
-            failed = true;
-        }
-        require(failed, "A worker failure was swallowed or terminated the process");
+        support::rejects(vultra::prepareTextures(scene, options, 4),
+                         "A worker failure was swallowed or terminated the process");
         scene.images[3].pixels.push_back(255);
-        require(vultra::prepareTextures(scene, options, 4).images.size() == parallel.images.size(),
+        require(must(vultra::prepareTextures(scene, options, 4)).images.size() == parallel.images.size(),
                 "Import did not recover after a worker failure");
     }
 
@@ -266,8 +256,8 @@ namespace
             R"("normalTexture":{"index":0})",
             R"("normalTexture":{"index":0,"scale":0.4},"emissiveTexture":{"index":0},"emissiveFactor":[0.2,0.3,0.4],"extensions":{"KHR_materials_emissive_strength":{"emissiveStrength":3}})");
         write(source, text);
-        const auto generated = vultra::loadGltf(source, {}, 4);
-        sameGeometry(generated, vultra::loadGltf(source, {}, 1));
+        const auto generated = must(vultra::loadGltf(source, {}, 4));
+        sameGeometry(generated, must(vultra::loadGltf(source, {}, 1)));
         require(glm::length(generated.vertices[0].tangent - glm::vec4(1, 0, 0, 1)) < 0.00001f &&
                     glm::length(generated.vertices[3].tangent - glm::vec4(-1, 0, 0, -1)) < 0.00001f,
                 "Generated glTF tangent or reflected handedness is wrong");
@@ -293,8 +283,8 @@ namespace
                 R"("type":"SCALAR"},{"bufferView":4,"componentType":5126,"count":3,"type":"VEC4"}])");
         replace(R"("TEXCOORD_0":2)", R"("TEXCOORD_0":2,"TANGENT":4)");
         write(source, text);
-        const auto authored = vultra::loadGltf(source, {}, 4);
-        sameGeometry(authored, vultra::loadGltf(source, {}, 1));
+        const auto authored = must(vultra::loadGltf(source, {}, 4));
+        sameGeometry(authored, must(vultra::loadGltf(source, {}, 1)));
         require(glm::length(authored.vertices[0].tangent - glm::vec4(0.6f, 0.8f, 0, -1)) < 0.00001f &&
                     glm::length(authored.vertices[3].tangent -
                                 glm::vec4(glm::normalize(glm::vec3(-1.2f, 2.4f, 0)), 1)) < 0.00001f,
@@ -309,8 +299,8 @@ namespace
             std::memcpy(geometry.data() + 108 + sizeof(glm::vec4), &supplied, sizeof(supplied));
             std::memcpy(geometry.data() + 108 + 2 * sizeof(glm::vec4), &supplied, sizeof(supplied));
             write(root / "shared/geometry.bin", geometry);
-            const auto imported = vultra::loadGltf(source, {}, 4);
-            sameGeometry(imported, vultra::loadGltf(source, {}, 1));
+            const auto imported = must(vultra::loadGltf(source, {}, 4));
+            sameGeometry(imported, must(vultra::loadGltf(source, {}, 1)));
             for (size_t i = 0; i < imported.vertices.size(); ++i)
             {
                 glm::vec4 expected = authored.vertices[i].tangent;
@@ -330,18 +320,11 @@ namespace
         {
             std::memcpy(geometry.data() + 108, &invalid, sizeof(invalid));
             write(root / "shared/geometry.bin", geometry);
-            bool rejected = false;
-            try
-            {
-                vultra::loadGltf(source, {}, 4);
-            }
-            catch (const std::runtime_error& error)
-            {
-                const std::string message = error.what();
-                rejected                  = message.contains("invalid glTF tangent") && message.contains("vertex 0") &&
-                                            message.contains(source.string());
-            }
-            require(rejected, "Invalid tangent values were not rejected with source/vertex context");
+            const auto        result  = vultra::loadGltf(source, {}, 4);
+            const std::string message = result ? std::string() : result.error().message;
+            require(!result && message.contains("invalid glTF tangent") && message.contains("vertex 0") &&
+                        message.contains(source.string()),
+                    "Invalid tangent values were not rejected with source/vertex context");
         }
     }
 
@@ -367,8 +350,8 @@ namespace
                          {"bufferView":1,"componentType":5125,"count":6,"type":"SCALAR"}],
             "meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}]
         })");
-        const auto parallel = vultra::loadGltf(gltf, {}, 4);
-        sameGeometry(parallel, vultra::loadGltf(gltf, {}, 1));
+        const auto parallel = must(vultra::loadGltf(gltf, {}, 4));
+        sameGeometry(parallel, must(vultra::loadGltf(gltf, {}, 1)));
         require(parallel.primitives.size() == 4 && parallel.vertices.size() == 16,
                 "Mesh instances were dropped or reordered");
         const auto expected = glm::normalize(glm::vec3(0, 2, 2));
@@ -381,24 +364,15 @@ namespace
         const uint32_t invalid = 99;
         std::memcpy(bytes.data() + sizeof(positions), &invalid, sizeof(invalid));
         write(root / "shared/normals.bin", bytes);
-        bool failed = false;
-        try
-        {
-            vultra::loadGltf(gltf, {}, 4);
-        }
-        catch (const std::runtime_error&)
-        {
-            failed = true;
-        }
-        require(failed, "Invalid geometry inside a worker was accepted");
+        support::rejects(vultra::loadGltf(gltf, {}, 4), "Invalid geometry inside a worker was accepted");
 
         const auto obj = root / "model/normals.obj";
         write(obj,
               "v 0 0 0\nv 1 0 0\nv 0 1 0\nv 0 0 1\nvn 0 0 1\n"
               "o first\nf 1 2 3\no second\nf 1 4 2\n"
               "o third\nf 1//1 2//1 3//1\no fourth\nf 1 4 2\n");
-        const auto objParallel = vultra::loadObj(obj, {}, 4);
-        sameGeometry(objParallel, vultra::loadObj(obj, {}, 1));
+        const auto objParallel = must(vultra::loadObj(obj, {}, 4));
+        sameGeometry(objParallel, must(vultra::loadObj(obj, {}, 1)));
         require(objParallel.vertices[0].normal == glm::vec3(0, 0, 1) &&
                     objParallel.vertices[3].normal == glm::vec3(0, 1, 0) &&
                     objParallel.vertices[6].normal == glm::vec3(0, 0, 1),
@@ -409,7 +383,6 @@ namespace
 } // namespace
 
 int main()
-try
 {
     testMipFiltering();
     testParallelTextures();
@@ -425,11 +398,11 @@ try
     const auto                 sourceTexture = read(root / "shared/source image.png");
     vultra::AssetImportOptions options;
     options.cacheDirectory = root / "cache";
-    require(!vultra::isAssetCacheCurrent(source, options), "Missing build-time cache was reported current");
-    const auto cold = vultra::importAsset(source, options);
+    require(!must(vultra::isAssetCacheCurrent(source, options)), "Missing build-time cache was reported current");
+    const auto cold = must(vultra::importAsset(source, options));
     require(!cold.cacheHit && std::filesystem::is_regular_file(cold.cachePath), "Cold import did not write a cache");
     const auto cacheStamp = std::filesystem::last_write_time(cold.cachePath);
-    require(vultra::isAssetCacheCurrent(source, options), "Build-time cache check rejected a completed import");
+    require(must(vultra::isAssetCacheCurrent(source, options)), "Build-time cache check rejected a completed import");
     require(std::filesystem::last_write_time(cold.cachePath) == cacheStamp, "Cache check rewrote the archive");
     require(cold.scene.images.empty(), "Import retained decoded source images after preparation");
     const auto slots = cold.textures.materials.at(0);
@@ -439,7 +412,7 @@ try
     require(cold.textures.images.at(slots[2]).format == vultra::TextureFormat::eBc7Unorm,
             "Linear texture was not compressed");
     require(cold.textures.images.at(slots[2]).levels.size() == 3, "Odd-sized mip chain is incomplete");
-    const auto warm = vultra::importAsset(source, options);
+    const auto warm = must(vultra::importAsset(source, options));
     require(warm.cacheHit, "Unchanged asset did not hit its cache");
     require(cold.dependencies.size() == 3 && warm.dependencies.size() == cold.dependencies.size(),
             "Import provenance omitted a model, external buffer or texture");
@@ -453,7 +426,7 @@ try
             "Cache changed compressed texture bytes");
     testGpuTextures(warm);
     options.workers = 1;
-    require(vultra::importAsset(source, options).cacheHit, "Worker count unnecessarily invalidated the cache");
+    require(must(vultra::importAsset(source, options)).cacheHit, "Worker count unnecessarily invalidated the cache");
 
     const auto  geometry        = root / "shared/geometry.bin";
     const auto  stamp           = std::filesystem::last_write_time(geometry);
@@ -462,32 +435,33 @@ try
     std::memcpy(bytes.data(), &changedPosition, sizeof(changedPosition));
     write(geometry, bytes);
     std::filesystem::last_write_time(geometry, stamp);
-    require(!vultra::isAssetCacheCurrent(source, options), "Build-time check missed a same-timestamp content edit");
-    const auto changed = vultra::importAsset(source, options);
+    require(!must(vultra::isAssetCacheCurrent(source, options)),
+            "Build-time check missed a same-timestamp content edit");
+    const auto changed = must(vultra::importAsset(source, options));
     require(!changed.cacheHit && changed.scene.vertices.front().position.x == changedPosition,
             "Same-size, same-timestamp dependency edit was not detected");
-    require(vultra::importAsset(source, options).cacheHit, "Updated dependency never stabilized");
+    require(must(vultra::importAsset(source, options)).cacheHit, "Updated dependency never stabilized");
 
     auto corrupted = read(changed.cachePath);
     corrupted.back() ^= 0x5a;
     write(changed.cachePath, corrupted);
-    require(!vultra::isAssetCacheCurrent(source, options), "Build-time check accepted a corrupt archive");
-    require(!vultra::importAsset(source, options).cacheHit, "Corrupt cache was accepted");
-    require(vultra::importAsset(source, options).cacheHit, "Corrupt cache did not recover");
+    require(!must(vultra::isAssetCacheCurrent(source, options)), "Build-time check accepted a corrupt archive");
+    require(!must(vultra::importAsset(source, options)).cacheHit, "Corrupt cache was accepted");
+    require(must(vultra::importAsset(source, options)).cacheHit, "Corrupt cache did not recover");
     options.reimport = true;
-    require(!vultra::importAsset(source, options).cacheHit, "Forced reimport reused a cache");
+    require(!must(vultra::importAsset(source, options)).cacheHit, "Forced reimport reused a cache");
     options.reimport             = false;
     options.textures.compression = vultra::TextureCompression::eNone;
-    require(!vultra::isAssetCacheCurrent(source, options), "Build-time check ignored import options");
-    const auto uncompressed = vultra::importAsset(source, options);
+    require(!must(vultra::isAssetCacheCurrent(source, options)), "Build-time check ignored import options");
+    const auto uncompressed = must(vultra::importAsset(source, options));
     require(!uncompressed.cacheHit && uncompressed.cachePath != cold.cachePath,
             "Import options did not affect cache identity");
     require(uncompressed.textures.images.at(slots[2]).format == vultra::TextureFormat::eRgba8Unorm,
             "No-compression option was ignored");
     options.cache          = false;
     options.cacheDirectory = root / "disabled";
-    require(!vultra::isAssetCacheCurrent(source, options), "Disabled cache was reported current");
-    require(!vultra::importAsset(source, options).cacheHit && !std::filesystem::exists(options.cacheDirectory),
+    require(!must(vultra::isAssetCacheCurrent(source, options)), "Disabled cache was reported current");
+    require(!must(vultra::importAsset(source, options)).cacheHit && !std::filesystem::exists(options.cacheDirectory),
             "Disabled cache wrote derived files");
     require(read(source) == sourceText && read(root / "shared/source image.png") == sourceTexture,
             "Importer modified original source assets");
@@ -498,32 +472,19 @@ try
     write(mtl, "newmtl test\nKd 1 0 0\n");
     options.cache          = true;
     options.cacheDirectory = root / "cache";
-    vultra::importAsset(obj, options);
-    require(vultra::importAsset(obj, options).cacheHit, "OBJ cache did not hit");
+    must(vultra::importAsset(obj, options));
+    require(must(vultra::importAsset(obj, options)).cacheHit, "OBJ cache did not hit");
     write(mtl, "newmtl test\nKd 0 1 0\n");
-    const auto updated = vultra::importAsset(obj, options);
+    const auto updated = must(vultra::importAsset(obj, options));
     require(!updated.cacheHit && updated.scene.materials.front().baseColor.g == 1,
             "External MTL dependency was not tracked");
     const auto validCache = read(updated.cachePath);
     write(obj, "This is no longer a mesh\n");
-    bool failed = false;
-    try
-    {
-        vultra::importAsset(obj, options);
-    }
-    catch (const std::exception&)
-    {
-        failed = true;
-    }
-    require(failed && read(updated.cachePath) == validCache,
+    const auto failed = vultra::importAsset(obj, options);
+    require(!failed && read(updated.cachePath) == validCache,
             "Failed import replaced a valid cache or fabricated success");
     vultra::Logger::app().info("Asset pipeline tests passed: external dependencies, content invalidation, options, "
                                "corruption recovery, source preservation, parallel determinism/failure recovery, "
                                "linear-light mips, BC7 and GPU sampling");
     return 0;
-}
-catch (const std::exception& error)
-{
-    vultra::Logger::app().error("{}", error.what());
-    return 1;
 }

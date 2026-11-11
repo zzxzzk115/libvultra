@@ -1,3 +1,4 @@
+#include "support/check.hpp"
 #include "window_events.hpp"
 
 #include <vultra/core/base/logger.hpp>
@@ -10,23 +11,14 @@
 #include <memory>
 #include <string_view>
 
-namespace
-{
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
-} // namespace
-
 int main()
-try
 {
     using namespace vultra;
-    auto   first = std::make_unique<Window>("Vultra | First Owned Window", Extent {320, 240});
-    Window window("Vultra | Window Backend Test", {320, 240});
+    using support::must;
+    using support::require;
+    auto       first       = must(Window::create("Vultra | First Owned Window", Extent {320, 240}));
+    const auto ownedWindow = must(Window::create("Vultra | Window Backend Test", {320, 240}));
+    auto&      window      = *ownedWindow;
     first->poll();
     window.poll();
     {
@@ -43,24 +35,24 @@ try
     window.setTitle("Vultra | Surviving Window");
     require(window.title() == "Vultra | Surviving Window", "Surviving window cannot update its title");
     {
-        Window third("Vultra | Recreated Window", {160, 120});
-        require(third.poll(), "Cannot create another window after sibling destruction");
+        const auto third = must(Window::create("Vultra | Recreated Window", {160, 120}));
+        require(third->poll(), "Cannot create another window after sibling destruction");
     }
     const auto native = platform::nativeWindow(window);
 #if defined(__linux__)
-    if (const auto* requested = platform::requestedWindowSystem())
+    if (const auto* requested = must(platform::requestedWindowSystem()))
     {
         const bool wayland = std::string_view(requested) == "wayland";
         require(native.type == (wayland ? VriWindowSystem_Wayland : VriWindowSystem_Xlib),
                 "The requested display system was not selected");
     }
 #endif
-    require(window.nativeHandle() != nullptr, "Missing native window handle");
-    Device      device;
-    Swapchain   swapchain(device, window, VriFormat_BGRA8_UNORM);
-    Frame       frame(device);
-    EditorGui   gui(device, window, swapchain.format(), {.persistLayout = false});
-    const auto& io = ImGui::GetIO();
+    require(must(window.nativeHandle()) != nullptr, "Missing native window handle");
+    const auto  device    = must(Device::create());
+    const auto  swapchain = must(Swapchain::create(*device, window, VriFormat_BGRA8_UNORM));
+    const auto  frame     = must(Frame::create(*device));
+    const auto  gui       = must(EditorGui::create(*device, window, swapchain->format(), {.persistLayout = false}));
+    const auto& io        = ImGui::GetIO();
     require((io.ConfigFlags & ImGuiConfigFlags_DockingEnable) != 0, "Docking is unavailable");
     if (native.type == VriWindowSystem_Wayland)
     {
@@ -77,32 +69,32 @@ try
     for (int index = 0; index < 3; ++index)
     {
         require(window.poll(), "Window closed before rendering completed");
-        auto* target = swapchain.acquire();
+        auto* target = must(swapchain->acquire());
         require(target != nullptr, "Cannot acquire the native swapchain");
-        gui.begin();
+        must(gui->begin());
         const auto origin = ImGui::GetMainViewport()->Pos;
         ImGui::GetForegroundDrawList(ImGui::GetMainViewport())
             ->AddRectFilled({origin.x + 8, origin.y + 8}, {origin.x + 40, origin.y + 40}, IM_COL32(255, 0, 0, 255));
-        gui.upload(swapchain.size());
-        auto* cmd = frame.begin();
-        gui.copy(cmd);
+        must(gui->upload(swapchain->size()));
+        auto* cmd = must(frame->begin());
+        gui->copy(cmd);
         target->transition(
             cmd,
             {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
         const float clear[4] {0, 0, 1, 1};
-        beginColorPass(device, cmd, target->view(), swapchain.size(), clear);
-        gui.draw(cmd);
-        device.core.CmdEndRendering(cmd);
+        beginColorPass(*device, cmd, must(target->view()), swapchain->size(), clear);
+        gui->draw(cmd);
+        device->core.CmdEndRendering(cmd);
         target->transition(cmd, {VriAccess_None, VriLayout_Present, VriPipelineStage_None});
-        frame.submitAndWait();
-        const auto image   = readback(device, *target);
+        must(frame->submitAndWait());
+        const auto image   = must(readback(*device, *target));
         const auto logical = window.size();
         const auto x       = 16 * image.size.width / logical.width;
         const auto y       = 16 * image.size.height / logical.height;
         const auto pixel   = (y * image.size.width + x) * 4;
         if (!(image.rgba[pixel] > 0.99f && image.rgba[pixel + 2] < 0.01f))
         {
-            savePng(image, capture);
+            must(savePng(image, capture));
             Logger::app().error("GUI pixel {}, {} is {}, {}, {}; logical {}x{}, pixels {}x{}, origin {}, {}",
                                 x,
                                 y,
@@ -121,18 +113,13 @@ try
         require(image.rgba[2] > 0.99f, "Native swapchain clear/readback is incorrect");
         if (index == 2)
         {
-            savePng(image, capture);
+            must(savePng(image, capture));
         }
-        swapchain.present();
-        gui.renderPlatformWindows();
+        must(swapchain->present());
+        must(gui->renderPlatformWindows());
     }
     Logger::app().info(
         "Window backend tests passed: independent ownership/input, native swapchain, GUI scale and docking; system {}",
         int(native.type));
     return 0;
-}
-catch (const std::exception& error)
-{
-    vultra::Logger::app().error("{}", error.what());
-    return 1;
 }

@@ -2,15 +2,18 @@
 
 namespace vultra
 {
-    void BaseApp::onPreUpdate(float)
+    std::expected<void, Error> BaseApp::onPreUpdate(float)
     {
+        return {};
     }
 
-    void BaseApp::onUpdate(float)
+    std::expected<void, Error> BaseApp::onUpdate(float)
     {
+        return {};
     }
 
-    void BaseApp::onPostUpdate(float)
+    std::expected<void, Error> BaseApp::onPostUpdate(float)
     {
+        return {};
     }
 } // namespace vultra

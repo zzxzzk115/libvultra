@@ -1,6 +1,9 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
+
 #include <cstdint>
+#include <expected>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -32,7 +35,9 @@ namespace vultra
         GpuSceneHandle(const GpuSceneHandle&)            = delete;
         GpuSceneHandle& operator=(const GpuSceneHandle&) = delete;
 
-        GpuScene&   get() const;
+        // Returns an error for an empty handle or a scene its server already released.
+        [[nodiscard]] std::expected<GpuScene*, Error> get() const;
+        // Dereferencing an empty or released handle is a programming error and aborts.
         GpuScene&   operator*() const;
         GpuScene*   operator->() const;
         GpuSceneRid rid() const;
@@ -55,15 +60,18 @@ namespace vultra
         RenderingServer(const RenderingServer&)            = delete;
         RenderingServer& operator=(const RenderingServer&) = delete;
 
-        GpuSceneHandle
+        [[nodiscard]] std::expected<GpuSceneHandle, Error>
         uploadScene(const SceneData& scene, const PreparedTextures& textures, const MeshletData* meshlets = nullptr);
 #ifdef VULTRA_WITH_SCENE_PREPARATION
-        GpuSceneHandle uploadScene(const SceneData& scene, bool meshShading = false, uint32_t workers = 0);
-        GpuSceneHandle uploadScene(const ImportedAsset& asset, bool meshShading = false, uint32_t workers = 0);
+        [[nodiscard]] std::expected<GpuSceneHandle, Error>
+        uploadScene(const SceneData& scene, bool meshShading = false, uint32_t workers = 0);
+        [[nodiscard]] std::expected<GpuSceneHandle, Error>
+        uploadScene(const ImportedAsset& asset, bool meshShading = false, uint32_t workers = 0);
 #endif
-        GpuScene& scene(GpuSceneRid rid) const;
-        bool      release(GpuSceneRid rid) noexcept;
-        bool      alive(GpuSceneRid rid) const;
+        // Returns an error for a RID this server does not own as a live scene.
+        [[nodiscard]] std::expected<GpuScene*, Error> scene(GpuSceneRid rid) const;
+        bool                                          release(GpuSceneRid rid) noexcept;
+        bool                                          alive(GpuSceneRid rid) const;
         // Call only after the last submitted frame has completed.
         void collectCompletedFrame();
 

@@ -1,11 +1,14 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
 #include <vultra/gpu/resources.hpp>
 
 #include <glm/glm.hpp>
 
 #include <array>
 #include <cstdint>
+#include <expected>
+#include <memory>
 #include <span>
 #include <string_view>
 
@@ -50,13 +53,13 @@ namespace vultra
     class LightBuffer
     {
     public:
-        explicit LightBuffer(Device& device);
+        [[nodiscard]] static std::expected<std::unique_ptr<LightBuffer>, Error> create(Device& device);
         ~LightBuffer();
         LightBuffer(const LightBuffer&)            = delete;
         LightBuffer& operator=(const LightBuffer&) = delete;
 
         // Validates the lights and uploads them. The frame that last read the buffer must have completed.
-        void update(std::span<const RenderLight> lights);
+        [[nodiscard]] std::expected<void, Error> update(std::span<const RenderLight> lights);
 
         Buffer&                   buffer();
         VriDescriptor*            view() const; // Structured-buffer view of all kMaxRenderLights records.
@@ -65,6 +68,8 @@ namespace vultra
         int32_t mainDirectional() const;
 
     private:
+        LightBuffer(Device& device, Buffer buffer);
+
         Device&                                m_Device;
         Buffer                                 m_Buffer;
         VriDescriptor*                         m_View = nullptr;

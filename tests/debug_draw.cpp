@@ -1,4 +1,5 @@
 #include "../examples/common/debug_lines.hpp"
+#include "support/check.hpp"
 #include "support/forward_fixture.hpp"
 
 #include <vultra/app/camera/fps_camera.hpp>
@@ -16,13 +17,8 @@
 
 namespace
 {
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
 
     size_t countColor(const vultra::Image& image, glm::vec3 color, bool centerOnly = false)
     {
@@ -49,58 +45,72 @@ namespace
 
     void verifyFarClipping(vultra::Device& device, const vultra::SceneData& scene)
     {
-        const auto           lines  = sample::makeDebugLines(scene);
-        const float          radius = lines.boundingRadius(scene.center);
-        sample::ColoredMesh  debug(device,
-                                   VriFormat_RGBA8_UNORM,
-                                   lines.vertices,
-                                   lines.indices,
-                                   VriPrimitiveTopology_LineList,
-                                   true);
+        const auto           lines     = sample::makeDebugLines(scene);
+        const float          radius    = lines.boundingRadius(scene.center);
+        const auto           debugMesh = must(sample::ColoredMesh::create(device,
+                                                                          VriFormat_RGBA8_UNORM,
+                                                                          lines.vertices,
+                                                                          lines.indices,
+                                                                          VriPrimitiveTopology_LineList,
+                                                                          true));
+        auto&                debug     = *debugMesh;
         vultra::RenderGraph  graph(device);
         const vultra::Extent size {256, 192};
-        const auto           color = graph.createTexture("color", vultra::colorTexture(size));
-        const auto           depth = graph.createTexture("depth", vultra::depthTexture(size));
+        const auto           color = must(graph.createTexture("color", vultra::colorTexture(size)));
+        const auto           depth = must(graph.createTexture("depth", vultra::depthTexture(size)));
         // Isolate far clipping from coplanar model/line depth rounding, tested separately above.
-        graph.addPass("Clear",
-                      {{color, vultra::Usage::eColorWrite}, {depth, vultra::Usage::eDepthWrite}},
-                      [&](auto* cmd, auto& resources)
-                      {
-                          VriAttachmentDesc colorAttachment {};
-                          colorAttachment.view                    = resources.getTexture(color).view();
-                          colorAttachment.loadOp                  = VriAttachmentLoadOp_Clear;
-                          colorAttachment.storeOp                 = VriAttachmentStoreOp_Store;
-                          colorAttachment.clearValue.color.f32[3] = 1;
-                          VriAttachmentDesc depthAttachment {};
-                          depthAttachment.view                          = resources.getTexture(depth).view();
-                          depthAttachment.loadOp                        = VriAttachmentLoadOp_Clear;
-                          depthAttachment.storeOp                       = VriAttachmentStoreOp_Store;
-                          depthAttachment.clearValue.depthStencil.depth = 1;
-                          VriAttachmentsDesc attachments {};
-                          attachments.colors     = &colorAttachment;
-                          attachments.colorNum   = 1;
-                          attachments.depth      = &depthAttachment;
-                          attachments.renderArea = {0, 0, size.width, size.height};
-                          attachments.layerNum   = 1;
-                          device.core.CmdBeginRendering(cmd, &attachments);
-                          device.core.CmdEndRendering(cmd);
-                      });
-        graph.addPass("Debug lines",
-                      {{color, vultra::Usage::eColorReadWrite}, {depth, vultra::Usage::eDepthRead}},
-                      [&](auto* cmd, auto& resources)
-                      {
-                          debug.draw(cmd, resources.getTexture(color), nullptr, &resources.getTexture(depth));
-                      });
-        graph.exportResource(color);
-        graph.compile();
+        must(graph.addPass(
+            "Clear",
+            {{color, vultra::Usage::eColorWrite}, {depth, vultra::Usage::eDepthWrite}},
+            [&](VriCommandBuffer* cmd, vultra::RenderGraph& resources) -> std::expected<void, vultra::Error>
+            {
+                const auto colorView = resources.getTexture(color).view();
+                if (!colorView)
+                {
+                    return std::unexpected(colorView.error());
+                }
+                const auto depthView = resources.getTexture(depth).view();
+                if (!depthView)
+                {
+                    return std::unexpected(depthView.error());
+                }
+                VriAttachmentDesc colorAttachment {};
+                colorAttachment.view                    = *colorView;
+                colorAttachment.loadOp                  = VriAttachmentLoadOp_Clear;
+                colorAttachment.storeOp                 = VriAttachmentStoreOp_Store;
+                colorAttachment.clearValue.color.f32[3] = 1;
+                VriAttachmentDesc depthAttachment {};
+                depthAttachment.view                          = *depthView;
+                depthAttachment.loadOp                        = VriAttachmentLoadOp_Clear;
+                depthAttachment.storeOp                       = VriAttachmentStoreOp_Store;
+                depthAttachment.clearValue.depthStencil.depth = 1;
+                VriAttachmentsDesc attachments {};
+                attachments.colors     = &colorAttachment;
+                attachments.colorNum   = 1;
+                attachments.depth      = &depthAttachment;
+                attachments.renderArea = {0, 0, size.width, size.height};
+                attachments.layerNum   = 1;
+                device.core.CmdBeginRendering(cmd, &attachments);
+                device.core.CmdEndRendering(cmd);
+                return {};
+            }));
+        must(graph.addPass(
+            "Debug lines",
+            {{color, vultra::Usage::eColorReadWrite}, {depth, vultra::Usage::eDepthRead}},
+            [&](VriCommandBuffer* cmd, vultra::RenderGraph& resources)
+            {
+                return debug.draw(cmd, resources.getTexture(color), nullptr, &resources.getTexture(depth));
+            }));
+        must(graph.exportResource(color));
+        must(graph.compile());
         auto render = [&](const vultra::RenderCamera& camera)
         {
             const auto matrix = camera.projection * camera.view;
             std::copy_n(glm::value_ptr(matrix), 16, debug.parameters.transform.begin());
-            vultra::Frame frame(device);
-            graph.execute(frame.begin());
-            frame.submitAndWait();
-            return vultra::readback(device, graph.getTexture(color));
+            const auto frame = must(vultra::Frame::create(device));
+            must(graph.execute(must(frame->begin())));
+            must(frame->submitAndWait());
+            return must(vultra::readback(device, graph.getTexture(color)));
         };
         auto verify = [&](auto makeCamera, float distance)
         {
@@ -120,9 +130,9 @@ namespace
             if (fitted.rgba != reference.rgba)
             {
                 std::filesystem::create_directories("build/.tmp/debug-far-regression");
-                vultra::savePng(clipped, "build/.tmp/debug-far-regression/clipped.png");
-                vultra::savePng(fitted, "build/.tmp/debug-far-regression/fitted.png");
-                vultra::savePng(reference, "build/.tmp/debug-far-regression/reference.png");
+                must(vultra::savePng(clipped, "build/.tmp/debug-far-regression/clipped.png"));
+                must(vultra::savePng(fitted, "build/.tmp/debug-far-regression/fitted.png"));
+                must(vultra::savePng(reference, "build/.tmp/debug-far-regression/reference.png"));
                 std::cerr << "Far-plane comparison: " << camera.farPlane << " vs " << camera.farPlane * 2 << '\n';
             }
             require(clipped.rgba != fitted.rgba, "Far clipping fixture no longer reproduces truncated debug lines");
@@ -158,11 +168,11 @@ namespace
 } // namespace
 
 int main()
-try
 {
-    vultra::Device      device;
-    vultra::Environment environment(device);
-    vultra::SceneData   scene;
+    const auto        devicePtr   = must(vultra::Device::create());
+    auto&             device      = *devicePtr;
+    const auto        environment = must(vultra::Environment::create(device));
+    vultra::SceneData scene;
     scene.vertices   = {{{-0.5f, -0.75f, -2}, {0, 0, 1}, {0, 0}},
                         {{0.5f, -0.75f, -2}, {0, 0, 1}, {1, 0}},
                         {{0.5f, 0.75f, -2}, {0, 0, 1}, {1, 1}},
@@ -170,32 +180,34 @@ try
     scene.indices    = {0, 1, 2, 0, 2, 3};
     scene.primitives = {{0, 6, 0}};
     scene.materials.emplace_back();
-    scene.center = {0, 0, -2};
-    scene.radius = 1;
-    vultra::GpuScene        gpu(device, scene);
-    support::ForwardFixture renderer(device, gpu, environment);
+    scene.center                = {0, 0, -2};
+    scene.radius                = 1;
+    const auto              gpu = must(vultra::GpuScene::create(device, scene));
+    support::ForwardFixture renderer(device, *gpu, *environment);
     renderer.settings.skybox = false;
     // Debug lines are drawn on the display image, after tone mapping, against the scene depth.
-    vultra::ToneMappingPass     tone(device);
+    const auto                  tone = must(vultra::ToneMappingPass::create(device));
     const std::array<double, 3> toneParameters {0, 0, 0};
     sample::Lines               lines;
     lines.line({-0.9f, -0.4f, -3}, {0.9f, -0.4f, -3}, {1, 0, 0}); // Behind the quad.
     lines.line({-0.9f, 0.4f, -1}, {0.9f, 0.4f, -1}, {0, 1, 0});   // In front.
     lines.line({-0.9f, 0, -2}, {0.9f, 0, -2}, {0, 0, 1});         // On the surface.
-    sample::ColoredMesh debug(device,
-                              VriFormat_RGBA8_UNORM,
-                              lines.vertices,
-                              lines.indices,
-                              VriPrimitiveTopology_LineList,
-                              true);
-    sample::Lines       probeLine;
+    const auto    debugMesh = must(sample::ColoredMesh::create(device,
+                                                               VriFormat_RGBA8_UNORM,
+                                                               lines.vertices,
+                                                               lines.indices,
+                                                               VriPrimitiveTopology_LineList,
+                                                               true));
+    auto&         debug     = *debugMesh;
+    sample::Lines probeLine;
     probeLine.line({-0.9f, 0.4f, -1.5f}, {0.9f, 0.4f, -1.5f}, {1, 0, 1});
-    sample::ColoredMesh        probe(device,
-                                     VriFormat_RGBA8_UNORM,
-                                     probeLine.vertices,
-                                     probeLine.indices,
-                                     VriPrimitiveTopology_LineList,
-                                     true);
+    const auto                 probeMesh = must(sample::ColoredMesh::create(device,
+                                                                            VriFormat_RGBA8_UNORM,
+                                                                            probeLine.vertices,
+                                                                            probeLine.indices,
+                                                                            VriPrimitiveTopology_LineList,
+                                                                            true));
+    auto&                      probe     = *probeMesh;
     const vultra::RenderCamera camera {glm::mat4(1), glm::orthoRH_ZO(-1.0f, 1.0f, -1.0f, 1.0f, 0.1f, 10.0f), 0.1f, 10};
     std::copy_n(glm::value_ptr(camera.projection), 16, debug.parameters.transform.begin());
     probe.parameters = debug.parameters;
@@ -204,33 +216,35 @@ try
         vultra::RenderGraph graph(device);
         const auto          outputs = renderer.addPasses(graph, size);
         const std::array    toneInputs {outputs.hdr};
-        const auto          color     = tone.addPasses(graph, "tone", toneInputs, toneParameters).front();
+        const auto          color     = must(tone->addPasses(graph, "tone", toneInputs, toneParameters)).front();
         bool                drawProbe = false;
-        graph.addPass("Debug lines",
-                      {{color, vultra::Usage::eColorReadWrite}, {outputs.depth, vultra::Usage::eDepthRead}},
-                      [&](auto* cmd, auto& resources)
-                      {
-                          debug.draw(cmd, resources.getTexture(color), nullptr, &resources.getTexture(outputs.depth));
-                      });
-        graph.addPass(
+        must(graph.addPass(
+            "Debug lines",
+            {{color, vultra::Usage::eColorReadWrite}, {outputs.depth, vultra::Usage::eDepthRead}},
+            [&](VriCommandBuffer* cmd, vultra::RenderGraph& resources)
+            {
+                return debug.draw(cmd, resources.getTexture(color), nullptr, &resources.getTexture(outputs.depth));
+            }));
+        must(graph.addPass(
             "Depth preservation probe",
             {{color, vultra::Usage::eColorReadWrite}, {outputs.depth, vultra::Usage::eDepthRead}},
-            [&](auto* cmd, auto& resources)
+            [&](VriCommandBuffer* cmd, vultra::RenderGraph& resources) -> std::expected<void, vultra::Error>
             {
                 if (drawProbe)
                 {
-                    probe.draw(cmd, resources.getTexture(color), nullptr, &resources.getTexture(outputs.depth));
+                    return probe.draw(cmd, resources.getTexture(color), nullptr, &resources.getTexture(outputs.depth));
                 }
-            });
-        graph.exportResource(color);
-        graph.compile();
+                return {};
+            }));
+        must(graph.exportResource(color));
+        must(graph.compile());
         auto render = [&]
         {
             renderer.prepare(camera, graph);
-            vultra::Frame frame(device);
-            graph.execute(frame.begin());
-            frame.submitAndWait();
-            return vultra::readback(device, graph.getTexture(color));
+            const auto frame = must(vultra::Frame::create(device));
+            must(graph.execute(must(frame->begin())));
+            must(frame->submitAndWait());
+            return must(vultra::readback(device, graph.getTexture(color)));
         };
         const auto image = render();
         require(countColor(image, {1, 0, 0}) > size.width / 4, "Unoccluded rear line disappeared");
@@ -246,9 +260,4 @@ try
     std::cout << "Debug draw tests passed: occluded/visible/coplanar lines, preserved scene depth, resized "
                  "attachments, orbit/FPS far clipping\n";
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }

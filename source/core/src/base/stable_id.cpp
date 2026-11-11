@@ -1,3 +1,4 @@
+#include <vultra/core/base/error.hpp>
 #include <vultra/core/base/stable_id.hpp>
 
 #include <algorithm>
@@ -5,7 +6,6 @@
 #include <cstddef>
 #include <limits>
 #include <random>
-#include <stdexcept>
 
 namespace vultra
 {
@@ -34,7 +34,7 @@ namespace vultra
         {
             if (value == 0 || value == std::numeric_limits<uint64_t>::max())
             {
-                throw std::overflow_error("Runtime object ID space exhausted");
+                panic("Runtime object ID space exhausted");
             }
             if (nextObjectId.compare_exchange_weak(value, value + 1, std::memory_order_relaxed))
             {

@@ -1,8 +1,10 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
 #include <vultra/core/base/property.hpp>
 
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <string>
 
@@ -24,7 +26,8 @@ namespace vultra
         void* userData = nullptr;
     };
 
-    // Immediate-mode property rows inside an ImGui window; never owns edited values.
+    // Immediate-mode property rows inside an ImGui window; never owns edited values. Like EditorGuiFrame, use
+    // outside the current GUI frame aborts.
     class EditorGuiInspector
     {
     public:
@@ -44,10 +47,12 @@ namespace vultra
         bool float3Field(EditorGuiProperty property, float* value, float speed = 0.01f);
         bool floatSlider(EditorGuiProperty property, float* value, float min, float max);
         bool choice(EditorGuiProperty property, int* index, const char* const* items, int count);
-        bool property(EditorGuiProperty property, void* value, EditorGuiPropertyDrawer drawer);
-        // Draw an owned value; the caller applies edits through its world/resource semantic setter.
-        bool valueField(const PropertySchema& property, PropertyValue& value);
-        bool properties(const ObjectTypeInfo& type, void* object);
+        [[nodiscard]] std::expected<bool, Error>
+        property(EditorGuiProperty property, void* value, EditorGuiPropertyDrawer drawer);
+        // Draw an owned value; the caller applies edits through its world/resource semantic setter. Text the user
+        // enters for a reference or array is rejected with an error.
+        [[nodiscard]] std::expected<bool, Error> valueField(const PropertySchema& property, PropertyValue& value);
+        [[nodiscard]] std::expected<bool, Error> properties(const ObjectTypeInfo& type, void* object);
 
     private:
         void                beginRow(EditorGuiProperty property);

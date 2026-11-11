@@ -2,23 +2,22 @@
 #include <vultra/platform/os/file_dialog.hpp>
 #include <vultra/platform/window.hpp>
 
-#define NFD_THROWS_EXCEPTIONS
 #include <nfd.hpp>
-
-#include <stdexcept>
-#include <string>
 
 namespace vultra
 {
-    std::optional<std::filesystem::path> openModelDialog(const Window& owner)
+    std::expected<std::optional<std::filesystem::path>, Error> openModelDialog(const Window& owner)
     {
-        const NFD::Guard      guard;
-        const nfdfilteritem_t filter {"Static models", "gltf,glb,obj,fbx"};
-        nfdwindowhandle_t     parent {};
-        const auto            native = platform::nativeWindow(owner);
+        nfdwindowhandle_t parent {};
+        const auto        native = platform::nativeWindow(owner);
         if (native.type == VriWindowSystem_Xlib)
         {
-            parent = {NFD_WINDOW_HANDLE_TYPE_X11, owner.nativeHandle()};
+            const auto handle = owner.nativeHandle();
+            if (!handle)
+            {
+                return std::unexpected(handle.error());
+            }
+            parent = {NFD_WINDOW_HANDLE_TYPE_X11, *handle};
         }
         else if (native.type == VriWindowSystem_Wayland)
         {
@@ -27,17 +26,20 @@ namespace vultra
         }
         else
         {
-            throw std::runtime_error("Open model dialog: unsupported Linux window system");
+            return makeError("Open model dialog: unsupported Linux window system");
         }
-        NFD::UniquePath path;
-        const auto      result = NFD::OpenDialog(path, &filter, 1, nullptr, parent);
+        // Built without NFD_THROWS_EXCEPTIONS: a failed NFD_Init surfaces through OpenDialog and GetError.
+        const NFD::Guard      guard;
+        const nfdfilteritem_t filter {"Static models", "gltf,glb,obj,fbx"};
+        NFD::UniquePath       path;
+        const auto            result = NFD::OpenDialog(path, &filter, 1, nullptr, parent);
         if (result == NFD_CANCEL)
         {
             return std::nullopt;
         }
         if (result != NFD_OKAY)
         {
-            throw std::runtime_error(std::string("Open model dialog: ") + NFD::GetError());
+            return makeError("Open model dialog: {}", NFD::GetError());
         }
         return std::filesystem::path(path.get());
     }

@@ -3,7 +3,6 @@
 #include <slang.h>
 
 #include <array>
-#include <stdexcept>
 
 namespace vultra
 {
@@ -59,7 +58,7 @@ namespace vultra
                 }
             }
 
-            ShaderAttribute reflectAttribute(slang::Attribute* attribute)
+            std::expected<ShaderAttribute, Error> reflectAttribute(slang::Attribute* attribute)
             {
                 ShaderAttribute result;
                 result.name = attribute->getName();
@@ -70,7 +69,7 @@ namespace vultra
                     float                   real    = 0;
                     size_t                  size    = 0;
                     auto*                   type    = attribute->getArgumentType(index);
-                    const auto scalar = type ? type->getScalarType() : slang::TypeReflection::ScalarType::None;
+                    const auto scalar  = type ? type->getScalarType() : slang::TypeReflection::ScalarType::None;
                     const bool isFloat = scalar == slang::TypeReflection::ScalarType::Float16 ||
                                          scalar == slang::TypeReflection::ScalarType::Float32 ||
                                          scalar == slang::TypeReflection::ScalarType::Float64;
@@ -103,22 +102,27 @@ namespace vultra
                     }
                     else
                     {
-                        throw std::invalid_argument("Unsupported argument in shader attribute: " + result.name);
+                        return makeError("Unsupported argument in shader attribute: {}", result.name);
                     }
                     result.arguments.push_back(std::move(argument));
                 }
                 return result;
             }
 
-            void reflectVariable(slang::VariableReflection* variable, ShaderParameter& result)
+            std::expected<void, Error> reflectVariable(slang::VariableReflection* variable, ShaderParameter& result)
             {
                 for (uint32_t index = 0; index < variable->getUserAttributeCount(); ++index)
                 {
-                    result.attributes.push_back(reflectAttribute(variable->getUserAttributeByIndex(index)));
+                    auto attribute = reflectAttribute(variable->getUserAttributeByIndex(index));
+                    if (!attribute)
+                    {
+                        return std::unexpected(attribute.error());
+                    }
+                    result.attributes.push_back(std::move(*attribute));
                 }
                 if (!variable->hasDefaultValue())
                 {
-                    return;
+                    return {};
                 }
                 int64_t integer = 0;
                 float   real    = 0;
@@ -137,6 +141,7 @@ namespace vultra
                 {
                     result.defaultValue = double(integer);
                 }
+                return {};
             }
 
             void reflectResource(slang::TypeLayoutReflection* type, ShaderParameter& result)
@@ -175,14 +180,14 @@ namespace vultra
                 }
             }
 
-            ShaderParameter reflectType(slang::TypeLayoutReflection*     type,
-                                        slang::VariableLayoutReflection* variable,
-                                        std::string                      name,
-                                        uint32_t                         depth)
+            std::expected<ShaderParameter, Error> reflectType(slang::TypeLayoutReflection*     type,
+                                                              slang::VariableLayoutReflection* variable,
+                                                              std::string                      name,
+                                                              uint32_t                         depth)
             {
                 if (!type || depth > 64)
                 {
-                    throw std::invalid_argument("Invalid or excessively nested Slang parameter layout");
+                    return makeError("Invalid or excessively nested Slang parameter layout");
                 }
                 ShaderParameter result;
                 result.name = std::move(name);
@@ -203,7 +208,7 @@ namespace vultra
                     const auto vectors = result.columnMajor ? result.columns : result.rows;
                     if (!vectors || result.stride % vectors != 0)
                     {
-                        throw std::runtime_error("Slang matrix layout has no integral major-vector stride");
+                        return makeError("Slang matrix layout has no integral major-vector stride");
                     }
                     result.matrixStride = result.stride / vectors;
                 }
@@ -213,8 +218,12 @@ namespace vultra
                     // Structured-buffer elements have a target layout distinct from their descriptor slot.
                     if ((type->getResourceShape() & SLANG_RESOURCE_BASE_SHAPE_MASK) == SLANG_STRUCTURED_BUFFER)
                     {
-                        result.fields.push_back(
-                            reflectType(type->getElementTypeLayout(), nullptr, "$element", depth + 1));
+                        auto element = reflectType(type->getElementTypeLayout(), nullptr, "$element", depth + 1);
+                        if (!element)
+                        {
+                            return element;
+                        }
+                        result.fields.push_back(std::move(*element));
                     }
                 }
                 constexpr std::array categories {
@@ -236,7 +245,10 @@ namespace vultra
                 }
                 if (variable && variable->getVariable())
                 {
-                    reflectVariable(variable->getVariable(), result);
+                    if (auto reflected = reflectVariable(variable->getVariable(), result); !reflected)
+                    {
+                        return std::unexpected(reflected.error());
+                    }
                 }
                 if (result.name == "$container")
                 {
@@ -246,9 +258,13 @@ namespace vultra
                 {
                     for (uint32_t index = 0; index < type->getFieldCount(); ++index)
                     {
-                        auto* field = type->getFieldByIndex(index);
-                        result.fields.push_back(
-                            reflectType(field->getTypeLayout(), field, field->getName(), depth + 1));
+                        auto* field  = type->getFieldByIndex(index);
+                        auto  member = reflectType(field->getTypeLayout(), field, field->getName(), depth + 1);
+                        if (!member)
+                        {
+                            return member;
+                        }
+                        result.fields.push_back(std::move(*member));
                     }
                 }
                 else if (result.kind == ShaderParameterKind::eArray)
@@ -256,45 +272,62 @@ namespace vultra
                     result.count  = type->getElementCount();
                     result.stride = type->getElementStride(SLANG_PARAMETER_CATEGORY_UNIFORM);
                     auto* element = type->getElementVarLayout();
-                    result.fields.push_back(
-                        reflectType(element ? element->getTypeLayout() : type->getElementTypeLayout(),
-                                    element,
-                                    "$element",
-                                    depth + 1));
+                    auto  child   = reflectType(element ? element->getTypeLayout() : type->getElementTypeLayout(),
+                                                element,
+                                                "$element",
+                                                depth + 1);
+                    if (!child)
+                    {
+                        return child;
+                    }
+                    result.fields.push_back(std::move(*child));
                 }
                 else if (result.kind == ShaderParameterKind::eConstantBuffer ||
                          result.kind == ShaderParameterKind::eParameterBlock)
                 {
                     if (auto* container = type->getContainerVarLayout())
                     {
-                        result.fields.push_back(
-                            reflectType(container->getTypeLayout(), container, "$container", depth + 1));
+                        auto layout = reflectType(container->getTypeLayout(), container, "$container", depth + 1);
+                        if (!layout)
+                        {
+                            return layout;
+                        }
+                        result.fields.push_back(std::move(*layout));
                     }
                     auto* element = type->getElementVarLayout();
-                    result.fields.push_back(
-                        reflectType(element ? element->getTypeLayout() : type->getElementTypeLayout(),
-                                    element,
-                                    "$element",
-                                    depth + 1));
+                    auto  child   = reflectType(element ? element->getTypeLayout() : type->getElementTypeLayout(),
+                                                element,
+                                                "$element",
+                                                depth + 1);
+                    if (!child)
+                    {
+                        return child;
+                    }
+                    result.fields.push_back(std::move(*child));
                 }
                 return result;
             }
         } // namespace
 
-        std::vector<ShaderAttribute> reflectShaderAttributes(slang::FunctionReflection* function)
+        std::expected<std::vector<ShaderAttribute>, Error> reflectShaderAttributes(slang::FunctionReflection* function)
         {
             std::vector<ShaderAttribute> attributes;
             if (function)
             {
                 for (uint32_t index = 0; index < function->getUserAttributeCount(); ++index)
                 {
-                    attributes.push_back(reflectAttribute(function->getUserAttributeByIndex(index)));
+                    auto attribute = reflectAttribute(function->getUserAttributeByIndex(index));
+                    if (!attribute)
+                    {
+                        return std::unexpected(attribute.error());
+                    }
+                    attributes.push_back(std::move(*attribute));
                 }
             }
             return attributes;
         }
 
-        ShaderParameter reflectShaderParameters(slang::VariableLayoutReflection* globals)
+        std::expected<ShaderParameter, Error> reflectShaderParameters(slang::VariableLayoutReflection* globals)
         {
             return reflectType(globals->getTypeLayout(), globals, "$globals", 0);
         }

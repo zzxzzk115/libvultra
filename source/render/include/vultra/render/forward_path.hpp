@@ -4,6 +4,7 @@
 #include <vultra/shader/shader_pipeline.hpp>
 
 #include <array>
+#include <expected>
 #include <memory>
 #include <vector>
 
@@ -28,15 +29,19 @@ namespace vultra
     public:
         static constexpr std::string_view kName = "vultra.forward";
 
-        // A supplied cooked shader source must outlive the path and its shader reloads.
-        explicit ForwardPath(Device& device, const AssetSource* shaders = nullptr);
+        // A supplied cooked shader source must outlive the path and its shader reloads. Graph passes and
+        // pipeline builders keep the path's address, so it lives behind a unique_ptr.
+        [[nodiscard]] static std::expected<std::unique_ptr<ForwardPath>, Error>
+        create(Device& device, const AssetSource* shaders = nullptr);
         ~ForwardPath() override;
         ForwardPath(const ForwardPath&)            = delete;
         ForwardPath& operator=(const ForwardPath&) = delete;
 
         std::span<const SceneResourceDesc> provides() const override;
-        SceneResources addPasses(RenderGraph& graph, GpuScene& scene, Environment& environment, Extent size) override;
-        void prepare(RenderGraph& graph, const RenderCamera& camera, std::span<const RenderLight> lights) override;
+        std::expected<SceneResources, Error>
+        addPasses(RenderGraph& graph, GpuScene& scene, Environment& environment, Extent size) override;
+        std::expected<void, Error>
+             prepare(RenderGraph& graph, const RenderCamera& camera, std::span<const RenderLight> lights) override;
         void pollShaders() override;
 
         // Primitives that passed frustum culling in the last prepare().
@@ -45,19 +50,20 @@ namespace vultra
         ForwardSettings settings;
 
     private:
-        void bindScene(GpuScene& scene, Environment& environment);
-        void releaseScene();
-        void drawScene(VriCommandBuffer* cmd);
+        explicit ForwardPath(Device& device);
+        std::expected<void, Error> bindScene(GpuScene& scene, Environment& environment);
+        void                       releaseScene();
+        void                       drawScene(VriCommandBuffer* cmd);
 
-        Device&                  m_Device;
-        LightBuffer              m_Lights;
-        GpuScene*                m_Scene       = nullptr;
-        Environment*             m_Environment = nullptr;
-        std::unique_ptr<Texture> m_OpenPbrLuts;
-        std::unique_ptr<Buffer>  m_FrameBuffer;
-        VriDescriptor*           m_FrameView          = nullptr;
-        VriDescriptor*           m_EnvironmentSampler = nullptr;
-        VriPipelineLayout*       m_Layout             = nullptr;
+        Device&                      m_Device;
+        std::unique_ptr<LightBuffer> m_Lights;
+        GpuScene*                    m_Scene       = nullptr;
+        Environment*                 m_Environment = nullptr;
+        std::unique_ptr<Texture>     m_OpenPbrLuts;
+        std::unique_ptr<Buffer>      m_FrameBuffer;
+        VriDescriptor*               m_FrameView          = nullptr;
+        VriDescriptor*               m_EnvironmentSampler = nullptr;
+        VriPipelineLayout*           m_Layout             = nullptr;
         // Per-scene state, rebuilt by addPasses().
         VriDescriptor*                 m_TransformView = nullptr;
         VriDescriptorPool*             m_Pool          = nullptr;

@@ -1,9 +1,11 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
 #include <vultra/core/math/render_camera.hpp>
 #include <vultra/graph/render_graph.hpp>
 #include <vultra/render/render_light.hpp>
 
+#include <expected>
 #include <span>
 #include <string>
 #include <string_view>
@@ -33,8 +35,9 @@ namespace vultra
 
     using SceneResources = std::vector<SceneResource>;
 
-    // Throws when the name is absent.
-    RenderGraph::Resource findSceneResource(std::span<const SceneResource> resources, std::string_view name);
+    // Returns an error when the name is absent.
+    [[nodiscard]] std::expected<RenderGraph::Resource, Error>
+    findSceneResource(std::span<const SceneResource> resources, std::string_view name);
 
     // A render path turns one scene into named graph resources. Forward, deferred or clustered renderers are
     // separate implementations of this interface; later passes stay independent of the path that produced them.
@@ -49,11 +52,12 @@ namespace vultra
 
         // Append this path's passes to the graph. The path borrows scene and environment until the last GPU
         // use of this graph completes. Calling it again rebinds the path to another scene or graph.
-        virtual SceneResources
+        virtual std::expected<SceneResources, Error>
         addPasses(RenderGraph& graph, GpuScene& scene, Environment& environment, Extent size) = 0;
 
         // Once per frame after graph.compile() and before recording; the previous frame must have completed.
-        virtual void prepare(RenderGraph& graph, const RenderCamera& camera, std::span<const RenderLight> lights) = 0;
+        virtual std::expected<void, Error>
+        prepare(RenderGraph& graph, const RenderCamera& camera, std::span<const RenderLight> lights) = 0;
 
         // Between completed frames. Reloads changed shader sources; a failed reload keeps the last pipeline.
         virtual void pollShaders()
@@ -63,6 +67,6 @@ namespace vultra
 
     // Checks the contract between provides() and the resources a path returned for this graph:
     // identical names, matching formats and both standard resources present.
-    void
+    [[nodiscard]] std::expected<void, Error>
     validateSceneResources(const RenderPath& path, std::span<const SceneResource> resources, const RenderGraph& graph);
 } // namespace vultra

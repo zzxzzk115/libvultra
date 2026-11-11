@@ -5,48 +5,61 @@
 class WindowApp final : public vultra::PlatformApp
 {
 public:
-    explicit WindowApp(const sample::Options& options) :
-        vultra::PlatformApp(
-            {.title = "Vultra | Window - Clear", .size = {1024, 768}, .swapchainFormat = VriFormat_BGRA8_SRGB},
-            options.launch),
+    WindowApp(Services services, const vultra::AppConfig& config, const sample::Options& options) :
+        vultra::PlatformApp(std::move(services), config),
         m_Options(options)
     {
     }
 
 private:
-    void onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
+    std::expected<void, vultra::Error> onRender(VriCommandBuffer* cmd, vultra::Texture& target) override
     {
         target.transition(
             cmd,
             {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
+        const auto view = target.view();
+        if (!view)
+        {
+            return std::unexpected(view.error());
+        }
         const float clear[4] {0.2f, 0.3f, 0.3f, 1};
-        vultra::beginColorPass(getDevice(), cmd, target.view(), getSwapchain().size(), clear);
+        vultra::beginColorPass(getDevice(), cmd, *view, getSwapchain().size(), clear);
         getDevice().core.CmdEndRendering(cmd);
+        return {};
     }
 
-    void onPostRender(vultra::Texture& target) override
+    std::expected<void, vultra::Error> onPostRender(vultra::Texture& target) override
     {
-        sample::captureFrame(m_Options, frameCount(), getDevice(), target);
+        return sample::captureFrame(m_Options, frameCount(), getDevice(), target);
     }
 
     sample::Options m_Options;
 };
 
 int runWindow(const vultra::AppLaunch& launch, int argc, char** argv)
-try
 {
     const auto options = sample::readOptions(argc, argv, launch);
     if (!options)
     {
+        return sample::fail(options.error());
+    }
+    if (!*options)
+    {
         return 0;
     }
-    WindowApp app(*options);
-    app.run(options->frames);
+    const vultra::AppConfig config {.title           = "Vultra | Window - Clear",
+                                    .size            = {1024, 768},
+                                    .swapchainFormat = VriFormat_BGRA8_SRGB};
+    auto                    services = vultra::PlatformApp::createServices(config, launch);
+    if (!services)
+    {
+        return sample::fail(services.error());
+    }
+    WindowApp app(std::move(*services), config, **options);
+    if (auto result = app.run((*options)->frames); !result)
+    {
+        return sample::fail(result.error());
+    }
     vultra::Logger::app().info("Window: {} frames", app.frameCount());
     return 0;
-}
-catch (const std::exception& error)
-{
-    vultra::Logger::app().error("{}", error.what());
-    return 1;
 }

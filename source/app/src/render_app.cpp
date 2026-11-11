@@ -1,124 +1,204 @@
 #include <vultra/app/render_app.hpp>
 
 #include <chrono>
-#include <stdexcept>
 
 namespace vultra
 {
     namespace
     {
-        bool copyToSwapchain(Device& device, Frame& frame, Swapchain& swapchain, Texture& source)
+        std::expected<bool, Error> copyToSwapchain(Device& device, Frame& frame, Swapchain& swapchain, Texture& source)
         {
             // Browser canvas images expire on an event-loop yield. Acquire only after rendering/readback
             // has finished, then record and submit the copy before the next GPU wait can yield.
-            auto* canvas = swapchain.acquire();
+            const auto canvas = swapchain.acquire();
             if (!canvas)
+            {
+                return std::unexpected(canvas.error());
+            }
+            if (!*canvas)
             {
                 return false;
             }
-            auto* cmd = frame.begin();
-            source.transition(cmd, {VriAccess_CopySourceRead, VriLayout_CopySource, VriPipelineStage_Transfer});
-            canvas->transition(cmd,
-                               {VriAccess_CopyDestinationWrite, VriLayout_CopyDestination, VriPipelineStage_Transfer});
+            const auto cmd = frame.begin();
+            if (!cmd)
+            {
+                return std::unexpected(cmd.error());
+            }
+            source.transition(*cmd, {VriAccess_CopySourceRead, VriLayout_CopySource, VriPipelineStage_Transfer});
+            (*canvas)->transition(
+                *cmd,
+                {VriAccess_CopyDestinationWrite, VriLayout_CopyDestination, VriPipelineStage_Transfer});
             VriTextureCopyDesc copy {};
             copy.src.layerNum = 1;
             copy.dst.layerNum = 1;
             copy.src.aspect   = VriImageAspect_Color;
             copy.dst.aspect   = VriImageAspect_Color;
-            device.core.CmdCopyTexture(cmd, canvas->handle, source.handle, &copy);
-            canvas->transition(cmd, {VriAccess_None, VriLayout_Present, VriPipelineStage_None});
-            frame.submitAndWait();
+            device.core.CmdCopyTexture(*cmd, (*canvas)->handle, source.handle, &copy);
+            (*canvas)->transition(*cmd, {VriAccess_None, VriLayout_Present, VriPipelineStage_None});
+            if (auto submitted = frame.submitAndWait(); !submitted)
+            {
+                return std::unexpected(submitted.error());
+            }
             return true;
         }
     } // namespace
 
-    RenderApp::RenderApp(const AppConfig& config)
-#ifdef VULTRA_WITH_RENDERDOC
-        :
-        m_RenderDocFrame(config.renderDocFrame),
-        m_RenderDoc(config.renderDocFrame ? std::make_unique<RenderDocCapture>() : nullptr)
-#endif
+    RenderApp::RenderApp(const AppConfig& config) :
+        m_RenderDocFrame(config.renderDocFrame)
     {
-#ifndef VULTRA_WITH_RENDERDOC
-        if (config.renderDocFrame)
-        {
-            throw std::invalid_argument("This platform build does not provide RenderDoc capture");
-        }
-#endif
     }
 
-    std::optional<std::string> RenderApp::advanceFrame(Device&    device,
-                                                       Swapchain& swapchain,
-                                                       Frame&     frame,
-                                                       Profiler&  profiler,
-                                                       float      deltaSeconds,
-                                                       bool       renderable,
-                                                       Texture*   presentSource)
+    std::expected<std::optional<std::string>, Error> RenderApp::advanceFrame(Device&    device,
+                                                                             Swapchain& swapchain,
+                                                                             Frame&     frame,
+                                                                             Profiler&  profiler,
+                                                                             float      deltaSeconds,
+                                                                             bool       renderable,
+                                                                             Texture*   presentSource)
     {
         const auto frameStart = std::chrono::steady_clock::now();
-        onPreUpdate(deltaSeconds);
-        onUpdate(deltaSeconds);
-        onPostUpdate(deltaSeconds);
+        if (auto updated = onPreUpdate(deltaSeconds); !updated)
+        {
+            return std::unexpected(updated.error());
+        }
+        if (auto updated = onUpdate(deltaSeconds); !updated)
+        {
+            return std::unexpected(updated.error());
+        }
+        if (auto updated = onPostUpdate(deltaSeconds); !updated)
+        {
+            return std::unexpected(updated.error());
+        }
         if (m_CloseRequested)
         {
             return std::nullopt;
         }
         if (!renderable)
         {
-            onRenderSkipped();
+            if (auto skipped = onRenderSkipped(); !skipped)
+            {
+                return std::unexpected(skipped.error());
+            }
             return std::nullopt;
         }
         const auto afterUpdate = std::chrono::steady_clock::now();
 
-        auto* target = presentSource ? presentSource : swapchain.acquire();
+        Texture* target = presentSource;
         if (!target)
         {
-            onRenderSkipped();
+            const auto acquired = swapchain.acquire();
+            if (!acquired)
+            {
+                return std::unexpected(acquired.error());
+            }
+            target = *acquired;
+        }
+        if (!target)
+        {
+            if (auto skipped = onRenderSkipped(); !skipped)
+            {
+                return std::unexpected(skipped.error());
+            }
             return std::nullopt;
         }
         const auto afterAcquire = std::chrono::steady_clock::now();
 #ifdef VULTRA_WITH_RENDERDOC
         if (m_RenderDocFrame == m_FrameCount)
         {
-            m_RenderDoc->begin();
+            if (auto begun = m_RenderDoc->begin(); !begun)
+            {
+                return std::unexpected(begun.error());
+            }
         }
 #endif
         if (m_PreviousSize != swapchain.size())
         {
             m_PreviousSize = swapchain.size();
-            onResize(m_PreviousSize);
+            if (auto resized = onResize(m_PreviousSize); !resized)
+            {
+                return std::unexpected(resized.error());
+            }
         }
         // Once acquired, finish and present this frame even if a render callback calls close().
-        onPreRender();
-        auto* cmd = frame.begin();
+        if (auto prepared = onPreRender(); !prepared)
+        {
+            return std::unexpected(prepared.error());
+        }
+        const auto begun = frame.begin();
+        if (!begun)
+        {
+            return std::unexpected(begun.error());
+        }
+        auto* cmd = *begun;
         device.core.CmdBeginDebugGroup(cmd, "Frame");
         profiler.beginFrame(cmd);
-        profiler.beginPass(cmd, "Frame");
-        onRender(cmd, *target);
+        if (auto profiled = profiler.beginPass(cmd, "Frame"); !profiled)
+        {
+            return std::unexpected(profiled.error());
+        }
+        if (auto rendered = onRender(cmd, *target); !rendered)
+        {
+            return std::unexpected(rendered.error());
+        }
         if (!presentSource)
         {
             target->transition(cmd, {VriAccess_None, VriLayout_Present, VriPipelineStage_None});
         }
-        profiler.endPass(cmd);
-        profiler.resolve(cmd);
+        if (auto profiled = profiler.endPass(cmd); !profiled)
+        {
+            return std::unexpected(profiled.error());
+        }
+        if (auto profiled = profiler.resolve(cmd); !profiled)
+        {
+            return std::unexpected(profiled.error());
+        }
         device.core.CmdEndDebugGroup(cmd);
         const auto afterRecord = std::chrono::steady_clock::now();
-        frame.submitAndWait();
-        const auto afterWait = std::chrono::steady_clock::now();
-        profiler.collect();
-        onPostRender(*target);
-        const auto afterPostRender = std::chrono::steady_clock::now();
-        if (presentSource && !copyToSwapchain(device, frame, swapchain, *presentSource))
+        if (auto submitted = frame.submitAndWait(); !submitted)
         {
-            onRenderSkipped();
-            return std::nullopt;
+            return std::unexpected(submitted.error());
         }
-        swapchain.present();
-        onPostPresent();
+        const auto afterWait = std::chrono::steady_clock::now();
+        if (auto collected = profiler.collect(); !collected)
+        {
+            return std::unexpected(collected.error());
+        }
+        if (auto completed = onPostRender(*target); !completed)
+        {
+            return std::unexpected(completed.error());
+        }
+        const auto afterPostRender = std::chrono::steady_clock::now();
+        if (presentSource)
+        {
+            const auto copied = copyToSwapchain(device, frame, swapchain, *presentSource);
+            if (!copied)
+            {
+                return std::unexpected(copied.error());
+            }
+            if (!*copied)
+            {
+                if (auto skipped = onRenderSkipped(); !skipped)
+                {
+                    return std::unexpected(skipped.error());
+                }
+                return std::nullopt;
+            }
+        }
+        if (auto presented = swapchain.present(); !presented)
+        {
+            return std::unexpected(presented.error());
+        }
+        if (auto presented = onPostPresent(); !presented)
+        {
+            return std::unexpected(presented.error());
+        }
 #ifdef VULTRA_WITH_RENDERDOC
         if (m_RenderDocFrame == m_FrameCount)
         {
-            m_RenderDoc->end();
+            if (auto ended = m_RenderDoc->end(); !ended)
+            {
+                return std::unexpected(ended.error());
+            }
         }
 #endif
         const auto afterPresent = std::chrono::steady_clock::now();
@@ -138,17 +218,37 @@ namespace vultra
                                   milliseconds(afterPostRender, afterPresent),
                                   gpuMs};
         ++m_FrameCount;
-        onFrameComplete(timing);
+        if (auto completed = onFrameComplete(timing); !completed)
+        {
+            return std::unexpected(completed.error());
+        }
 
         return m_Statistics.addFrame(timing.totalMs / 1000.0, timing.updateMs + timing.prepareRecordMs, gpuMs);
     }
 
-    void RenderApp::resetFrames()
+    std::expected<void, Error> RenderApp::resetFrames()
     {
         m_FrameCount     = 0;
         m_CloseRequested = false;
         m_PreviousSize   = {};
         m_Statistics     = {};
+#ifdef VULTRA_WITH_RENDERDOC
+        if (m_RenderDocFrame && !m_RenderDoc)
+        {
+            auto capture = RenderDocCapture::create();
+            if (!capture)
+            {
+                return std::unexpected(capture.error());
+            }
+            m_RenderDoc = std::move(*capture);
+        }
+#else
+        if (m_RenderDocFrame)
+        {
+            return makeError("This platform build does not provide RenderDoc capture");
+        }
+#endif
+        return {};
     }
 
     void RenderApp::invalidateSurface()
@@ -156,27 +256,33 @@ namespace vultra
         m_PreviousSize = {};
     }
 
-    void RenderApp::onResize(Extent)
+    std::expected<void, Error> RenderApp::onResize(Extent)
     {
+        return {};
     }
 
-    void RenderApp::onPreRender()
+    std::expected<void, Error> RenderApp::onPreRender()
     {
+        return {};
     }
 
-    void RenderApp::onPostRender(Texture&)
+    std::expected<void, Error> RenderApp::onPostRender(Texture&)
     {
+        return {};
     }
 
-    void RenderApp::onRenderSkipped()
+    std::expected<void, Error> RenderApp::onRenderSkipped()
     {
+        return {};
     }
 
-    void RenderApp::onPostPresent()
+    std::expected<void, Error> RenderApp::onPostPresent()
     {
+        return {};
     }
 
-    void RenderApp::onFrameComplete(const FrameTiming&)
+    std::expected<void, Error> RenderApp::onFrameComplete(const FrameTiming&)
     {
+        return {};
     }
 } // namespace vultra

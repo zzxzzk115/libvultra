@@ -1,7 +1,9 @@
 #pragma once
+#include <vultra/core/base/error.hpp>
 #include <vultra/gpu/device.hpp>
 #include <vultra/shader/shader_program.hpp>
 
+#include <expected>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -24,32 +26,37 @@ namespace vultra
     class ShaderPipeline
     {
     public:
-        // Builder uses ordinary VRI descriptors; layout/target formats stay in the experiment.
-        using Builder = std::function<VriPipeline*(std::span<const VriShaderDesc>)>;
+        // Builder uses ordinary VRI descriptors; layout/target formats stay in the experiment. It returns a new
+        // pipeline or the reason it could not build one.
+        using Builder = std::function<std::expected<VriPipeline*, Error>(std::span<const VriShaderDesc>)>;
         // Source files compile and watch; .vshaderc files load without a watcher. If a .slang source is
         // absent, load its .vshaderc sibling. Invalid cooked files never fall back to compilation.
         // watchDirectory defaults to the entry's directory. Use a shared root for sibling lib/resources folders.
-        // Search the entry directory first, then includeDirectories in order. Paths resolve at construction.
+        // Search the entry directory first, then includeDirectories in order. Paths resolve at creation.
         // An explicit source always loads cooked entry bytes and must outlive this pipeline and reload calls.
-        ShaderPipeline(Device&                            device,
-                       std::filesystem::path              file,
-                       std::vector<ShaderEntry>           entries,
-                       Builder                            builder,
-                       std::filesystem::path              watchDirectory     = {},
-                       std::vector<std::filesystem::path> includeDirectories = {},
-                       const AssetSource*                 source             = nullptr);
-        // Source cache paths resolve at construction; an empty path disables the disk program cache.
+        // The first build failure is returned with its diagnostics.
+        [[nodiscard]] static std::expected<std::unique_ptr<ShaderPipeline>, Error>
+        create(Device&                            device,
+               std::filesystem::path              file,
+               std::vector<ShaderEntry>           entries,
+               Builder                            builder,
+               std::filesystem::path              watchDirectory     = {},
+               std::vector<std::filesystem::path> includeDirectories = {},
+               const AssetSource*                 source             = nullptr);
+        // Source cache paths resolve at creation; an empty path disables the disk program cache.
         // Cooked programs do not create a compiler or cache.
-        ShaderPipeline(Device&               device,
-                       std::filesystem::path file,
-                       ShaderCompileOptions  options,
-                       Builder               builder,
-                       std::filesystem::path watchDirectory = {},
-                       std::filesystem::path cacheDirectory = ".vultra/shaders",
-                       const AssetSource*    source         = nullptr);
+        [[nodiscard]] static std::expected<std::unique_ptr<ShaderPipeline>, Error>
+        create(Device&               device,
+               std::filesystem::path file,
+               ShaderCompileOptions  options,
+               Builder               builder,
+               std::filesystem::path watchDirectory = {},
+               std::filesystem::path cacheDirectory = ".vultra/shaders",
+               const AssetSource*    source         = nullptr);
         // Builds synchronously from owned bytecode, for example an entry read from an embedded VPK.
-        // The program can be destroyed after construction; this pipeline has no file watcher.
-        ShaderPipeline(Device& device, const ShaderProgram& program, std::vector<ShaderEntry> entries, Builder builder);
+        // The program can be destroyed after creation; this pipeline has no file watcher.
+        [[nodiscard]] static std::expected<std::unique_ptr<ShaderPipeline>, Error>
+        create(Device& device, const ShaderProgram& program, std::vector<ShaderEntry> entries, Builder builder);
         ~ShaderPipeline();
         ShaderPipeline(const ShaderPipeline&)            = delete;
         ShaderPipeline& operator=(const ShaderPipeline&) = delete;
@@ -77,7 +84,13 @@ namespace vultra
         }
 
     private:
-        void replace(const ShaderProgram& program);
+        ShaderPipeline(Device&               device,
+                       std::filesystem::path file,
+                       ShaderCompileOptions  options,
+                       Builder               builder,
+                       const AssetSource*    source);
+        [[nodiscard]] std::expected<void, Error> load();
+        [[nodiscard]] std::expected<void, Error> replace(const ShaderProgram& program);
 #ifdef VULTRA_WITH_SHADER_COMPILER
         struct Watch;
 #endif

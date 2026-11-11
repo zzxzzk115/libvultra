@@ -1,7 +1,10 @@
 #pragma once
 
+#include <vultra/core/base/error.hpp>
+
 #include <spdlog/spdlog.h>
 
+#include <expected>
 #include <filesystem>
 
 namespace vultra
@@ -10,9 +13,9 @@ namespace vultra
     class Logger
     {
     public:
-        static void            configure(spdlog::level::level_enum    level = spdlog::level::info,
-                                         const std::filesystem::path& file  = {});
-        static spdlog::logger& core();
-        static spdlog::logger& app();
+        [[nodiscard]] static std::expected<void, Error> configure(spdlog::level::level_enum level = spdlog::level::info,
+                                                                  const std::filesystem::path& file = {});
+        static spdlog::logger&                          core();
+        static spdlog::logger&                          app();
     };
 } // namespace vultra

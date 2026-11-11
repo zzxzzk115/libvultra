@@ -2,8 +2,6 @@
 
 #include <pcg_basic.h>
 
-#include <stdexcept>
-
 namespace vultra
 {
     RandomStream::RandomStream(uint64_t seed, uint64_t sequence)
@@ -22,11 +20,11 @@ namespace vultra
         return result;
     }
 
-    uint32_t RandomStream::nextUInt(uint32_t bound)
+    std::expected<uint32_t, Error> RandomStream::nextUInt(uint32_t bound)
     {
         if (bound == 0)
         {
-            throw std::invalid_argument("Random integer bound must be positive");
+            return makeError("Random integer bound must be positive");
         }
         pcg32_random_t value {m_State, m_Increment};
         const auto     result = pcg32_boundedrand_r(&value, bound);
@@ -44,13 +42,14 @@ namespace vultra
         return {m_State, m_Increment};
     }
 
-    void RandomStream::restore(RandomState state)
+    std::expected<void, Error> RandomStream::restore(RandomState state)
     {
         if ((state.increment & 1) == 0)
         {
-            throw std::invalid_argument("PCG32 stream increment must be odd");
+            return makeError("PCG32 stream increment must be odd");
         }
         m_State     = state.state;
         m_Increment = state.increment;
+        return {};
     }
 } // namespace vultra

@@ -1,3 +1,5 @@
+#include "support/check.hpp"
+
 #include <vultra/core/math/ray.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
@@ -5,17 +7,11 @@
 
 #include <cmath>
 #include <iostream>
-#include <stdexcept>
 
 namespace
 {
-    void require(bool condition, const char* message)
-    {
-        if (!condition)
-        {
-            throw std::runtime_error(message);
-        }
-    }
+    using support::must;
+    using support::require;
 
     bool near(float a, float b)
     {
@@ -24,7 +20,6 @@ namespace
 } // namespace
 
 int main()
-try
 {
     using namespace vultra;
     const Ray  forward {{0, 0, 2}, {0, 0, -1}};
@@ -70,9 +65,4 @@ try
     require(picked && near(picked->uv.x, 0.6f) && near(picked->uv.y, 0.45f), "Camera ray picked the wrong panel point");
     std::cout << "Ray tests passed: plane, triangle, rectangle and camera rays\n";
     return 0;
-}
-catch (const std::exception& error)
-{
-    std::cerr << error.what() << '\n';
-    return 1;
 }

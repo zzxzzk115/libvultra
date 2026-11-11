@@ -3,6 +3,9 @@
 #include <vultra/assets/texture_data.hpp>
 #ifdef VULTRA_WITH_TEXTURE_IMPORT
 #include <vultra/assets/source_file.hpp>
+#include <vultra/core/base/error.hpp>
+
+#include <expected>
 #endif
 
 namespace vultra
@@ -36,9 +39,9 @@ namespace vultra
     };
 
 #ifdef VULTRA_WITH_TEXTURE_IMPORT
-    TextureAssetData loadTextureAsset(const std::filesystem::path& path,
-                                      bool                         srgb,
-                                      const SourceObserver&        observer = {},
-                                      const AssetSource*           source   = nullptr);
+    [[nodiscard]] std::expected<TextureAssetData, Error> loadTextureAsset(const std::filesystem::path& path,
+                                                                          bool                         srgb,
+                                                                          const SourceObserver&        observer = {},
+                                                                          const AssetSource* source = nullptr);
 #endif
 } // namespace vultra

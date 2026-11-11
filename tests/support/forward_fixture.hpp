@@ -1,11 +1,13 @@
 #pragma once
 
+#include "check.hpp"
+
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/render/forward_path.hpp>
 
 #include <cmath>
+#include <memory>
 #include <span>
-#include <stdexcept>
 
 namespace support
 {
@@ -15,12 +17,13 @@ namespace support
         {
             if (!std::isfinite(channel) || channel < 0)
             {
-                throw std::runtime_error("Non-finite or negative renderer output");
+                fail("Non-finite or negative renderer output");
             }
         }
     }
 
     // One forward path lit by a single directional sun, so each case reads as a list of settings.
+    // Every operation the fixture performs is expected to succeed; a failure ends the test.
     struct ForwardFixture
     {
         struct Settings : vultra::ForwardSettings
@@ -37,7 +40,7 @@ namespace support
         };
 
         ForwardFixture(vultra::Device& device, vultra::GpuScene& scene, vultra::Environment& environment) :
-            path(device),
+            path(must(vultra::ForwardPath::create(device))),
             scene(scene),
             environment(environment)
         {
@@ -45,26 +48,26 @@ namespace support
 
         Outputs addPasses(vultra::RenderGraph& graph, vultra::Extent size)
         {
-            const auto resources = path.addPasses(graph, scene, environment, size);
-            vultra::validateSceneResources(path, resources, graph);
-            return {vultra::findSceneResource(resources, vultra::kSceneHdr),
-                    vultra::findSceneResource(resources, vultra::kSceneDepth)};
+            const auto resources = must(path->addPasses(graph, scene, environment, size));
+            must(vultra::validateSceneResources(*path, resources, graph));
+            return {must(vultra::findSceneResource(resources, vultra::kSceneHdr)),
+                    must(vultra::findSceneResource(resources, vultra::kSceneDepth))};
         }
 
         void prepare(const vultra::RenderCamera& camera, vultra::RenderGraph& graph)
         {
-            path.settings = settings;
+            path->settings = settings;
             const vultra::RenderLight sun {.kind             = vultra::RenderLightKind::eDirectional,
                                            .directionToLight = settings.directionToLight,
                                            .color            = settings.lightColor,
                                            .intensity        = settings.lightIntensity};
-            path.prepare(graph, camera, std::span(&sun, 1));
+            must(path->prepare(graph, camera, std::span(&sun, 1)));
         }
 
-        vultra::ForwardPath  path;
-        Settings             settings;
-        vultra::GpuScene&    scene;
-        vultra::Environment& environment;
+        std::unique_ptr<vultra::ForwardPath> path;
+        Settings                             settings;
+        vultra::GpuScene&                    scene;
+        vultra::Environment&                 environment;
     };
 
     // Renders one completed frame and returns the checked scene.hdr readback.
@@ -75,11 +78,11 @@ namespace support
                                 const vultra::RenderCamera&    camera)
     {
         renderer.prepare(camera, graph);
-        vultra::Frame frame(device);
-        auto*         cmd = frame.begin();
-        graph.execute(cmd);
-        frame.submitAndWait();
-        auto image = vultra::readback(device, graph.getTexture(outputs.hdr));
+        const auto frame = must(vultra::Frame::create(device));
+        auto*      cmd   = must(frame->begin());
+        must(graph.execute(cmd));
+        must(frame->submitAndWait());
+        auto image = must(vultra::readback(device, graph.getTexture(outputs.hdr)));
         finite(image);
         return image;
     }

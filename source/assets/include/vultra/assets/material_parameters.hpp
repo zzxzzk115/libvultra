@@ -1,6 +1,9 @@
 #pragma once
 
 #include <vultra/assets/scene_data.hpp>
+#include <vultra/core/base/error.hpp>
+
+#include <expected>
 
 namespace vultra
 {
@@ -31,9 +34,9 @@ namespace vultra
         float occlusionStrength    = 1;
         float alphaCutoff          = -1;
 
-        static MaterialParameters fromMaterial(const SurfaceMaterial& material);
-        void                      applyTo(SurfaceMaterial& material) const;
-        void                      validate() const;
-        friend bool               operator==(const MaterialParameters&, const MaterialParameters&) = default;
+        static MaterialParameters                fromMaterial(const SurfaceMaterial& material);
+        void                                     applyTo(SurfaceMaterial& material) const;
+        [[nodiscard]] std::expected<void, Error> validate() const;
+        friend bool operator==(const MaterialParameters&, const MaterialParameters&) = default;
     };
 } // namespace vultra

@@ -1,43 +1,49 @@
 #pragma once
+#include <vultra/core/base/error.hpp>
+
 #include <vri/ext/vri_ext_pipeline_cache.h>
 #include <vri/vri.h>
 
 #include <array>
-#include <stdexcept>
-#include <string>
+#include <expected>
+#include <memory>
 #include <vector>
 
 namespace vultra
 {
-    inline void check(VriResult result, const char* operation)
+    [[nodiscard]] inline std::expected<void, Error> check(VriResult result, const char* operation)
     {
         if (result != VriResult_Success)
         {
-            throw std::runtime_error(std::string(operation) + " failed: " + std::to_string(result));
+            return makeError("{} failed: {}", operation, int(result));
         }
+        return {};
     }
 
-    // VRI remains the public rendering API. This class only owns the device and its tables.
+    // VRI remains the public rendering API. This class only owns the device and its tables. Frames, resources
+    // and swapchains keep references to it, so it lives behind a unique_ptr and never moves.
     class Device
     {
     public:
-        explicit Device(const VriDeviceCreationDesc& desc);
-        // Convenience construction preserves the builtin shaders' Y-up authoring convention.
+        [[nodiscard]] static std::expected<std::unique_ptr<Device>, Error> create(const VriDeviceCreationDesc& desc);
+        // Convenience creation preserves the builtin shaders' Y-up authoring convention.
         // Strict feature requirements by default; bestEffort enables explicit capability-based selection.
-        explicit Device(bool        validation       = true,
-                        const void* nativeCreateInfo = nullptr,
-                        uint64_t    features         = 0,
-                        bool        bestEffort       = false);
-        explicit Device(VriGraphicsAPI api,
-                        bool           validation       = true,
-                        const void*    nativeCreateInfo = nullptr,
-                        uint64_t       features         = 0,
-                        bool           bestEffort       = false);
+        [[nodiscard]] static std::expected<std::unique_ptr<Device>, Error>
+        create(bool        validation       = true,
+               const void* nativeCreateInfo = nullptr,
+               uint64_t    features         = 0,
+               bool        bestEffort       = false);
+        [[nodiscard]] static std::expected<std::unique_ptr<Device>, Error>
+        create(VriGraphicsAPI api,
+               bool           validation       = true,
+               const void*    nativeCreateInfo = nullptr,
+               uint64_t       features         = 0,
+               bool           bestEffort       = false);
         ~Device();
-        Device(const Device&)            = delete;
-        Device& operator=(const Device&) = delete;
-        void    waitIdle() const;
-        // Destructors report completion errors without throwing during stack unwinding.
+        Device(const Device&)                                             = delete;
+        Device&                                  operator=(const Device&) = delete;
+        [[nodiscard]] std::expected<void, Error> waitIdle() const;
+        // Destructors report completion errors through the log.
         void waitIdleForDestruction() const noexcept;
 
         VriDevice* handle   = nullptr;
@@ -51,8 +57,11 @@ namespace vultra
         VriPipelineCache* pipelineCache = nullptr;
 
     private:
-        Device(const VriDeviceCreationDesc& requested, bool automaticSelection);
-        VriPipelineCacheInterface m_PipelineCacheApi {};
+        Device() = default;
+        static std::expected<std::unique_ptr<Device>, Error> create(const VriDeviceCreationDesc& requested,
+                                                                    bool                         automaticSelection);
+        std::expected<void, Error>                           initialize();
+        VriPipelineCacheInterface                            m_PipelineCacheApi {};
     };
 
     enum class FrameQueue
@@ -68,21 +77,23 @@ namespace vultra
     class Frame
     {
     public:
-        explicit Frame(Device& device);
+        // Frames are referenced by recorders while they are open, so they live behind a unique_ptr.
+        [[nodiscard]] static std::expected<std::unique_ptr<Frame>, Error> create(Device& device);
         ~Frame();
         Frame(const Frame&)            = delete;
         Frame& operator=(const Frame&) = delete;
         // Starts the frame and returns its first graphics command buffer.
-        VriCommandBuffer* begin();
-        // The open command buffer of this queue, starting a new one after a submit().
-        VriCommandBuffer* commands(FrameQueue queue);
+        [[nodiscard]] std::expected<VriCommandBuffer*, Error> begin();
+        // The open command buffer of this queue, starting a new one after a submit(). Using the compute queue
+        // on a device without a separate one is an error.
+        [[nodiscard]] std::expected<VriCommandBuffer*, Error> commands(FrameQueue queue);
         // Submits the open command buffer of this queue and returns the timeline point it signals.
         // A nonzero waitOther delays it until the other queue reaches that point.
-        uint64_t submit(FrameQueue queue, uint64_t waitOther = 0);
+        [[nodiscard]] std::expected<uint64_t, Error> submit(FrameQueue queue, uint64_t waitOther = 0);
         // The final graphics submission of this frame waits for this compute point.
         void waitForCompute(uint64_t point);
         // Submits the open graphics command buffer and waits until every submission of this frame completed.
-        void submitAndWait();
+        [[nodiscard]] std::expected<void, Error> submitAndWait();
 
         double waitMs() const
         {
@@ -101,7 +112,8 @@ namespace vultra
             uint64_t                       value = 0;
         };
 
-        Queue& state(FrameQueue queue);
+        explicit Frame(Device& device);
+        std::expected<Queue*, Error> state(FrameQueue queue);
 
         Device&              m_Device;
         std::array<Queue, 2> m_Queues;

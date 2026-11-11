@@ -8,12 +8,13 @@
 #include <numeric>
 #include <set>
 #include <span>
+#include <utility>
 
 namespace vultra
 {
     namespace
     {
-        VriFormat gpuFormat(TextureFormat format)
+        std::expected<VriFormat, Error> gpuFormat(TextureFormat format)
         {
             switch (format)
             {
@@ -48,7 +49,7 @@ namespace vultra
                 case TextureFormat::eBc7Unorm:
                     return VriFormat_BC7_UNORM;
                 default:
-                    throw std::invalid_argument("Unsupported GPU asset texture format");
+                    return makeError("Unsupported GPU asset texture format");
             }
         }
 
@@ -70,18 +71,23 @@ namespace vultra
             std::vector<TextureSubresourceView> subresources;
         };
 
-        std::unique_ptr<Texture> uploadTexture(Device& device, const TextureUploadView& data)
+        std::expected<std::unique_ptr<Texture>, Error> uploadTexture(Device& device, const TextureUploadView& data)
         {
             if (data.subresources.empty() || data.layers == 0 || data.mips == 0 || data.mips > 32)
             {
-                throw std::invalid_argument("Texture asset requires a complete subresource chain");
+                return makeError("Texture asset requires a complete subresource chain");
             }
             const auto& first = data.subresources.front();
             if (first.mip != 0 || first.layer != 0 || first.size.empty() || first.depth == 0)
             {
-                throw std::invalid_argument("Texture asset must start with mip zero, layer zero");
+                return makeError("Texture asset must start with mip zero, layer zero");
             }
-            auto desc = colorTexture(first.size, gpuFormat(data.format));
+            const auto format = gpuFormat(data.format);
+            if (!format)
+            {
+                return std::unexpected(format.error());
+            }
+            auto desc = colorTexture(first.size, *format);
             switch (data.dimension)
             {
                 case TextureDimension::e2D:
@@ -100,7 +106,7 @@ namespace vultra
                     desc.type = VriTextureType_CubeArray;
                     break;
                 default:
-                    throw std::invalid_argument("Invalid texture asset dimension");
+                    return makeError("Invalid texture asset dimension");
             }
             const bool volume = data.dimension == TextureDimension::e3D;
             const bool cube =
@@ -111,17 +117,22 @@ namespace vultra
                 (data.dimension == TextureDimension::eCube && data.layers != 6) ||
                 data.subresources.size() != uint64_t(data.layers) * data.mips)
             {
-                throw std::invalid_argument("Texture asset dimensions and subresources disagree");
+                return makeError("Texture asset dimensions and subresources disagree");
             }
             if (data.mips > std::bit_width(std::max({first.size.width, first.size.height, first.depth})))
             {
-                throw std::invalid_argument("Texture asset mip count exceeds its dimensions");
+                return makeError("Texture asset mip count exceeds its dimensions");
             }
             desc.depth    = first.depth;
             desc.layerNum = data.layers;
             desc.mipNum   = data.mips;
             desc.usage    = VriTextureUsage_ShaderResource | VriTextureUsage_TransferDst | VriTextureUsage_TransferSrc;
-            const auto layout = asset_detail::textureLayout(data.format);
+            const auto layoutResult = asset_detail::textureLayout(data.format);
+            if (!layoutResult)
+            {
+                return std::unexpected(layoutResult.error());
+            }
+            const auto layout = *layoutResult;
             const auto rowAlignment =
                 std::lcm(layout.bytes,
                          std::max(1u, device.core.GetDeviceDesc(device.handle)->uploadBufferTextureRowAlignment));
@@ -141,7 +152,7 @@ namespace vultra
             {
                 if (resource.mip >= data.mips)
                 {
-                    throw std::invalid_argument("Texture asset mip is outside its chain");
+                    return makeError("Texture asset mip is outside its chain");
                 }
                 const Extent expected {std::max(first.size.width >> resource.mip, 1u),
                                        std::max(first.size.height >> resource.mip, 1u)};
@@ -149,23 +160,27 @@ namespace vultra
                 if (resource.layer >= data.layers || resource.size != expected || resource.depth != depth ||
                     !seen.emplace(resource.mip, resource.layer).second)
                 {
-                    throw std::invalid_argument("Invalid or duplicate texture asset subresource");
+                    return makeError("Invalid or duplicate texture asset subresource");
                 }
                 const uint32_t packedRow = (resource.size.width + layout.block - 1) / layout.block * layout.bytes;
                 const uint32_t rows      = (resource.size.height + layout.block - 1) / layout.block;
                 if (resource.bytes.size() != uint64_t(packedRow) * rows * resource.depth)
                 {
-                    throw std::invalid_argument("Texture asset subresource byte count");
+                    return makeError("Texture asset subresource byte count");
                 }
                 const auto rowBytes = (packedRow + rowAlignment - 1) / rowAlignment * rowAlignment;
                 copies.push_back({total, rowBytes, rows, packedRow});
                 total = (total + uint64_t(rowBytes) * rows * resource.depth + 511) & ~uint64_t(511);
             }
-            Buffer staging(device, {total, 0, VriBufferUsage_TransferSrc, VriMemoryLocation_HostUpload});
-            auto*  mapped = static_cast<std::byte*>(device.core.MapBuffer(staging.handle, 0, total));
+            auto staging = Buffer::create(device, {total, 0, VriBufferUsage_TransferSrc, VriMemoryLocation_HostUpload});
+            if (!staging)
+            {
+                return std::unexpected(staging.error());
+            }
+            auto* mapped = static_cast<std::byte*>(device.core.MapBuffer(staging->handle, 0, total));
             if (!mapped)
             {
-                throw std::runtime_error("Map texture asset staging buffer");
+                return makeError("Map texture asset staging buffer");
             }
             for (size_t i = 0; i < copies.size(); ++i)
             {
@@ -178,11 +193,24 @@ namespace vultra
                                 copy.packedRow);
                 }
             }
-            device.core.UnmapBuffer(staging.handle);
-            auto  texture = std::make_unique<Texture>(device, desc);
-            Frame frame(device);
-            auto* commands = frame.begin();
-            texture->transition(commands,
+            device.core.UnmapBuffer(staging->handle);
+            auto created = Texture::create(device, desc);
+            if (!created)
+            {
+                return std::unexpected(created.error());
+            }
+            auto texture = std::make_unique<Texture>(std::move(*created));
+            auto frame   = Frame::create(device);
+            if (!frame)
+            {
+                return std::unexpected(frame.error());
+            }
+            const auto commands = (*frame)->begin();
+            if (!commands)
+            {
+                return std::unexpected(commands.error());
+            }
+            texture->transition(*commands,
                                 {VriAccess_CopyDestinationWrite, VriLayout_CopyDestination, VriPipelineStage_Transfer});
             for (size_t i = 0; i < copies.size(); ++i)
             {
@@ -202,16 +230,19 @@ namespace vultra
                                           resource.size.width,
                                           resource.size.height,
                                           resource.depth};
-                device.core.CmdUploadBufferToTexture(commands, texture->handle, staging.handle, &copy);
+                device.core.CmdUploadBufferToTexture(*commands, texture->handle, staging->handle, &copy);
             }
-            texture->transition(commands,
+            texture->transition(*commands,
                                 {VriAccess_ShaderResourceRead, VriLayout_ShaderResource, VriPipelineStage_AllCommands});
-            frame.submitAndWait();
+            if (auto submitted = (*frame)->submitAndWait(); !submitted)
+            {
+                return std::unexpected(submitted.error());
+            }
             return texture;
         }
     } // namespace
 
-    std::unique_ptr<Texture> uploadTextureAsset(Device& device, const TextureAssetData& data)
+    std::expected<std::unique_ptr<Texture>, Error> uploadTextureAsset(Device& device, const TextureAssetData& data)
     {
         TextureUploadView view {data.dimension, data.format, data.layers, data.mips, {}};
         view.subresources.reserve(data.subresources.size());
@@ -222,7 +253,7 @@ namespace vultra
         return uploadTexture(device, view);
     }
 
-    std::unique_ptr<Texture> uploadTextureAsset(Device& device, const TextureData& data)
+    std::expected<std::unique_ptr<Texture>, Error> uploadTextureAsset(Device& device, const TextureData& data)
     {
         TextureUploadView view {TextureDimension::e2D, data.format, 1, uint32_t(data.levels.size()), {}};
         view.subresources.reserve(data.levels.size());

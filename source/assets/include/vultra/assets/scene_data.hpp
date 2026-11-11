@@ -2,11 +2,13 @@
 
 #include <vultra/assets/fbx_import.hpp>
 #include <vultra/assets/source_file.hpp>
+#include <vultra/core/base/error.hpp>
 #include <vultra/core/math/extent.hpp>
 
 #include <glm/glm.hpp>
 
 #include <array>
+#include <expected>
 #include <filesystem>
 #include <span>
 #include <vector>
@@ -118,26 +120,26 @@ namespace vultra
 
     // Accumulate UV derivatives in triangle order, then orthogonalize against the vertex normal.
     // Nonzero authored tangents are preserved. Indices may reference a range starting at vertexOffset.
-    void
+    [[nodiscard]] std::expected<void, Error>
     generateTangents(std::span<SceneVertex> vertices, std::span<const uint32_t> indices, uint32_t vertexOffset = 0);
 
-    SceneData loadGltf(const std::filesystem::path& path,
-                       const SourceObserver&        observer = {},
-                       uint32_t                     workers  = 0,
-                       const AssetSource*           source   = nullptr);
+    [[nodiscard]] std::expected<SceneData, Error> loadGltf(const std::filesystem::path& path,
+                                                           const SourceObserver&        observer = {},
+                                                           uint32_t                     workers  = 0,
+                                                           const AssetSource*           source   = nullptr);
     // Static OBJ geometry and untextured MTL diffuse/emission; used by the original Cornell Box.
-    SceneData loadObj(const std::filesystem::path& path,
-                      const SourceObserver&        observer = {},
-                      uint32_t                     workers  = 0,
-                      const AssetSource*           source   = nullptr);
+    [[nodiscard]] std::expected<SceneData, Error> loadObj(const std::filesystem::path& path,
+                                                          const SourceObserver&        observer = {},
+                                                          uint32_t                     workers  = 0,
+                                                          const AssetSource*           source   = nullptr);
 
-    SceneData  loadFbx(const std::filesystem::path& path,
-                       const SourceObserver&        observer = {},
-                       uint32_t                     workers  = 0,
-                       const AssetSource*           source   = nullptr,
-                       const FbxImportOptions&      options  = {});
-    SceneImage loadSceneImage(const std::filesystem::path& path,
-                              const SourceObserver&        observer = {},
-                              const AssetSource*           source   = nullptr);
+    [[nodiscard]] std::expected<SceneData, Error>  loadFbx(const std::filesystem::path& path,
+                                                           const SourceObserver&        observer = {},
+                                                           uint32_t                     workers  = 0,
+                                                           const AssetSource*           source   = nullptr,
+                                                           const FbxImportOptions&      options  = {});
+    [[nodiscard]] std::expected<SceneImage, Error> loadSceneImage(const std::filesystem::path& path,
+                                                                  const SourceObserver&        observer = {},
+                                                                  const AssetSource*           source   = nullptr);
 
 } // namespace vultra

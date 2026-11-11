@@ -4,7 +4,7 @@
 
 namespace vultra
 {
-    MemoryReport memoryReport(const Device& device)
+    std::expected<MemoryReport, Error> memoryReport(const Device& device)
     {
         MemoryReport       report;
         VriVideoMemoryInfo video {};
@@ -15,7 +15,7 @@ namespace vultra
         }
         else if (budgetResult != VriResult_Unsupported)
         {
-            check(budgetResult, "Query VRI video memory budget");
+            return std::unexpected(check(budgetResult, "Query VRI video memory budget").error());
         }
         uint32_t   count  = 0;
         const auto result = device.core.EnumerateObjects(device.handle, &count, nullptr);
@@ -23,9 +23,17 @@ namespace vultra
         {
             return report;
         }
-        check(result, "Count VRI objects");
+        if (auto counted = check(result, "Count VRI objects"); !counted)
+        {
+            return std::unexpected(counted.error());
+        }
         report.objects.resize(count);
-        check(device.core.EnumerateObjects(device.handle, &count, report.objects.data()), "Enumerate VRI objects");
+        if (auto listed = check(device.core.EnumerateObjects(device.handle, &count, report.objects.data()),
+                                "Enumerate VRI objects");
+            !listed)
+        {
+            return std::unexpected(listed.error());
+        }
         report.objects.resize(count);
         report.trackedBytes = 0;
         for (const auto& object : report.objects)

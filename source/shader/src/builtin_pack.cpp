@@ -1,12 +1,11 @@
-#include <vultra/shader/builtin_pack.hpp>
 #include <vultra/assets/vpk_archive.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/core/base/stable_id.hpp>
+#include <vultra/shader/builtin_pack.hpp>
 #include <vultra/shader/shader_program.hpp>
 
 #include <algorithm>
 #include <array>
-#include <stdexcept>
 
 namespace vultra
 {
@@ -18,38 +17,85 @@ namespace vultra
             return {text.begin(), text.end()};
         }
 
-        std::filesystem::path sourceFile(const std::filesystem::path& root, std::string_view path)
+        std::expected<std::filesystem::path, Error> canonicalPath(const std::filesystem::path& path)
+        {
+            std::error_code error;
+            auto            result = std::filesystem::canonical(path, error);
+            if (error)
+            {
+                return makeError("Resolve {}: {}", path.string(), error.message());
+            }
+            return result;
+        }
+
+        std::expected<VpkFile, Error> sourceFile(const std::filesystem::path& root, std::string_view path)
         {
             const auto relative = VpkArchive::canonicalPath(path);
-            const auto resolved = std::filesystem::canonical(root / relative);
-            const auto within   = resolved.lexically_relative(root);
+            if (!relative)
+            {
+                return std::unexpected(relative.error());
+            }
+            const auto resolved = canonicalPath(root / *relative);
+            if (!resolved)
+            {
+                return std::unexpected(resolved.error());
+            }
+            const auto within = resolved->lexically_relative(root);
             if (within.empty() || within.is_absolute())
             {
-                throw std::invalid_argument("Project asset leaves its root: " + relative);
+                return makeError("Project asset leaves its root: {}", *relative);
             }
             for (const auto& part : within)
             {
                 if (part == "..")
                 {
-                    throw std::invalid_argument("Project asset leaves its root: " + relative);
+                    return makeError("Project asset leaves its root: {}", *relative);
                 }
             }
-            if (!std::filesystem::is_regular_file(resolved))
+            std::error_code status;
+            if (!std::filesystem::is_regular_file(*resolved, status))
             {
-                throw std::invalid_argument("Project asset is not a file: " + relative);
+                return makeError("Project asset is not a file: {}", *relative);
             }
-            return resolved;
+            return VpkFile {*relative, *resolved};
         }
 
+        // Regular files below a directory. A failed traversal is an error; an entry whose status cannot be read,
+        // such as a dangling link, is not a regular file.
+        std::expected<std::vector<std::filesystem::path>, Error> regularFiles(const std::filesystem::path& directory)
+        {
+            std::error_code                               error;
+            std::vector<std::filesystem::path>            files;
+            std::filesystem::recursive_directory_iterator item(directory, error);
+            for (; !error && item != std::filesystem::recursive_directory_iterator(); item.increment(error))
+            {
+                std::error_code status;
+                if (item->is_regular_file(status))
+                {
+                    files.push_back(item->path());
+                }
+            }
+            if (error)
+            {
+                return makeError("List {}: {}", directory.string(), error.message());
+            }
+            return files;
+        }
     } // namespace
 
-    void packBuiltins(const std::filesystem::path& engineRoot, const std::filesystem::path& output)
+    std::expected<void, Error> packBuiltins(const std::filesystem::path& engineRoot,
+                                            const std::filesystem::path& output)
     {
-        const auto engine = std::filesystem::canonical(engineRoot);
-        const auto passes = engine / "builtin/shaders/passes";
-        if (!std::filesystem::is_directory(passes))
+        const auto engine = canonicalPath(engineRoot);
+        if (!engine)
         {
-            throw std::invalid_argument("Engine shader directory is missing: " + passes.string());
+            return std::unexpected(engine.error());
+        }
+        const auto      passes = *engine / "builtin/shaders/passes";
+        std::error_code status;
+        if (!std::filesystem::is_directory(passes, status))
+        {
+            return makeError("Engine shader directory is missing: {}", passes.string());
         }
 
         // The cook directory belongs to this invocation and is removed after the archive is finalized.
@@ -59,66 +105,107 @@ namespace vultra
 
             ~CookDirectory()
             {
-                std::error_code ignored;
-                std::filesystem::remove_all(path, ignored);
+                if (!path.empty())
+                {
+                    std::error_code ignored;
+                    std::filesystem::remove_all(path, ignored);
+                }
             }
-        } cooked {std::filesystem::temp_directory_path() / ("vultra-shaders-" + StableId::generate().toString())};
+        } cooked;
 
-        std::filesystem::create_directory(cooked.path);
-        const std::array                   includes {engine / "builtin/shaders", engine / "external"};
-        std::vector<std::filesystem::path> sources;
-        for (const auto& item : std::filesystem::recursive_directory_iterator(passes))
+        std::error_code error;
+        const auto      temporary = std::filesystem::temp_directory_path(error);
+        if (error)
         {
-            if (item.is_regular_file() && item.path().extension() == ".slang")
+            return makeError("Query temporary directory: {}", error.message());
+        }
+        const auto directory = temporary / ("vultra-shaders-" + StableId::generate().toString());
+        std::filesystem::create_directory(directory, error);
+        if (error)
+        {
+            return makeError("Create shader cook directory {}: {}", directory.string(), error.message());
+        }
+        cooked.path = directory;
+        const std::array includes {*engine / "builtin/shaders", *engine / "external"};
+        auto             passFiles = regularFiles(passes);
+        if (!passFiles)
+        {
+            return std::unexpected(passFiles.error());
+        }
+        std::vector<std::filesystem::path> sources;
+        for (const auto& file : *passFiles)
+        {
+            if (file.extension() == ".slang")
             {
-                sources.push_back(item.path());
+                sources.push_back(file);
             }
         }
         std::ranges::sort(sources);
         if (sources.empty())
         {
-            throw std::invalid_argument("No built-in shader passes to cook");
+            return makeError("No built-in shader passes to cook");
         }
         std::vector<VpkFile> files;
         for (const auto& source : sources)
         {
             Logger::core().info("Cooking built-in shader {}", source.filename().string());
             const auto program = ShaderProgram::compile(source, {}, includes, source.filename() == "path_trace.slang");
-            if (!program.diagnostics.empty())
+            if (!program)
             {
-                Logger::core().warn("{}", program.diagnostics);
+                return std::unexpected(program.error());
             }
-            auto relative = source.lexically_relative(engine);
+            if (!program->diagnostics.empty())
+            {
+                Logger::core().warn("{}", program->diagnostics);
+            }
+            auto relative = source.lexically_relative(*engine);
             relative.replace_extension(".vshaderc");
             const auto outputFile = cooked.path / relative;
-            program.save(outputFile);
-            files.emplace_back(VpkArchive::canonicalPath(pathText(relative)), outputFile);
+            if (auto saved = program->save(outputFile); !saved)
+            {
+                return saved;
+            }
+            const auto entry = VpkArchive::canonicalPath(pathText(relative));
+            if (!entry)
+            {
+                return std::unexpected(entry.error());
+            }
+            files.emplace_back(*entry, outputFile);
         }
         // Ship upstream attribution with the compiled implementation, without compiler inputs.
-        files.emplace_back("external/vrf_fbx_license.txt", sourceFile(engine, "external/vrf_fbx_license.txt"));
-        files.emplace_back("external/flip/LICENSE", sourceFile(engine, "external/flip/LICENSE"));
-        files.emplace_back("external/flip/README.vultra.md", sourceFile(engine, "external/flip/README.vultra.md"));
+        std::vector<std::string> attributions {"external/vrf_fbx_license.txt",
+                                               "external/flip/LICENSE",
+                                               "external/flip/README.vultra.md"};
         for (const auto* name : {"LICENSE.txt", "README.md"})
         {
-            const auto relative = std::string("external/pcg_basic/") + name;
-            files.emplace_back(relative, sourceFile(engine, relative));
+            attributions.push_back(std::string("external/pcg_basic/") + name);
         }
         for (const auto* name : {"LICENSE", "README.vultra.md"})
         {
-            const auto relative = std::string("external/openpbr/") + name;
-            files.emplace_back(relative, sourceFile(engine, relative));
+            attributions.push_back(std::string("external/openpbr/") + name);
         }
-        const auto sdk = engine / "build/sdk";
-        if (std::filesystem::is_directory(sdk))
+        for (const auto& relative : attributions)
         {
-            for (const auto& item : std::filesystem::recursive_directory_iterator(sdk))
+            auto file = sourceFile(*engine, relative);
+            if (!file)
             {
-                if (item.is_regular_file())
-                {
-                    files.emplace_back("sdk/" + pathText(item.path().lexically_relative(sdk)), item.path());
-                }
+                return std::unexpected(file.error());
+            }
+            files.push_back(std::move(*file));
+        }
+        const auto sdk = *engine / "build/sdk";
+        if (std::filesystem::is_directory(sdk, status))
+        {
+            const auto sdkFiles = regularFiles(sdk);
+            if (!sdkFiles)
+            {
+                return std::unexpected(sdkFiles.error());
+            }
+            for (const auto& file : *sdkFiles)
+            {
+                files.emplace_back("sdk/" + pathText(file.lexically_relative(sdk)), file);
             }
         }
-        VpkArchive::pack(files, output);
+        return VpkArchive::pack(files, output);
     }
 } // namespace vultra

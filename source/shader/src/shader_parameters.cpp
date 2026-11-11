@@ -1,7 +1,6 @@
 #include <vultra/shader/shader_program.hpp>
 
 #include <algorithm>
-#include <stdexcept>
 
 namespace vultra
 {

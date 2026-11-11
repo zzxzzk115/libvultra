@@ -2,6 +2,7 @@
 
 #include <vultra/gpu/device.hpp>
 
+#include <expected>
 #include <optional>
 #include <vector>
 
@@ -15,5 +16,5 @@ namespace vultra
     };
 
     // A snapshot of actual VRI allocator ownership, distinct from driver-wide budget/usage.
-    MemoryReport memoryReport(const Device& device);
+    [[nodiscard]] std::expected<MemoryReport, Error> memoryReport(const Device& device);
 } // namespace vultra

@@ -9,20 +9,25 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <sstream>
 
 namespace vultra
 {
     namespace
     {
-        std::string
+        std::expected<std::string, Error>
         readSource(const std::filesystem::path& path, const SourceObserver& observer, const AssetSource* assetSource)
         {
-            const auto  bytes = readSourceFile(path, observer, assetSource);
-            std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-            return text;
+            const auto bytes = readSourceFile(path, observer, assetSource);
+            if (!bytes)
+            {
+                return std::unexpected(bytes.error());
+            }
+            return std::string(reinterpret_cast<const char*>(bytes->data()), bytes->size());
         }
 
+        // TinyObj reports a failed material read only as a warning; keep the first error to fail the import.
         class MaterialReader final : public tinyobj::MaterialReader
         {
         public:
@@ -41,34 +46,61 @@ namespace vultra
                             std::string*                      warning,
                             std::string*                      error) override
             {
-                std::istringstream stream(readSource(m_Directory / name, m_Observer, m_AssetSource));
+                const auto text = readSource(m_Directory / name, m_Observer, m_AssetSource);
+                if (!text)
+                {
+                    if (!m_Error)
+                    {
+                        m_Error = text.error();
+                    }
+                    *error = text.error().message;
+                    return false;
+                }
+                std::istringstream stream(*text);
                 tinyobj::LoadMtl(names, materials, &stream, warning, error);
                 return error->empty();
+            }
+
+            const std::optional<Error>& error() const
+            {
+                return m_Error;
             }
 
         private:
             std::filesystem::path m_Directory;
             const SourceObserver& m_Observer;
             const AssetSource*    m_AssetSource;
+            std::optional<Error>  m_Error;
         };
     } // namespace
 
-    SceneData loadObj(const std::filesystem::path& path,
-                      const SourceObserver&        observer,
-                      uint32_t                     workers,
-                      const AssetSource*           assetSource)
+    std::expected<SceneData, Error> loadObj(const std::filesystem::path& path,
+                                            const SourceObserver&        observer,
+                                            uint32_t                     workers,
+                                            const AssetSource*           assetSource)
     {
-        const auto                       parseStarted = std::chrono::steady_clock::now();
-        std::istringstream               source(readSource(path, observer, assetSource));
+        const auto parseStarted = std::chrono::steady_clock::now();
+        const auto text         = readSource(path, observer, assetSource);
+        if (!text)
+        {
+            return std::unexpected(text.error());
+        }
+        std::istringstream               source(*text);
         MaterialReader                   materialReader(path.parent_path(), observer, assetSource);
         tinyobj::attrib_t                attributes;
         std::vector<tinyobj::shape_t>    shapes;
         std::vector<tinyobj::material_t> sourceMaterials;
         std::string                      warning;
         std::string                      error;
-        if (!tinyobj::LoadObj(&attributes, &shapes, &sourceMaterials, &warning, &error, &source, &materialReader, true))
+        const bool                       loaded =
+            tinyobj::LoadObj(&attributes, &shapes, &sourceMaterials, &warning, &error, &source, &materialReader, true);
+        if (materialReader.error())
         {
-            throw std::runtime_error("Load OBJ " + path.string() + ": " + error);
+            return std::unexpected(*materialReader.error());
+        }
+        if (!loaded)
+        {
+            return makeError("Load OBJ {}: {}", path.string(), error);
         }
         if (!warning.empty())
         {
@@ -83,7 +115,7 @@ namespace vultra
             if (!source.diffuse_texname.empty() || !source.normal_texname.empty() || !source.bump_texname.empty() ||
                 !source.emissive_texname.empty())
             {
-                throw std::runtime_error("OBJ loader currently supports untextured MTL materials: " + path.string());
+                return makeError("OBJ loader currently supports untextured MTL materials: {}", path.string());
             }
             SurfaceMaterial material;
             material.baseColor         = {source.diffuse[0], source.diffuse[1], source.diffuse[2], source.dissolve};
@@ -101,7 +133,7 @@ namespace vultra
         {
             if (shape.mesh.indices.size() > std::numeric_limits<uint32_t>::max() - totalIndices)
             {
-                throw std::runtime_error("OBJ exceeds 32-bit indexing");
+                return makeError("OBJ exceeds 32-bit indexing");
             }
             offsets.push_back(uint32_t(totalIndices));
             totalIndices += shape.mesh.indices.size();
@@ -113,55 +145,66 @@ namespace vultra
         std::vector<std::vector<ScenePrimitive>> shapePrimitives(shapes.size());
         std::vector<glm::vec3>                   lows(shapes.size(), glm::vec3(std::numeric_limits<float>::max()));
         std::vector<glm::vec3>                   highs(shapes.size(), glm::vec3(std::numeric_limits<float>::lowest()));
-        asset_detail::runImportJobs(
+        const auto                               built = asset_detail::runImportJobs(
             "OBJ geometry shapes",
             uint32_t(shapes.size()),
             workers,
             largestShapeScratch,
-            [&](uint32_t shapeIndex)
+            [&](uint32_t shapeIndex) -> std::expected<void, Error>
             {
                 const auto& shape      = shapes[shapeIndex];
                 auto&       primitives = shapePrimitives[shapeIndex];
                 size_t      offset     = 0;
+                if (shape.mesh.material_ids.size() != shape.mesh.num_face_vertices.size())
+                {
+                    return makeError("Invalid OBJ material index");
+                }
                 for (size_t face = 0; face < shape.mesh.num_face_vertices.size(); ++face)
                 {
-                    if (shape.mesh.num_face_vertices[face] != 3)
+                    if (shape.mesh.num_face_vertices[face] != 3 || offset + 3 > shape.mesh.indices.size())
                     {
-                        throw std::runtime_error("OBJ triangulation failed: " + path.string());
+                        return makeError("OBJ triangulation failed: {}", path.string());
                     }
-                    const int  sourceMaterial = shape.mesh.material_ids.at(face);
+                    const int  sourceMaterial = shape.mesh.material_ids[face];
                     const auto material       = sourceMaterial < 0 ? defaultMaterial : uint32_t(sourceMaterial);
                     if (material > defaultMaterial)
                     {
-                        throw std::runtime_error("Invalid OBJ material index");
+                        return makeError("Invalid OBJ material index");
                     }
                     const auto                 firstIndex = uint32_t(offsets[shapeIndex] + offset);
                     std::array<SceneVertex, 3> triangle {};
                     std::array<bool, 3>        hasNormal {};
                     for (size_t corner = 0; corner < triangle.size(); ++corner)
                     {
-                        const auto& index  = shape.mesh.indices.at(offset + corner);
+                        const auto& index  = shape.mesh.indices[offset + corner];
                         auto&       vertex = triangle[corner];
+                        if (index.vertex_index < 0 || size_t(index.vertex_index) >= attributes.vertices.size() / 3 ||
+                            (index.normal_index >= 0 && size_t(index.normal_index) >= attributes.normals.size() / 3) ||
+                            (index.texcoord_index >= 0 &&
+                             size_t(index.texcoord_index) >= attributes.texcoords.size() / 2))
+                        {
+                            return makeError("OBJ attribute index is out of bounds: {}", path.string());
+                        }
                         for (int axis = 0; axis < 3; ++axis)
                         {
-                            vertex.position[axis] = attributes.vertices.at(size_t(index.vertex_index) * 3 + axis);
+                            vertex.position[axis] = attributes.vertices[size_t(index.vertex_index) * 3 + axis];
                             if (index.normal_index >= 0)
                             {
-                                vertex.normal[axis] = attributes.normals.at(size_t(index.normal_index) * 3 + axis);
+                                vertex.normal[axis] = attributes.normals[size_t(index.normal_index) * 3 + axis];
                                 hasNormal[corner]   = true;
                             }
                         }
                         if (index.texcoord_index >= 0)
                         {
-                            vertex.uv = {attributes.texcoords.at(size_t(index.texcoord_index) * 2),
-                                         attributes.texcoords.at(size_t(index.texcoord_index) * 2 + 1)};
+                            vertex.uv = {attributes.texcoords[size_t(index.texcoord_index) * 2],
+                                         attributes.texcoords[size_t(index.texcoord_index) * 2 + 1]};
                         }
                     }
                     auto normal = glm::cross(triangle[1].position - triangle[0].position,
                                              triangle[2].position - triangle[0].position);
                     if (glm::length(normal) == 0)
                     {
-                        throw std::runtime_error("Degenerate OBJ triangle: " + path.string());
+                        return makeError("Degenerate OBJ triangle: {}", path.string());
                     }
                     normal = glm::normalize(normal);
                     for (size_t corner = 0; corner < triangle.size(); ++corner)
@@ -186,7 +229,12 @@ namespace vultra
                     }
                     offset += 3;
                 }
+                return {};
             });
+        if (!built)
+        {
+            return std::unexpected(built.error());
+        }
         for (const auto& primitives : shapePrimitives)
         {
             for (const auto primitive : primitives)
@@ -203,7 +251,7 @@ namespace vultra
         }
         if (scene.indices.empty())
         {
-            throw std::runtime_error("OBJ scene contains no triangles: " + path.string());
+            return makeError("OBJ scene contains no triangles: {}", path.string());
         }
         glm::vec3 low(std::numeric_limits<float>::max());
         glm::vec3 high(std::numeric_limits<float>::lowest());

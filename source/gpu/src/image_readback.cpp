@@ -34,7 +34,7 @@ namespace vultra
 
     namespace
     {
-        uint32_t texelSize(VriFormat format)
+        std::expected<uint32_t, Error> texelSize(VriFormat format)
         {
             switch (format)
             {
@@ -49,22 +49,26 @@ namespace vultra
                 case VriFormat_RGBA32_SFLOAT:
                     return 16;
                 default:
-                    throw std::invalid_argument("Unsupported capture format");
+                    return makeError("Unsupported capture format");
             }
         }
     } // namespace
 
     namespace
     {
-        VriBufferDesc readbackBuffer(Device& device, Texture& texture, uint32_t mip)
+        std::expected<VriBufferDesc, Error> readbackBuffer(Device& device, Texture& texture, uint32_t mip)
         {
             if (!(texture.desc.usage & VriTextureUsage_TransferSrc) || texture.desc.sampleNum != 1 ||
                 texture.desc.layerNum != 1 || mip >= texture.desc.mipNum || texture.state.layout == VriLayout_Undefined)
             {
-                throw std::invalid_argument(
-                    "Readback requires an initialized single-sample, single-layer TransferSrc mip");
+                return makeError("Readback requires an initialized single-sample, single-layer TransferSrc mip");
             }
-            const auto  texelBytes  = texelSize(texture.desc.format);
+            const auto texel = texelSize(texture.desc.format);
+            if (!texel)
+            {
+                return std::unexpected(texel.error());
+            }
+            const auto  texelBytes  = *texel;
             const auto* description = device.core.GetDeviceDesc(device.handle);
             // VRI describes buffer/texture rows in texels; the backend supplies their byte alignment.
             const auto alignment =
@@ -73,34 +77,63 @@ namespace vultra
             const auto rowBytes = (tight + alignment - 1) / alignment * alignment;
             if (rowBytes / texelBytes > UINT32_MAX)
             {
-                throw std::invalid_argument("Readback row length exceeds the VRI copy layout");
+                return makeError("Readback row length exceeds the VRI copy layout");
             }
-            return {rowBytes * std::max(texture.desc.height >> mip, 1u),
-                    0,
-                    VriBufferUsage_TransferDst,
-                    VriMemoryLocation_HostReadback};
+            return VriBufferDesc {rowBytes * std::max(texture.desc.height >> mip, 1u),
+                                  0,
+                                  VriBufferUsage_TransferDst,
+                                  VriMemoryLocation_HostReadback};
         }
     } // namespace
 
-    ImageReadback::ImageReadback(Device& device, Texture& texture, uint32_t mip) :
+    ImageReadback::ImageReadback(Device&   device,
+                                 Buffer    staging,
+                                 Extent    size,
+                                 VriFormat format,
+                                 uint32_t  mip,
+                                 uint32_t  texelBytes) :
         m_Device(device),
-        m_Staging(device, readbackBuffer(device, texture, mip)),
-        m_Size {std::max(texture.desc.width >> mip, 1u), std::max(texture.desc.height >> mip, 1u)},
-        m_Format(texture.desc.format),
+        m_Staging(std::move(staging)),
+        m_Size(size),
+        m_Format(format),
         m_Mip(mip),
-        m_TexelBytes(texelSize(texture.desc.format)),
+        m_TexelBytes(texelBytes),
         m_RowBytes(m_Staging.desc.size / m_Size.height)
     {
     }
 
-    void ImageReadback::record(VriCommandBuffer* cmd, Texture& texture)
+    std::expected<ImageReadback, Error> ImageReadback::create(Device& device, Texture& texture, uint32_t mip)
     {
-        readbackBuffer(m_Device, texture, m_Mip);
+        const auto description = readbackBuffer(device, texture, mip);
+        if (!description)
+        {
+            return std::unexpected(description.error());
+        }
+        auto staging = Buffer::create(device, *description);
+        if (!staging)
+        {
+            return std::unexpected(staging.error());
+        }
+        // readbackBuffer() accepted the format, so its texel size is known.
+        return ImageReadback(device,
+                             std::move(*staging),
+                             {std::max(texture.desc.width >> mip, 1u), std::max(texture.desc.height >> mip, 1u)},
+                             texture.desc.format,
+                             mip,
+                             *texelSize(texture.desc.format));
+    }
+
+    std::expected<void, Error> ImageReadback::record(VriCommandBuffer* cmd, Texture& texture)
+    {
+        if (auto valid = readbackBuffer(m_Device, texture, m_Mip); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
         if (texture.desc.format != m_Format || m_Mip >= texture.desc.mipNum ||
             m_Size != Extent {std::max(texture.desc.width >> m_Mip, 1u), std::max(texture.desc.height >> m_Mip, 1u)} ||
             texture.state.layout == VriLayout_Undefined || m_Recorded)
         {
-            throw std::invalid_argument("Readback source changed, uninitialized, or already recorded");
+            return makeError("Readback source changed, uninitialized, or already recorded");
         }
         auto&      device   = m_Device;
         const auto previous = texture.state;
@@ -116,13 +149,14 @@ namespace vultra
         device.core.CmdReadbackTextureToBuffer(cmd, m_Staging.handle, texture.handle, &region);
         texture.transition(cmd, previous);
         m_Recorded = true;
+        return {};
     }
 
-    Image ImageReadback::consume()
+    std::expected<Image, Error> ImageReadback::consume()
     {
         if (!m_Recorded)
         {
-            throw std::logic_error("Readback has not been recorded");
+            return makeError("Readback has not been recorded");
         }
         const auto size   = m_Size;
         const auto bytes  = m_Staging.desc.size;
@@ -133,7 +167,7 @@ namespace vultra
         auto*      data = static_cast<const unsigned char*>(device.core.MapBuffer(m_Staging.handle, 0, bytes));
         if (!data)
         {
-            throw std::runtime_error("Map capture buffer failed");
+            return makeError("Map capture buffer failed");
         }
         for (uint32_t row = 0; row < size.height; ++row)
         {
@@ -175,12 +209,31 @@ namespace vultra
         return image;
     }
 
-    Image readback(Device& device, Texture& texture, uint32_t mip)
+    std::expected<Image, Error> readback(Device& device, Texture& texture, uint32_t mip)
     {
-        ImageReadback capture(device, texture, mip);
-        Frame         frame(device);
-        capture.record(frame.begin(), texture);
-        frame.submitAndWait();
-        return capture.consume();
+        auto capture = ImageReadback::create(device, texture, mip);
+        if (!capture)
+        {
+            return std::unexpected(capture.error());
+        }
+        const auto frame = Frame::create(device);
+        if (!frame)
+        {
+            return std::unexpected(frame.error());
+        }
+        const auto cmd = (*frame)->begin();
+        if (!cmd)
+        {
+            return std::unexpected(cmd.error());
+        }
+        if (auto recorded = capture->record(*cmd, texture); !recorded)
+        {
+            return std::unexpected(recorded.error());
+        }
+        if (auto submitted = (*frame)->submitAndWait(); !submitted)
+        {
+            return std::unexpected(submitted.error());
+        }
+        return capture->consume();
     }
 } // namespace vultra

@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <stdexcept>
 
 namespace vultra
 {
@@ -75,7 +74,8 @@ namespace vultra
         }
     } // namespace
 
-    MetricRegion validateMetricRegion(Extent size, MetricRegion region, std::span<const float> mask)
+    std::expected<MetricRegion, Error>
+    validateMetricRegion(Extent size, MetricRegion region, std::span<const float> mask)
     {
         if (!region.width && !region.height)
         {
@@ -84,7 +84,7 @@ namespace vultra
         if (!region.width || !region.height || region.x >= size.width || region.y >= size.height ||
             region.width > size.width - region.x || region.height > size.height - region.y)
         {
-            throw std::invalid_argument("Metric ROI is empty or outside the image");
+            return makeError("Metric ROI is empty or outside the image");
         }
         if (!mask.empty() && (mask.size() != size_t(size.width) * size.height ||
                               !std::ranges::all_of(mask,
@@ -93,28 +93,39 @@ namespace vultra
                                                        return value == 0 || value == 1;
                                                    })))
         {
-            throw std::invalid_argument("Metric mask requires one binary 0/1 value per image pixel");
+            return makeError("Metric mask requires one binary 0/1 value per image pixel");
         }
         return region;
     }
 
-    RegionMetrics compareRegion(const Image&           reference,
-                                const Image&           test,
-                                MetricRegion           region,
-                                std::span<const float> mask,
-                                double                 peak)
+    std::expected<RegionMetrics, Error> compareRegion(const Image&           reference,
+                                                      const Image&           test,
+                                                      MetricRegion           requestedRegion,
+                                                      std::span<const float> mask,
+                                                      double                 peak)
     {
-        validateImage(reference);
-        validateImage(test);
+        if (auto valid = validateImage(reference); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
+        if (auto valid = validateImage(test); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
         if (reference.size != test.size)
         {
-            throw std::invalid_argument("Image sizes differ");
+            return makeError("Image sizes differ");
         }
         if (!(peak > 0) || !std::isfinite(peak))
         {
-            throw std::invalid_argument("Peak must be positive and finite");
+            return makeError("Peak must be positive and finite");
         }
-        region = validateMetricRegion(reference.size, region, mask);
+        const auto checkedRegion = validateMetricRegion(reference.size, requestedRegion, mask);
+        if (!checkedRegion)
+        {
+            return std::unexpected(checkedRegion.error());
+        }
+        const auto    region = *checkedRegion;
         RegionMetrics result;
         double        mse    = 0;
         const size_t  pixels = reference.rgba.size() / 4;
@@ -178,13 +189,17 @@ namespace vultra
         return result;
     }
 
-    ImageMetrics compare(const Image& reference, const Image& test, double peak)
+    std::expected<ImageMetrics, Error> compare(const Image& reference, const Image& test, double peak)
     {
         const auto metrics = compareRegion(reference, test, {}, {}, peak);
-        if (!metrics.ssim)
+        if (!metrics)
         {
-            throw std::invalid_argument("SSIM requires at least 11x11 pixels");
+            return std::unexpected(metrics.error());
         }
-        return {*metrics.mse, *metrics.psnr, *metrics.ssim};
+        if (!metrics->ssim)
+        {
+            return makeError("SSIM requires at least 11x11 pixels");
+        }
+        return ImageMetrics {*metrics->mse, *metrics->psnr, *metrics->ssim};
     }
 } // namespace vultra

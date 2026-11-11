@@ -7,12 +7,18 @@
 
 namespace vultra
 {
+    // Construction cannot fail: createServices() makes the window, device and swapchain first, so a derived
+    // application can create its own GPU objects from them in its own static create() before constructing.
     class DesktopApp : public RenderApp
     {
     public:
-        explicit DesktopApp(const AppConfig& config = {}, const AppLaunch& launch = {});
+        using Services = RuntimeContext;
+
+        [[nodiscard]] static std::expected<Services, Error> createServices(const AppConfig& config,
+                                                                           const AppLaunch& launch = {});
+        DesktopApp(Services services, const AppConfig& config);
         ~DesktopApp() override;
-        void run(uint64_t frameLimit = 0) final;
+        [[nodiscard]] std::expected<void, Error> run(uint64_t frameLimit = 0) final;
 
         Window& getWindow()
         {

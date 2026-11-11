@@ -2,39 +2,79 @@
 #include <vultra/render/rendering_server.hpp>
 #include <vultra/render/scene.hpp>
 
+#include <utility>
+
 namespace vultra
 {
-    GpuScene::GpuScene(Device& device, const SceneData& scene, bool meshShading, uint32_t workers) :
-        GpuScene(device, scene, prepareTextures(scene, {.compression = TextureCompression::eNone}), nullptr)
+    std::expected<std::unique_ptr<GpuScene>, Error>
+    GpuScene::create(Device& device, const SceneData& scene, bool meshShading, uint32_t workers)
     {
-        if (meshShading)
+        const auto textures = prepareTextures(scene, {.compression = TextureCompression::eNone});
+        if (!textures)
         {
-            meshlets = std::make_unique<GpuMeshlets>(device, *vertices, scene, workers);
+            return std::unexpected(textures.error());
         }
-    }
-
-    GpuScene::GpuScene(Device& device, const ImportedAsset& asset, bool meshShading, uint32_t workers) :
-        GpuScene(device, asset.scene, asset.textures, nullptr)
-    {
-        if (meshShading)
+        auto result = create(device, scene, *textures, nullptr);
+        if (!result || !meshShading)
         {
-            meshlets = std::make_unique<GpuMeshlets>(device, *vertices, asset.scene, workers);
+            return result;
         }
+        auto meshlets = GpuMeshlets::create(device, *(*result)->vertices, scene, workers);
+        if (!meshlets)
+        {
+            return std::unexpected(meshlets.error());
+        }
+        (*result)->meshlets = std::move(*meshlets);
+        return result;
     }
 
-    GpuMeshlets::GpuMeshlets(Device& device, Buffer& vertices, const SceneData& scene, uint32_t workers) :
-        GpuMeshlets(device, vertices, buildMeshlets(scene, workers))
+    std::expected<std::unique_ptr<GpuScene>, Error>
+    GpuScene::create(Device& device, const ImportedAsset& asset, bool meshShading, uint32_t workers)
     {
+        auto result = create(device, asset.scene, asset.textures, nullptr);
+        if (!result || !meshShading)
+        {
+            return result;
+        }
+        auto meshlets = GpuMeshlets::create(device, *(*result)->vertices, asset.scene, workers);
+        if (!meshlets)
+        {
+            return std::unexpected(meshlets.error());
+        }
+        (*result)->meshlets = std::move(*meshlets);
+        return result;
     }
 
-    GpuSceneHandle RenderingServer::uploadScene(const SceneData& scene, bool meshShading, uint32_t workers)
+    std::expected<std::unique_ptr<GpuMeshlets>, Error>
+    GpuMeshlets::create(Device& device, Buffer& vertices, const SceneData& scene, uint32_t workers)
     {
-        return insert(std::make_unique<GpuScene>(m_Device, scene, meshShading, workers));
+        const auto data = buildMeshlets(scene, workers);
+        if (!data)
+        {
+            return std::unexpected(data.error());
+        }
+        return create(device, vertices, *data);
     }
 
-    GpuSceneHandle RenderingServer::uploadScene(const ImportedAsset& asset, bool meshShading, uint32_t workers)
+    std::expected<GpuSceneHandle, Error>
+    RenderingServer::uploadScene(const SceneData& scene, bool meshShading, uint32_t workers)
     {
-        return insert(std::make_unique<GpuScene>(m_Device, asset, meshShading, workers));
+        auto created = GpuScene::create(m_Device, scene, meshShading, workers);
+        if (!created)
+        {
+            return std::unexpected(created.error());
+        }
+        return insert(std::move(*created));
     }
 
+    std::expected<GpuSceneHandle, Error>
+    RenderingServer::uploadScene(const ImportedAsset& asset, bool meshShading, uint32_t workers)
+    {
+        auto created = GpuScene::create(m_Device, asset, meshShading, workers);
+        if (!created)
+        {
+            return std::unexpected(created.error());
+        }
+        return insert(std::move(*created));
+    }
 } // namespace vultra
