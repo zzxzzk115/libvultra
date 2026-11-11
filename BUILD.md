@@ -18,7 +18,7 @@ restructuring on this branch; their instructions below are kept as instructions 
 
 Dependency versions and package recipes live in [external/xmake.lua](external/xmake.lua) and
 [external/packages](external/packages/packages). The initial source build of Slang takes time. MSVC targets and
-packages use matching MT/MTd runtimes. VRI is pinned by commit with [local patches](external/vri/README.md).
+packages use matching MT/MTd runtimes. VRI is the tagged [v0.2.0 release](external/vri/README.md), without local patches.
 
 ## Configure and build
 
@@ -40,7 +40,7 @@ A root build defaults to all modules, all examples and the tests. Configuration 
 | `libvultra_asset_import` | Default on. `n` keeps asset values and VPK archives without importers or meshlet building. |
 | `libvultra_with_openxr` | Default on. `n` leaves `xr` out of `all`; selecting `xr` explicitly requires it. |
 | `libvultra_graphics_api` | `vulkan` (default, native platforms); WebAssembly requires `webgpu` or `webgl2`. |
-| `libvultra_vri_dir` | Build VRI from a local checkout instead of the pinned archive; no patches are applied to it. |
+| `libvultra_vri_dir` | Build VRI from a local checkout instead of the pinned release. |
 | `libvultra_build_examples`, `libvultra_build_tests` | Default on at the root, off when embedded. |
 | `libvultra_examples` | `all`, a group (`basics`, `offline`, `ui`), a mode (`basics.vri`) or a comma-separated union. |
 | `libvultra_example_pack` | Host-cooked VPK embedded in the Web `basics.vri` / `basics.graph` examples. |

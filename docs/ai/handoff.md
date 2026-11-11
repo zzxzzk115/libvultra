@@ -41,7 +41,7 @@ Added:
   `writeDot()`.
 - `FileWatcher`, used by shader hot reload.
 - Ray, plane, triangle and rectangle intersection helpers.
-- `--libvultra_vri_dir=<checkout>` to build VRI from a local source tree without patches.
+- `--libvultra_vri_dir=<checkout>` to build VRI from a local source tree.
 - `ShaderCompileOptions::debugInfo` and `optimize`: shader debug information and SPIRV-Tools optimization per
   compile instead of per C++ build mode.
 - `LightBuffer`: the frame's lights as one storage buffer (`scene.lights`), read by `ForwardPath`.
@@ -49,13 +49,12 @@ Added:
 
 ## VRI
 
-The default build still uses the pinned archive `d0c78964` plus the patches in `external/vri/`. Those patches,
-and the Metal patches previously carried by a downstream fork, were rebased onto VRI `master` as four branches
-(`fix/vulkan-correctness`, `fix/web-backends`, `fix/metal-backend`, `build/platform-archs`) and are open as
-pull requests 26 to 29 of [zzxzzk115/VRI](https://github.com/zzxzzk115/VRI/pulls); none is merged. The Vulkan
-branch was built and tested through this library; the Web, Metal and Android branches were not built on the
-development machine and rely on VRI's own CI. Repin and delete `external/vri/*.patch` only after a VRI release
-contains all four.
+The default build uses the tagged VRI v0.2.0 release through the shared xmake `vri` recipe; `external/vri/`
+holds no patches. The former patches, and the Metal patches previously carried by a downstream fork, were
+merged upstream as pull requests 26 to 29 of [zzxzzk115/VRI](https://github.com/zzxzzk115/VRI/pulls). The
+Vulkan changes were built and tested through this library; the Web, Metal and Android changes were not built
+on the development machine and rely on VRI's own CI. The Linux desktop CI job of the tagged commit did not
+reach its build because the runner could not resolve its package mirror; it passed on each pull request.
 
 ## Verification
 

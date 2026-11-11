@@ -27,7 +27,7 @@ if features.platform then
 
     local api = get_config("libvultra_graphics_api") or (is_plat("wasm") and "webgpu" or "vulkan")
     local vri_dir = get_config("libvultra_vri_dir")
-    add_requires((vri_dir and vri_dir ~= "") and "vri-vultra-local" or "vri-vultra v0.2.0", {
+    add_requires((vri_dir and vri_dir ~= "") and "vri-vultra-local" or "vri v0.2.0", {
         alias = "vri",
         configs = {vulkan = api == "vulkan", gl = api == "webgl2", wgpu = api == "webgpu",
                    d3d12 = false, metal = false}
