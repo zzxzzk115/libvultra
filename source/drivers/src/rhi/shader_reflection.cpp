@@ -59,6 +59,86 @@ namespace vultra
                 }
             }
 
+            ShaderAttribute reflectAttribute(slang::Attribute* attribute)
+            {
+                ShaderAttribute result;
+                result.name = attribute->getName();
+                for (uint32_t index = 0; index < attribute->getArgumentCount(); ++index)
+                {
+                    ShaderAttributeArgument argument;
+                    int                     integer = 0;
+                    float                   real    = 0;
+                    size_t                  size    = 0;
+                    auto*                   type    = attribute->getArgumentType(index);
+                    const auto scalar = type ? type->getScalarType() : slang::TypeReflection::ScalarType::None;
+                    const bool isFloat = scalar == slang::TypeReflection::ScalarType::Float16 ||
+                                         scalar == slang::TypeReflection::ScalarType::Float32 ||
+                                         scalar == slang::TypeReflection::ScalarType::Float64;
+                    // An integer literal is a valid argument of a float field, so try the declared type first.
+                    if (isFloat && SLANG_SUCCEEDED(attribute->getArgumentValueFloat(index, &real)))
+                    {
+                        argument.kind   = ShaderAttributeArgument::Kind::eFloat;
+                        argument.number = real;
+                    }
+                    else if (SLANG_SUCCEEDED(attribute->getArgumentValueInt(index, &integer)))
+                    {
+                        argument.kind =
+                            isFloat ? ShaderAttributeArgument::Kind::eFloat : ShaderAttributeArgument::Kind::eInteger;
+                        argument.number = integer;
+                    }
+                    else if (const char* text = attribute->getArgumentValueString(index, &size))
+                    {
+                        std::string_view value(text, size);
+                        // Slang reports the literal as written, including its quotes.
+                        if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+                        {
+                            value = value.substr(1, value.size() - 2);
+                        }
+                        argument.text = value;
+                    }
+                    else if (SLANG_SUCCEEDED(attribute->getArgumentValueFloat(index, &real)))
+                    {
+                        argument.kind   = ShaderAttributeArgument::Kind::eFloat;
+                        argument.number = real;
+                    }
+                    else
+                    {
+                        throw std::invalid_argument("Unsupported argument in shader attribute: " + result.name);
+                    }
+                    result.arguments.push_back(std::move(argument));
+                }
+                return result;
+            }
+
+            void reflectVariable(slang::VariableReflection* variable, ShaderParameter& result)
+            {
+                for (uint32_t index = 0; index < variable->getUserAttributeCount(); ++index)
+                {
+                    result.attributes.push_back(reflectAttribute(variable->getUserAttributeByIndex(index)));
+                }
+                if (!variable->hasDefaultValue())
+                {
+                    return;
+                }
+                int64_t integer = 0;
+                float   real    = 0;
+                if (result.scalar == ShaderScalarType::eFloat)
+                {
+                    if (SLANG_SUCCEEDED(variable->getDefaultValueFloat(&real)))
+                    {
+                        result.defaultValue = real;
+                    }
+                    else if (SLANG_SUCCEEDED(variable->getDefaultValueInt(&integer)))
+                    {
+                        result.defaultValue = double(integer);
+                    }
+                }
+                else if (SLANG_SUCCEEDED(variable->getDefaultValueInt(&integer)))
+                {
+                    result.defaultValue = double(integer);
+                }
+            }
+
             void reflectResource(slang::TypeLayoutReflection* type, ShaderParameter& result)
             {
                 const auto shape    = type->getResourceShape();
@@ -154,6 +234,10 @@ namespace vultra
                         }
                     }
                 }
+                if (variable && variable->getVariable())
+                {
+                    reflectVariable(variable->getVariable(), result);
+                }
                 if (result.name == "$container")
                 {
                     return result;
@@ -196,6 +280,19 @@ namespace vultra
                 return result;
             }
         } // namespace
+
+        std::vector<ShaderAttribute> reflectShaderAttributes(slang::FunctionReflection* function)
+        {
+            std::vector<ShaderAttribute> attributes;
+            if (function)
+            {
+                for (uint32_t index = 0; index < function->getUserAttributeCount(); ++index)
+                {
+                    attributes.push_back(reflectAttribute(function->getUserAttributeByIndex(index)));
+                }
+            }
+            return attributes;
+        }
 
         ShaderParameter reflectShaderParameters(slang::VariableLayoutReflection* globals)
         {

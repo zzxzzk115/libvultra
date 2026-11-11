@@ -7,13 +7,15 @@
 namespace slang
 {
     struct VariableLayoutReflection;
-}
+    struct FunctionReflection;
+} // namespace slang
 
 namespace vultra::detail
 {
     void            validateShaderProgram(const ShaderProgram& program);
     void            validateShaderProgram(const ShaderProgram& program, const VriDeviceDesc& device);
     ShaderParameter reflectShaderParameters(slang::VariableLayoutReflection* globals);
+    std::vector<ShaderAttribute> reflectShaderAttributes(slang::FunctionReflection* function);
     nlohmann::json  encodeShaderProgram(const ShaderProgram& program);
     ShaderProgram   decodeShaderProgram(const nlohmann::json& document);
     nlohmann::json  readShaderArchive(const std::filesystem::path& file);

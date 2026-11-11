@@ -111,6 +111,71 @@ void computeMain()
             }
         }
     }
+
+    void userAttributes(const std::filesystem::path& root)
+    {
+        using namespace vultra;
+        const auto program = ShaderProgram::compileSource(root / "attributes.slang", R"(
+[__AttributeUsage(_AttributeTargets.Var)]
+struct PassInputAttribute { string resource; };
+[__AttributeUsage(_AttributeTargets.Var)]
+struct PassParamAttribute { float minimum; float maximum; string label; };
+[__AttributeUsage(_AttributeTargets.Function)]
+struct PassStageAttribute { int order; };
+
+[PassInput("scene.hdr")] Texture2D<float4> source;
+RWTexture2D<float4> result;
+struct Parameters
+{
+    [PassParam(0, 8.5, "Gain")] float gain = 1.5;
+    [PassParam(1, 21, "Width")] int width = 5;
+};
+ConstantBuffer<Parameters> parameters;
+
+[PassStage(2)]
+[shader("compute")]
+[numthreads(8, 4, 1)]
+void computeMain(uint3 id : SV_DispatchThreadID)
+{
+    result[id.xy] = source[id.xy] * parameters.gain * parameters.width;
+}
+)");
+        const auto file = root / "attributes.vshaderc";
+        program.save(file);
+        const auto restored = ShaderProgram::load(file);
+        for (const auto* candidate : {&program, &restored})
+        {
+            const auto* input = candidate->parameters.field("source");
+            const auto* block = candidate->parameters.field("parameters");
+            const auto* gain  = block ? block->field("gain") : nullptr;
+            const auto* width = block ? block->field("width") : nullptr;
+            require(input && gain && width && candidate->parameters.field("result"),
+                    "Reflection lost an attributed global parameter");
+            const auto* resource = input->attribute("PassInput");
+            require(resource && resource->arguments.size() == 1 &&
+                        resource->arguments[0].kind == ShaderAttributeArgument::Kind::eString &&
+                        resource->arguments[0].text == "scene.hdr",
+                    "String attribute argument was not reflected without its quotes");
+            require(candidate->parameters.field("result")->attributes.empty(),
+                    "An unattributed parameter reported attributes");
+            const auto* range = gain->attribute("PassParam");
+            require(range && range->arguments.size() == 3 &&
+                        range->arguments[0].kind == ShaderAttributeArgument::Kind::eFloat &&
+                        range->arguments[0].number == 0 && range->arguments[1].number == 8.5 &&
+                        range->arguments[2].text == "Gain",
+                    "Float attribute arguments were not reflected, including an integer literal");
+            require(gain->defaultValue && *gain->defaultValue == 1.5 && width->defaultValue &&
+                        *width->defaultValue == 5 && !input->defaultValue,
+                    "Scalar parameter initializers were not reflected");
+            const auto& shader = candidate->shaders.at(0);
+            const auto* stage  = shader.attribute("PassStage");
+            require(stage && stage->arguments.size() == 1 &&
+                        stage->arguments[0].kind == ShaderAttributeArgument::Kind::eInteger &&
+                        stage->arguments[0].number == 2 && !shader.attribute("PassParam"),
+                    "Entry-point attribute was not reflected");
+            require(shader.threadGroup == std::array<uint32_t, 3> {8, 4, 1}, "Thread group size changed");
+        }
+    }
 } // namespace
 
 int main()
@@ -122,6 +187,7 @@ try
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     fs::create_directories(root / "source");
     resourceViews(root);
+    userAttributes(root);
     const auto source = root / "source/triangle.slang";
     const auto cooked = root / "source/triangle.vshaderc";
     fs::copy_file("examples/offline/shaders/triangle.slang", source);

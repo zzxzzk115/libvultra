@@ -51,4 +51,23 @@ namespace vultra
         return nullptr;
     }
 
+    namespace
+    {
+        const ShaderAttribute* findAttribute(const std::vector<ShaderAttribute>& attributes, std::string_view name)
+        {
+            const auto found = std::ranges::find(attributes, name, &ShaderAttribute::name);
+            return found == attributes.end() ? nullptr : &*found;
+        }
+    } // namespace
+
+    const ShaderAttribute* ShaderParameter::attribute(std::string_view requested) const
+    {
+        return findAttribute(attributes, requested);
+    }
+
+    const ShaderAttribute* CompiledShader::attribute(std::string_view requested) const
+    {
+        return findAttribute(attributes, requested);
+    }
+
 } // namespace vultra

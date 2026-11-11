@@ -499,6 +499,7 @@ namespace vultra
                     shader.threadGroup[axis] = uint32_t(sizes[axis]);
                 }
             }
+            shader.attributes = detail::reflectShaderAttributes(reflection->getFunction());
             program.shaders.push_back(std::move(shader));
         }
         program.parameters             = detail::reflectShaderParameters(layout->getGlobalParamsVarLayout());

@@ -19,13 +19,38 @@ namespace vultra
         VriShaderStageBits stage;
     };
 
+    // A literal argument of a Slang user attribute, in declaration order.
+    struct ShaderAttributeArgument
+    {
+        enum class Kind
+        {
+            eString,
+            eInteger,
+            eFloat
+        };
+
+        Kind        kind = Kind::eString;
+        std::string text;       // eString only.
+        double      number = 0; // eInteger and eFloat.
+    };
+
+    // `[Name(arguments...)]` on a global shader parameter, struct field or entry point.
+    struct ShaderAttribute
+    {
+        std::string                          name;
+        std::vector<ShaderAttributeArgument> arguments;
+    };
+
     struct CompiledShader
     {
-        ShaderEntry             entry;
-        std::vector<uint32_t>   words;
-        uint32_t                colorOutputs = 0;
-        std::array<uint32_t, 3> threadGroup {};
-        std::string             wgsl;
+        ShaderEntry                  entry;
+        std::vector<uint32_t>        words;
+        uint32_t                     colorOutputs = 0;
+        std::array<uint32_t, 3>      threadGroup {};
+        std::string                  wgsl;
+        std::vector<ShaderAttribute> attributes;
+
+        const ShaderAttribute* attribute(std::string_view name) const;
     };
 
     enum class ShaderParameterKind
@@ -86,10 +111,14 @@ namespace vultra
         VriTextureViewType                 viewType = VriTextureViewType_2D;
         std::vector<ShaderParameterOffset> offsets;
         std::vector<ShaderParameter>       fields;
+        std::vector<ShaderAttribute>       attributes;
+        // Scalar initializer written in the shader source, when Slang can evaluate it.
+        std::optional<double> defaultValue;
 
         uint64_t               offset(ShaderOffsetKind kind) const;
         uint64_t               space(ShaderOffsetKind kind) const;
         const ShaderParameter* field(std::string_view name) const;
+        const ShaderAttribute* attribute(std::string_view name) const;
     };
 
     struct ShaderDefine

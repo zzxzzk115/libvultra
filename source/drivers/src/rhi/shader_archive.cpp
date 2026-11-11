@@ -21,6 +21,54 @@ namespace vultra::detail
         constexpr size_t                 kMaxFileSize = 64 * 1024 * 1024;
         using Json                                    = nlohmann::json;
 
+        Json encodeAttributes(const std::vector<ShaderAttribute>& attributes)
+        {
+            Json result = Json::array();
+            for (const auto& attribute : attributes)
+            {
+                Json arguments = Json::array();
+                for (const auto& argument : attribute.arguments)
+                {
+                    arguments.push_back(
+                        {{"kind", argument.kind}, {"text", argument.text}, {"number", argument.number}});
+                }
+                result.push_back({{"name", attribute.name}, {"arguments", arguments}});
+            }
+            return result;
+        }
+
+        std::vector<ShaderAttribute> decodeAttributes(const Json& document)
+        {
+            if (!document.is_array() || document.size() > 256)
+            {
+                throw std::invalid_argument("Invalid cooked shader attributes");
+            }
+            std::vector<ShaderAttribute> result;
+            for (const auto& entry : document)
+            {
+                ShaderAttribute attribute;
+                attribute.name = entry.at("name").get<std::string>();
+                if (attribute.name.size() > 4096 || !entry.at("arguments").is_array() ||
+                    entry.at("arguments").size() > 256)
+                {
+                    throw std::invalid_argument("Invalid cooked shader attribute");
+                }
+                for (const auto& value : entry.at("arguments"))
+                {
+                    const auto kind = value.at("kind").get<uint32_t>();
+                    if (kind > uint32_t(ShaderAttributeArgument::Kind::eFloat))
+                    {
+                        throw std::invalid_argument("Invalid cooked shader attribute argument");
+                    }
+                    attribute.arguments.push_back({ShaderAttributeArgument::Kind(kind),
+                                                   value.at("text").get<std::string>(),
+                                                   value.at("number").get<double>()});
+                }
+                result.push_back(std::move(attribute));
+            }
+            return result;
+        }
+
         Json encodeParameter(const ShaderParameter& parameter)
         {
             Json offsets = Json::array();
@@ -47,7 +95,9 @@ namespace vultra::detail
                     {"descriptor_type", parameter.descriptorType ? Json(*parameter.descriptorType) : Json()},
                     {"view_type", parameter.viewType},
                     {"offsets", offsets},
-                    {"fields", fields}};
+                    {"fields", fields},
+                    {"attributes", encodeAttributes(parameter.attributes)},
+                    {"default", parameter.defaultValue ? Json(*parameter.defaultValue) : Json()}};
         }
 
         ShaderParameter decodeParameter(const Json& document, uint32_t depth, uint32_t& nodes)
@@ -110,6 +160,11 @@ namespace vultra::detail
             {
                 parameter.fields.push_back(decodeParameter(field, depth + 1, nodes));
             }
+            parameter.attributes = decodeAttributes(document.at("attributes"));
+            if (!document.at("default").is_null())
+            {
+                parameter.defaultValue = document.at("default").get<double>();
+            }
             return parameter;
         }
 
@@ -145,6 +200,7 @@ namespace vultra::detail
                                            {"stage", uint32_t(shader.entry.stage)},
                                            {"color_outputs", shader.colorOutputs},
                                            {"thread_group", shader.threadGroup},
+                                           {"attributes", encodeAttributes(shader.attributes)},
                                            {"code", Json::binary(std::move(code))}});
         }
         for (const auto& dependency : program.dependencies)
@@ -198,6 +254,7 @@ namespace vultra::detail
             }
             shader.colorOutputs = entry.at("color_outputs").get<uint32_t>();
             shader.threadGroup  = entry.at("thread_group").get<std::array<uint32_t, 3>>();
+            shader.attributes   = decodeAttributes(entry.at("attributes"));
             if (shader.colorOutputs > 8)
             {
                 throw std::invalid_argument("Invalid cooked fragment output count");
