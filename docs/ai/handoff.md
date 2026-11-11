@@ -72,7 +72,7 @@ zzxzzk115/xmake-repo carries v0.2.1 since its pull request 13.
 Windows 11, MSVC 2022, release, RTX 4090 Laptop (Vulkan, validation enabled), VRI built from the local checkout
 with all four branches merged:
 
-- `xmake build -y --all` and `python tests/build_modules.py` (each module builds alone).
+- `xmake build -y --all` and `xmake lua tests/build_modules.lua` (each module builds alone).
 - Tests: render path (OpenPBR reference, material textures, live transforms, a second custom path), graph
   resources, graph definition, graph async (graphics and compute queues, parity with the single-queue plan),
   shader program (attributes, cooking, watched reload), shader compiler, file watcher, ray, asset pipeline,
@@ -83,7 +83,7 @@ with all four branches merged:
 macOS 27 (Darwin 27.2), Xcode 27 SDK, Apple M2, release, the VRI v0.2.1 package: `xmake build -y --all` and every test target with `libvultra_graphics_api=vulkan` (MoltenVK from Vulkan
 SDK 1.4.309, validation enabled) and `metal`. All pass except `test-meshlets` on Vulkan (MoltenVK has no mesh
 shading); it passes on Metal. `example-basics vri` and `graph` and `example-ui` ran for a finite number of frames on both backends;
-`tests/build_modules.py` was not run, and clang-tidy
+`tests/build_modules.lua` was not run, and clang-tidy
 covered only the sources the macOS build compiles.
 
 The macOS work found that ISPC 1.28.2 drops a masked `n--` in bc7e's block encoder, so every solid-color BC7

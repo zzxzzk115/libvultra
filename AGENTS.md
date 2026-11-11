@@ -14,7 +14,7 @@ An explicit user request may change a corresponding constraint. An agent must no
 
 ## 2. Architecture Boundaries
 
-- Follow the `source/{core,platform,gpu,shader,graph,assets,render,ui,app,xr}` modules. Each directory is one build feature of the same name and owns `include/vultra/<module>` and `src`. A module may use only the modules [architecture](docs/architecture.md) lists as its dependencies; `python tests/build_modules.py` checks this by building each module alone.
+- Follow the `source/{core,platform,gpu,shader,graph,assets,render,ui,app,xr}` modules. Each directory is one build feature of the same name and owns `include/vultra/<module>` and `src`. A module may use only the modules [architecture](docs/architecture.md) lists as its dependencies; `xmake lua tests/build_modules.lua` checks this by building each module alone.
 - This library is a kernel. Projects, packages, scripting hosts, command line tools and editors belong to the repositories that build on it; do not add them here.
 - VRI is the rendering abstraction boundary. Use its descriptors and commands directly; do not add another general RHI, resource object hierarchy or backend dispatch layer above it. Keep native interop within the existing platform or XR boundaries.
 - Keep one public `vultra` static library. Basic drawing examples must remain able to use VRI and RenderGraph directly, without importing assets or using a render path.

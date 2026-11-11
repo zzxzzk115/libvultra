@@ -43,7 +43,7 @@ flowchart BT
 `--libvultra_features=<a,b,...>` selects modules; dependencies are added automatically and `all` selects every
 module the platform supports. Two options trim a module: `libvultra_shader_compiler=n` keeps only the cooked
 shader runtime (no Slang, no file watching), and `libvultra_asset_import=n` keeps asset values and VPK without
-importers. `python tests/build_modules.py` builds every module on its own; the table above is what that check
+importers. `xmake lua tests/build_modules.lua` builds every module on its own; the table above is what that check
 enforces. Android and Web pieces are selected by platform inside `platform` and `app`.
 
 ## Errors

@@ -22,7 +22,7 @@ All serialized-data and file-format versions remain **1** before a release, with
 ## Rules for new work
 
 - A render technique is a `RenderPath` or a graph pass, not a change to `ForwardPath`.
-- A new capability goes into the module that owns its responsibility. `python tests/build_modules.py` must keep
+- A new capability goes into the module that owns its responsibility. `xmake lua tests/build_modules.lua` must keep
   passing: a module may only use the modules it lists as dependencies.
 - Rendering changes need finite-frame runs, validation-layer checks and image readback. Compilation or a
   successful exit code alone does not prove correct rendering.

@@ -19,7 +19,7 @@ branch; their instructions below are kept as instructions and marked where they 
 - [xmake](https://xmake.io/guide/quick-start.html#installation) on PATH.
 - A Vulkan 1.3 GPU and driver, or a Vulkan 1.2 driver exposing dynamic rendering and synchronization2 as
   extensions (MoltenVK). Ray tracing, ray queries and mesh shading require their device features.
-- Python 3 for `tests/build_modules.py`; clang-format and clang-tidy for the development checks.
+- clang-format and clang-tidy for the development checks. Python 3 only for packaging an Android APK.
 
 Dependency versions and package recipes live in [external/xmake.lua](external/xmake.lua) and
 [external/packages](external/packages/packages). The initial source build of Slang takes time. MSVC targets and
@@ -212,7 +212,7 @@ Serve the generated `.html`, `.js` and `.wasm` together over HTTP and pass the m
 ```sh
 xmake build -y --all
 xmake test -v
-python tests/build_modules.py
+xmake lua tests/build_modules.lua
 clang-format --dry-run --Werror path/to/changed.cpp
 clang-tidy -p . path/to/changed.cpp
 ```
@@ -222,7 +222,7 @@ clang-tidy -p . path/to/changed.cpp
   contains a GPU validation error, even if the program exits successfully; the full output is kept under
   `build/.tmp/gpu-diagnostics/`.
 - `test-camera/offline` and `test-gui-settings/offline` are windowless variants of those tests.
-- `python tests/build_modules.py [module...]` builds the library once per module, each selected alone, in
+- `xmake lua tests/build_modules.lua [module...]` builds the library once per module, each selected alone, in
   `build/.tmp/modules/<module>` with its own configuration. It reads platform, architecture, mode and
   `libvultra_vri_dir` from the main configuration, so configure the root project first.
 - clang-tidy uses the root `compile_commands.json`, which xmake regenerates for the current configuration.
