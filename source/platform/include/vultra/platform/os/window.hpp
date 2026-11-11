@@ -23,9 +23,11 @@ namespace vultra
         // Borrow a backend window that has no Window wrapper. It must outlive this wrapper.
         [[nodiscard]] static std::expected<std::unique_ptr<Window>, Error> borrow(void* borrowed);
         ~Window();
-        Window(const Window&)                = delete;
-        Window&     operator=(const Window&) = delete;
-        bool        poll();
+        Window(const Window&)            = delete;
+        Window& operator=(const Window&) = delete;
+        bool    poll();
+        // Makes the next poll() report that the window should close, as if the user had closed it.
+        void        requestClose();
         static void waitEvents(double seconds);
         void        setTitle(const char* title);
         void        setTitleSuffix(std::string suffix);

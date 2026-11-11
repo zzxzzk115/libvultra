@@ -37,6 +37,8 @@ int main()
     {
         const auto third = must(Window::create("Vultra | Recreated Window", {160, 120}));
         require(third->poll(), "Cannot create another window after sibling destruction");
+        third->requestClose();
+        require(!third->poll() && window.poll(), "A close request must end its own window only");
     }
     const auto native = platform::nativeWindow(window);
 #if defined(__linux__)

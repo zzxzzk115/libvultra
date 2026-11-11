@@ -190,6 +190,11 @@ namespace vultra
         return !m_CloseRequested;
     }
 
+    void Window::requestClose()
+    {
+        m_CloseRequested = true;
+    }
+
     void Window::waitEvents(double seconds)
     {
         SDL_Event event;
