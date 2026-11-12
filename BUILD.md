@@ -19,7 +19,7 @@ branch; their instructions below are kept as instructions and marked where they 
 - [xmake](https://xmake.io/guide/quick-start.html#installation) on PATH.
 - A Vulkan 1.3 GPU and driver, or a Vulkan 1.2 driver exposing dynamic rendering and synchronization2 as
   extensions (MoltenVK). Ray tracing, ray queries and mesh shading require their device features.
-- clang-format and clang-tidy for the development checks. Python 3 only for packaging an Android APK.
+- clang-format and clang-tidy for the development checks.
 
 Dependency versions and package recipes live in [external/xmake.lua](external/xmake.lua) and
 [external/packages](external/packages/packages). The initial source build of Slang takes time. MSVC targets and
@@ -182,12 +182,12 @@ XMAKE_CONFIGDIR="$OUT/android-config" xmake f -y -p android -a "$ABI" -m release
     --libvultra_shader_compiler=n --libvultra_asset_import=n \
     --libvultra_build_tests=n --libvultra_with_openxr=n
 XMAKE_CONFIGDIR="$OUT/android-config" xmake build -y example-basics example-offline
-python3 scripts/package_android.py "$OUT/android/android/$ABI/release/libexample-basics.so" \
+xmake lua scripts/package_android.lua "$OUT/android/android/$ABI/release/libexample-basics.so" \
     "$OUT/pack/project.vpk" "$OUT/apk" --sdk "$ANDROID_SDK_ROOT" --gradle "$GRADLE" --abi "$ABI"
 ```
 
-[scripts/package_android.py](scripts/package_android.py) packages already built files into a debug-signed APK and
-does not call xmake; `--application-id` and `--manifest` select another application, such as the offline example
+[scripts/package_android.lua](scripts/package_android.lua) packages already built files into a debug-signed APK
+with the newest build tools installed in the SDK, and builds nothing itself; `--application-id` and `--manifest` select another application, such as the offline example
 with [its manifest](examples/offline/android_manifest.xml).
 
 Web, after activating Emscripten (`webgl2` consumes the SPIR-V pack, `webgpu` the WGSL pack):
