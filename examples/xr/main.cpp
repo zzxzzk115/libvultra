@@ -410,8 +410,18 @@ namespace
         std::array<uint64_t, 2> tracked {};
         std::array<bool, 2>     pressed {};
         std::vector<Draw>       draws;
-        while (!(*session)->exiting() && (!options.frames || rendered < options.frames))
+        bool                    exitRequested = false;
+        while (!(*session)->exiting())
         {
+            // After the requested frames the runtime ends the session; frames continue until it has.
+            if (options.frames && rendered >= options.frames && !exitRequested)
+            {
+                if (auto requested = (*session)->requestExit(); !requested)
+                {
+                    return requested;
+                }
+                exitRequested = true;
+            }
             (*renderer)->pollShader();
             const auto xr = (*session)->beginFrame();
             if (!xr)
@@ -444,10 +454,6 @@ namespace
                 }
                 const glm::mat4 mirror = glm::scale(glm::mat4(1), {index == 0 ? 1.0f : -1.0f, 1, 1});
                 draws.push_back({hand->part, controller.grip * handFromGrip * mirror, hand->color});
-                draws.push_back({box,
-                                 glm::scale(controller.grip, glm::vec3(0.03f * (1 + controller.squeeze))),
-                                 {0.9f, 0.2f, 0.2f}});
-
                 const Ray       pointer = controller.pointer();
                 const auto      hit     = intersectPlane(pointer, {0, kFloorHeight, 0}, {0, 1, 0});
                 const float     length  = hit ? std::min(*hit, 10.0f) : 10.0f;

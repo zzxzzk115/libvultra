@@ -890,6 +890,17 @@ namespace vultra
         return m_Frame;
     }
 
+    std::expected<void, Error> OpenXRSession::requestExit()
+    {
+        if (!m_Running)
+        {
+            // Nothing to stop: the session never began or has already ended.
+            m_Exiting = true;
+            return {};
+        }
+        return checkXr(xrRequestExitSession(m_Session), "Request XR session exit");
+    }
+
     void OpenXRSession::prepareSubmit(VriCommandBuffer* cmd)
     {
         if (m_Frame.shouldRender)

@@ -83,6 +83,9 @@ namespace vultra
         void prepareSubmit(VriCommandBuffer* cmd);
         // Pair every begun frame, including shouldRender=false. Call after GPU completion.
         [[nodiscard]] std::expected<void, Error> endFrame();
+        // Asks the runtime to end the session. Keep beginning and ending frames until exiting(): the runtime
+        // stops the session through its events, and destroying a session that still runs skips that.
+        [[nodiscard]] std::expected<void, Error> requestExit();
 
         bool exiting() const
         {

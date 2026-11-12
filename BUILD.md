@@ -163,8 +163,9 @@ The Linux file dialog uses the `xdg-desktop-portal` backend of Native File Dialo
 The `xr` module needs an active OpenXR runtime. An `XRFrame` carries both eye views and, per hand, the grip
 and aim poses with the select and squeeze values; bindings are suggested for the Khronos simple controller and
 the Oculus Touch controller. [example-xr](examples/xr/main.cpp) draws a floor, a car, both hands and a pointer
-beam per controller for each eye. It has no window: it ends with `--frames`, or when the runtime ends the
-session.
+beam per controller for each eye. It has no window: after `--frames` rendered frames it asks the runtime
+to end the session with `OpenXRSession::requestExit()` and keeps its frame loop until the session has stopped;
+without `--frames` it runs until the runtime ends the session.
 
 ```sh
 xmake run example-xr --frames 120 --capture build/.tmp/xr/left.png
@@ -175,9 +176,10 @@ controllers were located in every frame, and the captured left eye showed the sc
 reaching the floor. No headset was used, and nobody operated the simulated controllers, so the select and
 squeeze values were only ever read as zero. The simulator reports the aim pose rolled by 180 degrees about
 the pointing direction, which leaves the pointer ray unchanged; the example places the hand model from the grip
-pose. At shutdown the simulator reports spaces of its own as undestroyed
-and leaves one command pool it created on the application's device, which the validation layer reports when
-the device is destroyed; every space the module creates is destroyed.
+pose. At shutdown, after the session stopped in order, the simulator still reports spaces of its own as undestroyed,
+leaves one command pool it created on the application's device, and waits ten seconds for its own front end
+before `xrDestroyInstance` returns. The validation layer reports that pool and no other object when the device
+is destroyed, and every space the module creates is destroyed successfully.
 
 ## Android and Web
 
