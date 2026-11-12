@@ -241,8 +241,17 @@ adb logcat -d -s Vultra    # PLATFORM_RENDER_PASSED and the path of the image it
 This was run from a Windows host for `x86_64` with NDK 30.0.16248370 and build tools 36.0.0: the probe
 installed and passed on the Android emulator (API 37, Vulkan through the host GPU), and its image was read
 back. `example-basics` was built and packaged through Gradle the same way; its `vri`, `graph` and `window` modes
-ran their frames on the emulator and the triangle was seen on its screen. `arm64-v8a`, a physical device,
-`example-offline` on a device and the Web probes were not run.
+ran their frames on the emulator and the triangle was seen on its screen.
+
+For `arm64-v8a` the same was run on an AYN Thor (Snapdragon 8 Gen 2, Adreno 740, Android 13) over wireless
+debugging: the probe and `example-offline` passed, and the three modes of `example-basics` ran their frames.
+With the device's forced landscape the image on its screen was turned by 90 degrees: VRI v0.2.1 passes the
+surface's current transform as the swapchain's pre-transform. A build against a VRI checkout that declares the
+identity transform (`--libvultra_vri_dir`) showed the triangle upright on the device; the pinned release does
+not have that fix yet. Offscreen results are not affected.
+
+Every packaging makes a new debug key, so `adb install -r` refuses to replace an application packaged earlier;
+run `adb uninstall <application id>` first. The Web probes were not run.
 
 ## Development checks
 

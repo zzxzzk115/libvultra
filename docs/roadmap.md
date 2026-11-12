@@ -17,7 +17,7 @@ All serialized-data and file-format versions remain **1** before a release, with
 | Shader optimization | `ShaderCompileOptions::optimize` exists; the builtin shader pack is cooked without it. Cooking the pack optimized was measured on 2026-11-11 (forward path, one glTF model, 3840x2160, RTX 4090 Laptop, Vulkan): GPU frame time 0.717 ms against 0.702 ms, within run-to-run noise, with a 19% larger pack and eight HDR values one half-float step apart. | A scene or device on which optimization measurably lowers frame time; heavier shaders such as path tracing and meshlets were not measured. |
 | XR input | The `xr` module exposes head pose and views, not controller poses or actions. | Controller poses and action state, verified on a runtime, before any package relies on them. |
 | Mesh LOD | Meshlets are built; there is no LOD generation or selection. | An import setting that builds LOD chains, and a render path that selects them. |
-| Platforms | Verified on Windows with Vulkan and, by the test suite, on macOS arm64 with Vulkan (MoltenVK) and Metal. On Android the probe and one example ran on the x86_64 emulator; arm64 and a physical device were not run. Linux and Web builds were not rebuilt after the module regrouping. | Build and run the examples on each claimed platform; state anything unverified. |
+| Platforms | Verified on Windows with Vulkan and, by the test suite, on macOS arm64 with Vulkan (MoltenVK) and Metal. On Android the probe and the examples ran on the x86_64 emulator and on one arm64 device; a rotated display needs a VRI fix that is not released yet. Linux and Web builds were not rebuilt after the module regrouping. | Build and run the examples on each claimed platform; state anything unverified. |
 
 ## Rules for new work
 

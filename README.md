@@ -55,7 +55,8 @@ Examples accept `--frames`, `--log-level` and `--log-file`; windowed ones also a
 
 - This branch is verified on Windows x64 with Vulkan and on macOS arm64 with Vulkan (MoltenVK) and Metal, the
   latter by the test suite only. On Android the platform probe and `example-basics` were built for `x86_64` and
-  run on the emulator ([BUILD.md](BUILD.md#android-and-web)); `arm64-v8a` and a physical device were not. Linux
+  run on the emulator, and for `arm64-v8a` on one physical device, where a rotated display is shown turned
+  until the VRI fix is released ([BUILD.md](BUILD.md#android-and-web)). Linux
   and Web (WebGL2/WebGPU) code paths exist but were not rebuilt after the module restructuring, and no XR runtime
   or headset was tested.
 - SDL3 is the only desktop window backend.

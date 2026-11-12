@@ -97,8 +97,10 @@ was not re-verified.
 
 Android, 2026-11-12, from a Windows host: `tests/platform/` (a separate project) and `example-basics` were built
 for `x86_64` with NDK 30.0.16248370, packaged with the xmake scripts and run on the emulator (API 37); the
-commands and what they found are in BUILD.md. `arm64-v8a`, a physical device and `example-offline` on a device
-were not run.
+commands and what they found are in BUILD.md. The `arm64-v8a` builds ran on an AYN Thor (Adreno 740,
+Android 13): the probe, `example-offline` and the three modes of `example-basics`. That found that a display
+rotated against its panel is shown turned by 90 degrees; the fix is a VRI change (identity pre-transform),
+verified on the device through `--libvultra_vri_dir` and waiting for a VRI release and a new pin.
 
 Not verified: Linux, Web and any XR runtime or headset; of `tests/platform/` only the Android probe was built,
 not the Web probes. The interactive feel of windows, hot reload and HiDPI was not judged by a person.
