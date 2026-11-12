@@ -159,8 +159,8 @@ The `xr` module needs an active OpenXR runtime and a device. No runtime or heads
 
 ## Android and Web
 
-The example commands below were not rebuilt on this branch after the module restructuring; treat them as a
-starting point. The platform probe at the end of this section was. `PlatformApp`
+The Android commands below and the platform probe at the end of this section were run; the Web commands were
+not rebuilt on this branch after the module restructuring, so treat those as a starting point. `PlatformApp`
 resolves to `AndroidApp` (GameActivity) or `WebApp` on these platforms, and
 [examples/common/entry.cpp](examples/common/entry.cpp) shows the `android_main` and `main` entries. Only the
 `example-basics` modes `window`, `vri` and `graph` and `example-offline` have platform entries. Shaders are
@@ -186,6 +186,11 @@ XMAKE_CONFIGDIR="$OUT/android-config" xmake build -y example-basics example-offl
 xmake lua scripts/package_android.lua "$OUT/android/android/$ABI/release/libexample-basics.so" \
     "$OUT/pack/project.vpk" "$OUT/apk" --sdk "$ANDROID_SDK_ROOT" --gradle "$GRADLE" --abi "$ABI"
 ```
+
+`$GRADLE` is a Gradle 9.6 launcher, such as the one Android Studio downloads to
+`~/.gradle/wrapper/dists/gradle-9.6.0-bin/<hash>/gradle-9.6.0/bin/gradle`; the project uses Android Gradle
+plugin 9.5.1 and compiles against API 37. Start a mode with
+`adb shell am start -n org.vultra.example/com.google.androidgamesdk.GameActivity --esa vultra.arguments vri,--frames,120`.
 
 [scripts/package_android.lua](scripts/package_android.lua) packages already built files into a debug-signed APK
 with the newest build tools installed in the SDK, and builds nothing itself; `--application-id` and `--manifest` select another application, such as the offline example
@@ -231,8 +236,9 @@ adb logcat -d -s Vultra    # PLATFORM_RENDER_PASSED and the path of the image it
 
 This was run from a Windows host for `x86_64` with NDK 30.0.16248370 and build tools 36.0.0: the probe
 installed and passed on the Android emulator (API 37, Vulkan through the host GPU), and its image was read
-back. `arm64-v8a`, a physical device, the Web probes and the GameActivity examples packaged through Gradle
-were not run.
+back. `example-basics` was built and packaged through Gradle the same way; its `vri`, `graph` and `window` modes
+ran their frames on the emulator and the triangle was seen on its screen. `arm64-v8a`, a physical device,
+`example-offline` on a device and the Web probes were not run.
 
 ## Development checks
 

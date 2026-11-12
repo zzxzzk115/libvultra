@@ -1,5 +1,4 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="35" />
     <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00401000" android:required="true" />
     <application android:label="Vultra Example" android:theme="@style/Theme.AppCompat.NoActionBar">
         <activity android:name="com.google.androidgamesdk.GameActivity" android:exported="true"

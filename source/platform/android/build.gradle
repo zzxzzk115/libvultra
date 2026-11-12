@@ -1,10 +1,10 @@
 plugins {
-    id 'com.android.application' version '8.7.3'
+    id 'com.android.application' version '9.5.1'
 }
 
 android {
     namespace 'org.vultra.example'
-    compileSdk 35
+    compileSdk 37
     defaultConfig {
         applicationId project.property('vultraApplicationId')
         minSdk 29
