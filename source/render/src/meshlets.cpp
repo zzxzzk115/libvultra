@@ -16,7 +16,7 @@ namespace vultra
     std::expected<std::unique_ptr<GpuMeshlets>, Error>
     GpuMeshlets::create(Device& device, Buffer& vertices, const MeshletData& data)
     {
-        if (!(device.features & VriFeature_MeshShader))
+        if (!device.features().meshShading)
         {
             return makeError("Meshlet upload requires the enabled mesh shader feature");
         }
@@ -76,7 +76,7 @@ namespace vultra
         std::unique_ptr<GpuMeshlets> result(new GpuMeshlets(device));
         result->count      = uint32_t(data.meshlets.size());
         result->primitives = data.primitives;
-        const VriAccessStage ready {VriAccess_ShaderResourceRead,
+        const VriAccessStage                            ready {VriAccess_ShaderResourceRead,
                                     VriPipelineStage_TaskShader | VriPipelineStage_MeshShader};
         const std::array<std::span<const std::byte>, 3> bytes {std::as_bytes(std::span(data.meshlets)),
                                                                std::as_bytes(std::span(data.vertices)),

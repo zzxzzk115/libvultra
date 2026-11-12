@@ -1,7 +1,9 @@
 #include "support/check.hpp"
 
 #include <vultra/gpu/device.hpp>
+#include <vultra/gpu/resources.hpp>
 
+#include <format>
 #include <iostream>
 #include <string_view>
 
@@ -66,6 +68,64 @@ namespace
         must(frame->submitAndWait());
         must(device.waitIdle());
     }
+
+    std::string describe(const vultra::DeviceFeatures& features)
+    {
+        return std::format("async compute {}, ray tracing pipeline {}, ray query {}, mesh shading {}, draw indirect "
+                           "count {}, variable-rate shading {}, multiview {} ({} views), bindless {}, wave "
+                           "operations {}, block compression {}",
+                           features.asyncCompute,
+                           features.rayTracingPipeline,
+                           features.rayQuery,
+                           features.meshShading,
+                           features.drawIndirectCount,
+                           features.variableRateShading,
+                           features.multiview,
+                           features.maxViews,
+                           features.bindless,
+                           features.waveOperations,
+                           features.blockCompression);
+    }
+
+    // Optional features are reported as the device granted them, so a program learns what it may use; one that
+    // was not requested is not reported on Vulkan, where requesting is what enables it.
+    void features(vultra::Device& plain)
+    {
+        const auto api      = plain.core.GetDeviceDesc(plain.handle)->graphicsAPI;
+        const auto features = plain.features();
+        require(features.asyncCompute == (plain.computeQueue != nullptr),
+                "Async compute must mean a compute queue separate from the graphics queue");
+        if (api == VriGraphicsAPI_Vulkan)
+        {
+            require(!features.meshShading && !features.rayQuery && !features.rayTracingPipeline &&
+                        !features.variableRateShading && !features.bindless,
+                    "A Vulkan device reported an optional feature nobody requested");
+        }
+
+        constexpr uint64_t requested = VriFeature_MeshShader | VriFeature_RayQuery | VriFeature_RayTracing |
+                                       VriFeature_VariableShadingRate | VriFeature_Bindless;
+        const auto rich     = must(vultra::Device::create(true, nullptr, requested, true));
+        const auto granted  = rich->core.GetDeviceDesc(rich->handle)->enabledFeatures;
+        const auto reported = rich->features();
+        require(reported.meshShading == ((granted & VriFeature_MeshShader) != 0) &&
+                    reported.rayQuery == ((granted & VriFeature_RayQuery) != 0) &&
+                    reported.rayTracingPipeline == ((granted & VriFeature_RayTracing) != 0) &&
+                    reported.variableRateShading == ((granted & VriFeature_VariableShadingRate) != 0) &&
+                    reported.bindless == ((granted & VriFeature_Bindless) != 0),
+                "A requested feature is reported differently from what the device granted");
+        require(!reported.multiview || reported.maxViews >= 2, "Multiview without room for two views");
+
+        // Block compression is reported only when a BC7 texture can be created and sampled.
+        if (reported.blockCompression)
+        {
+            auto desc  = vultra::colorTexture({8, 8}, VriFormat_BC7_UNORM);
+            desc.usage = VriTextureUsage_ShaderResource | VriTextureUsage_TransferDst;
+            auto bc7   = must(vultra::Texture::create(*rich, desc));
+            static_cast<void>(must(bc7.view()));
+        }
+        std::cout << "Features of this device when nothing is requested: " << describe(features) << '\n'
+                  << "Features granted when every optional one is requested: " << describe(reported) << '\n';
+    }
 } // namespace
 
 int main()
@@ -75,6 +135,7 @@ int main()
     must(vultra::check(vriGetCoordinateConventions(device->handle, &authored), "Query builtin conventions"));
     require(authored.clipSpaceY == VriClipSpaceY_Up, "Builtin authoring convention changed");
     completionFailures(*device);
+    features(*device);
 
     auto desc                           = vriDefaultDeviceCreationDesc();
     desc.graphicsAPI                    = device->core.GetDeviceDesc(device->handle)->graphicsAPI;

@@ -65,6 +65,8 @@ handled.
 VRI is the rendering abstraction. Code uses VRI descriptors and commands directly; there is no second RHI above
 it. `Device` owns the VRI device, its interface tables, the graphics queue and, when the adapter has one, a
 separate compute queue.
+`Device::features()` reports the capabilities a technique may depend on, such as async compute, ray queries,
+mesh shading and multiview; [device_features.md](device_features.md) records what VRI exposes on each backend.
 
 One frame is in flight. `Frame::begin()` starts it and `Frame::submitAndWait()` is the lifetime boundary for
 everything the frame used: destroying a CPU object does not prove the GPU finished with it. A frame is normally

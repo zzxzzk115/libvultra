@@ -47,6 +47,7 @@ Added:
 - Graph textures with mip chains, array layers, cubes and 3D extents; uses of one mip or layer, with
   dependencies, culling, history, handoffs and barriers per mip and layer; `Texture` state per mip and layer;
   readback of one mip and layer or depth slice; the `depth-pyramid` mode of `example-basics` (M7 part a, 2026-11-12).
+- `Device::features()` and an audit of VRI capabilities in `docs/device_features.md` (M7 part b, 2026-11-12).
 - `FileWatcher`, used by shader hot reload.
 - Ray, plane, triangle and rectangle intersection helpers.
 - `--libvultra_vri_dir=<checkout>` to build VRI from a local source tree.

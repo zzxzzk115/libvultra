@@ -20,6 +20,24 @@ namespace vultra
         return {};
     }
 
+    // What a device can do, as VRI reports it after creation; docs/device_features.md lists what VRI exposes per
+    // backend. Ray tracing, ray query, mesh shading, variable-rate shading and bindless are optional VRI features:
+    // on Vulkan and D3D12 they count only when Device::create requested them and the device granted them.
+    struct DeviceFeatures
+    {
+        bool     asyncCompute        = false; // A compute queue separate from the graphics queue.
+        bool     rayTracingPipeline  = false; // Ray tracing pipelines; acceleration structures with them.
+        bool     rayQuery            = false; // Inline ray queries; acceleration structures with them.
+        bool     meshShading         = false; // Task and mesh shaders.
+        bool     drawIndirectCount   = false; // Indirect draws whose count comes from a buffer.
+        bool     variableRateShading = false;
+        bool     multiview           = false; // One render pass drawing several views as layers.
+        uint32_t maxViews            = 0;
+        bool     bindless            = false; // Descriptor arrays indexed in shaders.
+        bool     waveOperations      = false; // Subgroup (wave) intrinsics.
+        bool     blockCompression    = false; // BC1 to BC7 textures can be sampled.
+    };
+
     // VRI remains the public rendering API. This class only owns the device and its tables. Frames, resources
     // and swapchains keep references to it, so it lives behind a unique_ptr and never moves.
     class Device
@@ -44,11 +62,11 @@ namespace vultra
         Device&                                  operator=(const Device&) = delete;
         [[nodiscard]] std::expected<void, Error> waitIdle() const;
         // Destructors report completion errors through the log.
-        void waitIdleForDestruction() const noexcept;
+        void                  waitIdleForDestruction() const noexcept;
+        const DeviceFeatures& features() const;
 
-        VriDevice* handle   = nullptr;
-        uint64_t   features = 0;
-        VriQueue*  queue    = nullptr;
+        VriDevice* handle = nullptr;
+        VriQueue*  queue  = nullptr;
         // A queue distinct from `queue` for asynchronous compute work; null when the device has none.
         VriQueue*             computeQueue = nullptr;
         VriCoreInterface      core {};
@@ -62,6 +80,7 @@ namespace vultra
                                                                     bool                         automaticSelection);
         std::expected<void, Error>                           initialize();
         VriPipelineCacheInterface                            m_PipelineCacheApi {};
+        DeviceFeatures                                       m_Features;
     };
 
     enum class FrameQueue

@@ -210,7 +210,6 @@ namespace vultra
         {
             return found;
         }
-        this->features   = core.GetDeviceDesc(handle)->enabledFeatures;
         const auto& info = *core.GetDeviceDesc(handle);
         Logger::core().info(
             "Selected GPU: {} ({} MiB VRAM, queues graphics/compute/transfer={}/{}/{}, features=0x{:x})",
@@ -246,6 +245,28 @@ namespace vultra
                 computeQueue = nullptr;
             }
         }
+        m_Features.asyncCompute        = computeQueue != nullptr;
+        m_Features.rayTracingPipeline  = info.hasRayTracing != 0;
+        m_Features.rayQuery            = info.hasRayQuery != 0;
+        m_Features.meshShading         = info.hasMeshShader != 0;
+        m_Features.drawIndirectCount   = info.hasDrawIndirectCount != 0;
+        m_Features.variableRateShading = info.hasVariableShadingRate != 0;
+        m_Features.multiview           = info.hasMultiview != 0;
+        m_Features.maxViews            = info.maxViewCount;
+        m_Features.bindless            = info.hasBindless != 0;
+        m_Features.waveOperations      = info.hasShaderWaveOps != 0;
+        m_Features.blockCompression    = core.GetFormatSupport != nullptr;
+        for (const auto format : {VriFormat_BC1_UNORM,
+                                  VriFormat_BC2_UNORM,
+                                  VriFormat_BC3_UNORM,
+                                  VriFormat_BC4_UNORM,
+                                  VriFormat_BC5_UNORM,
+                                  VriFormat_BC6H_UFLOAT,
+                                  VriFormat_BC7_UNORM})
+        {
+            m_Features.blockCompression =
+                m_Features.blockCompression && (core.GetFormatSupport(handle, format) & VriFormatSupport_Texture) != 0;
+        }
         const auto cacheResult =
             vriGetInterface(handle, VRI_INTERFACE_PIPELINE_CACHE, sizeof(m_PipelineCacheApi), &m_PipelineCacheApi);
         // WebGPU owns pipeline compilation internally and exposes no application cache interface.
@@ -259,6 +280,11 @@ namespace vultra
                          "Create device pipeline cache");
         }
         return {};
+    }
+
+    const DeviceFeatures& Device::features() const
+    {
+        return m_Features;
     }
 
     Device::~Device()
