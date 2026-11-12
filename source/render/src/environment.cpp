@@ -69,8 +69,8 @@ namespace vultra
                                                std::cos(theta),
                                                std::sin(phi) * std::sin(theta)};
                     glm::vec3       color = glm::mix(glm::vec3(0.8f, 0.85f, 0.9f),
-                                                     glm::vec3(0.12f, 0.3f, 0.7f),
-                                                     std::max(direction.y, 0.0f));
+                                               glm::vec3(0.12f, 0.3f, 0.7f),
+                                               std::max(direction.y, 0.0f));
                     if (direction.y < 0)
                     {
                         color = glm::vec3(0.08f, 0.07f, 0.055f);
@@ -290,7 +290,7 @@ namespace vultra
                 {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
             for (uint32_t mip = 0; mip < texture.desc.mipNum; ++mip)
             {
-                const auto view = texture.mipView(mip);
+                const auto view = texture.view({.mip = mip});
                 if (!view)
                 {
                     return std::unexpected(view.error());

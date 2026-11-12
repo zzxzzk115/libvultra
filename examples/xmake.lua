@@ -46,7 +46,7 @@ if has_group("basics") then
         add_files("basics/main.cpp")
         add_platform_entry()
         if is_plat("wasm") then
-            if selected["basics.vri"] or selected["basics.graph"] then
+            if selected["basics.vri"] or selected["basics.graph"] or selected["basics.depth-pyramid"] then
                 local pack = get_config("libvultra_example_pack")
                 on_load(function (target)
                     assert(pack ~= "" and os.isfile(pack),
@@ -59,6 +59,7 @@ if has_group("basics") then
         add_mode("basics", "vri", "vri_triangle")
         add_mode("basics", "graph", "render_graph")
         add_mode("basics", "mesh-shading", "mesh_shader")
+        add_mode("basics", "depth-pyramid", "depth_pyramid")
         set_rundir("$(projectdir)")
     target_end()
 end

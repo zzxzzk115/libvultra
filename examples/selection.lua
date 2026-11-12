@@ -4,6 +4,7 @@ local examples = {
     {"basics.vri", {"app", "shader", "assets"}},
     {"basics.graph", {"app", "shader", "graph", "assets"}},
     {"basics.mesh-shading", {"app", "shader"}},
+    {"basics.depth-pyramid", {"app", "shader", "graph"}},
     {"offline", {"shader", "graph", "assets", "render"}},
     {"ui", {"app", "shader", "ui"}},
     {"xr", {"xr", "shader", "assets"}}

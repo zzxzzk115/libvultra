@@ -44,6 +44,9 @@ Added:
 - Slang user-attribute and field-initializer reflection, stored in cooked programs.
 - A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
   `writeDot()`.
+- Graph textures with mip chains, array layers, cubes and 3D extents; uses of one mip or layer, with
+  dependencies, culling, history, handoffs and barriers per mip and layer; `Texture` state per mip and layer;
+  readback of one mip and layer or depth slice; the `depth-pyramid` mode of `example-basics` (M7 part a, 2026-11-12).
 - `FileWatcher`, used by shader hot reload.
 - Ray, plane, triangle and rectangle intersection helpers.
 - `--libvultra_vri_dir=<checkout>` to build VRI from a local source tree.
@@ -79,7 +82,8 @@ with all four branches merged:
 
 - `xmake build -y --all` and `xmake lua tests/build_modules.lua` (each module builds alone).
 - Tests: render path (OpenPBR reference, material textures, live transforms, a second custom path), graph
-  resources, graph definition, graph async (graphics and compute queues, parity with the single-queue plan),
+  resources, graph definition, graph async (graphics and compute queues, parity with the single-queue plan), graph subresources (depth
+  pyramids, array layers, cube faces, volume slices, history mips, rejected uses),
   shader program (attributes, cooking, watched reload), shader compiler, file watcher, ray, asset pipeline,
   asset formats, glTF materials, debug draw, meshlets, device, device selection, window, desktop, display,
   GUI offscreen/lifetime/settings, VPK memory, image, input map.
@@ -111,8 +115,7 @@ not the Web probes. The interactive feel of windows, hot reload and HiDPI was no
 
 ## Known gaps
 
-See [roadmap](../roadmap.md). In short: standard scene resources beyond HDR and depth, subresource support in
-the graph, profiling across batches, XR input on a headset and mesh LOD. Optimizing the builtin shader pack was measured
+See [roadmap](../roadmap.md). In short: standard scene resources beyond HDR and depth, profiling across batches, XR input on a headset and mesh LOD. Optimizing the builtin shader pack was measured
 and not adopted; the roadmap records the numbers.
 
 ## Local state

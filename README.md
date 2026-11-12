@@ -43,7 +43,7 @@ Run `xmake run <target> [mode] [options]`. `--help` lists the compiled modes and
 
 | Target | Modes / purpose |
 | --- | --- |
-| `example-basics` | `window`, `vri`, `graph`, `mesh-shading`. |
+| `example-basics` | `window`, `vri`, `graph`, `mesh-shading`, `depth-pyramid`. |
 | `example-offline` | Windowless triangle, compute pass and display conversion; C++ or `.vgraph` graph; PNG/PFM output. |
 | `example-ui` | Raw Dear ImGui and `EditorGui` over a render target. |
 | `example-xr` | Stereo scene with tracked hands and controller pointers on an OpenXR runtime. |
@@ -64,7 +64,8 @@ Examples accept `--frames`, `--log-level` and `--log-file`; windowed ones also a
 - `ForwardPath` renders static geometry with an opaque OpenPBR material subset, analytic lights and image-based
   lighting. It has no shadows, transparency or mesh shading; other techniques are separate `RenderPath`
   implementations.
-- Render graph textures are single-mip, single-layer 2D with whole-resource state tracking.
+- Render graph textures are 2D, 2D arrays, cubes or 3D with mip chains; a pass uses a whole texture or one mip
+  and/or layer of it. Depth textures are D32.
 - All serialized-data and file-format versions are `1` and may change incompatibly before a release.
 
 Remaining work is listed in the [roadmap](docs/roadmap.md).

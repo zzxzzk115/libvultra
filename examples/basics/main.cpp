@@ -14,6 +14,9 @@ int runRenderGraph(const vultra::AppLaunch& launch, int argc, char** argv);
 #ifdef VULTRA_EXAMPLE_MESH_SHADING
 int runMeshShader(const vultra::AppLaunch& launch, int argc, char** argv);
 #endif
+#ifdef VULTRA_EXAMPLE_DEPTH_PYRAMID
+int runDepthPyramid(const vultra::AppLaunch& launch, int argc, char** argv);
+#endif
 
 int runExample(const vultra::AppLaunch& launch, int argc, char** argv)
 {
@@ -29,6 +32,9 @@ int runExample(const vultra::AppLaunch& launch, int argc, char** argv)
 #endif
 #ifdef VULTRA_EXAMPLE_MESH_SHADING
         sample::Mode {"mesh-shading", "Task and mesh shader triangle", runMeshShader},
+#endif
+#ifdef VULTRA_EXAMPLE_DEPTH_PYRAMID
+        sample::Mode {"depth-pyramid", "Depth pyramid through RenderGraph mips", runDepthPyramid},
 #endif
     };
     return sample::runMode(launch, argc, argv, modes);

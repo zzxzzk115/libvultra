@@ -892,9 +892,9 @@ namespace vultra
             {
                 return std::unexpected(result.error());
             }
-            eye.waited      = true;
-            auto& target    = eye.textures.at(eye.index);
-            target.state    = {}; // XR acquisition discards the previous frame's contents
+            eye.waited   = true;
+            auto& target = eye.textures.at(eye.index);
+            target.discardContents(); // XR acquisition discards the previous frame's contents
             m_Frame.eyes[e] = {&target, views[e]};
         }
         m_Frame.shouldRender = true;

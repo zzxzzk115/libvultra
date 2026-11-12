@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstring>
 #include <format>
 #include <optional>
@@ -14,9 +15,33 @@ namespace vultra
     {
         std::expected<void, Error> validateTexture(const VriTextureDesc& desc)
         {
-            if (desc.layerNum != 1 || desc.mipNum != 1 || desc.type != VriTextureType_2D || desc.depth != 1)
+            const bool cube   = desc.type == VriTextureType_Cube || desc.type == VriTextureType_CubeArray;
+            const bool volume = desc.type == VriTextureType_3D;
+            if (desc.type != VriTextureType_2D && desc.type != VriTextureType_2DArray && !cube && !volume)
             {
-                return makeError("Graph textures are single-mip, single-layer 2D textures");
+                return makeError("Graph textures are 2D, 2D array, cube, cube array or 3D");
+            }
+            if (desc.type == VriTextureType_2D && desc.layerNum != 1)
+            {
+                return makeError("A 2D graph texture has one layer; layers need VriTextureType_2DArray");
+            }
+            if ((desc.type == VriTextureType_Cube && desc.layerNum != 6) || desc.layerNum == 0 ||
+                (cube && desc.layerNum % 6 != 0))
+            {
+                return makeError("A cube graph texture has 6 layers and a cube array a multiple of 6");
+            }
+            if (volume ? desc.layerNum != 1 || desc.depth == 0 : desc.depth != 1)
+            {
+                return makeError("A 3D graph texture has one layer and a depth; other textures a depth of 1");
+            }
+            const uint32_t levels = std::bit_width(std::max({desc.width, desc.height, volume ? desc.depth : 1u}));
+            if (desc.mipNum == 0 || desc.mipNum > levels)
+            {
+                return makeError("A {}x{} graph texture has from 1 to {} mips, not {}",
+                                 desc.width,
+                                 desc.height,
+                                 levels,
+                                 desc.mipNum);
             }
             if ((desc.usage & VriTextureUsage_DepthStencilAttachment) && desc.format != VriFormat_D32_SFLOAT)
             {
@@ -146,6 +171,36 @@ namespace vultra
                               VriPipelineStage_LateFragmentTests | VriPipelineStage_VertexInput)) != 0;
         }
 
+        uint32_t layerSlots(const VriTextureDesc& desc)
+        {
+            return desc.type == VriTextureType_3D ? 1 : desc.layerNum;
+        }
+
+        bool whole(const TextureRange& part)
+        {
+            return !part.mip && !part.layer;
+        }
+
+        bool samePart(const TextureRange& a, const TextureRange& b)
+        {
+            return a.mip == b.mip && a.layer == b.layer;
+        }
+
+        // "mip 1", "layer 2", "mip 1, layer 2"; empty for a whole resource.
+        std::string partName(const TextureRange& part)
+        {
+            std::string result;
+            if (part.mip)
+            {
+                result = std::format("mip {}", *part.mip);
+            }
+            if (part.layer)
+            {
+                result += std::format("{}layer {}", result.empty() ? "" : ", ", *part.layer);
+            }
+            return result;
+        }
+
         std::string dotLabel(std::string_view text)
         {
             std::string result;
@@ -209,6 +264,48 @@ namespace vultra
             return makeError("Resource belongs to another graph");
         }
         return &m_Resources[resource.index];
+    }
+
+    std::vector<size_t> RenderGraph::slotsOf(uint32_t resource, const TextureRange& part) const
+    {
+        const auto& entry = m_Resources[resource];
+        if (!entry.isTexture)
+        {
+            return {m_SlotBase[resource]};
+        }
+        const uint32_t      layers     = layerSlots(entry.textureDesc);
+        const uint32_t      firstMip   = part.mip.value_or(0);
+        const uint32_t      mipEnd     = part.mip ? firstMip + 1 : entry.textureDesc.mipNum;
+        const uint32_t      firstLayer = part.layer.value_or(0);
+        const uint32_t      layerEnd   = part.layer ? firstLayer + 1 : layers;
+        std::vector<size_t> result;
+        for (uint32_t mip = firstMip; mip < mipEnd; ++mip)
+        {
+            for (uint32_t layer = firstLayer; layer < layerEnd; ++layer)
+            {
+                result.push_back(m_SlotBase[resource] + size_t(mip) * layers + layer);
+            }
+        }
+        return result;
+    }
+
+    // The whole resource when it has one slot, so single-subresource textures keep whole-texture barriers.
+    TextureRange RenderGraph::slotPart(uint32_t resource, size_t slot) const
+    {
+        const auto& entry = m_Resources[resource];
+        if (m_SlotBase[resource + 1] - m_SlotBase[resource] == 1)
+        {
+            return {};
+        }
+        const uint32_t layers = layerSlots(entry.textureDesc);
+        const auto     local  = uint32_t(slot - m_SlotBase[resource]);
+        return {local / layers, layers > 1 ? std::optional(local % layers) : std::nullopt};
+    }
+
+    std::string RenderGraph::slotName(uint32_t resource, size_t slot) const
+    {
+        const auto part = partName(slotPart(resource, slot));
+        return part.empty() ? m_Resources[resource].name : m_Resources[resource].name + " (" + part + ")";
     }
 
     std::expected<RenderGraph::Resource, Error>
@@ -462,13 +559,16 @@ namespace vultra
             }
             pass = std::find_if(m_Passes.begin(), m_Passes.end(), matches);
         }
-        const auto writer = pass->name;
-        if (!std::any_of(pass->uses.begin(),
-                         pass->uses.end(),
-                         [source](const Use& use)
-                         {
-                             return use.resource.index == source.index && writes(use.usage);
-                         }))
+        const auto                writer = pass->name;
+        std::vector<TextureRange> parts;
+        for (const auto& use : pass->uses)
+        {
+            if (use.resource.index == source.index && writes(use.usage))
+            {
+                parts.push_back(use.range);
+            }
+        }
+        if (parts.empty())
         {
             return makeError("{} does not write the captured texture", passName);
         }
@@ -481,24 +581,39 @@ namespace vultra
         {
             return std::unexpected(created.error());
         }
-        const auto captured = *created;
-        const auto label    = "Capture after " + writer;
+        const auto       captured = *created;
+        const auto       label    = "Capture after " + writer;
+        std::vector<Use> uses;
+        for (const auto& part : parts)
+        {
+            uses.push_back({source, Usage::eCopySource, false, part});
+            uses.push_back({captured, Usage::eCopyDestination, true, part});
+        }
         m_Passes.insert(
             m_Passes.begin() + position + 1,
             {label,
-             {{source, Usage::eCopySource}, {captured, Usage::eCopyDestination, true}},
-             [this, source, captured](VriCommandBuffer* cmd, RenderGraph& graph) -> std::expected<void, Error>
+             std::move(uses),
+             [this, source, captured, parts](VriCommandBuffer* cmd, RenderGraph& graph) -> std::expected<void, Error>
              {
-                 VriTextureCopyDesc copy {};
-                 copy.src.layerNum = 1;
-                 copy.dst.layerNum = 1;
-                 copy.src.aspect = graph.getTexture(source).desc.format == VriFormat_D32_SFLOAT ? VriImageAspect_Depth :
-                                                                                                  VriImageAspect_Color;
-                 copy.dst.aspect = copy.src.aspect;
-                 m_Device.core.CmdCopyTexture(cmd,
-                                              graph.getTexture(captured).handle,
-                                              graph.getTexture(source).handle,
-                                              &copy);
+                 const auto& texture = graph.getTexture(source);
+                 const bool  volume  = texture.desc.type == VriTextureType_3D;
+                 for (const auto& part : parts)
+                 {
+                     const uint32_t firstMip = part.mip.value_or(0);
+                     const uint32_t mipEnd   = part.mip ? firstMip + 1 : texture.desc.mipNum;
+                     for (uint32_t mip = firstMip; mip < mipEnd; ++mip)
+                     {
+                         // Zero extents copy the whole mip, every depth slice of a 3D one included.
+                         VriTextureCopyDesc copy {};
+                         copy.src.mip       = mip;
+                         copy.src.baseLayer = part.layer.value_or(0);
+                         copy.src.layerNum  = part.layer || volume ? 1 : texture.desc.layerNum;
+                         copy.src.aspect =
+                             texture.desc.format == VriFormat_D32_SFLOAT ? VriImageAspect_Depth : VriImageAspect_Color;
+                         copy.dst = copy.src;
+                         m_Device.core.CmdCopyTexture(cmd, graph.getTexture(captured).handle, texture.handle, &copy);
+                     }
+                 }
                  return {};
              }});
         if (auto exported = exportResource(captured); !exported)
@@ -515,6 +630,11 @@ namespace vultra
             desc.sampleNum != 1 || !m_Device.core.GetDeviceDesc(m_Device.handle)->hasClearStorageTexture)
         {
             return makeError("History textures require storage/transfer-destination usage and VRI clear support");
+        }
+        // VRI clears mip 0 only; the reset copies it to the other mips.
+        if (desc.mipNum > 1 && !(desc.usage & VriTextureUsage_TransferSrc))
+        {
+            return makeError("History textures with mips require transfer-source usage");
         }
         const auto resource = createTexture(std::move(name), desc);
         if (!resource)
@@ -640,27 +760,34 @@ namespace vultra
             usage |= flag;
         }
 
-        // When a compute pass follows a graphics pass on a resource, the graphics batch leaves the resource in
-        // the state the compute pass needs. A resource whose first use in the frame is on the compute queue is
-        // prepared the same way by the last graphics batch of the previous frame.
-        const auto handOff = [this](size_t batch, uint32_t resource, Usage usage) -> std::expected<void, Error>
+        // When a compute pass follows a graphics pass on a subresource, the graphics batch leaves it in the state
+        // the compute pass needs. A subresource whose first use in the frame is on the compute queue is prepared
+        // the same way by the last graphics batch of the previous frame.
+        const auto handOff =
+            [this](size_t batch, uint32_t resource, size_t slot, Usage usage) -> std::expected<void, Error>
         {
             auto&      handoffs = m_Batches[batch].handoffs;
-            const auto existing = std::ranges::find(handoffs, resource, &Handoff::resource);
+            const auto part     = slotPart(resource, slot);
+            const auto existing =
+                std::ranges::find_if(handoffs,
+                                     [&](const Handoff& handoff)
+                                     {
+                                         return handoff.resource == resource && samePart(handoff.range, part);
+                                     });
             if (existing == handoffs.end())
             {
-                handoffs.push_back({resource, usage});
+                handoffs.push_back({resource, part, usage});
             }
             else if (existing->usage != usage)
             {
                 return makeError("{}: graphics and async compute passes interleave in different states",
-                                 m_Resources[resource].name);
+                                 slotName(resource, slot));
             }
             return {};
         };
-        std::vector<std::optional<size_t>> lastBatch(m_Resources.size());
-        std::vector<std::optional<size_t>> lastGraphics(m_Resources.size());
-        std::vector<std::optional<Usage>>  firstCompute(m_Resources.size());
+        std::vector<std::optional<size_t>> lastBatch(m_SlotBase.back());
+        std::vector<std::optional<size_t>> lastGraphics(m_SlotBase.back());
+        std::vector<std::optional<Usage>>  firstCompute(m_SlotBase.back());
         for (size_t b = 0; b < m_Batches.size(); ++b)
         {
             for (const auto p : m_Batches[b].passes)
@@ -668,35 +795,41 @@ namespace vultra
                 for (const auto& use : m_Passes[p].uses)
                 {
                     const auto r = use.resource.index;
-                    if (m_Batches[b].queue == PassQueue::eAsyncCompute)
+                    for (const auto slot : slotsOf(r, use.range))
                     {
-                        if (!lastBatch[r])
+                        if (m_Batches[b].queue == PassQueue::eAsyncCompute)
                         {
-                            firstCompute[r] = use.usage;
-                        }
-                        else if (m_Batches[*lastBatch[r]].queue == PassQueue::eGraphics)
-                        {
-                            if (auto handed = handOff(*lastBatch[r], r, use.usage); !handed)
+                            if (!lastBatch[slot])
                             {
-                                return handed;
+                                firstCompute[slot] = use.usage;
+                            }
+                            else if (m_Batches[*lastBatch[slot]].queue == PassQueue::eGraphics)
+                            {
+                                if (auto handed = handOff(*lastBatch[slot], r, slot, use.usage); !handed)
+                                {
+                                    return handed;
+                                }
                             }
                         }
+                        else
+                        {
+                            lastGraphics[slot] = b;
+                        }
+                        lastBatch[slot] = b;
                     }
-                    else
-                    {
-                        lastGraphics[r] = b;
-                    }
-                    lastBatch[r] = b;
                 }
             }
         }
         for (uint32_t r = 0; r < m_Resources.size(); ++r)
         {
-            if (firstCompute[r] && lastGraphics[r])
+            for (auto slot = m_SlotBase[r]; slot < m_SlotBase[r + 1]; ++slot)
             {
-                if (auto handed = handOff(*lastGraphics[r], r, *firstCompute[r]); !handed)
+                if (firstCompute[slot] && lastGraphics[slot])
                 {
-                    return handed;
+                    if (auto handed = handOff(*lastGraphics[slot], r, slot, *firstCompute[slot]); !handed)
+                    {
+                        return handed;
+                    }
                 }
             }
         }
@@ -722,24 +855,69 @@ namespace vultra
             return makeError("Choose transient aliasing before the first graph compilation");
         }
         m_Compiled = false;
-        std::vector<std::optional<size_t>> writer(m_Resources.size());
-        std::vector<std::vector<size_t>>   readers(m_Resources.size());
+        m_SlotBase.assign(1, 0);
+        for (const auto& entry : m_Resources)
+        {
+            const size_t slots = entry.isTexture ? size_t(entry.textureDesc.mipNum) * layerSlots(entry.textureDesc) : 1;
+            m_SlotBase.push_back(m_SlotBase.back() + slots);
+        }
+        std::vector<std::optional<size_t>> writer(m_SlotBase.back());
+        std::vector<std::vector<size_t>>   readers(m_SlotBase.back());
         for (size_t p = 0; p < m_Passes.size(); ++p)
         {
             auto& pass = m_Passes[p];
             pass.dependencies.clear();
             pass.contentDependencies.clear();
             pass.live = false;
-            std::vector<bool> used(m_Resources.size());
-            for (const auto& use : pass.uses)
+            // A subresource is in one state for the whole pass, so the uses of a pass must not overlap.
+            std::vector<std::optional<size_t>> usedBy(m_SlotBase.back());
+            for (size_t u = 0; u < pass.uses.size(); ++u)
             {
+                const auto& use   = pass.uses[u];
                 const auto  r     = use.resource.index;
                 const auto& entry = m_Resources[r];
-                if (used[r])
+                const auto& part  = use.range;
+                if (!entry.isTexture && !whole(part))
                 {
-                    return makeError("{}: duplicate resource; use a ReadWrite usage", pass.name);
+                    return makeError("{}: buffers have no subresources: {}", pass.name, entry.name);
                 }
-                used[r] = true;
+                if (part.mip && *part.mip >= entry.textureDesc.mipNum)
+                {
+                    return makeError("{}: mip {} of {} is out of range ({} mips)",
+                                     pass.name,
+                                     *part.mip,
+                                     entry.name,
+                                     entry.textureDesc.mipNum);
+                }
+                if (part.layer && entry.textureDesc.type == VriTextureType_3D)
+                {
+                    return makeError("{}: {} is a 3D texture; name its mips, not layers", pass.name, entry.name);
+                }
+                if (part.layer && *part.layer >= entry.textureDesc.layerNum)
+                {
+                    return makeError("{}: layer {} of {} is out of range ({} layers)",
+                                     pass.name,
+                                     *part.layer,
+                                     entry.name,
+                                     entry.textureDesc.layerNum);
+                }
+                const auto slots = slotsOf(r, part);
+                for (const auto slot : slots)
+                {
+                    if (!usedBy[slot])
+                    {
+                        usedBy[slot] = u;
+                        continue;
+                    }
+                    if (whole(part) && whole(pass.uses[*usedBy[slot]].range))
+                    {
+                        return makeError("{}: duplicate resource; use a ReadWrite usage", pass.name);
+                    }
+                    return makeError("{}: two uses name the same subresource of {}; name separate mips or layers, "
+                                     "or use one ReadWrite usage",
+                                     pass.name,
+                                     slotName(r, slot));
+                }
                 if (use.discardPrevious && (!writes(use.usage) || reads(use.usage)))
                 {
                     return makeError("{}: discardPrevious requires a write-only usage: {}", pass.name, entry.name);
@@ -754,27 +932,43 @@ namespace vultra
                 {
                     return makeError("{}: resource lacks required usage flags: {}", pass.name, entry.name);
                 }
-                if (reads(use.usage) && !writer[r] && !entry.initialized)
+                // A use spanning several subresources records each earlier pass once.
+                const auto dependencyStart = pass.dependencies.size();
+                const auto contentStart    = pass.contentDependencies.size();
+                const auto addOnce         = [](std::vector<size_t>& list, size_t start, size_t value)
                 {
-                    return makeError("{}: read before first write: {}", pass.name, entry.name);
-                }
-                if (writer[r])
-                {
-                    pass.dependencies.push_back(*writer[r]);
-                    if (reads(use.usage) || !use.discardPrevious)
+                    if (std::find(list.begin() + ptrdiff_t(start), list.end(), value) == list.end())
                     {
-                        pass.contentDependencies.push_back(*writer[r]);
+                        list.push_back(value);
                     }
-                }
-                if (writes(use.usage))
+                };
+                for (const auto slot : slots)
                 {
-                    pass.dependencies.insert(pass.dependencies.end(), readers[r].begin(), readers[r].end());
-                    readers[r].clear();
-                    writer[r] = p;
-                }
-                else
-                {
-                    readers[r].push_back(p);
+                    if (reads(use.usage) && !writer[slot] && !entry.initialized)
+                    {
+                        return makeError("{}: read before first write: {}", pass.name, slotName(r, slot));
+                    }
+                    if (writer[slot])
+                    {
+                        addOnce(pass.dependencies, dependencyStart, *writer[slot]);
+                        if (reads(use.usage) || !use.discardPrevious)
+                        {
+                            addOnce(pass.contentDependencies, contentStart, *writer[slot]);
+                        }
+                    }
+                    if (writes(use.usage))
+                    {
+                        for (const auto reader : readers[slot])
+                        {
+                            addOnce(pass.dependencies, dependencyStart, reader);
+                        }
+                        readers[slot].clear();
+                        writer[slot] = p;
+                    }
+                    else
+                    {
+                        readers[slot].push_back(p);
+                    }
                 }
             }
         }
@@ -789,18 +983,29 @@ namespace vultra
         for (size_t r = 0; r < m_Resources.size(); ++r)
         {
             // Only the final history value is observable next frame; earlier writes need a live reader.
-            if (m_Resources[r].history && writer[r])
+            if (m_Resources[r].history)
             {
-                pending.push_back(*writer[r]);
+                for (auto slot = m_SlotBase[r]; slot < m_SlotBase[r + 1]; ++slot)
+                {
+                    if (writer[slot])
+                    {
+                        pending.push_back(*writer[slot]);
+                    }
+                }
             }
         }
         for (const auto resource : m_Exports)
         {
-            if (writer[resource.index])
+            bool produced = false;
+            for (auto slot = m_SlotBase[resource.index]; slot < m_SlotBase[resource.index + 1]; ++slot)
             {
-                pending.push_back(*writer[resource.index]);
+                if (writer[slot])
+                {
+                    pending.push_back(*writer[slot]);
+                    produced = true;
+                }
             }
-            else if (!m_Resources[resource.index].initialized)
+            if (!produced && !m_Resources[resource.index].initialized)
             {
                 return makeError("Exported resource has no producer");
             }
@@ -955,10 +1160,31 @@ namespace vultra
         m_Device.core.CmdBeginDebugGroup(cmd, "Reset graph history");
         for (auto& entry : m_Resources)
         {
-            if (entry.history && entry.texture)
+            if (!entry.history || !entry.texture)
             {
-                entry.texture->transition(cmd, stateForUsage(Usage::eCopyDestination));
-                m_Device.core.CmdClearStorageTexture(cmd, entry.texture->handle, &entry.initial);
+                continue;
+            }
+            auto& texture = *entry.texture;
+            texture.transition(cmd, stateForUsage(Usage::eCopyDestination));
+            m_Device.core.CmdClearStorageTexture(cmd, texture.handle, &entry.initial);
+            if (texture.desc.mipNum == 1)
+            {
+                continue;
+            }
+            // Mip 0 now holds the initial value everywhere, so any region of it initializes a smaller mip.
+            texture.transition(cmd, stateForUsage(Usage::eCopySource), {.mip = 0});
+            const bool volume = texture.desc.type == VriTextureType_3D;
+            for (uint32_t mip = 1; mip < texture.desc.mipNum; ++mip)
+            {
+                VriTextureCopyDesc copy {};
+                copy.src.layerNum = volume ? 1 : texture.desc.layerNum;
+                copy.src.aspect   = VriImageAspect_Color;
+                copy.src.width    = std::max(texture.desc.width >> mip, 1u);
+                copy.src.height   = std::max(texture.desc.height >> mip, 1u);
+                copy.src.depth    = volume ? std::max(texture.desc.depth >> mip, 1u) : 1;
+                copy.dst          = copy.src;
+                copy.dst.mip      = mip;
+                m_Device.core.CmdCopyTexture(cmd, texture.handle, texture.handle, &copy);
             }
         }
         m_Device.core.CmdEndDebugGroup(cmd);
@@ -981,7 +1207,7 @@ namespace vultra
             const auto state = stateForUsage(use.usage);
             if (entry.isTexture)
             {
-                entry.texture->transition(cmd, state);
+                entry.texture->transition(cmd, state, use.range);
             }
             else
             {
@@ -1082,14 +1308,22 @@ namespace vultra
                 {
                     for (const auto& use : pass.uses)
                     {
-                        const auto& entry = m_Resources[use.resource.index];
-                        if (entry.isTexture ? graphicsOnly(entry.texture->state.layout, entry.texture->state.stages) :
-                                              graphicsOnly(VriLayout_Undefined, entry.buffer->state.stages))
+                        const auto  r     = use.resource.index;
+                        const auto& entry = m_Resources[r];
+                        for (const auto slot : slotsOf(r, use.range))
                         {
-                            return makeError("{}: {} is in a graphics-only state; a graphics pass of this graph "
-                                             "must use it before the async compute pass",
-                                             pass.name,
-                                             entry.name);
+                            const auto part  = slotPart(r, slot);
+                            const auto state = entry.isTexture ?
+                                                   entry.texture->state(part.mip.value_or(0), part.layer.value_or(0)) :
+                                                   VriAccessLayoutStage {};
+                            if (entry.isTexture ? graphicsOnly(state.layout, state.stages) :
+                                                  graphicsOnly(VriLayout_Undefined, entry.buffer->state.stages))
+                            {
+                                return makeError("{}: {} is in a graphics-only state; a graphics pass of this graph "
+                                                 "must use it before the async compute pass",
+                                                 pass.name,
+                                                 slotName(r, slot));
+                            }
                         }
                     }
                 }
@@ -1104,7 +1338,7 @@ namespace vultra
                 const auto state = stateForUsage(handoff.usage);
                 if (entry.isTexture)
                 {
-                    entry.texture->transition(cmd, state);
+                    entry.texture->transition(cmd, state, handoff.range);
                 }
                 else
                 {
@@ -1112,10 +1346,10 @@ namespace vultra
                 }
             }
             const bool awaited      = std::ranges::any_of(std::span(m_Batches).subspan(b + 1),
-                                                          [b](const Batch& later)
-                                                          {
+                                                     [b](const Batch& later)
+                                                     {
                                                          return std::ranges::find(later.waits, b) != later.waits.end();
-                                                          });
+                                                     });
             const bool lastGraphics = !compute && std::ranges::none_of(std::span(m_Batches).subspan(b + 1),
                                                                        [](const Batch& later)
                                                                        {
@@ -1172,9 +1406,15 @@ namespace vultra
             }
             for (const auto& use : pass.uses)
             {
-                const auto r      = use.resource.index;
-                used[r]           = true;
-                const char* style = pass.live ? "" : " [color=gray60]";
+                const auto r = use.resource.index;
+                used[r]      = true;
+                // An edge names the mip or layer a use is limited to.
+                std::string attributes = pass.live ? "" : "color=gray60";
+                if (const auto part = partName(use.range); !part.empty())
+                {
+                    attributes += (attributes.empty() ? "label=\"" : ", label=\"") + part + "\"";
+                }
+                const auto style = attributes.empty() ? std::string() : " [" + attributes + "]";
                 if (reads(use.usage))
                 {
                     output << "  R" << r << " -> P" << p << style << ";\n";
@@ -1205,7 +1445,24 @@ namespace vultra
                    << dotLabel(entry.name) << "\\n";
             if (entry.isTexture)
             {
-                output << entry.textureDesc.width << "x" << entry.textureDesc.height;
+                const auto& desc = entry.textureDesc;
+                output << desc.width << "x" << desc.height;
+                if (desc.type == VriTextureType_3D)
+                {
+                    output << "x" << desc.depth;
+                }
+                if (desc.type == VriTextureType_Cube || desc.type == VriTextureType_CubeArray)
+                {
+                    output << " cube";
+                }
+                if (desc.layerNum > 1)
+                {
+                    output << ", " << desc.layerNum << " layers";
+                }
+                if (desc.mipNum > 1)
+                {
+                    output << ", " << desc.mipNum << " mips";
+                }
             }
             else
             {
@@ -1236,12 +1493,15 @@ namespace vultra
         {
             return std::unexpected(found.error());
         }
-        auto& entry = **found;
-        if (!entry.imported || !entry.isTexture || texture.desc.width != entry.textureDesc.width ||
-            texture.desc.height != entry.textureDesc.height || texture.desc.format != entry.textureDesc.format ||
-            texture.desc.sampleNum != entry.textureDesc.sampleNum || texture.desc.usage != entry.textureDesc.usage)
+        auto&       entry = **found;
+        const auto& bound = entry.textureDesc;
+        if (!entry.imported || !entry.isTexture || texture.desc.width != bound.width ||
+            texture.desc.height != bound.height || texture.desc.format != bound.format ||
+            texture.desc.sampleNum != bound.sampleNum || texture.desc.usage != bound.usage ||
+            texture.desc.type != bound.type || texture.desc.depth != bound.depth ||
+            texture.desc.mipNum != bound.mipNum || texture.desc.layerNum != bound.layerNum)
         {
-            return makeError("Rebinding requires an imported texture of the same format and extent");
+            return makeError("Rebinding requires an imported texture of the same type, format and extent");
         }
         for (const auto& other : m_Resources)
         {
@@ -1296,11 +1556,11 @@ namespace vultra
         {
             const auto& entry    = m_Resources[i];
             const bool  exported = std::any_of(m_Exports.begin(),
-                                               m_Exports.end(),
-                                               [i](Resource resource)
-                                               {
+                                              m_Exports.end(),
+                                              [i](Resource resource)
+                                              {
                                                   return resource.index == i;
-                                               });
+                                              });
             result.resources.push_back({entry.name,
                                         entry.imported,
                                         exported,
@@ -1318,7 +1578,7 @@ namespace vultra
             PassInfo info {pass.name, pass.live, PassQueue::eGraphics, pass.dependencies, {}, pass.contentDependencies};
             for (const auto& use : pass.uses)
             {
-                info.uses.push_back({use.resource.index, use.usage, use.discardPrevious});
+                info.uses.push_back({use.resource.index, use.usage, use.discardPrevious, use.range});
                 if (pass.live)
                 {
                     result.resources[use.resource.index].active = true;
@@ -1392,10 +1652,10 @@ namespace vultra
         }
         const auto& entry    = m_Resources[resource.index];
         const bool  exported = std::ranges::any_of(m_Exports,
-                                                   [resource](Resource value)
-                                                   {
+                                                  [resource](Resource value)
+                                                  {
                                                       return value.index == resource.index;
-                                                   });
+                                                  });
         bool        active   = m_Compiled && exported;
         if (m_Compiled && !active)
         {

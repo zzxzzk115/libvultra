@@ -116,8 +116,17 @@ caller's command buffer, with the same result.
 `writeDot()` writes the compiled plan for Graphviz: batches per queue, culled passes, resources and waits.
 `snapshot()` exposes the same information as data.
 
-Current limits: textures are single-mip, single-layer 2D; depth is D32; state is tracked per whole resource.
-The per-pass profiler works with single-batch plans.
+Textures may be 2D, 2D arrays, cubes (6 layers), cube arrays or 3D, each with a mip chain. A use names a range of
+its texture: one mip, one layer (a cube face is a layer), or both; without one it covers the whole texture.
+Dependencies, culling, history, async-compute handoffs and barriers work per mip and layer, so a pass may sample
+one mip and write the next of the same texture; the uses of one pass must not overlap. A 3D texture has no layers,
+and its depth slices share their mip's state. `Texture` keeps that state, and `Texture::view()` makes a view of a
+range; a single layer is viewed as 2D, and a cube's faces can be viewed as a 2D array for storage access. History
+is reset in every mip and layer (VRI clears mip 0, which the graph copies to the others). `readback()` reads one
+mip of one layer or depth slice. `examples/basics/depth_pyramid.cpp` builds a pyramid of depth maxima this way.
+
+Current limits: depth is D32; a use names one mip or all of them, not a span of several. The per-pass profiler
+works with single-batch plans.
 
 `PassCatalog` holds named pass definitions with typed ports and numeric parameters. A `.vgraph` file lists pass
 instances and connections and builds through the same executor as C++ `addPass()`.

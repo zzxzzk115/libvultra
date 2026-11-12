@@ -28,7 +28,8 @@ namespace
         }
         const std::array sources {VpkFile {"mesh.vshaderc", "examples/common/colored_mesh.slang"},
                                   VpkFile {"gain.vshaderc", "examples/offline/shaders/color_gain.slang"},
-                                  VpkFile {"display.vshaderc", "builtin/shaders/passes/texture_blit.slang"}};
+                                  VpkFile {"display.vshaderc", "builtin/shaders/passes/texture_blit.slang"},
+                                  VpkFile {"depth_pyramid.vshaderc", "examples/basics/depth_pyramid.slang"}};
         auto             compiler = ShaderCompiler::create(std::filesystem::path {});
         if (!compiler)
         {

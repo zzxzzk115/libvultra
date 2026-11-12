@@ -23,6 +23,11 @@ namespace vultra
                     return VriTextureViewType_2D;
             }
         }
+
+        bool sameState(const VriAccessLayoutStage& a, const VriAccessLayoutStage& b)
+        {
+            return a.access == b.access && a.layout == b.layout && a.stages == b.stages;
+        }
     } // namespace
 
     Texture::Texture(Device&               device,
@@ -34,7 +39,8 @@ namespace vultra
         desc(description),
         m_Device(&device),
         m_Owned(owned),
-        m_Aspect(aspect)
+        m_Aspect(aspect),
+        m_States(size_t(std::max(description.mipNum, 1u)) * layerCount())
     {
     }
 
@@ -57,12 +63,11 @@ namespace vultra
     Texture::Texture(Texture&& other) noexcept :
         handle(std::exchange(other.handle, nullptr)),
         desc(other.desc),
-        state(other.state),
         m_Device(other.m_Device),
         m_Owned(std::exchange(other.m_Owned, false)),
         m_Aspect(other.m_Aspect),
-        m_View(std::exchange(other.m_View, nullptr)),
-        m_MipViews(std::exchange(other.m_MipViews, {}))
+        m_States(std::move(other.m_States)),
+        m_Views(std::exchange(other.m_Views, {}))
     {
     }
 
@@ -71,14 +76,13 @@ namespace vultra
         if (this != &other)
         {
             release();
-            handle     = std::exchange(other.handle, nullptr);
-            desc       = other.desc;
-            state      = other.state;
-            m_Device   = other.m_Device;
-            m_Owned    = std::exchange(other.m_Owned, false);
-            m_Aspect   = other.m_Aspect;
-            m_View     = std::exchange(other.m_View, nullptr);
-            m_MipViews = std::exchange(other.m_MipViews, {});
+            handle   = std::exchange(other.handle, nullptr);
+            desc     = other.desc;
+            m_Device = other.m_Device;
+            m_Owned  = std::exchange(other.m_Owned, false);
+            m_Aspect = other.m_Aspect;
+            m_States = std::move(other.m_States);
+            m_Views  = std::exchange(other.m_Views, {});
         }
         return *this;
     }
@@ -90,19 +94,11 @@ namespace vultra
 
     void Texture::release()
     {
-        for (auto* view : m_MipViews)
+        for (const auto& view : m_Views)
         {
-            if (view)
-            {
-                m_Device->core.DestroyDescriptor(view);
-            }
+            m_Device->core.DestroyDescriptor(view.descriptor);
         }
-        m_MipViews.clear();
-        if (m_View)
-        {
-            m_Device->core.DestroyDescriptor(m_View);
-            m_View = nullptr;
-        }
+        m_Views.clear();
         if (m_Owned && handle)
         {
             m_Device->core.DestroyTexture(handle);
@@ -111,66 +107,110 @@ namespace vultra
         m_Owned = false;
     }
 
-    void Texture::transition(VriCommandBuffer* cmd, VriAccessLayoutStage next)
+    void Texture::discardContents()
     {
+        std::ranges::fill(m_States, VriAccessLayoutStage {});
+    }
+
+    uint32_t Texture::layerCount() const
+    {
+        return desc.type == VriTextureType_3D ? 1 : std::max(desc.layerNum, 1u);
+    }
+
+    VriAccessLayoutStage Texture::state(uint32_t mip, uint32_t layer) const
+    {
+        if (mip >= std::max(desc.mipNum, 1u) || layer >= layerCount())
+        {
+            panic("Texture state of a subresource outside the texture");
+        }
+        return m_States[size_t(mip) * layerCount() + layer];
+    }
+
+    void Texture::transition(VriCommandBuffer* cmd, VriAccessLayoutStage next, TextureRange part)
+    {
+        const uint32_t layers     = layerCount();
+        const uint32_t firstMip   = part.mip.value_or(0);
+        const uint32_t mipEnd     = part.mip ? firstMip + 1 : std::max(desc.mipNum, 1u);
+        const uint32_t firstLayer = part.layer.value_or(0);
+        const uint32_t layerEnd   = part.layer ? firstLayer + 1 : layers;
+        if (mipEnd > std::max(desc.mipNum, 1u) || layerEnd > layers)
+        {
+            panic("Texture transition of a subresource outside the texture");
+        }
+        const auto before  = m_States[size_t(firstMip) * layers + firstLayer];
+        bool       uniform = true;
+        for (uint32_t mip = firstMip; mip < mipEnd && uniform; ++mip)
+        {
+            for (uint32_t layer = firstLayer; layer < layerEnd && uniform; ++layer)
+            {
+                uniform = sameState(m_States[size_t(mip) * layers + layer], before);
+            }
+        }
         // Emit even when layouts match: write->write and write->read still need a dependency.
-        VriTextureBarrierDesc barrier {};
-        barrier.texture = handle;
-        barrier.before  = state;
-        barrier.after   = next;
-        barrier.aspect  = m_Aspect;
+        std::vector<VriTextureBarrierDesc> barriers;
+        if (uniform)
+        {
+            // Counts of zero cover every remaining mip or layer, as a whole-texture barrier always has.
+            barriers.push_back(
+                {handle, before, next, m_Aspect, firstMip, part.mip ? 1u : 0u, firstLayer, part.layer ? 1u : 0u});
+        }
+        else
+        {
+            for (uint32_t mip = firstMip; mip < mipEnd; ++mip)
+            {
+                for (uint32_t layer = firstLayer; layer < layerEnd; ++layer)
+                {
+                    barriers.push_back(
+                        {handle, m_States[size_t(mip) * layers + layer], next, m_Aspect, mip, 1, layer, 1});
+                }
+            }
+        }
         VriBarrierGroupDesc group {};
-        group.textures   = &barrier;
-        group.textureNum = 1;
+        group.textures   = barriers.data();
+        group.textureNum = uint32_t(barriers.size());
         m_Device->core.CmdBarrier(cmd, &group);
-        state = next;
+        for (uint32_t mip = firstMip; mip < mipEnd; ++mip)
+        {
+            std::fill_n(m_States.begin() + ptrdiff_t(size_t(mip) * layers + firstLayer), layerEnd - firstLayer, next);
+        }
     }
 
-    std::expected<VriDescriptor*, Error> Texture::view()
+    std::expected<VriDescriptor*, Error> Texture::view(TextureRange part, std::optional<VriTextureViewType> type)
     {
-        if (!m_View)
+        if ((part.mip && *part.mip >= std::max(desc.mipNum, 1u)) ||
+            (part.layer && (desc.type == VriTextureType_3D || *part.layer >= layerCount())))
         {
-            VriTextureViewDesc vd {};
-            vd.texture  = handle;
-            vd.viewType = viewType(desc.type);
-            vd.format   = desc.format;
-            vd.aspect   = m_Aspect;
-            vd.layerNum = desc.layerNum;
-            if (auto created =
-                    check(m_Device->core.CreateTextureView(m_Device->handle, &vd, &m_View), "Create texture view");
-                !created)
-            {
-                return std::unexpected(created.error());
-            }
+            return makeError("Create texture view: the mip or layer is outside the texture");
         }
-        return m_View;
-    }
-
-    std::expected<VriDescriptor*, Error> Texture::mipView(uint32_t mip)
-    {
-        if (mip >= desc.mipNum)
+        const auto resolved = type.value_or(part.layer ? VriTextureViewType_2D : viewType(desc.type));
+        const auto cached   = std::ranges::find_if(m_Views,
+                                                 [&](const View& view)
+                                                 {
+                                                     return view.part.mip == part.mip &&
+                                                            view.part.layer == part.layer && view.type == resolved;
+                                                 });
+        if (cached != m_Views.end())
         {
-            return makeError("Texture mip view");
+            return cached->descriptor;
         }
-        m_MipViews.resize(desc.mipNum, nullptr);
-        if (!m_MipViews[mip])
+        VriTextureViewDesc description {};
+        description.texture       = handle;
+        description.viewType      = resolved;
+        description.format        = desc.format;
+        description.aspect        = m_Aspect;
+        description.baseMip       = part.mip.value_or(0);
+        description.mipNum        = part.mip ? 1 : 0;
+        description.baseLayer     = part.layer.value_or(0);
+        description.layerNum      = part.layer ? 1 : desc.layerNum;
+        VriDescriptor* descriptor = nullptr;
+        if (auto created = check(m_Device->core.CreateTextureView(m_Device->handle, &description, &descriptor),
+                                 "Create texture view");
+            !created)
         {
-            VriTextureViewDesc view {};
-            view.texture  = handle;
-            view.viewType = viewType(desc.type);
-            view.format   = desc.format;
-            view.aspect   = m_Aspect;
-            view.baseMip  = mip;
-            view.mipNum   = 1;
-            view.layerNum = desc.layerNum;
-            if (auto created = check(m_Device->core.CreateTextureView(m_Device->handle, &view, &m_MipViews[mip]),
-                                     "Create mip view");
-                !created)
-            {
-                return std::unexpected(created.error());
-            }
+            return std::unexpected(created.error());
         }
-        return m_MipViews[mip];
+        m_Views.push_back({part, resolved, descriptor});
+        return descriptor;
     }
 
     Buffer::Buffer(Device& device, const VriBufferDesc& description, VriBuffer* buffer) :

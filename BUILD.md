@@ -102,7 +102,7 @@ libvultra checkout as working directory. The alternative is a cooked pack passed
 
 | Target | Arguments |
 | --- | --- |
-| `example-basics` | `<mode> [--frames N] [--capture file.png]`; modes `window`, `vri`, `graph`, `mesh-shading`. |
+| `example-basics` | `<mode> [--frames N] [--capture file.png]`; modes `window`, `vri`, `graph`, `mesh-shading`, `depth-pyramid`. |
 | `example-offline` | `[--frames N] [--output dir] [--graph file.vgraph] [--shaders pack.vpk] [--gain x]`. |
 | `example-offline-cook` | `<repository-root> <fresh-output-directory> [spirv_1_5\|wgsl]`; writes `project.vpk`. |
 | `example-ui` | `[--frames N] [--capture file.png]`. |

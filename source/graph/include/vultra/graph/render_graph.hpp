@@ -62,8 +62,12 @@ namespace vultra
         {
             Resource resource;
             Usage    usage;
-            // A write fully replaces the resource. The callback must not load or preserve its old content.
+            // A write fully replaces the named subresources. The callback must not load or preserve their old
+            // content.
             bool discardPrevious = false;
+            // The mip and layer of a texture this use names; absent ones mean all. Uses of one resource in one
+            // pass must not overlap, so a pass may sample one mip and write the next. Buffers name none.
+            TextureRange range {};
         };
 
         struct ResourceInfo
@@ -85,9 +89,10 @@ namespace vultra
 
         struct PassUseInfo
         {
-            uint32_t resourceIndex;
-            Usage    usage;
-            bool     discardPrevious = false;
+            uint32_t     resourceIndex;
+            Usage        usage;
+            bool         discardPrevious = false;
+            TextureRange range {};
         };
 
         struct PassInfo
@@ -130,11 +135,14 @@ namespace vultra
         importResource(std::string name, Texture& texture, bool initialized = true);
         [[nodiscard]] std::expected<Resource, Error>
         importResource(std::string name, Buffer& buffer, bool initialized = true);
+        // 2D, 2D array, cube (6 layers), cube array (a multiple of 6 layers) or 3D, each with a mip chain. State is
+        // tracked per mip and layer; a 3D texture's depth slices share their mip's state.
         [[nodiscard]] std::expected<Resource, Error> createTexture(std::string name, const VriTextureDesc& desc);
         [[nodiscard]] std::expected<Resource, Error> createBuffer(std::string name, const VriBufferDesc& desc);
         // A cached producer may skip writes; preserve its contents without rooting or clearing it.
         [[nodiscard]] std::expected<void, Error> preserveContents(Resource resource);
-        // History belongs to this graph. Its initial value is restored before the first use after a reset.
+        // History belongs to this graph. Its initial value is restored in every mip and layer before the first use
+        // after a reset; with more than one mip that needs transfer-source usage as well.
         [[nodiscard]] std::expected<Resource, Error>
                  createHistoryTexture(std::string name, const VriTextureDesc& desc, VriClearColor initial = {});
         void     resetHistory(); // Between completed frames; keep allocations and descriptor identities.
@@ -150,7 +158,8 @@ namespace vultra
         [[nodiscard]] std::expected<void, Error> exportResource(Resource resource);
         // Before compile; used by inspection and diagnostics.
         [[nodiscard]] std::expected<void, Error> nameResource(Resource resource, std::string name);
-        // Insert and export an opt-in copy after the pass writes source, before later writes overwrite it.
+        // Insert and export an opt-in copy after the pass writes source, before later writes overwrite it. The copy
+        // holds the subresources that pass wrote.
         [[nodiscard]] std::expected<Resource, Error>
         captureAfterPass(const std::string& passName, Resource source, std::string name);
         // Named outputs/intermediates, also before compile.
@@ -218,8 +227,9 @@ namespace vultra
         // compute queue and cannot transition from graphics-only layouts itself.
         struct Handoff
         {
-            uint32_t resource;
-            Usage    usage;
+            uint32_t     resource;
+            TextureRange range;
+            Usage        usage;
         };
 
         struct Batch
@@ -234,17 +244,23 @@ namespace vultra
         // m_Resources directly.
         std::expected<Entry*, Error> lookup(Resource resource);
         std::expected<void, Error>   edit() const;
-        std::expected<void, Error>   planBatches(bool asyncCompute);
-        std::expected<void, Error>   recordPass(VriCommandBuffer* cmd, const Pass& pass, Profiler* profiler);
-        void                         resetHistoryIfRequested(VriCommandBuffer* cmd);
-        std::vector<Batch>           m_Batches;
-        Device&                      m_Device;
-        std::vector<Entry>           m_Resources;
-        std::vector<Pass>            m_Passes;
-        std::vector<Resource>        m_Exports;
-        bool                         m_Compiled     = false;
-        bool                         m_Aliased      = false;
-        bool                         m_ResetHistory = true;
-        uint64_t                     m_HistoryEpoch = 1;
+        // Per-subresource tracking during compile: each texture mip and layer, or a buffer, is one slot. The
+        // slots of resource r are m_SlotBase[r] to m_SlotBase[r + 1].
+        std::vector<size_t>        slotsOf(uint32_t resource, const TextureRange& part) const;
+        TextureRange               slotPart(uint32_t resource, size_t slot) const;
+        std::string                slotName(uint32_t resource, size_t slot) const;
+        std::expected<void, Error> planBatches(bool asyncCompute);
+        std::expected<void, Error> recordPass(VriCommandBuffer* cmd, const Pass& pass, Profiler* profiler);
+        void                       resetHistoryIfRequested(VriCommandBuffer* cmd);
+        std::vector<Batch>         m_Batches;
+        Device&                    m_Device;
+        std::vector<Entry>         m_Resources;
+        std::vector<Pass>          m_Passes;
+        std::vector<Resource>      m_Exports;
+        std::vector<size_t>        m_SlotBase;
+        bool                       m_Compiled     = false;
+        bool                       m_Aliased      = false;
+        bool                       m_ResetHistory = true;
+        uint64_t                   m_HistoryEpoch = 1;
     };
 } // namespace vultra

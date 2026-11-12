@@ -43,6 +43,7 @@ namespace vultra
                 case VriFormat_BGRA8_UNORM:
                 case VriFormat_BGRA8_SRGB:
                 case VriFormat_D32_SFLOAT:
+                case VriFormat_R32_SFLOAT:
                     return 4;
                 case VriFormat_RGBA16_SFLOAT:
                     return 8;
@@ -56,12 +57,21 @@ namespace vultra
 
     namespace
     {
-        std::expected<VriBufferDesc, Error> readbackBuffer(Device& device, Texture& texture, uint32_t mip)
+        bool volume(const Texture& texture)
         {
+            return texture.desc.type == VriTextureType_3D;
+        }
+
+        // `layer` is an array layer or cube face, or a depth slice of a 3D texture's mip.
+        std::expected<VriBufferDesc, Error>
+        readbackBuffer(Device& device, const Texture& texture, uint32_t mip, uint32_t layer)
+        {
+            const uint32_t layers = volume(texture) ? std::max(texture.desc.depth >> mip, 1u) : texture.layerCount();
             if (!(texture.desc.usage & VriTextureUsage_TransferSrc) || texture.desc.sampleNum != 1 ||
-                texture.desc.layerNum != 1 || mip >= texture.desc.mipNum || texture.state.layout == VriLayout_Undefined)
+                mip >= std::max(texture.desc.mipNum, 1u) || layer >= layers ||
+                texture.state(mip, volume(texture) ? 0 : layer).layout == VriLayout_Undefined)
             {
-                return makeError("Readback requires an initialized single-sample, single-layer TransferSrc mip");
+                return makeError("Readback requires an initialized single-sample TransferSrc mip and layer");
             }
             const auto texel = texelSize(texture.desc.format);
             if (!texel)
@@ -91,20 +101,23 @@ namespace vultra
                                  Extent    size,
                                  VriFormat format,
                                  uint32_t  mip,
+                                 uint32_t  layer,
                                  uint32_t  texelBytes) :
         m_Device(device),
         m_Staging(std::move(staging)),
         m_Size(size),
         m_Format(format),
         m_Mip(mip),
+        m_Layer(layer),
         m_TexelBytes(texelBytes),
         m_RowBytes(m_Staging.desc.size / m_Size.height)
     {
     }
 
-    std::expected<ImageReadback, Error> ImageReadback::create(Device& device, Texture& texture, uint32_t mip)
+    std::expected<ImageReadback, Error>
+    ImageReadback::create(Device& device, Texture& texture, uint32_t mip, uint32_t layer)
     {
-        const auto description = readbackBuffer(device, texture, mip);
+        const auto description = readbackBuffer(device, texture, mip, layer);
         if (!description)
         {
             return std::unexpected(description.error());
@@ -120,34 +133,39 @@ namespace vultra
                              {std::max(texture.desc.width >> mip, 1u), std::max(texture.desc.height >> mip, 1u)},
                              texture.desc.format,
                              mip,
+                             layer,
                              *texelSize(texture.desc.format));
     }
 
     std::expected<void, Error> ImageReadback::record(VriCommandBuffer* cmd, Texture& texture)
     {
-        if (auto valid = readbackBuffer(m_Device, texture, m_Mip); !valid)
+        if (auto valid = readbackBuffer(m_Device, texture, m_Mip, m_Layer); !valid)
         {
             return std::unexpected(valid.error());
         }
-        if (texture.desc.format != m_Format || m_Mip >= texture.desc.mipNum ||
+        if (texture.desc.format != m_Format ||
             m_Size != Extent {std::max(texture.desc.width >> m_Mip, 1u), std::max(texture.desc.height >> m_Mip, 1u)} ||
-            texture.state.layout == VriLayout_Undefined || m_Recorded)
+            m_Recorded)
         {
-            return makeError("Readback source changed, uninitialized, or already recorded");
+            return makeError("Readback source changed or already recorded");
         }
-        auto&      device   = m_Device;
-        const auto previous = texture.state;
-        texture.transition(cmd, {VriAccess_CopySourceRead, VriLayout_CopySource, VriPipelineStage_Transfer});
+        auto& device = m_Device;
+        // A 3D slice has no state of its own: the copy transitions its whole mip.
+        const TextureRange part {m_Mip, volume(texture) ? std::nullopt : std::optional(m_Layer)};
+        const auto         previous = texture.state(m_Mip, part.layer.value_or(0));
+        texture.transition(cmd, {VriAccess_CopySourceRead, VriLayout_CopySource, VriPipelineStage_Transfer}, part);
         VriBufferTextureCopyDesc region {};
-        region.bufferRowLength  = uint32_t(m_RowBytes / m_TexelBytes);
-        region.texture.layerNum = 1;
-        region.texture.aspect   = m_Format == VriFormat_D32_SFLOAT ? VriImageAspect_Depth : VriImageAspect_Color;
-        region.texture.mip      = m_Mip;
-        region.texture.width    = m_Size.width;
-        region.texture.height   = m_Size.height;
-        region.texture.depth    = 1;
+        region.bufferRowLength   = uint32_t(m_RowBytes / m_TexelBytes);
+        region.texture.baseLayer = volume(texture) ? 0 : m_Layer;
+        region.texture.layerNum  = 1;
+        region.texture.aspect    = m_Format == VriFormat_D32_SFLOAT ? VriImageAspect_Depth : VriImageAspect_Color;
+        region.texture.mip       = m_Mip;
+        region.texture.z         = volume(texture) ? int32_t(m_Layer) : 0;
+        region.texture.width     = m_Size.width;
+        region.texture.height    = m_Size.height;
+        region.texture.depth     = 1;
         device.core.CmdReadbackTextureToBuffer(cmd, m_Staging.handle, texture.handle, &region);
-        texture.transition(cmd, previous);
+        texture.transition(cmd, previous, part);
         m_Recorded = true;
         return {};
     }
@@ -161,6 +179,7 @@ namespace vultra
         const auto size   = m_Size;
         const auto bytes  = m_Staging.desc.size;
         const bool depth  = m_Format == VriFormat_D32_SFLOAT;
+        const bool red    = m_Format == VriFormat_R32_SFLOAT;
         const bool bgra   = m_Format == VriFormat_BGRA8_UNORM || m_Format == VriFormat_BGRA8_SRGB;
         auto&      device = m_Device;
         Image      image {size, std::vector<float>(size_t(size.width) * size.height * 4)};
@@ -186,6 +205,20 @@ namespace vultra
                     std::memcpy(&value, sourceRow + (i / 4) * 4, 4);
                     destination[i] = i % 4 == 3 ? 1 : value;
                 }
+                else if (red)
+                {
+                    float value;
+                    std::memcpy(&value, sourceRow + (i / 4) * 4, 4);
+                    // Red holds the value, alpha is 1 and green and blue stay 0.
+                    if (i % 4 == 0)
+                    {
+                        destination[i] = value;
+                    }
+                    else if (i % 4 == 3)
+                    {
+                        destination[i] = 1;
+                    }
+                }
                 else if (m_TexelBytes == 4)
                 {
                     const size_t channel = i % 4;
@@ -209,9 +242,9 @@ namespace vultra
         return image;
     }
 
-    std::expected<Image, Error> readback(Device& device, Texture& texture, uint32_t mip)
+    std::expected<Image, Error> readback(Device& device, Texture& texture, uint32_t mip, uint32_t layer)
     {
-        auto capture = ImageReadback::create(device, texture, mip);
+        auto capture = ImageReadback::create(device, texture, mip, layer);
         if (!capture)
         {
             return std::unexpected(capture.error());
