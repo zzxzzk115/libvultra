@@ -1,5 +1,6 @@
 #if defined(__APPLE__)
-.section __DATA,__vultra_builtin_pack
+// Mach-O section names are at most 16 characters.
+.section __DATA,__vultra_pack
 .globl _vultra_builtin_pack_start
 .globl _vultra_builtin_pack_end
 .p2align 4
