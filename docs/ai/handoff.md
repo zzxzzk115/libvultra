@@ -2,6 +2,11 @@
 
 Dated snapshot: 2026-11-11, branch `dev-slim`. Verify claims against the code before relying on them.
 
+This library is the kernel of a larger restructuring whose steps are called M0 to M5. They are described, with
+their state and the steps to verify the latest one, in
+[the milestones page of Vultra-CLI](https://github.com/zzxzzk115/Vultra-CLI/blob/main/docs/milestones.md). M0 and M1 are this
+repository; from M2 on the work is in Vultra-CLI, Vultra-Packages and vultra-index, which build on it.
+
 ## Start here
 
 ```sh
