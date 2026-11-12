@@ -148,7 +148,9 @@ shadowed rendering are separate `RenderPath` implementations, written against th
 ## Assets
 
 `SceneData`, materials and textures are CPU values that own no GPU resources. Importers read glTF/GLB, OBJ and
-FBX and cache derived data keyed by source and dependency hashes. `AssetSource` reads from the filesystem or a
+FBX and cache derived data keyed by source and dependency hashes. Geometry is stored in model space with the
+file's node transforms applied; the glTF importer also keeps the node hierarchy in `SceneData::nodes`, each
+node with its own transform and primitives. `AssetSource` reads from the filesystem or a
 VPK archive, including one embedded in an executable or mapped from memory; persistent references are paths,
 never GPU handles. Meshlet data is built with meshoptimizer. All file formats are version 1.
 
