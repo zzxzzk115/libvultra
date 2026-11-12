@@ -27,10 +27,6 @@ vsxmake*/
 *.clangd
 compile_commands.json
 
-# Python tooling
-__pycache__/
-*.pyc
-
 # Runtime artifacts
 .vultra/
 imgui.ini

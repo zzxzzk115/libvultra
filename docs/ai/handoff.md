@@ -95,9 +95,13 @@ The macOS work found that ISPC 1.28.2 drops a masked `n--` in bc7e's block encod
 block was wrong on every ISA; `external/bc7enc` carries a two-line patch. Windows output changes accordingly and
 was not re-verified.
 
-Not verified: Linux, Android, Web and any XR runtime or headset. `tests/platform/` is a separate project
-that was edited by inspection and not built. The interactive feel of windows, hot reload and HiDPI was not
-judged by a person.
+Android, 2026-11-12, from a Windows host: `tests/platform/` (a separate project) and `example-basics` were built
+for `x86_64` with NDK 30.0.16248370, packaged with the xmake scripts and run on the emulator (API 37); the
+commands and what they found are in BUILD.md. `arm64-v8a`, a physical device and `example-offline` on a device
+were not run.
+
+Not verified: Linux, Web and any XR runtime or headset; of `tests/platform/` only the Android probe was built,
+not the Web probes. The interactive feel of windows, hot reload and HiDPI was not judged by a person.
 
 ## Known gaps
 

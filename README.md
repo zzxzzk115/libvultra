@@ -54,8 +54,10 @@ Examples accept `--frames`, `--log-level` and `--log-file`; windowed ones also a
 ## Scope and limitations
 
 - This branch is verified on Windows x64 with Vulkan and on macOS arm64 with Vulkan (MoltenVK) and Metal, the
-  latter by the test suite only. Linux, Android and Web (WebGL2/WebGPU) code paths exist but were not rebuilt
-  after the module restructuring, and no XR runtime or headset was tested.
+  latter by the test suite only. On Android the platform probe and `example-basics` were built for `x86_64` and
+  run on the emulator ([BUILD.md](BUILD.md#android-and-web)); `arm64-v8a` and a physical device were not. Linux
+  and Web (WebGL2/WebGPU) code paths exist but were not rebuilt after the module restructuring, and no XR runtime
+  or headset was tested.
 - SDL3 is the only desktop window backend.
 - `ForwardPath` renders static geometry with an opaque OpenPBR material subset, analytic lights and image-based
   lighting. It has no shadows, transparency or mesh shading; other techniques are separate `RenderPath`
