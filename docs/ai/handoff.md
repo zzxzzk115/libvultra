@@ -102,13 +102,17 @@ Android 13): the probe, `example-offline` and the three modes of `example-basics
 rotated against its panel is shown turned by 90 degrees; the fix is a VRI change (identity pre-transform),
 verified on the device through `--libvultra_vri_dir` and waiting for a VRI release and a new pin.
 
-Not verified: Linux, Web and any XR runtime or headset; of `tests/platform/` only the Android probe was built,
+The `xr` module gained controller input (grip and aim poses, select and squeeze per hand) and `example-xr`
+uses it. On the Meta XR Simulator the example submitted its frames with both controllers located; the buttons
+were not pressed and no headset was used. The two shutdown messages of that runtime are described in BUILD.md.
+
+Not verified: Linux, Web and any XR headset; of `tests/platform/` only the Android probe was built,
 not the Web probes. The interactive feel of windows, hot reload and HiDPI was not judged by a person.
 
 ## Known gaps
 
 See [roadmap](../roadmap.md). In short: standard scene resources beyond HDR and depth, subresource support in
-the graph, profiling across batches, XR controller input and mesh LOD. Optimizing the builtin shader pack was measured
+the graph, profiling across batches, XR input on a headset and mesh LOD. Optimizing the builtin shader pack was measured
 and not adopted; the roadmap records the numbers.
 
 ## Local state

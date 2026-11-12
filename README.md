@@ -17,7 +17,7 @@ Everything is one static library, `vultra`. Programs select the modules they nee
 | `render` | `GpuScene`, the `RenderPath` interface and the reference `ForwardPath` (`vultra.forward`). |
 | `ui` | `EditorGui`: Dear ImGui for a window or an offscreen target. |
 | `app` | `DesktopApp`, `ImGuiApp`, Android and Web application loops, camera controllers. |
-| `xr` | OpenXR session and swapchain integration. |
+| `xr` | OpenXR session, eye swapchains, controller poses and input. |
 
 A direct GPU program needs no scene, importer, render path or UI.
 
@@ -46,6 +46,7 @@ Run `xmake run <target> [mode] [options]`. `--help` lists the compiled modes and
 | `example-basics` | `window`, `vri`, `graph`, `mesh-shading`. |
 | `example-offline` | Windowless triangle, compute pass and display conversion; C++ or `.vgraph` graph; PNG/PFM output. |
 | `example-ui` | Raw Dear ImGui and `EditorGui` over a render target. |
+| `example-xr` | Stereo scene with tracked hands and controller pointers on an OpenXR runtime. |
 
 Start from the [offline program](examples/offline/offline.cpp) or the [window example](examples/basics/window.cpp).
 Examples accept `--frames`, `--log-level` and `--log-file`; windowed ones also accept `--capture <png>`.
@@ -57,8 +58,8 @@ Examples accept `--frames`, `--log-level` and `--log-file`; windowed ones also a
   latter by the test suite only. On Android the platform probe and `example-basics` were built for `x86_64` and
   run on the emulator, and for `arm64-v8a` on one physical device, where a rotated display is shown turned
   until the VRI fix is released ([BUILD.md](BUILD.md#android-and-web)). Linux
-  and Web (WebGL2/WebGPU) code paths exist but were not rebuilt after the module restructuring, and no XR runtime
-  or headset was tested.
+  and Web (WebGL2/WebGPU) code paths exist but were not rebuilt after the module restructuring. XR ran on the
+  Meta XR Simulator only, not on a headset ([BUILD.md](BUILD.md#desktop-hidpi-and-xr)).
 - SDL3 is the only desktop window backend.
 - `ForwardPath` renders static geometry with an opaque OpenPBR material subset, analytic lights and image-based
   lighting. It has no shadows, transparency or mesh shading; other techniques are separate `RenderPath`

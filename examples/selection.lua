@@ -5,7 +5,8 @@ local examples = {
     {"basics.graph", {"app", "shader", "graph", "assets"}},
     {"basics.mesh-shading", {"app", "shader"}},
     {"offline", {"shader", "graph", "assets", "render"}},
-    {"ui", {"app", "shader", "ui"}}
+    {"ui", {"app", "shader", "ui"}},
+    {"xr", {"xr", "shader", "assets"}}
 }
 
 function vultraExamples()
@@ -20,7 +21,9 @@ function vultraExamples()
         for _, example in ipairs(examples) do
             local id = example[1]
             local group = id:startswith(name .. ".")
-            if name == "all" or id == name or group then
+            -- "all" leaves the XR example out of a build without OpenXR; naming it reports the missing module.
+            local all = name == "all" and (id ~= "xr" or has_config("libvultra_with_openxr"))
+            if all or id == name or group then
                 found = true
                 selected[id] = true
                 table.join2(required, example[2])

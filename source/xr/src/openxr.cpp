@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <span>
+#include <string>
 #include <utility>
 
 namespace vultra
@@ -46,6 +48,23 @@ namespace vultra
                 return makeError("Missing XR function: {}", name);
             }
             return reinterpret_cast<F>(function);
+        }
+
+        glm::mat4 toMatrix(const XrPosef& pose)
+        {
+            return glm::translate(glm::mat4(1), glm::vec3(pose.position.x, pose.position.y, pose.position.z)) *
+                   glm::mat4_cast(
+                       glm::quat(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z));
+        }
+
+        [[nodiscard]] std::expected<XrPath, Error> toPath(XrInstance instance, const std::string& text)
+        {
+            XrPath path = XR_NULL_PATH;
+            if (auto result = checkXr(xrStringToPath(instance, text.c_str(), &path), "Get XR path"); !result)
+            {
+                return std::unexpected(result.error());
+            }
+            return path;
         }
 
         // Creation hooks cross a C ABI: log both results and return a VkResult to VRI.
@@ -234,10 +253,12 @@ namespace vultra
 
     glm::mat4 XREye::poseMatrix() const
     {
-        const auto& pose = view.pose;
-        return glm::translate(glm::mat4(1), glm::vec3(pose.position.x, pose.position.y, pose.position.z)) *
-               glm::mat4_cast(
-                   glm::quat(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z));
+        return toMatrix(view.pose);
+    }
+
+    Ray XRHand::pointer() const
+    {
+        return {glm::vec3(aim[3]), -glm::normalize(glm::vec3(aim[2]))};
     }
 
     std::expected<glm::mat4, Error> XRFrame::headPose() const
@@ -436,7 +457,9 @@ namespace vultra
             auto& eye = m_Eyes[e];
             eye.size  = {views[e].recommendedImageRectWidth, views[e].recommendedImageRectHeight};
             XrSwapchainCreateInfo info {XR_TYPE_SWAPCHAIN_CREATE_INFO};
-            info.usageFlags  = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+            // Transfer source lets a mirror or a readback copy the eye image before it is released.
+            info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT |
+                              XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT;
             info.format      = format;
             info.width       = eye.size.width;
             info.height      = eye.size.height;
@@ -470,9 +493,10 @@ namespace vultra
             for (const auto& image : images)
             {
                 VriWrapTextureDesc wrap {};
-                wrap.nativeTexture  = image.image;
-                wrap.desc           = colorTexture(eye.size, m_Format);
-                wrap.desc.usage     = VriTextureUsage_ColorAttachment | VriTextureUsage_ShaderResource;
+                wrap.nativeTexture = image.image;
+                wrap.desc          = colorTexture(eye.size, m_Format);
+                wrap.desc.usage =
+                    VriTextureUsage_ColorAttachment | VriTextureUsage_ShaderResource | VriTextureUsage_TransferSrc;
                 VriTexture* wrapper = nullptr;
                 if (auto result = check(interop.WrapTexture(m_Device.handle, &wrap, &wrapper), "Wrap eye image");
                     !result)
@@ -487,6 +511,189 @@ namespace vultra
                 }
                 eye.textures.push_back(std::move(*texture));
             }
+        }
+        return initializeInput();
+    }
+
+    std::expected<void, Error> OpenXRSession::initializeInput()
+    {
+        const XrInstance instance = m_System.instance();
+        const std::array hands {std::string("/user/hand/left"), std::string("/user/hand/right")};
+        for (size_t hand = 0; hand < 2; ++hand)
+        {
+            const auto path = toPath(instance, hands[hand]);
+            if (!path)
+            {
+                return std::unexpected(path.error());
+            }
+            m_HandPaths[hand] = *path;
+        }
+        XrActionSetCreateInfo setInfo {XR_TYPE_ACTION_SET_CREATE_INFO};
+        std::strncpy(setInfo.actionSetName, "vultra", XR_MAX_ACTION_SET_NAME_SIZE - 1);
+        std::strncpy(setInfo.localizedActionSetName, "Vultra", XR_MAX_LOCALIZED_ACTION_SET_NAME_SIZE - 1);
+        if (auto result = checkXr(xrCreateActionSet(instance, &setInfo, &m_ActionSet), "Create XR action set"); !result)
+        {
+            return result;
+        }
+        const auto createAction = [this](XrActionType type, const char* name, const char* label, XrAction& action)
+        {
+            XrActionCreateInfo info {XR_TYPE_ACTION_CREATE_INFO};
+            info.actionType          = type;
+            info.countSubactionPaths = uint32_t(m_HandPaths.size());
+            info.subactionPaths      = m_HandPaths.data();
+            std::strncpy(info.actionName, name, XR_MAX_ACTION_NAME_SIZE - 1);
+            std::strncpy(info.localizedActionName, label, XR_MAX_LOCALIZED_ACTION_NAME_SIZE - 1);
+            return checkXr(xrCreateAction(m_ActionSet, &info, &action), "Create XR action");
+        };
+        if (auto result = createAction(XR_ACTION_TYPE_POSE_INPUT, "grip_pose", "Grip pose", m_GripAction); !result)
+        {
+            return result;
+        }
+        if (auto result = createAction(XR_ACTION_TYPE_POSE_INPUT, "aim_pose", "Aim pose", m_AimAction); !result)
+        {
+            return result;
+        }
+        if (auto result = createAction(XR_ACTION_TYPE_FLOAT_INPUT, "select", "Select", m_SelectAction); !result)
+        {
+            return result;
+        }
+        if (auto result = createAction(XR_ACTION_TYPE_FLOAT_INPUT, "squeeze", "Squeeze", m_SqueezeAction); !result)
+        {
+            return result;
+        }
+
+        // The simple controller is the profile every runtime accepts; it has a select button and no grip
+        // button. The Touch profile adds the analog trigger and grip of Quest controllers.
+        struct Input
+        {
+            XrAction    action;
+            const char* component;
+        };
+
+        const auto suggest = [&](const char* profile, std::span<const Input> inputs) -> std::expected<void, Error>
+        {
+            std::vector<XrActionSuggestedBinding> bindings;
+            for (const auto& input : inputs)
+            {
+                for (const auto& hand : hands)
+                {
+                    const auto path = toPath(instance, hand + input.component);
+                    if (!path)
+                    {
+                        return std::unexpected(path.error());
+                    }
+                    bindings.push_back({input.action, *path});
+                }
+            }
+            const auto profilePath = toPath(instance, profile);
+            if (!profilePath)
+            {
+                return std::unexpected(profilePath.error());
+            }
+            XrInteractionProfileSuggestedBinding suggested {XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+            suggested.interactionProfile     = *profilePath;
+            suggested.countSuggestedBindings = uint32_t(bindings.size());
+            suggested.suggestedBindings      = bindings.data();
+            return checkXr(xrSuggestInteractionProfileBindings(instance, &suggested), "Suggest XR bindings");
+        };
+        const std::array simple {Input {m_GripAction, "/input/grip/pose"},
+                                 Input {m_AimAction, "/input/aim/pose"},
+                                 Input {m_SelectAction, "/input/select/click"}};
+        if (auto result = suggest("/interaction_profiles/khr/simple_controller", simple); !result)
+        {
+            return result;
+        }
+        const std::array touch {Input {m_GripAction, "/input/grip/pose"},
+                                Input {m_AimAction, "/input/aim/pose"},
+                                Input {m_SelectAction, "/input/trigger/value"},
+                                Input {m_SqueezeAction, "/input/squeeze/value"}};
+        if (auto result = suggest("/interaction_profiles/oculus/touch_controller", touch); !result)
+        {
+            return result;
+        }
+
+        for (size_t hand = 0; hand < 2; ++hand)
+        {
+            XrActionSpaceCreateInfo info {XR_TYPE_ACTION_SPACE_CREATE_INFO};
+            info.subactionPath                   = m_HandPaths[hand];
+            info.poseInActionSpace.orientation.w = 1;
+            info.action                          = m_GripAction;
+            if (auto result = checkXr(xrCreateActionSpace(m_Session, &info, &m_GripSpaces[hand]), "Create grip space");
+                !result)
+            {
+                return result;
+            }
+            info.action = m_AimAction;
+            if (auto result = checkXr(xrCreateActionSpace(m_Session, &info, &m_AimSpaces[hand]), "Create aim space");
+                !result)
+            {
+                return result;
+            }
+        }
+        XrSessionActionSetsAttachInfo attach {XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
+        attach.countActionSets = 1;
+        attach.actionSets      = &m_ActionSet;
+        return checkXr(xrAttachSessionActionSets(m_Session, &attach), "Attach XR action set");
+    }
+
+    std::expected<void, Error> OpenXRSession::locateHands(XrTime time)
+    {
+        const XrActiveActionSet active {m_ActionSet, XR_NULL_PATH};
+        XrActionsSyncInfo       sync {XR_TYPE_ACTIONS_SYNC_INFO};
+        sync.countActiveActionSets = 1;
+        sync.activeActionSets      = &active;
+        const XrResult synced      = xrSyncActions(m_Session, &sync);
+        if (auto result = checkXr(synced, "Sync XR actions"); !result)
+        {
+            return result;
+        }
+        if (synced == XR_SESSION_NOT_FOCUSED)
+        {
+            return {};
+        }
+        const auto readFloat = [this](XrAction action, XrPath hand) -> std::expected<float, Error>
+        {
+            XrActionStateGetInfo info {XR_TYPE_ACTION_STATE_GET_INFO};
+            info.action        = action;
+            info.subactionPath = hand;
+            XrActionStateFloat state {XR_TYPE_ACTION_STATE_FLOAT};
+            if (auto result = checkXr(xrGetActionStateFloat(m_Session, &info, &state), "Get XR action state"); !result)
+            {
+                return std::unexpected(result.error());
+            }
+            return state.isActive ? state.currentState : 0.0f;
+        };
+        constexpr XrSpaceLocationFlags located =
+            XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT;
+        for (size_t index = 0; index < 2; ++index)
+        {
+            XrSpaceLocation grip {XR_TYPE_SPACE_LOCATION};
+            if (auto result = checkXr(xrLocateSpace(m_GripSpaces[index], m_Space, time, &grip), "Locate grip space");
+                !result)
+            {
+                return result;
+            }
+            XrSpaceLocation aim {XR_TYPE_SPACE_LOCATION};
+            if (auto result = checkXr(xrLocateSpace(m_AimSpaces[index], m_Space, time, &aim), "Locate aim space");
+                !result)
+            {
+                return result;
+            }
+            if ((grip.locationFlags & located) != located || (aim.locationFlags & located) != located)
+            {
+                continue;
+            }
+            const auto select = readFloat(m_SelectAction, m_HandPaths[index]);
+            if (!select)
+            {
+                return std::unexpected(select.error());
+            }
+            const auto squeeze = readFloat(m_SqueezeAction, m_HandPaths[index]);
+            if (!squeeze)
+            {
+                return std::unexpected(squeeze.error());
+            }
+            m_Frame.hands[index] = {true, toMatrix(grip.pose), toMatrix(aim.pose), *select, *squeeze};
         }
         return {};
     }
@@ -523,6 +730,22 @@ namespace vultra
             }
             eye.handle = XR_NULL_HANDLE;
         }
+        for (auto& space : m_GripSpaces)
+        {
+            if (space)
+            {
+                xrDestroySpace(space);
+            }
+            space = XR_NULL_HANDLE;
+        }
+        for (auto& space : m_AimSpaces)
+        {
+            if (space)
+            {
+                xrDestroySpace(space);
+            }
+            space = XR_NULL_HANDLE;
+        }
         if (m_Space)
         {
             xrDestroySpace(m_Space);
@@ -531,8 +754,14 @@ namespace vultra
         {
             xrDestroySession(m_Session);
         }
-        m_Space   = XR_NULL_HANDLE;
-        m_Session = XR_NULL_HANDLE;
+        // The action set belongs to the instance, not to the session.
+        if (m_ActionSet)
+        {
+            xrDestroyActionSet(m_ActionSet);
+        }
+        m_ActionSet = XR_NULL_HANDLE;
+        m_Space     = XR_NULL_HANDLE;
+        m_Session   = XR_NULL_HANDLE;
     }
 
     std::expected<void, Error> OpenXRSession::pollEvents()
@@ -611,6 +840,10 @@ namespace vultra
         }
         m_Frame.begun       = true;
         m_Frame.displayTime = state.predictedDisplayTime;
+        if (auto result = locateHands(state.predictedDisplayTime); !result)
+        {
+            return std::unexpected(result.error());
+        }
         if (!state.shouldRender)
         {
             return m_Frame;

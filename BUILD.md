@@ -106,6 +106,7 @@ libvultra checkout as working directory. The alternative is a cooked pack passed
 | `example-offline` | `[--frames N] [--output dir] [--graph file.vgraph] [--shaders pack.vpk] [--gain x]`. |
 | `example-offline-cook` | `<repository-root> <fresh-output-directory> [spirv_1_5\|wgsl]`; writes `project.vpk`. |
 | `example-ui` | `[--frames N] [--capture file.png]`. |
+| `example-xr` | `[--frames N] [--capture file.png]`; frames the runtime asked to render, capture of the left eye. |
 | `vultra-shader` | `<source.slang> --output file.vshaderc [--profile spirv_1_5\|wgsl] [--entry stage:name] [--include dir] [--define NAME=VALUE] [--capability name] [--link module] [--ray-query] [--reflection file.json]`. |
 | `vultra-import` | `<model>` (`.gltf`, `.glb`, `.fbx`, untextured `.obj`); bakes the derived asset cache without a GPU. |
 | `vultra-builtins` | `<library-root> <output.vpk>`; cooks the library shaders into a VPK. |
@@ -159,7 +160,22 @@ VULTRA_WINDOW_SYSTEM=x11 xmake run example-ui --frames 60
 
 The Linux file dialog uses the `xdg-desktop-portal` backend of Native File Dialog Extended.
 
-The `xr` module needs an active OpenXR runtime and a device. No runtime or headset was tested on this branch.
+The `xr` module needs an active OpenXR runtime. An `XRFrame` carries both eye views and, per hand, the grip
+and aim poses with the select and squeeze values; bindings are suggested for the Khronos simple controller and
+the Oculus Touch controller. [example-xr](examples/xr/main.cpp) draws a floor, a car, both hands and a pointer
+beam per controller for each eye. It has no window: it ends with `--frames`, or when the runtime ends the
+session.
+
+```sh
+xmake run example-xr --frames 120 --capture build/.tmp/xr/left.png
+```
+
+This was run on Windows with the Meta XR Simulator (v83) as the active runtime: 120 frames were submitted, both
+controllers were located in every frame, and the captured left eye showed the scene, the hands and the beams
+reaching the floor. No headset was used, and nobody operated the simulated controllers, so the select and
+squeeze values were only ever read as zero. At shutdown the simulator reports spaces of its own as undestroyed
+and leaves one command pool it created on the application's device, which the validation layer reports when
+the device is destroyed; every space the module creates is destroyed.
 
 ## Android and Web
 

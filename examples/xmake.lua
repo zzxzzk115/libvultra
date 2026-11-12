@@ -95,3 +95,12 @@ if has_group("ui") then
         set_rundir("$(projectdir)")
     target_end()
 end
+
+if selected.xr then
+    target("example-xr")
+        set_kind("binary")
+        add_deps("vultra")
+        add_files("xr/main.cpp")
+        set_rundir("$(projectdir)")
+    target_end()
+end

@@ -1,5 +1,6 @@
 #pragma once
 #include <vultra/core/base/error.hpp>
+#include <vultra/core/math/ray.hpp>
 #include <vultra/gpu/resources.hpp>
 
 #include <glm/mat4x4.hpp>
@@ -41,12 +42,28 @@ namespace vultra
         [[nodiscard]] std::expected<glm::mat4, Error> viewProjection(float nearZ = 0.05f, float farZ = 100.0f) const;
     };
 
+    // One hand's controller at the frame's display time, in the tracking space of the eye views.
+    struct XRHand
+    {
+        // False without a tracked controller or while the session lacks input focus; the other members
+        // then keep their defaults.
+        bool      active = false;
+        glm::mat4 grip {1};    // Where the hand holds the controller.
+        glm::mat4 aim {1};     // Pointing pose; -Z is the pointing direction.
+        float     select  = 0; // Trigger, 0 released to 1 pressed.
+        float     squeeze = 0; // Grip button, 0 to 1; stays 0 on a controller without one.
+
+        // From the aim pose along its pointing direction, with a unit direction.
+        Ray pointer() const;
+    };
+
     struct XRFrame
     {
-        bool                 begun        = false;
-        bool                 shouldRender = false;
-        XrTime               displayTime  = 0;
-        std::array<XREye, 2> eyes;
+        bool                  begun        = false;
+        bool                  shouldRender = false;
+        XrTime                displayTime  = 0;
+        std::array<XREye, 2>  eyes;
+        std::array<XRHand, 2> hands; // Left, right. Located in every begun frame, rendered or not.
         // Located eye midpoint in the runtime's tracking space, retaining the session head orientation.
         [[nodiscard]] std::expected<glm::mat4, Error> headPose() const;
     };
@@ -80,7 +97,9 @@ namespace vultra
     private:
         OpenXRSession(OpenXRSystem& system, Device& device);
         [[nodiscard]] std::expected<void, Error> initialize();
+        [[nodiscard]] std::expected<void, Error> initializeInput();
         [[nodiscard]] std::expected<void, Error> pollEvents();
+        [[nodiscard]] std::expected<void, Error> locateHands(XrTime time);
         void                                     cleanup() noexcept;
         OpenXRSystem&                            m_System;
         Device&                                  m_Device;
@@ -88,6 +107,16 @@ namespace vultra
         XrSpace                                  m_Space   = XR_NULL_HANDLE;
         XrEnvironmentBlendMode                   m_Blend   = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
         VriFormat                                m_Format  = VriFormat_Unknown;
+
+        // One action set with left and right hand subactions. The actions are destroyed with the set.
+        XrActionSet            m_ActionSet     = XR_NULL_HANDLE;
+        XrAction               m_GripAction    = XR_NULL_HANDLE;
+        XrAction               m_AimAction     = XR_NULL_HANDLE;
+        XrAction               m_SelectAction  = XR_NULL_HANDLE;
+        XrAction               m_SqueezeAction = XR_NULL_HANDLE;
+        std::array<XrPath, 2>  m_HandPaths {};
+        std::array<XrSpace, 2> m_GripSpaces {};
+        std::array<XrSpace, 2> m_AimSpaces {};
 
         struct EyeSwapchain
         {

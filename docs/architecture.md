@@ -38,7 +38,7 @@ flowchart BT
 | `render` | `GpuScene`, the `RenderPath` interface, `ForwardPath`, environment, tone mapping, blits. | graph, shader, assets |
 | `ui` | `EditorGui`: Dear ImGui with window, offscreen and inspector support. | gpu, platform |
 | `app` | `BaseApp`, `RenderApp`, `DesktopApp`, `ImGuiApp`, Android and Web apps, camera controllers. | gpu, platform |
-| `xr` | OpenXR session and swapchain integration. | gpu |
+| `xr` | OpenXR session, eye swapchains, controller poses and input. | gpu |
 
 `--libvultra_features=<a,b,...>` selects modules; dependencies are added automatically and `all` selects every
 module the platform supports. Two options trim a module: `libvultra_shader_compiler=n` keeps only the cooked

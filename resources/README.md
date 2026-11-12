@@ -8,6 +8,7 @@ The advanced examples retain the original files from the old libvultra `dev` res
 | Cornell Box | `models/CornellBox/CornellBox-Original.obj` and `.mtl` | Guedis Cardenas and Morgan McGuire, Williams College, 2011. Public-domain dedication and original source references are preserved in the MTL header. |
 | Ray-query shadow scene | `models/raytracing_shadow/raytracing_shadow.gltf` and `.bin` | Original Armadillo/floor scene supplied with libvultra `dev`. The source files do not contain a separate asset license; this document does not assign them the framework's MIT license. |
 | Citrus Orchard (Pure Sky) | `textures/environment_maps/citrus_orchard_puresky_1k.hdr` | [Poly Haven](https://polyhaven.com/a/citrus_orchard_puresky), photography by Dimitrios Savva, processing by Jarod Guest; [CC0](https://polyhaven.com/license). |
+| Hand and car | `models/OpenXRVulkanExample/` | From [janhsimon/openxr-vulkan-example](https://github.com/janhsimon/openxr-vulkan-example); authors, CC BY 4.0 licenses and the two material files written here are listed in its [notice](models/OpenXRVulkanExample/README.md). |
 | Damaged Helmet | `models/DamagedHelmet/` | Existing [attribution and license notices](models/DamagedHelmet/README.vultra.md). |
 
 These assets are research/example inputs. Third-party asset terms remain separate from source-code licensing.

@@ -1,0 +1,3 @@
+# Written for Vultra: the upstream repository ships Car.obj without its material file.
+newmtl OldCar
+Kd 0.35 0.55 0.62
