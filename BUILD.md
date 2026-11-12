@@ -159,7 +159,8 @@ The `xr` module needs an active OpenXR runtime and a device. No runtime or heads
 
 ## Android and Web
 
-Not rebuilt on this branch after the module restructuring; treat the commands as a starting point. `PlatformApp`
+The example commands below were not rebuilt on this branch after the module restructuring; treat them as a
+starting point. The platform probe at the end of this section was. `PlatformApp`
 resolves to `AndroidApp` (GameActivity) or `WebApp` on these platforms, and
 [examples/common/entry.cpp](examples/common/entry.cpp) shows the `android_main` and `main` entries. Only the
 `example-basics` modes `window`, `vri` and `graph` and `example-offline` have platform entries. Shaders are
@@ -205,7 +206,33 @@ Serve the generated `.html`, `.js` and `.wasm` together over HTTP and pass the m
 
 [tests/platform](tests/platform/xmake.lua) is a separate xmake project with finite offscreen probes
 (`platform-pack` on the host, then `platform-render`, `platform-vpk-memory` and `platform-shader-runtime` with
-`--platform_pack=<project.vpk>`). It was updated by inspection for the new modules and has not been built.
+`--platform_pack=<project.vpk>`). Run xmake in that directory with `-P .`, or it configures the library around
+it. The Android probe needs no Gradle:
+
+```sh
+cd tests/platform
+XMAKE_CONFIGDIR="$OUT/host-config" xmake f -P . -y -m release -o "$OUT/host" \
+    --libvultra_build_tests=n --libvultra_build_examples=n
+XMAKE_CONFIGDIR="$OUT/host-config" xmake build -P . -y platform-pack
+XMAKE_CONFIGDIR="$OUT/host-config" xmake run -P . platform-pack "$PWD" "$OUT/pack"
+XMAKE_CONFIGDIR="$OUT/android-config" xmake f -P . -y -p android -a "$ABI" -m release \
+    --ndk="$ANDROID_NDK_HOME" --ndk_sdkver=29 --runtimes=c++_static -o "$OUT/android" \
+    --platform_pack="$OUT/pack/project.vpk" --libvultra_features=shader,graph,assets,platform \
+    --libvultra_shader_compiler=n --libvultra_asset_import=n \
+    --libvultra_build_tests=n --libvultra_build_examples=n --libvultra_with_openxr=n
+XMAKE_CONFIGDIR="$OUT/android-config" xmake build -P . -y platform-render
+cd ../..
+xmake lua tests/platform/package_android.lua "$ANDROID_SDK_ROOT" "$ABI" \
+    "$OUT/android/android/$ABI/release/libplatform-render.so" "$OUT/pack/project.vpk" "$OUT/apk"
+adb install -r "$OUT/apk/platform-probe.apk"
+adb shell am start -n org.vultra.platformprobe/android.app.NativeActivity
+adb logcat -d -s Vultra    # PLATFORM_RENDER_PASSED and the path of the image it wrote
+```
+
+This was run from a Windows host for `x86_64` with NDK 30.0.16248370 and build tools 36.0.0: the probe
+installed and passed on the Android emulator (API 37, Vulkan through the host GPU), and its image was read
+back. `arm64-v8a`, a physical device, the Web probes and the GameActivity examples packaged through Gradle
+were not run.
 
 ## Development checks
 

@@ -9,6 +9,11 @@ option_end()
 includes("../..")
 local features = vultraFeatures()
 
+if is_plat("windows") then
+    -- The library and its packages use the static MSVC runtime; the targets of this project must match.
+    set_runtimes(is_mode("debug") and "MTd" or "MT")
+end
+
 target("platform-vpk-memory")
     set_kind("binary")
     add_deps("vultra")
@@ -53,7 +58,11 @@ if get_config("platform_pack") then
                 local ndk = target:toolchain("ndk"):config("ndk")
                 local glue = path.join(ndk, "sources/android/native_app_glue")
                 target:add("includedirs", glue)
-                target:add("files", path.join(glue, "android_native_app_glue.c"))
+                -- Compiled from a copy: object paths mirror the source path, and the path into an NDK outside
+                -- the project is too long for Windows.
+                local copy = path.join(target:autogendir(), "android_native_app_glue.c")
+                os.cp(path.join(glue, "android_native_app_glue.c"), copy)
+                target:add("files", copy)
             end)
         else
             add_rules("utils.bin2c", {extensions = ".vpk", nozeroend = true})

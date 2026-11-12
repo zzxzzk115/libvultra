@@ -1,5 +1,5 @@
--- Packages the built platform probe into a signed APK. The SDK's build tools and a JDK (keytool, java) on PATH
--- are required.
+-- Packages the built platform probe into a signed APK. The SDK's build tools and a JDK (keytool, jar, java) on
+-- PATH are required.
 --
 --     xmake lua tests/platform/package_android.lua <sdk> <abi> <library> <vpk> <output>
 --                                                  [--manifest FILE] [--library-name NAME]
@@ -55,7 +55,7 @@ function main(...)
     local name = "lib/" .. abi .. "/lib" .. options["library-name"] .. ".so"
     local staging = path.join(output, "staging")
     os.cp(library, path.join(staging, name))
-    os.vrunv(tool("aapt"), {"add", "-0", "so", base, name}, {curdir = staging})
+    os.vrunv("jar", {"--update", "--file", base, "--no-compress", "--no-manifest", "-C", staging, name})
 
     local aligned = path.join(output, "aligned.apk")
     os.vrunv(tool("zipalign"), {"-P", "16", "-f", "4", base, aligned})
@@ -68,8 +68,8 @@ function main(...)
     if not entries["assets/project.vpk"] then
         raise("APK compressed the VPK or lost it; direct mapping requires stored bytes")
     end
-    if entries[name] == nil then
-        raise("APK does not contain " .. name)
+    if not entries[name] then
+        raise("APK compressed " .. name .. " or lost it; the library is loaded from the APK as it is")
     end
     print(apk)
 end
