@@ -587,13 +587,13 @@ namespace vultra
             uint32_t                   firstIndex;
         };
 
-        std::vector<GeometryJob>                                         jobs;
-        size_t                                                           totalVertices  = 0;
-        size_t                                                           totalIndices   = 0;
-        uint64_t                                                         largestScratch = 1024 * 1024;
-        std::vector<bool>                                                visiting(model.nodes.size(), false);
-        std::function<std::expected<void, Error>(int, const glm::mat4&)> visit;
-        visit = [&](int index, const glm::mat4& parent) -> std::expected<void, Error>
+        std::vector<GeometryJob>                                              jobs;
+        size_t                                                                totalVertices  = 0;
+        size_t                                                                totalIndices   = 0;
+        uint64_t                                                              largestScratch = 1024 * 1024;
+        std::vector<bool>                                                     visiting(model.nodes.size(), false);
+        std::function<std::expected<void, Error>(int, const glm::mat4&, int)> visit;
+        visit = [&](int index, const glm::mat4& parent, int parentNode) -> std::expected<void, Error>
         {
             if (index < 0 || size_t(index) >= model.nodes.size())
             {
@@ -605,7 +605,11 @@ namespace vultra
                 return makeError("Cycle in glTF node hierarchy");
             }
             visiting[size_t(index)] = true;
-            const auto world        = parent * nodeTransform(node);
+            const auto local        = nodeTransform(node);
+            const auto world        = parent * local;
+            // Primitives are numbered like the jobs, so a node's own primitives are one range.
+            const int self = int(scene.nodes.size());
+            scene.nodes.push_back({node.name, parentNode, local, uint32_t(jobs.size()), 0});
             if (node.mesh >= 0)
             {
                 if (size_t(node.mesh) >= model.meshes.size())
@@ -635,9 +639,10 @@ namespace vultra
                     largestScratch = std::max(largestScratch, uint64_t(vertexCount) * sizeof(glm::vec3) * 2);
                 }
             }
+            scene.nodes[size_t(self)].primitiveCount = uint32_t(jobs.size()) - scene.nodes[size_t(self)].firstPrimitive;
             for (int child : node.children)
             {
-                if (auto result = visit(child, world); !result)
+                if (auto result = visit(child, world, self); !result)
                 {
                     return result;
                 }
@@ -652,7 +657,7 @@ namespace vultra
         }
         for (int node : model.scenes[size_t(sceneIndex)].nodes)
         {
-            if (auto result = visit(node, glm::mat4(1)); !result)
+            if (auto result = visit(node, glm::mat4(1), -1); !result)
             {
                 return std::unexpected(result.error());
             }
@@ -752,8 +757,8 @@ namespace vultra
                     if (tangents)
                     {
                         glm::vec3 tangent(float(tangents->component(i, 0)),
-                                          float(tangents->component(i, 1)),
-                                          float(tangents->component(i, 2)));
+                                                      float(tangents->component(i, 1)),
+                                                      float(tangents->component(i, 2)));
                         // Keep the supplied direction. The shader orthogonalizes the interpolated
                         // frame and handles degenerate TBNs without rebuilding authored tangents.
                         tangent            = linear * tangent;
@@ -829,7 +834,7 @@ namespace vultra
                     for (size_t i = baseVertex; i < baseVertex + vertexCount; ++i)
                     {
                         auto& normal = scene.vertices[i].normal;
-                        normal       = glm::length(normal) > 0 ? glm::normalize(normal) : glm::vec3(0, 1, 0);
+                        normal = glm::length(normal) > 0 ? glm::normalize(normal) : glm::vec3(0, 1, 0);
                     }
                 }
                 if (*uvs && !tangents)

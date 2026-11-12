@@ -173,6 +173,36 @@ Connections: {
                 "DDS GPU upload or transfer function is incorrect");
     }
 
+    // The hierarchy of a glTF file is kept beside its geometry, which is stored where the nodes put it.
+    void testGltfNodes(const std::filesystem::path& root)
+    {
+        const float positions[] {0, 0, 0, 1, 0, 0, 0, 1, 0};
+        write(root / "nodes.bin", std::as_bytes(std::span(positions)));
+        writeText(root / "nodes.gltf", R"({
+            "asset":{"version":"2.0"}, "scene":0, "scenes":[{"nodes":[0,2]}],
+            "nodes":[{"name":"Root","translation":[1,0,0],"children":[1]},
+                     {"name":"Leaf","mesh":0,"translation":[0,2,0]},
+                     {"name":"Other","mesh":0}],
+            "buffers":[{"uri":"nodes.bin","byteLength":36}],
+            "bufferViews":[{"buffer":0,"byteLength":36}],
+            "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"}],
+            "meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}]
+        })");
+        const auto  scene = must(vultra::loadGltf(root / "nodes.gltf", {}, 1));
+        const auto& nodes = scene.nodes;
+        require(nodes.size() == 3 && nodes[0].name == "Root" && nodes[0].parent == -1 && nodes[0].primitiveCount == 0 &&
+                    nodes[1].name == "Leaf" && nodes[1].parent == 0 && nodes[2].name == "Other" &&
+                    nodes[2].parent == -1,
+                "glTF nodes were not kept with their parents");
+        require(nodes[1].firstPrimitive == 0 && nodes[1].primitiveCount == 1 && nodes[2].firstPrimitive == 1 &&
+                    nodes[2].primitiveCount == 1 && scene.primitives.size() == 2,
+                "A glTF node does not name its own primitives");
+        require(glm::vec3(nodes[1].local[3]) == glm::vec3(0, 2, 0) && scene.vertices.size() == 6 &&
+                    scene.vertices[0].position == glm::vec3(1, 2, 0) &&
+                    scene.vertices[3].position == glm::vec3(0, 0, 0),
+                "A glTF node keeps its own transform, and its vertices are where its parents put them");
+    }
+
     void testGltfDds(const std::filesystem::path& root)
     {
         const float positions[] {0, 0, 0, 1, 0, 0, 0, 1, 0};
@@ -457,6 +487,7 @@ int main()
     writeText(root / "invalid.dds", "not a texture");
     rejects(vultra::loadDds(root / "invalid.dds"), "Malformed DDS was accepted");
 
+    testGltfNodes(root);
     testGltfDds(root);
     testOrca(root);
     const auto embedded = must(vultra::loadFbx("tests/fixtures/embedded_dds.fbx", {}, 4));

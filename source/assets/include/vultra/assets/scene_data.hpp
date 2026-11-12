@@ -11,6 +11,7 @@
 #include <expected>
 #include <filesystem>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace vultra
@@ -106,6 +107,18 @@ namespace vultra
         float              maxLod       = 32;
     };
 
+    // A node of the model file with the primitives of its own mesh. Vertices are stored in model space, with
+    // every node's transform already applied; `local` is kept so that a host can show the hierarchy and move
+    // a node afterwards.
+    struct SceneNode
+    {
+        std::string name;
+        int         parent = -1; // Index into SceneData::nodes; a parent comes before its children.
+        glm::mat4   local {1};   // Relative to the parent node.
+        uint32_t    firstPrimitive = 0;
+        uint32_t    primitiveCount = 0;
+    };
+
     struct SceneData
     {
         std::vector<SceneVertex>     vertices;
@@ -114,8 +127,10 @@ namespace vultra
         std::vector<SceneSampler>    samplers;
         std::vector<SurfaceMaterial> materials;
         std::vector<ScenePrimitive>  primitives;
-        glm::vec3                    center {0};
-        float                        radius = 1;
+        // The hierarchy of the file, for loaders that keep it: glTF. Empty otherwise.
+        std::vector<SceneNode> nodes;
+        glm::vec3              center {0};
+        float                  radius = 1;
     };
 
     // Accumulate UV derivatives in triangle order, then orthogonalize against the vertex normal.
