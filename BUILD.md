@@ -173,7 +173,9 @@ xmake run example-xr --frames 120 --capture build/.tmp/xr/left.png
 This was run on Windows with the Meta XR Simulator (v83) as the active runtime: 120 frames were submitted, both
 controllers were located in every frame, and the captured left eye showed the scene, the hands and the beams
 reaching the floor. No headset was used, and nobody operated the simulated controllers, so the select and
-squeeze values were only ever read as zero. At shutdown the simulator reports spaces of its own as undestroyed
+squeeze values were only ever read as zero. The simulator reports the aim pose rolled by 180 degrees about
+the pointing direction, which leaves the pointer ray unchanged; the example places the hand model from the grip
+pose. At shutdown the simulator reports spaces of its own as undestroyed
 and leaves one command pool it created on the application's device, which the validation layer reports when
 the device is destroyed; every space the module creates is destroyed.
 

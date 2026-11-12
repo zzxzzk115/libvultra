@@ -399,6 +399,11 @@ namespace
         constexpr float kFloorHeight = -1.5f;
         const glm::mat4 world        = glm::translate(glm::mat4(1), {0, kFloorHeight, 0});
         const glm::mat4 carPose = glm::rotate(glm::translate(world, {-1.5f, 0, -5.0f}), glm::radians(60.0f), {0, 1, 0});
+        // The hand model is a left hand authored around the aim pose of a Touch controller, whose grip pose lies
+        // 3 cm below and 4 cm behind it, pitched up by 60 degrees. Placing the model from the grip pose keeps it
+        // in the hand on a runtime that reports the aim pose rolled about the pointing direction.
+        const glm::mat4 handFromGrip = glm::inverse(
+            glm::rotate(glm::translate(glm::mat4(1), {0, -0.03f, 0.041f}), glm::radians(60.0f), {1, 0, 0}));
         constexpr std::array<const char*, 2> kHandNames {"Left", "Right"};
 
         uint64_t                rendered = 0;
@@ -437,9 +442,8 @@ namespace
                     Logger::app().info("{} hand select {}", kHandNames[index], select ? "pressed" : "released");
                     pressed[index] = select;
                 }
-                // The hand model is a left hand authored in the aim pose.
                 const glm::mat4 mirror = glm::scale(glm::mat4(1), {index == 0 ? 1.0f : -1.0f, 1, 1});
-                draws.push_back({hand->part, controller.aim * mirror, hand->color});
+                draws.push_back({hand->part, controller.grip * handFromGrip * mirror, hand->color});
                 draws.push_back({box,
                                  glm::scale(controller.grip, glm::vec3(0.03f * (1 + controller.squeeze))),
                                  {0.9f, 0.2f, 0.2f}});
